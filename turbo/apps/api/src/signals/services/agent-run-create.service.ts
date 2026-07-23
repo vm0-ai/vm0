@@ -157,6 +157,7 @@ import {
   StorageManifestBuildStats,
   type StorageManifestSource,
 } from "./agent-run-storage.service";
+import { projectLegacyWritebackArtifacts } from "./storage-legacy-projection.service";
 import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
@@ -4246,26 +4247,6 @@ function resumeSessionFromSnapshot(
   return undefined;
 }
 
-function writebackArtifactsFromPersistedStorageMounts(
-  mounts: readonly PersistedStorageMount[],
-): readonly ContextArtifact[] {
-  return mounts.flatMap((mount) => {
-    if (!mount.writeback) {
-      return [];
-    }
-    return [
-      {
-        name: mount.name,
-        ...(mount.version === undefined ? {} : { version: mount.version }),
-        mountPath: mount.mountPath,
-        ...(mount.missingRootPolicy === undefined
-          ? {}
-          : { missingRootPolicy: mount.missingRootPolicy }),
-      },
-    ];
-  });
-}
-
 function resolvedSessionStorage(session: {
   readonly artifacts: readonly ContextArtifact[] | null;
   readonly storageMounts: readonly PersistedStorageMount[] | null;
@@ -4274,9 +4255,7 @@ function resolvedSessionStorage(session: {
     return { artifacts: session.artifacts ?? [] };
   }
   return {
-    artifacts: writebackArtifactsFromPersistedStorageMounts(
-      session.storageMounts,
-    ),
+    artifacts: projectLegacyWritebackArtifacts(session.storageMounts),
     persistedStorageMounts: {
       mounts: session.storageMounts,
       mode: "writeback",
@@ -4810,8 +4789,6 @@ async function insertLaunchRunRows(
     readonly status: LaunchRunStatus;
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
     readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -4828,7 +4805,7 @@ async function insertLaunchRunRows(
       userId: args.userId,
       orgId: args.orgId,
       agentComposeId: args.resolved.composeId,
-      artifacts: [...args.artifacts],
+      artifacts: [],
       storageMounts: args.sessionStorageMounts
         ? [...args.sessionStorageMounts]
         : null,
@@ -4849,9 +4826,7 @@ async function insertLaunchRunRows(
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
     secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
-    additionalVolumes: args.additionalVolumes
-      ? [...args.additionalVolumes]
-      : null,
+    additionalVolumes: null,
     storageMounts: args.runStorageMounts ? [...args.runStorageMounts] : null,
     resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
     continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
@@ -4885,8 +4860,6 @@ async function insertRunRecord(
     readonly orgId: string;
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly callbacks: readonly RunCallback[] | undefined;
     readonly chatThreadId: string | undefined;
@@ -4909,8 +4882,6 @@ async function insertRunRecord(
     status: "pending",
     resolved: args.resolved,
     body: args.body,
-    artifacts: args.artifacts,
-    additionalVolumes: args.additionalVolumes,
     runStorageMounts: undefined,
     sessionStorageMounts: undefined,
     modelProvider: args.modelProvider,
@@ -4938,8 +4909,6 @@ async function insertQueuedRunRecord(
     readonly orgId: string;
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly callbacks: readonly RunCallback[] | undefined;
     readonly chatThreadId: string | undefined;
@@ -4962,8 +4931,6 @@ async function insertQueuedRunRecord(
     status: "queued",
     resolved: args.resolved,
     body: args.body,
-    artifacts: args.artifacts,
-    additionalVolumes: args.additionalVolumes,
     runStorageMounts: undefined,
     sessionStorageMounts: undefined,
     modelProvider: args.modelProvider,
@@ -6040,8 +6007,6 @@ async function commitFailedLaunch(args: {
       status: "failed",
       resolved: args.context.resolved,
       body: args.context.body,
-      artifacts: args.context.artifacts,
-      additionalVolumes: args.context.additionalVolumes,
       runStorageMounts: undefined,
       sessionStorageMounts: undefined,
       modelProvider: args.context.modelProvider,
@@ -6098,8 +6063,6 @@ async function insertAtomicLaunchRunRecord(args: {
         status: args.status,
         resolved: args.commit.context.resolved,
         body: args.commit.context.body,
-        artifacts: args.commit.context.artifacts,
-        additionalVolumes: args.commit.context.additionalVolumes,
         runStorageMounts: args.commit.launch.runStorageMounts,
         sessionStorageMounts: args.commit.launch.sessionStorageMounts,
         modelProvider: args.commit.context.modelProvider,
@@ -7300,8 +7263,6 @@ async function insertRunWithConcurrency(
           orgId: args.orgId,
           resolved: context.resolved,
           body: context.body,
-          artifacts: context.artifacts,
-          additionalVolumes: context.additionalVolumes,
           modelProvider: context.modelProvider,
           callbacks: args.callbacks,
           chatThreadId: args.chatThreadId,
@@ -7321,8 +7282,6 @@ async function insertRunWithConcurrency(
           orgId: args.orgId,
           resolved: context.resolved,
           body: context.body,
-          artifacts: context.artifacts,
-          additionalVolumes: context.additionalVolumes,
           modelProvider: context.modelProvider,
           callbacks: args.callbacks,
           chatThreadId: args.chatThreadId,

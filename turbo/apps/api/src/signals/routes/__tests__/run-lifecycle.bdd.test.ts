@@ -87,6 +87,7 @@ import {
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
+  readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
@@ -1764,9 +1765,32 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await api.heartbeatRunner(runnerGroup);
 
+    const readOnlyStorageName = `bdd-phase3-volume-${randomUUID().slice(0, 8)}`;
+    const readOnlyFile = storageTextFile(
+      "phase3.txt",
+      `canonical read-only Storage ${readOnlyStorageName}`,
+    );
+    const preparedReadOnlyStorage = await storages.prepareStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      files: [readOnlyFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      versionId: preparedReadOnlyStorage.versionId,
+      files: [readOnlyFile],
+    });
     const initialRun = await api.createDirectRun(actor, {
       agentComposeVersionId: compose.versionId,
       prompt: "persist canonical storage mounts",
+      additionalVolumes: [
+        {
+          name: readOnlyStorageName,
+          version: preparedReadOnlyStorage.versionId,
+          mountPath: "/phase3-read-only",
+        },
+      ],
     });
     const initialClaim = await api.claimRunnerJob(initialRun.runId, {
       capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
@@ -1781,6 +1805,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (!initialMemory) {
       throw new Error("Expected the canonical memory mount");
     }
+    expect(initialManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: readOnlyStorageName,
+        versionId: preparedReadOnlyStorage.versionId,
+        mountPath: "/phase3-read-only",
+      }),
+    );
 
     const memoryFile = storageTextFile(
       "MEMORY.md",
@@ -1829,6 +1860,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${initialClaim.sandboxToken}` },
       [200],
     );
+    await expect(
+      readStoragePersistenceState(context, {
+        runId: initialRun.runId,
+        sessionId: initialRun.sessionId,
+        checkpointId: checkpoint.body.checkpointId,
+      }),
+    ).resolves.toStrictEqual({
+      run_canonical: true,
+      run_legacy: false,
+      session_canonical: true,
+      session_legacy: false,
+      checkpoint_canonical: true,
+      checkpoint_legacy_artifacts: false,
+      checkpoint_legacy_volumes: false,
+    });
 
     const sessionRun = await api.createDirectRun(actor, {
       sessionId: initialRun.sessionId,
@@ -1874,6 +1920,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           versionId: preparedMemory.versionId,
           mountPath: initialMemory.mountPath,
           writeback: true,
+        }),
+        expect.objectContaining({
+          name: readOnlyStorageName,
+          versionId: preparedReadOnlyStorage.versionId,
+          mountPath: "/phase3-read-only",
         }),
       ]),
     );
@@ -10020,6 +10071,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         },
       ) ?? [];
     expect(mountPaths).toContain("/cache");
+    const memoryArtifact = expectLegacyStorageManifest(
+      claim.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    if (!memoryArtifact) {
+      throw new Error("Expected the run to mount memory");
+    }
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 
     await webhooks.requestAgentTelemetryUnchecked(
@@ -10147,15 +10206,12 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 
     const artifactSnapshots = [
       {
-        name: "workspace",
-        version: "a".repeat(64),
-        mountPath: "/workspace",
-      },
-      {
-        name: "site",
-        version: "b".repeat(64),
-        mountPath: "/site",
-        missingRootPolicy: "preserveParentVersion" as const,
+        name: memoryArtifact.vasStorageName,
+        version: memoryArtifact.vasVersionId,
+        mountPath: memoryArtifact.mountPath,
+        ...(memoryArtifact.missingRootPolicy === undefined
+          ? {}
+          : { missingRootPolicy: memoryArtifact.missingRootPolicy }),
       },
     ];
     const historyHash = createHash("sha256")
@@ -10192,8 +10248,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     const completed = await api.readRun(actor, created.runId);
     expect(completed.status).toBe("completed");
     expect(completed.result?.artifact).toStrictEqual({
-      workspace: "a".repeat(64),
-      site: "b".repeat(64),
+      memory: memoryArtifact.vasVersionId,
     });
     expect(completed.result?.volumes).toStrictEqual({
       [cacheVolume]: cachePrepared.versionId,
