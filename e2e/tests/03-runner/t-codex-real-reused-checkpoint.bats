@@ -78,7 +78,10 @@ assert_run_reused_sandbox() {
         "path_date=\${path_date%%T*}" \
         "utc_timestamp=\$(head -n 1 \"\$path\" | jq -er '.payload.timestamp // .timestamp')" \
         "utc_date=\${utc_timestamp%%T*}" \
+        "thread_id=\$(head -n 1 \"\$path\" | jq -er 'select(.type == \"session_meta\") | .payload.id')" \
+        "case \"\$path\" in *-\"\$thread_id\".jsonl) ;; *) exit 1 ;; esac" \
         "printf '%s\\n' \"\$path\" > /home/user/.codex/vm0-e2e-rollout-path" \
+        "printf '%s\\n' \"\$thread_id\" > /home/user/.codex/vm0-e2e-thread-id" \
         "test \"\$path_date\" != \"\$utc_date\"" \
         'echo CODEX_LOCAL_DATE_PATH_RECORDED' \
         'After the command succeeds, reply with exactly FIRST_MEMORY_STORED.')"
@@ -88,13 +91,13 @@ assert_run_reused_sandbox() {
     assert_output --partial "CODEX_LOCAL_DATE_PATH_RECORDED"
     assert_output --partial "FIRST_MEMORY_STORED"
 
-    local checkpoint_id session_id
+    local checkpoint_id agent_session_id
     checkpoint_id="$(run_fixture_field "$output" '.checkpointId')"
-    session_id="$(run_fixture_field "$output" '.sessionId')"
+    agent_session_id="$(run_fixture_field "$output" '.sessionId')"
     [ -n "$checkpoint_id" ]
-    [ -n "$session_id" ]
+    [ -n "$agent_session_id" ]
 
-    run continue_run_fixture "$session_id" \
+    run continue_run_fixture "$agent_session_id" \
         "Remember this exact second memory token: ${SECOND_MEMORY_TOKEN}. Reply with exactly SECOND_MEMORY_STORED." \
         "$overrides"
     assert_success
@@ -109,10 +112,11 @@ assert_run_reused_sandbox() {
         'Use the shell tool to execute this exact script as one command:' \
         'set -eu' \
         "original=\$(cat /home/user/.codex/vm0-e2e-rollout-path)" \
-        "case \"\$original\" in *-${session_id}.jsonl) ;; *) exit 1 ;; esac" \
+        "thread_id=\$(cat /home/user/.codex/vm0-e2e-thread-id)" \
+        "case \"\$original\" in *-\"\$thread_id\".jsonl) ;; *) exit 1 ;; esac" \
         "test ! -e \"\$original\"" \
         "test ! -e \"\$original.zst\"" \
-        "matches=\$(find /home/user/.codex/sessions -type f \\( -name 'rollout-*-${session_id}.jsonl' -o -name 'rollout-*-${session_id}.jsonl.zst' \\))" \
+        "matches=\$(find /home/user/.codex/sessions -type f \\( -name \"rollout-*-\$thread_id.jsonl\" -o -name \"rollout-*-\$thread_id.jsonl.zst\" \\))" \
         "count=\$(printf '%s\\n' \"\$matches\" | sed '/^$/d' | wc -l)" \
         "test \"\$count\" -eq 1" \
         "restored=\$(printf '%s\\n' \"\$matches\" | head -n 1)" \
@@ -129,12 +133,10 @@ assert_run_reused_sandbox() {
     assert_output --partial '"type":"turn.completed"'
     refute_output --partial "$SECOND_MEMORY_TOKEN"
 
-    local resumed_run_id resumed_session_id resumed_checkpoint_id
+    local resumed_run_id resumed_checkpoint_id
     resumed_run_id="$(run_fixture_field "$output" '.runId')"
-    resumed_session_id="$(run_fixture_field "$output" '.sessionId')"
     resumed_checkpoint_id="$(run_fixture_field "$output" '.checkpointId')"
     assert_run_reused_sandbox "$resumed_run_id"
-    assert_equal "$resumed_session_id" "$session_id"
     [ -n "$resumed_checkpoint_id" ]
     [ "$resumed_checkpoint_id" != "$checkpoint_id" ]
 }
