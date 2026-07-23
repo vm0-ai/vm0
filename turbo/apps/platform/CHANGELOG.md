@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.624.0](https://github.com/vm0-ai/vm0/compare/app-v0.623.0...app-v0.624.0) (2026-07-23)
+
+
+### Features
+
+* gate presentation pptx export and google slides upload ([#22695](https://github.com/vm0-ai/vm0/issues/22695)) ([b535773](https://github.com/vm0-ai/vm0/commit/b535773de642e5bbf03449ea740d7d72f191d247))
+
+
+### Bug Fixes
+
+* **desktop:** retire intel mac downloads and builds ([#22711](https://github.com/vm0-ai/vm0/issues/22711)) ([b24adec](https://github.com/vm0-ai/vm0/commit/b24adec5910023d8a0feec76fb1428d3aad6d87c))
+
+
+### Performance Improvements
+
+* **chat:** skip chat message refetch when the created event watermark is already cached locally ([#22718](https://github.com/vm0-ai/vm0/issues/22718)) ([1f4268e](https://github.com/vm0-ai/vm0/commit/1f4268e6eba136d2d6b176905a1e1fbc56bd7290))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.6
+    * @vm0/connectors bumped to 1.184.0
+    * @vm0/core bumped to 8.456.0
+
 ## [0.623.0](https://github.com/vm0-ai/vm0/compare/app-v0.622.1...app-v0.623.0) (2026-07-23)
 
 

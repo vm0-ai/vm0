@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.456.0](https://github.com/vm0-ai/vm0/compare/core-v8.455.0...core-v8.456.0) (2026-07-23)
+
+
+### Features
+
+* gate presentation pptx export and google slides upload ([#22695](https://github.com/vm0-ai/vm0/issues/22695)) ([b535773](https://github.com/vm0-ai/vm0/commit/b535773de642e5bbf03449ea740d7d72f191d247))
+
+
+### Bug Fixes
+
+* **desktop:** retire intel mac downloads and builds ([#22711](https://github.com/vm0-ai/vm0/issues/22711)) ([b24adec](https://github.com/vm0-ai/vm0/commit/b24adec5910023d8a0feec76fb1428d3aad6d87c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.6
+    * @vm0/connectors bumped to 1.184.0
+
 ## [8.455.0](https://github.com/vm0-ai/vm0/compare/core-v8.454.1...core-v8.455.0) (2026-07-23)
 
 

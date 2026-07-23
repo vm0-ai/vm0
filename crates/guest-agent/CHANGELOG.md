@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.54.2...guest-agent-v0.54.3) (2026-07-23)
+
+
+### Performance Improvements
+
+* **guest-agent:** overlap artifact checkpoint pipelines ([#22709](https://github.com/vm0-ai/vm0/issues/22709)) ([ed29a8a](https://github.com/vm0-ai/vm0/commit/ed29a8aafe5c809154aa78e366e427e106522cad))
+
 ## [0.54.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.54.1...guest-agent-v0.54.2) (2026-07-23)
 
 

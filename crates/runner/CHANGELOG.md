@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.147.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.8...runner-rs-v0.147.9) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** recover failed usage timer starts ([#22732](https://github.com/vm0-ai/vm0/issues/22732)) ([30a2a42](https://github.com/vm0-ai/vm0/commit/30a2a42680f513eebcd613df2a70d65af6b943b2))
+
 ## [0.147.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.7...runner-rs-v0.147.8) (2026-07-23)
 
 ## [0.147.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.6...runner-rs-v0.147.7) (2026-07-23)

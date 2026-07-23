@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.35...guest-write-file-v0.1.36) (2026-07-23)
+
+
+### Bug Fixes
+
+* **rust:** keep child ownership through test timeouts ([#22725](https://github.com/vm0-ai/vm0/issues/22725)) ([6e4de93](https://github.com/vm0-ai/vm0/commit/6e4de931a86ee553aad08e6c305ff32da8125da8))
+
 ## [0.1.35](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.34...guest-write-file-v0.1.35) (2026-07-23)
 
 ## [0.1.34](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.33...guest-write-file-v0.1.34) (2026-07-22)

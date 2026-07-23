@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.12](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.11...guest-mock-codex-v0.6.12) (2026-07-23)
+
+
+### Bug Fixes
+
+* **rust:** keep child ownership through test timeouts ([#22725](https://github.com/vm0-ai/vm0/issues/22725)) ([6e4de93](https://github.com/vm0-ai/vm0/commit/6e4de931a86ee553aad08e6c305ff32da8125da8))
+
 ## [0.6.11](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.10...guest-mock-codex-v0.6.11) (2026-07-21)
 
 
