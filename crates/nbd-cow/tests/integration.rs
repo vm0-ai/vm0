@@ -310,6 +310,10 @@ async fn connected_device_survives_cow_path_relocation() {
     let target_cow = fixture.cow_path("sandbox/cow.img");
     fs::create_dir_all(source_cow.parent().expect("source parent")).expect("create source parent");
     fs::create_dir_all(target_cow.parent().expect("target parent")).expect("create target parent");
+    fs::File::create(&source_cow)
+        .expect("create source COW file")
+        .set_len(fixture.size())
+        .expect("size source COW file");
 
     let pool = default_device_pool();
     let mut device = pool
