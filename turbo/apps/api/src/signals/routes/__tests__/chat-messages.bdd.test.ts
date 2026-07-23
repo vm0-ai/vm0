@@ -2765,57 +2765,6 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
-  it("resumes the CLI session when switching between GPT and Auto", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
-    mockOptionalEnv("VM0_MODEL_PROXY_HOST", "https://www.vm0.test");
-    await seedVm0ManagedModelKey("gpt-5.5");
-    await chatCallbacks.updateOrgModelPolicies(actor, [
-      {
-        model: "gpt-5.5",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-      {
-        model: "vm0-model",
-        isDefault: false,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: "start on GPT before switching to Auto",
-      model: "gpt-5.5",
-    });
-    const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
-      cliAgentType: "codex",
-    });
-    await flushWaitUntilForTest();
-
-    await seedVm0ManagedModelKey("vm0-model");
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "continue on Auto in the same session",
-      model: "vm0-model",
-    });
-    const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${first.runId}`,
-    );
-    expect(claimEnvironment(secondClaim.claim).OPENAI_MODEL).toBe("vm0-model");
-
-    await cancelChatRun(actor, second.runId);
-  }, 90_000);
-
   it("re-resolves a sticky model through the current provider policy", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2936,7 +2885,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
     // Chat send only accepts supported run models.
     const vm0ThreadId = randomUUID();
-    const invalidVm0Model = await chat.requestSendMessage(
+    const invalidModel = await chat.requestSendMessage(
       actor,
       {
         agentId: agent.agentId,
@@ -2946,8 +2895,8 @@ describe("CHAT-02: run-level model overrides", () => {
       },
       [400],
     );
-    expectApiError(invalidVm0Model.body);
-    expect(invalidVm0Model.body.error.message).toBe(
+    expectApiError(invalidModel.body);
+    expect(invalidModel.body.error.message).toBe(
       "model: Invalid model selection",
     );
     await chat.requestReadThread(actor, vm0ThreadId, [404]);

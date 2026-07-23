@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.65](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.64...vsock-host-v0.17.65) (2026-07-23)
+
+
+### Performance Improvements
+
+* **runner:** move reused mount validation to idle admission ([#22610](https://github.com/vm0-ai/vm0/issues/22610)) ([710f9da](https://github.com/vm0-ai/vm0/commit/710f9da64fbb6d86a1588df02da2077dfb7c938a))
+
 ## [0.17.64](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.63...vsock-host-v0.17.64) (2026-07-21)
 
 

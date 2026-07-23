@@ -4,11 +4,17 @@ This document is the source of truth for the signed model usage pricing
 response headers consumed by the runner mitm addon. It defines version 1 of the
 contract between:
 
-- the pricing producer, which handles a VM0 Model request and adds the private
-  pricing headers to its response;
+- the legacy pricing producer, which handled a VM0 Auto request and added the
+  private pricing headers to its response;
 - the runner mitm addon, which authenticates and consumes those headers; and
 - the sandbox client, which receives the response after the private headers
   have been removed.
+
+> **Retirement compatibility:** The Auto model no longer accepts new runs.
+> This protocol and its guest-agent, runner, and proxy compatibility paths
+> remain temporarily so runs claimed by a pre-retirement API deployment can
+> drain safely. Remove them after all pre-retirement API and runner versions
+> are no longer active or rollback-eligible.
 
 The implementation lives in
 `crates/runner/mitm-addon/src/model_usage_pricing.py`.

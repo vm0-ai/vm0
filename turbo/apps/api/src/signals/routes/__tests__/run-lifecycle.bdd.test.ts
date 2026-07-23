@@ -10,7 +10,6 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
-  MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -4805,7 +4804,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra and Auto, and rejects Sol", async () => {
+  it("defaults limited-free runs to Luna, allows Terra, rejects Sol, and normalizes retired Auto", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -4876,51 +4875,29 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
 
-    const vm0Model = "vm0-model";
-    const proxyHost = "https://www.vm0.test";
-    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
-    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
-    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
-    await seedVm0ManagedModelKey(vm0Model);
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: vm0Model,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-
-    const vm0Sent = await chat.requestSendMessage(
+    const retiredAuto = await chat.requestSendMessage(
       actor,
       {
         agentId,
-        prompt: "limited-free Auto run",
-        model: vm0Model,
+        prompt: "legacy Auto request",
+        model: "vm0-model",
       },
       [201],
     );
-    if (vm0Sent.status !== 201 || vm0Sent.body.runId === null) {
-      throw new Error("Expected Auto to create a limited-free run");
+    if (retiredAuto.status !== 201 || retiredAuto.body.runId === null) {
+      throw new Error("Expected retired Auto to normalize to Luna");
     }
     await api.heartbeatRunner(runnerGroup);
-    const vm0Claim = await api.claimRunnerJob(vm0Sent.body.runId);
-    expect(vm0Claim.environment).toMatchObject({
-      OPENAI_BASE_URL: proxyBaseUrl,
-      OPENAI_MODEL: vm0Model,
+    const retiredAutoClaim = await api.claimRunnerJob(retiredAuto.body.runId);
+    expect(retiredAutoClaim.environment).toMatchObject({
+      OPENAI_MODEL: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
-    expect(vm0Claim.codexRuntimeConfig).toMatchObject({
-      providerId: vm0Model,
-      baseUrl: proxyBaseUrl,
-    });
-    expect(
-      vm0Claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("model-provider:vm0-model");
-    expect(vm0Claim.modelUsageProvider).toBe(vm0Model);
-    await api.requestCancelRun(actor, vm0Sent.body.runId, [200]);
+    expect(retiredAutoClaim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(retiredAutoClaim.codexRuntimeConfig).toBeNull();
+    expect(retiredAutoClaim.modelUsageProvider).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    await api.requestCancelRun(actor, retiredAuto.body.runId, [200]);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
@@ -5014,107 +4991,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     ).toContain("model-provider:openai-api-key");
     expect(claim.billableFirewalls).toContain("model-provider:openai-api-key");
     expect(claim.modelUsageProvider).toBe(selectedModel);
-
-    await api.requestCancelRun(actor, sent.body.runId, [200]);
-  });
-
-  it("routes vm0-model through the marketing tunnel and injects both managed credentials", async () => {
-    const api = createRunsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const fw = createFirewallApi(context);
-    const selectedModel = "vm0-model";
-    const proxyHost = "https://tunnel-yuma-vm0-marketing.vm7.ai:8443";
-    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
-    const firewallName = "model-provider:vm0-model";
-    const proxyAuthHeaders = {
-      Authorization: `Bearer \${{ secrets.OPENAI_API_KEY }}`,
-      "X-VM0-Upstream-Authorization": `Bearer \${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}`,
-    } as const;
-    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
-    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
-    await seedVm0ManagedModelKey(selectedModel);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: selectedModel,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "vm0 model proxy run",
-        model: selectedModel,
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected Auto chat send to create a run");
-    }
-
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(sent.body.runId);
-
-    expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment).toMatchObject({
-      OPENAI_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-      OPENAI_BASE_URL: proxyBaseUrl,
-      OPENAI_MODEL: selectedModel,
-    });
-    expect(claim.environment?.OPENAI_API_KEY).not.toBe("vm0-model-proxy-token");
-    expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "vm0-model",
-      name: "Auto",
-      baseUrl: proxyBaseUrl,
-      envKey: "OPENAI_API_KEY",
-      wireApi: "responses",
-      supportsWebsockets: false,
-      modelCatalog: {
-        models: [expect.objectContaining({ slug: selectedModel })],
-      },
-    });
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain(firewallName);
-    expect(inlineFirewallApis(claim.firewalls, firewallName)).toStrictEqual([
-      {
-        base: `${proxyBaseUrl}/responses`,
-        auth: { headers: proxyAuthHeaders },
-        permissions: [],
-      },
-    ]);
-    expect(claim.billableFirewalls).toContain(firewallName);
-    expect(claim.modelUsageProvider).toBe(selectedModel);
-    expect(claim.encryptedSecrets).toBeTruthy();
-
-    const resolved = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: claim.encryptedSecrets!,
-        authHeaders: proxyAuthHeaders,
-      },
-      [200],
-    );
-    if (resolved.status !== 200) {
-      throw new Error("Expected Auto firewall auth to resolve");
-    }
-    expect(resolved.body.headers).toStrictEqual({
-      Authorization: "Bearer vm0-model-proxy-token",
-      "X-VM0-Upstream-Authorization":
-        "Bearer vm0-key-run-lifecycle-bdd-default-model",
-    });
-    expect(resolved.body.resolvedSecrets).toStrictEqual([
-      "OPENAI_API_KEY",
-      "VM0_MODEL_UPSTREAM_API_KEY",
-    ]);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });

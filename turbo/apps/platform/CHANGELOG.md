@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.620.0](https://github.com/vm0-ai/vm0/compare/app-v0.619.0...app-v0.620.0) (2026-07-23)
+
+
+### Features
+
+* link slack chat messages to their source ([#22633](https://github.com/vm0-ai/vm0/issues/22633)) ([83351c6](https://github.com/vm0-ai/vm0/commit/83351c64b87880a39ba90103754b350f491281d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.0
+    * @vm0/core bumped to 8.453.1
+
 ## [0.619.0](https://github.com/vm0-ai/vm0/compare/app-v0.618.1...app-v0.619.0) (2026-07-23)
 
 

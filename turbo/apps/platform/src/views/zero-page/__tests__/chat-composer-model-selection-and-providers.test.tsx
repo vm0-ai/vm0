@@ -1140,40 +1140,6 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("keeps Auto available when VM0 models and BYOK are restricted", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
-    context.mocks.data.orgModelPolicies([
-      buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000703",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-      }),
-      buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000704",
-        model: "vm0-model",
-        modelLabel: "Auto",
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-      }),
-    ]);
-    mockAgent();
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await expectComposerModel("Kimi K2.7 Code");
-    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(await screen.findByRole("option", { name: /Auto/u }));
-
-    await expectComposerModel("Auto");
-    expect(
-      screen.queryByRole("heading", { name: "Compare plans" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("opens the model picker directly to options and labels BYOK routes", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.data.orgModelProviders([]);
@@ -2227,8 +2193,16 @@ describe("chat composer models", () => {
         }),
       ).toBeTruthy();
     });
-    await user.click(buttonContainingText("Deny", dialog));
-    await user.click(buttonContainingText("Apply", dialog));
+    await user.click(
+      await waitFor(() => {
+        return buttonContainingText("Deny", dialog);
+      }),
+    );
+    await user.click(
+      await waitFor(() => {
+        return buttonContainingText("Apply", dialog);
+      }),
+    );
 
     await waitFor(() => {
       expect(appliedPermissionAgentId).toBe(OTHER_AGENT_ID);
