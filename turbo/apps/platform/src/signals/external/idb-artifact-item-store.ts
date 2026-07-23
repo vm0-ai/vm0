@@ -21,7 +21,12 @@ import {
   ARTIFACT_ITEMS_STORE,
   ARTIFACT_SYNC_STORE,
 } from "./chat-idb-schema.ts";
-import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
+import {
+  chatIdbReadOr,
+  chatIdbWriteBestEffort,
+  withChatIdbTimeout,
+} from "./chat-idb-safe.ts";
+import { withCleanup } from "../utils.ts";
 
 const L = logger("ChatIdbCache");
 const DEFAULT_ARTIFACT_ITEM_LIMIT = 50;
@@ -61,6 +66,10 @@ interface ArtifactItemCacheFilter {
 
 interface ArtifactItemReadStore {
   readRecent(
+    filter?: ArtifactItemCacheFilter,
+    signal?: AbortSignal,
+  ): Promise<ArtifactItem[]>;
+  readRecentBestEffort(
     filter?: ArtifactItemCacheFilter,
     signal?: AbortSignal,
   ): Promise<ArtifactItem[]>;
@@ -104,6 +113,31 @@ interface IndexedReadPlan {
 interface ValidatedStoredArtifactItem {
   readonly item: ArtifactItem;
   readonly searchText: string;
+}
+
+async function runAbortableTransaction(
+  transaction: {
+    readonly done: Promise<unknown>;
+    abort(): void;
+  },
+  operation: () => Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
+  const abortTransaction = () => {
+    transaction.abort();
+  };
+  signal?.addEventListener("abort", abortTransaction, { once: true });
+  await withCleanup(
+    (async () => {
+      signal?.throwIfAborted();
+      await operation();
+      signal?.throwIfAborted();
+      await transaction.done;
+    })(),
+    () => {
+      signal?.removeEventListener("abort", abortTransaction);
+    },
+  );
 }
 
 function storedArtifactItem(item: ArtifactItem): StoredArtifactItem {
@@ -168,42 +202,64 @@ function matchesFilter(
   });
 }
 
+async function readRecentItems(
+  storeName: string,
+  getDb: GetDb,
+  filter?: ArtifactItemCacheFilter,
+  signal?: AbortSignal,
+): Promise<ArtifactItem[]> {
+  const effectiveFilter = filter ?? {};
+  const limit = effectiveFilter.limit ?? DEFAULT_ARTIFACT_ITEM_LIMIT;
+  if (limit <= 0) {
+    return [];
+  }
+
+  const db = await getDb();
+  signal?.throwIfAborted();
+  const tx = db.transaction(storeName, "readonly");
+  const plan = indexedReadPlan(effectiveFilter);
+  const index = tx.store.index(plan.indexName);
+  const queryTokens = normalizedSearchTokens(effectiveFilter.query);
+  const items: ArtifactItem[] = [];
+  let cursor = await index.openCursor(plan.range, "prev");
+  while (cursor && items.length < limit) {
+    signal?.throwIfAborted();
+    const stored = validateStoredArtifactItem(cursor.value);
+    if (matchesFilter(stored, effectiveFilter, queryTokens)) {
+      items.push(stored.item);
+    }
+    if (items.length >= limit) {
+      break;
+    }
+    cursor = await cursor.continue();
+  }
+  L.debug("artifacts:readRecent:done", {
+    count: items.length,
+    filter: effectiveFilter,
+  });
+  return items;
+}
+
 function createReadStore(
   storeName: string,
   getDb: GetDb,
 ): ArtifactItemReadStore {
   return {
     async readRecent(filter, signal) {
+      return await withChatIdbTimeout(
+        "artifacts:readRecent",
+        async () => {
+          return await readRecentItems(storeName, getDb, filter, signal);
+        },
+        signal,
+      );
+    },
+
+    async readRecentBestEffort(filter, signal) {
       return await chatIdbReadOr(
         "artifacts:readRecent",
         async () => {
-          const effectiveFilter = filter ?? {};
-          const limit = effectiveFilter.limit ?? DEFAULT_ARTIFACT_ITEM_LIMIT;
-          if (limit <= 0) {
-            return [];
-          }
-
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const tx = db.transaction(storeName, "readonly");
-          const plan = indexedReadPlan(effectiveFilter);
-          const index = tx.store.index(plan.indexName);
-          const queryTokens = normalizedSearchTokens(effectiveFilter.query);
-          const items: ArtifactItem[] = [];
-          let cursor = await index.openCursor(plan.range, "prev");
-          while (cursor && items.length < limit) {
-            signal?.throwIfAborted();
-            const stored = validateStoredArtifactItem(cursor.value);
-            if (matchesFilter(stored, effectiveFilter, queryTokens)) {
-              items.push(stored.item);
-            }
-            cursor = await cursor.continue();
-          }
-          L.debug("artifacts:readRecent:done", {
-            count: items.length,
-            filter: effectiveFilter,
-          });
-          return items;
+          return await readRecentItems(storeName, getDb, filter, signal);
         },
         [],
         signal,
@@ -279,12 +335,17 @@ function createWriteStore(
           const db = await getDb();
           signal?.throwIfAborted();
           const tx = db.transaction(storeName, "readwrite");
-          await tx.store.clear();
-          for (const item of items) {
-            signal?.throwIfAborted();
-            await tx.store.put(storedArtifactItem(item));
-          }
-          await tx.done;
+          await runAbortableTransaction(
+            tx,
+            async () => {
+              await tx.store.clear();
+              for (const item of items) {
+                signal?.throwIfAborted();
+                await tx.store.put(storedArtifactItem(item));
+              }
+            },
+            signal,
+          );
           L.debug("artifacts:replaceItems:done", { count: items.length });
         },
         signal,
@@ -297,10 +358,17 @@ function createWriteStore(
         async () => {
           const db = await getDb();
           signal?.throwIfAborted();
-          await db.put(ARTIFACT_SYNC_STORE, {
-            id: ARTIFACT_SYNC_STATE_ID,
-            lastSyncedAt,
-          });
+          const tx = db.transaction(ARTIFACT_SYNC_STORE, "readwrite");
+          await runAbortableTransaction(
+            tx,
+            async () => {
+              await tx.store.put({
+                id: ARTIFACT_SYNC_STATE_ID,
+                lastSyncedAt,
+              });
+            },
+            signal,
+          );
         },
         signal,
       );
