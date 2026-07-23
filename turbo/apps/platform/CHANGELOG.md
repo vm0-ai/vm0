@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.622.1](https://github.com/vm0-ai/vm0/compare/app-v0.622.0...app-v0.622.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **artifacts:** render cached and paged results progressively ([#22646](https://github.com/vm0-ai/vm0/issues/22646)) ([53c7133](https://github.com/vm0-ai/vm0/commit/53c71331364bf31e8ffff6bf77dfbf1b88816121))
+* **platform:** hydrate active chats from indexeddb before remote refresh ([#22669](https://github.com/vm0-ai/vm0/issues/22669)) ([709eade](https://github.com/vm0-ai/vm0/commit/709eadedc178d3a371078ff312eaebf3c384bc91))
+
+
+### Refactoring
+
+* **platform:** remove presentation element dragging ([#22696](https://github.com/vm0-ai/vm0/issues/22696)) ([fdb7430](https://github.com/vm0-ai/vm0/commit/fdb74306ad150e81346e81c8b1c633ba1195ac2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.4
+    * @vm0/connectors bumped to 1.182.2
+    * @vm0/core bumped to 8.454.1
+
 ## [0.622.0](https://github.com/vm0-ai/vm0/compare/app-v0.621.0...app-v0.622.0) (2026-07-23)
 
 
