@@ -174,14 +174,12 @@ function statusFromState(
   state: SyncStateSnapshot | undefined,
 ): ConnectorCatalogRawSyncStatus {
   let active: ConnectorCatalogRawSyncStatus["active"] = null;
-  if (state?.activeCatalogVersion) {
-    if (
-      !state.activatedAt ||
-      !state.activeCatalogKey ||
-      !state.activeCatalogDigest
-    ) {
-      throw new Error("Connector catalog active snapshot is incomplete");
-    }
+  if (
+    state?.activeCatalogVersion &&
+    state.activeCatalogKey &&
+    state.activeCatalogDigest &&
+    state.activatedAt
+  ) {
     active = {
       catalogVersion: state.activeCatalogVersion,
       catalogDigest: state.activeCatalogDigest,
