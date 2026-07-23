@@ -6,7 +6,7 @@ use tokio::time::Instant as TokioInstant;
 #[cfg(test)]
 use super::CowPoolSnapshot;
 use super::state::CowPool;
-use super::{AcquireResult, CowPoolConfig, CowPoolError, PrewarmedSlot};
+use super::{AcquireResult, CowPoolConfig, CowPoolError, PreparedCowSlot};
 
 /// Cloneable handle to the COW slot producer.
 #[derive(Clone)]
@@ -67,7 +67,7 @@ impl CowPoolHandle {
     }
 
     /// Acquire a one-shot pre-warmed COW slot.
-    pub(crate) async fn acquire(&self) -> Result<PrewarmedSlot, CowPoolError> {
+    pub(crate) async fn acquire(&self) -> Result<PreparedCowSlot, CowPoolError> {
         let (respond_to, response) = oneshot::channel();
         if self
             .commands
@@ -116,6 +116,7 @@ impl CowPoolActor {
 
             let retry_deadline = self.pool.warm_retry_at;
             let has_pending = !self.pool.pending.is_empty();
+            let has_teardowns = !self.pool.teardowns.is_empty();
             tokio::select! {
                 biased;
 
@@ -133,7 +134,11 @@ impl CowPoolActor {
                     }
                 }
                 completion = self.pool.pending.join_next(), if has_pending => {
-                    self.pool.handle_creation_join(completion).await;
+                    self.pool.handle_creation_join(completion);
+                }
+                completion = self.pool.teardowns.join_next(), if has_teardowns => {
+                    self.pool.handle_teardown_join(completion);
+                    self.pool.pump();
                 }
                 () = sleep_until_deadline(retry_deadline), if retry_deadline.is_some() => {
                     self.pool.warm_retry_at = None;

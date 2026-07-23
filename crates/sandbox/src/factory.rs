@@ -14,9 +14,9 @@ use crate::sandbox::Sandbox;
 /// as independent time.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SandboxCreateStage {
-    /// Acquires a prepared COW workspace slot from the provider pool.
+    /// Acquires a prepared COW file and connected device from the provider pool.
     CowPoolAcquire,
-    /// Moves the allocated workspace into its sandbox-specific location.
+    /// Moves prepared COW backing files into the sandbox workspace.
     WorkspaceDirRename,
     /// Prepares the configured workspace drive image.
     ///
@@ -38,6 +38,8 @@ pub enum SandboxCreateStage {
     /// Creates the pooled NBD copy-on-write device for the sandbox.
     ///
     /// [`SandboxNbdCowCreateStage`] records are nested details of this stage.
+    /// Providers that prepare connected devices in a background pool may omit
+    /// this request-path stage.
     NbdCowCreate,
 }
 
