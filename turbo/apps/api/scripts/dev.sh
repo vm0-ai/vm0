@@ -131,4 +131,7 @@ echo "[api:dev] Tunnel URL=${TUNNEL_URL}"
 start_stripe_webhook_forwarding
 
 cd "$API_APP_DIR"
-env VM0_DEBUG='*' tsx watch --env-file=.env.local src/server.ts
+env \
+  VM0_DEBUG='*' \
+  FEISHU_CALLBACK_BASE_URL="$TUNNEL_URL" \
+  tsx watch --env-file=.env.local src/server.ts

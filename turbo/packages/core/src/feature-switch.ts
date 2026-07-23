@@ -237,13 +237,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroWebSearch]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable the managed Perplexity-backed Zero Web Search API and web-search:read ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroWeather]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -408,6 +401,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.FeishuIntegration]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show the Feishu direct-message integration and Works page entry point.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
