@@ -11,6 +11,7 @@ type ZeroWeatherOperation =
 export interface ZeroWeatherResponse {
   readonly operation?: string;
   readonly provider?: string;
+  readonly attribution?: string;
   readonly creditsCharged?: number;
   readonly billingCategory?: string;
   readonly billingQuantity?: number;

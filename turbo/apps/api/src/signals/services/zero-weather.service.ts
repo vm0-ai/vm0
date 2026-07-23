@@ -1,9 +1,10 @@
-import type {
-  ZeroWeatherCurrentRequest,
-  ZeroWeatherForecastDailyRequest,
-  ZeroWeatherForecastHourlyRequest,
-  ZeroWeatherHistoryHourlyRequest,
-  ZeroWeatherResponse,
+import {
+  ZERO_WEATHER_ATTRIBUTION,
+  type ZeroWeatherCurrentRequest,
+  type ZeroWeatherForecastDailyRequest,
+  type ZeroWeatherForecastHourlyRequest,
+  type ZeroWeatherHistoryHourlyRequest,
+  type ZeroWeatherResponse,
 } from "@vm0/api-contracts/contracts/zero-weather";
 import { command } from "ccstate";
 
@@ -234,6 +235,7 @@ const zeroWeatherRequest$ = command(
     const body: ZeroWeatherResponse = {
       operation: args.operation,
       provider: PROVIDER,
+      attribution: ZERO_WEATHER_ATTRIBUTION,
       creditsCharged,
       billingCategory: args.category,
       billingQuantity: 1,

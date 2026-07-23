@@ -5,6 +5,9 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const ZERO_WEATHER_ATTRIBUTION =
+  "Source: Includes weather data from Google";
+
 export const zeroWeatherOperationSchema = z.enum([
   "current",
   "forecast.hourly",
@@ -49,6 +52,7 @@ export const zeroWeatherHistoryHourlyRequestSchema =
 export const zeroWeatherResponseSchema = z.object({
   operation: zeroWeatherOperationSchema,
   provider: z.literal("google-weather"),
+  attribution: z.literal(ZERO_WEATHER_ATTRIBUTION),
   creditsCharged: z.number(),
   billingCategory: z.string(),
   billingQuantity: z.number(),

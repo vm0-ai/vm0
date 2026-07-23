@@ -1656,6 +1656,7 @@ export {
   type ZeroMapsPlacesDetailsRequest,
 } from "./zero-maps";
 export {
+  ZERO_WEATHER_ATTRIBUTION,
   zeroWeatherContract,
   zeroWeatherOperationSchema,
   zeroWeatherUnitsSchema,

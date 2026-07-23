@@ -94,6 +94,9 @@ function renderWeatherMetadata(response: ZeroWeatherResponse): void {
   if (response.provider) {
     console.log(chalk.dim(`  Provider: ${response.provider}`));
   }
+  if (response.attribution) {
+    console.log(chalk.dim(`  ${response.attribution}`));
+  }
   if (response.billingCategory) {
     console.log(chalk.dim(`  Billing category: ${response.billingCategory}`));
   }

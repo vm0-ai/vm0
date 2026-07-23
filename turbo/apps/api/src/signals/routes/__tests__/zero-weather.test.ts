@@ -2,6 +2,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import {
+  ZERO_WEATHER_ATTRIBUTION,
   zeroWeatherContract,
   type ZeroWeatherResponse,
 } from "@vm0/api-contracts/contracts/zero-weather";
@@ -97,6 +98,7 @@ function expectFreeWeatherResponse(
   expect(body).toMatchObject({
     operation,
     provider: "google-weather",
+    attribution: ZERO_WEATHER_ATTRIBUTION,
     creditsCharged: 0,
     billingCategory: operation,
     billingQuantity: 1,

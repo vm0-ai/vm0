@@ -10,6 +10,7 @@ import { server } from "../../../../mocks/server";
 import { zeroWeatherCommand } from "../index";
 
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-weather-home-"));
+const WEATHER_ATTRIBUTION = "Source: Includes weather data from Google";
 
 vi.mock("node:os", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:os")>();
@@ -55,6 +56,7 @@ describe("zero weather command", () => {
           return HttpResponse.json({
             operation: "current",
             provider: "google-weather",
+            attribution: WEATHER_ATTRIBUTION,
             creditsCharged: 0,
             billingCategory: "current",
             billingQuantity: 1,
@@ -85,6 +87,7 @@ describe("zero weather command", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("✓ Current weather retrieved");
     expect(output).toContain("Provider: google-weather");
+    expect(output).toContain(WEATHER_ATTRIBUTION);
     expect(output).toContain("Credits charged: 0");
   });
 
@@ -98,6 +101,7 @@ describe("zero weather command", () => {
           return HttpResponse.json({
             operation: "forecast.hourly",
             provider: "google-weather",
+            attribution: WEATHER_ATTRIBUTION,
             creditsCharged: 0,
             billingCategory: "forecast.hourly",
             billingQuantity: 1,
@@ -142,6 +146,7 @@ describe("zero weather command", () => {
       JSON.stringify({
         operation: "forecast.hourly",
         provider: "google-weather",
+        attribution: WEATHER_ATTRIBUTION,
         creditsCharged: 0,
         billingCategory: "forecast.hourly",
         billingQuantity: 1,
@@ -163,6 +168,7 @@ describe("zero weather command", () => {
           return HttpResponse.json({
             operation: "forecast.daily",
             provider: "google-weather",
+            attribution: WEATHER_ATTRIBUTION,
             creditsCharged: 0,
             billingCategory: "forecast.daily",
             billingQuantity: 1,
@@ -207,6 +213,7 @@ describe("zero weather command", () => {
           return HttpResponse.json({
             operation: "history.hourly",
             provider: "google-weather",
+            attribution: WEATHER_ATTRIBUTION,
             creditsCharged: 0,
             billingCategory: "history.hourly",
             billingQuantity: 1,
