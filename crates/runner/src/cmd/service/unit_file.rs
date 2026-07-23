@@ -108,15 +108,13 @@ WantedBy=multi-user.target
 /// Validate that each env entry has a systemd-compatible key and contains no
 /// characters that would silently corrupt the generated systemd unit file.
 ///
-/// Bare newlines / carriage returns / NUL bytes inside a value break the
+/// Bare newlines / carriage returns / NUL bytes anywhere in an assignment break the
 /// `Environment=` directive even with proper quote/backslash escaping
 /// (a literal newline terminates the directive line). Reject these at
 /// install time rather than letting `daemon-reload` fail obscurely later.
 pub(super) fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
     for entry in vars {
-        // Check dangerous chars first so the KEY=VALUE error below can
-        // safely interpolate `entry` without leaking newlines/NUL into
-        // log output.
+        // Check directive-breaking bytes before parsing key/value syntax.
         if entry.contains(['\n', '\r', '\0']) {
             return Err(RunnerError::Config(
                 "invalid --env value: newline or NUL characters are not allowed".to_string(),
