@@ -809,8 +809,8 @@ describe("GET /api/zero/artifacts", () => {
       expect(pages).toBeLessThanOrEqual(10);
     } while (cursor);
 
-    // Every raw artifact row surfaced exactly once across pages with no cursor
-    // drift, repeated rows, or skips.
+    // Every visible artifact row surfaced exactly once across pages with no
+    // cursor drift, repeated rows, or skips.
     expect(collected).toHaveLength(created.length);
     expect(new Set(collected)).toStrictEqual(new Set(created));
   }, 120_000);
