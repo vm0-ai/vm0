@@ -1,5 +1,11 @@
 import { vi } from "vitest";
 
+export function stubTestTimezone(
+  timezone: "America/New_York" | "Asia/Shanghai" | "UTC",
+): void {
+  vi.stubEnv("TZ", timezone);
+}
+
 if (!process.env.DATABASE_URL) {
   vi.stubEnv(
     "DATABASE_URL",
