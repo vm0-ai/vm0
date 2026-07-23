@@ -301,6 +301,51 @@ describe("works page", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the Feishu setup guide available after setup completes", async () => {
+    const installationId = "00000000-0000-4000-8000-000000000001";
+    const agentId = "00000000-0000-4000-8000-000000000002";
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
+    mockFeishuAPI({
+      isInstalled: true,
+      isAdmin: false,
+      installationId,
+      appId: "cli_completed_owner",
+      callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+      callbackVerified: true,
+      messageReceived: true,
+      tenantKey: "tenant-owner",
+      tenantName: "Completed owner bot",
+      defaultAgentId: agentId,
+      defaultAgentName: "Okou",
+      installations: [
+        {
+          id: installationId,
+          isConnected: false,
+          appId: "cli_completed_owner",
+          callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+          callbackVerified: true,
+          messageReceived: true,
+          tenantKey: "tenant-owner",
+          tenantName: "Completed owner bot",
+          defaultAgentId: agentId,
+          defaultAgentName: "Okou",
+          canManage: true,
+          setupCompleted: true,
+        },
+      ],
+    });
+
+    setupWorksPage({ feishuEnabled: true });
+    click(await screen.findByTestId("feishu-setup-button"));
+    await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
+
+    click(getRole("button", "More options for Completed owner bot"));
+    click(getRole("button", "Setup guide"));
+    expect(
+      screen.getByText("Import the required permissions"),
+    ).toBeInTheDocument();
+  });
+
   it("only lets a connected non-owner disconnect their own account", async () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
@@ -438,6 +483,15 @@ describe("works page", () => {
     click(getRole("button", "More options for Feishu bot"));
     click(getRole("button", "Manage"));
     expect(
+      screen.getByText("Import the required permissions"),
+    ).toBeInTheDocument();
+    expect(document.body).toHaveTextContent("im:message.p2p_msg:readonly");
+    expect(document.body).toHaveTextContent("im:message.group_at_msg:readonly");
+    expect(document.body).toHaveTextContent("im:message.group_msg");
+    expect(document.body).toHaveTextContent("im:message.reactions:write_only");
+    click(getRole("button", "Next"));
+
+    expect(
       screen.getByText("Configure the OAuth redirect URL"),
     ).toBeInTheDocument();
     expect(
@@ -449,6 +503,7 @@ describe("works page", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("Waiting for callback")).not.toHaveLength(0);
+      expect(document.body).toHaveTextContent("im.message.receive_v1");
       expect(context.mocks.ably.hasSubscription("feishu:changed")).toBeTruthy();
     });
 

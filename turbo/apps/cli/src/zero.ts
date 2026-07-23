@@ -40,6 +40,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
+  feishu: "feishu:write",
   teams: "teams:write",
   telegram: ["telegram:read", "telegram:write"],
   phone: ["phone:read", "phone:write"],
@@ -145,6 +146,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
       "Send messages, upload files, and download files from Slack as the bot",
     load: async () => {
       return (await import("./commands/zero/slack")).zeroSlackCommand;
+    },
+  },
+  {
+    name: "feishu",
+    description: "Send messages to Feishu as an organization bot",
+    load: async () => {
+      return (await import("./commands/zero/feishu")).zeroFeishuCommand;
     },
   },
   {
@@ -415,6 +423,9 @@ export function buildZeroHelpText(
       ? []
       : ["  Buy credits?           zero credit 20000"]),
     "  Send a Slack message?  zero slack message send --help",
+    ...(shouldHideCommand("feishu", payload)
+      ? []
+      : ["  Send Feishu?          zero feishu message send --help"]),
     ...(shouldHideCommand("mail", payload)
       ? []
       : ["  Link Gmail draft?     zero mail link --help"]),

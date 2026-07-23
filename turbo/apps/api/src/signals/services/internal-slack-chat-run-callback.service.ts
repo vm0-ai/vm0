@@ -20,7 +20,7 @@ import { now, nowDate } from "../external/time";
 import { settleIncludingAbort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { resolveSlackAgentResponsePresentation } from "./internal-slack-org-run-callback.service";
+import { resolveIntegrationAgentResponsePresentation } from "./integration-agent-response-presentation.service";
 import { slackChatCallbackPayloadSchema } from "./slack-chat-callback-payload";
 
 const L = logger("InternalCallbacksSlackChat");
@@ -214,7 +214,7 @@ async function deliverClaimedSlackChatCallback(args: {
   args.signal.throwIfAborted();
   const [botToken, presentation] = await Promise.all([
     decryptPersistentSecretValue(binding.encryptedBotToken, featureContext),
-    resolveSlackAgentResponsePresentation({
+    resolveIntegrationAgentResponsePresentation({
       db: args.db,
       orgId: run.orgId,
       userId: run.userId,

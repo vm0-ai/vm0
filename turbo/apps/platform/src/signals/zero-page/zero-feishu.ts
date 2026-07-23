@@ -27,6 +27,7 @@ const FEISHU_SETUP_STEP_ORDER = [
   "create",
   "credentials",
   "tokens",
+  "permissions",
   "redirect",
   "events",
   "publish",
@@ -130,6 +131,7 @@ export type FeishuSetupStep =
   | "create"
   | "credentials"
   | "tokens"
+  | "permissions"
   | "redirect"
   | "events"
   | "publish";

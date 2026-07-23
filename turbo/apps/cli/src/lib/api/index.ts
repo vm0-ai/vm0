@@ -156,6 +156,9 @@ export {
   downloadTeamsFile,
 } from "./domains/integrations-teams";
 
+// Domain modules - Integrations Feishu
+export { sendFeishuMessage } from "./domains/integrations-feishu";
+
 // Domain modules - Integrations GitHub
 export {
   downloadGithubFile,

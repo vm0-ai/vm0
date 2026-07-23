@@ -9,6 +9,7 @@ import { logger } from "../../lib/log";
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$, type Db } from "../external/db";
 import {
   exchangeFeishuOAuthCode,
@@ -27,6 +28,7 @@ import {
   verifyFeishuOAuthState,
 } from "../services/feishu-oauth-state";
 import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
+import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
 import { tapError } from "../utils";
 
 const L = logger("FeishuOAuth");
@@ -130,7 +132,10 @@ async function upsertFeishuConnection(args: {
   readonly state: FeishuOAuthState;
   readonly userInfo: FeishuUserInfo;
   readonly signal: AbortSignal;
-}): Promise<boolean> {
+}): Promise<
+  | { readonly connected: false }
+  | { readonly connected: true; readonly newConnectionId?: string }
+> {
   const [existing] = await args.db
     .select({ vm0UserId: feishuOrgConnections.vm0UserId })
     .from(feishuOrgConnections)
@@ -143,7 +148,7 @@ async function upsertFeishuConnection(args: {
     .limit(1);
   args.signal.throwIfAborted();
   if (existing && existing.vm0UserId !== args.state.userId) {
-    return false;
+    return { connected: false };
   }
   if (existing) {
     await args.db
@@ -158,6 +163,7 @@ async function upsertFeishuConnection(args: {
           eq(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
         ),
       );
+    args.signal.throwIfAborted();
   } else {
     const [inserted] = await args.db
       .insert(feishuOrgConnections)
@@ -176,8 +182,19 @@ async function upsertFeishuConnection(args: {
       .returning({ id: feishuOrgConnections.id });
     args.signal.throwIfAborted();
     if (!inserted) {
-      return false;
+      return { connected: false };
     }
+    await args.db
+      .delete(feishuOrgConnections)
+      .where(
+        and(
+          eq(feishuOrgConnections.installationId, args.state.installationId),
+          eq(feishuOrgConnections.vm0UserId, args.state.userId),
+          ne(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
+        ),
+      );
+    args.signal.throwIfAborted();
+    return { connected: true, newConnectionId: inserted.id };
   }
   await args.db
     .delete(feishuOrgConnections)
@@ -188,7 +205,8 @@ async function upsertFeishuConnection(args: {
         ne(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
       ),
     );
-  return true;
+  args.signal.throwIfAborted();
+  return { connected: true };
 }
 
 const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -296,13 +314,13 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
     });
   }
 
-  const connected = await upsertFeishuConnection({
+  const connectionResult = await upsertFeishuConnection({
     db,
     state,
     userInfo,
     signal,
   });
-  if (!connected) {
+  if (!connectionResult.connected) {
     return settingsRedirect({
       error: "This Feishu account is already connected.",
     });
@@ -321,6 +339,26 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
     state.userId,
   ]);
   signal.throwIfAborted();
+  if (connectionResult.newConnectionId) {
+    waitUntil(
+      tapError(
+        notifyFeishuConnect({
+          db,
+          installationId: state.installationId,
+          connectionId: connectionResult.newConnectionId,
+          openId: userInfo.openId,
+          signal,
+        }),
+        (error) => {
+          L.warn("Failed to send Feishu connect welcome", {
+            error,
+            installationId: state.installationId,
+            openId: userInfo.openId,
+          });
+        },
+      ),
+    );
+  }
   return redirectResponse(feishuBotOpenUrl(config.appId));
 });
 
