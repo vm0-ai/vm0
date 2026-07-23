@@ -183,6 +183,7 @@ function prepareInspectData(data: InspectLogData) {
       nullableStringValue(meta?.completedAt),
     ),
     time: createdAt ? formatLogTime(createdAt) : "—",
+    startedAt: nullableStringValue(meta?.startedAt),
     prompt: stringValue(meta?.prompt) ?? "",
     appendSystemPrompt: stringValue(meta?.appendSystemPrompt) ?? "",
   };
@@ -238,6 +239,7 @@ function StepsTab({
         messages={messages}
         stepSearch={stepSearch}
         isLoading={false}
+        startedAt={prepared.startedAt}
       />
     </div>
   );

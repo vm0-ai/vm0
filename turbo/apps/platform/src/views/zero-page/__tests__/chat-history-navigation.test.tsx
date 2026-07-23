@@ -134,6 +134,7 @@ describe("chat lifecycle", () => {
     });
 
     const forwardRequestCount = sinceIds.length;
+    const latestMessageId = messages.at(-1)!.id;
     await waitFor(() => {
       expect(
         context.mocks.ably.hasSubscription(
@@ -143,7 +144,10 @@ describe("chat lifecycle", () => {
     });
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
     await waitFor(() => {
-      expect(sinceIds).toHaveLength(forwardRequestCount + 1);
+      expect(sinceIds.slice(forwardRequestCount)).toStrictEqual([
+        latestMessageId,
+        latestMessageId,
+      ]);
     });
     expect(beforeIds).toStrictEqual([messages[10]!.id]);
   });

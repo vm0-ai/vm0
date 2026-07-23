@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
@@ -164,12 +164,15 @@ async function replaceModelStats(
   const windowEndParam = utcTimestampParam(windowEnd);
 
   const insertedCount = await db.transaction(async (tx) => {
-    await tx.execute(sql`
-      DELETE FROM ${modelStat}
-      WHERE ${gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`)}
-        AND ${lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`)}
-        AND ${inArray(modelStat.model, modelStatsModelIds)}
-    `);
+    await tx
+      .delete(modelStat)
+      .where(
+        and(
+          gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`),
+          lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
+          inArray(modelStat.model, modelStatsModelIds),
+        ),
+      );
 
     const { rowCount } = await tx.execute(sql`
       WITH usage_rows AS (
