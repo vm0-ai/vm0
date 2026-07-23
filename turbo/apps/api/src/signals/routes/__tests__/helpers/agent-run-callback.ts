@@ -16,6 +16,16 @@ interface SeedAgentRunCallbackOptions {
   readonly status?: "pending" | "delivered" | "failed";
 }
 
+interface SeedEmailThreadSessionOptions {
+  readonly threadSessionId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly agentSessionId: string;
+  readonly replyToToken: string;
+  readonly orgId?: string;
+  readonly lastEmailMessageId?: string;
+}
+
 const agentRunCallbackSnapshotSchema = z.object({
   id: z.string(),
   internalKind: z.string().nullable(),
@@ -32,11 +42,16 @@ const agentRunCallbacksResponseSchema = z.object({
 
 type AgentRunCallbackSnapshot = z.infer<typeof agentRunCallbackSnapshotSchema>;
 
-interface ReadAgentRunCallbacksOptions {
+interface ReadAgentRunCallbacksBaseOptions {
   readonly orgId: string;
   readonly userId: string;
-  readonly prompt: string;
 }
+
+type ReadAgentRunCallbacksOptions = ReadAgentRunCallbacksBaseOptions &
+  (
+    | { readonly runId: string; readonly prompt?: never }
+    | { readonly prompt: string; readonly runId?: never }
+  );
 
 function requestTelegramState(
   signal: AbortSignal,
@@ -99,6 +114,37 @@ export const seedAgentRunCallback$ = command(
   },
 );
 
+export const seedEmailThreadSession$ = command(
+  async (
+    _,
+    options: SeedEmailThreadSessionOptions,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const response = await requestTelegramState(
+      signal,
+      TELEGRAM_STATE_ACTION_ROUTE,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "seed-thread-session",
+          channel: "email",
+          thread_session_id: options.threadSessionId,
+          user_id: options.userId,
+          agent_id: options.agentId,
+          agent_session_id: options.agentSessionId,
+          reply_to_token: options.replyToToken,
+          org_id: options.orgId,
+          last_email_message_id: options.lastEmailMessageId,
+        }),
+      },
+    );
+    signal.throwIfAborted();
+    expectOk(response, "seedEmailThreadSession$");
+    signal.throwIfAborted();
+  },
+);
+
 export const readAgentRunCallbacks$ = command(
   async (
     _,
@@ -115,7 +161,8 @@ export const readAgentRunCallbacks$ = command(
           action: "get-post-run-state",
           org_id: options.orgId,
           user_id: options.userId,
-          prompt: options.prompt,
+          ...("runId" in options ? { run_id: options.runId } : {}),
+          ...("prompt" in options ? { prompt: options.prompt } : {}),
         }),
       },
     );

@@ -1,95 +1,73 @@
 import { randomUUID } from "node:crypto";
 
 import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron";
-import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
-import { Webhook } from "svix";
+import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
-import { setupAppWithRoutes } from "../../../../__tests__/test-app";
-import { accept, type TestContext } from "../../../../__tests__/test-context";
-import { now } from "../../../../lib/time";
-import { cronDrainEmailOutboxRoutes } from "../../cron-drain-email-outbox";
-import { zeroEmailInboundRoutes } from "../../zero-email-inbound";
+import {
+  accept,
+  setupApp,
+  type TestContext,
+} from "../../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../../context/wait-until";
+import type { ApiTestUser } from "./api-bdd";
+import { createZeroRouteMocks } from "./zero-route-test";
 
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
-const RESEND_WEBHOOK_SECRET = "whsec_test";
-
-const emailRoutes = [
-  ...zeroEmailInboundRoutes,
-  ...cronDrainEmailOutboxRoutes,
-] as const;
 
 function emailApp(context: TestContext) {
-  return setupAppWithRoutes({ context, routes: emailRoutes });
+  return setupApp({ context });
 }
 
-interface SvixHeaders {
-  readonly "svix-id": string;
-  readonly "svix-timestamp": string;
-  readonly "svix-signature": string;
-}
-
-function resendSvixHeaders(rawBody: string): SvixHeaders {
-  const id = `msg_${randomUUID()}`;
-  const timestamp = new Date(now());
-  return {
-    "svix-id": id,
-    "svix-timestamp": String(Math.floor(timestamp.getTime() / 1000)),
-    "svix-signature": new Webhook(RESEND_WEBHOOK_SECRET).sign(
-      id,
-      timestamp,
-      rawBody,
-    ),
-  };
+function authenticate(context: TestContext, actor: ApiTestUser) {
+  createZeroRouteMocks(context).clerk.session(
+    actor.userId,
+    actor.orgId,
+    actor.orgRole,
+  );
+  const emailId = `email_${actor.userId}`;
+  context.mocks.clerk.users.getUserList.mockResolvedValue({
+    data: [
+      {
+        id: actor.userId,
+        emailAddresses: [{ id: emailId, emailAddress: actor.email }],
+        primaryEmailAddressId: emailId,
+        firstName: "BDD",
+        lastName: "Email",
+      },
+    ],
+  });
+  return { authorization: "Bearer clerk-session" };
 }
 
 export function createEmailApi(context: TestContext) {
-  async function postResendInboundWebhook(
-    event: unknown,
-    statuses: readonly (200 | 401)[],
-  ) {
-    return await accept(
-      emailApp(context)(zeroEmailInboundContract).post({
-        headers: resendSvixHeaders(JSON.stringify(event)),
-        body: event,
-      }),
-      statuses,
-    );
-  }
-
-  async function enqueueInboundErrorEmail(
-    opts: { readonly from?: string; readonly subject?: string } = {},
-  ): Promise<{ readonly from: string; readonly subject: string }> {
-    const from =
-      opts.from ?? `bdd-sender-${randomUUID().slice(0, 12)}@example.test`;
-    const subject = opts.subject ?? `BDD drain ${randomUUID().slice(0, 8)}`;
-    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
-    await postResendInboundWebhook(
-      {
-        type: "email.received",
-        data: {
-          email_id: `em_${randomUUID()}`,
-          to: ["bdd-org@mail.example.com"],
-          from,
-          subject,
-        },
-      },
-      [200],
-    );
-    return { from, subject };
-  }
-
   return {
-    postResendInboundWebhook,
-    enqueueInboundErrorEmail,
-
-    async suppressEmailAddress(address: string): Promise<void> {
-      await postResendInboundWebhook(
-        {
-          type: "email.bounced",
-          data: { email_id: `em_${randomUUID()}`, to: [address] },
-        },
+    async enqueueDataExportEmail(
+      actor: ApiTestUser,
+    ): Promise<{ readonly to: string; readonly subject: string }> {
+      context.mocks.s3.send.mockResolvedValue({});
+      context.mocks.s3.getSignedUrl.mockResolvedValue(
+        `https://r2.example.com/${randomUUID()}/data-export.zip`,
+      );
+      const started = await accept(
+        emailApp(context)(userExportContract).post({
+          headers: authenticate(context, actor),
+        }),
+        [202],
+      );
+      await flushWaitUntilForTest();
+      const status = await accept(
+        emailApp(context)(userExportContract).get({
+          headers: authenticate(context, actor),
+        }),
         [200],
       );
+      if (
+        status.body.job?.id !== started.body.jobId ||
+        status.body.job.status !== "completed"
+      ) {
+        throw new Error("Expected the data export email job to complete");
+      }
+      return { to: actor.email, subject: "Your data export is ready" };
     },
 
     async drainEmailOutboxCron(validAuth: boolean) {

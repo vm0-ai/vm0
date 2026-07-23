@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.309.0](https://github.com/vm0-ai/vm0/compare/api-v1.308.3...api-v1.309.0) (2026-07-23)
+
+
+### Features
+
+* canonicalize slack attachments and agent-published files ([#22801](https://github.com/vm0-ai/vm0/issues/22801)) ([22f947f](https://github.com/vm0-ai/vm0/commit/22f947f5c533b06efc321ffda43d100fe610edec))
+
+
+### Refactoring
+
+* **email:** stop inbound agent runs ([#22807](https://github.com/vm0-ai/vm0/issues/22807)) ([bb79fc4](https://github.com/vm0-ai/vm0/commit/bb79fc415971bfb8845b10ca5795d53f72107b79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.219.0
+    * @vm0/connectors bumped to 1.187.0
+    * @vm0/core bumped to 8.458.0
+    * @vm0/db bumped to 1.131.0
+
 ## [1.308.3](https://github.com/vm0-ai/vm0/compare/api-v1.308.2...api-v1.308.3) (2026-07-23)
 
 

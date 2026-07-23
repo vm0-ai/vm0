@@ -4611,8 +4611,15 @@
     {
       "idx": 658,
       "version": "7",
-      "when": 1784817101064,
-      "tag": "0658_chat_message_seq_id",
+      "when": 1784823623330,
+      "tag": "0658_new_grandmaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 659,
+      "version": "7",
+      "when": 1784848519500,
+      "tag": "0659_chat_message_seq_id",
       "breakpoints": true
     }
   ]

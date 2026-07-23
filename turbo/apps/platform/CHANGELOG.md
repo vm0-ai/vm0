@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.625.0](https://github.com/vm0-ai/vm0/compare/app-v0.624.4...app-v0.625.0) (2026-07-23)
+
+
+### Features
+
+* canonicalize slack attachments and agent-published files ([#22801](https://github.com/vm0-ai/vm0/issues/22801)) ([22f947f](https://github.com/vm0-ai/vm0/commit/22f947f5c533b06efc321ffda43d100fe610edec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.219.0
+    * @vm0/connectors bumped to 1.187.0
+    * @vm0/core bumped to 8.458.0
+
 ## [0.624.4](https://github.com/vm0-ai/vm0/compare/app-v0.624.3...app-v0.624.4) (2026-07-23)
 
 
