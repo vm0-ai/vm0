@@ -18,6 +18,7 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
+import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
@@ -503,6 +504,7 @@ function buildZeroRunExtraEnvironment(args: {
   readonly codexServiceTier: "fast" | undefined;
 }): Record<string, string> {
   return {
+    APP_URL: env("APP_URL"),
     ZERO_AGENT_ID: args.agentId,
     // Keep the retired rollout marker for older guest CLIs until the CLI
     // released with this cleanup is the oldest supported guest CLI version.

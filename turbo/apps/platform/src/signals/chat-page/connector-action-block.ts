@@ -76,16 +76,15 @@ export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(setSelectedConnectorRef$, null);
 });
 
-const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
-
 export function parseConnectorAuthorizeUrl(
   value: string,
 ): ConnectorActionDescriptor | null {
-  if (!URL.canParse(value, CONNECTOR_AUTHORIZE_BASE_URL)) {
+  const appOrigin = window.location.origin;
+  if (!URL.canParse(value, appOrigin)) {
     return null;
   }
-  const url = new URL(value, CONNECTOR_AUTHORIZE_BASE_URL);
-  if (url.origin !== CONNECTOR_AUTHORIZE_BASE_URL) {
+  const url = new URL(value, appOrigin);
+  if (url.origin !== appOrigin) {
     return null;
   }
 
@@ -110,10 +109,11 @@ export function parseConnectorAuthorizeUrl(
 export function parseCustomConnectorProposalUrl(
   value: string,
 ): CustomConnectorActionDescriptor | null {
-  if (!URL.canParse(value, CONNECTOR_AUTHORIZE_BASE_URL)) {
+  const appOrigin = window.location.origin;
+  if (!URL.canParse(value, appOrigin)) {
     return null;
   }
-  const url = new URL(value, CONNECTOR_AUTHORIZE_BASE_URL);
+  const url = new URL(value, appOrigin);
   if (url.pathname !== "/connectors/custom/proposal") {
     return null;
   }
