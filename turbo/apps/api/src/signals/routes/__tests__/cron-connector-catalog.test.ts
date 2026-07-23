@@ -43,6 +43,7 @@ import { createApp } from "../../../app-factory";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
@@ -100,12 +101,11 @@ interface ReleaseFixtureOptions {
   readonly connectorRef?: string;
   readonly label?: string;
   readonly generatedFirewall?: boolean;
-  readonly publicBytes?: Buffer;
-  readonly mutatePublic?: JsonMutation;
-  readonly mutatePrivate?: JsonMutation;
-  readonly mutatePrivateFirewalls?: JsonMutation;
-  readonly mutateRunnerFirewalls?: JsonMutation;
-  readonly mutateIntegrity?: JsonMutation;
+  readonly catalogBytes?: Buffer;
+  readonly mutateCatalog?: JsonMutation;
+  readonly mutateRuntime?: JsonMutation;
+  readonly mutateFirewall?: JsonMutation;
+  readonly mutateArtifact?: JsonMutation;
   readonly mutatePointer?: JsonMutation;
 }
 
@@ -113,7 +113,7 @@ interface ReleaseFixture {
   readonly version: string;
   readonly connectorRef: string;
   readonly pointer: Buffer;
-  readonly integrityKey: string;
+  readonly catalogKey: string;
   readonly objects: ReadonlyMap<string, Buffer>;
 }
 
@@ -175,29 +175,26 @@ function catalogTemplate(reference: string): string {
 }
 
 function releaseKeys(version: string): {
-  readonly integrity: string;
-  readonly publicCatalog: string;
-  readonly privateCatalog: string;
-  readonly privateFirewalls: string;
-  readonly runnerFirewalls: string;
+  readonly catalog: string;
 } {
   const prefix = `connectors/v1/releases/${version}`;
   return {
-    integrity: `${prefix}/integrity/catalog.json`,
-    publicCatalog: `${prefix}/public/catalog.json`,
-    privateCatalog: `${prefix}/private/catalog.json`,
-    privateFirewalls: `${prefix}/private/firewalls.json`,
-    runnerFirewalls: `${prefix}/runner/firewalls.json`,
+    catalog: `${prefix}/catalog.json`,
   };
 }
 
-function buildPublicConnector(args: {
+function buildCatalogConnector(args: {
   readonly connectorRef: string;
   readonly label: string;
   readonly iconKey: string;
-  readonly iconDigest: string;
   readonly firewall?: JsonRecord;
 }): JsonRecord {
+  const presentationMethod = publicAuthMethod({
+    id: "api-token",
+    grantKind: "manual",
+    manual: true,
+  });
+  presentationMethod.label = "API Token";
   return {
     connectorRef: args.connectorRef,
     label: args.label,
@@ -206,60 +203,107 @@ function buildPublicConnector(args: {
     generation: [],
     tags: ["fixture"],
     authMethods: [
-      {
-        id: "api-token",
-        label: "API Token",
-        description: null,
-        visible: true,
-        featureSwitch: null,
-        grantKind: "manual",
-        manualFields: [
-          {
-            id: "credential",
-            label: "Credential",
-            required: true,
-            placeholder: null,
-            inputType: "password",
-          },
-        ],
-        startOptions: [],
-      },
+      canonicalAuthMethod(presentationMethod, defaultRuntimeAuthMethod()),
     ],
     icon: {
-      asset: { key: args.iconKey, digest: args.iconDigest },
-      contentType: "image/svg+xml",
+      key: args.iconKey,
       invertInDarkMode: false,
     },
+    skill: { kind: "none" },
     firewall: args.firewall ?? { kind: "none" },
   };
 }
 
-function buildPrivateConnector(connectorRef: string): JsonRecord {
+function defaultRuntimeAuthMethod(): JsonRecord {
   return {
-    connectorRef,
-    skill: { kind: "none" },
-    authMethods: [
-      {
-        id: "api-token",
-        storage: { version: 1, secrets: [PRIVATE_VALUE], variables: [] },
-        grant: {
-          kind: "manual",
-          fields: [
-            {
-              privateName: PRIVATE_VALUE,
-              publicId: "credential",
-              storage: "secret",
-            },
-          ],
+    id: "api-token",
+    storage: { version: 1, secrets: [PRIVATE_VALUE], variables: [] },
+    grant: {
+      kind: "manual",
+      fields: [
+        {
+          privateName: PRIVATE_VALUE,
+          publicId: "credential",
+          storage: "secret",
         },
-        access: {
-          kind: "static",
-          envBindings: { SERVICE_TOKEN: `$secrets.${PRIVATE_VALUE}` },
-        },
-        revoke: { kind: "none" },
-      },
-    ],
+      ],
+    },
+    access: {
+      kind: "static",
+      envBindings: { SERVICE_TOKEN: `$secrets.${PRIVATE_VALUE}` },
+    },
+    revoke: { kind: "none" },
   };
+}
+
+interface FixtureAuthComponents {
+  presentation: readonly JsonRecord[];
+  runtime: readonly JsonRecord[];
+}
+
+const fixtureAuthComponents = singleton(() => {
+  return new WeakMap<JsonRecord, FixtureAuthComponents>();
+});
+
+function setFixtureAuthComponents(
+  artifact: JsonRecord,
+  components: FixtureAuthComponents,
+): void {
+  fixtureAuthComponents().set(artifact, components);
+  if (components.presentation.length !== components.runtime.length) {
+    return;
+  }
+  firstRecord(artifact.connectors, "connectors").authMethods =
+    components.presentation.map((presentation, index) => {
+      return canonicalAuthMethod(presentation, components.runtime[index]);
+    });
+}
+
+function setArtifactAuthMethods(
+  artifact: JsonRecord,
+  methods: readonly JsonRecord[],
+): void {
+  const current = fixtureAuthComponents().get(artifact);
+  if (!current) {
+    throw new Error("Catalog fixture auth components are not initialized");
+  }
+  const presentation = methods.every((method) => {
+    return typeof method.grantKind === "string";
+  });
+  setFixtureAuthComponents(artifact, {
+    presentation: presentation ? methods : current.presentation,
+    runtime: presentation ? current.runtime : methods,
+  });
+}
+
+function initializeFixtureAuthComponents(artifact: JsonRecord): void {
+  const presentationMethod = publicAuthMethod({
+    id: "api-token",
+    grantKind: "manual",
+    manual: true,
+  });
+  presentationMethod.label = "API Token";
+  setFixtureAuthComponents(artifact, {
+    presentation: [presentationMethod],
+    runtime: [defaultRuntimeAuthMethod()],
+  });
+}
+
+function assertFixtureAuthComponentsComplete(artifact: JsonRecord): void {
+  const components = fixtureAuthComponents().get(artifact);
+  if (
+    components &&
+    components.presentation.length !== components.runtime.length
+  ) {
+    firstRecord(artifact.connectors, "connectors").authMethods = [
+      {
+        invalidFixtureAuthMethodCount: {
+          presentation: components.presentation.length,
+          runtime: components.runtime.length,
+        },
+      },
+    ];
+  }
 }
 
 function publicAuthMethod(args: {
@@ -714,13 +758,6 @@ function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
   };
 }
 
-function setArtifactAuthMethods(
-  artifact: JsonRecord,
-  methods: readonly JsonRecord[],
-): void {
-  firstRecord(artifact.connectors, "connectors").authMethods = methods;
-}
-
 function buildBundledSkill(
   connectorRef: string,
   versionId = "a".repeat(64),
@@ -740,21 +777,10 @@ function buildBundledSkill(
     kind: "bundled",
     storageName,
     versionId,
+    storageVersionPrefix: prefix,
     size: metadata.size,
     archiveSize: metadata.archiveSize,
     fileCount: metadata.fileCount,
-    frontmatter: {
-      name: `${connectorRef} skill`,
-      description: `Use the ${connectorRef} connector`,
-    },
-    manifest: {
-      key: `${prefix}/manifest.json`,
-      digest: ZERO_DIGEST,
-    },
-    archive: {
-      key: `${prefix}/archive.tar.gz`,
-      digest: ZERO_DIGEST,
-    },
   };
 }
 
@@ -797,27 +823,14 @@ function buildBundledSkillFixture(
   };
 }
 
-function setPrivateFirewallBase(artifact: JsonRecord, base: string): void {
+function setFirewallBase(artifact: JsonRecord, base: string): void {
   const connector = firstRecord(artifact.connectors, "connectors");
   const firewall = recordValue(connector.firewall, "firewall");
-  firstRecord(firewall.apis, "firewall.apis").base = base;
-  const routing = recordValue(connector.routing, "routing");
-  firstRecord(routing.apis, "routing.apis").base = base;
+  const config = recordValue(firewall.config, "firewall.config");
+  firstRecord(config.apis, "firewall.apis").base = base;
 }
 
-function setRunnerFirewallBase(artifact: JsonRecord, base: string): void {
-  const firewall = firstRecord(artifact.firewalls, "firewalls");
-  firstRecord(firewall.apis, "firewall.apis").base = base;
-}
-
-function buildGeneratedFirewall(args: {
-  readonly connectorRef: string;
-  readonly label: string;
-}): {
-  readonly publicFirewall: JsonRecord;
-  readonly privateFirewall: JsonRecord;
-  readonly runnerFirewall: JsonRecord;
-} {
+function buildGeneratedFirewall(): JsonRecord {
   const base = "https://api.example.test/v1";
   const auth = (): JsonRecord => {
     return {
@@ -834,55 +847,18 @@ function buildGeneratedFirewall(args: {
     },
   ];
   return {
-    publicFirewall: {
-      kind: "generated",
-      permissions: [{ name: "items.read", description: "Read items" }],
-      categories: {
-        byPermission: { "items.read": "Items" },
-        displayOrder: ["Items"],
-      },
-      defaultAllowed: ["items.read"],
-      defaultUnknownPolicy: "deny",
+    kind: "generated",
+    billable: false,
+    config: {
+      placeholders: { SERVICE_TOKEN: "placeholder-token" },
+      apis: [{ base, auth: auth(), permissions }],
     },
-    privateFirewall: {
-      connectorRef: args.connectorRef,
-      label: args.label,
-      billable: false,
-      firewall: {
-        name: args.connectorRef,
-        placeholders: { SERVICE_TOKEN: "placeholder-token" },
-        apis: [{ base, auth: auth(), permissions }],
-      },
-      categories: {
-        byPermission: { "items.read": "Items" },
-        displayOrder: ["Items"],
-      },
-      defaultAllowed: ["items.read"],
-      defaultUnknownPolicy: "deny",
-      routing: {
-        fixedHosts: ["api.example.test"],
-        baseUrlVarNames: [],
-        baseUrlTemplates: [],
-        apis: [
-          {
-            base,
-            environmentNames: ["SERVICE_TOKEN"],
-            routes: [{ permissionName: "items.read", rule: "GET /items" }],
-          },
-        ],
-      },
-      diagnostics: { apiCount: 1, permissionCount: 1, ruleCount: 1 },
+    categories: {
+      byPermission: { "items.read": "Items" },
+      displayOrder: ["Items"],
     },
-    runnerFirewall: {
-      name: args.connectorRef,
-      apis: [
-        {
-          base,
-          auth: auth(),
-          permissions: [{ name: "items.read", rules: ["GET /items"] }],
-        },
-      ],
-    },
+    defaultAllowed: ["items.read"],
+    defaultUnknownPolicy: "deny",
   };
 }
 
@@ -908,7 +884,8 @@ function addDuplicateDynamicPrivateFirewallApi(
 ): void {
   const connector = firstRecord(artifact.connectors, "connectors");
   const firewall = recordValue(connector.firewall, "firewall");
-  const apis = arrayValue(firewall.apis, "firewall.apis");
+  const config = recordValue(firewall.config, "firewall.config");
+  const apis = arrayValue(config.apis, "firewall.apis");
   const firstApi = firstRecord(apis, "firewall.apis");
   firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
   firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
@@ -919,53 +896,115 @@ function addDuplicateDynamicPrivateFirewallApi(
     ? { kind: "publicDestination" }
     : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
   apis.push(fallbackApi);
-
-  const routing = recordValue(connector.routing, "routing");
-  routing.fixedHosts = [];
-  routing.baseUrlVarNames = ["SERVICE_HOST"];
-  routing.baseUrlTemplates = [
-    {
-      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
-      credentialed: true,
-      hostPolicy: DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY,
-    },
-    {
-      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
-      credentialed: false,
-      hostPolicy: fallbackApi.hostPolicy,
-    },
-  ];
-  routing.apis = [
-    {
-      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
-      environmentNames: ["SERVICE_HOST", "SERVICE_TOKEN"],
-      routes: [{ permissionName: "items.read", rule: "GET /items" }],
-    },
-    {
-      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
-      environmentNames: ["SERVICE_HOST"],
-      routes: [],
-    },
-  ];
-  recordValue(connector.diagnostics, "diagnostics").apiCount = 2;
 }
 
-function addDuplicateDynamicRunnerFirewallApi(
-  artifact: JsonRecord,
-  options: { readonly conflictingHostPolicy?: boolean } = {},
-): void {
-  const firewall = firstRecord(artifact.firewalls, "firewalls");
-  const apis = arrayValue(firewall.apis, "firewall.apis");
-  const firstApi = firstRecord(apis, "firewall.apis");
-  firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
-  firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
-  const fallbackApi = structuredClone(firstApi);
-  fallbackApi.auth = {};
-  fallbackApi.permissions = [];
-  fallbackApi.hostPolicy = options.conflictingHostPolicy
-    ? { kind: "publicDestination" }
-    : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
-  apis.push(fallbackApi);
+function canonicalGrant(
+  publicMethod: JsonRecord,
+  privateMethod: JsonRecord,
+): JsonRecord {
+  const privateGrant = structuredClone(
+    recordValue(privateMethod.grant, "private auth method grant"),
+  );
+  if (privateGrant.kind === "manual") {
+    const publicFields = arrayValue(
+      publicMethod.manualFields,
+      "public manual fields",
+    ).map((field) => {
+      return recordValue(field, "public manual field");
+    });
+    privateGrant.fields = arrayValue(
+      privateGrant.fields,
+      "private manual fields",
+    ).map((fieldValue) => {
+      const field = recordValue(fieldValue, "private manual field");
+      const publicField = publicFields.find((candidate) => {
+        return candidate.id === field.publicId;
+      });
+      return {
+        ...field,
+        label: publicField?.label,
+        required: publicField?.required,
+        placeholder: publicField?.placeholder,
+      };
+    });
+  }
+  if (privateGrant.kind === "device-auth") {
+    const publicOptions = arrayValue(
+      publicMethod.startOptions,
+      "public device start options",
+    ).map((option) => {
+      return recordValue(option, "public device start option");
+    });
+    privateGrant.startOptions = arrayValue(
+      privateGrant.startOptionMappings,
+      "private device start option mappings",
+    ).map((mappingValue) => {
+      const mapping = recordValue(
+        mappingValue,
+        "private device start option mapping",
+      );
+      const publicOption = publicOptions.find((candidate) => {
+        return candidate.id === mapping.publicId;
+      });
+      return {
+        privateName: mapping.privateName,
+        publicId: mapping.publicId,
+        kind: publicOption?.kind,
+        label: publicOption?.label,
+        required: publicOption?.required,
+        defaultValue: publicOption?.defaultValue,
+        options: publicOption?.options,
+      };
+    });
+    delete privateGrant.startOptionMappings;
+  }
+  return privateGrant;
+}
+
+function canonicalAuthMethod(
+  publicMethodValue: unknown,
+  privateMethodValue: unknown,
+): JsonRecord {
+  const publicMethod = recordValue(publicMethodValue, "public auth method");
+  const privateMethod = recordValue(privateMethodValue, "private auth method");
+  const publicExtras = Object.fromEntries(
+    Object.entries(publicMethod).filter(([key]) => {
+      return ![
+        "id",
+        "label",
+        "description",
+        "visible",
+        "featureSwitch",
+        "grantKind",
+        "manualFields",
+        "startOptions",
+      ].includes(key);
+    }),
+  );
+  const method: JsonRecord = {
+    ...privateMethod,
+    ...publicExtras,
+    id: publicMethod.id,
+    label: publicMethod.label,
+    description: publicMethod.description,
+    visible: publicMethod.visible,
+    featureSwitch: publicMethod.featureSwitch,
+    ...(privateMethod.client === undefined
+      ? {}
+      : { client: privateMethod.client }),
+    storage: privateMethod.storage,
+    grant: canonicalGrant(publicMethod, privateMethod),
+    access: privateMethod.access,
+    revoke: privateMethod.revoke,
+  };
+  if (
+    publicMethod.id !== privateMethod.id ||
+    publicMethod.grantKind !==
+      recordValue(privateMethod.grant, "private auth method grant").kind
+  ) {
+    method.invalidSplitFixtureRelationship = true;
+  }
+  return method;
 }
 
 function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
@@ -977,20 +1016,7 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
   const iconKey =
     "platform/views/zero-page/components/settings/icons/" +
     `${connectorRef}-${iconDigest.slice("sha256:".length, 19)}.svg`;
-  const generatedFirewall = options.generatedFirewall
-    ? buildGeneratedFirewall({ connectorRef, label })
-    : undefined;
-  const publicConnector = buildPublicConnector({
-    connectorRef,
-    label,
-    iconKey,
-    iconDigest,
-    ...(generatedFirewall === undefined
-      ? {}
-      : { firewall: generatedFirewall.publicFirewall }),
-  });
-  const privateConnector = buildPrivateConnector(connectorRef);
-  const publicArtifact: JsonRecord = {
+  const catalog: JsonRecord = {
     artifactSchemaVersion: 1,
     catalogVersion: options.version,
     categoryMetadata: {
@@ -1004,51 +1030,29 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
       ],
       groups: [],
     },
-    connectors: [publicConnector],
-  };
-  const privateArtifact: JsonRecord = {
-    artifactSchemaVersion: 1,
-    catalogVersion: options.version,
-    connectors: [privateConnector],
-  };
-  const privateFirewallsArtifact: JsonRecord = {
-    artifactSchemaVersion: 1,
-    catalogVersion: options.version,
-    connectors:
-      generatedFirewall === undefined
-        ? []
-        : [generatedFirewall.privateFirewall],
-  };
-  const runnerFirewallsArtifact: JsonRecord = {
-    artifactSchemaVersion: 1,
-    catalogVersion: options.version,
-    firewalls:
-      generatedFirewall === undefined ? [] : [generatedFirewall.runnerFirewall],
+    connectors: [
+      buildCatalogConnector({
+        connectorRef,
+        label,
+        iconKey,
+        ...(options.generatedFirewall
+          ? { firewall: buildGeneratedFirewall() }
+          : {}),
+      }),
+    ],
   };
 
-  options.mutatePublic?.(publicArtifact);
-  options.mutatePrivate?.(privateArtifact);
-  options.mutatePrivateFirewalls?.(privateFirewallsArtifact);
-  options.mutateRunnerFirewalls?.(runnerFirewallsArtifact);
-  const publicBytes = options.publicBytes ?? jsonBytes(publicArtifact);
-  const privateBytes = jsonBytes(privateArtifact);
-  const privateFirewallsBytes = jsonBytes(privateFirewallsArtifact);
-  const runnerFirewallsBytes = jsonBytes(runnerFirewallsArtifact);
-  const integrity: JsonRecord = {
-    artifactSchemaVersion: 1,
-    catalogVersion: options.version,
-    artifacts: {
-      publicCatalog: digest(publicBytes),
-      privateCatalog: digest(privateBytes),
-      privateFirewalls: digest(privateFirewallsBytes),
-      runnerFirewalls: digest(runnerFirewallsBytes),
-    },
-  };
-  options.mutateIntegrity?.(integrity);
-  const integrityBytes = jsonBytes(integrity);
+  initializeFixtureAuthComponents(catalog);
+  options.mutateCatalog?.(catalog);
+  options.mutateRuntime?.(catalog);
+  options.mutateFirewall?.(catalog);
+  assertFixtureAuthComponentsComplete(catalog);
+  options.mutateArtifact?.(catalog);
+  const catalogBytes = options.catalogBytes ?? jsonBytes(catalog);
   const pointer: JsonRecord = {
     catalogVersion: options.version,
-    integrityDigest: digest(integrityBytes),
+    catalogKey: keys.catalog,
+    catalogDigest: digest(catalogBytes),
   };
   options.mutatePointer?.(pointer);
 
@@ -1056,14 +1060,8 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
     version: options.version,
     connectorRef,
     pointer: jsonBytes(pointer),
-    integrityKey: keys.integrity,
-    objects: new Map([
-      [keys.integrity, integrityBytes],
-      [keys.publicCatalog, publicBytes],
-      [keys.privateCatalog, privateBytes],
-      [keys.privateFirewalls, privateFirewallsBytes],
-      [keys.runnerFirewalls, runnerFirewallsBytes],
-    ]),
+    catalogKey: keys.catalog,
+    objects: new Map([[keys.catalog, catalogBytes]]),
   };
 }
 
@@ -1651,6 +1649,37 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
+  it("serves concurrent external catalog reads without returning to R2", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-concurrent-cold-reader",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const headers = { authorization: "Bearer clerk-session" };
+    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
+
+    const [list, detail] = await Promise.all([
+      accept(catalogClient.list({ headers }), [200]),
+      accept(
+        catalogClient.get({
+          params: { connectorRef: release.connectorRef },
+          headers,
+        }),
+        [200],
+      ),
+    ]);
+    expect(list.body.connectors).toHaveLength(1);
+    expect(detail.body.connector.connectorRef).toBe(release.connectorRef);
+
+    await accept(catalogClient.list({ headers }), [200]);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforePublicReads);
+  });
+
   it("applies compatibility, authored visibility, and request rollout filters", async () => {
     configureSource();
     const gated = publicAuthMethod({
@@ -1672,10 +1701,10 @@ describe("connector catalog valid lifecycle", () => {
     hidden.visible = false;
     const release = buildRelease({
       version: "2026-07-15.external-request-filters",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [gated, visible, hidden]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           manualPrivateAuthMethod({
             id: "api-token",
@@ -1738,7 +1767,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const unsupported = buildRelease({
       version: "2026-07-15.external-all-incompatible",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = firstRecord(
           firstRecord(artifact.connectors, "connectors").authMethods,
           "authMethods",
@@ -1762,20 +1791,22 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-manual-grant",
       connectorRef: "agora",
       label: "Catalog Agora",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = firstRecord(
           firstRecord(artifact.connectors, "connectors").authMethods,
           "authMethods",
         );
-        arrayValue(method.manualFields, "manualFields").push({
-          id: "optionalCredential",
+        const grant = recordValue(method.grant, "grant");
+        arrayValue(grant.fields, "grant.fields").push({
+          privateName: optionalSecretName,
+          publicId: "optionalCredential",
+          storage: "secret",
           label: "Optional credential",
           required: false,
           placeholder: null,
-          inputType: "password",
         });
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         const method = firstRecord(
           firstRecord(artifact.connectors, "connectors").authMethods,
           "authMethods",
@@ -1784,11 +1815,6 @@ describe("connector catalog valid lifecycle", () => {
           recordValue(method.storage, "storage").secrets,
           "secrets",
         ).push(optionalSecretName);
-        arrayValue(recordValue(method.grant, "grant").fields, "fields").push({
-          privateName: optionalSecretName,
-          publicId: "optionalCredential",
-          storage: "secret",
-        });
         recordValue(
           recordValue(method.access, "access").envBindings,
           "envBindings",
@@ -1852,12 +1878,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-cli-seed",
       connectorRef: "test-oauth-device",
       label: "Catalog Device OAuth",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "device-auth" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           devicePrivateAuthMethod({
             accessTokenName: "CATALOG_CLI_DEVICE_ACCESS_TOKEN",
@@ -1928,10 +1954,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-legacy-method",
       connectorRef: "agora",
       label: "Catalog Agora",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [legacyMethod]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           manualPrivateAuthMethod({
             id: "legacy",
@@ -1958,10 +1984,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-replacement-method",
       connectorRef: "agora",
       label: "Catalog Agora",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [legacyMethod, currentMethod]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           manualPrivateAuthMethod({
             id: "legacy",
@@ -2017,10 +2043,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-all-methods-filtered",
       connectorRef: "agora",
       label: "Catalog Agora",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [legacyMethod, currentMethod]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           manualPrivateAuthMethod({
             id: "legacy",
@@ -2073,10 +2099,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-stored-method-present",
       connectorRef: "agora",
       label: "Catalog Agora",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [legacyMethod]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           manualPrivateAuthMethod({
             id: "legacy",
@@ -2107,10 +2133,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-stored-method-removed",
       connectorRef: "agora",
       label: "Catalog Agora",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [currentMethod]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           manualPrivateAuthMethod({
             id: "current",
@@ -2154,12 +2180,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-token-stored-method-present",
       connectorRef: "gmail",
       label: "Catalog Gmail",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "legacy", grantKind: "manual", manual: true }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           manualPrivateAuthMethod({
             id: "legacy",
@@ -2191,12 +2217,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-token-stored-method-removed",
       connectorRef: "gmail",
       label: "Catalog Gmail",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
       },
     });
@@ -2241,8 +2267,9 @@ describe("connector catalog valid lifecycle", () => {
       connectorRef,
       label: "External Runtime",
       generatedFirewall: true,
-      mutatePrivateFirewalls: (artifact) => {
-        firstRecord(artifact.connectors, "connectors").billable = true;
+      mutateFirewall: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        recordValue(connector.firewall, "firewall").billable = true;
       },
     });
     serveObjects(catalogObjects([release], release));
@@ -2413,7 +2440,11 @@ describe("connector catalog valid lifecycle", () => {
       generatedFirewall: true,
     });
     serveObjects(catalogObjects([first], first));
-    await syncCatalog();
+    const sync = await syncCatalog();
+    const acceptedCatalogDigest = sync.body.active?.catalogDigest;
+    if (!acceptedCatalogDigest) {
+      throw new Error("Expected an accepted connector catalog digest");
+    }
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
 
     const headers = { authorization: OFFICIAL_RUNNER_AUTHORIZATION };
@@ -2461,8 +2492,8 @@ describe("connector catalog valid lifecycle", () => {
     }
     const serialized = JSON.stringify(full.body);
     expect(serialized).not.toContain("sourceId");
-    expect(serialized).not.toContain("integrityDigest");
-    expect(serialized).not.toContain(first.integrityKey);
+    expect(serialized).not.toContain(acceptedCatalogDigest);
+    expect(serialized).not.toContain(first.catalogKey);
 
     const missing = await accept(
       runnerFirewallClient().resolve({
@@ -2480,11 +2511,8 @@ describe("connector catalog valid lifecycle", () => {
       connectorRef,
       label: "External Runner Firewall",
       generatedFirewall: true,
-      mutatePrivateFirewalls: (artifact) => {
-        setPrivateFirewallBase(artifact, changedBase);
-      },
-      mutateRunnerFirewalls: (artifact) => {
-        setRunnerFirewallBase(artifact, changedBase);
+      mutateFirewall: (artifact) => {
+        setFirewallBase(artifact, changedBase);
       },
     });
     serveObjects(catalogObjects([first, second], second));
@@ -2557,7 +2585,7 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-exact-skill",
       connectorRef,
       label: "External Exact Skill",
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         firstRecord(artifact.connectors, "connectors").skill = skill.descriptor;
       },
     });
@@ -2731,7 +2759,7 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-device-grant",
       connectorRef: "test-oauth-device",
       label: "Catalog Device OAuth",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = publicAuthMethod({
           id: "oauth",
           grantKind: "device-auth",
@@ -2739,7 +2767,7 @@ describe("connector catalog valid lifecycle", () => {
         method.featureSwitch = "testOauthConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           devicePrivateAuthMethod({
             accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
@@ -2817,12 +2845,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-openid-grant",
       connectorRef: "steam",
       label: "Catalog Steam",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           steamPrivateAuthMethod({ steamIdName: "CATALOG_STEAM_ID" }),
         ]);
@@ -2888,7 +2916,7 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-code-grant",
       connectorRef: "aws",
       label: "Catalog AWS",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = publicAuthMethod({
           id: "cli",
           grantKind: "external-code",
@@ -2896,7 +2924,7 @@ describe("connector catalog valid lifecycle", () => {
         method.featureSwitch = "awsConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [awsPrivateAuthMethod()]);
       },
     });
@@ -2964,10 +2992,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-hidden-auth-code",
       connectorRef: "slack",
       label: "Catalog Slack",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [hidden]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [slackPrivateAuthMethod()]);
       },
     });
@@ -3005,12 +3033,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-auth-code-revoke",
       connectorRef: "slack",
       label: "Catalog Slack",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [slackPrivateAuthMethod()]);
       },
     });
@@ -3041,12 +3069,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-in-flight-first",
       connectorRef: "slack",
       label: "Catalog Slack",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           slackPrivateAuthMethod("FIRST_RELEASE_SLACK_TOKEN", 7),
         ]);
@@ -3098,12 +3126,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-in-flight-second",
       connectorRef: "slack",
       label: "Catalog Slack",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           slackPrivateAuthMethod("SECOND_RELEASE_SLACK_TOKEN", 8),
         ]);
@@ -3181,12 +3209,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.shadow-provider-side-effect",
       connectorRef: "slack",
       label: "Catalog Slack",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [slackPrivateAuthMethod()]);
       },
     });
@@ -3239,12 +3267,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-readiness",
       connectorRef: "gmail",
       label: "Catalog Gmail",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         const method = gmailPrivateAuthMethod();
         recordValue(method.storage, "storage").version = 7;
         setArtifactAuthMethods(artifact, [method]);
@@ -3413,7 +3441,7 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-readiness-unavailable",
       connectorRef: "gmail",
       label: "Catalog Gmail",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = publicAuthMethod({
           id: "oauth",
           grantKind: "auth-code",
@@ -3421,7 +3449,7 @@ describe("connector catalog valid lifecycle", () => {
         method.visible = false;
         setArtifactAuthMethods(artifact, [method]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
       },
     });
@@ -3465,12 +3493,12 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-refresh-replacement",
       connectorRef: "gmail",
       label: "Catalog Gmail",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
       },
     });
@@ -3657,7 +3685,7 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-connected-status",
       connectorRef: "datadog",
       label: "Datadog",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = publicAuthMethod({
           id: "oauth",
           grantKind: "auth-code",
@@ -3665,7 +3693,7 @@ describe("connector catalog valid lifecycle", () => {
         method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           datadogPrivateAuthMethod(["dashboards_read", "logs_read_index_data"]),
         ]);
@@ -3743,7 +3771,7 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-scope-change",
       connectorRef: "datadog",
       label: "Datadog",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = publicAuthMethod({
           id: "oauth",
           grantKind: "auth-code",
@@ -3751,7 +3779,7 @@ describe("connector catalog valid lifecycle", () => {
         method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           datadogPrivateAuthMethod([
             "dashboards_read",
@@ -3925,9 +3953,8 @@ describe("connector catalog valid lifecycle", () => {
       connectorRef: "dynamic-firewall",
       label: "Dynamic Firewall",
       generatedFirewall: true,
-      mutatePrivate: addDynamicFirewallVariableBinding,
-      mutatePrivateFirewalls: addDuplicateDynamicPrivateFirewallApi,
-      mutateRunnerFirewalls: addDuplicateDynamicRunnerFirewallApi,
+      mutateRuntime: addDynamicFirewallVariableBinding,
+      mutateFirewall: addDuplicateDynamicPrivateFirewallApi,
     });
     serveObjects(catalogObjects([release], release));
 
@@ -3970,14 +3997,8 @@ describe("connector catalog valid lifecycle", () => {
     const release = buildRelease({
       version: "2026-07-15.parameterized-firewall",
       generatedFirewall: true,
-      mutatePrivateFirewalls: (artifact) => {
-        setPrivateFirewallBase(artifact, base);
-        const connector = firstRecord(artifact.connectors, "connectors");
-        const routing = recordValue(connector.routing, "routing");
-        routing.fixedHosts = ["{awshost+}.amazonaws.com"];
-      },
-      mutateRunnerFirewalls: (artifact) => {
-        setRunnerFirewallBase(artifact, base);
+      mutateFirewall: (artifact) => {
+        setFirewallBase(artifact, base);
       },
     });
     serveObjects(catalogObjects([release], release));
@@ -3991,7 +4012,10 @@ describe("connector catalog valid lifecycle", () => {
 
   it("accepts a complete bundled skill descriptor", async () => {
     configureSource();
-    const skill = buildBundledSkillFixture("external-test");
+    const skill = buildBundledSkillFixture(
+      "external-test",
+      createHash("sha256").update(randomUUID()).digest("hex"),
+    );
     const previous = await readVolumeStorageState({
       orgId: SYSTEM_ORG_ID,
       storageName: skill.storageName,
@@ -4005,7 +4029,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     const release = buildRelease({
       version: "2026-07-15.bundled-skill",
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         const connector = firstRecord(artifact.connectors, "connectors");
         connector.skill = skill.descriptor;
       },
@@ -4078,7 +4102,7 @@ describe("connector catalog valid lifecycle", () => {
       const release = buildRelease({
         version: `2026-07-22.skill-${testCase.label}-${randomUUID().slice(0, 8)}`,
         connectorRef,
-        mutatePrivate: (artifact) => {
+        mutateRuntime: (artifact) => {
           const descriptor = structuredClone(skill.descriptor);
           if (testCase.value === undefined) {
             delete descriptor[testCase.field];
@@ -4131,7 +4155,7 @@ describe("connector catalog valid lifecycle", () => {
     const firstRelease = buildRelease({
       version: `2026-07-22.skill-cache-first-${randomUUID().slice(0, 8)}`,
       connectorRef,
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         firstRecord(artifact.connectors, "connectors").skill =
           firstSkill.descriptor;
       },
@@ -4139,7 +4163,7 @@ describe("connector catalog valid lifecycle", () => {
     const secondRelease = buildRelease({
       version: `2026-07-22.skill-cache-second-${randomUUID().slice(0, 8)}`,
       connectorRef,
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         firstRecord(artifact.connectors, "connectors").skill =
           secondSkill.descriptor;
       },
@@ -4147,7 +4171,7 @@ describe("connector catalog valid lifecycle", () => {
     const oldRetryRelease = buildRelease({
       version: `2026-07-22.skill-cache-old-${randomUUID().slice(0, 8)}`,
       connectorRef,
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         firstRecord(artifact.connectors, "connectors").skill =
           firstSkill.descriptor;
       },
@@ -4234,23 +4258,23 @@ describe("connector catalog valid lifecycle", () => {
     const release = buildRelease({
       version: `2026-07-22.skill-conflict-${randomUUID().slice(0, 8)}`,
       connectorRef: firstConnectorRef,
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         arrayValue(artifact.connectors, "connectors").push(
-          buildPublicConnector({
+          buildCatalogConnector({
             connectorRef: conflictingConnectorRef,
             label: "Conflicting Skill",
             iconKey:
               "platform/views/zero-page/components/settings/icons/" +
               `${conflictingConnectorRef}-${conflictingIconDigest.slice("sha256:".length, 19)}.svg`,
-            iconDigest: conflictingIconDigest,
           }),
         );
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         const connectors = arrayValue(artifact.connectors, "connectors");
         firstRecord(connectors, "connectors").skill = firstSkill.descriptor;
-        const conflictingConnector = buildPrivateConnector(
-          conflictingConnectorRef,
+        const conflictingConnector = recordValue(
+          connectors[1],
+          "connectors[1]",
         );
         const conflictingPrivateName = "ATOMIC_SKILL_B_TOKEN";
         const conflictingMethod = firstRecord(
@@ -4269,7 +4293,6 @@ describe("connector catalog valid lifecycle", () => {
           "envBindings",
         ).SERVICE_TOKEN = `$secrets.${conflictingPrivateName}`;
         conflictingConnector.skill = conflictingSkill.descriptor;
-        connectors.push(conflictingConnector);
       },
     });
     const objects = catalogObjects([release], release);
@@ -4360,7 +4383,7 @@ describe("connector catalog valid lifecycle", () => {
     const release = buildRelease({
       version: `2026-07-22.skill-owner-${randomUUID().slice(0, 8)}`,
       connectorRef,
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         firstRecord(artifact.connectors, "connectors").skill = skill.descriptor;
       },
     });
@@ -4389,12 +4412,12 @@ describe("connector catalog valid lifecycle", () => {
     configureSource();
     const release = buildRelease({
       version: "2026-07-15.future-capability",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const connector = firstRecord(artifact.connectors, "connectors");
         firstRecord(connector.authMethods, "authMethods").id =
           "service-account";
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         const connector = firstRecord(artifact.connectors, "connectors");
         const method = firstRecord(connector.authMethods, "authMethods");
         method.id = "service-account";
@@ -4446,7 +4469,7 @@ describe("connector catalog valid lifecycle", () => {
       label: "Replacement Candidate",
     });
     const objects = catalogObjects([losing, winning], winning);
-    const losingPublicKey = releaseKeys(losing.version).publicCatalog;
+    const losingPublicKey = releaseKeys(losing.version).catalog;
     const blocked = deferredGate();
     const resume = deferredGate();
     const activePointers = [losing.pointer, winning.pointer, winning.pointer];
@@ -4501,7 +4524,7 @@ describe("connector catalog valid lifecycle", () => {
     let activePointer = observed.pointer;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       const key = commandInput(command).Key;
-      if (key === observed.integrityKey) {
+      if (key === observed.catalogKey) {
         activePointer = current.pointer;
       }
       const bytes =
@@ -4535,7 +4558,7 @@ describe("connector catalog executable compatibility", () => {
     configureSource();
     const unknownSwitch = buildRelease({
       version: "2026-07-15.unknown-feature-switch",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const method = firstRecord(
           firstRecord(artifact.connectors, "connectors").authMethods,
           "authMethods",
@@ -4587,10 +4610,10 @@ describe("connector catalog executable compatibility", () => {
     const partial = buildRelease({
       version: "2026-07-15.partial-compatibility",
       connectorRef: "future-auth",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, publicMethods);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, privateMethods);
       },
     });
@@ -4636,10 +4659,10 @@ describe("connector catalog executable compatibility", () => {
     const allFiltered = buildRelease({
       version: "2026-07-15.all-filtered",
       connectorRef: "future-auth",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, publicMethods.slice(0, 3));
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, privateMethods.slice(0, 3));
       },
     });
@@ -4660,13 +4683,13 @@ describe("connector catalog executable compatibility", () => {
     const release = buildRelease({
       version: "2026-07-15.filtered-callback-origin",
       connectorRef: "cloudflare",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
           publicAuthMethod({ id: "future-web", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           cloudflarePrivateAuthMethod(),
           unsupportedWebAuthCodePrivateAuthMethod(),
@@ -4705,7 +4728,7 @@ describe("connector catalog executable compatibility", () => {
     const unapprovedName = "FUTURE_PLATFORM_KEY";
     const release = buildRelease({
       version: "2026-07-15.unapproved-configuration",
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         const method = firstRecord(
           firstRecord(artifact.connectors, "connectors").authMethods,
           "authMethods",
@@ -4744,12 +4767,12 @@ describe("connector catalog executable compatibility", () => {
     const release = buildRelease({
       version: "2026-07-15.deel-storage-mapping",
       connectorRef: "deel",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [deelPrivateAuthMethod()]);
       },
     });
@@ -4772,12 +4795,12 @@ describe("connector catalog executable compatibility", () => {
     const first = buildRelease({
       version: "2026-07-15.steam-1",
       connectorRef: "steam",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [steamPrivateAuthMethod()]);
       },
     });
@@ -4858,12 +4881,12 @@ describe("connector catalog executable compatibility", () => {
     const second = buildRelease({
       version: "2026-07-15.steam-2",
       connectorRef: "steam",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [steamPrivateAuthMethod()]);
       },
     });
@@ -4885,12 +4908,12 @@ describe("connector catalog executable compatibility", () => {
     const release = buildRelease({
       version: "2026-07-15.provider-contract-mismatch",
       connectorRef: "steam",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
           publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
         ]);
       },
-      mutatePrivate: (artifact) => {
+      mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
           steamPrivateAuthMethod({ callbackOrigin: "web" }),
         ]);
@@ -4945,7 +4968,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     configureSource();
     const release = buildRelease({
       version: "same-connector-storage-sharing",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         const connector = firstRecord(artifact.connectors, "connectors");
         const methods = arrayValue(connector.authMethods, "authMethods");
         const second = structuredClone(firstRecord(methods, "authMethods"));
@@ -4953,12 +4976,132 @@ describe("connector catalog rejection and latest-valid retention", () => {
         second.label = "Backup Token";
         methods.push(second);
       },
-      mutatePrivate: (artifact) => {
-        const connector = firstRecord(artifact.connectors, "connectors");
-        const methods = arrayValue(connector.authMethods, "authMethods");
-        const second = structuredClone(firstRecord(methods, "authMethods"));
-        second.id = "backup-token";
-        methods.push(second);
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      active: { catalogVersion: release.version },
+    });
+  });
+
+  it("scopes private-value leak detection to each connector", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "cross-connector-private-name-placeholder",
+      mutateCatalog: (artifact) => {
+        const connectors = arrayValue(artifact.connectors, "connectors");
+        const first = firstRecord(connectors, "connectors");
+        const firstMethod = firstRecord(first.authMethods, "authMethods");
+        firstRecord(
+          recordValue(firstMethod.grant, "grant").fields,
+          "grant.fields",
+        ).placeholder = "your-second-api-key";
+
+        const second = structuredClone(first);
+        second.connectorRef = "zz-external-other";
+        second.label = "External Other";
+        const secondMethod = firstRecord(second.authMethods, "authMethods");
+        recordValue(secondMethod.storage, "storage").secrets = [
+          "SECOND_API_KEY",
+        ];
+        const secondField = firstRecord(
+          recordValue(secondMethod.grant, "grant").fields,
+          "grant.fields",
+        );
+        secondField.privateName = "SECOND_API_KEY";
+        secondField.placeholder = null;
+        recordValue(
+          recordValue(secondMethod.access, "access").envBindings,
+          "envBindings",
+        ).SERVICE_TOKEN = "$secrets.SECOND_API_KEY";
+        connectors.push(second);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      active: { catalogVersion: release.version },
+    });
+  });
+
+  it("accepts credentialed path variables without a host policy", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "credentialed-firewall-path-variable",
+      generatedFirewall: true,
+      mutateRuntime: (artifact) => {
+        const method = firstRecord(
+          firstRecord(artifact.connectors, "connectors").authMethods,
+          "authMethods",
+        );
+        recordValue(method.storage, "storage").variables = [
+          "QUICKBOOKS_REALM_ID",
+        ];
+        recordValue(
+          recordValue(method.access, "access").envBindings,
+          "envBindings",
+        ).QUICKBOOKS_REALM_ID = "$vars.QUICKBOOKS_REALM_ID";
+      },
+      mutateFirewall: (artifact) => {
+        setFirewallBase(
+          artifact,
+          `https://api.example.test/v3/company/${catalogTemplate("vars.QUICKBOOKS_REALM_ID")}`,
+        );
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      active: { catalogVersion: release.version },
+    });
+  });
+
+  it("accepts a shared fixed host for auth.base placeholder routes", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "shared-firewall-placeholder-host",
+      connectorRef: "collision-a",
+      generatedFirewall: true,
+      mutateCatalog: (artifact) => {
+        const connectors = arrayValue(artifact.connectors, "connectors");
+        const first = firstRecord(connectors, "connectors");
+        const firstFirewall = recordValue(first.firewall, "firewall");
+        const firstConfig = recordValue(
+          firstFirewall.config,
+          "firewall.config",
+        );
+        const firstApi = firstRecord(firstConfig.apis, "firewall.apis");
+        firstApi.base = "https://firewall-placeholder.vm3.ai/collision-a/hook";
+        recordValue(firstApi.auth, "firewall auth").base = catalogTemplate(
+          "secrets.SERVICE_TOKEN",
+        );
+
+        const second = structuredClone(first);
+        second.connectorRef = "collision-b";
+        second.label = "Collision B";
+        const secondMethod = firstRecord(second.authMethods, "authMethods");
+        recordValue(secondMethod.storage, "storage").secrets = [
+          "SECOND_SECRET_TOKEN",
+        ];
+        firstRecord(
+          recordValue(secondMethod.grant, "grant").fields,
+          "grant.fields",
+        ).privateName = "SECOND_SECRET_TOKEN";
+        recordValue(
+          recordValue(secondMethod.access, "access").envBindings,
+          "envBindings",
+        ).SERVICE_TOKEN = "$secrets.SECOND_SECRET_TOKEN";
+        const secondFirewall = recordValue(second.firewall, "firewall");
+        const secondConfig = recordValue(
+          secondFirewall.config,
+          "firewall.config",
+        );
+        firstRecord(secondConfig.apis, "firewall.apis").base =
+          "https://firewall-placeholder.vm3.ai/collision-b/hook";
+        connectors.push(second);
       },
     });
     serveObjects(catalogObjects([release], release));
@@ -5006,9 +5149,9 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutatePointer: (pointer) => {
             pointer.integrity = {
               key: "connectors/v1/releases/legacy-pointer-reference/integrity/catalog.json",
-              digest: pointer.integrityDigest,
+              digest: pointer.catalogDigest,
             };
-            delete pointer.integrityDigest;
+            delete pointer.catalogDigest;
           },
         });
       },
@@ -5020,7 +5163,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "bad-integrity-digest",
           mutatePointer: (pointer) => {
-            pointer.integrityDigest = ZERO_DIGEST;
+            pointer.catalogDigest = ZERO_DIGEST;
           },
         });
       },
@@ -5031,7 +5174,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "unsupported-schema",
-          mutateIntegrity: (integrity) => {
+          mutateArtifact: (integrity) => {
             integrity.artifactSchemaVersion = 2;
           },
         });
@@ -5043,7 +5186,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "legacy-integrity-property",
-          mutateIntegrity: (integrity) => {
+          mutateArtifact: (integrity) => {
             integrity.catalogSource = {
               key: "catalog/catalog.yaml",
               digest: ZERO_DIGEST,
@@ -5058,7 +5201,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "invalid-artifact",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             artifact.extra = true;
           },
         });
@@ -5070,7 +5213,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "missing-storage-version",
-          mutatePrivate: (artifact) => {
+          mutateRuntime: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const method = firstRecord(connector.authMethods, "authMethods");
             delete recordValue(method.storage, "storage").version;
@@ -5084,7 +5227,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "non-positive-storage-version",
-          mutatePrivate: (artifact) => {
+          mutateRuntime: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const method = firstRecord(connector.authMethods, "authMethods");
             recordValue(method.storage, "storage").version = 0;
@@ -5098,7 +5241,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "unsafe-storage-version",
-          mutatePrivate: (artifact) => {
+          mutateRuntime: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const method = firstRecord(connector.authMethods, "authMethods");
             recordValue(method.storage, "storage").version =
@@ -5113,7 +5256,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "legacy-auth-method-visibility",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             const method = firstRecord(
               firstRecord(artifact.connectors, "connectors").authMethods,
               "authMethods",
@@ -5130,20 +5273,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "invalid-utf8",
-          publicBytes: Buffer.from([0xc3, 0x28]),
-        });
-      },
-    },
-    {
-      name: "view digest mismatch",
-      expected: "digest-mismatch",
-      release: () => {
-        return buildRelease({
-          version: "bad-view-digest",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            artifacts.publicCatalog = ZERO_DIGEST;
-          },
+          catalogBytes: Buffer.from([0xc3, 0x28]),
         });
       },
     },
@@ -5153,7 +5283,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "header-mismatch",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             artifact.catalogVersion = "other";
           },
         });
@@ -5165,7 +5295,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "public-leak",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             firstRecord(artifact.connectors, "connectors").description =
               PRIVATE_VALUE;
           },
@@ -5173,14 +5303,15 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
-      name: "cross-view auth mismatch",
-      expected: "relationship-mismatch",
+      name: "duplicate auth method id",
+      expected: "invalid-artifact",
       release: () => {
         return buildRelease({
-          version: "relationship-mismatch",
-          mutatePublic: (artifact) => {
+          version: "duplicate-auth-method-id",
+          mutateCatalog: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
-            firstRecord(connector.authMethods, "authMethods").id = "oauth";
+            const methods = arrayValue(connector.authMethods, "authMethods");
+            methods.push(structuredClone(firstRecord(methods, "authMethods")));
           },
         });
       },
@@ -5191,21 +5322,13 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "cross-connector-storage-secret",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             const connectors = arrayValue(artifact.connectors, "connectors");
             const second = structuredClone(
               firstRecord(connectors, "connectors"),
             );
             second.connectorRef = "zz-external-other";
             second.label = "External Other";
-            connectors.push(second);
-          },
-          mutatePrivate: (artifact) => {
-            const connectors = arrayValue(artifact.connectors, "connectors");
-            const second = structuredClone(
-              firstRecord(connectors, "connectors"),
-            );
-            second.connectorRef = "zz-external-other";
             connectors.push(second);
           },
         });
@@ -5217,7 +5340,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "cross-connector-storage-variable",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             const connectors = arrayValue(artifact.connectors, "connectors");
             const second = structuredClone(
               firstRecord(connectors, "connectors"),
@@ -5226,7 +5349,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
             second.label = "External Other";
             connectors.push(second);
           },
-          mutatePrivate: (artifact) => {
+          mutateRuntime: (artifact) => {
             const connectors = arrayValue(artifact.connectors, "connectors");
             const firstConnector = firstRecord(connectors, "connectors");
             const firstMethod = firstRecord(
@@ -5241,9 +5364,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
               "envBindings",
             ).SHARED_VARIABLE = "$vars.SHARED_VARIABLE";
 
-            const second = structuredClone(firstConnector);
-            second.connectorRef = "zz-external-other";
+            const second = recordValue(connectors[1], "connectors[1]");
             const secondMethod = firstRecord(second.authMethods, "authMethods");
+            recordValue(secondMethod.storage, "storage").variables = [
+              "SHARED_VARIABLE",
+            ];
             recordValue(secondMethod.storage, "storage").secrets = [
               "OTHER_TOKEN",
             ];
@@ -5255,7 +5380,6 @@ describe("connector catalog rejection and latest-valid retention", () => {
               recordValue(secondMethod.access, "access").envBindings,
               "envBindings",
             ).SERVICE_TOKEN = "$secrets.OTHER_TOKEN";
-            connectors.push(second);
           },
         });
       },
@@ -5266,7 +5390,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "model-provider-ref",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             firstRecord(artifact.connectors, "connectors").connectorRef =
               "model-provider:external";
           },
@@ -5279,10 +5403,10 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "invalid-icon-reference",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const icon = recordValue(connector.icon, "icon");
-            recordValue(icon.asset, "icon asset").digest = ZERO_DIGEST;
+            icon.key = "../icon.svg";
           },
         });
       },
@@ -5293,20 +5417,23 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "invalid-skill-reference",
-          mutatePrivate: (artifact) => {
+          mutateRuntime: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
-            connector.skill = buildBundledSkill("wrong");
+            const skill = buildBundledSkill("wrong");
+            skill.storageVersionPrefix =
+              "__system__/volume/connector-skill@other/" + "a".repeat(64);
+            connector.skill = skill;
           },
         });
       },
     },
     {
-      name: "cross-view firewall mismatch",
-      expected: "relationship-mismatch",
+      name: "generated firewall missing canonical config",
+      expected: "invalid-artifact",
       release: () => {
         return buildRelease({
           version: "firewall-mismatch",
-          mutatePublic: (artifact) => {
+          mutateCatalog: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             connector.firewall = {
               kind: "generated",
@@ -5326,10 +5453,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "firewall-http-base",
           generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
+          mutateFirewall: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const firewall = recordValue(connector.firewall, "firewall");
-            firstRecord(firewall.apis, "firewall.apis").base =
+            const config = recordValue(firewall.config, "firewall.config");
+            firstRecord(config.apis, "firewall.apis").base =
               "http://api.example.test/v1";
           },
         });
@@ -5343,11 +5471,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "firewall-noncanonical-hostname",
           generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
-            setPrivateFirewallBase(artifact, base);
-          },
-          mutateRunnerFirewalls: (artifact) => {
-            setRunnerFirewallBase(artifact, base);
+          mutateFirewall: (artifact) => {
+            setFirewallBase(artifact, base);
           },
         });
       },
@@ -5360,11 +5485,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "firewall-unsafe-base-path",
           generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
-            setPrivateFirewallBase(artifact, base);
-          },
-          mutateRunnerFirewalls: (artifact) => {
-            setRunnerFirewallBase(artifact, base);
+          mutateFirewall: (artifact) => {
+            setFirewallBase(artifact, base);
           },
         });
       },
@@ -5380,14 +5502,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "firewall-noncanonical-host-policy",
           generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
+          mutateFirewall: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const firewall = recordValue(connector.firewall, "firewall");
-            firstRecord(firewall.apis, "firewall.apis").hostPolicy = hostPolicy;
-          },
-          mutateRunnerFirewalls: (artifact) => {
-            const firewall = firstRecord(artifact.firewalls, "firewalls");
-            firstRecord(firewall.apis, "firewall.apis").hostPolicy = hostPolicy;
+            const config = recordValue(firewall.config, "firewall.config");
+            firstRecord(config.apis, "firewall.apis").hostPolicy = hostPolicy;
           },
         });
       },
@@ -5400,15 +5519,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "firewall-invalid-auth-base",
           generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
+          mutateFirewall: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const firewall = recordValue(connector.firewall, "firewall");
-            const api = firstRecord(firewall.apis, "firewall.apis");
-            recordValue(api.auth, "firewall auth").base = authBase;
-          },
-          mutateRunnerFirewalls: (artifact) => {
-            const firewall = firstRecord(artifact.firewalls, "firewalls");
-            const api = firstRecord(firewall.apis, "firewall.apis");
+            const config = recordValue(firewall.config, "firewall.config");
+            const api = firstRecord(config.apis, "firewall.apis");
             recordValue(api.auth, "firewall auth").base = authBase;
           },
         });
@@ -5421,10 +5536,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "firewall-unknown-binding",
           generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
+          mutateFirewall: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const firewall = recordValue(connector.firewall, "firewall");
-            const api = firstRecord(firewall.apis, "firewall.apis");
+            const config = recordValue(firewall.config, "firewall.config");
+            const api = firstRecord(config.apis, "firewall.apis");
             const auth = recordValue(api.auth, "firewall api auth");
             recordValue(auth.headers, "firewall auth headers")["X-Unknown"] =
               catalogTemplate("secrets.UNKNOWN_SECRET");
@@ -5439,126 +5555,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "firewall-dynamic-base-host-policy-conflict",
           generatedFirewall: true,
-          mutatePrivate: addDynamicFirewallVariableBinding,
-          mutatePrivateFirewalls: (artifact) => {
+          mutateRuntime: addDynamicFirewallVariableBinding,
+          mutateFirewall: (artifact) => {
             addDuplicateDynamicPrivateFirewallApi(artifact, {
               conflictingHostPolicy: true,
             });
-          },
-          mutateRunnerFirewalls: (artifact) => {
-            addDuplicateDynamicRunnerFirewallApi(artifact, {
-              conflictingHostPolicy: true,
-            });
-          },
-        });
-      },
-    },
-    {
-      name: "normalized cross-connector firewall fixed host collision",
-      expected: "relationship-mismatch",
-      release: () => {
-        const secondConnectorRef = "collision-b";
-        return buildRelease({
-          version: "firewall-fixed-host-collision",
-          connectorRef: "collision-a",
-          generatedFirewall: true,
-          mutatePublic: (artifact) => {
-            const connectors = arrayValue(artifact.connectors, "connectors");
-            const second = structuredClone(
-              firstRecord(connectors, "connectors"),
-            );
-            second.connectorRef = secondConnectorRef;
-            second.label = "Collision B";
-            connectors.push(second);
-          },
-          mutatePrivate: (artifact) => {
-            const connectors = arrayValue(artifact.connectors, "connectors");
-            const second = structuredClone(
-              firstRecord(connectors, "connectors"),
-            );
-            second.connectorRef = secondConnectorRef;
-            const method = firstRecord(second.authMethods, "authMethods");
-            recordValue(method.storage, "storage").secrets = [
-              "SECOND_SECRET_TOKEN",
-            ];
-            firstRecord(
-              recordValue(method.grant, "grant").fields,
-              "grant.fields",
-            ).privateName = "SECOND_SECRET_TOKEN";
-            recordValue(
-              recordValue(method.access, "access").envBindings,
-              "envBindings",
-            ).SERVICE_TOKEN = "$secrets.SECOND_SECRET_TOKEN";
-            connectors.push(second);
-          },
-          mutatePrivateFirewalls: (artifact) => {
-            const connectors = arrayValue(artifact.connectors, "connectors");
-            const second = structuredClone(
-              firstRecord(connectors, "connectors"),
-            );
-            second.connectorRef = secondConnectorRef;
-            second.label = "Collision B";
-            const firewall = recordValue(second.firewall, "firewall");
-            firewall.name = secondConnectorRef;
-            firstRecord(firewall.apis, "firewall.apis").base =
-              "https://API.EXAMPLE.TEST./v1";
-            const routing = recordValue(second.routing, "routing");
-            routing.fixedHosts = ["api.example.test."];
-            firstRecord(routing.apis, "routing.apis").base =
-              "https://API.EXAMPLE.TEST./v1";
-            connectors.push(second);
-          },
-          mutateRunnerFirewalls: (artifact) => {
-            const firewalls = arrayValue(artifact.firewalls, "firewalls");
-            const second = structuredClone(firstRecord(firewalls, "firewalls"));
-            second.name = secondConnectorRef;
-            firstRecord(second.apis, "firewall.apis").base =
-              "https://API.EXAMPLE.TEST./v1";
-            firewalls.push(second);
-          },
-        });
-      },
-    },
-    {
-      name: "stale firewall routing metadata",
-      expected: "relationship-mismatch",
-      release: () => {
-        return buildRelease({
-          version: "firewall-routing-mismatch",
-          generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
-            const connector = firstRecord(artifact.connectors, "connectors");
-            recordValue(connector.routing, "routing").fixedHosts = [
-              "stale.example.test",
-            ];
-          },
-        });
-      },
-    },
-    {
-      name: "stale firewall diagnostics",
-      expected: "relationship-mismatch",
-      release: () => {
-        return buildRelease({
-          version: "firewall-diagnostics-mismatch",
-          generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
-            const connector = firstRecord(artifact.connectors, "connectors");
-            recordValue(connector.diagnostics, "diagnostics").ruleCount = 2;
-          },
-        });
-      },
-    },
-    {
-      name: "cross-view firewall label mismatch",
-      expected: "relationship-mismatch",
-      release: () => {
-        return buildRelease({
-          version: "firewall-label-mismatch",
-          generatedFirewall: true,
-          mutatePrivateFirewalls: (artifact) => {
-            firstRecord(artifact.connectors, "connectors").label =
-              "Stale Label";
           },
         });
       },
@@ -5575,7 +5576,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     const accepted = buildRelease({ version: "2026-07-15.valid" });
     serveObjects(catalogObjects([accepted], accepted));
     const acceptedResponse = await syncCatalog();
-    const acceptedDigest = acceptedResponse.body.active?.integrityDigest;
+    const acceptedDigest = acceptedResponse.body.active?.catalogDigest;
 
     const invalid = buildRelease({
       version: "2026-07-15.invalid",
@@ -5590,7 +5591,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       state: "stale",
       active: {
         catalogVersion: accepted.version,
-        integrityDigest: acceptedDigest,
+        catalogDigest: acceptedDigest,
       },
       lastAttempt: {
         outcome: "rejected",
@@ -5617,7 +5618,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
 
     const invalid = buildRelease({
       version: "2026-07-15.cache-invalid",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         artifact.extra = true;
       },
     });
@@ -5630,7 +5631,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
     expect(
       context.mocks.s3.send.mock.calls.length - callsBeforeFirstRejection,
-    ).toBe(6);
+    ).toBe(2);
 
     const callsBeforeCachedRejection = context.mocks.s3.send.mock.calls.length;
     expect((await syncCatalog()).body).toMatchObject({
@@ -5655,7 +5656,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     configureSource();
     const invalid = buildRelease({
       version: "2026-07-15.changed-rejection-etag",
-      mutatePublic: (artifact) => {
+      mutateCatalog: (artifact) => {
         artifact.extra = true;
       },
     });
@@ -5676,7 +5677,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     );
     expect(
       context.mocks.s3.send.mock.calls.length - callsBeforeReevaluation,
-    ).toBe(6);
+    ).toBe(2);
     expect(
       commandInput(
         context.mocks.s3.send.mock.calls[callsBeforeReevaluation]?.[0],
@@ -5767,7 +5768,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       version: "2026-07-15.transient-candidate",
     });
     const unavailableObjects = new Map(catalogObjects([candidate], candidate));
-    unavailableObjects.delete(releaseKeys(candidate.version).publicCatalog);
+    unavailableObjects.delete(releaseKeys(candidate.version).catalog);
     serveObjects(unavailableObjects);
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "rejected",
@@ -5782,7 +5783,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       state: "current",
       active: { catalogVersion: candidate.version },
     });
-    expect(context.mocks.s3.send.mock.calls.length - callsBeforeRetry).toBe(6);
+    expect(context.mocks.s3.send.mock.calls.length - callsBeforeRetry).toBe(2);
     expect(
       commandInput(context.mocks.s3.send.mock.calls[callsBeforeRetry]?.[0]),
     ).toMatchObject({
@@ -5808,8 +5809,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
       state: "current",
       active: { catalogVersion: original.version },
     });
-    expect(replacementResponse.body.active?.integrityDigest).not.toBe(
-      originalResponse.body.active?.integrityDigest,
+    expect(replacementResponse.body.active?.catalogDigest).not.toBe(
+      originalResponse.body.active?.catalogDigest,
     );
   });
 

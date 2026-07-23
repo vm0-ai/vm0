@@ -25,6 +25,7 @@ import {
   type AcceptedConnectorCatalogSnapshot,
   type ExternalCatalogIdentity,
 } from "./connector-catalog-external-reader.service";
+import { connectorCatalogFirewallConfig } from "./connector-catalog-artifacts/relationships";
 
 const MODEL_PROVIDER_FIREWALL_PREFIX = "model-provider:";
 
@@ -54,7 +55,7 @@ function externalIdentityKey(identity: ExternalCatalogIdentity): string {
     identity.sourceId,
     identity.schemaVersion,
     identity.catalogVersion,
-    identity.integrityDigest,
+    identity.catalogDigest,
     identity.capabilityDigest,
   ].join("\0");
 }
@@ -87,15 +88,14 @@ const localModelProviderFirewalls = singleton((): readonly Firewall[] => {
 function createExternalCatalog(
   snapshot: AcceptedConnectorCatalogSnapshot,
 ): ExternalConnectorRunnerFirewallCatalog {
-  for (const firewall of snapshot.runnerFirewallsArtifact.firewalls) {
-    if (firewall.name.startsWith(MODEL_PROVIDER_FIREWALL_PREFIX)) {
-      throw new Error(
-        `Accepted connector runner firewall has reserved ownership: ${firewall.name}`,
-      );
-    }
-  }
+  const connectorFirewalls = snapshot.artifact.connectors.flatMap(
+    (connector) => {
+      const firewall = connectorCatalogFirewallConfig(connector);
+      return firewall === null ? [] : [projectRunnerRuntimeFirewall(firewall)];
+    },
+  );
   const materialized = createRunnerRuntimeFirewallCatalog([
-    ...snapshot.runnerFirewallsArtifact.firewalls,
+    ...connectorFirewalls,
     ...localModelProviderFirewalls(),
   ]);
   const nameSet = new Set(materialized.names);
@@ -178,7 +178,7 @@ async function compareShadowCatalog(loadDb: ReadonlyDbLoader): Promise<void> {
     sourceId: externalValue.acceptedIdentity.sourceId,
     schemaVersion: externalValue.acceptedIdentity.schemaVersion,
     catalogVersion: externalValue.acceptedIdentity.catalogVersion,
-    integrityDigest: externalValue.acceptedIdentity.integrityDigest,
+    catalogDigest: externalValue.acceptedIdentity.catalogDigest,
     capabilityDigest: externalValue.acceptedIdentity.capabilityDigest,
   });
 }

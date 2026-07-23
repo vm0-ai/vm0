@@ -87,13 +87,13 @@ const dynamicPublicClientSourceSchema = z
   })
   .strict();
 
-const connectorAuthClientSourceSchema = z.union([
+export const connectorAuthClientSourceSchema = z.union([
   staticConfidentialClientSourceSchema,
   staticPublicClientSourceSchema,
   dynamicPublicClientSourceSchema,
 ]);
 
-const connectorStorageSourceSchema = z
+export const connectorStorageSourceSchema = z
   .object({
     version: z.number().int().positive(),
     secrets: z.array(privateNameSchema),
@@ -215,7 +215,7 @@ const refreshTokenAccessSourceSchema = z
   })
   .strict();
 
-const connectorAccessSourceSchema = z.discriminatedUnion("kind", [
+export const connectorAccessSourceSchema = z.discriminatedUnion("kind", [
   staticAccessSourceSchema,
   refreshTokenAccessSourceSchema,
 ]);
@@ -229,12 +229,12 @@ const tokenRevokeSourceSchema = z
   })
   .strict();
 
-const connectorRevokeSourceSchema = z.discriminatedUnion("kind", [
+export const connectorRevokeSourceSchema = z.discriminatedUnion("kind", [
   noRevokeSourceSchema,
   tokenRevokeSourceSchema,
 ]);
 
-export const connectorAuthMethodSourceSchema = z
+const connectorAuthMethodSourceSchema = z
   .object({
     id: connectorAuthMethodIdSchema,
     label: z.string().min(1),

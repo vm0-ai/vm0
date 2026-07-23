@@ -36,16 +36,40 @@ import {
 } from "@vm0/connectors/firewall-types";
 
 import type {
-  ConnectorCatalogPrivateFirewallsArtifact,
-  ConnectorCatalogPublicArtifact,
+  ConnectorCatalogArtifact,
+  ConnectorCatalogArtifactConnector,
 } from "./connector-catalog-artifacts/artifacts";
+import {
+  connectorCatalogFirewallConfig,
+  deriveConnectorCatalogFirewallDiagnostics,
+  deriveConnectorCatalogFirewallRouting,
+  type ConnectorCatalogFirewallDiagnostics,
+  type ConnectorCatalogFirewallRouting,
+} from "./connector-catalog-artifacts/relationships";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 
-type AcceptedServerFirewall =
-  ConnectorCatalogPrivateFirewallsArtifact["connectors"][number];
+type AcceptedFirewallConfig = NonNullable<
+  ReturnType<typeof connectorCatalogFirewallConfig>
+>;
+type AcceptedGeneratedFirewall = Extract<
+  ConnectorCatalogArtifactConnector["firewall"],
+  { readonly kind: "generated" }
+>;
+
+interface AcceptedServerFirewall {
+  readonly connectorRef: ConnectorRef;
+  readonly label: string;
+  readonly billable: boolean;
+  readonly firewall: AcceptedFirewallConfig;
+  readonly routing: ConnectorCatalogFirewallRouting;
+  readonly diagnostics: ConnectorCatalogFirewallDiagnostics;
+  readonly categories: AcceptedGeneratedFirewall["categories"];
+  readonly defaultAllowed: AcceptedGeneratedFirewall["defaultAllowed"];
+  readonly defaultUnknownPolicy: AcceptedGeneratedFirewall["defaultUnknownPolicy"];
+}
 
 export interface ConnectorServerFirewallPermissionIndex {
   readonly connectorRef: ConnectorRef;
@@ -158,18 +182,6 @@ function sortedStringRecord(
     [...entries].sort(([left], [right]) => {
       return compareStrings(left, right);
     }),
-  );
-}
-
-function sameStrings(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => {
-      return value === right[index];
-    })
   );
 }
 
@@ -683,34 +695,44 @@ export function createStaticConnectorServerFirewallCatalog(
   };
 }
 
+function acceptedServerFirewalls(
+  artifact: ConnectorCatalogArtifact,
+): readonly AcceptedServerFirewall[] {
+  return artifact.connectors.flatMap((connector) => {
+    if (connector.firewall.kind === "none") {
+      return [];
+    }
+    const firewall = connectorCatalogFirewallConfig(connector);
+    if (firewall === null) {
+      throw new Error(
+        `Accepted connector server firewall is missing: ${connector.connectorRef}`,
+      );
+    }
+    return [
+      {
+        connectorRef: connector.connectorRef,
+        label: connector.label,
+        billable: connector.firewall.billable,
+        firewall,
+        routing: deriveConnectorCatalogFirewallRouting(firewall),
+        diagnostics: deriveConnectorCatalogFirewallDiagnostics(firewall),
+        categories: connector.firewall.categories,
+        defaultAllowed: connector.firewall.defaultAllowed,
+        defaultUnknownPolicy: connector.firewall.defaultUnknownPolicy,
+      },
+    ];
+  });
+}
+
 function externalEntries(args: {
-  readonly publicArtifact: ConnectorCatalogPublicArtifact;
-  readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
+  readonly firewalls: readonly AcceptedServerFirewall[];
   readonly runtimeMethodsByRef: ReadonlyMap<
     ConnectorRef,
     readonly ConnectorAuthMethodRuntimeConfig[]
   >;
 }): ReadonlyMap<ConnectorRef, ExternalConnectorServerFirewallEntry> {
-  const expectedRefs = args.publicArtifact.connectors
-    .filter((connector) => {
-      return connector.firewall.kind === "generated";
-    })
-    .map((connector) => {
-      return connector.connectorRef;
-    })
-    .sort(compareStrings);
-  const actualRefs = args.privateFirewallsArtifact.connectors
-    .map((firewall) => {
-      return firewall.connectorRef;
-    })
-    .sort(compareStrings);
-  if (!sameStrings(expectedRefs, actualRefs)) {
-    throw new Error(
-      "Accepted connector server firewall identities are incomplete",
-    );
-  }
   const entries = new Map<ConnectorRef, ExternalConnectorServerFirewallEntry>();
-  for (const firewall of args.privateFirewallsArtifact.connectors) {
+  for (const firewall of args.firewalls) {
     if (entries.has(firewall.connectorRef)) {
       throw new Error(
         `Duplicate accepted connector server firewall: ${firewall.connectorRef}`,
@@ -759,10 +781,8 @@ function externalFixedHostOwners(
         );
       }
       const existing = owners.get(host);
-      if (existing && existing.connectorRef !== firewall.connectorRef) {
-        throw new Error(
-          `Accepted connector server firewall fixed host collision: ${host} (${existing.connectorRef}, ${firewall.connectorRef})`,
-        );
+      if (existing) {
+        continue;
       }
       owners.set(host, {
         connectorRef: firewall.connectorRef,
@@ -774,18 +794,19 @@ function externalFixedHostOwners(
 }
 
 export function createExternalConnectorServerFirewallCatalog(args: {
-  readonly publicArtifact: ConnectorCatalogPublicArtifact;
-  readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
+  readonly artifact: ConnectorCatalogArtifact;
   readonly runtimeMethodsByRef: ReadonlyMap<
     ConnectorRef,
     readonly ConnectorAuthMethodRuntimeConfig[]
   >;
 }): ConnectorServerFirewallCatalog {
-  const entries = externalEntries(args);
+  const firewalls = acceptedServerFirewalls(args.artifact);
+  const entries = externalEntries({
+    firewalls,
+    runtimeMethodsByRef: args.runtimeMethodsByRef,
+  });
   const connectorRefs = [...entries.keys()].sort(compareStrings);
-  const fixedHostOwners = externalFixedHostOwners(
-    args.privateFirewallsArtifact.connectors,
-  );
+  const fixedHostOwners = externalFixedHostOwners(firewalls);
   const shadowProjection: ConnectorServerFirewallShadowProjection = {
     items: connectorRefs.map((connectorRef) => {
       const entry = entries.get(connectorRef);

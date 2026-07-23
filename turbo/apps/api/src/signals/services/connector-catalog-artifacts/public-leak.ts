@@ -1,11 +1,14 @@
-import type { ConnectorCatalogPrivateArtifact } from "./artifacts";
+import type {
+  ConnectorCatalogArtifact,
+  ConnectorCatalogArtifactConnector,
+} from "./artifacts";
 import {
   isPrivateTokenLikeKey,
   privateTokenMatches,
 } from "./private-token-patterns";
 
 const forbiddenPublicPropertyNamePattern =
-  /^(access|client|clientId|clientIdEnv|clientSecret|clientSecretEnv|envBindings|featureFlag|inputs|objectKey|outputs|platformSecrets|privateName|refreshableSecrets|revoke|r2Key|scopes|secret|secrets|showExperimentalLabel|skillRef|sourcePath|storage|variables|valueRef)$/u;
+  /^(access|client|clientId|clientIdEnv|clientSecret|clientSecretEnv|envBindings|featureFlag|inputs|objectKey|outputs|platformSecrets|privateName|refreshableSecrets|revoke|r2Key|scopes|secret|secrets|showExperimentalLabel|skillRef|sourcePath|storage|storageName|storageVersionPrefix|variables|valueRef|versionId)$/u;
 
 function normalizeSensitiveString(value: string): string {
   return value.replace(/[^a-zA-Z0-9]/gu, "").toLowerCase();
@@ -45,55 +48,58 @@ function addBindingValues(
   }
 }
 
-export function privateCatalogArtifactSensitiveValues(
-  artifact: ConnectorCatalogPrivateArtifact,
+function connectorCatalogSensitiveValues(
+  connector: ConnectorCatalogArtifactConnector,
 ): ReadonlySet<string> {
   const values = new Set<string>();
-  for (const connector of artifact.connectors) {
-    for (const authMethod of connector.authMethods) {
-      for (const name of authMethod.storage.secrets) {
-        addSensitiveValue(name, values);
-      }
-      for (const name of authMethod.storage.variables) {
-        addSensitiveValue(name, values);
-      }
-      if (authMethod.client?.clientRegistration === "static") {
-        if (authMethod.client.clientType === "confidential") {
-          addSensitiveValue(authMethod.client.clientIdEnv, values);
-          addSensitiveValue(authMethod.client.clientSecretEnv, values);
-        } else {
-          addSensitiveValue(authMethod.client.clientId, values);
-        }
-      }
-      if (authMethod.grant.kind === "manual") {
-        for (const field of authMethod.grant.fields) {
-          addSensitiveValue(field.privateName, values);
-        }
+  if (connector.skill.kind === "bundled") {
+    addSensitiveValue(connector.skill.storageName, values);
+    addSensitiveValue(connector.skill.versionId, values);
+    addSensitiveValue(connector.skill.storageVersionPrefix, values);
+  }
+  for (const authMethod of connector.authMethods) {
+    for (const name of authMethod.storage.secrets) {
+      addSensitiveValue(name, values);
+    }
+    for (const name of authMethod.storage.variables) {
+      addSensitiveValue(name, values);
+    }
+    if (authMethod.client?.clientRegistration === "static") {
+      if (authMethod.client.clientType === "confidential") {
+        addSensitiveValue(authMethod.client.clientIdEnv, values);
+        addSensitiveValue(authMethod.client.clientSecretEnv, values);
       } else {
-        addBindingValues(authMethod.grant.outputs, values);
+        addSensitiveValue(authMethod.client.clientId, values);
       }
-      for (const [name, binding] of Object.entries(
-        authMethod.access.envBindings,
-      )) {
+    }
+    if (authMethod.grant.kind === "manual") {
+      for (const field of authMethod.grant.fields) {
+        addSensitiveValue(field.privateName, values);
+      }
+    } else {
+      addBindingValues(authMethod.grant.outputs, values);
+    }
+    for (const [name, binding] of Object.entries(
+      authMethod.access.envBindings,
+    )) {
+      addSensitiveValue(name, values);
+      addValueRef(
+        typeof binding === "string" ? binding : binding.valueRef,
+        values,
+      );
+    }
+    for (const name of authMethod.access.platformSecrets ?? []) {
+      addSensitiveValue(name, values);
+    }
+    if (authMethod.access.kind === "refresh-token") {
+      addBindingValues(authMethod.access.inputs, values);
+      addBindingValues(authMethod.access.outputs, values);
+      for (const name of authMethod.access.refreshableSecrets) {
         addSensitiveValue(name, values);
-        addValueRef(
-          typeof binding === "string" ? binding : binding.valueRef,
-          values,
-        );
       }
-      for (const name of authMethod.access.platformSecrets ?? []) {
-        addSensitiveValue(name, values);
-      }
-      if (authMethod.access.kind === "refresh-token") {
-        addBindingValues(authMethod.access.inputs, values);
-        addBindingValues(authMethod.access.outputs, values);
-        for (const name of authMethod.access.refreshableSecrets) {
-          addSensitiveValue(name, values);
-        }
-      }
-      if (authMethod.revoke.kind === "token-revoke") {
-        addBindingValues(authMethod.revoke.inputs, values);
-      }
+    }
+    if (authMethod.revoke.kind === "token-revoke") {
+      addBindingValues(authMethod.revoke.inputs, values);
     }
   }
   return values;
@@ -111,7 +117,7 @@ function assertNoSensitiveString(args: {
     }
     if (args.value.includes(sensitiveValue)) {
       throw new Error(
-        `Public connector catalog artifact leaked private value at ${args.path}`,
+        `Public connector catalog projection leaked private value at ${args.path}`,
       );
     }
     const normalizedSensitiveValue = normalizeSensitiveString(sensitiveValue);
@@ -122,13 +128,13 @@ function assertNoSensitiveString(args: {
       normalizedValue.includes(normalizedSensitiveValue)
     ) {
       throw new Error(
-        `Public connector catalog artifact leaked private value at ${args.path}`,
+        `Public connector catalog projection leaked private value at ${args.path}`,
       );
     }
   }
 }
 
-export function assertPublicCatalogArtifactHasNoPrivateFields(
+function assertPublicValueHasNoPrivateFields(
   value: unknown,
   sensitiveValues: ReadonlySet<string>,
   path = "$",
@@ -139,7 +145,7 @@ export function assertPublicCatalogArtifactHasNoPrivateFields(
   }
   if (Array.isArray(value)) {
     for (const [index, child] of value.entries()) {
-      assertPublicCatalogArtifactHasNoPrivateFields(
+      assertPublicValueHasNoPrivateFields(
         child,
         sensitiveValues,
         `${path}[${index}]`,
@@ -158,13 +164,124 @@ export function assertPublicCatalogArtifactHasNoPrivateFields(
         isPrivateTokenLikeKey(key))
     ) {
       throw new Error(
-        `Public connector catalog artifact leaked private property ${key} at ${path}`,
+        `Public connector catalog projection leaked private property ${key} at ${path}`,
       );
     }
-    assertPublicCatalogArtifactHasNoPrivateFields(
+    assertPublicValueHasNoPrivateFields(
       child,
       sensitiveValues,
       `${path}.${key}`,
+    );
+  }
+}
+
+function publicFirewall(connector: ConnectorCatalogArtifactConnector): unknown {
+  if (connector.firewall.kind === "none") {
+    return connector.firewall;
+  }
+  const permissions = new Map<
+    string,
+    { readonly name: string; readonly description?: string }
+  >();
+  for (const api of connector.firewall.config.apis) {
+    for (const permission of api.permissions ?? []) {
+      permissions.set(permission.name, {
+        name: permission.name,
+        ...(permission.description === undefined
+          ? {}
+          : { description: permission.description }),
+      });
+    }
+  }
+  return {
+    kind: "generated",
+    permissions: [...permissions.values()],
+    categories: connector.firewall.categories,
+    defaultAllowed: connector.firewall.defaultAllowed,
+    defaultUnknownPolicy: connector.firewall.defaultUnknownPolicy,
+  };
+}
+
+function publicGrant(
+  method: ConnectorCatalogArtifactConnector["authMethods"][number],
+) {
+  switch (method.grant.kind) {
+    case "manual": {
+      return {
+        kind: method.grant.kind,
+        fields: method.grant.fields.map((field) => {
+          return {
+            id: field.publicId,
+            label: field.label,
+            required: field.required,
+            placeholder: field.placeholder,
+            inputType: field.storage === "secret" ? "password" : "text",
+          };
+        }),
+      };
+    }
+    case "device-auth": {
+      return {
+        kind: method.grant.kind,
+        startOptions: method.grant.startOptions.map((option) => {
+          return {
+            id: option.publicId,
+            kind: option.kind,
+            label: option.label,
+            required: option.required,
+            defaultValue: option.defaultValue,
+            options: option.options,
+          };
+        }),
+      };
+    }
+    case "auth-code":
+    case "external-code":
+    case "openid-auth": {
+      return { kind: method.grant.kind };
+    }
+  }
+}
+
+function publicConnector(connector: ConnectorCatalogArtifactConnector) {
+  return {
+    connectorRef: connector.connectorRef,
+    label: connector.label,
+    description: connector.description,
+    category: connector.category,
+    generation: connector.generation,
+    tags: connector.tags,
+    authMethods: connector.authMethods.map((method) => {
+      return {
+        id: method.id,
+        label: method.label,
+        description: method.description,
+        visible: method.visible,
+        featureSwitch: method.featureSwitch,
+        grant: publicGrant(method),
+      };
+    }),
+    icon: connector.icon,
+    firewall: publicFirewall(connector),
+  };
+}
+
+export function validateConnectorCatalogPublicProjection(
+  artifact: ConnectorCatalogArtifact,
+): void {
+  assertPublicValueHasNoPrivateFields(
+    {
+      artifactSchemaVersion: artifact.artifactSchemaVersion,
+      catalogVersion: artifact.catalogVersion,
+      categoryMetadata: artifact.categoryMetadata,
+    },
+    new Set(),
+  );
+  for (const connector of artifact.connectors) {
+    assertPublicValueHasNoPrivateFields(
+      publicConnector(connector),
+      connectorCatalogSensitiveValues(connector),
+      `$.connectors[${connector.connectorRef}]`,
     );
   }
 }

@@ -675,7 +675,7 @@ function logShadowComparison(args: {
     sourceId: args.diagnostics.sourceId,
     schemaVersion: args.diagnostics.schemaVersion,
     catalogVersion: args.diagnostics.catalogVersion,
-    integrityDigest: args.diagnostics.integrityDigest,
+    catalogDigest: args.diagnostics.catalogDigest,
     capabilityDigest: args.diagnostics.capabilityDigest,
     rawConnectorCount: args.diagnostics.rawConnectorCount,
     rawAuthMethodCount: args.diagnostics.rawAuthMethodCount,
