@@ -1517,6 +1517,7 @@ function appendUnassociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly apiStartedAt: Date;
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
@@ -1565,6 +1566,7 @@ function appendUnassociatedUserMessage(params: {
         userId: params.userId,
         chatThreadId: params.threadId,
         chatMessageId: inserted.id,
+        apiStartedAt: params.apiStartedAt,
       });
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
@@ -2409,6 +2411,7 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
+  readonly apiStartTime: number;
   readonly touchThreadSort: boolean;
   readonly orgId: string;
 }): Promise<{
@@ -2422,6 +2425,7 @@ async function queueUnassociatedNormalMessage(params: {
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
     userId: params.userId,
+    apiStartedAt: new Date(params.apiStartTime),
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
@@ -3281,6 +3285,7 @@ const sendQueueFirstNormalMessage$ = command(
           prepared,
           body: prepared.body,
           userId: args.userId,
+          apiStartTime: args.apiStartTime,
           touchThreadSort: shouldTouchThreadSortFromNormalSend(
             args.zeroPreCreateSource,
             prepared.thread.isNewThread,

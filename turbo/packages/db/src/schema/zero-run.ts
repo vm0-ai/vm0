@@ -5,6 +5,7 @@ import {
   varchar,
   text,
   index,
+  timestamp,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
@@ -67,6 +68,12 @@ export const zeroRuns = pgTable(
         return chatThreads.id;
       },
       { onDelete: "set null" },
+    ),
+    // Durable copy of runner executionContext.apiStartTime. Concurrency-queued
+    // runs remain null until promotion sets both values to the same instant.
+    apiStartedAt: timestamp("api_started_at"),
+    firstAssistantMessageAcknowledgedAt: timestamp(
+      "first_assistant_message_acknowledged_at",
     ),
     // Brief AI-generated summary of what the run did (≤50 words)
     summary: text("summary"),

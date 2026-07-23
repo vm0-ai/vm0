@@ -417,6 +417,7 @@ async function enqueueWorkflowAutomationEventIfBusy(input: {
       return await admitWorkflowAutomationEvent(db, {
         automation,
         chatThreadId,
+        apiStartedAt: new Date(args.apiStartTime),
         triggerSource: args.triggerSource ?? "workflow-schedule",
         triggerBrief: args.triggerBrief,
         params: {

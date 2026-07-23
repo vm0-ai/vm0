@@ -1,6 +1,7 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, count, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -20,6 +21,17 @@ const VM0_BDD_API_KEY_PREFIXES = [
 ] as const;
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
+
+/**
+ * Simulates a run created by an API version that predates durable API timing.
+ * Product routes do not expose mutable run provenance.
+ */
+export async function clearApiStartFixture(runId: string): Promise<void> {
+  await db()
+    .update(zeroRuns)
+    .set({ apiStartedAt: null })
+    .where(eq(zeroRuns.id, runId));
+}
 
 async function transitiveBlockedWaiterCount(
   holderPid: number,

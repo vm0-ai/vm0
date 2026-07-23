@@ -4555,6 +4555,7 @@ async function insertZeroRunRecord(
     readonly zeroRunModelPin: ZeroRunModelPin | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly apiStartedAt: Date | null;
   },
 ): Promise<void> {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
@@ -4568,6 +4569,7 @@ async function insertZeroRunRecord(
     triggerAgentId: metadata.triggerAgentId ?? null,
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
+    apiStartedAt: args.apiStartedAt,
   });
 }
 
@@ -4587,6 +4589,7 @@ async function insertLaunchRunRows(
     readonly callbackRows: readonly AgentRunCallbackInsert[];
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly apiStartTime: number;
     readonly runnerGroup: string | undefined;
     readonly error: string | undefined;
   },
@@ -4636,6 +4639,7 @@ async function insertLaunchRunRows(
     zeroRunModelPin: args.zeroRunModelPin,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
+    apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   });
 
   if (args.callbackRows.length > 0) {
@@ -5379,6 +5383,7 @@ async function commitFailedLaunch(args: {
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
+        apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
         error: message,
       });
@@ -5449,6 +5454,7 @@ async function insertAtomicLaunchRunRecord(args: {
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
+        apiStartTime: args.commit.createArgs.apiStartTime,
         runnerGroup: args.runnerGroup,
         error: undefined,
       });

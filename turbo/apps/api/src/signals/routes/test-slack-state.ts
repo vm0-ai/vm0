@@ -570,6 +570,7 @@ function slackChatQueueRows(db: ReadonlyDb, teamId: string) {
       chatMessageId: chatMessageQueue.chatMessageId,
       itemType: chatMessageQueue.itemType,
       triggerSource: chatMessageQueue.triggerSource,
+      apiStartedAt: chatMessageQueue.apiStartedAt,
       createdAt: chatMessageQueue.createdAt,
     })
     .from(chatMessageQueue)
@@ -861,7 +862,12 @@ const getSlackState$ = computed(async (get) => {
         };
       }),
       chat_message_queue: chatQueue.map((item) => {
-        return { ...item, createdAt: isoString(item.createdAt) };
+        return {
+          ...item,
+          apiStartedAt:
+            item.apiStartedAt === null ? null : isoString(item.apiStartedAt),
+          createdAt: isoString(item.createdAt),
+        };
       }),
       recent_runs: recentRuns.map((run) => {
         return {

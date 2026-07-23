@@ -2524,7 +2524,7 @@ export const handleZeroSlackEvents$ = command(
               eventId: payload.event_id,
               payload: verified.body,
               isRetry: Boolean(retryNum),
-              currentTime: nowDate(),
+              currentTime: new Date(apiStartTime),
             }),
             (error) => {
               L.error("Canonical Slack ingress admission failed", {

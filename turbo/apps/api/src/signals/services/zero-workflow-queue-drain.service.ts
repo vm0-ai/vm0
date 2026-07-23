@@ -119,7 +119,7 @@ export const drainWorkflowQueueForThread$ = command(
             workflowName: target.workflowName,
             chatThreadId: event.chatThreadId,
           },
-          apiStartTime: now(),
+          apiStartTime: event.apiStartedAt?.getTime() ?? now(),
           prompt: params.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: triggerSource.success ? triggerSource.data : undefined,

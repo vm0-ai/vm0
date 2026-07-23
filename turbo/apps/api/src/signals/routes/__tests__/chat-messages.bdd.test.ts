@@ -359,6 +359,14 @@ function sandboxOperationEventsForRun(
   });
 }
 
+function firstAssistantMessageEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === "api_to_first_assistant_message";
+  });
+}
+
 function apiDispatchTimingEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -3104,6 +3112,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       "Match the current user's language",
     );
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
+    await flushWaitUntilForTest();
+    expect(firstAssistantMessageEventsForRun(run.runId)).toStrictEqual([]);
 
     await cancelChatRun(actor, run.runId);
   });

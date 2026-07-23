@@ -165,6 +165,7 @@ type WorkflowQueueAdmissionAttempt =
 interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly chatThreadId: string;
+  readonly apiStartedAt: Date;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
   readonly params: WorkflowQueueEventParams;
@@ -211,6 +212,7 @@ async function attemptWorkflowQueueAdmission(
       triggerSource: args.triggerSource,
       triggerBrief: args.triggerBrief ?? null,
       encryptedParams,
+      apiStartedAt: args.apiStartedAt,
     });
     return { kind: "enqueued" };
   });
@@ -271,6 +273,7 @@ export interface ClaimedWorkflowQueueEvent {
   readonly triggerSource: string;
   readonly triggerBrief: string | null;
   readonly encryptedParams: string;
+  readonly apiStartedAt: Date | null;
   readonly createdAt: Date;
 }
 
@@ -308,6 +311,7 @@ export async function claimNextWorkflowQueueEvent(
         triggerSource: chatMessageQueue.triggerSource,
         triggerBrief: chatMessageQueue.triggerBrief,
         encryptedParams: chatMessageQueue.encryptedParams,
+        apiStartedAt: chatMessageQueue.apiStartedAt,
         createdAt: chatMessageQueue.createdAt,
       })
       .from(chatMessageQueue)
@@ -338,6 +342,7 @@ export async function claimNextWorkflowQueueEvent(
       triggerSource: item.triggerSource,
       triggerBrief: item.triggerBrief,
       encryptedParams: item.encryptedParams,
+      apiStartedAt: item.apiStartedAt,
       createdAt: item.createdAt,
     };
   });
@@ -391,6 +396,7 @@ export async function restoreWorkflowQueueEventAndPause(
         triggerSource: event.triggerSource,
         triggerBrief: event.triggerBrief,
         encryptedParams: event.encryptedParams,
+        apiStartedAt: event.apiStartedAt,
         createdAt: event.createdAt,
       })
       .onConflictDoNothing();

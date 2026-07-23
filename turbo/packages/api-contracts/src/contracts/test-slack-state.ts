@@ -103,6 +103,7 @@ export const testSlackStateResponseSchema = z.object({
         "workflow_event",
       ]),
       triggerSource: z.string().nullable(),
+      apiStartedAt: z.string().nullable(),
       createdAt: z.string(),
     }),
   ),

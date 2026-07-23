@@ -2954,7 +2954,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     if (!createQueuedRun) {
       return;
     }
-    const apiStartTime = now();
+    const dequeueApiStartTime = now();
     await autoSendQueuedMessageForThread({
       db,
       chatThreadId: args.chatThreadId,
@@ -2967,7 +2967,12 @@ export const drainQueuedUserMessagesForThread$ = command(
           input,
           signal,
           createRun: (runInput) => {
-            return createQueuedRun(runInput, apiStartTime, signal);
+            return createQueuedRun(
+              runInput,
+              runInput.queuedMessage.apiStartedAt?.getTime() ??
+                dequeueApiStartTime,
+              signal,
+            );
           },
         });
       },

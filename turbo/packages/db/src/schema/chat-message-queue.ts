@@ -75,6 +75,8 @@ export const chatMessageQueue = pgTable(
     // (prompt / appendSystemPrompt / callbacks). Callbacks carry secrets,
     // so the payload stays encrypted.
     encryptedParams: text("encrypted_params"),
+    // Original ingress start retained until queued work creates its run.
+    apiStartedAt: timestamp("api_started_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
