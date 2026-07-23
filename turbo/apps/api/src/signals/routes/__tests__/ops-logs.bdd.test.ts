@@ -68,6 +68,7 @@ async function entitledRunActor(): Promise<{
   const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
+  createMiscRoutesApi(context);
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
   api.configureRunnerGroup();
