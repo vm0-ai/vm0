@@ -9,6 +9,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { eq } from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";
+import { projectLegacyWritebackArtifacts } from "./storage-legacy-projection.service";
 
 interface AgentSessionByIdArgs {
   readonly sessionId: string;
@@ -65,6 +66,7 @@ export function agentSessionById(
         agentComposeId: agentSessions.agentComposeId,
         conversationId: agentSessions.conversationId,
         artifacts: agentSessions.artifacts,
+        storageMounts: agentSessions.storageMounts,
         createdAt: agentSessions.createdAt,
         updatedAt: agentSessions.updatedAt,
       })
@@ -92,7 +94,10 @@ export function agentSessionById(
         id: session.id,
         agentComposeId: session.agentComposeId,
         conversationId: session.conversationId,
-        artifactNames: session.artifacts.map((artifact) => {
+        artifactNames: (session.storageMounts === null
+          ? session.artifacts
+          : projectLegacyWritebackArtifacts(session.storageMounts)
+        ).map((artifact) => {
           return artifact.name;
         }),
         secretNames,

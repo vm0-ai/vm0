@@ -765,12 +765,13 @@ describe("RUN-04: session and checkpoint reads", () => {
       artifacts: [{ name: "bdd-out", mountPath: "/out" }],
     });
     const claim1 = await api.claimRunnerJob(r1.runId);
-    const outArtifact = expectLegacyStorageManifest(
+    const claimedArtifacts = expectLegacyStorageManifest(
       claim1.storageManifest,
-    )?.artifacts.find((artifact) => {
+    )?.artifacts;
+    const outArtifact = claimedArtifacts?.find((artifact) => {
       return artifact.vasStorageName === "bdd-out";
     });
-    if (!outArtifact) {
+    if (!claimedArtifacts || !outArtifact) {
       throw new Error("Expected the claim manifest to mount bdd-out");
     }
     expect(outArtifact.empty).toBeTruthy();
@@ -791,14 +792,16 @@ describe("RUN-04: session and checkpoint reads", () => {
         cliAgentSessionHistoryHash: createHash("sha256")
           .update(`bdd session checkpoint ${r1.runId}`)
           .digest("hex"),
-        artifactSnapshots: [
-          {
-            name: "bdd-out",
-            version: outArtifact.vasVersionId,
-            mountPath: "/out",
-          },
-        ],
-        volumeVersionsSnapshot: { versions: { data: "vol-v1" } },
+        artifactSnapshots: claimedArtifacts.map((artifact) => {
+          return {
+            name: artifact.vasStorageName,
+            version: artifact.vasVersionId,
+            mountPath: artifact.mountPath,
+            ...(artifact.missingRootPolicy === undefined
+              ? {}
+              : { missingRootPolicy: artifact.missingRootPolicy }),
+          };
+        }),
       },
       headers1,
       [200],
@@ -815,6 +818,10 @@ describe("RUN-04: session and checkpoint reads", () => {
     const completed = await api.readRun(actor, r1.runId);
     expect(completed.status).toBe("completed");
     expect(completed.result?.checkpointId).toBeDefined();
+    expect(completed.result?.artifact).toMatchObject({
+      "bdd-out": outArtifact.vasVersionId,
+    });
+    expect(completed.result?.volumes).toBeUndefined();
 
     const session = await reads.requestReadSession(actor, r1.sessionId, [200]);
     expect(session.body).toMatchObject({
@@ -846,9 +853,18 @@ describe("RUN-04: session and checkpoint reads", () => {
     }
     expect(plainSession.body.secretNames).toBeNull();
     expect(plainSession.body.artifactNames).toContain("memory");
+    const claim2 = await api.claimRunnerJob(r2.runId);
+    const plainMemory = expectLegacyStorageManifest(
+      claim2.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    if (!plainMemory) {
+      throw new Error("Expected the plain run to mount memory");
+    }
 
-    // Checkpoints upsert one row per run, so the no-artifact projection
-    // needs its own run.
+    // Checkpoints upsert one row per run, so the no-snapshot request needs its
+    // own run. Its canonical checkpoint still retains the mounted Memory.
     const withoutArtifacts = await webhooks.requestAgentCheckpoint(
       {
         runId: r2.runId,
@@ -858,7 +874,7 @@ describe("RUN-04: session and checkpoint reads", () => {
           .update(`bdd empty checkpoint ${r2.runId}`)
           .digest("hex"),
       },
-      sandboxHeaders(api.sandboxTokenForRun(actor, r2.runId)),
+      sandboxHeaders(claim2.sandboxToken),
       [200],
     );
     if (withoutArtifacts.status !== 200) {
@@ -904,9 +920,9 @@ describe("RUN-04: session and checkpoint reads", () => {
     expect(checkpoint.body).toMatchObject({
       id: withArtifacts.body.checkpointId,
       runId: r1.runId,
-      volumeVersionsSnapshot: { versions: { data: "vol-v1" } },
+      volumeVersionsSnapshot: null,
     });
-    expect(checkpoint.body.artifactSnapshots).toStrictEqual({
+    expect(checkpoint.body.artifactSnapshots).toMatchObject({
       "bdd-out": outArtifact.vasVersionId,
     });
     if (checkpoint.status !== 200) {
@@ -928,7 +944,9 @@ describe("RUN-04: session and checkpoint reads", () => {
     if (bareCheckpoint.status !== 200) {
       throw new Error("Expected the bare checkpoint read to succeed");
     }
-    expect(bareCheckpoint.body.artifactSnapshots).toBeNull();
+    expect(bareCheckpoint.body.artifactSnapshots).toStrictEqual({
+      memory: plainMemory.vasVersionId,
+    });
 
     const missingCheckpoint = await reads.requestReadCheckpoint(
       actor,
