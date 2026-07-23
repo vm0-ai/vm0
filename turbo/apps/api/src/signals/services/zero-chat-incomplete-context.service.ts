@@ -145,7 +145,7 @@ function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
           WHERE boundary_revoker.revokes_message_id = boundary_message.id
         )
     ),
-    '-infinity'::timestamptz
+    0::bigint
   )`;
 }
 
