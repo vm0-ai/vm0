@@ -35,13 +35,18 @@ const GMAIL_DRAFT_ID = "r-test-draft";
 const GMAIL_THREAD_ID = "gmail-thread-id";
 const GMAIL_MESSAGE_ID = "gmail-draft-message-id";
 const GMAIL_SENT_MESSAGE_ID = "gmail-sent-message-id";
+const GMAIL_IMAGE_ATTACHMENT_ID = "attachment-image";
+const GMAIL_IMAGE_BYTES = Buffer.from("mail draft image");
+const GMAIL_HTML_BODY =
+  '<div>Mail body <strong>before</strong></div><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a>';
 
 function encodedBody(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
 }
 
-function gmailPayload() {
+function gmailPayload(imageAttachmentId: string = GMAIL_IMAGE_ATTACHMENT_ID) {
   return {
+    partId: "",
     mimeType: "multipart/mixed",
     filename: "",
     headers: [
@@ -53,16 +58,56 @@ function gmailPayload() {
     body: { size: 0 },
     parts: [
       {
-        mimeType: "text/plain",
+        partId: "0",
+        mimeType: "multipart/alternative",
         filename: "",
         headers: [],
-        body: { size: 9, data: encodedBody("Mail body") },
+        body: { size: 0 },
+        parts: [
+          {
+            partId: "0.0",
+            mimeType: "text/plain",
+            filename: "",
+            headers: [],
+            body: { size: 9, data: encodedBody("Mail body") },
+          },
+          {
+            partId: "0.1",
+            mimeType: "text/html",
+            filename: "",
+            headers: [],
+            body: {
+              size: 180,
+              data: encodedBody(GMAIL_HTML_BODY),
+            },
+          },
+        ],
       },
       {
+        partId: "1",
         mimeType: "application/pdf",
         filename: "report.pdf",
         headers: [],
         body: { attachmentId: "attachment-1", size: 248_192 },
+      },
+      {
+        partId: "2",
+        mimeType: "image/png",
+        filename: "email-test-illustration.png",
+        headers: [
+          {
+            name: "Content-ID",
+            value: "<email-test-illustration>",
+          },
+          {
+            name: "Content-Disposition",
+            value: 'inline; filename="email-test-illustration.png"',
+          },
+        ],
+        body: {
+          attachmentId: imageAttachmentId,
+          size: GMAIL_IMAGE_BYTES.byteLength,
+        },
       },
     ],
   };
@@ -82,6 +127,8 @@ function mockGmailDraftApi(): GmailDraftTestState {
     deleteCount: 0,
     sentBody: null,
   };
+  let draftReadCount = 0;
+  let currentImageAttachmentId = GMAIL_IMAGE_ATTACHMENT_ID;
   server.use(
     http.get(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params, request }) => {
       expect(params.draftId).toBe(GMAIL_DRAFT_ID);
@@ -92,12 +139,14 @@ function mockGmailDraftApi(): GmailDraftTestState {
       if (!state.exists) {
         return new HttpResponse(null, { status: 404 });
       }
+      draftReadCount += 1;
+      currentImageAttachmentId = `${GMAIL_IMAGE_ATTACHMENT_ID}-${draftReadCount}`;
       return HttpResponse.json({
         id: GMAIL_DRAFT_ID,
         message: {
           id: GMAIL_MESSAGE_ID,
           threadId: GMAIL_THREAD_ID,
-          payload: gmailPayload(),
+          payload: gmailPayload(currentImageAttachmentId),
         },
       });
     }),
@@ -119,6 +168,20 @@ function mockGmailDraftApi(): GmailDraftTestState {
         payload: gmailPayload(),
       });
     }),
+    http.get(
+      `${GMAIL_API_BASE}/messages/:messageId/attachments/:attachmentId`,
+      ({ params, request }) => {
+        expect(params.messageId).toBe(GMAIL_MESSAGE_ID);
+        expect(params.attachmentId).toBe(currentImageAttachmentId);
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer gmail-mail-card-token",
+        );
+        return HttpResponse.json({
+          size: GMAIL_IMAGE_BYTES.byteLength,
+          data: GMAIL_IMAGE_BYTES.toString("base64url"),
+        });
+      },
+    ),
     http.delete(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params }) => {
       expect(params.draftId).toBe(GMAIL_DRAFT_ID);
       state.exists = false;
@@ -224,15 +287,41 @@ describe("POST /api/zero/mail/drafts/link", () => {
       cc: ["copy@example.com"],
       subject: "Attachment review",
       body: "Mail body",
+      bodyHtml: GMAIL_HTML_BODY,
+      inlineImages: [
+        {
+          contentId: "email-test-illustration",
+          partId: "2",
+          alt: "Cheerful envelope illustration",
+        },
+      ],
       status: "draft",
       attachments: [
         {
           filename: "report.pdf",
           contentType: "application/pdf",
           size: 248_192,
+          partId: "1",
         },
       ],
     });
+
+    const attachment = await accept(
+      client().getAttachment({
+        headers: authHeaders(),
+        params: {
+          mailDraftId: linked.body.mailDraftId,
+          partId: "2",
+        },
+      }),
+      [200],
+    );
+    expect(attachment.body).toBeInstanceOf(Blob);
+    expect(
+      Buffer.from(await attachment.body.arrayBuffer()).equals(
+        GMAIL_IMAGE_BYTES,
+      ),
+    ).toBeTruthy();
 
     const sent = await accept(
       client().sendDraft({

@@ -9,6 +9,7 @@ import {
   type ZeroMailAttachment,
   type ZeroMailDraft,
   type ZeroMailDraftStatus,
+  type ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
 import { connectorAuthMethodHasRequiredScopes } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -46,6 +47,7 @@ const GMAIL_ACCESS_TOKEN_ENV = "GMAIL_TOKEN";
 const oauthScopesSchema = z.array(z.string());
 
 interface GmailMessagePart {
+  readonly partId: string;
   readonly mimeType: string;
   readonly filename: string;
   readonly headers: readonly {
@@ -62,6 +64,7 @@ interface GmailMessagePart {
 
 const gmailMessagePartSchema: z.ZodType<GmailMessagePart> = z.lazy(() => {
   return z.object({
+    partId: z.string(),
     mimeType: z.string(),
     filename: z.string().default(""),
     headers: z
@@ -96,6 +99,11 @@ const gmailSentResourceSchema = z.object({
   threadId: z.string(),
 });
 
+const gmailAttachmentResourceSchema = z.object({
+  size: z.number().int().nonnegative(),
+  data: z.string(),
+});
+
 interface MailConnection extends ConnectorCredentialConnection {
   readonly connectorRef: "gmail";
   readonly externalEmail: string;
@@ -116,6 +124,13 @@ interface MailDraftLinkResult {
   readonly mailDraftUrl: string;
 }
 
+interface MailDraftAttachmentResult {
+  readonly kind: "ok";
+  readonly content: Uint8Array;
+  readonly contentType: string;
+  readonly filename: string;
+}
+
 interface MailDraftErrorResult {
   readonly kind: "not_found" | "conflict";
   readonly message: string;
@@ -127,6 +142,10 @@ export type ZeroMailDraftMutationResult =
 
 export type ZeroMailDraftLinkMutationResult =
   | MailDraftLinkResult
+  | MailDraftErrorResult;
+
+type ZeroMailDraftAttachmentResult =
+  | MailDraftAttachmentResult
   | MailDraftErrorResult;
 
 interface MailDraftRow {
@@ -185,6 +204,8 @@ interface MailDetails {
   readonly bcc: readonly string[];
   readonly subject: string;
   readonly body: string;
+  readonly bodyHtml?: string;
+  readonly inlineImages?: readonly ZeroMailInlineImage[];
   readonly replyTo?: string;
   readonly inReplyTo?: string;
   readonly references: readonly string[];
@@ -550,20 +571,111 @@ function findBodyPart(
   return null;
 }
 
+const htmlAttributesSchema = z.record(z.string(), z.string());
+
+function normalizedContentId(value: string): string {
+  return value
+    .trim()
+    .replace(/^cid:/iu, "")
+    .replace(/^<|>$/gu, "")
+    .toLowerCase();
+}
+
+function inlineImagePartsByContentId(
+  part: GmailMessagePart,
+): ReadonlyMap<string, GmailMessagePart> {
+  const parts = new Map<string, GmailMessagePart>();
+  const contentId = headerValue(part, "content-id");
+  if (
+    contentId &&
+    part.partId &&
+    part.mimeType.toLowerCase().startsWith("image/")
+  ) {
+    parts.set(normalizedContentId(contentId), part);
+  }
+  for (const child of part.parts ?? []) {
+    for (const [childContentId, childPart] of inlineImagePartsByContentId(
+      child,
+    )) {
+      parts.set(childContentId, childPart);
+    }
+  }
+  return parts;
+}
+
+interface RichMailBody {
+  readonly html: string;
+  readonly inlineImages: readonly ZeroMailInlineImage[];
+  readonly inlinePartIds: ReadonlySet<string>;
+}
+
+function richMailBody(
+  payload: GmailMessagePart,
+  htmlBody: string | null,
+): RichMailBody | null {
+  if (!htmlBody) {
+    return null;
+  }
+  const mimeParts = inlineImagePartsByContentId(payload);
+  const inlineImages: ZeroMailInlineImage[] = [];
+  convert(htmlBody, {
+    wordwrap: false,
+    formatters: {
+      inlineImage(element) {
+        const attributes = htmlAttributesSchema.safeParse(element.attribs);
+        if (!attributes.success) {
+          return;
+        }
+        const source = attributes.data.src;
+        if (!source?.toLowerCase().startsWith("cid:")) {
+          return;
+        }
+        const mimePart = mimeParts.get(normalizedContentId(source));
+        if (!mimePart) {
+          return;
+        }
+        inlineImages.push({
+          contentId: normalizedContentId(source),
+          partId: mimePart.partId,
+          alt:
+            attributes.data.alt?.trim() ||
+            decodeHeader(mimePart.filename) ||
+            "Inline email image",
+        });
+      },
+    },
+    selectors: [{ selector: "img", format: "inlineImage" }],
+  });
+  return {
+    html: htmlBody,
+    inlineImages,
+    inlinePartIds: new Set(
+      inlineImages.map((image) => {
+        return image.partId;
+      }),
+    ),
+  };
+}
+
 function attachmentMetadata(
   part: GmailMessagePart,
+  inlinePartIds: ReadonlySet<string>,
 ): readonly ZeroMailAttachment[] {
+  if (inlinePartIds.has(part.partId)) {
+    return [];
+  }
   if (part.filename || part.body.attachmentId) {
     return [
       {
         filename: decodeHeader(part.filename || "attachment"),
         contentType: part.mimeType,
         size: part.body.size,
+        ...(part.body.attachmentId ? { partId: part.partId } : {}),
       },
     ];
   }
   return (part.parts ?? []).flatMap((child) => {
-    return attachmentMetadata(child);
+    return attachmentMetadata(child, inlinePartIds);
   });
 }
 
@@ -573,8 +685,8 @@ function mailDetailsFromPayload(
 ): MailDetails {
   const from = parseFromHeader(headerValue(payload, "from"), fallbackSender);
   const plainBody = findBodyPart(payload, "text/plain");
-  const htmlBody =
-    plainBody === null ? findBodyPart(payload, "text/html") : null;
+  const htmlBody = findBodyPart(payload, "text/html");
+  const richBody = richMailBody(payload, htmlBody);
   return {
     from: from.address,
     ...(from.name ? { fromName: from.name } : {}),
@@ -585,6 +697,12 @@ function mailDetailsFromPayload(
     body:
       plainBody ??
       (htmlBody ? convert(htmlBody, { wordwrap: false }).trim() : ""),
+    ...(richBody
+      ? {
+          bodyHtml: richBody.html,
+          inlineImages: richBody.inlineImages,
+        }
+      : {}),
     ...(headerValue(payload, "reply-to")
       ? { replyTo: decodeHeader(headerValue(payload, "reply-to")!) }
       : {}),
@@ -594,19 +712,34 @@ function mailDetailsFromPayload(
     references: (headerValue(payload, "references") ?? "")
       .split(/\s+/u)
       .filter(Boolean),
-    attachments: attachmentMetadata(payload),
+    attachments: attachmentMetadata(
+      payload,
+      richBody?.inlinePartIds ?? new Set(),
+    ),
   };
 }
 
-async function gmailGetDraft(args: {
+function findAttachmentPart(
+  part: GmailMessagePart,
+  partId: string,
+): GmailMessagePart | null {
+  if (part.partId === partId && part.body.attachmentId) {
+    return part;
+  }
+  for (const child of part.parts ?? []) {
+    const found = findAttachmentPart(child, partId);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+async function gmailGetDraftResource(args: {
   readonly accessToken: string;
   readonly gmailDraftId: string;
-  readonly fallbackSender: {
-    readonly address: string;
-    readonly name: string | null;
-  };
   readonly signal: AbortSignal;
-}): Promise<GmailDraftValue | null> {
+}): Promise<z.infer<typeof gmailDraftResourceSchema> | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/drafts/${encodeURIComponent(args.gmailDraftId)}?format=full`,
     {
@@ -620,7 +753,22 @@ async function gmailGetDraft(args: {
   if (!response.ok) {
     throw new Error(`Failed to read Gmail draft (HTTP ${response.status})`);
   }
-  const draft = gmailDraftResourceSchema.parse(await response.json());
+  return gmailDraftResourceSchema.parse(await response.json());
+}
+
+async function gmailGetDraft(args: {
+  readonly accessToken: string;
+  readonly gmailDraftId: string;
+  readonly fallbackSender: {
+    readonly address: string;
+    readonly name: string | null;
+  };
+  readonly signal: AbortSignal;
+}): Promise<GmailDraftValue | null> {
+  const draft = await gmailGetDraftResource(args);
+  if (!draft) {
+    return null;
+  }
   return {
     draftId: draft.id,
     messageId: draft.message.id,
@@ -653,15 +801,11 @@ async function gmailSendLinkedDraft(args: {
   return { messageId: message.id, threadId: message.threadId };
 }
 
-async function gmailGetMessage(args: {
+async function gmailGetMessageResource(args: {
   readonly accessToken: string;
   readonly gmailMessageId: string;
-  readonly fallbackSender: {
-    readonly address: string;
-    readonly name: string | null;
-  };
   readonly signal: AbortSignal;
-}): Promise<GmailSentValue | null> {
+}): Promise<z.infer<typeof gmailMessageResourceSchema> | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/messages/${encodeURIComponent(args.gmailMessageId)}?format=full`,
     {
@@ -677,12 +821,52 @@ async function gmailGetMessage(args: {
       `Failed to read sent Gmail message (HTTP ${response.status})`,
     );
   }
-  const message = gmailMessageResourceSchema.parse(await response.json());
+  return gmailMessageResourceSchema.parse(await response.json());
+}
+
+async function gmailGetMessage(args: {
+  readonly accessToken: string;
+  readonly gmailMessageId: string;
+  readonly fallbackSender: {
+    readonly address: string;
+    readonly name: string | null;
+  };
+  readonly signal: AbortSignal;
+}): Promise<GmailSentValue | null> {
+  const message = await gmailGetMessageResource(args);
+  if (!message) {
+    return null;
+  }
   return {
     messageId: message.id,
     threadId: message.threadId,
     details: mailDetailsFromPayload(message.payload, args.fallbackSender),
   };
+}
+
+async function gmailGetAttachment(args: {
+  readonly accessToken: string;
+  readonly gmailMessageId: string;
+  readonly attachmentId: string;
+  readonly signal: AbortSignal;
+}): Promise<Uint8Array | null> {
+  const response = await fetch(
+    `${GMAIL_API_BASE}/messages/${encodeURIComponent(args.gmailMessageId)}/attachments/${encodeURIComponent(args.attachmentId)}`,
+    {
+      signal: args.signal,
+      headers: { Authorization: `Bearer ${args.accessToken}` },
+    },
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(
+      `Failed to read Gmail attachment (HTTP ${response.status})`,
+    );
+  }
+  const attachment = gmailAttachmentResourceSchema.parse(await response.json());
+  return new Uint8Array(Buffer.from(attachment.data, "base64url"));
 }
 
 async function gmailDeleteDraft(args: {
@@ -738,6 +922,8 @@ function responseDraft(args: {
     bcc: details.bcc,
     subject: details.subject,
     body: details.body,
+    bodyHtml: details.bodyHtml,
+    inlineImages: details.inlineImages,
     replyTo: details.replyTo,
     inReplyTo: details.inReplyTo,
     references: details.references,
@@ -987,6 +1173,56 @@ async function getMailDraft(args: {
   );
 }
 
+async function gmailAttachmentSource(args: {
+  readonly accessToken: string;
+  readonly row: MailDraftRow;
+  readonly partId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly attachmentId: string;
+  readonly messageId: string;
+  readonly part: GmailMessagePart;
+} | null> {
+  if (args.row.status === "deleted") {
+    return null;
+  }
+  if (args.row.status === "sent") {
+    if (!args.row.sentGmailMessageId) {
+      return null;
+    }
+    const message = await gmailGetMessageResource({
+      accessToken: args.accessToken,
+      gmailMessageId: args.row.sentGmailMessageId,
+      signal: args.signal,
+    });
+    const part = message
+      ? findAttachmentPart(message.payload, args.partId)
+      : null;
+    return message && part?.body.attachmentId
+      ? {
+          attachmentId: part.body.attachmentId,
+          messageId: message.id,
+          part,
+        }
+      : null;
+  }
+  const draft = await gmailGetDraftResource({
+    accessToken: args.accessToken,
+    gmailDraftId: args.row.gmailDraftId,
+    signal: args.signal,
+  });
+  const part = draft
+    ? findAttachmentPart(draft.message.payload, args.partId)
+    : null;
+  return draft && part?.body.attachmentId
+    ? {
+        attachmentId: part.body.attachmentId,
+        messageId: draft.message.id,
+        part,
+      }
+    : null;
+}
+
 export const linkZeroMailDraft$ = command(
   async (
     { get, set },
@@ -1113,6 +1349,70 @@ export const getZeroMailDraft$ = command(
       row,
       signal,
     });
+  },
+);
+
+export const getZeroMailDraftAttachment$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly mailDraftId: string;
+      readonly partId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ZeroMailDraftAttachmentResult> => {
+    const db = get(db$);
+    const row = await loadOwnedMailDraft({ db, ...args });
+    signal.throwIfAborted();
+    if (!row) {
+      return { kind: "not_found", message: "Mail draft not found" };
+    }
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
+    const access = await accessForRow({
+      db,
+      writeDb: set(writeDb$),
+      snapshot,
+      orgId: args.orgId,
+      userId: args.userId,
+      row,
+      signal,
+    });
+    if (access.kind !== "ok") {
+      return access;
+    }
+    const source = await gmailAttachmentSource({
+      accessToken: access.accessToken,
+      row,
+      partId: args.partId,
+      signal,
+    });
+    if (!source) {
+      return {
+        kind: "not_found",
+        message: "Mail draft attachment not found",
+      };
+    }
+    const content = await gmailGetAttachment({
+      accessToken: access.accessToken,
+      gmailMessageId: source.messageId,
+      attachmentId: source.attachmentId,
+      signal,
+    });
+    if (!content) {
+      return {
+        kind: "not_found",
+        message: "Mail draft attachment not found",
+      };
+    }
+    return {
+      kind: "ok",
+      content,
+      contentType: source.part.mimeType,
+      filename: decodeHeader(source.part.filename || "attachment"),
+    };
   },
 );
 

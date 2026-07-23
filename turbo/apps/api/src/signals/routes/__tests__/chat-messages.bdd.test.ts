@@ -1713,6 +1713,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
               id: "gmail-agent-reply-message",
               threadId: "gmail-agent-reply-thread",
               payload: {
+                partId: "",
                 mimeType: "text/plain",
                 filename: "",
                 headers: [

@@ -12,6 +12,7 @@ import type { RouteEntry } from "../route-entry";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   deleteZeroMailDraft$,
+  getZeroMailDraftAttachment$,
   getZeroMailDraft$,
   linkZeroMailDraft$,
   sendZeroMailDraft$,
@@ -123,6 +124,47 @@ const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
+const getAttachmentParams$ = pathParamsOf(zeroMailContract.getAttachment);
+const getAttachmentInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!(await set(zeroMailEnabled$))) {
+      return zeroMailDisabled;
+    }
+    const result = await set(
+      getZeroMailDraftAttachment$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        ...get(getAttachmentParams$),
+      },
+      signal,
+    );
+    switch (result.kind) {
+      case "not_found": {
+        return notFound(result.message);
+      }
+      case "conflict": {
+        return conflict(result.message);
+      }
+      case "ok": {
+        const headers = new Headers();
+        headers.set("Content-Type", result.contentType);
+        headers.set("Content-Length", String(result.content.byteLength));
+        headers.set("Cache-Control", "private, max-age=300");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set(
+          "Content-Disposition",
+          `inline; filename*=UTF-8''${encodeURIComponent(result.filename)}`,
+        );
+        const body = new Uint8Array(result.content.byteLength);
+        body.set(result.content);
+        return new Response(body, { status: 200, headers });
+      }
+    }
+  },
+);
+
 const deleteDraftParams$ = pathParamsOf(zeroMailContract.deleteDraft);
 const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -185,6 +227,10 @@ export const zeroMailRoutes: readonly RouteEntry[] = [
   {
     route: zeroMailContract.getDraft,
     handler: authRoute(mailDraftHumanAuth, getDraftInner$),
+  },
+  {
+    route: zeroMailContract.getAttachment,
+    handler: authRoute(mailDraftHumanAuth, getAttachmentInner$),
   },
   {
     route: zeroMailContract.deleteDraft,

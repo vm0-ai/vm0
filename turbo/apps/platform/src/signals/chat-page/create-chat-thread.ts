@@ -136,7 +136,11 @@ import type {
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
-import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
+import {
+  createMailDraftCardSignalsRegistry,
+  parseMailDraftUrl,
+} from "./mail-draft.ts";
+import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
   messageDocumentToDisplayText,
@@ -2462,7 +2466,7 @@ function createPagedMessages(
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
 ) {
-  const mailDraftCardSignals = createMailDraftCardSignalsRegistry();
+  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
   const artifactCardSignals = createArtifactCardSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
@@ -2545,7 +2549,14 @@ function createPagedMessages(
 
   const mailDraftCardSignalsById$ = computed((get) => {
     get(rawMessages$);
-    return mailDraftCardSignals.entries();
+    const selectedMailDraftId = get(currentMailDraftId$);
+    const selectedMailDraftDescriptor = selectedMailDraftId
+      ? parseMailDraftUrl(`/mail/drafts/${selectedMailDraftId}`)
+      : null;
+    if (selectedMailDraftDescriptor) {
+      mailDraftCardSignals.register(selectedMailDraftDescriptor);
+    }
+    return new Map(mailDraftCardSignals.entries());
   });
 
   const mergePersistentMessages$ = createMergePersistentMessages(

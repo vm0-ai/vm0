@@ -50,6 +50,7 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   const catalogByRefLoadable = useLastLoadable(connectorCatalogStatusByRef$);
   const selectedMailDraftId = useGet(currentMailDraftId$);
   const openSidebar = useSet(openMailDraftSidebar$);
+  const reloadSidebar = useSet(signals.reloadSidebar$);
   const gmailIcon =
     catalogByRefLoadable.state === "hasData"
       ? catalogByRefLoadable.data.get("gmail")?.icon
@@ -65,7 +66,12 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   const draft = draftLoadable.data;
   const deleted = draft.status === "deleted";
   const selected = selectedMailDraftId === signals.mailDraftId;
-  const recipients = draft.to.join(", ") || "(No recipient)";
+  const firstRecipient = draft.to[0];
+  const recipients = firstRecipient
+    ? draft.to.length === 1
+      ? firstRecipient
+      : `${firstRecipient} +${draft.to.length - 1}`
+    : "(No recipient)";
   const content = (
     <>
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
@@ -120,6 +126,7 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
       data-mail-draft-card
       data-mail-draft-status={draft.status}
       onClick={() => {
+        reloadSidebar();
         openSidebar(signals.mailDraftId);
       }}
       className={cn(

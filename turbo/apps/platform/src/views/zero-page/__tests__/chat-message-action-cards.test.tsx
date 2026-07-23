@@ -19,6 +19,7 @@ import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -205,6 +206,29 @@ async function waitForButtonByText(
   return button;
 }
 
+async function waitForSelectionToolbarButton(
+  text: string,
+): Promise<HTMLElement> {
+  let button: HTMLElement | undefined;
+  await waitFor(() => {
+    button = queryAllByRoleFast("button").find((candidate) => {
+      const label = candidate.textContent?.replace(/\s+/g, " ").trim();
+      return (
+        label === text ||
+        label === `${text} C` ||
+        label === `${text} F` ||
+        label === `${text}C` ||
+        label === `${text}F`
+      );
+    });
+    expect(button).toBeEnabled();
+  });
+  if (!button) {
+    throw new Error(`${text} selection toolbar button not found`);
+  }
+  return button;
+}
+
 async function confirmPermissionAction(
   user: ReturnType<typeof userEvent.setup>,
   card: HTMLElement,
@@ -212,9 +236,30 @@ async function confirmPermissionAction(
   await user.click(await waitForButtonByText("Confirm", card));
 }
 
+function selectMailText(element: HTMLElement): void {
+  element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  Object.defineProperty(range, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return new DOMRect(24, 32, 180, 20);
+    },
+  });
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error("Selection API is not available");
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+  element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+}
+
 describe("chat message action cards", () => {
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
     const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWriteText();
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
     const secondMessageId = "c0000000-0000-4000-a000-000000000013";
@@ -225,6 +270,9 @@ describe("chat message action cards", () => {
     let draftRequests = 0;
     let sent = false;
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const imageBytes = new TextEncoder().encode("mail draft image");
+    const mailDraftHtml =
+      '<div>Mail body <strong>before</strong></div><p><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><br>After image</p><hr><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a>';
 
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
@@ -247,11 +295,23 @@ describe("chat message action cards", () => {
           version: 3,
           provider: "gmail",
           from: "sender@example.com",
-          to: ["recipient@example.com"],
+          to: [
+            "recipient@example.com",
+            "teammate@example.com",
+            "reviewer@example.com",
+          ],
           cc: ["copy@example.com"],
           bcc: ["hidden@example.com"],
           subject: "Hello",
           body: "Mail body",
+          bodyHtml: mailDraftHtml,
+          inlineImages: [
+            {
+              contentId: "email-test-illustration",
+              partId: "2",
+              alt: "Cheerful envelope illustration",
+            },
+          ],
           replyTo: "reply-only@example.com",
           inReplyTo: "<thread-message@example.com>",
           status: sent ? "sent" : "draft",
@@ -287,11 +347,23 @@ describe("chat message action cards", () => {
           version: 3,
           provider: "gmail",
           from: "sender@example.com",
-          to: ["recipient@example.com"],
+          to: [
+            "recipient@example.com",
+            "teammate@example.com",
+            "reviewer@example.com",
+          ],
           cc: ["copy@example.com"],
           bcc: ["hidden@example.com"],
           subject: "Hello",
           body: "Mail body",
+          bodyHtml: mailDraftHtml,
+          inlineImages: [
+            {
+              contentId: "email-test-illustration",
+              partId: "2",
+              alt: "Cheerful envelope illustration",
+            },
+          ],
           replyTo: "reply-only@example.com",
           inReplyTo: "<thread-message@example.com>",
           status: "sent",
@@ -314,6 +386,17 @@ describe("chat message action cards", () => {
         },
       });
     });
+    context.mocks.http.get(
+      "*/api/zero/mail/drafts/:mailDraftId/attachments/:partId",
+      ({ params }) => {
+        expect(params.mailDraftId).toBe(mailDraftId);
+        expect(params.partId).toBe("2");
+        return new HttpResponse(imageBytes, {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      },
+    );
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Mail card",
@@ -358,7 +441,7 @@ describe("chat message action cards", () => {
     });
     for (const card of cards) {
       expect(
-        within(card).getByText("To: recipient@example.com"),
+        within(card).getByText("To: recipient@example.com +2"),
       ).toBeInTheDocument();
       expect(within(card).queryByText("sender@example.com")).toBeNull();
       const icon = card.querySelector<HTMLImageElement>(
@@ -377,12 +460,56 @@ describe("chat message action cards", () => {
     await user.click(cards[0]!);
 
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(
+      within(sidebar).getByText(
+        "You can ask your agent to continue editing this draft.",
+      ),
+    ).toBeInTheDocument();
     expect(within(sidebar).getByText("sender@example.com")).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText(
+        "recipient@example.com, teammate@example.com, reviewer@example.com",
+      ),
+    ).toBeInTheDocument();
     expect(within(sidebar).getByText("copy@example.com")).toBeInTheDocument();
     expect(within(sidebar).getByText("hidden@example.com")).toBeInTheDocument();
-    expect(within(sidebar).getByText("Mail body")).toBeInTheDocument();
+    const messageLabel = within(sidebar).getByText("Message");
+    const messageSection = messageLabel.parentElement;
+    if (!messageSection) {
+      throw new Error("Expected mail message section");
+    }
+    const boldText = within(messageSection).getByText("before");
+    expect(boldText.tagName).toBe("STRONG");
+    expect(
+      within(messageSection).getByText("Mail body after"),
+    ).toBeInTheDocument();
+    expect(within(messageSection).getByRole("listitem")).toHaveTextContent(
+      "Mail body after",
+    );
+    const reviewLink = queryAllByRoleFast("link", messageSection).find(
+      (link) => {
+        return link.textContent === "Review";
+      },
+    );
+    expect(reviewLink).toHaveAttribute("href", "https://example.com/review");
     expect(within(sidebar).getByText("report.pdf")).toBeInTheDocument();
     expect(within(sidebar).getByText("242 KB")).toBeInTheDocument();
+    const inlineImage = await within(messageSection).findByRole("img", {
+      name: "Cheerful envelope illustration",
+    });
+    expect(inlineImage).toHaveAttribute(
+      "src",
+      expect.stringMatching(/^blob:/u),
+    );
+    const attachmentsLabel = within(sidebar).getByText("Attachments");
+    const attachmentsSection = attachmentsLabel.parentElement;
+    if (!attachmentsSection) {
+      throw new Error("Expected mail attachments section");
+    }
+    expect(within(attachmentsSection).queryByRole("img")).toBeNull();
+    expect(
+      within(sidebar).queryByText("email-test-illustration.png"),
+    ).toBeNull();
     expect(within(sidebar).queryByText(/application\/pdf/u)).toBeNull();
     expect(within(sidebar).queryByText("reply-only@example.com")).toBeNull();
     expect(
@@ -392,7 +519,21 @@ describe("chat message action cards", () => {
       within(sidebar).queryByText("<reference-message@example.com>"),
     ).toBeNull();
     expect(within(sidebar).queryByRole("textbox")).not.toBeInTheDocument();
-    expect(draftRequests).toBe(1);
+
+    selectMailText(boldText);
+    await user.click(await waitForSelectionToolbarButton("Copy"));
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual(["before"]);
+    });
+
+    selectMailText(within(messageSection).getByRole("listitem"));
+    await user.click(await waitForSelectionToolbarButton("Provide feedback"));
+    await waitFor(() => {
+      const feedbackItem = document.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent("Mail body after");
+    });
+
+    expect(draftRequests).toBe(2);
     await user.click(await waitForButtonByText("Send", sidebar));
 
     await waitFor(() => {
@@ -401,6 +542,11 @@ describe("chat message action cards", () => {
     });
     sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(queryButtonByText("Send", sidebar)).toBeNull();
+    expect(
+      screen.queryByText(
+        "You can ask your agent to continue editing this draft.",
+      ),
+    ).toBeNull();
     expect(draftRequests).toBe(2);
   });
 
@@ -456,6 +602,178 @@ describe("chat message action cards", () => {
       return link.textContent === "Untrusted connector";
     });
     expect(untrustedLink).toHaveAttribute("href", untrustedUrl);
+  });
+
+  it("restores the mail draft sidebar from the URL before its card is loaded", async () => {
+    const threadId = "c0000000-0000-4000-a000-000000000021";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000022";
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    let draftRequests = 0;
+
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      draftRequests += 1;
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com", "teammate@example.com"],
+          cc: [],
+          bcc: [],
+          subject: "Restored draft",
+          body: "Mail body",
+          status: "draft",
+          detailAvailable: true,
+          gmailDraftId: "r-restored-draft",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Restored mail draft",
+      chatMessages: [],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(within(sidebar).getAllByText("Restored draft")).toHaveLength(2);
+    expect(
+      within(sidebar).getByText(
+        "You can ask your agent to continue editing this draft.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText("recipient@example.com, teammate@example.com"),
+    ).toBeInTheDocument();
+    const sendButton = await waitForButtonByText("Send", sidebar);
+    expect(sendButton).toBeInTheDocument();
+    expect(draftRequests).toBe(1);
+  });
+
+  it("switches drafts and reloads a draft when it is reopened", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-000000000023";
+    const firstMailDraftId = "c0000000-0000-4000-a000-000000000024";
+    const secondMailDraftId = "c0000000-0000-4000-a000-000000000025";
+    const runId = "d0000000-0000-4000-a000-000000000028";
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    let firstDraftRequests = 0;
+    let secondDraftRequests = 0;
+    let secondSubject = "Second draft";
+
+    context.mocks.api(zeroMailContract.getDraft, ({ params, respond }) => {
+      const isSecondDraft = params.mailDraftId === secondMailDraftId;
+      if (isSecondDraft) {
+        secondDraftRequests += 1;
+      } else {
+        firstDraftRequests += 1;
+      }
+      const subject = isSecondDraft ? secondSubject : "First draft";
+      return respond(200, {
+        mailDraftId: params.mailDraftId,
+        mailDraftUrl: `https://app.vm0.ai/mail/drafts/${params.mailDraftId}`,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com"],
+          cc: [],
+          bcc: [],
+          subject,
+          body: `${subject} body`,
+          status: "draft",
+          detailAvailable: true,
+          gmailDraftId: `gmail-${params.mailDraftId}`,
+          gmailThreadId: `thread-${params.mailDraftId}`,
+          gmailMessageId: `message-${params.mailDraftId}`,
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Switch mail drafts",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000026",
+          role: "assistant",
+          content: `https://app.vm0.ai/mail/drafts/${firstMailDraftId}`,
+          runId,
+          createdAt,
+        },
+        {
+          id: "c0000000-0000-4000-a000-000000000027",
+          role: "assistant",
+          content: `https://app.vm0.ai/mail/drafts/${secondMailDraftId}`,
+          runId,
+          createdAt: "2026-07-14T10:00:01.000Z",
+        },
+      ],
+      activeRunIds: [runId],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    await user.click(
+      await screen.findByLabelText("Open draft email: First draft"),
+    );
+    let sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await waitFor(() => {
+      expect(within(sidebar).getAllByText("First draft")).toHaveLength(2);
+    });
+
+    await user.click(
+      await screen.findByLabelText("Open draft email: Second draft"),
+    );
+    await waitFor(() => {
+      sidebar = screen.getByTestId("mail-draft-sidebar");
+      expect(within(sidebar).getAllByText("Second draft")).toHaveLength(2);
+    });
+
+    await user.click(within(sidebar).getByLabelText("Close email details"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
+    });
+
+    secondSubject = "Updated second draft";
+    await user.click(
+      await screen.findByLabelText("Open draft email: Second draft"),
+    );
+    sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await waitFor(() => {
+      expect(within(sidebar).getAllByText("Updated second draft")).toHaveLength(
+        2,
+      );
+    });
+    expect(
+      screen.getByLabelText("Open draft email: Second draft"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Open draft email: Updated second draft"),
+    ).toBeNull();
+
+    expect(firstDraftRequests).toBe(2);
+    expect(secondDraftRequests).toBe(3);
   });
 
   it("connects a single OAuth connector directly and resumes the chat", async () => {
@@ -735,7 +1053,7 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(1);
     await user.click(card);
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(draftRequests).toBe(1);
+    expect(draftRequests).toBe(2);
     expect(within(sidebar).queryByText("Cc")).toBeNull();
     expect(within(sidebar).queryByText("Bcc")).toBeNull();
     await user.click(await waitForButtonByText("Delete", sidebar));
