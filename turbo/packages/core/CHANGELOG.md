@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.457.0](https://github.com/vm0-ai/vm0/compare/core-v8.456.0...core-v8.457.0) (2026-07-23)
+
+
+### Features
+
+* add managed weather and air quality commands ([#22670](https://github.com/vm0-ai/vm0/issues/22670)) ([f03e33f](https://github.com/vm0-ai/vm0/commit/f03e33f34134d9de0ea8dd0d5422dcd135f42bd3))
+
+
+### Refactoring
+
+* **platform:** remove image editing ([#22712](https://github.com/vm0-ai/vm0/issues/22712)) ([96bcedb](https://github.com/vm0-ai/vm0/commit/96bcedb673c1e8f3049981a446aec89024060cfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.217.0
+    * @vm0/connectors bumped to 1.185.0
+
 ## [8.456.0](https://github.com/vm0-ai/vm0/compare/core-v8.455.0...core-v8.456.0) (2026-07-23)
 
 
