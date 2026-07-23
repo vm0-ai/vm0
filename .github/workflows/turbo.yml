@@ -2040,7 +2040,7 @@ jobs:
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
-              --concurrency-factor 2.0 \
+              --concurrency-factor 1.5 \
               --api-url ${RUNNER_API_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
