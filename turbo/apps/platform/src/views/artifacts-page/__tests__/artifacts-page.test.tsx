@@ -696,6 +696,26 @@ function menuItemByText(text: string): HTMLElement {
   return menuItem;
 }
 
+function menuItemCheckboxByText(text: string): HTMLElement {
+  const menuItem = queryAllByRoleFast("menuitemcheckbox").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!menuItem) {
+    throw new Error(`${text} checkbox menu item not found`);
+  }
+  return menuItem;
+}
+
+function menuItemRadioByText(text: string): HTMLElement {
+  const menuItem = queryAllByRoleFast("menuitemradio").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!menuItem) {
+    throw new Error(`${text} radio menu item not found`);
+  }
+  return menuItem;
+}
+
 function focusedArtifactIndex(): string | null {
   return (
     document.activeElement?.closest<HTMLElement>("[data-artifact-index]")
@@ -774,15 +794,15 @@ describe("artifacts page", () => {
     );
   });
 
-  it("provides visible focus feedback for the agent filter", async () => {
+  it("provides visible focus feedback for artifact filters", async () => {
     setupTeam();
     const scope = testAuthScope("agent-filter-focus");
     mockArtifacts([]);
 
     setupArtifactsPage({ scope });
 
-    const agentFilter = await screen.findByLabelText("Agent filter");
-    expect(agentFilter).toHaveClass(
+    const artifactFilters = await screen.findByLabelText("Artifact filters");
+    expect(artifactFilters).toHaveClass(
       "focus-visible:ring-2",
       "focus-visible:ring-ring",
       "focus-visible:ring-offset-2",
@@ -1298,6 +1318,16 @@ describe("artifacts page", () => {
             agentName: "Research Agent",
             filename: "research-brief.html",
           }),
+          createArtifact({
+            artifactItemId: "run-research-video:file-1",
+            runId: "run-research-video",
+            fileId: "file-research-video",
+            agentId: RESEARCH_AGENT_ID,
+            agentName: "Research Agent",
+            filename: "research-video.mp4",
+            contentType: "video/mp4",
+            artifactKind: undefined,
+          }),
         ],
         truncated: false,
         nextCursor: null,
@@ -1311,35 +1341,74 @@ describe("artifacts page", () => {
     await screen.findByText("launch-video.mp4");
     await screen.findByText("launch-assets.zip");
     await screen.findByText("research-brief.html");
+    await screen.findByText("research-video.mp4");
 
-    click(buttonByLabel("Show image artifacts"));
+    const artifactFilters = screen.getByLabelText("Artifact filters");
+    click(artifactFilters);
+    click(
+      await waitFor(() => {
+        return menuItemCheckboxByText("Images");
+      }),
+    );
     await waitFor(() => {
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
       expect(screen.queryByText("research-brief.html")).not.toBeInTheDocument();
+      expect(screen.queryByText("research-video.mp4")).not.toBeInTheDocument();
       expect(screen.getByText("launch-image.png")).toBeInTheDocument();
     });
 
-    click(buttonByLabel("Show video artifacts"));
+    // Type selections apply immediately, combine with OR, and keep the menu
+    // open so another type can be selected.
+    click(menuItemCheckboxByText("Videos"));
     await waitFor(() => {
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
-      expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
       expect(screen.queryByText("research-brief.html")).not.toBeInTheDocument();
+      expect(screen.getByText("launch-image.png")).toBeInTheDocument();
       expect(screen.getByText("launch-video.mp4")).toBeInTheDocument();
+      expect(screen.getByText("research-video.mp4")).toBeInTheDocument();
     });
+    expect(menuItemCheckboxByText("All types")).toBeInTheDocument();
 
-    click(buttonByLabel("Show other artifacts"));
+    // The single-select agent filter combines with selected types using AND.
+    click(menuItemRadioByText("Research Agent"));
     await waitFor(() => {
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
       expect(screen.queryByText("research-brief.html")).not.toBeInTheDocument();
-      expect(screen.getByText("launch-assets.zip")).toBeInTheDocument();
+      expect(screen.getByText("research-video.mp4")).toBeInTheDocument();
     });
+    expect(artifactFilters).toHaveTextContent("3");
+    expect(menuItemCheckboxByText("All types")).toBeInTheDocument();
 
-    click(buttonByLabel("Show all artifacts"));
+    click(artifactFilters);
+    expect(buttonByLabel("Remove Images filter")).toBeInTheDocument();
+    expect(buttonByLabel("Remove Videos filter")).toBeInTheDocument();
+    expect(buttonByLabel("Remove Research Agent filter")).toBeInTheDocument();
+
+    click(artifactFilters);
+    click(buttonByText("Clear filters"));
+    await waitFor(() => {
+      expect(screen.getByText("launch-plan.html")).toBeInTheDocument();
+      expect(screen.getByText("launch-image.png")).toBeInTheDocument();
+      expect(screen.getByText("launch-video.mp4")).toBeInTheDocument();
+      expect(screen.getByText("launch-assets.zip")).toBeInTheDocument();
+      expect(screen.getByText("research-brief.html")).toBeInTheDocument();
+      expect(screen.getByText("research-video.mp4")).toBeInTheDocument();
+    });
+    expect(menuItemCheckboxByText("All types")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(queryAllByRoleFast("menuitemcheckbox")).toHaveLength(0);
+    });
+    expect(
+      screen.queryByLabelText("Remove Images filter"),
+    ).not.toBeInTheDocument();
     await fill(screen.getByLabelText("Search artifacts"), "brief");
     await waitFor(() => {
       expect(screen.getByText("research-brief.html")).toBeInTheDocument();
@@ -1347,21 +1416,7 @@ describe("artifacts page", () => {
       expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Search artifacts"), "");
-    click(screen.getByLabelText("Agent filter"));
-    click(
-      await waitFor(() => {
-        return menuItemByText("Research Agent");
-      }),
-    );
-    await waitFor(() => {
-      expect(screen.getByText("research-brief.html")).toBeInTheDocument();
-      expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
-      expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
-      expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
-      expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
+      expect(screen.queryByText("research-video.mp4")).not.toBeInTheDocument();
     });
 
     // All filtering was client-side: the bulk endpoint was hit once.

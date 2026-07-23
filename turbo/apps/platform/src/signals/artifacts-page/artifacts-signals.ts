@@ -46,7 +46,7 @@ const ARTIFACT_FOCUS_TARGET_SELECTOR =
 
 const internalArtifactsSearch$ = state("");
 const internalArtifactsAgentId$ = state<string | null>(null);
-const internalArtifactsCategory$ = state<ArtifactCategory | null>(null);
+const internalArtifactsCategories$ = state<readonly ArtifactCategory[]>([]);
 const internalArtifactsReload$ = state(0);
 const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
 const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
@@ -95,8 +95,8 @@ export const selectedArtifactsAgentId$ = computed((get) => {
   return get(internalArtifactsAgentId$);
 });
 
-export const selectedArtifactsCategory$ = computed((get) => {
-  return get(internalArtifactsCategory$);
+export const selectedArtifactsCategories$ = computed((get) => {
+  return get(internalArtifactsCategories$);
 });
 
 // How many artifacts the grid currently makes available. Grown automatically
@@ -250,17 +250,23 @@ export const setSelectedArtifactsAgentId$ = command(
   },
 );
 
-export const setSelectedArtifactsCategory$ = command(
-  ({ set }, artifactCategory: ArtifactCategory | null) => {
-    set(internalArtifactsCategory$, artifactCategory);
+export const setSelectedArtifactsCategories$ = command(
+  ({ set }, artifactCategories: readonly ArtifactCategory[]) => {
+    set(internalArtifactsCategories$, artifactCategories);
     set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
   },
 );
 
+export const clearArtifactsFacetFilters$ = command(({ set }) => {
+  set(internalArtifactsAgentId$, null);
+  set(internalArtifactsCategories$, []);
+  set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
+});
+
 export const resetArtifactsFilters$ = command(({ set }) => {
   set(internalArtifactsSearch$, "");
   set(internalArtifactsAgentId$, null);
-  set(internalArtifactsCategory$, null);
+  set(internalArtifactsCategories$, []);
   set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
 });
 
@@ -606,7 +612,7 @@ export function filterArtifacts(
   filters: {
     readonly search: string;
     readonly agentId: string | null;
-    readonly category: ArtifactCategory | null;
+    readonly categories: readonly ArtifactCategory[];
   },
 ): ArtifactItem[] {
   const searchTokens = normalizedSearchTokens(filters.search);
@@ -614,7 +620,12 @@ export function filterArtifacts(
     if (filters.agentId && item.agentId !== filters.agentId) {
       return false;
     }
-    if (!artifactMatchesCategory(item, filters.category)) {
+    if (
+      filters.categories.length > 0 &&
+      !filters.categories.some((category) => {
+        return artifactMatchesCategory(item, category);
+      })
+    ) {
       return false;
     }
     if (searchTokens.length === 0) {

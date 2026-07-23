@@ -20,6 +20,7 @@ import {
   IconSearch,
   IconVideo,
   IconWorld,
+  IconX,
 } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
 import {
@@ -54,6 +55,7 @@ import {
   artifactsScrollViewport$,
   artifactsWindow$,
   cachedArtifacts$,
+  clearArtifactsFacetFilters$,
   filterArtifacts,
   getArtifactFocusTarget,
   growArtifactsWindow$,
@@ -63,13 +65,13 @@ import {
   remoteArtifacts$,
   requestArtifactsKeyboardFocus$,
   selectedArtifactsAgentId$,
-  selectedArtifactsCategory$,
+  selectedArtifactsCategories$,
   setArtifactCardRef$,
   setArtifactsGridRef$,
   setArtifactsScrollViewportRef$,
   setArtifactsSearch$,
   setSelectedArtifactsAgentId$,
-  setSelectedArtifactsCategory$,
+  setSelectedArtifactsCategories$,
   startArtifactChat$,
   syncArtifacts$,
   syncArtifactsScrollMetrics$,
@@ -147,27 +149,23 @@ function getArtifactsPageLoadState({
   };
 }
 
-const ARTIFACT_CATEGORY_OPTIONS: readonly {
-  readonly ariaLabel: string;
+const ARTIFACT_TYPE_OPTIONS: readonly {
   readonly label: string;
-  readonly value: ArtifactCategory | null;
+  readonly value: ArtifactCategory;
 }[] = [
-  { ariaLabel: "Show all artifacts", label: "All", value: null },
-  { ariaLabel: "Show image artifacts", label: "Images", value: "image" },
-  { ariaLabel: "Show video artifacts", label: "Videos", value: "video" },
-  { ariaLabel: "Show website artifacts", label: "Websites", value: "website" },
+  { label: "Images", value: "image" },
+  { label: "Videos", value: "video" },
+  { label: "Websites", value: "website" },
   {
-    ariaLabel: "Show presentation artifacts",
     label: "Presentations",
     value: "presentation",
   },
   {
-    ariaLabel: "Show document artifacts",
     label: "Documents",
     value: "document",
   },
-  { ariaLabel: "Show data artifacts", label: "Data", value: "data" },
-  { ariaLabel: "Show other artifacts", label: "Other", value: "other" },
+  { label: "Data", value: "data" },
+  { label: "Other", value: "other" },
 ];
 
 function formatArtifactKind(kind: string | undefined): string | null {
@@ -322,7 +320,7 @@ function artifactsAgentName(agent: TeamComposeItem): string {
   return agent.displayName ?? "Zero";
 }
 
-function ArtifactsAgentFilterSectionLabel({
+function ArtifactsFilterSectionLabel({
   children,
 }: {
   readonly children: ReactNode;
@@ -334,40 +332,52 @@ function ArtifactsAgentFilterSectionLabel({
   );
 }
 
-function ArtifactsAgentFilterOption({
-  active,
+function ArtifactsFilterOption({
+  checked,
+  selectionMode,
   onSelect,
   children,
 }: {
-  readonly active: boolean;
+  readonly checked: boolean;
+  readonly selectionMode: "multiple" | "single";
   readonly onSelect: () => void;
   readonly children: ReactNode;
 }) {
   return (
-    <DropdownMenuItem className="justify-between gap-2" onClick={onSelect}>
+    <DropdownMenuItem
+      role={selectionMode === "multiple" ? "menuitemcheckbox" : "menuitemradio"}
+      aria-checked={checked}
+      className={cn("justify-between gap-2", checked && "bg-muted/50")}
+      onSelect={(event) => {
+        event.preventDefault();
+        onSelect();
+      }}
+    >
       <span className="flex min-w-0 items-center gap-2">{children}</span>
-      {active && (
+      {checked && (
         <IconCheck size={15} stroke={2} className="shrink-0 text-foreground" />
       )}
     </DropdownMenuItem>
   );
 }
 
-function ArtifactsAgentFilter({
+function ArtifactsFilter({
   agents,
   selectedAgentId,
+  selectedCategories,
   onAgentChange,
+  onCategoriesChange,
+  onClearFilters,
 }: {
   readonly agents: readonly TeamComposeItem[];
   readonly selectedAgentId: string | null;
+  readonly selectedCategories: readonly ArtifactCategory[];
   readonly onAgentChange: (value: string | null) => void;
+  readonly onCategoriesChange: (value: readonly ArtifactCategory[]) => void;
+  readonly onClearFilters: () => void;
 }) {
-  const activeAgent =
-    selectedAgentId === null
-      ? undefined
-      : agents.find((agent) => {
-          return agent.id === selectedAgentId;
-        });
+  const activeFilterCount =
+    selectedCategories.length + (selectedAgentId === null ? 0 : 1);
 
   return (
     <DropdownMenu>
@@ -375,7 +385,7 @@ function ArtifactsAgentFilter({
         <Button
           variant="outline"
           size="sm"
-          aria-label="Agent filter"
+          aria-label="Artifact filters"
           className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
           <IconFilter
@@ -383,17 +393,12 @@ function ArtifactsAgentFilter({
             stroke={1.5}
             className="text-muted-foreground"
           />
-          {activeAgent && (
-            <AvatarFromUrl
-              avatarUrl={activeAgent.avatarUrl}
-              alt={artifactsAgentName(activeAgent)}
-              size={16}
-              className="h-4 w-4 rounded-full object-cover"
-            />
+          <span>Filters</span>
+          {activeFilterCount > 0 && (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background">
+              {activeFilterCount}
+            </span>
           )}
-          <span className="max-w-[140px] truncate">
-            {activeAgent ? artifactsAgentName(activeAgent) : "All agents"}
-          </span>
           <IconChevronDown
             size={14}
             stroke={1.5}
@@ -403,69 +408,149 @@ function ArtifactsAgentFilter({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-56 overflow-y-auto"
+        className="max-h-[min(460px,var(--radix-dropdown-menu-content-available-height))] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto p-1.5"
       >
-        <ArtifactsAgentFilterOption
-          active={selectedAgentId === null}
+        <div className="flex items-center justify-between gap-3 px-2 pb-1 pt-1.5">
+          <span className="text-xs font-medium text-muted-foreground/80">
+            Types
+          </span>
+          <button
+            type="button"
+            disabled={activeFilterCount === 0}
+            onClick={onClearFilters}
+            className="rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+          >
+            Clear filters
+          </button>
+        </div>
+        <ArtifactsFilterOption
+          checked={selectedCategories.length === 0}
+          selectionMode="multiple"
+          onSelect={() => {
+            onCategoriesChange([]);
+          }}
+        >
+          All types
+        </ArtifactsFilterOption>
+        <div className="grid grid-cols-2 gap-0.5">
+          {ARTIFACT_TYPE_OPTIONS.map((option) => {
+            const checked = selectedCategories.includes(option.value);
+            return (
+              <ArtifactsFilterOption
+                key={option.value}
+                checked={checked}
+                selectionMode="multiple"
+                onSelect={() => {
+                  onCategoriesChange(
+                    checked
+                      ? selectedCategories.filter((category) => {
+                          return category !== option.value;
+                        })
+                      : [...selectedCategories, option.value],
+                  );
+                }}
+              >
+                {option.label}
+              </ArtifactsFilterOption>
+            );
+          })}
+        </div>
+        <DropdownMenuSeparator className="my-1.5" />
+        <ArtifactsFilterSectionLabel>Agent</ArtifactsFilterSectionLabel>
+        <ArtifactsFilterOption
+          checked={selectedAgentId === null}
+          selectionMode="single"
           onSelect={() => {
             onAgentChange(null);
           }}
         >
           All agents
-        </ArtifactsAgentFilterOption>
-        {agents.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <ArtifactsAgentFilterSectionLabel>
-              Agents
-            </ArtifactsAgentFilterSectionLabel>
-            {agents.map((agent) => {
-              return (
-                <ArtifactsAgentFilterOption
-                  key={agent.id}
-                  active={selectedAgentId === agent.id}
-                  onSelect={() => {
-                    onAgentChange(agent.id);
-                  }}
-                >
-                  <AvatarFromUrl
-                    avatarUrl={agent.avatarUrl}
-                    alt={artifactsAgentName(agent)}
-                    size={16}
-                    className="h-4 w-4 rounded-full object-cover"
-                  />
-                  <span className="truncate">{artifactsAgentName(agent)}</span>
-                </ArtifactsAgentFilterOption>
-              );
-            })}
-          </>
-        )}
+        </ArtifactsFilterOption>
+        {agents.map((agent) => {
+          return (
+            <ArtifactsFilterOption
+              key={agent.id}
+              checked={selectedAgentId === agent.id}
+              selectionMode="single"
+              onSelect={() => {
+                onAgentChange(agent.id);
+              }}
+            >
+              <AvatarFromUrl
+                avatarUrl={agent.avatarUrl}
+                alt=""
+                size={16}
+                className="h-4 w-4 rounded-full object-cover"
+              />
+              <span className="truncate">{artifactsAgentName(agent)}</span>
+            </ArtifactsFilterOption>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function ArtifactFilterChip({
+  label,
+  leading,
+  onRemove,
+}: {
+  readonly label: string;
+  readonly leading?: ReactNode;
+  readonly onRemove: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`Remove ${label} filter`}
+      onClick={onRemove}
+      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {leading}
+      <span className="truncate">{label}</span>
+      <IconX
+        aria-hidden
+        size={13}
+        stroke={1.8}
+        className="shrink-0 text-muted-foreground"
+      />
+    </button>
   );
 }
 
 function ArtifactsToolbar({
   search,
   selectedAgentId,
-  selectedCategory,
+  selectedCategories,
   agents,
+  resultCount,
   onSearchChange,
   onAgentChange,
-  onCategoryChange,
+  onCategoriesChange,
+  onClearFilters,
 }: {
   readonly search: string;
   readonly selectedAgentId: string | null;
-  readonly selectedCategory: ArtifactCategory | null;
+  readonly selectedCategories: readonly ArtifactCategory[];
   readonly agents: readonly TeamComposeItem[];
+  readonly resultCount: number;
   readonly onSearchChange: (value: string) => void;
   readonly onAgentChange: (value: string | null) => void;
-  readonly onCategoryChange: (value: ArtifactCategory | null) => void;
+  readonly onCategoriesChange: (value: readonly ArtifactCategory[]) => void;
+  readonly onClearFilters: () => void;
 }) {
+  const activeAgent =
+    selectedAgentId === null
+      ? undefined
+      : agents.find((agent) => {
+          return agent.id === selectedAgentId;
+        });
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative min-w-0 flex-1 sm:max-w-sm">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
           <IconSearch
             aria-hidden
             size={15}
@@ -479,41 +564,66 @@ function ArtifactsToolbar({
             onChange={(event) => {
               onSearchChange(event.target.value);
             }}
-            className="pl-9"
+            className="h-9 pl-9"
           />
         </div>
-        <ArtifactsAgentFilter
+        <ArtifactsFilter
           agents={agents}
           selectedAgentId={selectedAgentId}
+          selectedCategories={selectedCategories}
           onAgentChange={onAgentChange}
+          onCategoriesChange={onCategoriesChange}
+          onClearFilters={onClearFilters}
         />
       </div>
-      <div
-        className="flex flex-wrap items-center gap-1.5"
-        aria-label="Artifact category filters"
-      >
-        {ARTIFACT_CATEGORY_OPTIONS.map((option) => {
-          const selected = option.value === selectedCategory;
-          return (
-            <button
-              key={option.label}
-              type="button"
-              aria-label={option.ariaLabel}
-              aria-pressed={selected}
-              onClick={() => {
-                onCategoryChange(option.value);
+      <div className="flex min-h-7 items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {selectedCategories.map((category) => {
+            const option = ARTIFACT_TYPE_OPTIONS.find((candidate) => {
+              return candidate.value === category;
+            });
+            const label = option?.label ?? category;
+            return (
+              <ArtifactFilterChip
+                key={category}
+                label={label}
+                onRemove={() => {
+                  onCategoriesChange(
+                    selectedCategories.filter((selectedCategory) => {
+                      return selectedCategory !== category;
+                    }),
+                  );
+                }}
+              />
+            );
+          })}
+          {selectedAgentId !== null && (
+            <ArtifactFilterChip
+              label={
+                activeAgent ? artifactsAgentName(activeAgent) : "Selected agent"
+              }
+              leading={
+                activeAgent ? (
+                  <AvatarFromUrl
+                    avatarUrl={activeAgent.avatarUrl}
+                    alt=""
+                    size={14}
+                    className="h-3.5 w-3.5 rounded-full object-cover"
+                  />
+                ) : undefined
+              }
+              onRemove={() => {
+                onAgentChange(null);
               }}
-              className={cn(
-                "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
-                selected
-                  ? "bg-muted text-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-              )}
-            >
-              {option.label}
-            </button>
-          );
-        })}
+            />
+          )}
+        </div>
+        <span
+          aria-live="polite"
+          className="shrink-0 pt-1 text-xs text-muted-foreground"
+        >
+          {resultCount} {resultCount === 1 ? "artifact" : "artifacts"}
+        </span>
       </div>
     </div>
   );
@@ -836,7 +946,7 @@ function ArtifactCard({
           : undefined
       }
       className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
+        "zero-card group flex flex-col overflow-hidden",
         previewable &&
           "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       )}
@@ -1236,10 +1346,11 @@ function ArtifactsList({
 export function ArtifactsPage() {
   const search = useGet(artifactsSearch$);
   const selectedAgentId = useGet(selectedArtifactsAgentId$);
-  const selectedCategory = useGet(selectedArtifactsCategory$);
+  const selectedCategories = useGet(selectedArtifactsCategories$);
   const setSearch = useSet(setArtifactsSearch$);
   const setSelectedAgentId = useSet(setSelectedArtifactsAgentId$);
-  const setSelectedCategory = useSet(setSelectedArtifactsCategory$);
+  const setSelectedCategories = useSet(setSelectedArtifactsCategories$);
+  const clearFacetFilters = useSet(clearArtifactsFacetFilters$);
   const openChat = useSet(navigateToArtifactThread$);
   const startChat = useSet(startArtifactChat$);
   const pageSignal = useGet(pageSignal$);
@@ -1266,7 +1377,7 @@ export function ArtifactsPage() {
   const artifacts = filterArtifacts(sourceArtifacts, {
     search,
     agentId: selectedAgentId,
-    category: selectedCategory,
+    categories: selectedCategories,
   });
   // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
@@ -1299,7 +1410,7 @@ export function ArtifactsPage() {
               Artifacts
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Browse files from this organization.
+              Find and reuse files created by your agents.
             </p>
           </div>
         </div>
@@ -1314,11 +1425,13 @@ export function ArtifactsPage() {
           <ArtifactsToolbar
             search={search}
             selectedAgentId={selectedAgentId}
-            selectedCategory={selectedCategory}
+            selectedCategories={selectedCategories}
             agents={agents}
+            resultCount={artifacts.length}
             onSearchChange={setSearch}
             onAgentChange={setSelectedAgentId}
-            onCategoryChange={setSelectedCategory}
+            onCategoriesChange={setSelectedCategories}
+            onClearFilters={clearFacetFilters}
           />
           <ArtifactsList
             artifacts={artifacts}
