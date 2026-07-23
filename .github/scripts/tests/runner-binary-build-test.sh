@@ -27,7 +27,10 @@ commit_all() {
 assert_text_change_affects_digest() {
   local repo=$1 path=$2 label=$3 before after
   before=$(digest_value "$repo" aarch64-unknown-linux-musl)
-  printf '\n# %s\n' "$label" >> "${repo}/${path}"
+  case "$path" in
+    *.rs) printf '\n// %s\n' "$label" >> "${repo}/${path}" ;;
+    *) printf '\n# %s\n' "$label" >> "${repo}/${path}" ;;
+  esac
   git -C "$repo" add -- "$path"
   git -C "$repo" commit -qm "$label"
   after=$(digest_value "$repo" aarch64-unknown-linux-musl)
@@ -137,6 +140,7 @@ TOML
 printf '[build]\ntarget-dir = "target"\n' > "${repo}/crates/.cargo/config.toml"
 printf 'pub fn guest() {}\n' > "${repo}/crates/guest-one/src/lib.rs"
 printf 'fn main() {}\n' > "${repo}/crates/runner/src/main.rs"
+printf 'fn main() {}\n' > "${repo}/crates/runner/build.rs"
 printf 'pub fn structural() {}\n' > "${repo}/crates/structural-one/src/lib.rs"
 printf 'pub fn ignored() {}\n' > "${repo}/crates/structural-one/src/ignored.rs"
 printf 'selected fixture\n' > "${repo}/crates/guest-one/fixtures/input.txt"
@@ -189,6 +193,10 @@ assert_text_change_affects_digest \
   "$repo" "crates/guest-one/fixtures/input.txt" "selected-fixture-change"
 assert_text_change_affects_digest \
   "$repo" "crates/runner/mitm-addon/src/runtime.py" "mitm-source-change"
+assert_text_change_affects_digest \
+  "$repo" "crates/runner/Cargo.toml" "selected-manifest-change"
+assert_text_change_affects_digest \
+  "$repo" "crates/runner/build.rs" "build-script-change"
 assert_text_change_affects_digest \
   "$repo" "crates/Cargo.toml" "workspace-manifest-change"
 assert_text_change_affects_digest \
@@ -378,6 +386,11 @@ if TARGET_TRIPLE=powerpc-unknown-linux-musl \
   "${repo}/.github/scripts/runner-binary-build/build.sh" materialize >/dev/null 2>&1; then
   fail "expected unsupported target to fail"
 fi
+if TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE=unexpected-toolchain \
+  "${repo}/.github/scripts/runner-binary-build/build.sh" build >/dev/null 2>&1; then
+  fail "expected a mismatched build toolchain to fail"
+fi
 
 "${REPO_ROOT}/.github/scripts/runner-binary-build/context.sh" \
   validate-workspace "$REPO_ROOT"
@@ -413,6 +426,8 @@ workflow_toolchain=$(awk '
   in_compile && /^      image: / { sub(/^      image: /, ""); print; exit }
 ' "${REPO_ROOT}/.github/workflows/runner-image.yml")
 . "${REPO_ROOT}/.github/scripts/runner-binary-build/contract.env"
+[ "$RUNNER_BINARY_INPUT_SCHEMA_VERSION" = "2" ] \
+  || fail "runner binary input schema must start generation 2"
 [ "$workflow_toolchain" = "$RUNNER_BINARY_TOOLCHAIN_IMAGE" ] \
   || fail "Runner Image workflow toolchain must match the hashed build contract"
 
