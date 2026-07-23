@@ -9,6 +9,7 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
+import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
 
 interface AgentCheckpointByIdArgs {
   readonly checkpointId: string;
@@ -88,6 +89,7 @@ export function agentCheckpointById(
         agentComposeSnapshot: checkpoints.agentComposeSnapshot,
         artifactSnapshots: checkpoints.artifactSnapshots,
         volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
+        storageMounts: checkpoints.storageMounts,
         createdAt: checkpoints.createdAt,
       })
       .from(checkpoints)
@@ -105,6 +107,11 @@ export function agentCheckpointById(
       return null;
     }
 
+    const legacyStorage =
+      row.storageMounts === null
+        ? null
+        : projectLegacyCheckpointStorage(row.storageMounts);
+
     return {
       id: row.id,
       runId: row.runId,
@@ -112,10 +119,16 @@ export function agentCheckpointById(
       agentComposeSnapshot: agentComposeSnapshotSchema.parse(
         row.agentComposeSnapshot,
       ),
-      artifactSnapshots: artifactSnapshotsToRecord(row.artifactSnapshots),
-      volumeVersionsSnapshot: volumeVersionsSnapshotSchema
-        .nullable()
-        .parse(row.volumeVersionsSnapshot ?? null),
+      artifactSnapshots:
+        legacyStorage === null
+          ? artifactSnapshotsToRecord(row.artifactSnapshots)
+          : legacyStorage.artifactVersions,
+      volumeVersionsSnapshot:
+        legacyStorage === null
+          ? volumeVersionsSnapshotSchema
+              .nullable()
+              .parse(row.volumeVersionsSnapshot ?? null)
+          : legacyStorage.volumeVersionsSnapshot,
       createdAt: row.createdAt.toISOString(),
     };
   });

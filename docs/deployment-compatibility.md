@@ -183,13 +183,18 @@ receiver release left backend output unchanged. After that receiver fleet was
 deployed, the API began sending `storageMounts` only to a Runner that advertises
 the capability; old Runners continue receiving both legacy arrays.
 
-New run, session, and checkpoint writers persist canonical Storage mounts and a
-legacy rollback projection. Readers prefer canonical persistence and fall back
-to the legacy projection for old rows. Explicit legacy checkpoint overrides
-also remain on the compatibility reader because canonical mounts intentionally
-do not retain the old compose-volume versus additional-volume distinction.
-Remove the rollback projection only after canonical output and persistence have
-been observed in production and historical rows have been backfilled.
+New run, session, and checkpoint writers persist canonical Storage mounts only.
+Readers prefer canonical persistence and fall back to legacy columns for
+historical rows. Legacy API response shapes are projected from canonical mounts
+for new rows. Explicit legacy checkpoint overrides remain on the compatibility
+reader because canonical mounts intentionally do not retain the old
+compose-volume versus additional-volume distinction. The short-lived runner job
+queue also retains its legacy claim projection until old Runner output is
+removed.
+
+Remove the legacy columns and readers only after historical rows have been
+backfilled and verification finds zero legacy writes, zero unmigrated rows, and
+no lossy conversion.
 
 Runner and guest binaries ship together, so the Runner-to-guest manifest uses
 the canonical shape immediately while the guest reader temporarily accepts both

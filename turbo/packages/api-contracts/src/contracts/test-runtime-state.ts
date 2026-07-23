@@ -46,6 +46,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     checkpoint_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-storage-persistence-state"),
+    run_id: z.uuid(),
+    session_id: z.uuid(),
+    checkpoint_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("delete-storage-row"),
     storage_id: z.uuid(),
   }),
@@ -77,6 +83,17 @@ export const testRuntimeStateActionResponseSchema = z.object({
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
+  storage_persistence: z
+    .object({
+      run_canonical: z.boolean(),
+      run_legacy: z.boolean(),
+      session_canonical: z.boolean(),
+      session_legacy: z.boolean(),
+      checkpoint_canonical: z.boolean(),
+      checkpoint_legacy_artifacts: z.boolean(),
+      checkpoint_legacy_volumes: z.boolean(),
+    })
+    .optional(),
 });
 
 export const testRuntimeStateContract = c.router({

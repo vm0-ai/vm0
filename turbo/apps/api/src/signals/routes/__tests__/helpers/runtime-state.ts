@@ -138,6 +138,26 @@ export async function removeCheckpointCanonicalStorageState(
   });
 }
 
+export async function readStoragePersistenceState(
+  context: TestContext,
+  ids: {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly checkpointId: string;
+  },
+): Promise<NonNullable<TestRuntimeStateActionResponse["storage_persistence"]>> {
+  const response = await postAction(context, {
+    action: "read-storage-persistence-state",
+    run_id: ids.runId,
+    session_id: ids.sessionId,
+    checkpoint_id: ids.checkpointId,
+  });
+  if (!response.storage_persistence) {
+    throw new Error("readStoragePersistenceState missing storage_persistence");
+  }
+  return response.storage_persistence;
+}
+
 export async function deleteStorageRow(
   context: TestContext,
   storageId: string,
