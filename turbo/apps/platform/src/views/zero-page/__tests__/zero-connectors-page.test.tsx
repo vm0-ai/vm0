@@ -1742,8 +1742,14 @@ describe("connectors page", () => {
     });
   });
 
-  it("starts Stripe OAuth from the connect dialog", async () => {
+  it("connects Stripe OAuth from the dialog for all visible agents", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research Agent"),
+    ]);
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "stripe",
@@ -1793,6 +1799,14 @@ describe("connectors page", () => {
         });
       },
     );
+    const authorizedAgentIds: string[] = [];
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ params, respond }) => {
+        authorizedAgentIds.push(params.id);
+        return respond(200, { enabledTypes: ["stripe"] });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -1814,11 +1828,27 @@ describe("connectors page", () => {
       expect(authWindow.location.href).toBe(
         "https://oauth.test/stripe/authorize",
       );
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+    });
+
+    mockConnectors([{ type: "stripe", authMethod: "oauth" }]);
+    context.mocks.ably.trigger("connector:changed");
+
+    await waitFor(() => {
+      expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
     });
   });
 
-  it("enables a no-auth connector for the default agent without dialogs", async () => {
+  it("enables a no-auth connector for all visible agents without dialogs", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research Agent"),
+    ]);
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "stripe",
@@ -1863,6 +1893,14 @@ describe("connectors page", () => {
         });
       },
     );
+    const authorizedAgentIds: string[] = [];
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ params, respond }) => {
+        authorizedAgentIds.push(params.id);
+        return respond(200, { enabledTypes: ["stripe"] });
+      },
+    );
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -1871,6 +1909,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(connectCount).toBe(1);
+      expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
     });
     expect(openMock.calls).toHaveLength(0);
     expect(
@@ -2609,8 +2648,14 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not issue a client-side authorization update after connecting", async () => {
+  it("authorizes every visible non-default agent after connecting", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research Agent"),
+    ]);
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "axiom",
@@ -2657,16 +2702,18 @@ describe("connectors page", () => {
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: [] });
     });
-    let authorizationUpdateCount = 0;
-    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
-      authorizationUpdateCount += 1;
-      return respond(400, {
-        error: {
-          code: "CONNECTOR_ACCESS_UPDATE_FAILED",
-          message: "Could not update connector access",
-        },
-      });
-    });
+    const authorizedAgentIds: string[] = [];
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, params, respond }) => {
+        authorizedAgentIds.push(params.id);
+        expect(body).toStrictEqual({
+          enabledTypes: ["axiom"],
+          operation: "add",
+        });
+        return respond(200, { enabledTypes: ["axiom"] });
+      },
+    );
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -2685,15 +2732,14 @@ describe("connectors page", () => {
       expect(
         screen.getByText("Public Axiom connected successfully"),
       ).toBeInTheDocument();
+      expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
     });
     expect(
       within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
     ).toBeInTheDocument();
-    expect(authorizationUpdateCount).toBe(0);
     expect(
       screen.queryByText("You've successfully connected with Public Axiom!"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Could not update connector access")).toBeNull();
     expect(
       screen.queryByText("Public Axiom enabled for 1 agent"),
     ).not.toBeInTheDocument();

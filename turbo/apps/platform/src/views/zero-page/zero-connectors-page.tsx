@@ -983,7 +983,11 @@ export function ZeroConnectorsPage() {
         return connect(
           connectorRef,
           authMethod,
-          { connectorLabel: ct.label, connectorIcon: ct.icon },
+          {
+            authorizeVisibleAgents: true,
+            connectorLabel: ct.label,
+            connectorIcon: ct.icon,
+          },
           signal,
         );
       },
@@ -992,7 +996,10 @@ export function ZeroConnectorsPage() {
           {
             connectorRef,
             authMethod,
-            options: { connectorLabel: ct.label },
+            options: {
+              authorizeVisibleAgents: true,
+              connectorLabel: ct.label,
+            },
           },
           signal,
         );
@@ -1131,6 +1138,7 @@ export function ZeroConnectorsPage() {
 
       {selectedConnectorRef && (
         <ConnectModal
+          authorizeVisibleAgentsOnConnect
           onClose={() => {
             return setSelected(null);
           }}
@@ -1176,6 +1184,7 @@ export function ZeroConnectorsPage() {
                 connectorRef,
                 authMethod,
                 {
+                  authorizeVisibleAgents: true,
                   connectorLabel: connector.label,
                   connectorIcon: connector.icon,
                 },
