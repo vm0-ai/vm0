@@ -518,11 +518,11 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(
-        within(purchaseDialog).getByText("Buy $20/month"),
+        within(purchaseDialog).getByText("Buy $200/month"),
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Buy $20/month", purchaseDialog));
+    click(buttonByText("Buy $200/month", purchaseDialog));
 
     await waitFor(() => {
       expect(requestedQuantity).toBe(2);
