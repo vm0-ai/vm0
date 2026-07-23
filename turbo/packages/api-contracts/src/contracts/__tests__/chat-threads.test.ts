@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  artifactFavoriteBodySchema,
   artifactItemSchema,
   artifactsContract,
   artifactsListResponseSchema,
@@ -310,18 +309,6 @@ describe("artifacts contract", () => {
   it("exposes an org-level generated artifacts route", () => {
     expect(artifactsContract.list.method).toBe("GET");
     expect(artifactsContract.list.path).toBe("/api/zero/artifacts");
-    expect(artifactsContract.listFavorites.method).toBe("GET");
-    expect(artifactsContract.listFavorites.path).toBe(
-      "/api/zero/artifacts/favorites",
-    );
-    expect(artifactsContract.favorite.method).toBe("POST");
-    expect(artifactsContract.favorite.path).toBe(
-      "/api/zero/artifacts/favorite",
-    );
-    expect(artifactsContract.unfavorite.method).toBe("POST");
-    expect(artifactsContract.unfavorite.path).toBe(
-      "/api/zero/artifacts/unfavorite",
-    );
     expect(artifactsContract.getImageEditSnapshot.method).toBe("GET");
     expect(artifactsContract.getImageEditSnapshot.path).toBe(
       "/api/zero/artifacts/image-edit-snapshot",
@@ -416,14 +403,6 @@ describe("artifacts contract", () => {
       truncated: false,
       nextCursor: null,
       syncUntil: "2026-07-20T04:01:00.000Z",
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("accepts artifact favorite request bodies", () => {
-    const parsed = artifactFavoriteBodySchema.safeParse({
-      artifactUrl: "https://static.vm0.io/artifacts/launch-plan.html",
     });
 
     expect(parsed.success).toBe(true);

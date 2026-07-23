@@ -50,7 +50,6 @@ import {
   chatMessageAssetRefs,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
-import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -1624,17 +1623,6 @@ async function listArtifactHistory(args: {
   };
 }
 
-interface ArtifactFavoriteArgs {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly artifactUrl: string;
-}
-
-interface ArtifactFavoriteScope {
-  readonly userId: string;
-  readonly orgId: string;
-}
-
 export const zeroArtifacts$ = command(
   async (
     { set },
@@ -1670,105 +1658,6 @@ export const zeroArtifacts$ = command(
       syncUntil,
       signal,
     });
-  },
-);
-
-export const artifactFavoriteUrls$ = command(
-  async (
-    { set },
-    args: ArtifactFavoriteScope,
-    signal: AbortSignal,
-  ): Promise<string[]> => {
-    const rows = await set(writeDb$)
-      .select({ artifactUrl: userArtifactFavorites.artifactUrl })
-      .from(userArtifactFavorites)
-      .where(
-        and(
-          eq(userArtifactFavorites.orgId, args.orgId),
-          eq(userArtifactFavorites.userId, args.userId),
-        ),
-      )
-      .orderBy(asc(userArtifactFavorites.artifactUrl));
-    signal.throwIfAborted();
-    return rows.map((row) => {
-      return row.artifactUrl;
-    });
-  },
-);
-
-async function artifactUrlIsVisible(
-  db: Pick<Db, "select">,
-  args: ArtifactFavoriteArgs,
-): Promise<boolean> {
-  const conditions = [
-    ...artifactVisibilityConditions(db, args),
-    eq(runUploadedFiles.url, args.artifactUrl),
-  ];
-  const rows = await db
-    .select({ id: runUploadedFiles.id })
-    .from(runUploadedFiles)
-    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
-    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-    .innerJoin(
-      chatThreads,
-      eq(chatThreads.id, artifactChatThreadId(db, runUploadedFiles.runId)),
-    )
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
-    .where(and(...conditions))
-    .limit(1);
-  return rows.length > 0;
-}
-
-export const favoriteArtifact$ = command(
-  async (
-    { set },
-    args: ArtifactFavoriteArgs,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const db = set(writeDb$);
-    const visible = await db.transaction(async (tx) => {
-      if (!(await artifactUrlIsVisible(tx, args))) {
-        return false;
-      }
-
-      await tx
-        .insert(userArtifactFavorites)
-        .values({
-          orgId: args.orgId,
-          userId: args.userId,
-          artifactUrl: args.artifactUrl,
-        })
-        .onConflictDoNothing({
-          target: [
-            userArtifactFavorites.orgId,
-            userArtifactFavorites.userId,
-            userArtifactFavorites.artifactUrl,
-          ],
-        });
-      return true;
-    });
-    signal.throwIfAborted();
-    return visible;
-  },
-);
-
-export const unfavoriteArtifact$ = command(
-  async (
-    { set },
-    args: ArtifactFavoriteArgs,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db
-      .delete(userArtifactFavorites)
-      .where(
-        and(
-          eq(userArtifactFavorites.orgId, args.orgId),
-          eq(userArtifactFavorites.userId, args.userId),
-          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
-        ),
-      );
-    signal.throwIfAborted();
   },
 );
 
