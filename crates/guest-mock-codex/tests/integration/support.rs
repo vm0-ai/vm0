@@ -395,13 +395,17 @@ mod tests {
         let error = output_with_timeout_before_kill(
             command,
             &["descendant-held-pipe"],
-            Duration::from_millis(20),
+            Duration::from_millis(100),
             Duration::from_millis(30),
             |_| {},
         )
         .unwrap_err();
 
         assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert_eq!(
+            error.to_string(),
+            "stdout did not close before the child output deadline"
+        );
         assert!(
             started.elapsed() < Duration::from_millis(500),
             "output deadline should bound reader completion"
