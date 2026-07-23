@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { IDBPDatabase } from "idb";
+import { delay } from "signal-timers";
 import {
   artifactItemSchema,
   artifactsContract,
@@ -20,7 +21,7 @@ import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { onRef, onRejection } from "../utils.ts";
+import { onRef, resetSignal, settle } from "../utils.ts";
 import {
   ensureAgentDraft$,
   loadAgentDraft$,
@@ -33,29 +34,42 @@ const ARTIFACTS_PAGE_SIZE = 2000;
 // Backstop against an unbounded fetch loop (e.g. a server that never returns a
 // null cursor). Sits far above any realistic per-org artifact count.
 const ARTIFACTS_MAX_PAGES = 100;
-// Read the whole locally-cached set back for the cache-first paint.
-const ARTIFACTS_CACHE_READ_LIMIT = ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
-
 // Number of cards the grid makes available per automatic loading step. Row
 // virtualization keeps the mounted DOM bounded independently of this window.
 const ARTIFACT_WINDOW_STEP = 60;
+// The background merge still needs the complete cached snapshot, but first
+// paint only needs the first visible window.
+const ARTIFACTS_FULL_CACHE_READ_LIMIT =
+  ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
 const ARTIFACT_FOCUS_TARGET_SELECTOR =
   'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const internalArtifactsSearch$ = state("");
 const internalArtifactsAgentId$ = state<string | null>(null);
 const internalArtifactsCategory$ = state<ArtifactCategory | null>(null);
-const internalArtifactsFavoritesOnly$ = state(false);
-const internalArtifactFavoriteOverrides$ = state<
-  Readonly<Record<string, boolean>>
->({});
-const internalArtifactFavoritesReload$ = state(0);
 const internalArtifactsReload$ = state(0);
 const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
 const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
 const internalArtifactsGridElement$ = state<HTMLElement | null>(null);
 const internalArtifactsGridWidth$ = state(0);
 const internalArtifactsPendingFocusIndex$ = state<number | null>(null);
+const resetArtifactsSyncSignal$ = resetSignal();
+
+interface ArtifactsPageData {
+  readonly artifacts: readonly ArtifactItem[];
+}
+
+export interface RemoteArtifactsData extends ArtifactsPageData {
+  readonly mergeCachedArtifacts: boolean;
+}
+
+interface RemoteArtifactsProgress extends RemoteArtifactsData {
+  readonly reload: number;
+}
+
+const internalRemoteArtifactsProgress$ = state<RemoteArtifactsProgress | null>(
+  null,
+);
 
 interface ArtifactsScrollMetrics {
   readonly clientHeight: number;
@@ -66,10 +80,6 @@ const internalArtifactsScrollMetrics$ = state<ArtifactsScrollMetrics>({
   clientHeight: 0,
   scrollTop: 0,
 });
-
-interface ArtifactsPageData {
-  readonly artifacts: readonly ArtifactItem[];
-}
 
 function artifactItemCacheStores(dbPromise: Promise<IDBPDatabase>) {
   return createArtifactItemCacheStores(() => {
@@ -87,10 +97,6 @@ export const selectedArtifactsAgentId$ = computed((get) => {
 
 export const selectedArtifactsCategory$ = computed((get) => {
   return get(internalArtifactsCategory$);
-});
-
-export const artifactsFavoritesOnly$ = computed((get) => {
-  return get(internalArtifactsFavoritesOnly$);
 });
 
 // How many artifacts the grid currently makes available. Grown automatically
@@ -251,26 +257,15 @@ export const setSelectedArtifactsCategory$ = command(
   },
 );
 
-export const setArtifactsFavoritesOnly$ = command(
-  ({ set }, favoritesOnly: boolean) => {
-    set(internalArtifactsFavoritesOnly$, favoritesOnly);
-    set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
-  },
-);
-
 export const resetArtifactsFilters$ = command(({ set }) => {
   set(internalArtifactsSearch$, "");
   set(internalArtifactsAgentId$, null);
   set(internalArtifactsCategory$, null);
-  set(internalArtifactsFavoritesOnly$, false);
-  set(internalArtifactFavoriteOverrides$, {});
-  set(internalArtifactFavoritesReload$, (version) => {
-    return version + 1;
-  });
   set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
 });
 
 export const reloadArtifacts$ = command(({ set }) => {
+  set(internalRemoteArtifactsProgress$, null);
   set(internalArtifactsReload$, (version) => {
     return version + 1;
   });
@@ -334,129 +329,292 @@ function mergeArtifactItems(
   });
 }
 
-// Remote source: read the last-known cache immediately, request only rows that
-// changed since its synchronization timestamp, and merge those rows locally.
-// A server without incremental support omits `syncUntil`; in that case its
-// response is treated as the historical full snapshot for rolling-deploy
-// compatibility.
-export const remoteArtifacts$ = computed(
-  async (get): Promise<ArtifactsPageData> => {
-    get(internalArtifactsReload$);
+interface InitialRemoteArtifactsPage extends RemoteArtifactsData {
+  readonly nextCursor: string | null;
+  readonly reload: number;
+  readonly syncUntil: string | undefined;
+  readonly updatedAfter: string | undefined;
+}
+
+interface FetchRemainingArtifactPagesInput {
+  readonly initialArtifacts: readonly ArtifactItem[];
+  readonly initialCursor: string | undefined;
+  readonly initialSyncUntil: string | undefined;
+  readonly mergeCachedArtifacts: boolean;
+  readonly reload: number;
+  readonly updatedAfter: string | undefined;
+}
+
+interface RemoteArtifactsSnapshot {
+  readonly artifacts: ArtifactItem[];
+  readonly syncUntil: string | undefined;
+}
+
+// The first remote page resolves independently so the view can render it while
+// later cursor pages continue loading.
+const initialRemoteArtifactsPage$ = computed(
+  async (get): Promise<InitialRemoteArtifactsPage> => {
+    const reload = get(internalArtifactsReload$);
     const dbPromise = get(chatIdb$);
     const client = get(zeroClient$)(artifactsContract);
     const stores = artifactItemCacheStores(dbPromise);
-    const [cachedArtifacts, lastSyncedAt] = await Promise.all([
-      stores.readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT }),
+    const [cachedHead, lastSyncedAt] = await Promise.all([
+      // This best-effort single-row read only preserves the rollout fallback
+      // for caches created before sync timestamps existed. The cache-first
+      // display uses the strict bounded read below.
+      stores.readStore.readRecentBestEffort({ limit: 1 }),
       stores.readStore.readLastSyncedAt(),
     ]);
-    const updatedAfter = lastSyncedAt ?? cachedArtifacts[0]?.createdAt;
-    const remoteArtifacts: ArtifactItem[] = [];
-    let cursor: string | undefined;
-    let syncUntil: string | undefined;
-    for (let page = 0; page < ARTIFACTS_MAX_PAGES; page += 1) {
+    const updatedAfter =
+      cachedHead.length === 0
+        ? undefined
+        : (lastSyncedAt ?? cachedHead[0]?.createdAt);
+    const result = await accept(
+      client.list({
+        query: {
+          limit: ARTIFACTS_PAGE_SIZE,
+          updatedAfter,
+        },
+      }),
+      [200],
+    );
+    const syncUntil = result.body.syncUntil;
+    return {
+      artifacts: mergeArtifactItems(
+        [],
+        result.body.artifacts.map((item) => {
+          return artifactItemSchema.parse(item);
+        }),
+      ),
+      mergeCachedArtifacts: Boolean(updatedAfter && syncUntil),
+      nextCursor: result.body.nextCursor,
+      reload,
+      syncUntil,
+      updatedAfter,
+    };
+  },
+);
+
+// Remote source: publish the first page immediately, then adopt each cumulative
+// page produced by syncArtifacts$.
+export const remoteArtifacts$ = computed(
+  async (get): Promise<RemoteArtifactsData> => {
+    const progress = get(internalRemoteArtifactsProgress$);
+    const initial = await get(initialRemoteArtifactsPage$);
+    const current = progress?.reload === initial.reload ? progress : initial;
+    return {
+      artifacts: current.artifacts,
+      mergeCachedArtifacts: current.mergeCachedArtifacts,
+    };
+  },
+);
+
+const fetchRemainingArtifactPages$ = command(
+  async (
+    { get, set },
+    input: FetchRemainingArtifactPagesInput,
+    signal: AbortSignal,
+  ): Promise<RemoteArtifactsSnapshot | null> => {
+    const client = get(zeroClient$)(artifactsContract);
+    let artifacts = [...input.initialArtifacts];
+    let cursor = input.initialCursor;
+    let syncUntil = input.initialSyncUntil;
+    set(internalRemoteArtifactsProgress$, {
+      artifacts,
+      mergeCachedArtifacts: input.mergeCachedArtifacts,
+      reload: input.reload,
+    });
+
+    for (let page = 1; cursor && page < ARTIFACTS_MAX_PAGES; page += 1) {
       const result = await accept(
         client.list({
           query: {
             limit: ARTIFACTS_PAGE_SIZE,
             cursor,
-            updatedAfter,
+            updatedAfter: input.updatedAfter,
           },
+          fetchOptions: { signal },
         }),
         [200],
       );
+      signal.throwIfAborted();
       syncUntil ??= result.body.syncUntil;
-      remoteArtifacts.push(
-        ...result.body.artifacts.map((item) => {
+      artifacts = mergeArtifactItems(
+        artifacts,
+        result.body.artifacts.map((item) => {
           return artifactItemSchema.parse(item);
         }),
       );
-      if (!result.body.nextCursor) {
-        break;
+      if (get(internalArtifactsReload$) !== input.reload) {
+        return null;
       }
-      cursor = result.body.nextCursor;
+      set(internalRemoteArtifactsProgress$, {
+        artifacts,
+        mergeCachedArtifacts: input.mergeCachedArtifacts,
+        reload: input.reload,
+      });
+      cursor = result.body.nextCursor ?? undefined;
     }
 
-    const mergeBase = updatedAfter && syncUntil ? cachedArtifacts : [];
-    const artifacts = mergeArtifactItems(mergeBase, remoteArtifacts);
-    const cacheUpdated = await stores.writeStore.replaceItems(artifacts);
-    if (cacheUpdated && syncUntil) {
-      await stores.writeStore.setLastSyncedAt(syncUntil);
-    }
-    return { artifacts };
+    return { artifacts, syncUntil };
   },
 );
 
-// Cache-first paint: the last-known artifact set from IndexedDB. Never throws
-// (reads degrade to an empty list), so it is always a safe fallback.
+// Continue the remote cursor walk after first-page paint. Cache persistence is
+// deliberately last so it never gates data already published to the view.
+export const syncArtifacts$ = command(
+  async ({ get, set }, parentSignal: AbortSignal) => {
+    const signal = set(resetArtifactsSyncSignal$, parentSignal);
+    const initial = await get(initialRemoteArtifactsPage$);
+    signal.throwIfAborted();
+    if (get(internalArtifactsReload$) !== initial.reload) {
+      return;
+    }
+
+    const incrementalSnapshot = await set(
+      fetchRemainingArtifactPages$,
+      {
+        initialArtifacts: initial.artifacts,
+        initialCursor: initial.nextCursor ?? undefined,
+        initialSyncUntil: initial.syncUntil,
+        mergeCachedArtifacts: initial.mergeCachedArtifacts,
+        reload: initial.reload,
+        updatedAfter: initial.updatedAfter,
+      },
+      signal,
+    );
+    if (!incrementalSnapshot) {
+      return;
+    }
+    let { artifacts, syncUntil } = incrementalSnapshot;
+
+    signal.throwIfAborted();
+    if (get(internalArtifactsReload$) !== initial.reload) {
+      return;
+    }
+
+    const stores = artifactItemCacheStores(get(chatIdb$));
+    if (initial.mergeCachedArtifacts) {
+      const cachedArtifactsResult = await settle(
+        stores.readStore.readRecent(
+          { limit: ARTIFACTS_FULL_CACHE_READ_LIMIT },
+          signal,
+        ),
+        signal,
+      );
+      if (get(internalArtifactsReload$) !== initial.reload) {
+        return;
+      }
+      if (cachedArtifactsResult.ok) {
+        artifacts = mergeArtifactItems(cachedArtifactsResult.value, artifacts);
+      } else {
+        // An incremental response is incomplete without the full local
+        // snapshot. If IndexedDB cannot provide it within its strict deadline,
+        // recover with an authoritative server snapshot instead of silently
+        // leaving the view capped at its 60-item first-paint window.
+        const result = await accept(
+          get(zeroClient$)(artifactsContract).list({
+            query: { limit: ARTIFACTS_PAGE_SIZE },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+        if (get(internalArtifactsReload$) !== initial.reload) {
+          return;
+        }
+        const fullSnapshot = await set(
+          fetchRemainingArtifactPages$,
+          {
+            initialArtifacts: mergeArtifactItems(
+              [],
+              result.body.artifacts.map((item) => {
+                return artifactItemSchema.parse(item);
+              }),
+            ),
+            initialCursor: result.body.nextCursor ?? undefined,
+            initialSyncUntil: result.body.syncUntil,
+            mergeCachedArtifacts: false,
+            reload: initial.reload,
+            updatedAfter: undefined,
+          },
+          signal,
+        );
+        if (!fullSnapshot) {
+          return;
+        }
+        ({ artifacts, syncUntil } = fullSnapshot);
+      }
+    }
+    set(internalRemoteArtifactsProgress$, {
+      artifacts,
+      mergeCachedArtifacts: false,
+      reload: initial.reload,
+    });
+
+    // Yield a browser task after publishing the complete snapshot so React can
+    // paint it before a large clear-and-replace transaction starts.
+    await delay(0, { signal });
+    signal.throwIfAborted();
+    if (get(internalArtifactsReload$) !== initial.reload) {
+      return;
+    }
+    const cacheUpdated = await stores.writeStore.replaceItems(
+      artifacts,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (get(internalArtifactsReload$) !== initial.reload) {
+      return;
+    }
+    if (cacheUpdated && syncUntil) {
+      await stores.writeStore.setLastSyncedAt(syncUntil, signal);
+    }
+  },
+);
+
+export function mergeArtifactSources(
+  cachedArtifacts: readonly ArtifactItem[],
+  remote: RemoteArtifactsData | null,
+): readonly ArtifactItem[] {
+  if (!remote) {
+    return cachedArtifacts;
+  }
+  return remote.mergeCachedArtifacts
+    ? mergeArtifactItems(cachedArtifacts, remote.artifacts)
+    : remote.artifacts;
+}
+
+// Cache-first paint reads only the first visible window. Unlike the background
+// full-snapshot read, failures remain distinguishable from a genuinely empty
+// cache through the loadable state.
 export const cachedArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
     get(internalArtifactsReload$);
     const dbPromise = get(chatIdb$);
     const artifacts = await artifactItemCacheStores(
       dbPromise,
-    ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });
+    ).readStore.readRecent({ limit: ARTIFACT_WINDOW_STEP });
     return { artifacts };
   },
 );
 
-export const remoteArtifactFavoriteUrls$ = computed(
-  async (get): Promise<ReadonlySet<string>> => {
-    get(internalArtifactFavoritesReload$);
-    const client = get(zeroClient$)(artifactsContract);
-    const result = await accept(client.listFavorites(), [200]);
-    return new Set(result.body.artifactUrls);
-  },
-);
-
-export type ArtifactPageItem = ArtifactItem & {
-  readonly isFavorited: boolean;
-};
-
-function applyArtifactFavoriteState(
-  item: ArtifactItem,
-  favoriteUrls: ReadonlySet<string> | null,
-  overrides: Readonly<Record<string, boolean>>,
-): ArtifactPageItem {
-  return {
-    ...item,
-    isFavorited: overrides[item.url] ?? favoriteUrls?.has(item.url) ?? false,
-  };
-}
-
-export function applyArtifactFavorites(
-  artifacts: readonly ArtifactItem[],
-  favoriteUrls: ReadonlySet<string> | null,
-  overrides: Readonly<Record<string, boolean>>,
-): ArtifactPageItem[] {
-  return artifacts.map((artifact) => {
-    return applyArtifactFavoriteState(artifact, favoriteUrls, overrides);
-  });
-}
-
-export const artifactFavoriteOverrides$ = computed((get) => {
-  return get(internalArtifactFavoriteOverrides$);
-});
-
 // Applies the search / agent / category filters in memory over the active set,
 // so switching filters is instant and never re-fetches or truncates.
 export function filterArtifacts(
-  artifacts: readonly ArtifactPageItem[],
+  artifacts: readonly ArtifactItem[],
   filters: {
     readonly search: string;
     readonly agentId: string | null;
     readonly category: ArtifactCategory | null;
-    readonly favoritesOnly: boolean;
   },
-): ArtifactPageItem[] {
+): ArtifactItem[] {
   const searchTokens = normalizedSearchTokens(filters.search);
   const filtered = artifacts.filter((item) => {
     if (filters.agentId && item.agentId !== filters.agentId) {
       return false;
     }
     if (!artifactMatchesCategory(item, filters.category)) {
-      return false;
-    }
-    if (filters.favoritesOnly && item.isFavorited !== true) {
       return false;
     }
     if (searchTokens.length === 0) {
@@ -469,41 +627,6 @@ export function filterArtifacts(
   });
   return filtered;
 }
-
-export const toggleArtifactFavorite$ = command(
-  async ({ get, set }, item: ArtifactPageItem, signal: AbortSignal) => {
-    const currentIsFavorited = item.isFavorited;
-    const nextIsFavorited = !currentIsFavorited;
-    set(internalArtifactFavoriteOverrides$, (overrides) => {
-      return { ...overrides, [item.url]: nextIsFavorited };
-    });
-
-    const client = get(zeroClient$)(artifactsContract);
-    const request = nextIsFavorited
-      ? accept(
-          client.favorite({
-            body: { artifactUrl: item.url },
-            fetchOptions: { signal },
-          }),
-          [204],
-        )
-      : accept(
-          client.unfavorite({
-            body: { artifactUrl: item.url },
-            fetchOptions: { signal },
-          }),
-          [204],
-        );
-    await onRejection(request, () => {
-      if (!signal.aborted) {
-        set(internalArtifactFavoriteOverrides$, (overrides) => {
-          return { ...overrides, [item.url]: currentIsFavorited };
-        });
-      }
-    });
-    signal.throwIfAborted();
-  },
-);
 
 export const navigateToArtifactThread$ = command(
   ({ set }, threadId: string) => {

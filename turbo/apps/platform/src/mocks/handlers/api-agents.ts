@@ -207,21 +207,6 @@ export const apiAgentsHandlers = [
     return respond(200, { artifacts: [], truncated: false, nextCursor: null });
   }),
 
-  // GET /api/zero/artifacts/favorites
-  mockApi(artifactsContract.listFavorites, ({ respond }) => {
-    return respond(200, { artifactUrls: [] });
-  }),
-
-  // POST /api/zero/artifacts/favorite
-  mockApi(artifactsContract.favorite, ({ respond }) => {
-    return respond(204);
-  }),
-
-  // POST /api/zero/artifacts/unfavorite
-  mockApi(artifactsContract.unfavorite, ({ respond }) => {
-    return respond(204);
-  }),
-
   // GET /api/zero/chat-threads/:id (thread detail)
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {

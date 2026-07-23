@@ -1,19 +1,4 @@
 import type { PresentationSpeakerNotesPatch } from "@vm0/api-contracts/contracts/zero-host";
-import {
-  appendPresentationElementOffsetPreviewRuntime,
-  findPresentationMoveCandidate,
-  hasPresentationElementOffsets,
-  PRESENTATION_ELEMENT_OFFSET_PREVIEW_NONCE,
-  PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE,
-  presentationMoveBlocksForSlide,
-  presentationMovementSupport,
-  selectPresentationMoveCandidates,
-  syncPresentationElementOffsetRuntime,
-  writePresentationElementOffset,
-  type PresentationMoveBlock,
-} from "./presentation-html-element-offsets.ts";
-
-export type { PresentationMoveBlock } from "./presentation-html-element-offsets.ts";
 
 const EDITABLE_SELECTOR = '[data-vm0-editable="text"]';
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
@@ -66,8 +51,6 @@ export interface PresentationSlideDraft {
 export interface PresentationEditDraft {
   readonly blocks: readonly PresentationEditBlock[];
   readonly html: string;
-  readonly moveBlocks: readonly PresentationMoveBlock[];
-  readonly movementSupported: boolean;
   readonly slides: readonly PresentationSlideDraft[];
 }
 
@@ -330,19 +313,7 @@ export function parsePresentationEditDraft(
       );
     },
   );
-  const moveBlocks = slideElements.flatMap((slide, slideIndex) => {
-    return presentationMoveBlocksForSlide({
-      slide,
-      slideId: slideIdForElement(slide, slideIndex),
-    });
-  });
-  return {
-    blocks,
-    html: serializeDoc(doc),
-    moveBlocks,
-    movementSupported: presentationMovementSupport(doc).supported,
-    slides,
-  };
+  return { blocks, html: serializeDoc(doc), slides };
 }
 
 function findSlide(doc: Document, slideId: string): Element | null {
@@ -364,9 +335,6 @@ function findEditable(slide: Element, editId: string): Element | null {
 function isTransientPresentationEditorAttribute(name: string): boolean {
   switch (name) {
     case "data-vm0-editor-edit-id":
-    case "data-vm0-editor-move-id":
-    case "data-vm0-editor-selection-overlay":
-    case "data-vm0-editor-selected":
     case "data-vm0-editor-slide-id":
     case "data-vm0-editor-stage": {
       return true;
@@ -395,7 +363,6 @@ function sanitizePreviewTree(root: ParentNode): void {
       const value = attribute.value.trim();
       if (
         isTransientPresentationEditorAttribute(name) ||
-        name === PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE ||
         name.startsWith("on") ||
         ((name === "href" ||
           name === "src" ||
@@ -449,11 +416,9 @@ function sanitizePreviewDocument(doc: Document): void {
   sanitizePreviewTree(doc);
   const csp = doc.createElement("meta");
   csp.httpEquiv = "Content-Security-Policy";
-  csp.content = hasPresentationElementOffsets(doc)
-    ? `script-src 'nonce-${PRESENTATION_ELEMENT_OFFSET_PREVIEW_NONCE}'; object-src 'none'; frame-src 'none'; worker-src 'none'`
-    : "script-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'";
+  csp.content =
+    "script-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'";
   doc.head.prepend(csp);
-  appendPresentationElementOffsetPreviewRuntime(doc);
 }
 
 function applyPresentationPreviewBase(
@@ -807,40 +772,14 @@ export function materializePresentationThemeSwitcherDefaults(
 export function patchPresentationHtml(params: {
   readonly blocks: readonly PresentationEditBlock[];
   readonly html: string;
-  readonly moveBlocks?: readonly PresentationMoveBlock[];
   readonly slides: readonly PresentationSlideDraft[];
 }): string {
   const doc = new DOMParser().parseFromString(params.html, "text/html");
-  for (const element of Array.from(
-    doc.querySelectorAll(
-      `[${PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE}]`,
-    ),
-  )) {
-    element.removeAttribute(
-      PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE,
-    );
-  }
   for (const block of params.blocks) {
     const slide = findSlide(doc, block.slideId);
     const editable = slide ? findEditable(slide, block.editId) : null;
     if (editable && editable.textContent !== block.text) {
       editable.textContent = block.text;
-    }
-  }
-
-  for (const block of params.moveBlocks ?? []) {
-    const slide = findSlide(doc, block.slideId);
-    const element = slide
-      ? findPresentationMoveCandidate({ block, slide })
-      : null;
-    if (element) {
-      writePresentationElementOffset({
-        element,
-        elementId: block.elementId,
-        elementIdGenerated: block.elementIdGenerated,
-        offsetX: block.offsetX,
-        offsetY: block.offsetY,
-      });
     }
   }
 
@@ -851,11 +790,7 @@ export function patchPresentationHtml(params: {
       ? metadata.editProtocolVersion
       : undefined;
   metadata.kind = "presentation-html";
-  if (hasPresentationElementOffsets(doc)) {
-    metadata.editProtocolVersion = Math.max(existingVersion ?? 1, 2);
-  } else if (existingVersion === undefined || existingVersion === 2) {
-    metadata.editProtocolVersion = 1;
-  }
+  metadata.editProtocolVersion = existingVersion ?? 1;
   const metadataSlides = isRecord(metadata.slides)
     ? { ...metadata.slides }
     : {};
@@ -868,7 +803,6 @@ export function patchPresentationHtml(params: {
   }
   metadata.slides = metadataSlides;
   deckMetadataScript(doc).textContent = JSON.stringify(metadata, null, 2);
-  syncPresentationElementOffsetRuntime(doc);
   return serializeDoc(doc);
 }
 
@@ -903,80 +837,7 @@ export function applyPresentationSpeakerNotesPatch(params: {
   return { appliedCount, slides };
 }
 
-function presentationPreviewInteractionStyle(
-  movementEditingEnabled: boolean,
-): string {
-  if (!movementEditingEnabled) {
-    return `
-      [data-vm0-editor-edit-id] {
-        cursor: text !important;
-        outline: 4px solid transparent !important;
-        outline-offset: 4px !important;
-        z-index: 2 !important;
-        pointer-events: auto !important;
-        user-select: text !important;
-        -webkit-user-select: text !important;
-        -webkit-user-modify: read-write-plaintext-only !important;
-        caret-color: auto !important;
-      }
-      [data-vm0-editor-edit-id]:hover {
-        outline-color: #0f82ff !important;
-        filter: none !important;
-      }
-      [data-vm0-editor-edit-id]:focus {
-        outline-color: hsl(var(--ring, 15 80% 66%)) !important;
-        filter: none !important;
-      }
-    `;
-  }
-  return `
-    [data-vm0-editor-move-id] {
-      cursor: move !important;
-      outline: 4px solid transparent !important;
-      outline-offset: 4px !important;
-      z-index: 2 !important;
-      pointer-events: auto !important;
-      user-select: none !important;
-      -webkit-user-select: none !important;
-    }
-    [data-vm0-editor-selection-overlay] {
-      position: fixed !important;
-      display: block !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: 4px solid #0f82ff !important;
-      border-radius: 0 !important;
-      outline: 0 !important;
-      box-sizing: border-box !important;
-      background: transparent !important;
-      opacity: 1 !important;
-      filter: none !important;
-      mix-blend-mode: normal !important;
-      transform: none !important;
-      visibility: visible !important;
-      pointer-events: none !important;
-      z-index: 2147483647 !important;
-    }
-    [data-vm0-editor-selection-overlay][hidden] {
-      display: none !important;
-    }
-    [data-vm0-editor-edit-id][contenteditable="true"] {
-      cursor: text !important;
-      user-select: text !important;
-      -webkit-user-select: text !important;
-      -webkit-user-modify: read-write-plaintext-only !important;
-      caret-color: auto !important;
-    }
-    [data-vm0-editor-edit-id][contenteditable="true"]:focus {
-      outline: none !important;
-    }
-  `;
-}
-
-function appendPresentationPreviewStyle(
-  previewDoc: Document,
-  movementEditingEnabled: boolean,
-): void {
+function appendPresentationPreviewStyle(previewDoc: Document): void {
   const style = previewDoc.createElement("style");
   style.textContent = `
     html, body {
@@ -1047,7 +908,25 @@ function appendPresentationPreviewStyle(
       border-radius: 0 !important;
       box-sizing: border-box !important;
     }
-    ${presentationPreviewInteractionStyle(movementEditingEnabled)}
+    [data-vm0-editor-edit-id] {
+      cursor: text !important;
+      outline: 4px solid transparent !important;
+      outline-offset: 4px !important;
+      z-index: 2 !important;
+      pointer-events: auto !important;
+      user-select: text !important;
+      -webkit-user-select: text !important;
+      -webkit-user-modify: read-write-plaintext-only !important;
+      caret-color: auto !important;
+    }
+    [data-vm0-editor-edit-id]:hover {
+      outline-color: #0f82ff !important;
+      filter: none !important;
+    }
+    [data-vm0-editor-edit-id]:focus {
+      outline-color: hsl(var(--ring, 15 80% 66%)) !important;
+      filter: none !important;
+    }
   `;
   previewDoc.head.append(style);
 }
@@ -1062,19 +941,6 @@ function appendAdditionalHeadStyle(
   const style = previewDoc.createElement("style");
   style.textContent = styleText;
   previewDoc.head.append(style);
-}
-
-function annotatePresentationMoveCandidates(
-  slide: Element,
-  slideId: string,
-): void {
-  const candidates = selectPresentationMoveCandidates(slide);
-  for (const block of presentationMoveBlocksForSlide({ slide, slideId })) {
-    const candidate = candidates[block.objectIndex];
-    if (candidate) {
-      candidate.dataset.vm0EditorMoveId = block.moveId;
-    }
-  }
 }
 
 function annotatePresentationEditableElements(
@@ -1096,13 +962,9 @@ export function previewPresentationHtml(params: {
   readonly activeSlideId: string;
   readonly additionalHeadStyle?: string;
   readonly html: string;
-  readonly movementEditingEnabled?: boolean;
   readonly sourceUrl?: string;
 }): string {
   const doc = new DOMParser().parseFromString(params.html, "text/html");
-  const movementEditingEnabled =
-    params.movementEditingEnabled === true &&
-    presentationMovementSupport(doc).supported;
   materializePresentationThemeSwitcherDefaults(doc);
   sanitizePreviewTree(doc);
   const previewDoc = document.implementation.createHTMLDocument(
@@ -1137,11 +999,8 @@ export function previewPresentationHtml(params: {
   stage.dataset.vm0EditorStage = "true";
   if (activeSlideClone) {
     annotatePresentationEditableElements(activeSlideClone, activeSlideId);
-    if (movementEditingEnabled) {
-      annotatePresentationMoveCandidates(activeSlideClone, activeSlideId);
-    }
   }
-  appendPresentationPreviewStyle(previewDoc, movementEditingEnabled);
+  appendPresentationPreviewStyle(previewDoc);
   appendAdditionalHeadStyle(previewDoc, params.additionalHeadStyle);
   return serializeDoc(previewDoc);
 }

@@ -351,8 +351,13 @@ assert_contains "$missing_config" "publish-reason=missing-r2-config"
 
 main_head=$(printf 'c%.0s' {1..40})
 pr_head=$(printf 'd%.0s' {1..40})
+reachable_head=$(printf '1%.0s' {1..40})
+unreachable_head=$(printf '2%.0s' {1..40})
 main_manifest="${TMPDIR}/main-manifest.json"
 pr_manifest="${TMPDIR}/pr-manifest.json"
+failed_main_manifest="${TMPDIR}/failed-main-manifest.json"
+reachable_manifest="${TMPDIR}/reachable-manifest.json"
+reachable_pr_mismatch_manifest="${TMPDIR}/reachable-pr-mismatch-manifest.json"
 jq --arg head "$main_head" '
   .producer.runId = 20 |
   .producer.event = "push" |
@@ -365,6 +370,14 @@ jq --arg head "$pr_head" '
   .producer.headSha = $head |
   .producer.prNumber = 123
 ' "${TMPDIR}/published/manifest.json" > "$pr_manifest"
+jq '.producer.runId = 22' "$main_manifest" > "$failed_main_manifest"
+jq --arg head "$reachable_head" '
+  .producer.runId = 24 |
+  .producer.event = "merge_group" |
+  .producer.headSha = $head |
+  .producer.prNumber = 456
+' "${TMPDIR}/published/manifest.json" > "$reachable_manifest"
+jq '.producer.prNumber = 999' "$reachable_manifest" > "$reachable_pr_mismatch_manifest"
 jq '.producer.runId = 999' "$main_manifest" > "${TMPDIR}/untrusted-manifest.json"
 
 conflict_sha=$(printf 'e%.0s' {1..64})
@@ -390,6 +403,15 @@ JSON
 cat > "${TMPDIR}/run-22.json" <<JSON
 {"id":22,"run_attempt":1,"event":"push","status":"completed","conclusion":"failure","head_branch":"main","head_sha":"${main_head}","path":".github/workflows/runner-image.yml","repository":{"full_name":"vm0-ai/vm0"},"pull_requests":[]}
 JSON
+cat > "${TMPDIR}/run-23.json" <<JSON
+{"id":23,"run_attempt":1,"event":"push","status":"in_progress","conclusion":null,"head_branch":"main","head_sha":"${main_head}","path":".github/workflows/runner-image.yml","repository":{"full_name":"vm0-ai/vm0"},"pull_requests":[]}
+JSON
+cat > "${TMPDIR}/run-24.json" <<JSON
+{"id":24,"run_attempt":1,"event":"merge_group","status":"completed","conclusion":"failure","head_branch":"gh-readonly-queue/main/pr-456-deadbeef","head_sha":"${reachable_head}","path":".github/workflows/runner-image.yml","repository":{"full_name":"vm0-ai/vm0"},"pull_requests":[]}
+JSON
+cat > "${TMPDIR}/run-30.json" <<JSON
+{"id":30,"run_attempt":1,"event":"pull_request","status":"completed","conclusion":"success","head_branch":"other","head_sha":"${unreachable_head}","path":".github/workflows/runner-image.yml","repository":{"full_name":"vm0-ai/vm0"},"pull_requests":[{"number":999}]}
+JSON
 
 cat > "${TMPDIR}/bin/gh" <<'BASH'
 #!/usr/bin/env bash
@@ -402,6 +424,23 @@ if [ "$1" = "api" ]; then
     case "${GH_SCENARIO:-rank}" in
       failed)
         printf '[{"artifacts":[{"id":122,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":22,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        ;;
+      failed-valid)
+        printf '[{"artifacts":[{"id":122,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":22,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        ;;
+      in-progress)
+        printf '[{"artifacts":[{"id":123,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":23,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        ;;
+      reachable|reachable-identical|compare-fail|compare-malformed|compare-mismatch|compare-behind|compare-diverged|pr-mismatch)
+        printf '[{"artifacts":[{"id":124,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":24,"head_branch":"gh-readonly-queue/main/pr-456-deadbeef","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$REACHABLE_HEAD"
+        ;;
+      ranking-reachable)
+        printf '[{"artifacts":[{"id":124,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:00:00Z","workflow_run":{"id":24,"head_branch":"gh-readonly-queue/main/pr-456-deadbeef","head_sha":"%s"}},{"id":121,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T01:00:00Z","workflow_run":{"id":21,"head_branch":"feature","head_sha":"%s"}}]}]\n' \
+          "$EXPECTED_ARTIFACT_NAME" "$REACHABLE_HEAD" \
+          "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD"
+        ;;
+      invalid-head)
+        printf '[{"artifacts":[{"id":126,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":26,"head_branch":"other","head_sha":"not-a-sha"}}]}]\n' "$EXPECTED_ARTIFACT_NAME"
         ;;
       untrusted)
         printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
@@ -431,10 +470,33 @@ if [ "$1" = "api" ]; then
       *)
         printf '[{"artifacts":[{"id":199,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T03:00:00Z","workflow_run":{"id":99,"head_branch":"feature","head_sha":"%s"}},{"id":130,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:30:00Z","workflow_run":{"id":30,"head_branch":"other","head_sha":"%s"}},{"id":121,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:00:00Z","workflow_run":{"id":21,"head_branch":"feature","head_sha":"%s"}}]},{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T01:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' \
           "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
-          "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
+          "$EXPECTED_ARTIFACT_NAME" "$UNREACHABLE_HEAD" \
           "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
           "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
         ;;
+    esac
+    exit 0
+  fi
+  if [[ "$endpoint" == *'/compare/'* ]]; then
+    case "${GH_SCENARIO:-rank}" in
+      compare-fail) exit 8 ;;
+      compare-malformed) printf '{}\n' ;;
+      compare-mismatch)
+        printf '{"status":"ahead","ahead_by":1,"behind_by":0,"base_commit":{"sha":"%s"},"merge_base_commit":{"sha":"%s"}}\n' "$UNREACHABLE_HEAD" "$UNREACHABLE_HEAD"
+        ;;
+      compare-behind)
+        printf '{"status":"behind","ahead_by":0,"behind_by":1,"base_commit":{"sha":"%s"},"merge_base_commit":{"sha":"%s"}}\n' "$REACHABLE_HEAD" "$UNREACHABLE_HEAD"
+        ;;
+      compare-diverged|rank)
+        printf '{"status":"diverged","ahead_by":1,"behind_by":1,"base_commit":{"sha":"%s"},"merge_base_commit":{"sha":"%s"}}\n' "$UNREACHABLE_HEAD" "$MAIN_HEAD"
+        ;;
+      reachable-identical)
+        printf '{"status":"identical","ahead_by":0,"behind_by":0,"base_commit":{"sha":"%s"},"merge_base_commit":{"sha":"%s"}}\n' "$REACHABLE_HEAD" "$REACHABLE_HEAD"
+        ;;
+      reachable|ranking-reachable|pr-mismatch)
+        printf '{"status":"ahead","ahead_by":3,"behind_by":0,"base_commit":{"sha":"%s"},"merge_base_commit":{"sha":"%s"}}\n' "$REACHABLE_HEAD" "$REACHABLE_HEAD"
+        ;;
+      *) exit 2 ;;
     esac
     exit 0
   fi
@@ -464,6 +526,12 @@ if [ "$1" = "run" ] && [ "$2" = "download" ]; then
     cp "${GH_FIXTURES}/main-manifest.json" "${output_dir}/manifest.json"
   elif [ "$run_id" = "21" ]; then
     cp "${GH_FIXTURES}/pr-manifest.json" "${output_dir}/manifest.json"
+  elif [ "$run_id" = "22" ] && [ "${GH_SCENARIO:-rank}" = "failed-valid" ]; then
+    cp "${GH_FIXTURES}/failed-main-manifest.json" "${output_dir}/manifest.json"
+  elif [ "$run_id" = "24" ] && [ "${GH_SCENARIO:-rank}" = "pr-mismatch" ]; then
+    cp "${GH_FIXTURES}/reachable-pr-mismatch-manifest.json" "${output_dir}/manifest.json"
+  elif [ "$run_id" = "24" ]; then
+    cp "${GH_FIXTURES}/reachable-manifest.json" "${output_dir}/manifest.json"
   else
     exit 1
   fi
@@ -488,6 +556,8 @@ run_shadow() {
   EXPECTED_ARTIFACT_NAME="$expected_artifact" \
   MAIN_HEAD="$main_head" \
   PR_HEAD="$pr_head" \
+  REACHABLE_HEAD="$reachable_head" \
+  UNREACHABLE_HEAD="$unreachable_head" \
   FRESH_METADATA_PATH="$fresh" \
   RUNNER_PATH="$runner" \
   EXPECTED_TARGET="$target" \
@@ -510,9 +580,8 @@ assert_contains "$pr_shadow" "shadow-source=protected-main"
 assert_contains "$pr_shadow" "shadow-producer-run-id=20"
 assert_output_keys "$shadow_output" \
   "shadow-outcome,shadow-producer-run-id,shadow-reason,shadow-source"
-if grep -qE 'actions/runs/(99|30)([^0-9]|$)' "${TMPDIR}/gh.log"; then
-  fail "shadow resolution queried current or unrelated producer runs"
-fi
+grep -qE 'actions/runs/99([^0-9]|$)' "${TMPDIR}/gh.log" &&
+  fail "shadow resolution queried the current run"
 
 if run_shadow unsupported rank "${TMPDIR}/shadow-invalid-context" \
   > "${TMPDIR}/shadow-invalid-context.out" \
@@ -527,6 +596,14 @@ assert_contains "$merge_shadow" "shadow-outcome=hit"
 assert_contains "$merge_shadow" "shadow-source=same-pr"
 assert_contains "$merge_shadow" "shadow-producer-run-id=21"
 
+pr_reachable_rank=$(run_shadow pull_request ranking-reachable "${TMPDIR}/shadow-pr-reachable-rank")
+assert_contains "$pr_reachable_rank" "shadow-source=main-reachable"
+assert_contains "$pr_reachable_rank" "shadow-producer-run-id=24"
+
+merge_reachable_rank=$(run_shadow merge_group ranking-reachable "${TMPDIR}/shadow-merge-reachable-rank")
+assert_contains "$merge_reachable_rank" "shadow-source=same-pr"
+assert_contains "$merge_reachable_rank" "shadow-producer-run-id=21"
+
 push_shadow=$(run_shadow push rank "${TMPDIR}/shadow-push")
 assert_contains "$push_shadow" "shadow-source=protected-main"
 
@@ -537,6 +614,10 @@ assert_contains "$api_failure" "shadow-reason=artifact-api-unavailable"
 failed_candidate=$(run_shadow pull_request failed "${TMPDIR}/shadow-failed")
 assert_contains "$failed_candidate" "shadow-outcome=miss"
 assert_contains "$failed_candidate" "shadow-reason=no-trusted-candidate"
+
+failed_valid_candidate=$(run_shadow pull_request failed-valid "${TMPDIR}/shadow-failed-valid")
+assert_contains "$failed_valid_candidate" "shadow-outcome=hit"
+assert_contains "$failed_valid_candidate" "shadow-source=protected-main"
 
 untrusted_candidate=$(run_shadow pull_request untrusted "${TMPDIR}/shadow-untrusted")
 assert_contains "$untrusted_candidate" "shadow-outcome=miss"
@@ -573,6 +654,8 @@ run_active() {
   EXPECTED_ARTIFACT_NAME="$expected_artifact" \
   MAIN_HEAD="$main_head" \
   PR_HEAD="$pr_head" \
+  REACHABLE_HEAD="$reachable_head" \
+  UNREACHABLE_HEAD="$unreachable_head" \
   AWS_LOG="${TMPDIR}/aws.log" \
   AWS_MODE="$aws_mode" \
   AWS_STORE="${TMPDIR}/store" \
@@ -610,10 +693,33 @@ EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
   "$CACHE" fresh-validate >/dev/null
 
 : > "${TMPDIR}/gh.log"
-main_miss=$(run_active push rank "${TMPDIR}/active-main")
-assert_contains "$main_miss" "resolve-outcome=miss"
-assert_contains "$main_miss" "resolve-reason=protected-main-full-build"
-[ ! -s "${TMPDIR}/gh.log" ] || fail "protected main must bypass candidate lookup"
+main_hit=$(run_active push rank "${TMPDIR}/active-main")
+assert_contains "$main_hit" "resolve-outcome=hit"
+assert_contains "$main_hit" "resolve-source=protected-main"
+assert_contains "$main_hit" "resolve-producer-run-id=20"
+
+reachable_hit=$(run_active push reachable "${TMPDIR}/active-reachable")
+assert_contains "$reachable_hit" "resolve-outcome=hit"
+assert_contains "$reachable_hit" "resolve-source=main-reachable"
+assert_contains "$reachable_hit" "resolve-producer-run-id=24"
+
+identical_hit=$(run_active push reachable-identical "${TMPDIR}/active-reachable-identical")
+assert_contains "$identical_hit" "resolve-outcome=hit"
+assert_contains "$identical_hit" "resolve-source=main-reachable"
+
+failed_valid_hit=$(run_active push failed-valid "${TMPDIR}/active-failed-valid")
+assert_contains "$failed_valid_hit" "resolve-outcome=hit"
+assert_contains "$failed_valid_hit" "resolve-source=protected-main"
+
+in_progress_miss=$(run_active push in-progress "${TMPDIR}/active-in-progress")
+assert_contains "$in_progress_miss" "resolve-outcome=miss"
+assert_contains "$in_progress_miss" "resolve-reason=no-trusted-candidate"
+
+for scenario in compare-fail compare-malformed compare-mismatch compare-behind compare-diverged pr-mismatch invalid-head; do
+  ancestry_miss=$(run_active push "$scenario" "${TMPDIR}/active-${scenario}")
+  assert_contains "$ancestry_miss" "resolve-outcome=miss"
+  assert_contains "$ancestry_miss" "resolve-reason=no-trusted-candidate"
+done
 
 : > "${TMPDIR}/gh.log"
 force_miss=$(RUNNER_BINARY_CACHE_FORCE_MISS=true \

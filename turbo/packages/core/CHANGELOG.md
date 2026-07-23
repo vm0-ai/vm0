@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.454.0](https://github.com/vm0-ai/vm0/compare/core-v8.453.3...core-v8.454.0) (2026-07-23)
+
+
+### Features
+
+* mark required vs optional connectors on onboarding workflow templates ([#22592](https://github.com/vm0-ai/vm0/issues/22592)) ([567d2eb](https://github.com/vm0-ai/vm0/commit/567d2eb59046ee3f4b47526eb3d068a5940ebca6))
+
+
+### Refactoring
+
+* **artifacts:** remove favorite controls ([#22690](https://github.com/vm0-ai/vm0/issues/22690)) ([8f319d6](https://github.com/vm0-ai/vm0/commit/8f319d612d53bbc1c91d36bf372f950692e9150a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.3
+    * @vm0/connectors bumped to 1.182.1
+
 ## [8.453.3](https://github.com/vm0-ai/vm0/compare/core-v8.453.2...core-v8.453.3) (2026-07-23)
 
 

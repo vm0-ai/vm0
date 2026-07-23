@@ -236,11 +236,25 @@ assert_contains "$forced" '"reason":"force-miss"'
 [ ! -s "${TMPDIR}/gh.log" ] || fail "force-miss plan must not query GitHub"
 
 : > "${TMPDIR}/gh.log"
-main=$(run_plan all-hit "${TMPDIR}/main" push)
-assert_contains "$main" 'hit-count=0'
-assert_contains "$main" 'miss-count=2'
-assert_contains "$main" '"reason":"protected-main-full-build"'
-[ ! -s "${TMPDIR}/gh.log" ] || fail "protected-main plan must not query GitHub"
+main_all_hit=$(run_plan all-hit "${TMPDIR}/main-all-hit" push)
+assert_contains "$main_all_hit" 'compile-matrix=[]'
+assert_contains "$main_all_hit" 'hit-count=2'
+assert_contains "$main_all_hit" 'miss-count=0'
+assert_contains "$main_all_hit" '"source":"protected-main"'
+
+main_mixed=$(run_plan mixed "${TMPDIR}/main-mixed" push)
+assert_contains "$main_mixed" 'hit-count=1'
+assert_contains "$main_mixed" 'miss-count=1'
+main_mixed_matrix=$(sed -n 's/^compile-matrix=//p' <<<"$main_mixed")
+[ "$(jq -r '.[0].target' <<<"$main_mixed_matrix")" = "$x86_target" ] ||
+  fail "mixed main plan must compile x86 only"
+
+main_all_miss=$(run_plan all-miss "${TMPDIR}/main-all-miss" push)
+assert_contains "$main_all_miss" 'hit-count=0'
+assert_contains "$main_all_miss" 'miss-count=2'
+main_all_miss_matrix=$(sed -n 's/^compile-matrix=//p' <<<"$main_all_miss")
+[ "$(jq 'length' <<<"$main_all_miss_matrix")" -eq 2 ] ||
+  fail "all-miss main plan must compile both targets"
 
 mkdir -p "${TMPDIR}/timeout-bin"
 cat > "${TMPDIR}/timeout-bin/timeout" <<'BASH'

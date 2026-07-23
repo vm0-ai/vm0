@@ -267,6 +267,7 @@ def test_more_specific_base_block_precedence_matrix(fws, network_policies, expec
                 "admin": network_policy(unknown_policy="allow"),
             },
             {
+                "base": ADMIN_BASE,
                 "authorization": "Bearer admin",
                 "name": "admin",
                 "permission": None,
@@ -292,6 +293,7 @@ def test_more_specific_base_block_precedence_matrix(fws, network_policies, expec
                 "admin": network_policy(allow=["admin"]),
             },
             {
+                "base": ADMIN_BASE,
                 "authorization": "Bearer admin",
                 "name": "admin",
                 "permission": "admin",
@@ -302,10 +304,20 @@ def test_more_specific_base_block_precedence_matrix(fws, network_policies, expec
         ),
     ],
 )
-def test_more_specific_base_allow_precedence_matrix(fws, network_policies, expected):
-    result = match_compiled_firewalls(ADMIN_DELETE_URL, fws, network_policies)
+@pytest.mark.parametrize(
+    "specific_first",
+    [False, True],
+    ids=["broad-first", "specific-first"],
+)
+def test_more_specific_base_allow_precedence_matrix(
+    fws, network_policies, expected, specific_first
+):
+    ordered_fws = list(reversed(fws)) if specific_first else fws
+
+    result = match_compiled_firewalls(ADMIN_DELETE_URL, ordered_fws, network_policies)
 
     assert isinstance(result, matching.FirewallAllow)
+    assert result.api_entry["base"] == expected["base"]
     assert result.api_entry["auth"]["headers"]["Authorization"] == expected["authorization"]
     assert result.name == expected["name"]
     assert result.permission == expected["permission"]
@@ -511,26 +523,30 @@ def test_base_specificity_wins_before_rule_specificity():
     assert result.reason == "permission_denied"
 
 
-def test_static_host_base_deny_blocks_earlier_wildcard_host_allow():
-    fws = wrap_firewalls(
-        [
-            {
-                "base": "https://{network}.g.alchemy.com",
-                "auth": {"headers": {"Authorization": "Bearer wildcard"}},
-                "permissions": [
-                    {"name": "wildcard", "rules": ["ANY /{path+}"]},
-                ],
-            },
-            {
-                "base": "https://api.g.alchemy.com",
-                "auth": {"headers": {"Authorization": "Bearer static"}},
-                "permissions": [
-                    {"name": "static", "rules": ["GET /v2/demo"]},
-                ],
-            },
-        ],
-        name="alchemy",
-    )
+@pytest.mark.parametrize(
+    "specific_first",
+    [False, True],
+    ids=["broad-first", "specific-first"],
+)
+def test_static_host_base_deny_blocks_wildcard_host_allow_in_both_orders(specific_first):
+    apis = [
+        {
+            "base": "https://{network}.g.alchemy.com",
+            "auth": {"headers": {"Authorization": "Bearer wildcard"}},
+            "permissions": [
+                {"name": "wildcard", "rules": ["ANY /{path+}"]},
+            ],
+        },
+        {
+            "base": "https://api.g.alchemy.com",
+            "auth": {"headers": {"Authorization": "Bearer static"}},
+            "permissions": [
+                {"name": "static", "rules": ["GET /v2/demo"]},
+            ],
+        },
+    ]
+    ordered_apis = list(reversed(apis)) if specific_first else apis
+    fws = wrap_firewalls(ordered_apis, name="alchemy")
     policies = {
         "alchemy": {
             "allow": ["wildcard"],
@@ -548,6 +564,7 @@ def test_static_host_base_deny_blocks_earlier_wildcard_host_allow():
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.base == "https://api.g.alchemy.com"
+    assert result.name == "alchemy"
     assert result.path == "/v2/demo"
     assert result.permissions == ("static",)
     assert result.reason == "permission_denied"
