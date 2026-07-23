@@ -2846,7 +2846,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         expect.objectContaining({
           channel: "D_BDD_FAIL",
           thread_ts: "5000.000100",
-          text: expect.stringContaining("Add credits"),
+          text: expect.stringContaining("Compare plans"),
         }),
       );
     });

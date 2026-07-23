@@ -180,6 +180,16 @@ function buttonByText(text: string, container: ParentNode): HTMLElement {
   return button;
 }
 
+function linkByText(text: string, container: ParentNode): HTMLElement {
+  const link = queryAllByRoleFast("link", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!link) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 async function waitForButtonByText(
   text: string,
   container: ParentNode,
@@ -1879,6 +1889,69 @@ describe("chat message action cards", () => {
     expect(authorizeLink).toHaveAttribute(
       "href",
       "/computer-use/authorize/vm0_computer_use_authorization_request_test",
+    );
+  });
+
+  it("renders trusted plan links as upgrade cards", async () => {
+    const absoluteUrl =
+      "https://app.vm0.ai/?settings=billing&billingView=plans";
+    const relativeUrl = "/?settings=billing&billingView=plans";
+    const untrustedUrl =
+      "https://evil.example.test/?settings=billing&billingView=plans";
+    const creditUrl = "/?settings=billing&billingView=credits";
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-plan-upgrade`,
+      threadTitle: "Plan upgrade cards",
+      chatMessages: [
+        {
+          id: "msg-user-plan-upgrade",
+          role: "user",
+          content: "Help me unlock video generation",
+          runId: "run-plan-upgrade",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-plan-upgrade-card",
+          role: "assistant",
+          content: [
+            absoluteUrl,
+            `[Compare plans](${relativeUrl})`,
+            `[Untrusted plan](${untrustedUrl})`,
+            `[Buy credits](${creditUrl})`,
+          ].join("\n\n"),
+          runId: "run-plan-upgrade",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-plan-upgrade`,
+    });
+
+    const cards = await screen.findAllByTestId("plan-upgrade-card");
+    expect(cards).toHaveLength(2);
+    expect(
+      within(cards[0]!).getByText("Upgrade your workspace"),
+    ).toBeInTheDocument();
+    expect(
+      within(cards[0]!).getByText(
+        "Compare plans to unlock paid workspace features and additional credits.",
+      ),
+    ).toBeInTheDocument();
+    for (const card of cards) {
+      const comparePlansLink = linkByText("Compare plans", card);
+      expect(comparePlansLink).toHaveAttribute("href", relativeUrl);
+    }
+    expect(linkByText("Untrusted plan", document)).toHaveAttribute(
+      "href",
+      untrustedUrl,
+    );
+    expect(linkByText("Buy credits", document)).toHaveAttribute(
+      "href",
+      creditUrl,
     );
   });
 

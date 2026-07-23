@@ -32,6 +32,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   mail: "connector:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],
+  upgrade: null,
   model: null,
   "model-provider": null,
   logs: "agent-run:read",
@@ -109,6 +110,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "View or buy credits",
     load: async () => {
       return (await import("./commands/zero/credit")).zeroCreditCommand;
+    },
+  },
+  {
+    name: "upgrade",
+    description: "Create a workspace plan upgrade link",
+    load: async () => {
+      return (await import("./commands/zero/upgrade")).zeroUpgradeCommand;
     },
   },
   {
@@ -422,6 +430,7 @@ export function buildZeroHelpText(
     ...(payload && !payload.capabilities.includes("billing:write")
       ? []
       : ["  Buy credits?           zero credit 20000"]),
+    "  Upgrade plan?         zero upgrade pro",
     "  Send a Slack message?  zero slack message send --help",
     ...(shouldHideCommand("feishu", payload)
       ? []

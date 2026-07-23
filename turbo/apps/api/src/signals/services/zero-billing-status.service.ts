@@ -127,6 +127,7 @@ interface BillingStatusResponse {
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
+  videoGenerationAllowed: boolean;
   workflowWebhookAutomationAllowed: boolean;
   credits: number;
   onboardingPaymentPending: boolean;
@@ -549,6 +550,7 @@ function billingStatusResponse(args: {
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
+  videoGenerationAllowed: boolean;
   workflowWebhookAutomationAllowed: boolean;
   unsettledExpired: number;
   activeRecords: readonly ActiveCreditRecord[];
@@ -576,6 +578,7 @@ function billingStatusResponse(args: {
     autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,
+    videoGenerationAllowed: args.videoGenerationAllowed,
     workflowWebhookAutomationAllowed: args.workflowWebhookAutomationAllowed,
     credits: displayedCredits,
     onboardingPaymentPending: org.onboardingPaymentPending,
@@ -697,6 +700,7 @@ export function zeroBillingStatus(
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
       restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,
+      videoGenerationAllowed: capabilities?.videoGenerationAllowed ?? false,
       workflowWebhookAutomationAllowed:
         capabilities?.workflowWebhookAutomationAllowed ?? false,
       unsettledExpired: unsettledExpiredRow[0]?.total ?? 0,

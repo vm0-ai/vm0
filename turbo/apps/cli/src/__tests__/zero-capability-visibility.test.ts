@@ -19,6 +19,7 @@ function buildCommands(): Command[] {
     new Command("agent"),
     new Command("connector"),
     new Command("credit"),
+    new Command("upgrade"),
     new Command("logs"),
     new Command("chat"),
     new Command("resource"),
@@ -153,6 +154,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
+      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -217,6 +219,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -621,6 +624,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("credit");
+    expect(visibleCommandNames(prog)).toContain("upgrade");
   });
 
   it("should show billing help examples only for billing capabilities", () => {
@@ -644,6 +648,7 @@ describe("registerZeroCommands", () => {
     expect(help).toContain("Check credits?");
     expect(help).toContain("zero credit");
     expect(help).not.toContain("Buy credits?");
+    expect(help).toContain("Upgrade plan?");
   });
 
   it("should show only credit purchase help for billing write capability", () => {
@@ -924,6 +929,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "connector",
+      "upgrade",
       "resource",
       "whoami",
       "generate",

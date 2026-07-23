@@ -8300,6 +8300,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero generate -h",
       "zero doctor credit",
       "zero credit <credits>",
+      "zero upgrade pro",
       "Plan permission requests",
       "all concrete connector operations required for the current task",
       "Do not include hypothetical future operations",

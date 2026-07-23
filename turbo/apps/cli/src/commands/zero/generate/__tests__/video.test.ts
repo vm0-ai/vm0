@@ -50,6 +50,36 @@ function imageResponse(width: number, height: number) {
   });
 }
 
+function stubBillingStatus(videoGenerationAllowed: boolean) {
+  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+    return HttpResponse.json({
+      tier: videoGenerationAllowed ? "pro" : "limited-free-1",
+      canBuyCredits: videoGenerationAllowed,
+      videoGenerationAllowed,
+      credits: 0,
+      onboardingPaymentPending: false,
+      subscriptionStatus: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: videoGenerationAllowed,
+      autoRecharge: {
+        enabled: false,
+        threshold: null,
+        amount: null,
+      },
+      creditExpiry: {
+        expiringNextCycle: 0,
+        nextExpiryDate: null,
+      },
+      creditBreakdown: [],
+      creditGrants: [],
+      concurrencyLimit: 1,
+      concurrencySubscriptions: [],
+    });
+  });
+}
+
 describe("zero generate video command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -63,6 +93,7 @@ describe("zero generate video command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
+    server.use(stubBillingStatus(true));
   });
 
   afterEach(() => {
@@ -281,5 +312,31 @@ describe("zero generate video command", () => {
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining("Credits depleted"),
     );
+  });
+
+  it("should stop before generation when the workspace plan blocks video", async () => {
+    let generationRequests = 0;
+    server.use(
+      stubBillingStatus(false),
+      http.post(VIDEO_URL, () => {
+        generationRequests += 1;
+        return HttpResponse.json(VIDEO_RESULT);
+      }),
+    );
+
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "video",
+        "--prompt",
+        "hello",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("Paid plan required");
+    expect(stderr).toContain("zero upgrade pro");
+    expect(generationRequests).toBe(0);
   });
 });

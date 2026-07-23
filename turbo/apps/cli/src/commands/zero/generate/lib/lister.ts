@@ -1,10 +1,16 @@
 import chalk from "chalk";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
+  getZeroBillingStatus,
   getZeroAgentUserConnectors,
   listZeroConnectorCatalogStatus,
 } from "../../../../lib/api";
 import { getPlatformOrigin } from "../../doctor/platform-url";
+import {
+  currentPlanAllowsVideo,
+  currentTokenCanReadBilling,
+} from "../../shared/billing-capabilities";
+import { planUpgradeUrl } from "../../shared/billing-links";
 
 type ConnectorGenerationType =
   | "audio"
@@ -116,33 +122,33 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       model: "dreamina-seedance-2-0-260128",
       command:
         "zero generate video --provider built-in --model dreamina-seedance-2.0 -h",
-      reason: "available without connector setup",
+      reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in",
       model: "dreamina-seedance-2-0-fast-260128",
       command:
         "zero generate video --provider built-in --model dreamina-seedance-2.0-fast -h",
-      reason: "available without connector setup",
+      reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in",
       model: "seedance-1-5-pro-251215",
       command:
         "zero generate video --provider built-in --model seedance-1.5-pro -h",
-      reason: "available without connector setup",
+      reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/veo3.1/fast",
       command: "zero generate video --provider built-in --model veo3.1-fast -h",
-      reason: "available without connector setup",
+      reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/kling-video/v3/4k/text-to-video",
       command: "zero generate video --provider built-in --model kling-v3-4k -h",
-      reason: "available without connector setup",
+      reason: "availability depends on the current workspace plan",
     },
   ],
   voice: [
@@ -457,13 +463,36 @@ function renderActions(candidates: GenerationCandidate[]): void {
   }
 }
 
-function renderBuiltInProvider(generationType: GenerationType): void {
+function renderBuiltInProvider(params: {
+  generationType: GenerationType;
+  videoGenerationAllowed: boolean | undefined;
+  platformOrigin: string;
+}): void {
+  const { generationType, videoGenerationAllowed, platformOrigin } = params;
   const command = getBuiltInCommand(generationType);
   if (command) {
     console.log("");
     console.log("Built-in command:");
     console.log(`  vm0  ${command.label}`);
     console.log(`  Models: ${command.models}`);
+    if (generationType === "video") {
+      if (videoGenerationAllowed === false) {
+        console.log(
+          "  Availability: Requires a Pro, Team, or Custom workspace plan.",
+        );
+        console.log(
+          `  Upgrade: [Compare plans](${planUpgradeUrl(platformOrigin)})`,
+        );
+      } else if (videoGenerationAllowed === true) {
+        console.log(
+          "  Availability: Available on the current plan without connector setup.",
+        );
+      } else {
+        console.log(
+          "  Availability: Plan eligibility will be checked before generation.",
+        );
+      }
+    }
     console.log(`  Use: ${command.command}`);
     return;
   }
@@ -498,8 +527,18 @@ function renderText(params: {
   ready: GenerationCandidate[];
   other: GenerationCandidate[];
   showAll: boolean;
+  videoGenerationAllowed: boolean | undefined;
+  platformOrigin: string;
 }): void {
-  const { generationType, agentId, ready, other, showAll } = params;
+  const {
+    generationType,
+    agentId,
+    ready,
+    other,
+    showAll,
+    videoGenerationAllowed,
+    platformOrigin,
+  } = params;
   const label = GENERATION_TYPE_LABELS[generationType];
   const scope = agentId ? "for current agent" : "(connected connectors)";
 
@@ -528,7 +567,11 @@ function renderText(params: {
     }
   }
 
-  renderBuiltInProvider(generationType);
+  renderBuiltInProvider({
+    generationType,
+    videoGenerationAllowed,
+    platformOrigin,
+  });
   renderGenerationContext(generationType);
 
   if (showAll && other.length > 0) {
@@ -549,10 +592,13 @@ export async function runLister(
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
   const agentId = process.env.ZERO_AGENT_ID;
-  const [catalog, enabledTypes, platformOrigin] = await Promise.all([
+  const [catalog, enabledTypes, platformOrigin, billing] = await Promise.all([
     listZeroConnectorCatalogStatus(),
     agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
     getPlatformOrigin(),
+    generationType === "video" && currentTokenCanReadBilling()
+      ? getZeroBillingStatus()
+      : Promise.resolve(null),
   ]);
   const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
   const candidates = connectorGenerationType
@@ -579,6 +625,10 @@ export async function runLister(
     ready,
     other,
     showAll: options.all === true,
+    videoGenerationAllowed: billing
+      ? currentPlanAllowsVideo(billing)
+      : undefined,
+    platformOrigin,
   });
 
   const shouldShowOtherHint =

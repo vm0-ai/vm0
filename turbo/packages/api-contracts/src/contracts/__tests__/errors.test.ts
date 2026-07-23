@@ -57,6 +57,22 @@ describe("formatRunErrorForExternalSurface", () => {
     ).toBe(INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE);
   });
 
+  it("appends Compare plans link when the plan cannot buy credits", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "INSUFFICIENT_CREDITS",
+        message: "Insufficient credits. Please add credits to continue.",
+        insufficientCredits: {
+          canManageBilling: true,
+          comparePlansUrl:
+            "https://app.example.test/?settings=billing&billingView=plans",
+        },
+      }),
+    ).toBe(
+      "Insufficient credits. Please add credits to continue.\n\nCompare plans: https://app.example.test/?settings=billing&billingView=plans",
+    );
+  });
+
   it("shows Codex usage limit errors verbatim", () => {
     const codexUsageLimit =
       "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:17 AM.";

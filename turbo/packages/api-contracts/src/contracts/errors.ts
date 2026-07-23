@@ -24,6 +24,10 @@ export const ApiError = {
     status: 402 as const,
     code: "INSUFFICIENT_CREDITS",
   },
+  PRO_REQUIRED: {
+    status: 402 as const,
+    code: "PRO_REQUIRED",
+  },
   PAYLOAD_TOO_LARGE: { status: 413 as const, code: "PAYLOAD_TOO_LARGE" },
   TOO_MANY_REQUESTS: { status: 429 as const, code: "TOO_MANY_REQUESTS" },
   NO_MODEL_PROVIDER: {
@@ -110,7 +114,15 @@ export const RUN_ERROR_GUIDANCE: Record<
   },
   INSUFFICIENT_CREDITS: {
     title: "Credits depleted",
-    guidance: "Add credits or configure your own API key to continue.",
+    guidance:
+      "Run credit diagnostics first. Buy credits only when the current plan allows it; otherwise return the plan upgrade link.",
+    cliHint: "zero doctor credit",
+  },
+  PRO_REQUIRED: {
+    title: "Paid plan required",
+    guidance:
+      "Built-in video generation is unavailable on the current plan. Return the plan upgrade link to the user.",
+    cliHint: "zero upgrade pro",
   },
   PROVIDER_INCOMPATIBLE: {
     title: "Provider not compatible",
@@ -531,10 +543,10 @@ export function formatRunErrorForExternalSurface(params: {
     if (!params.insufficientCredits.canManageBilling) {
       return INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE;
     }
-    const addCreditsUrl =
-      params.insufficientCredits.addCreditsUrl ??
-      params.insufficientCredits.comparePlansUrl;
-    return `${errorMessage}\n\nAdd credits: ${addCreditsUrl}`;
+    if (params.insufficientCredits.addCreditsUrl !== undefined) {
+      return `${errorMessage}\n\nAdd credits: ${params.insufficientCredits.addCreditsUrl}`;
+    }
+    return `${errorMessage}\n\nCompare plans: ${params.insufficientCredits.comparePlansUrl}`;
   }
 
   if (isCodexOAuthReconnectRequiredRunError(errorMessage)) {

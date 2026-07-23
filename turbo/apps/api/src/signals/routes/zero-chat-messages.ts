@@ -2654,7 +2654,7 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   const appUrl = env("APP_URL").replace(/\/$/, "");
   const usageUrl = `${appUrl}/?settings=usage`;
-  const billingUrl = `${appUrl}/?settings=billing`;
+  const billingUrl = `${appUrl}/?settings=billing&billingView=plans`;
   if (capabilities?.canBuyCredits !== true) {
     return [
       "Insufficient credits. This workspace has no spendable credits right now.",

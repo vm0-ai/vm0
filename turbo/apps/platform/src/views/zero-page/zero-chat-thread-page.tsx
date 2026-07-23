@@ -161,6 +161,7 @@ import {
 } from "../../signals/chat-page/run-group-folding.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
+import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
 import {
   emptyMailDraftSignalsById$,
   type MailDraftSignals,
@@ -4727,6 +4728,9 @@ function BodyRenderBlockView({
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={block.signals} />;
     }
+    case "plan-upgrade": {
+      return <PlanUpgradeCard signals={block.signals} />;
+    }
     case "mail-draft": {
       return <MailDraftCard signals={block.signals} />;
     }
@@ -4895,6 +4899,39 @@ function ComputerUseAuthorizationCard({
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
       >
         Authorize
+        <IconArrowUpRight size={15} />
+      </a>
+    </div>
+  );
+}
+
+function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
+  return (
+    <div
+      data-testid="plan-upgrade-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <IconCoins size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
+            Upgrade your workspace
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            Compare plans to unlock paid workspace features and additional
+            credits.
+          </div>
+        </div>
+      </div>
+      <a
+        href={signals.href}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      >
+        Compare plans
         <IconArrowUpRight size={15} />
       </a>
     </div>

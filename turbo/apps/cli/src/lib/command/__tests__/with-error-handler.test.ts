@@ -79,6 +79,27 @@ describe("withErrorHandler", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("should show the plan upgrade command for PRO_REQUIRED", async () => {
+    const handler = withErrorHandler(async () => {
+      throw new ApiRequestError(
+        "Built-in video generation requires a paid plan",
+        "PRO_REQUIRED",
+        402,
+      );
+    });
+
+    await handler();
+
+    const output = mockConsoleError.mock.calls
+      .map((c) => {
+        return c[0];
+      })
+      .join("\n");
+    expect(output).toContain("Paid plan required");
+    expect(output).toContain("zero upgrade pro");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("should show error message for plain Error", async () => {
     const handler = withErrorHandler(async () => {
       throw new Error("Plain error message");
