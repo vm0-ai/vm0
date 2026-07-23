@@ -100,6 +100,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         },
         cow_device: None,
         device_rate_limits: None,
+        guest_dns_network_baseline: None,
         runtime: SandboxRuntimeHandles::default(),
         process_group_pid: None,
         state: Arc::new(AtomicU8::new(state as u8)),
