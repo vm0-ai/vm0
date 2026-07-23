@@ -196,6 +196,53 @@ assert_failure "must be a full lowercase SHA-1" run_resolver "${tmp_dir}/invalid
 target_commit=$target_commit_before
 [ ! -s "${tmp_dir}/boundaries.log" ] || fail "invalid target must fail before external boundaries"
 
+release_target_script="${tmp_dir}/resolve-release-target.sh"
+ruby -e '
+  require "yaml"
+  workflow = YAML.safe_load(File.read(ARGV[0]), aliases: true)
+  release_job = workflow.fetch("jobs").fetch("release-please")
+  release_target_step = release_job.fetch("steps").find { |step| step["id"] == "release-target" }
+  raise "missing release target resolver step" unless release_target_step
+  puts release_target_step.fetch("run")
+' "${repo_root}/.github/workflows/release-please.yml" >"$release_target_script"
+
+release_target=cccccccccccccccccccccccccccccccccccccccc
+release_outputs=$(jq -nc \
+  --arg target "$release_target" \
+  '{
+    "turbo/apps/api--sha": $target,
+    "turbo/apps/platform--sha": $target,
+    "turbo/apps/api--body": "release notes",
+    releases_created: "true"
+  }')
+release_target_output="${tmp_dir}/release-target.output"
+RELEASE_OUTPUTS="$release_outputs" \
+  GITHUB_OUTPUT="$release_target_output" \
+  bash "$release_target_script"
+grep -qx "sha=${release_target}" "$release_target_output" || fail "release target resolver did not publish the unique release SHA"
+
+missing_release_target_output="${tmp_dir}/missing-release-target.output"
+assert_failure \
+  "release-please returned no release SHA" \
+  env \
+  RELEASE_OUTPUTS='{"releases_created":"true"}' \
+  GITHUB_OUTPUT="$missing_release_target_output" \
+  bash "$release_target_script"
+[ ! -s "$missing_release_target_output" ] || fail "missing release SHA must not publish an output"
+
+multiple_release_targets=$(jq -nc '{
+  "turbo/apps/api--sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "turbo/apps/platform--sha": "dddddddddddddddddddddddddddddddddddddddd"
+}')
+multiple_release_target_output="${tmp_dir}/multiple-release-target.output"
+assert_failure \
+  "release-please returned multiple release SHAs" \
+  env \
+  RELEASE_OUTPUTS="$multiple_release_targets" \
+  GITHUB_OUTPUT="$multiple_release_target_output" \
+  bash "$release_target_script"
+[ ! -s "$multiple_release_target_output" ] || fail "ambiguous release SHAs must not publish an output"
+
 ruby -e '
   require "yaml"
   rollback_config = YAML.safe_load(File.read(ARGV[0]), aliases: true)
@@ -208,7 +255,19 @@ ruby -e '
   raise "App must wait for resolver" unless rollback.fetch("rollback-app").fetch("needs") == "resolve-target"
   raise "Runner must wait for resolver" unless rollback.fetch("rollback-runner").fetch("needs") == "resolve-target"
   raise "API must wait for resolver" unless rollback.fetch("rollback-api").fetch("needs") == "resolve-target"
-  raise "release must wait for production queue" unless release.fetch("release-please").fetch("needs") == "queue-production-deploy"
+  release_job = release.fetch("release-please")
+  raise "release must wait for production queue" unless release_job.fetch("needs") == "queue-production-deploy"
+  release_target_output = "$" + "{{ steps.release-target.outputs.sha }}"
+  raise "release job must expose the resolved release target" unless release_job.fetch("outputs").fetch("release_target") == release_target_output
+  raise "release workflow must not use the triggering workflow SHA as a release target" if File.read(ARGV[1]).include?("github.event.workflow_run.head_sha")
+
+  expected_target = "$" + "{{ needs.release-please.outputs.release_target }}"
+  host_worker_step = release.fetch("detect-host-worker-deploy-inputs").fetch("steps").find { |step| step["id"] == "detect" }
+  raise "Host Worker detection must use the resolved release target" unless host_worker_step.fetch("run").include?("HEAD_SHA=\"#{expected_target}\"")
+  schema_step = release.fetch("deploy-api-schema").fetch("steps").find { |step| step["name"] == "Publish Runtime API Schema" }
+  raise "Runtime API Schema must use the resolved release target" unless schema_step.fetch("env").fetch("RELEASE_SHA") == expected_target
+  dashboard_step = release.fetch("update-rollback-dashboard").fetch("steps").find { |step| step["name"] == "Update rollback dashboard issue" }
+  raise "rollback dashboard must use the resolved release target" unless dashboard_step.fetch("env").fetch("RELEASE_TARGET") == expected_target
 ' "${repo_root}/.github/workflows/rollback-production.yml" "${repo_root}/.github/workflows/release-please.yml"
 
 echo "resolve-production-rollback-target tests passed"

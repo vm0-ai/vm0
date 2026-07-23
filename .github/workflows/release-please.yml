@@ -38,6 +38,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
+      release_target: ${{ steps.release-target.outputs.sha }}
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
       core_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] }}
@@ -62,6 +63,41 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - name: Resolve release target
+        id: release-target
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+        run: |
+          set -euo pipefail
+
+          release_target=$(
+            jq -er '
+              [
+                to_entries[]
+                | select(.key == "sha" or (.key | endswith("--sha")))
+                | .value
+                | select(
+                    type == "string" and
+                    test("^[0-9a-f]{40}$")
+                  )
+              ]
+              | unique
+              | if length == 1 then
+                  .[0]
+                elif length == 0 then
+                  error("release-please returned no release SHA")
+                else
+                  error(
+                    "release-please returned multiple release SHAs: " +
+                    join(", ")
+                  )
+                end
+            ' <<<"$RELEASE_OUTPUTS"
+          )
+
+          echo "sha=$release_target" >> "$GITHUB_OUTPUT"
 
       # Create ci-gate check runs on release PR head commit.
       # GITHUB_TOKEN pushes don't trigger pull_request events, so the CI
@@ -933,10 +969,7 @@ jobs:
 
           git fetch --force --tags origin
 
-          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
-          if [[ -z "$HEAD_SHA" ]]; then
-            HEAD_SHA="${{ github.sha }}"
-          fi
+          HEAD_SHA="${{ needs.release-please.outputs.release_target }}"
 
           if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
             echo "::error::Release head commit $HEAD_SHA is not available"
@@ -1257,7 +1290,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SCHEMA_RELEASE_TAG: runtime-api-schema-prod
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RELEASE_SHA: ${{ needs.release-please.outputs.release_target }}
           API_VERSION: ${{ needs.release-please.outputs.api_version }}
         run: |
           set -euo pipefail
@@ -1585,7 +1618,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ vars.ROLLBACK_ISSUE_NUMBER }}
-          RELEASE_TARGET: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_TARGET: ${{ needs.release-please.outputs.release_target }}
           ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-production.yml
         run: |
           set -euo pipefail
