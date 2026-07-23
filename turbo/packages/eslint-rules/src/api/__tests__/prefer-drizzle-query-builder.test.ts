@@ -1207,7 +1207,7 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
           sql\`
             SELECT \${runs.id}
             FROM \${runs}
-            LEFT JOIN \${runStates}
+            LEFT OUTER JOIN \${runStates}
               ON \${eq(runStates.id, runs.id)}
             WHERE \${eq(runs.id, threadId)}
             LIMIT 1
