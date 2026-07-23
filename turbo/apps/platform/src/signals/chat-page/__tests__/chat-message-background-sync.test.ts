@@ -30,7 +30,6 @@ const resetSubscriberSignal$ = resetSignalScope();
 const USER_ID = "background-sync-user";
 const ORG_ID = "background-sync-org";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
-const OLD_MESSAGE_ID = "00000000-0000-4000-8000-000000000801";
 const FIRST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_MESSAGE_ID = "00000000-0000-4000-8000-000000000804";
@@ -48,11 +47,6 @@ function assistantMessage(
   };
 }
 
-const oldMessage = assistantMessage(
-  OLD_MESSAGE_ID,
-  "Older remote message",
-  "2026-07-23T10:00:00.000Z",
-);
 const firstCachedMessage = assistantMessage(
   FIRST_CACHED_MESSAGE_ID,
   "First cached message",
@@ -106,7 +100,7 @@ describe("chat message background sync", () => {
     expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
   });
 
-  it("fills missing messages before and after the cached thread bounds", async () => {
+  it("fills only messages after the cached thread end", async () => {
     mockSignedInUser();
     setMockFeatureSwitches({
       [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: true,
@@ -131,18 +125,12 @@ describe("chat message background sync", () => {
       if (query.sinceId === LAST_CACHED_MESSAGE_ID) {
         return respond(200, {
           messages: [newMessage],
-          hasHistoryBefore: false,
+          hasHistoryBefore: true,
         });
       }
       if (query.sinceId === NEW_MESSAGE_ID) {
         return respond(200, {
           messages: [],
-          hasHistoryBefore: false,
-        });
-      }
-      if (query.beforeId === FIRST_CACHED_MESSAGE_ID) {
-        return respond(200, {
-          messages: [oldMessage],
           hasHistoryBefore: false,
         });
       }
@@ -169,12 +157,6 @@ describe("chat message background sync", () => {
 
       await waitFor(async () => {
         await expect(
-          appDb.get(CHAT_MESSAGES_STORE, OLD_MESSAGE_ID),
-        ).resolves.toMatchObject({
-          id: OLD_MESSAGE_ID,
-          threadId: THREAD_ID,
-        });
-        await expect(
           appDb.get(CHAT_MESSAGES_STORE, NEW_MESSAGE_ID),
         ).resolves.toMatchObject({
           id: NEW_MESSAGE_ID,
@@ -185,7 +167,6 @@ describe("chat message background sync", () => {
       expect(requests).toStrictEqual([
         { sinceId: LAST_CACHED_MESSAGE_ID, beforeId: undefined },
         { sinceId: NEW_MESSAGE_ID, beforeId: undefined },
-        { sinceId: undefined, beforeId: FIRST_CACHED_MESSAGE_ID },
       ]);
     } finally {
       subscriber.abort(abortError("test done"));
