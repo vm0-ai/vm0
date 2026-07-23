@@ -30,6 +30,9 @@ const BUFFER_SIZE: usize = 4;
 /// Maximum simultaneous blocking slot creation workers.
 const MAX_CONCURRENT_SLOT_CREATIONS: usize = 4;
 
+/// Maximum simultaneous prepared-slot teardowns during producer shutdown.
+const MAX_CONCURRENT_SLOT_TEARDOWNS: usize = MAX_CONCURRENT_SLOT_CREATIONS;
+
 /// Maximum slots still owned by the producer pipeline (ready + pending).
 const MAX_SLOTS: usize = 256;
 

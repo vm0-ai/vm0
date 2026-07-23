@@ -724,6 +724,73 @@ async fn cleanup_waits_for_ready_slot_teardown() {
 }
 
 #[tokio::test]
+async fn cleanup_tears_down_ready_and_late_slots_concurrently() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (controller, spawner) = ControlledSpawner::new();
+    let pool = test_pool_with_spawner(test_config(tmp.path()), 3, 3, 4, Duration::ZERO, spawner);
+    let handle = CowPoolHandle::new_for_test(pool);
+
+    let warmup = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.warmup().await }
+    });
+    wait_for_snapshot(&handle, |snapshot| snapshot.pending == 3).await;
+
+    let mut slots = Vec::new();
+    for index in 0..2 {
+        let (slot, started, release, dropped) =
+            test_slot_with_teardown_gate(tmp.path(), &format!("concurrent-cleanup-{index}"));
+        slots.push((slot.workspace().to_owned(), started, release, dropped));
+        controller.take_request().send(Ok(slot)).unwrap();
+    }
+    wait_for_snapshot(&handle, |snapshot| {
+        snapshot.ready == 2 && snapshot.pending == 1
+    })
+    .await;
+
+    let cleanup = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.cleanup().await }
+    });
+
+    for (workspace, started, _, _) in &mut slots {
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), started)
+                .await
+                .expect("ready slot teardown should start without waiting for another slot")
+                .unwrap(),
+            workspace.clone()
+        );
+    }
+
+    let (late_slot, late_started, late_release, late_dropped) =
+        test_slot_with_teardown_gate(tmp.path(), "concurrent-cleanup-late");
+    let late_workspace = late_slot.workspace().to_owned();
+    controller.take_request().send(Ok(late_slot)).unwrap();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), late_started)
+            .await
+            .expect("late slot teardown should start while ready slots are still tearing down")
+            .unwrap(),
+        late_workspace
+    );
+
+    for (_, _, release, _) in &slots {
+        release.send(()).unwrap();
+    }
+    late_release.send(()).unwrap();
+    cleanup.await.unwrap();
+    warmup.await.unwrap();
+
+    for (workspace, _, _, dropped) in slots {
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+    }
+    assert_eq!(late_dropped.await.unwrap(), late_workspace);
+    assert!(!late_workspace.exists());
+}
+
+#[tokio::test]
 async fn cleanup_rejects_waiters_and_drops_late_pending_slot() {
     let tmp = tempfile::tempdir().unwrap();
     let (controller, spawner) = ControlledSpawner::new();

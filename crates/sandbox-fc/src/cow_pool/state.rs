@@ -12,7 +12,8 @@ use super::CowPoolSnapshot;
 use super::create::default_slot_spawner;
 use super::{
     AcquireResult, BUFFER_SIZE, CowPoolConfig, CowPoolError, MAX_CONCURRENT_SLOT_CREATIONS,
-    MAX_SLOTS, PreparedCowSlot, SlotSpawner, WARM_RETRY_BACKOFF, destroy_prepared_slot_async,
+    MAX_CONCURRENT_SLOT_TEARDOWNS, MAX_SLOTS, PreparedCowSlot, SlotSpawner, WARM_RETRY_BACKOFF,
+    destroy_prepared_slot_async,
 };
 use crate::duration::duration_ms;
 
@@ -365,12 +366,32 @@ impl CowPool {
         self.fail_all_waiters();
         self.finish_warmup_waiters();
 
-        while let Some(slot) = self.ready.pop_front() {
-            destroy_prepared_slot_async(slot).await;
-        }
+        let mut queued = std::mem::take(&mut self.ready);
+        let mut teardowns = JoinSet::new();
+        loop {
+            while teardowns.len() < MAX_CONCURRENT_SLOT_TEARDOWNS {
+                let Some(slot) = queued.pop_front() else {
+                    break;
+                };
+                teardowns.spawn(async move { destroy_prepared_slot_async(slot).await });
+            }
 
-        while let Some(completion) = self.pending.join_next().await {
-            self.handle_cleanup_completion(completion).await;
+            if self.pending.is_empty() && queued.is_empty() && teardowns.is_empty() {
+                break;
+            }
+
+            tokio::select! {
+                Some(completion) = self.pending.join_next(), if !self.pending.is_empty() => {
+                    if let Some(slot) = Self::slot_from_cleanup_completion(completion) {
+                        queued.push_back(slot);
+                    }
+                }
+                Some(result) = teardowns.join_next(), if !teardowns.is_empty() => {
+                    if let Err(e) = result {
+                        error!(error = %e, "COW slot teardown task panicked during cleanup");
+                    }
+                }
+            }
         }
 
         info!(
@@ -393,10 +414,9 @@ impl CowPool {
         }
     }
 
-    async fn handle_cleanup_completion(
-        &mut self,
+    fn slot_from_cleanup_completion(
         completion: Result<SlotCreationOutcome, tokio::task::JoinError>,
-    ) {
+    ) -> Option<PreparedCowSlot> {
         match completion {
             Ok(SlotCreationOutcome {
                 result: Ok(slot),
@@ -409,7 +429,7 @@ impl CowPool {
                     elapsed_ms = duration_ms(elapsed),
                     "dropping late COW slot during cleanup"
                 );
-                destroy_prepared_slot_async(slot).await;
+                Some(slot)
             }
             Ok(SlotCreationOutcome {
                 result: Err(e),
@@ -421,9 +441,11 @@ impl CowPool {
                     elapsed_ms = duration_ms(elapsed),
                     "pending COW slot creation failed during cleanup"
                 );
+                None
             }
             Err(e) => {
                 error!(error = %e, "pending COW slot task panicked during cleanup");
+                None
             }
         }
     }
