@@ -60,6 +60,7 @@ import {
 } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
+import { subagents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
@@ -70,6 +71,7 @@ const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorRefsRaw$, set$: setHiddenConnectorRefs$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 type PostConnectOptions = {
+  readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
 };
@@ -829,12 +831,46 @@ type FinishConnectorConnectionOptions = PostConnectOptions & {
   readonly toastMessage?: string | null;
 };
 
-const finishConnectorConnection$ = command(
-  (
+const authorizeConnectorForVisibleAgents$ = command(
+  async (
     { get, set },
     connectorRef: ConnectorRef,
-    options: FinishConnectorConnectionOptions = {},
-  ): boolean => {
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const visibleSubagents = await get(subagents$);
+    signal.throwIfAborted();
+    const client = get(zeroClient$)(zeroUserConnectorsContract);
+    await withCleanup(
+      Promise.all(
+        visibleSubagents.map(async (agent) => {
+          await accept(
+            client.update({
+              params: { id: agent.id },
+              body: { enabledTypes: [connectorRef], operation: "add" },
+              fetchOptions: { signal },
+            }),
+            [200, 404],
+          );
+        }),
+      ),
+      () => {
+        set(reloadAgentConnectorAuthorizations$);
+      },
+    );
+    signal.throwIfAborted();
+  },
+);
+
+const finishConnectorConnection$ = command(
+  async (
+    { get, set },
+    connectorRef: ConnectorRef,
+    options: FinishConnectorConnectionOptions,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (options.authorizeVisibleAgents) {
+      await set(authorizeConnectorForVisibleAgents$, connectorRef, signal);
+    }
     set(internalJustConnectedRefs$, (prev) => {
       return new Set([...prev, connectorRef]);
     });
@@ -915,11 +951,16 @@ export const submitManualGrant$ = command(
         );
         connectorStateChanged = true;
         signal.throwIfAborted();
-        set(finishConnectorConnection$, connectorRef, {
-          ...options,
-          reloadConnectors: false,
-          toastMessage: `${options.connectorLabel ?? connectorRef} connected successfully`,
-        });
+        await set(
+          finishConnectorConnection$,
+          connectorRef,
+          {
+            ...options,
+            reloadConnectors: false,
+            toastMessage: `${options.connectorLabel ?? connectorRef} connected successfully`,
+          },
+          signal,
+        );
         return true;
       })(),
       () => {
@@ -982,11 +1023,16 @@ export const connectConnectorNoAuth$ = command(
         );
         connectorStateChanged = true;
         signal.throwIfAborted();
-        set(finishConnectorConnection$, connectorRef, {
-          ...options,
-          reloadConnectors: false,
-          toastMessage: `${options.connectorLabel ?? connectorRef} enabled successfully`,
-        });
+        await set(
+          finishConnectorConnection$,
+          connectorRef,
+          {
+            ...options,
+            reloadConnectors: false,
+            toastMessage: `${options.connectorLabel ?? connectorRef} enabled successfully`,
+          },
+          signal,
+        );
         return true;
       })(),
       () => {
@@ -1336,11 +1382,16 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
 
         if (pollResult.status === "complete") {
           signal.throwIfAborted();
-          set(finishConnectorConnection$, connectorRef, {
-            ...options,
-            clearSelectedConnector: true,
-            reloadConnectors: false,
-          });
+          await set(
+            finishConnectorConnection$,
+            connectorRef,
+            {
+              ...options,
+              clearSelectedConnector: true,
+              reloadConnectors: false,
+            },
+            signal,
+          );
           set(
             internalConnectorOAuthDeviceAuthState$,
             createIdleConnectorOAuthDeviceAuthState(),
@@ -1892,11 +1943,16 @@ const completeConnectorExternalCode$ = command(
           return false;
         }
 
-        set(finishConnectorConnection$, connectorRef, {
-          ...options,
-          clearSelectedConnector: true,
-          reloadConnectors: false,
-        });
+        await set(
+          finishConnectorConnection$,
+          connectorRef,
+          {
+            ...options,
+            clearSelectedConnector: true,
+            reloadConnectors: false,
+          },
+          flowSignal,
+        );
         set(
           internalConnectorExternalCodeState$,
           createIdleConnectorExternalCodeState(),
@@ -2265,12 +2321,17 @@ export const connectConnectorOAuthAuthCode$ = command(
           return connectorMatchesAuthMethod(c, connectorRef, method.id);
         });
         if (isConnected) {
-          set(finishConnectorConnection$, connectorRef, {
-            ...options,
-            clearSelectedConnector: true,
-            reloadConnectors: false,
-            toastMessage: null,
-          });
+          await set(
+            finishConnectorConnection$,
+            connectorRef,
+            {
+              ...options,
+              clearSelectedConnector: true,
+              reloadConnectors: false,
+              toastMessage: null,
+            },
+            signal,
+          );
         }
         return isConnected;
       })(),

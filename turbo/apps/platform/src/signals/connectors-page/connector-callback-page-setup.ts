@@ -54,10 +54,12 @@ function resultFromPath(
 }
 
 function callbackPageElement(
+  connectorRef: ConnectorRef | null,
   label: string,
   result: ConnectorCallbackPageResult,
 ): React.JSX.Element {
   return createElement(ZeroConnectorCallbackPage, {
+    connectorRef,
     connectorLabel: label,
     status: result.status,
     username: result.status === "success" ? result.username : null,
@@ -102,7 +104,7 @@ export const setupConnectorCallbackPage$ = command(
     );
 
     if (pathResult) {
-      set(updatePage$, callbackPageElement(label, pathResult));
+      set(updatePage$, callbackPageElement(connectorRef, label, pathResult));
       set(updateDocumentTitle$, `Connect ${label}`);
       await set(hideAppSkeleton$, signal);
       return;
@@ -111,7 +113,7 @@ export const setupConnectorCallbackPage$ = command(
     if (!connectorRef) {
       set(
         updatePage$,
-        callbackPageElement(label, {
+        callbackPageElement(connectorRef, label, {
           status: "error",
           message: "Invalid connector callback URL.",
         }),
@@ -121,7 +123,10 @@ export const setupConnectorCallbackPage$ = command(
       return;
     }
 
-    set(updatePage$, callbackPageElement(label, { status: "loading" }));
+    set(
+      updatePage$,
+      callbackPageElement(connectorRef, label, { status: "loading" }),
+    );
     set(updateDocumentTitle$, `Connect ${label}`);
     await set(hideAppSkeleton$, signal);
 
@@ -131,7 +136,7 @@ export const setupConnectorCallbackPage$ = command(
       Object.fromEntries(searchParams),
       signal,
     );
-    set(updatePage$, callbackPageElement(label, result));
+    set(updatePage$, callbackPageElement(connectorRef, label, result));
 
     const resultSearchParams = new URLSearchParams();
     if (result.status === "success" && result.username) {

@@ -1,4 +1,5 @@
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -34,6 +35,10 @@ describe("connector callback page", () => {
         name: "GitHub connected",
       }),
     ).resolves.toBeInTheDocument();
+    expect(document.querySelector("img")).toHaveAttribute(
+      "src",
+      getStaticConnectorIconMetadata("github").url,
+    );
     expect(screen.getByText("octocat")).toBeInTheDocument();
     expect(screen.getByText(/You can close this window\./)).toBeInTheDocument();
     expect(observedQuery).toMatchObject({

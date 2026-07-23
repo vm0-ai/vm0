@@ -1,20 +1,30 @@
 import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
+import {
+  getStaticConnectorIconMetadata,
+  isStaticConnectorIconType,
+} from "@vm0/connectors/static-connector-icons";
 import { Button } from "@vm0/ui/components/ui/button";
 import { ZeroConnectorFlowCard } from "./zero-connector-flow-card.tsx";
 
 type ConnectorCallbackPageStatus = "loading" | "success" | "error";
 
 export function ZeroConnectorCallbackPage({
+  connectorRef,
   connectorLabel,
   status,
   username,
   errorMessage,
 }: {
+  readonly connectorRef: string | null;
   readonly connectorLabel: string;
   readonly status: ConnectorCallbackPageStatus;
   readonly username: string | null;
   readonly errorMessage: string | null;
 }): React.JSX.Element {
+  const connectorIcon =
+    connectorRef && isStaticConnectorIconType(connectorRef)
+      ? getStaticConnectorIconMetadata(connectorRef)
+      : undefined;
   const title =
     status === "success"
       ? `${connectorLabel} connected`
@@ -41,7 +51,7 @@ export function ZeroConnectorCallbackPage({
 
   return (
     <ZeroConnectorFlowCard
-      connectorIcon={undefined}
+      connectorIcon={connectorIcon}
       title={title}
       description={description}
     >

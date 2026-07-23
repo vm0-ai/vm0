@@ -15,6 +15,7 @@ const ENABLED_CONNECTOR_REFS: ReadonlySet<string> = new Set([
   "google-search-console",
   "google-sheets",
   "stripe",
+  "x",
   "youtube",
 ]);
 

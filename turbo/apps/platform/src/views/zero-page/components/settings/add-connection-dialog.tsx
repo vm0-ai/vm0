@@ -91,6 +91,7 @@ function connectedStatusText(item: PublicConnectorCatalogStatusItem): string {
 }
 
 type PostConnectOptions = {
+  readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
 };
@@ -158,6 +159,7 @@ type ConnectModalContentProps = {
   item: PublicConnectorCatalogStatusItem;
   agentId?: string;
   onSuccess: () => void | Promise<void>;
+  authorizeVisibleAgentsOnConnect: boolean;
 };
 
 type ConnectMethodContentProps = ConnectModalContentProps & {
@@ -244,6 +246,7 @@ function ManualGrantForm({
   authMethod,
   method,
   onSuccess,
+  authorizeVisibleAgentsOnConnect,
   agentId,
   submit,
   submitting,
@@ -253,6 +256,7 @@ function ManualGrantForm({
   authMethod: ConnectorAuthMethodId;
   method: PublicConnectorCatalogAuthMethodDetail;
   onSuccess: () => void | Promise<void>;
+  authorizeVisibleAgentsOnConnect: boolean;
   agentId?: string;
   submit: SubmitManualGrantFn;
   submitting: boolean;
@@ -278,6 +282,7 @@ function ManualGrantForm({
         authMethod,
         manualGrantInputValuesForMethod(method, fieldValues),
         {
+          authorizeVisibleAgents: authorizeVisibleAgentsOnConnect,
           connectorLabel,
           ...(agentId ? { agentId } : {}),
         },
@@ -370,6 +375,7 @@ function OAuthAuthCodeConnectButton({
   item,
   method,
   onSuccess,
+  authorizeVisibleAgentsOnConnect,
   agentId,
   connectOAuthAuthCodeAndSettle,
   signal,
@@ -388,6 +394,7 @@ function OAuthAuthCodeConnectButton({
             method,
             onSuccess,
             {
+              authorizeVisibleAgents: authorizeVisibleAgentsOnConnect,
               connectorLabel: item.label,
               connectorIcon: item.icon,
               ...(agentId ? { agentId } : {}),
@@ -644,6 +651,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
+          authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
@@ -877,6 +885,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
+          authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
@@ -935,6 +944,9 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
       authMethod={props.authMethod}
       method={props.method}
       onSuccess={props.onSuccess}
+      authorizeVisibleAgentsOnConnect={
+        props.authorizeVisibleAgentsOnConnect
+      }
       agentId={props.agentId}
       submit={props.submitManualGrant}
       submitting={props.manualGrantSubmitting}
@@ -950,6 +962,7 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
+          authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
@@ -1087,6 +1100,7 @@ function StandardConnectMethodsContent({
   item,
   agentId,
   onSuccess,
+  authorizeVisibleAgentsOnConnect,
   connectOAuthAuthCodeAndSettle,
   connectOAuthDeviceAuthAndSettle,
   connectExternalCode,
@@ -1120,6 +1134,7 @@ function StandardConnectMethodsContent({
           item,
           agentId,
           onSuccess,
+          authorizeVisibleAgentsOnConnect,
           connectOAuthAuthCodeAndSettle,
           connectOAuthDeviceAuthAndSettle,
           connectExternalCode,
@@ -1140,6 +1155,7 @@ function ConnectModalContent({
   item,
   agentId,
   onSuccess,
+  authorizeVisibleAgentsOnConnect,
 }: ConnectModalContentProps) {
   const [settleLoadable, connectOAuthAuthCodeAndSettleCommand] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
@@ -1243,6 +1259,7 @@ function ConnectModalContent({
       item={item}
       agentId={agentId}
       onSuccess={onConnectSuccess}
+      authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
       connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettleCommandFn}
       connectExternalCode={connectExternalCode}
@@ -1265,11 +1282,13 @@ function ConnectModalContent({
 export function ConnectModal({
   onClose,
   onSuccess,
+  authorizeVisibleAgentsOnConnect = false,
   selectedConnectorRef: selectedConnectorRefOverride,
   agentId,
 }: {
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
+  authorizeVisibleAgentsOnConnect?: boolean;
   selectedConnectorRef?: ConnectorRef | null;
   agentId?: string;
 }) {
@@ -1344,6 +1363,7 @@ export function ConnectModal({
         <ConnectModalContent
           item={item}
           agentId={agentId}
+          authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
           onSuccess={async () => {
             await onSuccess?.();
             clearConnectorOAuthDeviceAuth();
