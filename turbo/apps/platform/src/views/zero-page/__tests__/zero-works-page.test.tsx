@@ -236,6 +236,21 @@ describe("works page", () => {
     expect(getRole("button", "Uninstall")).toBeInTheDocument();
   });
 
+  it("redirects direct Feishu settings navigation when the switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/settings/feishu",
+      featureSwitches: {
+        [FeatureSwitchKey.FeishuIntegration]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+    expect(screen.queryByText("Feishu bots")).not.toBeInTheDocument();
+  });
+
   it("shows Feishu management actions to a bot owner", async () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";

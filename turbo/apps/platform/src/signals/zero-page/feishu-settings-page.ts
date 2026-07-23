@@ -1,9 +1,13 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { ZeroFeishuSettingsPage } from "../../views/zero-page/feishu-card.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { detachedNavigateTo$ } from "../route.ts";
+import { ROUTES } from "../route-paths.ts";
 import { updatePage$ } from "../react-router.ts";
 import {
   reloadFeishuInstallations$,
@@ -14,7 +18,17 @@ import {
 import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupFeishuSettingsPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
+    const features = get(featureSwitch$);
+    if (!features[FeatureSwitchKey.FeishuIntegration]) {
+      set(detachedNavigateTo$, ROUTES.home, { replace: true });
+      return;
+    }
+
+    if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
     set(resetFeishuSettingsUi$);
     set(reloadFeishuInstallations$);
     set(showFeishuSettingsResult$);
@@ -23,7 +37,6 @@ export const setupFeishuSettingsPage$ = command(
 
     await Promise.all([
       set(hideAppSkeleton$, signal),
-      set(onboardGuard$, signal),
       set(startFeishuSettingsRealtime$, signal),
     ]);
   },

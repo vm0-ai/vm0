@@ -568,7 +568,35 @@ describe("Feishu integration", () => {
       signal: context.signal,
       routes: zeroFeishuOauthRoutes,
     });
-    const connectResponse = await oauthApp.request(connectUrl);
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const unauthenticatedResponse = await oauthApp.request(connectUrl);
+    expect(unauthenticatedResponse.status).toBe(307);
+    const signInUrl = new URL(
+      unauthenticatedResponse.headers.get("location") ?? "",
+    );
+    expect(signInUrl.origin).toBe(APP_ORIGIN);
+    expect(signInUrl.pathname).toBe("/sign-in");
+    expect(signInUrl.searchParams.get("redirect_url")).toBe(connectUrl);
+
+    const otherActor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    mocks.clerk.session(otherActor.userId, otherActor.orgId, "org:member");
+    mockClerkMembership(context, otherActor, "org:member");
+    const mismatchedUserResponse = await oauthApp.request(connectUrl, {
+      headers: { cookie: "__session=opaque" },
+    });
+    expect(mismatchedUserResponse.status).toBe(400);
+
+    mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+    mockClerkMembership(context, actor, "org:member");
+    const connectResponse = await oauthApp.request(connectUrl, {
+      headers: { cookie: "__session=opaque" },
+    });
     expect(connectResponse.status).toBe(307);
     const authorizationUrl = new URL(
       connectResponse.headers.get("location") ?? "",
@@ -588,6 +616,7 @@ describe("Feishu integration", () => {
         code: "feishu-oauth-code",
         state,
       })}`,
+      { headers: { cookie: "__session=opaque" } },
     );
     expect(callbackResponse.status).toBe(307);
     expect(callbackResponse.headers.get("location")).toBe(

@@ -44,8 +44,6 @@ interface FeishuDispatchConnection {
   readonly vm0UserId: string;
 }
 
-type CommandSet = Parameters<Parameters<typeof command>[0]>[0]["set"];
-
 async function resolveAgent(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -164,84 +162,88 @@ async function markFeishuMessageReceived(args: {
   }
 }
 
-async function dispatchConnectedFeishuMessage(args: {
-  readonly set: CommandSet;
-  readonly db: Db;
-  readonly installation: FeishuDispatchInstallation;
-  readonly connection: FeishuDispatchConnection;
-  readonly message: FeishuInboundMessage;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const agent = await resolveAgent({
-    db: args.db,
-    orgId: args.installation.orgId,
-    userId: args.connection.vm0UserId,
-    agentId: args.installation.defaultAgentId,
-  });
-  args.signal.throwIfAborted();
-  if (!agent) {
-    await reply({
-      db: args.db,
-      message: args.message,
-      text: "The configured Feishu agent is not accessible to this user. Ask an admin to select another agent.",
-      signal: args.signal,
-    });
-    return;
-  }
-  const sessionId = await resolveSession({
-    db: args.db,
-    connectionId: args.connection.id,
-    chatId: args.message.chatId,
-    userId: args.connection.vm0UserId,
-    agentId: agent.id,
-  });
-  args.signal.throwIfAborted();
-  const result = await args.set(
-    createZeroIntegrationRun$,
-    {
-      userId: args.connection.vm0UserId,
-      orgId: args.installation.orgId,
-      agentId: agent.id,
-      sessionId,
-      prompt: args.message.text,
-      appendSystemPrompt: systemPrompt(args.message),
-      triggerSource: "feishu",
-      dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-      callbacks: [
-        {
-          internalKind: "feishu:org",
-          secret: randomBytes(32).toString("hex"),
-          payload: feishuOrgCallbackPayloadSchema.parse({
-            installationId: args.message.installationId,
-            chatId: args.message.chatId,
-            messageId: args.message.messageId,
-            connectionId: args.connection.id,
-          }),
-        },
-      ],
-      apiStartTime: now(),
+const dispatchConnectedFeishuMessage$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly installation: FeishuDispatchInstallation;
+      readonly connection: FeishuDispatchConnection;
+      readonly message: FeishuInboundMessage;
     },
-    args.signal,
-  );
-  args.signal.throwIfAborted();
-  if (result.status !== 201) {
-    await reply({
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const agent = await resolveAgent({
       db: args.db,
-      message: args.message,
-      text: result.body.error.message,
-      signal: args.signal,
+      orgId: args.installation.orgId,
+      userId: args.connection.vm0UserId,
+      agentId: args.installation.defaultAgentId,
     });
-    return;
-  }
-  if (result.body.status === "queued") {
-    await reply({
+    signal.throwIfAborted();
+    if (!agent) {
+      await reply({
+        db: args.db,
+        message: args.message,
+        text: "The configured Feishu agent is not accessible to this user. Ask an admin to select another agent.",
+        signal,
+      });
+      return;
+    }
+    const sessionId = await resolveSession({
       db: args.db,
-      message: args.message,
-      text: "Your request is queued and will start automatically.",
-      signal: args.signal,
+      connectionId: args.connection.id,
+      chatId: args.message.chatId,
+      userId: args.connection.vm0UserId,
+      agentId: agent.id,
     });
-  }
-}
+    signal.throwIfAborted();
+    const result = await set(
+      createZeroIntegrationRun$,
+      {
+        userId: args.connection.vm0UserId,
+        orgId: args.installation.orgId,
+        agentId: agent.id,
+        sessionId,
+        prompt: args.message.text,
+        appendSystemPrompt: systemPrompt(args.message),
+        triggerSource: "feishu",
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        callbacks: [
+          {
+            internalKind: "feishu:org",
+            secret: randomBytes(32).toString("hex"),
+            payload: feishuOrgCallbackPayloadSchema.parse({
+              installationId: args.message.installationId,
+              chatId: args.message.chatId,
+              messageId: args.message.messageId,
+              connectionId: args.connection.id,
+            }),
+          },
+        ],
+        apiStartTime: now(),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.status !== 201) {
+      await reply({
+        db: args.db,
+        message: args.message,
+        text: result.body.error.message,
+        signal,
+      });
+      return;
+    }
+    if (result.body.status === "queued") {
+      await reply({
+        db: args.db,
+        message: args.message,
+        text: "Your request is queued and will start automatically.",
+        signal,
+      });
+    }
+  },
+);
 
 export const dispatchFeishuMessage$ = command(
   async (
@@ -305,13 +307,15 @@ export const dispatchFeishuMessage$ = command(
       return;
     }
 
-    await dispatchConnectedFeishuMessage({
-      set,
-      db,
-      installation,
-      connection,
-      message,
+    await set(
+      dispatchConnectedFeishuMessage$,
+      {
+        db,
+        installation,
+        connection,
+        message,
+      },
       signal,
-    });
+    );
   },
 );

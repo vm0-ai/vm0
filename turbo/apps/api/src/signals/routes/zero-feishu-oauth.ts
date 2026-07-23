@@ -6,6 +6,8 @@ import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { requiredAuthContext$ } from "../auth/auth-context";
+import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
 import {
@@ -15,7 +17,6 @@ import {
 } from "../external/feishu-client";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
-import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   feishuBotOpenUrl,
   feishuOAuthCallbackUrl,
@@ -55,27 +56,44 @@ function settingsRedirect(params: Readonly<Record<string, string>>): Response {
   return redirectResponse(url.toString());
 }
 
-async function resolveState(args: {
-  readonly state: string | undefined;
-  readonly set: Parameters<Parameters<typeof command>[0]>[0]["set"];
-  readonly signal: AbortSignal;
-}): Promise<FeishuOAuthState | null> {
-  if (!args.state) {
-    return null;
-  }
-  const state = verifyFeishuOAuthState(args.state);
-  if (!state) {
-    return null;
-  }
-  const member = await args.set(
-    getMemberRoleAndUpdateCache$,
-    state.orgId,
-    state.userId,
-    args.signal,
-  );
-  args.signal.throwIfAborted();
-  return member ? state : null;
+function signInRedirect(requestUrl: string): Response {
+  const url = new URL("/sign-in", env("APP_URL"));
+  url.searchParams.set("redirect_url", requestUrl);
+  return redirectResponse(url.toString());
 }
+
+type AuthenticatedStateResult =
+  | { readonly kind: "ok"; readonly state: FeishuOAuthState }
+  | { readonly kind: "unauthenticated" }
+  | { readonly kind: "invalid" };
+
+const resolveAuthenticatedState$ = command(
+  async (
+    { set },
+    encodedState: string | undefined,
+    signal: AbortSignal,
+  ): Promise<AuthenticatedStateResult> => {
+    const state = encodedState ? verifyFeishuOAuthState(encodedState) : null;
+    if (!state) {
+      return { kind: "invalid" };
+    }
+    const auth = await set(
+      requiredAuthContext$,
+      { requireOrganization: true },
+      signal,
+    );
+    signal.throwIfAborted();
+    if ("status" in auth) {
+      return auth.status === 401
+        ? { kind: "unauthenticated" }
+        : { kind: "invalid" };
+    }
+    if (auth.userId !== state.userId || auth.orgId !== state.orgId) {
+      return { kind: "invalid" };
+    }
+    return { kind: "ok", state };
+  },
+);
 
 async function exchangeOAuthUserInfo(args: {
   readonly appId: string;
@@ -175,10 +193,14 @@ async function upsertFeishuConnection(args: {
 
 const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(zeroFeishuOauthContract.connect));
-  const state = await resolveState({ state: query.state, set, signal });
-  if (!state || !query.state) {
+  const resolved = await set(resolveAuthenticatedState$, query.state, signal);
+  if (resolved.kind === "unauthenticated") {
+    return signInRedirect(get(request$).url);
+  }
+  if (resolved.kind === "invalid" || !query.state) {
     return jsonErrorResponse("Invalid or expired connect state");
   }
+  const { state } = resolved;
   const [installation] = await get(db$)
     .select({
       appId: feishuOrgInstallations.appId,
@@ -212,10 +234,14 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(zeroFeishuOauthContract.callback));
-  const state = await resolveState({ state: query.state, set, signal });
-  if (!state) {
+  const resolved = await set(resolveAuthenticatedState$, query.state, signal);
+  if (resolved.kind === "unauthenticated") {
+    return signInRedirect(get(request$).url);
+  }
+  if (resolved.kind === "invalid") {
     return jsonErrorResponse("Invalid or expired connect state");
   }
+  const { state } = resolved;
   if (query.error) {
     return settingsRedirect({
       error: query.error_description ?? query.error,
