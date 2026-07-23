@@ -22,7 +22,7 @@ check_restore_dir_component() {
 check_restore_dir_component "$codex_home"
 check_restore_dir_component "$root"
 root_prefix="$root/"
-relative_dir="${restore_dir#$root_prefix}"
+relative_dir="${restore_dir#"$root_prefix"}"
 current="$root"
 remaining="$relative_dir"
 while [ -n "$remaining" ]; do

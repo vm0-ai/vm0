@@ -441,6 +441,25 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_script_treats_codex_home_glob_characters_literally() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join("codex[home]");
+        let restore_path = restore_path(&codex_home);
+        create_file(&restore_path);
+        let other_match = restore_path
+            .parent()
+            .unwrap()
+            .join(format!("rollout-other-{SESSION_ID}.jsonl"));
+        create_file(&other_match);
+
+        let output = run_cleanup(&codex_home, &restore_path);
+
+        assert_success(&output);
+        assert!(restore_path.exists());
+        assert!(!other_match.exists());
+    }
+
+    #[test]
     fn cleanup_script_rejects_symlink_restore_target_without_deleting_sessions() {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");
