@@ -181,6 +181,7 @@ runs:
           add_env VM0_API_BACKEND_URL "$api_backend_url"
         fi
         if [[ "$INPUT_APP" == "api" ]]; then
+          add_env FEISHU_CALLBACK_BASE_URL "$api_backend_url"
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then

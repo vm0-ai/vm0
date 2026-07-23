@@ -1,17 +1,19 @@
 import { eq } from "drizzle-orm";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import type { Db } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 
 export interface FeishuInstallationConfig {
   readonly id: string;
   readonly orgId: string;
+  readonly ownerUserId: string | null;
   readonly appId: string;
   readonly appSecret: string;
   readonly verificationToken: string;
   readonly encryptKey: string;
+  readonly callbackVerified: boolean;
 }
 
 export async function loadFeishuInstallationConfig(
@@ -22,11 +24,13 @@ export async function loadFeishuInstallationConfig(
     .select({
       id: feishuOrgInstallations.id,
       orgId: feishuOrgInstallations.orgId,
+      ownerUserId: feishuOrgInstallations.ownerUserId,
       appId: feishuOrgInstallations.appId,
       encryptedAppSecret: feishuOrgInstallations.encryptedAppSecret,
       encryptedVerificationToken:
         feishuOrgInstallations.encryptedVerificationToken,
       encryptedEncryptKey: feishuOrgInstallations.encryptedEncryptKey,
+      callbackVerifiedAt: feishuOrgInstallations.callbackVerifiedAt,
     })
     .from(feishuOrgInstallations)
     .where(eq(feishuOrgInstallations.id, installationId))
@@ -46,17 +50,40 @@ export async function loadFeishuInstallationConfig(
   return {
     id: installation.id,
     orgId: installation.orgId,
+    ownerUserId: installation.ownerUserId,
     appId: installation.appId,
     appSecret,
     verificationToken,
     encryptKey,
+    callbackVerified: Boolean(installation.callbackVerifiedAt),
   };
 }
 
 export function feishuCallbackUrl(installationId: string): string {
-  const baseUrl = optionalEnv("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
   return new URL(
     `/api/zero/feishu/events/${encodeURIComponent(installationId)}`,
-    baseUrl,
+    env("FEISHU_CALLBACK_BASE_URL"),
   ).toString();
+}
+
+export function feishuOAuthCallbackUrl(): string {
+  return new URL(
+    "/api/zero/feishu/oauth/callback",
+    env("FEISHU_CALLBACK_BASE_URL"),
+  ).toString();
+}
+
+export function feishuOAuthConnectUrl(state: string): string {
+  const url = new URL(
+    "/api/zero/feishu/oauth/connect",
+    env("FEISHU_CALLBACK_BASE_URL"),
+  );
+  url.searchParams.set("state", state);
+  return url.toString();
+}
+
+export function feishuBotOpenUrl(appId: string): string {
+  const url = new URL("https://applink.feishu.cn/client/bot/open");
+  url.searchParams.set("appId", appId);
+  return url.toString();
 }

@@ -10,7 +10,7 @@ import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import {
@@ -21,6 +21,7 @@ import {
   dispatchFeishuMessage$,
   type FeishuInboundMessage,
 } from "./zero-feishu-dispatch.service";
+import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 
 const L = logger("ZeroFeishuWebhooks");
 
@@ -68,6 +69,26 @@ function textResponse(text: string): Response {
   return new Response(text, { status: 200 });
 }
 
+async function markCallbackVerified(args: {
+  readonly db: Db;
+  readonly config: FeishuInstallationConfig;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.config.callbackVerified) {
+    return;
+  }
+  await args.db
+    .update(feishuOrgInstallations)
+    .set({ callbackVerifiedAt: nowDate(), updatedAt: nowDate() })
+    .where(eq(feishuOrgInstallations.id, args.config.id));
+  args.signal.throwIfAborted();
+  await publishFeishuOrgChanged(
+    args.db,
+    args.config.orgId,
+    args.config.ownerUserId,
+  );
+}
+
 function verifySignature(args: {
   readonly rawBody: string;
   readonly timestamp: string | undefined;
@@ -112,14 +133,6 @@ function decryptPayload(encrypted: string, encryptKey: string): unknown {
     decipher.final(),
   ]).toString("utf8");
   return JSON.parse(decrypted) as unknown;
-}
-
-function parseBody(rawBody: string, config: FeishuInstallationConfig): unknown {
-  const parsed = JSON.parse(rawBody) as unknown;
-  const encrypted = encryptedBodySchema.safeParse(parsed);
-  return encrypted.success
-    ? decryptPayload(encrypted.data.encrypt, config.encryptKey)
-    : parsed;
 }
 
 function inboundMessage(
@@ -170,9 +183,53 @@ export const handleZeroFeishuEvents$ = command(
     if (!config) {
       return jsonResponse({ error: "Feishu installation not found" }, 404);
     }
+    L.debug("Received Feishu callback", {
+      installationId: config.id,
+    });
     const rawBody = await request.text();
     signal.throwIfAborted();
+    const parsedOuterBody = safeSync(() => {
+      return JSON.parse(rawBody) as unknown;
+    });
+    if ("error" in parsedOuterBody) {
+      L.warn("Rejected Feishu callback with invalid JSON", {
+        installationId: config.id,
+      });
+      return jsonResponse({ error: "Invalid Feishu payload" }, 400);
+    }
+    const encrypted = encryptedBodySchema.safeParse(parsedOuterBody.ok);
+    if (encrypted.success && !config.encryptKey) {
+      L.warn("Rejected encrypted Feishu callback without an Encrypt Key", {
+        installationId: config.id,
+      });
+      return jsonResponse({ error: "Invalid Feishu payload" }, 400);
+    }
+    const decryptedBody = encrypted.success
+      ? safeSync(() => {
+          return decryptPayload(encrypted.data.encrypt, config.encryptKey);
+        })
+      : { ok: parsedOuterBody.ok };
+    if ("error" in decryptedBody) {
+      return jsonResponse({ error: "Invalid Feishu payload" }, 400);
+    }
+    const payload = decryptedBody.ok;
+    const challenge = challengeSchema.safeParse(payload);
+    if (challenge.success) {
+      if (challenge.data.token !== config.verificationToken) {
+        L.warn("Rejected Feishu URL verification with an invalid token", {
+          installationId: config.id,
+        });
+        return jsonResponse({ error: "Invalid Feishu token" }, 401);
+      }
+      await markCallbackVerified({ db, config, signal });
+      L.debug("Verified Feishu callback URL", {
+        installationId: config.id,
+      });
+      return jsonResponse({ challenge: challenge.data.challenge });
+    }
+
     if (
+      encrypted.success &&
       !verifySignature({
         rawBody,
         timestamp: request.header("x-lark-request-timestamp"),
@@ -181,44 +238,32 @@ export const handleZeroFeishuEvents$ = command(
         encryptKey: config.encryptKey,
       })
     ) {
+      L.warn("Rejected encrypted Feishu event with an invalid signature", {
+        installationId: config.id,
+        hasTimestamp: Boolean(request.header("x-lark-request-timestamp")),
+        hasNonce: Boolean(request.header("x-lark-request-nonce")),
+        hasSignature: Boolean(request.header("x-lark-signature")),
+      });
       return jsonResponse({ error: "Invalid Feishu signature" }, 401);
-    }
-
-    const parsedBody = safeSync(() => {
-      return parseBody(rawBody, config);
-    });
-    if ("error" in parsedBody) {
-      return jsonResponse({ error: "Invalid Feishu payload" }, 400);
-    }
-    const payload = parsedBody.ok;
-    const challenge = challengeSchema.safeParse(payload);
-    if (challenge.success) {
-      if (challenge.data.token !== config.verificationToken) {
-        return jsonResponse({ error: "Invalid Feishu token" }, 401);
-      }
-      await db
-        .update(feishuOrgInstallations)
-        .set({ callbackVerifiedAt: nowDate(), updatedAt: nowDate() })
-        .where(eq(feishuOrgInstallations.id, config.id));
-      signal.throwIfAborted();
-      return jsonResponse({ challenge: challenge.data.challenge });
     }
 
     const v2 = v2EnvelopeSchema.safeParse(payload);
     if (!v2.success) {
+      L.warn("Rejected Feishu callback with an invalid payload", {
+        installationId: config.id,
+      });
       return jsonResponse({ error: "Invalid Feishu event" }, 400);
     }
     if (
       v2.data.header.app_id !== config.appId ||
       v2.data.header.token !== config.verificationToken
     ) {
+      L.warn("Rejected Feishu event with invalid app credentials", {
+        installationId: config.id,
+      });
       return jsonResponse({ error: "Invalid Feishu token" }, 401);
     }
-    await db
-      .update(feishuOrgInstallations)
-      .set({ callbackVerifiedAt: nowDate(), updatedAt: nowDate() })
-      .where(eq(feishuOrgInstallations.id, config.id));
-    signal.throwIfAborted();
+    await markCallbackVerified({ db, config, signal });
     const message = inboundMessage(config.id, v2.data);
     if (message) {
       waitUntil(

@@ -19,6 +19,36 @@ const tenantAccessTokenResponseSchema = z.object({
   expire: z.number().optional(),
 });
 
+const feishuBotInfoSchema = z.object({
+  app_name: z.string().optional(),
+  avatar_url: z.string().optional(),
+});
+
+const feishuBotInfoResponseSchema = z.object({
+  code: z.number(),
+  msg: z.string().optional(),
+  bot: feishuBotInfoSchema.optional(),
+  data: z.object({ bot: feishuBotInfoSchema.optional() }).optional(),
+});
+
+const feishuOAuthTokenResponseSchema = z.object({
+  code: z.number(),
+  msg: z.string().optional(),
+  access_token: z.string().optional(),
+});
+
+const feishuUserInfoResponseSchema = z.object({
+  code: z.number(),
+  msg: z.string().optional(),
+  data: z
+    .object({
+      name: z.string().optional(),
+      open_id: z.string().optional(),
+      tenant_key: z.string().optional(),
+    })
+    .optional(),
+});
+
 const feishuResponseSchema = z.object({
   code: z.number(),
   msg: z.string().optional(),
@@ -27,6 +57,17 @@ const feishuResponseSchema = z.object({
 interface FeishuTenantAccessToken {
   readonly token: string;
   readonly expiresInSeconds: number;
+}
+
+interface FeishuBotInfo {
+  readonly name: string;
+  readonly avatarUrl: string | null;
+}
+
+export interface FeishuUserInfo {
+  readonly name: string | null;
+  readonly openId: string;
+  readonly tenantKey: string | null;
 }
 
 export class InvalidFeishuCredentialsError extends Error {}
@@ -80,7 +121,92 @@ export async function fetchFeishuTenantAccessToken(args: {
   };
 }
 
-async function getFeishuTenantAccessToken(args: {
+export async function fetchFeishuBotInfo(args: {
+  readonly tenantAccessToken: string;
+  readonly signal: AbortSignal;
+}): Promise<FeishuBotInfo> {
+  const response = await fetch(`${FEISHU_API_ORIGIN}/open-apis/bot/v3/info`, {
+    headers: {
+      authorization: `Bearer ${args.tenantAccessToken}`,
+      "content-type": "application/json; charset=utf-8",
+    },
+    signal: args.signal,
+  });
+  const parsed = feishuBotInfoResponseSchema.parse(await readJson(response));
+  if (parsed.code !== 0) {
+    throw new Error(parsed.msg ?? "Feishu bot info request failed");
+  }
+  const bot = parsed.bot ?? parsed.data?.bot;
+  if (!bot?.app_name) {
+    throw new Error("Feishu bot info response is incomplete");
+  }
+  return {
+    name: bot.app_name,
+    avatarUrl: bot.avatar_url ?? null,
+  };
+}
+
+export async function exchangeFeishuOAuthCode(args: {
+  readonly appId: string;
+  readonly appSecret: string;
+  readonly code: string;
+  readonly redirectUri: string;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const response = await fetch(
+    `${FEISHU_API_ORIGIN}/open-apis/authen/v2/oauth/token`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        grant_type: "authorization_code",
+        client_id: args.appId,
+        client_secret: args.appSecret,
+        code: args.code,
+        redirect_uri: args.redirectUri,
+      }),
+      signal: args.signal,
+    },
+  );
+  const parsed = feishuOAuthTokenResponseSchema.parse(await readJson(response));
+  if (parsed.code !== 0) {
+    throw new Error(parsed.msg ?? "Feishu OAuth exchange failed");
+  }
+  if (!parsed.access_token) {
+    throw new Error("Feishu OAuth token response is incomplete");
+  }
+  return parsed.access_token;
+}
+
+export async function fetchFeishuUserInfo(args: {
+  readonly userAccessToken: string;
+  readonly signal: AbortSignal;
+}): Promise<FeishuUserInfo> {
+  const response = await fetch(
+    `${FEISHU_API_ORIGIN}/open-apis/authen/v1/user_info`,
+    {
+      headers: {
+        authorization: `Bearer ${args.userAccessToken}`,
+        "content-type": "application/json; charset=utf-8",
+      },
+      signal: args.signal,
+    },
+  );
+  const parsed = feishuUserInfoResponseSchema.parse(await readJson(response));
+  if (parsed.code !== 0) {
+    throw new Error(parsed.msg ?? "Feishu user info request failed");
+  }
+  if (!parsed.data?.open_id) {
+    throw new Error("Feishu user info response is incomplete");
+  }
+  return {
+    name: parsed.data.name ?? null,
+    openId: parsed.data.open_id,
+    tenantKey: parsed.data.tenant_key ?? null,
+  };
+}
+
+export async function getFeishuTenantAccessToken(args: {
   readonly db: Db;
   readonly installationId: string;
   readonly signal: AbortSignal;

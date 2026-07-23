@@ -29,6 +29,7 @@ export const ROUTES = {
   settings: "/settings",
   settingsSlack: "/settings/slack",
   settingsTeams: "/settings/teams",
+  settingsFeishu: "/settings/feishu",
   settingsTelegram: "/settings/telegram",
   githubConnect: "/github/connect",
   telegramConnect: "/telegram/connect",

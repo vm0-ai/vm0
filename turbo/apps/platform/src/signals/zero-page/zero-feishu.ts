@@ -2,15 +2,20 @@ import { command, computed, state } from "ccstate";
 import {
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
+  type FeishuInstallationStatus,
 } from "@vm0/api-contracts/contracts/zero-feishu-connect";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { resetSignal, setLoop } from "../utils.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 const reload$ = state(0);
 const internalDialogOpen$ = state(false);
-const internalEditing$ = state(false);
+const internalDialogExisting$ = state(false);
+const internalDialogInstallationId$ = state<string | null>(null);
+const internalUninstallInstallationId$ = state<string | null>(null);
+const internalSetupStep$ = state<FeishuSetupStep>("create");
 const internalSetupForm$ = state<FeishuSetupInput>({
   appId: "",
   appSecret: "",
@@ -18,7 +23,14 @@ const internalSetupForm$ = state<FeishuSetupInput>({
   encryptKey: "",
   defaultAgentId: "",
 });
-const resetPollingSignal$ = resetSignal();
+const FEISHU_SETUP_STEP_ORDER = [
+  "create",
+  "credentials",
+  "tokens",
+  "redirect",
+  "events",
+  "publish",
+] as const satisfies readonly FeishuSetupStep[];
 
 export const feishuOrgData$ = computed(
   async (get): Promise<FeishuConnectStatus> => {
@@ -29,10 +41,76 @@ export const feishuOrgData$ = computed(
   },
 );
 
+export interface FeishuBotInstallation extends Omit<
+  FeishuInstallationStatus,
+  "canManage" | "connectUrl" | "id" | "oauthRedirectUrl" | "setupCompleted"
+> {
+  readonly id: string | null;
+  readonly canManage: boolean;
+  readonly connectUrl: string | null;
+  readonly oauthRedirectUrl: string | null;
+  readonly setupCompleted: boolean;
+}
+
+export const feishuInstallations$ = computed(
+  async (get): Promise<FeishuBotInstallation[]> => {
+    const data = await get(feishuOrgData$);
+    if (data.installations) {
+      return data.installations.map((installation) => {
+        return {
+          ...installation,
+          canManage: installation.canManage ?? data.isAdmin,
+          connectUrl: installation.connectUrl ?? null,
+          oauthRedirectUrl: installation.oauthRedirectUrl ?? null,
+          setupCompleted:
+            installation.setupCompleted ?? installation.messageReceived,
+        };
+      });
+    }
+    if (
+      !data.isInstalled ||
+      !data.appId ||
+      !data.callbackUrl ||
+      !data.defaultAgentId
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: data.installationId ?? null,
+        isConnected: data.isConnected,
+        connectedUserName: data.connectedUserName ?? null,
+        appId: data.appId,
+        callbackUrl: data.callbackUrl,
+        connectUrl: data.connectUrl ?? null,
+        oauthRedirectUrl: data.oauthRedirectUrl ?? null,
+        callbackVerified: data.callbackVerified,
+        setupCompleted: data.messageReceived,
+        messageReceived: data.messageReceived,
+        tenantKey: data.tenantKey,
+        tenantName: data.tenantName,
+        defaultAgentId: data.defaultAgentId,
+        defaultAgentName: data.defaultAgentName,
+        canManage: data.isAdmin,
+      },
+    ];
+  },
+);
+
 export const disconnectFeishuOrg$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ get, set }, installationId: string | null, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroFeishuConnectContract);
-    await accept(client.disconnect({ fetchOptions: { signal } }), [200]);
+    if (installationId) {
+      await accept(
+        client.disconnectInstallation({
+          params: { installationId },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+    } else {
+      await accept(client.disconnect({ fetchOptions: { signal } }), [200]);
+    }
     signal.throwIfAborted();
     set(reload$, (value) => {
       return value + 1;
@@ -48,12 +126,32 @@ export interface FeishuSetupInput {
   readonly defaultAgentId: string;
 }
 
+export type FeishuSetupStep =
+  | "create"
+  | "credentials"
+  | "tokens"
+  | "redirect"
+  | "events"
+  | "publish";
+
 export const feishuDialogOpen$ = computed((get) => {
   return get(internalDialogOpen$);
 });
 
-export const feishuEditing$ = computed((get) => {
-  return get(internalEditing$);
+export const feishuSetupStep$ = computed((get) => {
+  return get(internalSetupStep$);
+});
+
+export const feishuDialogExisting$ = computed((get) => {
+  return get(internalDialogExisting$);
+});
+
+export const feishuDialogInstallationId$ = computed((get) => {
+  return get(internalDialogInstallationId$);
+});
+
+export const feishuUninstallInstallationId$ = computed((get) => {
+  return get(internalUninstallInstallationId$);
 });
 
 export const feishuSetupForm$ = computed((get) => {
@@ -61,10 +159,20 @@ export const feishuSetupForm$ = computed((get) => {
 });
 
 export const openFeishuDialog$ = command(
-  ({ set }, initial: Pick<FeishuSetupInput, "appId" | "defaultAgentId">) => {
+  (
+    { set },
+    initial: Pick<FeishuSetupInput, "appId" | "defaultAgentId"> & {
+      readonly step: FeishuSetupStep;
+      readonly installationId?: string | null;
+    },
+  ) => {
+    const { step, installationId, ...formDefaults } = initial;
     set(internalDialogOpen$, true);
+    set(internalDialogExisting$, installationId !== undefined);
+    set(internalDialogInstallationId$, installationId ?? null);
+    set(internalSetupStep$, step);
     set(internalSetupForm$, {
-      ...initial,
+      ...formDefaults,
       appSecret: "",
       verificationToken: "",
       encryptKey: "",
@@ -74,25 +182,32 @@ export const openFeishuDialog$ = command(
 
 export const closeFeishuDialog$ = command(({ set }) => {
   set(internalDialogOpen$, false);
-  set(internalEditing$, false);
+  set(internalDialogExisting$, false);
+  set(internalDialogInstallationId$, null);
+  set(internalSetupStep$, "create");
+  set(internalSetupForm$, (previous) => {
+    return {
+      ...previous,
+      appSecret: "",
+      verificationToken: "",
+      encryptKey: "",
+    };
+  });
 });
 
-export const setFeishuEditing$ = command(
-  (
-    { set },
-    input: Pick<FeishuSetupInput, "appId" | "defaultAgentId"> | null,
-  ) => {
-    set(internalEditing$, input !== null);
-    if (input) {
-      set(internalSetupForm$, {
-        ...input,
-        appSecret: "",
-        verificationToken: "",
-        encryptKey: "",
-      });
-    }
-  },
-);
+export const advanceFeishuSetupStep$ = command(({ set }) => {
+  set(internalSetupStep$, (step) => {
+    const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
+    return FEISHU_SETUP_STEP_ORDER[index + 1] ?? step;
+  });
+});
+
+export const goBackFeishuSetupStep$ = command(({ set }) => {
+  set(internalSetupStep$, (step) => {
+    const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
+    return index > 0 ? (FEISHU_SETUP_STEP_ORDER[index - 1] ?? step) : step;
+  });
+});
 
 export const updateFeishuSetupForm$ = command(
   ({ set }, update: Partial<FeishuSetupInput>) => {
@@ -105,7 +220,10 @@ export const updateFeishuSetupForm$ = command(
 export const setupFeishuOrg$ = command(
   async (
     { get, set },
-    input: FeishuSetupInput,
+    input: FeishuSetupInput & {
+      readonly installationId?: string;
+      readonly createNew?: boolean;
+    },
     signal: AbortSignal,
   ): Promise<FeishuConnectStatus> => {
     const client = get(zeroClient$)(zeroFeishuConnectContract);
@@ -114,6 +232,11 @@ export const setupFeishuOrg$ = command(
       [200],
     );
     signal.throwIfAborted();
+    set(internalDialogExisting$, true);
+    set(
+      internalDialogInstallationId$,
+      result.body.installationId ?? input.installationId ?? null,
+    );
     set(reload$, (value) => {
       return value + 1;
     });
@@ -121,10 +244,36 @@ export const setupFeishuOrg$ = command(
   },
 );
 
-export const removeFeishuOrg$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+export const checkFeishuAppIdAvailable$ = command(
+  async ({ get }, appId: string, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroFeishuConnectContract);
-    await accept(client.remove({ fetchOptions: { signal } }), [200]);
+    await accept(
+      client.checkAppId({
+        query: { appId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+  },
+);
+
+export const updateFeishuInstallationAgent$ = command(
+  async (
+    { get, set },
+    installationId: string,
+    defaultAgentId: string,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    await accept(
+      client.updateInstallation({
+        params: { installationId },
+        body: { defaultAgentId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
     set(reload$, (value) => {
       return value + 1;
@@ -132,27 +281,100 @@ export const removeFeishuOrg$ = command(
   },
 );
 
-const refreshFeishuOrg$ = command(({ set }) => {
+export const completeFeishuInstallationSetup$ = command(
+  async (
+    { get, set },
+    installationId: string,
+    defaultAgentId: string,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    await accept(
+      client.updateInstallation({
+        params: { installationId },
+        body: { defaultAgentId, setupCompleted: true },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reload$, (value) => {
+      return value + 1;
+    });
+  },
+);
+
+export const uninstallFeishuInstallation$ = command(
+  async ({ get, set }, installationId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    await accept(
+      client.removeInstallation({
+        params: { installationId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reload$, (value) => {
+      return value + 1;
+    });
+  },
+);
+
+export const setFeishuUninstallInstallationId$ = command(
+  ({ set }, installationId: string | null) => {
+    set(internalUninstallInstallationId$, installationId);
+  },
+);
+
+export const reloadFeishuInstallations$ = command(({ set }) => {
   set(reload$, (value) => {
     return value + 1;
   });
 });
 
-export const pollFeishuSetupStatus$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const pollingSignal = set(resetPollingSignal$, signal);
-    await setLoop(
-      async () => {
-        if (!get(internalDialogOpen$)) {
-          return true;
-        }
-        set(refreshFeishuOrg$);
-        const data = await get(feishuOrgData$);
-        pollingSignal.throwIfAborted();
-        return !data.isInstalled || data.messageReceived;
+export const showFeishuSettingsResult$ = command(() => {
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get("error");
+  if (error) {
+    toast.error(error);
+  } else if (params.get("status") === "connected") {
+    toast.success("Feishu account connected");
+  } else {
+    return;
+  }
+  window.history.replaceState({}, "", window.location.pathname);
+});
+
+export const startFeishuSettingsRealtime$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const onFeishuChanged$ = command(({ set }) => {
+      set(reloadFeishuInstallations$);
+      return false;
+    });
+
+    await set(
+      setAblyLoop$,
+      {
+        topic: "feishu:changed",
+        loopCommand$: onFeishuChanged$,
       },
-      2000,
-      pollingSignal,
+      signal,
     );
   },
 );
+
+export const resetFeishuSettingsUi$ = command(({ set }) => {
+  set(internalDialogOpen$, false);
+  set(internalDialogExisting$, false);
+  set(internalDialogInstallationId$, null);
+  set(internalUninstallInstallationId$, null);
+  set(internalSetupStep$, "create");
+  set(internalSetupForm$, {
+    appId: "",
+    appSecret: "",
+    verificationToken: "",
+    encryptKey: "",
+    defaultAgentId: "",
+  });
+});

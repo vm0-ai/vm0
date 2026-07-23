@@ -9,6 +9,7 @@ import { Buffer } from "node:buffer";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
+import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -19,7 +20,9 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
 import { zeroFeishuEventsRoutes } from "../zero-feishu-events";
+import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -67,6 +70,7 @@ async function postEvent(
   payload: unknown,
   options: {
     readonly encrypted?: boolean;
+    readonly signed?: boolean;
     readonly validSignature?: boolean;
     readonly timestamp?: number;
   } = {},
@@ -75,7 +79,9 @@ async function postEvent(
     ? encryptPayload(payload)
     : JSON.stringify(payload);
   const headers = new Headers(
-    signedHeaders(body, options.timestamp ?? Math.floor(now() / 1000)),
+    options.signed === false
+      ? { "content-type": "application/json" }
+      : signedHeaders(body, options.timestamp ?? Math.floor(now() / 1000)),
   );
   if (options.validSignature === false) {
     headers.set("x-lark-signature", "invalid");
@@ -140,6 +146,7 @@ async function enableFeishuIntegration(actor: {
 beforeEach(() => {
   mockEnv("APP_URL", APP_ORIGIN);
   mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+  mockEnv("FEISHU_CALLBACK_BASE_URL", "https://www.vm0.test");
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   context.mocks.axiom.query.mockResolvedValue([]);
@@ -156,6 +163,31 @@ beforeEach(() => {
         });
       },
     ),
+    http.get("https://open.feishu.cn/open-apis/bot/v3/info", () => {
+      return HttpResponse.json({
+        code: 0,
+        bot: {
+          app_name: "Okou Feishu",
+          avatar_url: "https://example.com/okou-feishu.png",
+        },
+      });
+    }),
+    http.post("https://open.feishu.cn/open-apis/authen/v2/oauth/token", () => {
+      return HttpResponse.json({
+        code: 0,
+        access_token: "feishu-user-access-token",
+      });
+    }),
+    http.get("https://open.feishu.cn/open-apis/authen/v1/user_info", () => {
+      return HttpResponse.json({
+        code: 0,
+        data: {
+          name: "Feishu User",
+          open_id: "ou_oauth_user",
+          tenant_key: TENANT_KEY,
+        },
+      });
+    }),
   );
 });
 
@@ -203,6 +235,385 @@ describe("Feishu integration", () => {
     });
   });
 
+  it("uses the public callback origin and accepts plaintext URL verification without an Encrypt Key", async () => {
+    const callbackOrigin = "https://tunnel-feishu.vm0.test";
+    mockEnv("FEISHU_CALLBACK_BASE_URL", callbackOrigin);
+    const appId = `cli_${randomUUID()}`;
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu plaintext callback agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const configured = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+        },
+      }),
+      [200],
+    );
+    const callbackUrl = configured.body.callbackUrl;
+    expect(callbackUrl).not.toBeNull();
+    if (!callbackUrl) {
+      throw new Error("Expected Feishu setup to return a callback URL");
+    }
+    expect(new URL(callbackUrl).origin).toBe(callbackOrigin);
+
+    const response = await postEvent(
+      callbackUrl,
+      {
+        type: "url_verification",
+        challenge: "plaintext-challenge",
+        token: VERIFICATION_TOKEN,
+      },
+      { signed: false },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      challenge: "plaintext-challenge",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "feishu:changed",
+      null,
+    );
+
+    await accept(
+      client.remove({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+  });
+
+  it("keeps multiple Feishu apps installed in the same organization", async () => {
+    const firstAppId = `cli_${randomUUID()}`;
+    const secondAppId = `cli_${randomUUID()}`;
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu multi-bot agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+
+    for (const appId of [firstAppId, secondAppId]) {
+      await accept(
+        client.setup({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            appId,
+            appSecret: APP_SECRET,
+            verificationToken: VERIFICATION_TOKEN,
+            defaultAgentId: agent.agentId,
+            createNew: true,
+          },
+        }),
+        [200],
+      );
+    }
+    await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: firstAppId,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          createNew: true,
+        },
+      }),
+      [409],
+    );
+    await accept(
+      client.checkAppId({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { appId: firstAppId },
+      }),
+      [409],
+    );
+    await accept(
+      client.checkAppId({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { appId: `cli_${randomUUID()}` },
+      }),
+      [200],
+    );
+
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body.installations).toHaveLength(2);
+    expect(
+      status.body.installations?.map((installation) => {
+        return installation.appId;
+      }),
+    ).toStrictEqual([firstAppId, secondAppId]);
+
+    for (const installation of status.body.installations ?? []) {
+      await accept(
+        client.removeInstallation({
+          headers: { authorization: "Bearer clerk-session" },
+          params: { installationId: installation.id },
+        }),
+        [200],
+      );
+    }
+  });
+
+  it("allows bot owners and organization admins to manage installations", async () => {
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:member",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu managed bot agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+
+    for (const appId of [`cli_${randomUUID()}`, `cli_${randomUUID()}`]) {
+      await accept(
+        client.setup({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            appId,
+            appSecret: APP_SECRET,
+            verificationToken: VERIFICATION_TOKEN,
+            defaultAgentId: agent.agentId,
+            createNew: true,
+          },
+        }),
+        [200],
+      );
+    }
+
+    const ownerStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      ownerStatus.body.installations?.every((installation) => {
+        return installation.canManage;
+      }),
+    ).toBeTruthy();
+    const [ownerManagedInstallation, adminManagedInstallation] =
+      ownerStatus.body.installations ?? [];
+    if (!ownerManagedInstallation || !adminManagedInstallation) {
+      throw new Error("Expected two Feishu installations");
+    }
+    const completed = await accept(
+      client.updateInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: ownerManagedInstallation.id },
+        body: {
+          defaultAgentId: agent.agentId,
+          setupCompleted: true,
+        },
+      }),
+      [200],
+    );
+    expect(completed.body.setupCompleted).toBeTruthy();
+    expect(completed.body.botName).toBe("Okou Feishu");
+    expect(completed.body.botAvatarUrl).toBe(
+      "https://example.com/okou-feishu.png",
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: ownerManagedInstallation.id },
+      }),
+      [200],
+    );
+
+    const member = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    await enableFeishuIntegration(member);
+    mocks.clerk.session(member.userId, member.orgId, "org:member");
+    const memberStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(memberStatus.body.installations?.[0]?.canManage).toBeFalsy();
+    await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: adminManagedInstallation.appId,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          installationId: adminManagedInstallation.id,
+        },
+      }),
+      [403],
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: adminManagedInstallation.id },
+      }),
+      [403],
+    );
+
+    const admin = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: actor.orgId,
+      orgRole: "org:admin",
+    });
+    await enableFeishuIntegration(admin);
+    mocks.clerk.session(admin.userId, admin.orgId, "org:admin");
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: adminManagedInstallation.id },
+      }),
+      [200],
+    );
+  });
+
+  it("connects the current Feishu user through OAuth", async () => {
+    const appId = `cli_${randomUUID()}`;
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:member",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu OAuth agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+    mockClerkMembership(context, actor, "org:member");
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const configured = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          createNew: true,
+        },
+      }),
+      [200],
+    );
+    const installationId = configured.body.installationId;
+    if (!installationId) {
+      throw new Error("Expected Feishu setup to return an installation id");
+    }
+    await accept(
+      client.updateInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId },
+        body: {
+          defaultAgentId: agent.agentId,
+          setupCompleted: true,
+        },
+      }),
+      [200],
+    );
+
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const connectUrl = status.body.installations?.[0]?.connectUrl;
+    expect(connectUrl).toBeDefined();
+    expect(status.body.oauthRedirectUrl).toBe(
+      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+    );
+    if (!connectUrl) {
+      throw new Error("Expected Feishu status to return an OAuth connect URL");
+    }
+
+    const oauthApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroFeishuOauthRoutes,
+    });
+    const connectResponse = await oauthApp.request(connectUrl);
+    expect(connectResponse.status).toBe(307);
+    const authorizationUrl = new URL(
+      connectResponse.headers.get("location") ?? "",
+    );
+    expect(authorizationUrl.origin).toBe("https://accounts.feishu.cn");
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(appId);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Feishu authorization URL to include state");
+    }
+
+    const callbackResponse = await oauthApp.request(
+      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "feishu-oauth-code",
+        state,
+      })}`,
+    );
+    expect(callbackResponse.status).toBe(307);
+    expect(callbackResponse.headers.get("location")).toBe(
+      `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
+    );
+
+    const connected = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connected.body.installations?.[0]?.isConnected).toBeTruthy();
+    expect(connected.body.installations?.[0]?.connectedUserName).toBe(
+      "Feishu User",
+    );
+
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId },
+      }),
+      [200],
+    );
+  });
+
   it("verifies and decrypts URL verification callbacks", async () => {
     const appId = `cli_${randomUUID()}`;
     const actor = authOrgApi.user({
@@ -242,19 +653,31 @@ describe("Feishu integration", () => {
       token: VERIFICATION_TOKEN,
     };
 
-    const response = await postEvent(callbackUrl, payload, { encrypted: true });
+    const plaintextResponse = await postEvent(callbackUrl, payload, {
+      signed: false,
+    });
+    expect(plaintextResponse.status).toBe(200);
+    await expect(plaintextResponse.json()).resolves.toStrictEqual({
+      challenge: "challenge-value",
+    });
+
+    const response = await postEvent(callbackUrl, payload, {
+      encrypted: true,
+      signed: false,
+    });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({
       challenge: "challenge-value",
     });
 
-    const rejected = await postEvent(callbackUrl, payload, {
+    const event = v2Event(appId, "unknown.event", {});
+    const rejected = await postEvent(callbackUrl, event, {
       encrypted: true,
       validSignature: false,
     });
     expect(rejected.status).toBe(401);
 
-    const stale = await postEvent(callbackUrl, payload, {
+    const stale = await postEvent(callbackUrl, event, {
       encrypted: true,
       timestamp: 0,
     });
@@ -323,6 +746,7 @@ describe("Feishu integration", () => {
       },
       { encrypted: true },
     );
+    context.mocks.ably.publish.mockClear();
 
     const firstMessage = await postEvent(
       callbackUrl,
@@ -331,6 +755,10 @@ describe("Feishu integration", () => {
     );
     expect(firstMessage.status).toBe(200);
     await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "feishu:changed",
+      null,
+    );
     expect(replyTexts).toHaveLength(1);
     const firstReply = replyTexts[0];
     expect(firstReply).toContain("Please connect your VM0 account first");
@@ -385,10 +813,15 @@ describe("Feishu integration", () => {
       defaultAgentId: agent.agentId,
     });
 
+    context.mocks.ably.publish.mockClear();
     await postEvent(callbackUrl, directMessage(appId, "do the Feishu task"), {
       encrypted: true,
     });
     await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "feishu:changed",
+      null,
+    );
     const listed = await runsApi.listAgentRuns(actor, { limit: 20 });
     const run = listed.runs.find((candidate) => {
       return candidate.prompt === "do the Feishu task";
