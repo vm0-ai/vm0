@@ -452,7 +452,7 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     expect(unauthorizedDrain.status).toBe(401);
   });
 
-  it("drains an inbound-error email once when its retry becomes eligible", async () => {
+  it("drains an inbound-error email once at its UTC retry boundary", async () => {
     const email = createEmailApi(context);
     const baseTime = now();
     mockNow(baseTime);

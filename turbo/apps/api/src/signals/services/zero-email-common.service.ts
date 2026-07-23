@@ -787,6 +787,8 @@ async function drainNextOutboxItem(
           eq(emailOutbox.status, "pending"),
           or(
             isNull(emailOutbox.nextRetryAt),
+            // Keep the Date schema-bound so Drizzle encodes its UTC wall-clock
+            // value instead of letting node-postgres apply the process timezone.
             lte(emailOutbox.nextRetryAt, currentTime),
           ),
         ),
