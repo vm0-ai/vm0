@@ -1,4 +1,4 @@
-import crypto, { randomBytes } from "node:crypto";
+import crypto from "node:crypto";
 
 import type { createClerkClient } from "@clerk/backend";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -7,14 +7,12 @@ import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
 import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
 import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { users } from "@vm0/db/schema/user";
-import { command, computed, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { convert, type FormatCallback } from "html-to-text";
 import { Resend } from "resend";
 import { delay } from "signal-timers";
 import { Webhook } from "svix";
@@ -23,9 +21,8 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
-import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { writeDb$, type Db } from "../external/db";
-import { bestEffort, tapError } from "../utils";
+import { bestEffort } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -57,40 +54,8 @@ function outboxDrainDelayMs(): number {
     : OUTBOX_DRAIN_DELAY_MS;
 }
 const OUTBOX_TTL_MS = 15 * 60 * 1000;
-const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
-const PRESIGNED_URL_EXPIRY = 3600;
-const R2_PATH_PREFIX = "email-attachments";
 export const CREDIT_LOW_BALANCE_EMAIL_SUBJECT =
   "Your credit balance is running low";
-
-export type HandlerResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly errorMessage: string };
-
-interface ReplyRecipients {
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-}
-
-interface ReceivedEmail {
-  readonly from: string;
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-  readonly replyTo: readonly string[];
-  readonly subject: string;
-  readonly text: string;
-  readonly html: string;
-  readonly headers: Record<string, string>;
-}
-
-interface ReceivedEmailAttachment {
-  readonly id: string;
-  readonly filename: string;
-  readonly size: number;
-  readonly contentType: string;
-  readonly contentDisposition: string;
-  readonly downloadUrl: string;
-}
 
 const emailTemplateSchema = z.discriminatedUnion("template", [
   z.object({
@@ -254,11 +219,7 @@ export function isResendConfigured(): boolean {
   return Boolean(env("RESEND_API_KEY"));
 }
 
-export function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
-}
-
-export function apiUrl(): string {
+function apiUrl(): string {
   return env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
 }
 
@@ -266,119 +227,7 @@ function appUrl(): string {
   return env("APP_URL");
 }
 
-export function buildIntegrationPrompt(): string {
-  return "# Current Integration\nYou are currently running inside: Email";
-}
-
-export function parseOrgEmailAddress(toAddress: string): string | null {
-  if (isReplyAddress(toAddress)) {
-    return null;
-  }
-  if (toAddress.includes("+") || toAddress.includes("/")) {
-    return null;
-  }
-  const match = toAddress.match(/^([a-z0-9][a-z0-9-]*)@/i);
-  return match?.[1] ? match[1].toLowerCase() : null;
-}
-
-export function isReplyAddress(toAddress: string): boolean {
-  return toAddress.toLowerCase().startsWith("reply+");
-}
-
-function emailDomain(address: string): string {
-  const atIndex = address.lastIndexOf("@");
-  return atIndex === -1 ? "" : address.slice(atIndex + 1).toLowerCase();
-}
-
-export function computeReplyRecipients(opts: {
-  readonly from: string;
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-  readonly replyTo: readonly string[];
-  readonly botDomain: string;
-}): ReplyRecipients {
-  const botDomainLower = opts.botDomain.toLowerCase();
-  const isBotAddress = (addr: string): boolean => {
-    return emailDomain(addr) === botDomainLower;
-  };
-  const primaryTarget = opts.replyTo.length > 0 ? opts.replyTo[0]! : opts.from;
-  const botInTo = opts.to.some(isBotAddress);
-  const otherToRecipients = opts.to.filter((addr) => {
-    return !isBotAddress(addr);
-  });
-
-  const replyToList =
-    botInTo && otherToRecipients.length > 0
-      ? [primaryTarget, ...otherToRecipients]
-      : [primaryTarget];
-  const replyCcList = [...opts.cc];
-
-  const dedup = (list: readonly string[]): string[] => {
-    const seen = new Set<string>();
-    return list.filter((addr) => {
-      const lower = addr.toLowerCase();
-      if (seen.has(lower)) {
-        return false;
-      }
-      seen.add(lower);
-      return true;
-    });
-  };
-
-  const to = dedup(
-    replyToList.filter((addr) => {
-      return !isBotAddress(addr);
-    }),
-  );
-  const toSet = new Set(
-    to.map((addr) => {
-      return addr.toLowerCase();
-    }),
-  );
-  const cc = dedup(
-    replyCcList.filter((addr) => {
-      return !isBotAddress(addr) && !toSet.has(addr.toLowerCase());
-    }),
-  );
-
-  return { to, cc };
-}
-
-export function generateReplyToken(sessionId: string): string {
-  const hmac = crypto
-    .createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(sessionId)
-    .digest("hex")
-    .slice(0, 16);
-  return `${sessionId}.${hmac}`;
-}
-
-export function verifyReplyToken(token: string): string | null {
-  const dotIndex = token.lastIndexOf(".");
-  if (dotIndex === -1) {
-    return null;
-  }
-
-  const sessionId = token.slice(0, dotIndex);
-  const providedHmac = token.slice(dotIndex + 1);
-  const expectedHmac = crypto
-    .createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(sessionId)
-    .digest("hex")
-    .slice(0, 16);
-
-  if (providedHmac.length !== expectedHmac.length) {
-    return null;
-  }
-  return crypto.timingSafeEqual(
-    Buffer.from(providedHmac),
-    Buffer.from(expectedHmac),
-  )
-    ? sessionId
-    : null;
-}
-
-export function getFromDomain(): string {
+function getFromDomain(): string {
   const domain = env("RESEND_FROM_DOMAIN");
   if (!domain) {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
@@ -909,241 +758,6 @@ export const enqueueEmail$ = command(
   },
 );
 
-export async function getReceivedEmail(
-  emailId: string,
-): Promise<ReceivedEmail> {
-  const { data, error } = await getResendClient().emails.receiving.get(emailId);
-  if (error || !data) {
-    throw new Error(
-      `Failed to get received email: ${error?.message ?? "unknown"}`,
-    );
-  }
-  return {
-    from: data.from,
-    to: data.to,
-    cc: data.cc ?? [],
-    replyTo: data.reply_to ?? [],
-    subject: data.subject,
-    text: data.text ?? "",
-    html: data.html ?? "",
-    headers: data.headers ?? {},
-  };
-}
-
-async function getReceivedEmailAttachments(
-  emailId: string,
-): Promise<readonly ReceivedEmailAttachment[]> {
-  const { data, error } =
-    await getResendClient().emails.receiving.attachments.list({ emailId });
-  if (error || !data) {
-    throw new Error(
-      `Failed to list email attachments: ${error?.message ?? "unknown"}`,
-    );
-  }
-  return data.data.map((attachment) => {
-    return {
-      id: attachment.id,
-      filename: attachment.filename ?? `attachment-${attachment.id}`,
-      size: attachment.size,
-      contentType: attachment.content_type,
-      contentDisposition: attachment.content_disposition,
-      downloadUrl: attachment.download_url,
-    };
-  });
-}
-
-const inlineImageFormatter: FormatCallback = (
-  elem,
-  _walk,
-  builder,
-  formatOptions,
-) => {
-  const attribs = (elem.attribs ?? {}) as Record<string, string>;
-  const src = attribs.src ?? "";
-  const alt = attribs.alt ?? "";
-  if (src.startsWith("data:")) {
-    builder.addInline(alt ? `[inline image: ${alt}]` : "[inline image]");
-    return;
-  }
-  const brackets = formatOptions.linkBrackets ?? ["[", "]"];
-  const open = brackets ? brackets[0] : "";
-  const close = brackets ? brackets[1] : "";
-  const srcText = src ? `${open}${src}${close}` : "";
-  const text = alt && srcText ? `${alt} ${srcText}` : alt || srcText;
-  if (text) {
-    builder.addInline(text, { noWordTransform: true });
-  }
-};
-
-export function extractEmailBody(html: string, text: string): string {
-  return html
-    ? convert(html, {
-        formatters: { inlineImageFormatter },
-        selectors: [{ selector: "img", format: "inlineImageFormatter" }],
-      })
-    : text;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes}B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${Math.round(bytes / 1024)}KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function formatEmailAttachment(
-  attachment: ReceivedEmailAttachment,
-  presignedUrl: string,
-): string {
-  return [
-    `[attachment]: ${attachment.filename} (${attachment.contentType}, ${formatSize(
-      attachment.size,
-    )})`,
-    `   URL: ${presignedUrl}`,
-    `   To access this file: curl -sS -o /tmp/${attachment.filename} "${presignedUrl}" && read the downloaded file`,
-  ].join("\n");
-}
-
-function formatEmailAttachmentSkipped(
-  attachment: ReceivedEmailAttachment,
-  reason: string,
-): string {
-  return `[attachment]: ${attachment.filename} (${attachment.contentType}, ${formatSize(
-    attachment.size,
-  )}) - skipped: ${reason}`;
-}
-
-function downloadAndUploadEmailAttachment(
-  attachment: ReceivedEmailAttachment,
-  emailId: string,
-): Computed<Promise<string | null>> {
-  return computed(async (get): Promise<string | null> => {
-    if (attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
-      return null;
-    }
-
-    const buffer = await tapError(
-      (async (): Promise<Buffer | null> => {
-        const response = await fetch(attachment.downloadUrl);
-        if (!response.ok) {
-          return null;
-        }
-        return Buffer.from(await response.arrayBuffer());
-      })(),
-    );
-    if (!buffer) {
-      return null;
-    }
-
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const key = `${R2_PATH_PREFIX}/${emailId}/${attachment.id}-${attachment.filename}`;
-    await get(putS3Object(bucket, key, buffer, attachment.contentType));
-    return await get(
-      generatePresignedGetUrl(
-        bucket,
-        key,
-        PRESIGNED_URL_EXPIRY,
-        attachment.filename,
-      ),
-    );
-  });
-}
-
-export function processEmailAttachments(
-  emailId: string,
-): Computed<Promise<string>> {
-  return computed(async (get): Promise<string> => {
-    const attachments = await getReceivedEmailAttachments(emailId);
-    if (attachments.length === 0) {
-      return "";
-    }
-    const lines = await Promise.all(
-      attachments.map(async (attachment) => {
-        if (attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
-          return formatEmailAttachmentSkipped(attachment, "exceeds size limit");
-        }
-        const url = await get(
-          downloadAndUploadEmailAttachment(attachment, emailId),
-        );
-        return url
-          ? formatEmailAttachment(attachment, url)
-          : formatEmailAttachmentSkipped(attachment, "download failed");
-      }),
-    );
-    return lines.join("\n\n");
-  });
-}
-
-type AuthResult =
-  | "pass"
-  | "fail"
-  | "softfail"
-  | "neutral"
-  | "none"
-  | "temperror"
-  | "permerror"
-  | "policy"
-  | null;
-
-interface SenderVerification {
-  readonly verified: boolean;
-  readonly reason: string;
-  readonly details: {
-    readonly dmarc: AuthResult;
-    readonly dkim: AuthResult;
-    readonly spf: AuthResult;
-  };
-}
-
-const AUTH_RESULT_VALUES = [
-  "pass",
-  "fail",
-  "softfail",
-  "neutral",
-  "none",
-  "temperror",
-  "permerror",
-  "policy",
-] as const;
-
-function parseAuthResult(value: string | undefined): AuthResult {
-  return value && (AUTH_RESULT_VALUES as readonly string[]).includes(value)
-    ? (value as AuthResult)
-    : null;
-}
-
-export function verifySenderAuthenticity(
-  headers: Record<string, string>,
-): SenderVerification {
-  const headerKey = Object.keys(headers).find((key) => {
-    return key.toLowerCase() === "authentication-results";
-  });
-  if (!headerKey) {
-    return {
-      verified: false,
-      reason: "no authentication-results header found",
-      details: { dmarc: null, dkim: null, spf: null },
-    };
-  }
-
-  const lower = headers[headerKey]!.toLowerCase();
-  const details = {
-    dmarc: parseAuthResult(lower.match(/dmarc\s*=\s*(\w+)/)?.[1]),
-    dkim: parseAuthResult(lower.match(/dkim\s*=\s*(\w+)/)?.[1]),
-    spf: parseAuthResult(lower.match(/spf\s*=\s*(\w+)/)?.[1]),
-  };
-  return details.dmarc === "pass"
-    ? { verified: true, reason: "dmarc=pass", details }
-    : {
-        verified: false,
-        reason: `dmarc=${details.dmarc ?? "missing"}`,
-        details,
-      };
-}
-
 export function getSvixHeaders(headers: Headers): {
   readonly "svix-id": string;
   readonly "svix-timestamp": string;
@@ -1225,48 +839,6 @@ export async function getOrgNameAndSlug(
     name: org.name,
     createdBy: org.createdBy ?? undefined,
   };
-}
-
-export async function getOrgIdBySlug(
-  db: Db,
-  clerk: ClerkClient,
-  slug: string,
-): Promise<string | null> {
-  const [cached] = await db
-    .select()
-    .from(orgCache)
-    .where(eq(orgCache.slug, slug))
-    .limit(1);
-  if (cached && now() - cached.cachedAt.getTime() < ORG_CACHE_TTL_MS) {
-    return cached.orgId;
-  }
-
-  const org = await tapError(clerk.organizations.getOrganization({ slug }));
-  if (!org) {
-    return null;
-  }
-  if (!org.slug) {
-    return null;
-  }
-  await db
-    .insert(orgCache)
-    .values({
-      orgId: org.id,
-      slug: org.slug,
-      name: org.name,
-      createdBy: org.createdBy ?? null,
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: orgCache.orgId,
-      set: {
-        slug: org.slug,
-        name: org.name,
-        createdBy: org.createdBy ?? null,
-        cachedAt: nowDate(),
-      },
-    });
-  return org.id;
 }
 
 export async function getUserEmail(
@@ -1364,51 +936,6 @@ export async function getUserIdByEmail(
       },
     });
   return user.id;
-}
-
-export async function userHasOrgMembership(
-  db: Db,
-  clerk: ClerkClient,
-  orgId: string,
-  userId: string,
-): Promise<boolean> {
-  const [cached] = await db
-    .select({ role: orgMembersCache.role, cachedAt: orgMembersCache.cachedAt })
-    .from(orgMembersCache)
-    .where(
-      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
-    )
-    .limit(1);
-  if (cached && now() - cached.cachedAt.getTime() < ORG_CACHE_TTL_MS) {
-    return true;
-  }
-
-  const memberships = await clerk.users.getOrganizationMembershipList({
-    userId,
-    limit: 100,
-  });
-  const membership = memberships.data.find((entry) => {
-    return entry.organization.id === orgId;
-  });
-  if (!membership) {
-    return false;
-  }
-  await db
-    .insert(orgMembersCache)
-    .values({
-      orgId,
-      userId,
-      role: membership.role === "org:admin" ? "admin" : "member",
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersCache.orgId, orgMembersCache.userId],
-      set: {
-        role: membership.role === "org:admin" ? "admin" : "member",
-        cachedAt: nowDate(),
-      },
-    });
-  return true;
 }
 
 export async function resolveDefaultAgent(

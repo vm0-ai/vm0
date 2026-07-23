@@ -16,6 +16,16 @@ interface SeedAgentRunCallbackOptions {
   readonly status?: "pending" | "delivered" | "failed";
 }
 
+interface SeedEmailThreadSessionOptions {
+  readonly threadSessionId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly agentSessionId: string;
+  readonly replyToToken: string;
+  readonly orgId?: string;
+  readonly lastEmailMessageId?: string;
+}
+
 const agentRunCallbackSnapshotSchema = z.object({
   id: z.string(),
   internalKind: z.string().nullable(),
@@ -101,6 +111,37 @@ export const seedAgentRunCallback$ = command(
       throw new Error("seedAgentRunCallback$: response missing callback_id");
     }
     return { callbackId };
+  },
+);
+
+export const seedEmailThreadSession$ = command(
+  async (
+    _,
+    options: SeedEmailThreadSessionOptions,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const response = await requestTelegramState(
+      signal,
+      TELEGRAM_STATE_ACTION_ROUTE,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "seed-thread-session",
+          channel: "email",
+          thread_session_id: options.threadSessionId,
+          user_id: options.userId,
+          agent_id: options.agentId,
+          agent_session_id: options.agentSessionId,
+          reply_to_token: options.replyToToken,
+          org_id: options.orgId,
+          last_email_message_id: options.lastEmailMessageId,
+        }),
+      },
+    );
+    signal.throwIfAborted();
+    expectOk(response, "seedEmailThreadSession$");
+    signal.throwIfAborted();
   },
 );
 
