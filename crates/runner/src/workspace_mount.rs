@@ -19,7 +19,7 @@ use shell_quote::quote_shell_arg;
 use crate::error::{RunnerError, RunnerResult};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 
-const WORKSPACE_MOUNT_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const WORKSPACE_MOUNT_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKSPACE_FREEZE_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKSPACE_DEVICE: &str = "/dev/vdb";
 const WORKSPACE_MOUNT_SCRIPT: &str = include_str!("../scripts/mount-workspace-drive.sh");
@@ -87,7 +87,7 @@ async fn run_workspace_drive_command(
     Err(RunnerError::Internal(message))
 }
 
-fn workspace_mount_command() -> String {
+pub(crate) fn workspace_mount_command() -> String {
     workspace_command(WORKSPACE_MOUNT_SCRIPT)
 }
 

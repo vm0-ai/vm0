@@ -319,6 +319,21 @@ impl Sandbox for MockSandbox {
             .next_result(SandboxParkOutcome::Reusable)
     }
 
+    async fn final_exec_and_park(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+    ) -> Result<SandboxFinalExecParkOutcome> {
+        let exec_result = self
+            .exec_with_diagnostic_label(request, diagnostic_label)
+            .await?;
+        let park_outcome = self.park().await?;
+        Ok(SandboxFinalExecParkOutcome {
+            exec_result,
+            park_outcome,
+        })
+    }
+
     /// Mock unpark: counter + queued-result semantics mirror [`park`]
     /// exactly. See [`park`] for details.
     ///
