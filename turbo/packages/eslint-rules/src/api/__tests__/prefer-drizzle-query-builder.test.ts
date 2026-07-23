@@ -344,9 +344,66 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
     {
       code: `${structuredSelectionPreamble}
         import { sql } from "drizzle-orm";
+        const adapter = {
+          select(fields: unknown) {
+            void fields;
+            return db.select({ id: users.id });
+          },
+          returning(fields: unknown) {
+            void fields;
+            return db.update(users).set({ name: "updated" });
+          },
+        };
+        adapter.select({ value: ${mappedScalarQuery} });
+        adapter.returning({ value: ${mappedScalarQuery} });
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        declare const useDatabase: boolean;
+        const adapter = {
+          select(fields: unknown) {
+            void fields;
+            return db.select({ id: users.id });
+          },
+        };
+        const consumer = useDatabase ? db : adapter;
+        consumer.select({ value: ${mappedScalarQuery} });
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
         let fields = { value: ${mappedScalarQuery} };
         db.select(fields);
         fields = { value: sql\`1\`.mapWith(messages.id) };
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        const fields = { value: ${mappedScalarQuery} };
+        fields.value = sql\`1\`.mapWith(messages.id);
+        db.select(fields);
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        const fields = { value: ${mappedScalarQuery} };
+        const alias = fields;
+        alias.value = sql\`1\`.mapWith(messages.id);
+        db.select(fields);
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        declare function inspect(fields: object): void;
+        const fields = { value: ${mappedScalarQuery} };
+        inspect(fields);
+        db.select(fields);
       `,
     },
     {
@@ -360,6 +417,36 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
           return { value: sql\`1\`.mapWith(messages.id) };
         }
         db.select(fields());
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        function fields() {
+          return { value: ${mappedScalarQuery} };
+        }
+        fields = () => ({ value: sql\`1\`.mapWith(messages.id) });
+        db.select(fields());
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        const selection = { value: ${mappedScalarQuery} };
+        function fields() {
+          return selection;
+        }
+        fields().value = sql\`1\`.mapWith(messages.id);
+        db.select(fields());
+      `,
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        export const fields = { value: ${mappedScalarQuery} };
+        export function selectedFields() {
+          return db.select(fields);
+        }
       `,
     },
     {
@@ -424,6 +511,36 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       code: `${structuredSelectionPreamble}
         import { sql } from "drizzle-orm";
         db.select({ value: ${scalarQuery} }).from(users);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        declare const selectedDb: Pick<DrizzleDatabase, "select">;
+        selectedDb.select({ value: ${mappedScalarQuery} }).from(users);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        declare const selectedDb: {
+          select: DrizzleDatabase["select"] & { readonly kind: "select" };
+        };
+        selectedDb.select({ value: ${mappedScalarQuery} }).from(users);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        const usersCte = db.$with("users_cte").as(
+          db.select({ id: users.id }).from(users),
+        );
+        db.with(usersCte)
+          .select({ value: ${mappedScalarQuery} })
+          .from(usersCte);
       `,
       errors: [{ messageId: "structuredScalarQuery" }],
     },

@@ -2,8 +2,11 @@ import {
   AST_NODE_TYPES,
   ESLintUtils,
   type TSESTree,
+  type TSESLint,
 } from "@typescript-eslint/utils";
 import {
+  canHaveModifiers,
+  getModifiers,
   isFunctionDeclaration,
   isImportDeclaration,
   isImportSpecifier,
@@ -13,6 +16,7 @@ import {
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
+  SyntaxKind,
   type Node,
   type Type,
   type VariableDeclaration,
@@ -20,10 +24,12 @@ import {
 
 import {
   isDrizzleColumnType,
+  isDrizzleDeclaration,
   isDrizzleSqlTag,
   isDrizzleSymbol,
   isDrizzleTableType,
   isDrizzleWrapperType,
+  isNamedDrizzleSignature,
   resolvedSymbol,
 } from "../drizzle.ts";
 import {
@@ -459,8 +465,13 @@ export const preferDrizzleQueryBuilder = createRule({
     const scalarQueryCandidates = new Set<TSESTree.TaggedTemplateExpression>();
     const structuredSelectionCalls: TSESTree.CallExpression[] = [];
     const reportedScalarQueries = new Set<TSESTree.TaggedTemplateExpression>();
-    const selectMethodTypes = new Map<Type, boolean>();
-    const returningMethodTypes = new Map<Type, boolean>();
+    const resultPropertyTypes: Record<
+      "execute" | "from",
+      Map<Type, boolean>
+    > = {
+      execute: new Map<Type, boolean>(),
+      from: new Map<Type, boolean>(),
+    };
 
     for (const statement of context.sourceCode.ast.body) {
       if (
@@ -540,21 +551,57 @@ export const preferDrizzleQueryBuilder = createRule({
       type: Type,
       property: "execute" | "from",
     ): boolean {
-      const cache =
-        property === "from" ? selectMethodTypes : returningMethodTypes;
+      const cache = resultPropertyTypes[property];
       const cached = cache.get(type);
       if (cached !== undefined) {
         return cached;
       }
-      const result = type.getCallSignatures().some((signature) => {
-        const returnType = checker.getReturnTypeOfSignature(signature);
-        return isDrizzleSymbol(
-          checker,
-          checker.getPropertyOfType(returnType, property),
-        );
-      });
+      let result: boolean;
+      if (type.isUnion()) {
+        result = type.types.every((member) => {
+          return methodReturnsDrizzleProperty(member, property);
+        });
+      } else {
+        const signatures = type.getCallSignatures();
+        result =
+          signatures.length > 0 &&
+          signatures.every((signature) => {
+            const returnType = checker.getReturnTypeOfSignature(signature);
+            return isDrizzleSymbol(
+              checker,
+              checker.getPropertyOfType(returnType, property),
+            );
+          });
+      }
       cache.set(type, result);
       return result;
+    }
+
+    function hasOnlyDrizzleDeclarations(node: TSESTree.Node): boolean {
+      const declarations = resolvedSymbol(
+        checker,
+        symbolAt(node),
+      )?.declarations;
+      return (
+        declarations !== undefined &&
+        declarations.length > 0 &&
+        declarations.every(isDrizzleDeclaration)
+      );
+    }
+
+    function hasOnlyNamedDrizzleSignatures(type: Type, name: string): boolean {
+      if (type.isUnion()) {
+        return type.types.every((member) => {
+          return hasOnlyNamedDrizzleSignatures(member, name);
+        });
+      }
+      const signatures = type.getCallSignatures();
+      return (
+        signatures.length > 0 &&
+        signatures.every((signature) => {
+          return isNamedDrizzleSignature(signature, name);
+        })
+      );
     }
 
     function structuredResultMethod(
@@ -566,13 +613,16 @@ export const preferDrizzleQueryBuilder = createRule({
       }
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);
       const type = checker.getTypeAtLocation(tsNode);
-      if (name === "returning") {
-        return isDrizzleSymbol(checker, symbolAt(node.property)) ||
-          methodReturnsDrizzleProperty(type, "execute")
-          ? name
-          : null;
-      }
-      return methodReturnsDrizzleProperty(type, "from") ? name : null;
+      const hasDrizzleIdentity =
+        hasOnlyDrizzleDeclarations(node.property) ||
+        hasOnlyNamedDrizzleSignatures(type, name);
+      return hasDrizzleIdentity &&
+        methodReturnsDrizzleProperty(
+          type,
+          name === "returning" ? "execute" : "from",
+        )
+        ? name
+        : null;
     }
 
     function transparentExpression(node: TSESTree.Node): TSESTree.Node | null {
@@ -586,6 +636,91 @@ export const preferDrizzleQueryBuilder = createRule({
         return node.expression;
       }
       return null;
+    }
+
+    function variableInScope(
+      node: TSESTree.Identifier,
+    ): TSESLint.Scope.Variable | null {
+      let scope: TSESLint.Scope.Scope | null =
+        context.sourceCode.getScope(node);
+      while (scope !== null) {
+        const variable = scope.variables.find((candidate) => {
+          return candidate.name === node.name;
+        });
+        if (variable !== undefined) {
+          return variable;
+        }
+        scope = scope.upper;
+      }
+      return null;
+    }
+
+    function outerTransparentExpression(node: TSESTree.Node): TSESTree.Node {
+      let current = node;
+      while (
+        current.parent !== undefined &&
+        transparentExpression(current.parent) === current
+      ) {
+        current = current.parent;
+      }
+      return current;
+    }
+
+    function isStructuredResultArgument(node: TSESTree.Node): boolean {
+      const use = outerTransparentExpression(node);
+      const parent = use.parent;
+      if (
+        parent === undefined ||
+        parent.type !== AST_NODE_TYPES.CallExpression ||
+        parent.callee.type !== AST_NODE_TYPES.MemberExpression
+      ) {
+        return false;
+      }
+      const method = structuredResultMethod(parent.callee);
+      const argumentIndex =
+        method === null ? undefined : RESULT_FIELD_ARGUMENT.get(method);
+      return (
+        argumentIndex !== undefined && parent.arguments[argumentIndex] === use
+      );
+    }
+
+    function isSafeConstReference(
+      identifier: TSESTree.Identifier,
+      currentReference: TSESTree.Identifier,
+    ): boolean {
+      return (
+        identifier === currentReference ||
+        isStructuredResultArgument(identifier)
+      );
+    }
+
+    function hasExportModifier(node: Node): boolean {
+      return (
+        canHaveModifiers(node) &&
+        getModifiers(node)?.some((modifier) => {
+          return modifier.kind === SyntaxKind.ExportKeyword;
+        }) === true
+      );
+    }
+
+    function variableIsExported(declaration: VariableDeclaration): boolean {
+      return hasExportModifier(declaration.parent.parent);
+    }
+
+    function hasOnlySafeConstReferences(node: TSESTree.Identifier): boolean {
+      // const freezes the binding, not the selected object. Stop when another
+      // use could mutate or expose it outside a proven Drizzle result read.
+      const variable = variableInScope(node);
+      return (
+        variable !== null &&
+        variable.references.every((reference) => {
+          return (
+            reference.init === true ||
+            (reference.identifier.type === AST_NODE_TYPES.Identifier &&
+              isSafeConstReference(reference.identifier, node))
+          );
+        })
+      );
     }
 
     function localConstInitializer(node: TSESTree.Node): TSESTree.Node | null {
@@ -602,7 +737,9 @@ export const preferDrizzleQueryBuilder = createRule({
         !isVariableDeclaration(declaration) ||
         declaration.getSourceFile() !== tsNode.getSourceFile() ||
         !isConstVariable(declaration) ||
-        declaration.initializer === undefined
+        variableIsExported(declaration) ||
+        declaration.initializer === undefined ||
+        !hasOnlySafeConstReferences(node)
       ) {
         return null;
       }
@@ -613,6 +750,37 @@ export const preferDrizzleQueryBuilder = createRule({
       return (
         isVariableDeclarationList(declaration.parent) &&
         (declaration.parent.flags & NodeFlags.Const) !== 0
+      );
+    }
+
+    function isSafeFunctionReference(
+      identifier: TSESTree.Identifier,
+      currentReference: TSESTree.Identifier,
+    ): boolean {
+      if (identifier === currentReference) {
+        return true;
+      }
+      const callee = outerTransparentExpression(identifier);
+      const call = callee.parent;
+      return (
+        call !== undefined &&
+        call.type === AST_NODE_TYPES.CallExpression &&
+        call.callee === callee &&
+        isStructuredResultArgument(call)
+      );
+    }
+
+    function hasOnlySafeFunctionReferences(node: TSESTree.Identifier): boolean {
+      const variable = variableInScope(node);
+      return (
+        variable !== null &&
+        variable.references.every((reference) => {
+          return (
+            reference.init === true ||
+            (reference.identifier.type === AST_NODE_TYPES.Identifier &&
+              isSafeFunctionReference(reference.identifier, node))
+          );
+        })
       );
     }
 
@@ -638,7 +806,9 @@ export const preferDrizzleQueryBuilder = createRule({
         !isFunctionDeclaration(declaration) ||
         declaration.getSourceFile() !== tsCallee.getSourceFile() ||
         declaration.body === undefined ||
-        declaration.body.statements.length !== 1
+        declaration.body.statements.length !== 1 ||
+        hasExportModifier(declaration) ||
+        !hasOnlySafeFunctionReferences(node.callee)
       ) {
         return null;
       }
