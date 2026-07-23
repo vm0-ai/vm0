@@ -153,8 +153,8 @@ describe("lab page", () => {
     });
 
     expectBefore(
-      featureSwitchRow(FeatureSwitchKey.ArtifactFavorites),
       featureSwitchRow(FeatureSwitchKey.Artifacts),
+      featureSwitchRow(FeatureSwitchKey.Banking),
     );
 
     expect(

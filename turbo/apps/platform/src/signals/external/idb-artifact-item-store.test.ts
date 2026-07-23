@@ -295,17 +295,6 @@ describe("artifact item IndexedDB cache reads", () => {
     ).resolves.toStrictEqual(refreshed);
   });
 
-  it("does not persist artifact favorite state", async () => {
-    const { stores } = setupStores();
-    const favorited = { ...artifact(1), isFavorited: true };
-
-    await stores.writeStore.upsertItems([favorited]);
-
-    const cached = await stores.readStore.readRecent();
-    expect(cached).toStrictEqual([artifact(1)]);
-    expect(cached[0]).not.toHaveProperty("isFavorited");
-  });
-
   it("reads by agent, artifact kind, and their compound index", async () => {
     const { stores } = setupStores();
     const hostedFirst = artifact(1, {
