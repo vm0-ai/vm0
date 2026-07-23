@@ -6,6 +6,7 @@ import {
   isPrivateTokenLikeKey,
   privateTokenMatches,
 } from "./private-token-patterns";
+import { deriveConnectorCatalogFirewallPermissions } from "./relationships";
 
 const forbiddenPublicPropertyNamePattern =
   /^(access|client|clientId|clientIdEnv|clientSecret|clientSecretEnv|envBindings|featureFlag|inputs|objectKey|outputs|platformSecrets|privateName|refreshableSecrets|revoke|r2Key|scopes|secret|secrets|showExperimentalLabel|skillRef|sourcePath|storage|storageName|storageVersionPrefix|variables|valueRef|versionId)$/u;
@@ -179,23 +180,11 @@ function publicFirewall(connector: ConnectorCatalogArtifactConnector): unknown {
   if (connector.firewall.kind === "none") {
     return connector.firewall;
   }
-  const permissions = new Map<
-    string,
-    { readonly name: string; readonly description?: string }
-  >();
-  for (const api of connector.firewall.config.apis) {
-    for (const permission of api.permissions ?? []) {
-      permissions.set(permission.name, {
-        name: permission.name,
-        ...(permission.description === undefined
-          ? {}
-          : { description: permission.description }),
-      });
-    }
-  }
   return {
     kind: "generated",
-    permissions: [...permissions.values()],
+    permissions: deriveConnectorCatalogFirewallPermissions(
+      connector.firewall.config.apis,
+    ),
     categories: connector.firewall.categories,
     defaultAllowed: connector.firewall.defaultAllowed,
     defaultUnknownPolicy: connector.firewall.defaultUnknownPolicy,

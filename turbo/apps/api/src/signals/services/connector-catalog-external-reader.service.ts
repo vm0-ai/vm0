@@ -43,6 +43,7 @@ import {
   connectorCatalogArtifactFailureCode,
   decodeConnectorCatalogSnapshot,
 } from "./connector-catalog-artifacts/loader";
+import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
 
@@ -551,32 +552,6 @@ function referenceMetadataForCatalog(
   });
 }
 
-function permissionsForCatalog(
-  connector: ConnectorCatalogArtifactConnector,
-): readonly {
-  readonly name: string;
-  readonly description?: string;
-}[] {
-  if (connector.firewall.kind === "none") {
-    return [];
-  }
-  const permissions = new Map<
-    string,
-    { readonly name: string; readonly description?: string }
-  >();
-  for (const api of connector.firewall.config.apis) {
-    for (const permission of api.permissions ?? []) {
-      permissions.set(permission.name, {
-        name: permission.name,
-        ...(permission.description === undefined
-          ? {}
-          : { description: permission.description }),
-      });
-    }
-  }
-  return [...permissions.values()];
-}
-
 function permissionSummaryForCatalog(
   connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogPermissionSummary {
@@ -588,7 +563,9 @@ function permissionSummaryForCatalog(
       hasDefaultPolicyOverrides: false,
     };
   }
-  const permissionCount = permissionsForCatalog(connector).length;
+  const permissionCount = deriveConnectorCatalogFirewallPermissions(
+    connector.firewall.config.apis,
+  ).length;
   const defaultPolicy = compactDefaultPolicy(connector);
   return {
     hasPermissions: permissionCount > 0,
@@ -864,7 +841,9 @@ function compactDefaultPolicy(
   if (connector.firewall.kind === "none") {
     throw new Error("Connector catalog firewall metadata is unavailable");
   }
-  const permissionNames = permissionsForCatalog(connector).map((permission) => {
+  const permissionNames = deriveConnectorCatalogFirewallPermissions(
+    connector.firewall.config.apis,
+  ).map((permission) => {
     return permission.name;
   });
   const permissionDefault = choosePermissionDefault({
@@ -1021,7 +1000,9 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
     };
   }
   const firewall = entry.connector.firewall;
-  const permissions = permissionsForCatalog(entry.connector);
+  const permissions = deriveConnectorCatalogFirewallPermissions(
+    firewall.config.apis,
+  );
   return {
     value: {
       connectorRef: entry.connector.connectorRef,

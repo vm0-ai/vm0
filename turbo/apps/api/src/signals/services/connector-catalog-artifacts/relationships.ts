@@ -36,6 +36,32 @@ function sortedUniqueStrings(values: Iterable<string>): string[] {
   return [...new Set(values)].sort(compareStrings);
 }
 
+interface ConnectorCatalogFirewallPermission {
+  readonly name: string;
+  readonly description?: string;
+}
+
+export function deriveConnectorCatalogFirewallPermissions(
+  apis: FirewallConfig["apis"],
+): readonly ConnectorCatalogFirewallPermission[] {
+  const permissions = new Map<string, ConnectorCatalogFirewallPermission>();
+  for (const api of apis) {
+    for (const permission of api.permissions ?? []) {
+      if (!permissions.has(permission.name)) {
+        permissions.set(permission.name, {
+          name: permission.name,
+          ...(permission.description === undefined
+            ? {}
+            : { description: permission.description }),
+        });
+      }
+    }
+  }
+  return [...permissions.values()].sort((left, right) => {
+    return compareStrings(left.name, right.name);
+  });
+}
+
 function sourceGrant(method: ConnectorCatalogAuthMethod): ConnectorGrantSource {
   switch (method.grant.kind) {
     case "manual": {

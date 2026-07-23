@@ -1657,6 +1657,55 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
+  it("keeps the first firewall permission description and sorts public permissions", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-permission-projection",
+      generatedFirewall: true,
+      mutateFirewall: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        const firewall = recordValue(connector.firewall, "firewall");
+        const config = recordValue(firewall.config, "firewall.config");
+        const apis = arrayValue(config.apis, "firewall.apis");
+        const secondApi = structuredClone(firstRecord(apis, "firewall.apis"));
+        secondApi.base = "https://api.example.test/v2";
+        secondApi.permissions = [
+          {
+            name: "items.read",
+            description: "Later items description",
+            rules: ["GET /later-items"],
+          },
+          {
+            name: "alpha.read",
+            description: "Read alpha",
+            rules: ["GET /alpha"],
+          },
+        ];
+        apis.push(secondApi);
+        recordValue(
+          recordValue(firewall.categories, "firewall.categories").byPermission,
+          "firewall.categories.byPermission",
+        )["alpha.read"] = "Items";
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const response = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).permissions({
+        params: { connectorRef: release.connectorRef },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(response.body.permissions.permissions).toStrictEqual([
+      { name: "alpha.read", description: "Read alpha" },
+      { name: "items.read", description: "Read items" },
+    ]);
+  });
+
   it("serves concurrent external catalog reads without returning to R2", async () => {
     configureSource();
     const release = buildRelease({

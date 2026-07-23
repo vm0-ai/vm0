@@ -42,6 +42,7 @@ import type {
 import {
   connectorCatalogFirewallConfig,
   deriveConnectorCatalogFirewallDiagnostics,
+  deriveConnectorCatalogFirewallPermissions,
   deriveConnectorCatalogFirewallRouting,
   type ConnectorCatalogFirewallDiagnostics,
   type ConnectorCatalogFirewallRouting,
@@ -288,14 +289,13 @@ function routingShadowDigest(
 function externalPermissionIndex(
   firewall: AcceptedServerFirewall,
 ): ConnectorServerFirewallPermissionIndex {
-  const permissions = new Map<string, string | undefined>();
-  for (const api of firewall.firewall.apis) {
-    for (const permission of api.permissions ?? []) {
-      if (!permissions.has(permission.name)) {
-        permissions.set(permission.name, permission.description);
-      }
-    }
-  }
+  const permissions = new Map(
+    deriveConnectorCatalogFirewallPermissions(firewall.firewall.apis).map(
+      (permission) => {
+        return [permission.name, permission.description] as const;
+      },
+    ),
+  );
   const defaultPolicy = compactDefaultPolicy({
     permissionNames: [...permissions.keys()].sort(compareStrings),
     defaultAllowed: firewall.defaultAllowed,
