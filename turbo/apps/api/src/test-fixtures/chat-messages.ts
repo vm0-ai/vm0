@@ -1,4 +1,5 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { and, count, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -18,6 +19,32 @@ const VM0_BDD_API_KEY_PREFIXES = [
 ] as const;
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
+
+async function transitiveBlockedWaiterCount(
+  holderPid: number,
+): Promise<number> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      WITH RECURSIVE blocked("pid") AS (
+        SELECT activity.pid
+        FROM pg_stat_activity AS activity
+        WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+
+        UNION
+
+        SELECT activity.pid
+        FROM pg_stat_activity AS activity
+        INNER JOIN blocked AS blocker
+          ON blocker.pid = ANY(pg_blocking_pids(activity.pid))
+      )
+      SELECT ${count()}::int AS "waiterCount"
+      FROM blocked
+    `,
+    waiterCountRowSchema,
+  );
+  return rows[0]?.waiterCount ?? 0;
+}
 
 function bddVm0ApiKeyFilter(vendor: string, model: string) {
   const [fakePrefix, devSeedPrefix] = VM0_BDD_API_KEY_PREFIXES;
@@ -233,27 +260,67 @@ export async function holdChatMessageQueueItemFixture(args: {
     },
     done,
     blockedWaiterCount: async () => {
-      const rows = await executeRawRows(
-        db(),
-        sql`
-          WITH RECURSIVE blocked("pid") AS (
-            SELECT activity.pid
-            FROM pg_stat_activity AS activity
-            WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
+  };
+}
 
-            UNION
+/**
+ * Holds one existing chat-message row so thread deletion can pause after it
+ * owns the parent thread lock. This timing-only boundary does not create or
+ * mutate product data and cannot block messages outside the selected thread.
+ */
+export async function holdChatMessageFixture(args: {
+  readonly threadId: string;
+  readonly messageId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const rows = await tx
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!rows[0]) {
+      throw new Error("Expected the chat message row");
+    }
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat-message lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
 
-            SELECT activity.pid
-            FROM pg_stat_activity AS activity
-            INNER JOIN blocked AS blocker
-              ON blocker.pid = ANY(pg_blocking_pids(activity.pid))
-          )
-          SELECT ${count()}::int AS "waiterCount"
-          FROM blocked
-        `,
-        waiterCountRowSchema,
-      );
-      return rows[0]?.waiterCount ?? 0;
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

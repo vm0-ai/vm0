@@ -50,6 +50,7 @@ import {
 } from "../external/sandbox-op-log";
 import {
   BEFORE_DISPATCH_CANCELLED_ERROR,
+  isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
@@ -72,7 +73,6 @@ import { projectStructuredUserMessage } from "./zero-chat-structured-message.ser
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
-  appendClaimedUserMessage,
   decryptQueuedUserMessageRunParams,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
@@ -85,7 +85,7 @@ import {
   generateChatNotificationSummary,
   loadChatThreadRecommendedFollowupContext,
 } from "./zero-chat-title.service";
-import { createZeroRun$ } from "./zero-runs-create.service";
+import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
@@ -127,7 +127,6 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_append_marker"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals";
 
@@ -365,6 +364,7 @@ type ResolveAttachFiles = (
 type CreatedQueuedRun = {
   readonly runId: string;
   readonly status: "queued" | "pending" | "running";
+  readonly claimedMessageCreatedAt: Date;
 };
 
 type CreateQueuedRun = (
@@ -447,10 +447,6 @@ interface CreateQueuedChatRunInput {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
   };
-  readonly beforeDispatch?: (args: {
-    readonly runId: string;
-    readonly status: "queued" | "pending";
-  }) => Promise<boolean>;
 }
 
 type CompletedChatCallbackResult =
@@ -527,7 +523,16 @@ function buildQueuedCreateZeroRunArgs(
     appendSystemPrompt: input.appendSystemPrompt,
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
-    beforeDispatch: input.beforeDispatch,
+    queueFirstAssociation: {
+      threadId: input.threadId,
+      messageId: input.queuedMessage.id,
+    },
+    zeroRunModelPin: {
+      modelProvider: input.effectiveModelProvider ?? null,
+      modelProviderId: input.modelPin.modelProviderId,
+      modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
+      selectedModel: input.modelPin.selectedModel,
+    },
     body: {
       prompt: input.prompt,
       agentId: input.agentId,
@@ -2004,112 +2009,40 @@ async function buildCreateQueuedChatRunInput(
   };
 }
 
-async function claimQueuedUserMessageForDispatch(args: {
+async function appendAutoSentQueuedRunMarker(args: {
   readonly db: Db;
-  readonly queuedMessage: QueuedUserMessage;
+  readonly createdAfter: Date;
   readonly runId: string;
   readonly threadId: string;
 }): Promise<boolean> {
-  const claimed = await args.db.transaction(async (tx) => {
-    // Serialize auto-send dispatch decisions per thread. Otherwise two terminal
-    // callbacks can insert candidate runs, each see the other as active, and
-    // both cancel before either claims the queued message.
-    const [thread] = await tx
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, args.threadId))
-      .for("update");
-    if (!thread) {
-      return null;
-    }
-
-    const [run] = await tx
-      .select({
-        status: agentRuns.status,
-        chatThreadId: zeroRuns.chatThreadId,
-      })
-      .from(agentRuns)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(agentRuns.id, args.runId))
-      .for("update", { of: agentRuns });
-    if (
-      !run ||
-      run.chatThreadId !== args.threadId ||
-      (run.status !== "queued" && run.status !== "pending")
-    ) {
-      return null;
-    }
-
-    // Auto-send candidates do not own the thread until one binds a user
-    // message. Concurrent drains may insert more than one candidate before
-    // reaching this serialized gate; ignoring those unclaimed candidates lets
-    // one claim win while the others cancel before dispatch.
-    const competingRunExists = await activeChatRunExists(tx, {
-      threadId: args.threadId,
-      excludeRunId: args.runId,
-    });
-    if (competingRunExists) {
-      return null;
-    }
-
-    return await appendClaimedUserMessage(tx, {
-      threadId: args.threadId,
-      messageId: args.queuedMessage.id,
-      runId: args.runId,
-    });
-  });
-
-  return claimed !== null;
-}
-
-async function appendAutoSentQueuedRunMarker(args: {
-  readonly db: Db;
-  readonly queuedMessageId: string;
-  readonly runId: string;
-  readonly threadId: string;
-}): Promise<void> {
-  await args.db.transaction(async (tx) => {
-    const [thread] = await tx
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, args.threadId))
-      .for("key share");
-    if (!thread) {
-      return;
-    }
-
-    const [message] = await tx
-      .select({ createdAt: chatMessages.createdAt })
-      .from(chatMessages)
-      .where(
-        and(
-          eq(chatMessages.chatThreadId, args.threadId),
-          eq(chatMessages.runId, args.runId),
-          eq(chatMessages.role, "user"),
-          eq(chatMessages.revokesMessageId, args.queuedMessageId),
-        ),
-      )
-      .limit(1);
-    if (!message) {
-      return;
-    }
-
-    await appendQueuedRunAssistantMarker(tx, {
-      chatThreadId: args.threadId,
-      runId: args.runId,
-      createdAfter: message.createdAt,
-    });
-  });
+  const marker = await settle(
+    args.db.transaction(async (tx) => {
+      await appendQueuedRunAssistantMarker(tx, {
+        chatThreadId: args.threadId,
+        runId: args.runId,
+        createdAfter: args.createdAfter,
+      });
+    }),
+  );
+  if (marker.ok) {
+    return true;
+  }
+  // The atomic launch can commit immediately before thread deletion. Keep the
+  // normal marker path query-free and classify only that expected FK race.
+  if (
+    isForeignKeyViolation(marker.error) &&
+    !(await chatThreadExists(args.db, args.threadId))
+  ) {
+    return false;
+  }
+  throw marker.error;
 }
 
 async function createAutoSentQueuedRun(args: {
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
-  readonly db: Db;
   readonly runInput: CreateQueuedChatRunInput;
-  readonly queuedMessage: QueuedUserMessage;
-  readonly threadId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
 }): Promise<CreatedQueuedRun | null> {
   return await measureChatCallbackPreCreateTiming(
@@ -2117,57 +2050,28 @@ async function createAutoSentQueuedRun(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
     "top_level",
     () => {
-      return args.createRun({
-        ...args.runInput,
-        beforeDispatch: async ({ runId }) => {
-          const claimed = await measureChatCallbackPreCreateTiming(
-            args.timing,
-            "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
-            "nested",
-            () => {
-              return claimQueuedUserMessageForDispatch({
-                db: args.db,
-                queuedMessage: args.queuedMessage,
-                runId,
-                threadId: args.threadId,
-              });
-            },
-          );
-          if (!claimed) {
-            log.warn(
-              "Auto-send could not claim queued message before dispatch",
-              {
-                threadId: args.threadId,
-                runId,
-                userMessageId: args.queuedMessage.id,
-              },
-            );
-          }
-          return claimed;
-        },
-      });
+      return args.createRun(args.runInput);
     },
   );
 }
 
 async function appendAutoSentQueuedRunMarkerIfQueued(args: {
   readonly db: Db;
-  readonly queuedMessageId: string;
   readonly run: CreatedQueuedRun;
   readonly threadId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-}): Promise<void> {
+}): Promise<boolean> {
   if (args.run.status !== "queued") {
-    return;
+    return true;
   }
-  await measureChatCallbackPreCreateTiming(
+  return await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_append_marker",
     "nested",
     () => {
       return appendAutoSentQueuedRunMarker({
         db: args.db,
-        queuedMessageId: args.queuedMessageId,
+        createdAfter: args.run.claimedMessageCreatedAt,
         runId: args.run.runId,
         threadId: args.threadId,
       });
@@ -2281,23 +2185,22 @@ async function autoSendQueuedMessageForThread(args: {
     (async () => {
       const createdRun = await createAutoSentQueuedRun({
         createRun: args.createRun,
-        db: args.db,
         runInput,
-        queuedMessage,
-        threadId,
         timing: args.timing,
       });
       if (!createdRun) {
         return null;
       }
       createdRunId = createdRun.runId;
-      await appendAutoSentQueuedRunMarkerIfQueued({
+      const shouldPublishSignals = await appendAutoSentQueuedRunMarkerIfQueued({
         db: args.db,
-        queuedMessageId: queuedMessage.id,
         run: createdRun,
         threadId,
         timing: args.timing,
       });
+      if (!shouldPublishSignals) {
+        return createdRun;
+      }
       await publishAutoSentQueuedRunSignals({
         threadId,
         userId,
@@ -2318,7 +2221,6 @@ async function autoSendQueuedMessageForThread(args: {
 }
 
 async function createQueuedChatRun(args: {
-  readonly db: Db;
   readonly input: CreateQueuedChatRunInput;
   readonly signal: AbortSignal;
   readonly createRun: (
@@ -2330,19 +2232,6 @@ async function createQueuedChatRun(args: {
   if (!created) {
     return null;
   }
-
-  await args.db
-    .update(zeroRuns)
-    .set({
-      modelProvider: args.input.effectiveModelProvider,
-      modelProviderId: args.input.modelPin.modelProviderId,
-      modelProviderCredentialScope:
-        args.input.modelPin.modelProviderCredentialScope,
-      selectedModel: args.input.modelPin.selectedModel,
-    })
-    .where(eq(zeroRuns.id, created.runId));
-  args.signal.throwIfAborted();
-
   return created;
 }
 
@@ -2863,7 +2752,7 @@ const buildChatCallbackDependencies$ = command(
           }),
         );
         const settledRunResult = await settle(
-          set(createZeroRun$, createArgs, inputSignal),
+          set(createQueueFirstZeroRun$, createArgs, inputSignal),
           inputSignal,
         );
         inputSignal.throwIfAborted();
@@ -2877,6 +2766,13 @@ const buildChatCallbackDependencies$ = command(
           throw settledRunResult.error;
         }
         const runResult = settledRunResult.value;
+        if (isQueueFirstRunClaimLost(runResult)) {
+          log.warn("Auto-send lost the queued-message launch claim", {
+            threadId: runInput.threadId,
+            userMessageId: runInput.queuedMessage.id,
+          });
+          return null;
+        }
         if (
           runResult.status !== 201 ||
           runResult.body.status === "failed" ||
@@ -2899,6 +2795,7 @@ const buildChatCallbackDependencies$ = command(
         return {
           runId: runResult.body.runId,
           status: runResult.body.status,
+          claimedMessageCreatedAt: runResult.queueFirstClaim.createdAt,
         };
       },
     };
@@ -2954,7 +2851,6 @@ export const drainQueuedUserMessagesForThread$ = command(
       getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
       createRun: (input) => {
         return createQueuedChatRun({
-          db,
           input,
           signal,
           createRun: (runInput) => {

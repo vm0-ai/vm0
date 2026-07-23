@@ -19,6 +19,8 @@ import {
   deleteChatMessage,
   updateChatMessage,
 } from "./zero-chat-message.service";
+import { activeChatRunExists } from "./zero-chat-active-run.service";
+import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
@@ -69,6 +71,31 @@ export interface QueuedUserMessage {
   readonly selectedModel: string | null;
   readonly triggerSource: "web" | "slack";
   readonly encryptedParams: string | null;
+}
+
+export interface QueueFirstRunAssociation {
+  readonly threadId: string;
+  readonly messageId: string;
+}
+
+export type QueueFirstRunClaimResult =
+  | { readonly kind: "claimed"; readonly createdAt: Date }
+  | { readonly kind: "lost" };
+
+/**
+ * Establish the thread-first lock order shared by every user-message queue
+ * consumer before it locks or deletes a queue row.
+ */
+export async function lockUserMessageQueueThread(
+  db: Db,
+  threadId: string,
+): Promise<boolean> {
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .for("update");
+  return thread !== undefined;
 }
 
 export async function encryptQueuedUserMessageRunParams(
@@ -159,6 +186,24 @@ export async function loadNextUnclaimedQueuedUserMessage(
   return message ?? null;
 }
 
+export async function loadNextUnclaimedQueuedUserMessageId(
+  db: Db,
+  threadId: string,
+): Promise<string | null> {
+  const [message] = await db
+    .select({ id: chatMessages.id })
+    .from(chatMessageQueue)
+    .innerJoin(
+      chatMessages,
+      eq(chatMessages.id, chatMessageQueue.chatMessageId),
+    )
+    .where(unclaimedQueuedUserMessageCondition(threadId))
+    .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
+    .limit(1);
+
+  return message?.id ?? null;
+}
+
 export async function hasUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
@@ -227,7 +272,7 @@ interface ClaimedUserMessage {
  * Append the run-associated replacement for a queued user message and consume
  * its queue item. Callers serialize dispatch decisions before invoking this.
  */
-export async function appendClaimedUserMessage(
+async function appendClaimedUserMessage(
   db: Db,
   args: {
     readonly threadId: string;
@@ -290,28 +335,65 @@ export async function appendClaimedUserMessage(
 }
 
 /**
- * Serialize an inline queue claim on the thread, append its associated user
- * message, and consume the queue item.
+ * Authoritatively arbitrate a queue-first launch inside its final persistence
+ * transaction. Successful launches acquire the organization admission lock
+ * first; failed launches do not acquire that lock or create active state.
  */
-export async function claimQueuedUserMessage(
+export async function claimQueueFirstRunAssociation(
   db: Db,
-  args: {
-    readonly threadId: string;
-    readonly messageId: string;
+  args: QueueFirstRunAssociation & {
     readonly runId: string;
+    readonly timing: ApiDispatchTimingCollector;
   },
-): Promise<ClaimedUserMessage | null> {
-  return await db.transaction(async (tx) => {
-    const [thread] = await tx
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, args.threadId))
-      .for("update");
-    if (!thread) {
-      return null;
-    }
-    return await appendClaimedUserMessage(tx, args);
-  });
+): Promise<QueueFirstRunClaimResult> {
+  let outcome: "claimed" | "lost" | "error" = "error";
+  return await args.timing.measure(
+    "api_dispatch_claim_queue_first_message",
+    "nested",
+    async () => {
+      const threadExists = await args.timing.measure(
+        "api_dispatch_queue_first_thread_lock_wait",
+        "nested",
+        async () => {
+          return await lockUserMessageQueueThread(db, args.threadId);
+        },
+      );
+      if (!threadExists) {
+        outcome = "lost";
+        return { kind: "lost" };
+      }
+
+      if (await activeChatRunExists(db, { threadId: args.threadId })) {
+        outcome = "lost";
+        return { kind: "lost" };
+      }
+
+      const headMessageId = await loadNextUnclaimedQueuedUserMessageId(
+        db,
+        args.threadId,
+      );
+      if (headMessageId !== args.messageId) {
+        outcome = "lost";
+        return { kind: "lost" };
+      }
+
+      const claimed = await appendClaimedUserMessage(db, {
+        threadId: args.threadId,
+        messageId: args.messageId,
+        runId: args.runId,
+      });
+      if (!claimed) {
+        outcome = "lost";
+        return { kind: "lost" };
+      }
+
+      outcome = "claimed";
+      return { kind: "claimed", createdAt: claimed.createdAt };
+    },
+    () => {
+      return { queue_first_claim_result: outcome };
+    },
+  );
 }
 
 /**
@@ -327,6 +409,9 @@ export async function discardUnclaimedUserMessage(
   },
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
+      return;
+    }
     const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
       threadId: args.threadId,
       messageId: args.messageId,
