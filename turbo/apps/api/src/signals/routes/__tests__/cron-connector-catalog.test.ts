@@ -1522,6 +1522,11 @@ describe("connector catalog valid lifecycle", () => {
     const release = buildRelease({
       version: "2026-07-15.external-public-reader",
       generatedFirewall: true,
+      mutateCatalog: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        recordValue(connector.icon, "icon").key =
+          "connector-icons/resolved-icon.svg";
+      },
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
@@ -1543,9 +1548,7 @@ describe("connector catalog valid lifecycle", () => {
       generation: [],
       tags: ["fixture"],
       icon: {
-        url: expect.stringMatching(
-          /^https:\/\/static\.vm0\.io\/platform\/views\/zero-page\/components\/settings\/icons\/external-test-[a-f0-9]{12}\.svg$/u,
-        ),
+        url: "https://static.vm0.io/connector-icons/resolved-icon.svg",
         invertInDarkMode: false,
       },
       authMethods: [
@@ -4992,7 +4995,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
   });
 
-  it("scopes private-value leak detection to each connector", async () => {
+  it("accepts producer connector order and scopes private-value leak detection", async () => {
     configureSource();
     const release = buildRelease({
       version: "cross-connector-private-name-placeholder",
@@ -5006,7 +5009,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         ).placeholder = "your-second-api-key";
 
         const second = structuredClone(first);
-        second.connectorRef = "zz-external-other";
+        second.connectorRef = "aa-external-other";
         second.label = "External Other";
         const secondMethod = firstRecord(second.authMethods, "authMethods");
         recordValue(secondMethod.storage, "storage").secrets = [

@@ -1,9 +1,10 @@
 import { CONNECTOR_TYPE_KEYS, type ConnectorType } from "./connectors";
 
-const STATIC_CONNECTOR_ICON_BASE_URL = "https://static.vm0.io/platform/";
-const STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX = "platform/";
+const STATIC_CONNECTOR_ICON_BASE_URL = "https://static.vm0.io/";
 const STATIC_CONNECTOR_ICON_PATH_PATTERN =
   /^views\/zero-page\/components\/settings\/icons\/[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{12}\.(?:png|svg)$/u;
+const STATIC_CONNECTOR_ICON_PUBLIC_PATH_PATTERN =
+  /^(?:[a-z0-9]+(?:[-_.][a-z0-9]+)*\/)*[a-z0-9]+(?:[-_.][a-z0-9]+)*\.(?:png|svg)$/u;
 const SLACK_ICON_PATH =
   "views/zero-page/components/settings/icons/slack-198390069136.svg";
 // The query is part of the published asset URL because the query-free path was
@@ -741,20 +742,16 @@ export function isConnectorIconAssetKey(
 }
 
 export function staticConnectorIconPublicPathUrl(publicPath: string): string {
-  if (!publicPath.startsWith(STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX)) {
+  if (!isStaticConnectorIconPublicPath(publicPath)) {
     throw new Error(
       `Invalid static connector icon public path "${publicPath}"`,
     );
   }
-  const assetPath = publicPath.slice(
-    STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX.length,
-  );
-  if (!STATIC_CONNECTOR_ICON_PATH_PATTERN.test(assetPath)) {
-    throw new Error(
-      `Invalid static connector icon public path "${publicPath}"`,
-    );
-  }
-  return `${STATIC_CONNECTOR_ICON_BASE_URL}${assetPath}`;
+  return `${STATIC_CONNECTOR_ICON_BASE_URL}${publicPath}`;
+}
+
+export function isStaticConnectorIconPublicPath(publicPath: string): boolean {
+  return STATIC_CONNECTOR_ICON_PUBLIC_PATH_PATTERN.test(publicPath);
 }
 
 export function connectorIconAssetUrl(key: ConnectorIconAssetKey): string {
@@ -763,9 +760,7 @@ export function connectorIconAssetUrl(key: ConnectorIconAssetKey): string {
   );
   const queryIndex = path.indexOf("?");
   const assetPath = queryIndex === -1 ? path : path.slice(0, queryIndex);
-  const url = staticConnectorIconPublicPathUrl(
-    `${STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX}${assetPath}`,
-  );
+  const url = staticConnectorIconPublicPathUrl(`platform/${assetPath}`);
   return queryIndex === -1 ? url : `${url}${path.slice(queryIndex)}`;
 }
 

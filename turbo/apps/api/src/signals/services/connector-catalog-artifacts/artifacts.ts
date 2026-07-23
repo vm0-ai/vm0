@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
+import { isStaticConnectorIconPublicPath } from "@vm0/connectors/static-connector-icons";
 
 import {
   artifactKeySchema,
@@ -19,7 +20,6 @@ import {
   connectorAuthMethodIdSchema,
   connectorFeatureSwitchKeySchema,
   connectorRevokeSourceSchema,
-  connectorStaticIconPathSchema,
   connectorStorageSourceSchema,
   connectorValueRefSchema,
   internalOptionNameSchema,
@@ -48,7 +48,12 @@ function artifactHeaderShape() {
 
 const connectorCatalogIconSchema = z
   .object({
-    key: connectorStaticIconPathSchema,
+    key: z
+      .string()
+      .refine(
+        isStaticConnectorIconPublicPath,
+        "Connector icon key must be a safe supported static-files path",
+      ),
     invertInDarkMode: z.boolean(),
     scale: z.number().min(1).max(3).optional(),
   })
@@ -148,6 +153,7 @@ export const connectorCatalogAuthMethodSchema = z
 
 const connectorSkillStorageNameSchema = z
   .string()
+  .max(256)
   .regex(/^connector-skill@[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 
 const connectorSkillVersionIdSchema = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -233,10 +239,6 @@ export const connectorCatalogArtifactConnectorSchema = z
     }
   });
 
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
 export const connectorCatalogArtifactSchema = z
   .object({
     ...artifactHeaderShape(),
@@ -248,18 +250,6 @@ export const connectorCatalogArtifactSchema = z
     const connectorRefs = artifact.connectors.map((connector) => {
       return connector.connectorRef;
     });
-    const sortedRefs = [...connectorRefs].sort(compareStrings);
-    if (
-      connectorRefs.some((connectorRef, index) => {
-        return connectorRef !== sortedRefs[index];
-      })
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Connector catalog refs must be alphabetical",
-        path: ["connectors"],
-      });
-    }
     const duplicates = connectorRefs.filter((connectorRef, index) => {
       return connectorRefs.indexOf(connectorRef) !== index;
     });

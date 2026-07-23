@@ -81,12 +81,8 @@ describe("static connector icons", () => {
       "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
     );
     expect(
-      staticConnectorIconPublicPathUrl(
-        "platform/views/zero-page/components/settings/icons/slack-198390069136.svg",
-      ),
-    ).toBe(
-      "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg",
-    );
+      staticConnectorIconPublicPathUrl("connector-icons/resolved-icon.svg"),
+    ).toBe("https://static.vm0.io/connector-icons/resolved-icon.svg");
     expect(() => {
       staticConnectorIconPublicPathUrl(
         "https://example.com/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
@@ -96,6 +92,12 @@ describe("static connector icons", () => {
       staticConnectorIconPublicPathUrl(
         "platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg?v=1",
       );
+    }).toThrow("Invalid static connector icon public path");
+    expect(() => {
+      staticConnectorIconPublicPathUrl("connector-icons/../gmail.svg");
+    }).toThrow("Invalid static connector icon public path");
+    expect(() => {
+      staticConnectorIconPublicPathUrl("connector-icons/gmail.html");
     }).toThrow("Invalid static connector icon public path");
   });
 

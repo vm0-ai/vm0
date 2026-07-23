@@ -261,20 +261,10 @@ export const connectorSourceSchema = z
   })
   .strict();
 
-export const connectorStaticIconPathSchema = z
-  .string()
-  .regex(
-    /^platform\/views\/zero-page\/components\/settings\/icons\/[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{12}\.(?:png|svg)$/u,
-  );
-
 type CatalogSource = z.infer<typeof catalogSourceSchema>;
 type ConnectorSource = z.infer<typeof connectorSourceSchema>;
 export type ConnectorAuthMethodSource = ConnectorSource["authMethods"][number];
 export type ConnectorGrantSource = ConnectorAuthMethodSource["grant"];
-
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function assertUnique(args: {
   readonly values: readonly string[];
@@ -286,20 +276,6 @@ function assertUnique(args: {
       throw new Error(`Duplicate ${args.label}: ${value}`);
     }
     seen.add(value);
-  }
-}
-
-function assertAlphabetical(args: {
-  readonly values: readonly string[];
-  readonly label: string;
-}): void {
-  const expected = [...args.values].sort(compareStrings);
-  if (
-    expected.some((value, index) => {
-      return value !== args.values[index];
-    })
-  ) {
-    throw new Error(`${args.label} must be alphabetical`);
   }
 }
 
@@ -547,10 +523,6 @@ export function validateCatalogSourceSemantics(source: CatalogSource): void {
   assertUnique({
     values: source.connectorRefs,
     label: "catalog connector ref",
-  });
-  assertAlphabetical({
-    values: source.connectorRefs,
-    label: "catalog connector refs",
   });
   const groupIds = source.categoryMetadata.groups.map((group) => {
     return group.id;
