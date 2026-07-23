@@ -137,7 +137,7 @@ interface CreateZeroRunCommandArgs {
   readonly auth: AuthContext & { readonly orgId: string };
   readonly body: ZeroRunCreateBody;
   readonly apiStartTime: number;
-  readonly hasTrustedApiStartTime?: boolean;
+  readonly apiToFirstAssistantMessageStartedAt?: Date | null;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;
   readonly userInfoExtras?: Pick<
@@ -842,7 +842,8 @@ function buildZeroCreateAgentRunArgs(args: {
       appendSystemPrompt: command.appendSystemPrompt,
     }),
     apiStartTime: command.apiStartTime,
-    hasTrustedApiStartTime: command.hasTrustedApiStartTime,
+    apiToFirstAssistantMessageStartedAt:
+      command.apiToFirstAssistantMessageStartedAt,
     modelProviderId: command.modelProviderId ?? agentModelProviderId,
     modelProviderCredentialScope: command.modelProviderCredentialScope,
     modelProviderType: command.body.modelProvider,

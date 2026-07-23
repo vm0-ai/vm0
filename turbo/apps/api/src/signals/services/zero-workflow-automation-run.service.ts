@@ -78,7 +78,7 @@ type ModelContext =
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly apiStartTime: number;
-  readonly hasTrustedApiStartTime?: boolean;
+  readonly apiToFirstAssistantMessageStartedAt?: Date | null;
   readonly sessionId?: string;
   // Overrides the default `/<workflowName>` slash-command prompt.
   readonly prompt?: string;
@@ -586,7 +586,8 @@ export const runWorkflowAutomationNow$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        hasTrustedApiStartTime: args.hasTrustedApiStartTime,
+        apiToFirstAssistantMessageStartedAt:
+          args.apiToFirstAssistantMessageStartedAt,
         triggerSource: args.triggerSource ?? "workflow-schedule",
         chatThreadId,
         computerUseHostId: computerUseHostGrant?.hostId,
