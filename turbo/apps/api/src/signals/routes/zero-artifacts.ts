@@ -236,6 +236,8 @@ const unfavoriteArtifactInner$ = command(
   },
 );
 
+// Compatibility for browser bundles shipped before image editing was retired.
+// Remove these snapshot routes and their table after the rollback window closes.
 const getImageEditSnapshotInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);

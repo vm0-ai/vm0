@@ -555,12 +555,10 @@ function setupArtifactsPage({
   scope,
   enabled = true,
   htmlArtifactCommentEditingEnabled = false,
-  imageEditingEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
   readonly htmlArtifactCommentEditingEnabled?: boolean;
-  readonly imageEditingEnabled?: boolean;
 }): void {
   detachedSetupPage({
     context,
@@ -577,7 +575,6 @@ function setupArtifactsPage({
       [FeatureSwitchKey.Artifacts]: enabled,
       [FeatureSwitchKey.HtmlArtifactCommentEditing]:
         htmlArtifactCommentEditingEnabled,
-      [FeatureSwitchKey.ImageEditing]: imageEditingEnabled,
     },
   });
 }
@@ -1093,7 +1090,6 @@ describe("artifacts page", () => {
     setupArtifactsPage({
       scope,
       htmlArtifactCommentEditingEnabled: true,
-      imageEditingEnabled: true,
     });
 
     await screen.findByText("launch-image.png");

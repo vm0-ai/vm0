@@ -68,7 +68,6 @@ export enum FeatureSwitchKey {
   ComposerChatThreadSuggestions = "composerChatThreadSuggestions",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",
-  ImageEditing = "imageEditing",
   PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
   PresentationElementDragging = "presentationElementDragging",
   Artifacts = "artifacts",
