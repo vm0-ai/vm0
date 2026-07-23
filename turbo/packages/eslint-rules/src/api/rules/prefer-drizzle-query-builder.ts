@@ -76,6 +76,10 @@ interface SimpleLockingSelectMatch {
   readonly sourceTableExpressionIndex: number | undefined;
 }
 
+interface SimpleDeleteMatch {
+  readonly targetTableExpressionIndex: number | undefined;
+}
+
 const RESULT_FIELD_ARGUMENT = new Map<string, number>([
   ["returning", 0],
   ["select", 0],
@@ -125,6 +129,16 @@ const UNSUPPORTED_LOCKING_SELECT_KEYWORDS = new Set([
   "USING",
   "WINDOW",
   "WITH",
+]);
+
+const UNSUPPORTED_DELETE_PREDICATE_KEYWORDS = new Set([
+  "CURRENT",
+  "FETCH",
+  "LIMIT",
+  "OFFSET",
+  "ORDER",
+  "RETURNING",
+  "USING",
 ]);
 
 function quasiText(node: TSESTree.TemplateElement): string {
@@ -268,6 +282,70 @@ function onlyWhitespaceBetween(
   right: SqlToken,
 ): boolean {
   return source.slice(left.end, right.start).trim() === "";
+}
+
+function simpleDeleteMatch(
+  syntaxSource: string,
+): SimpleDeleteMatch | undefined {
+  const tokens = topLevelTokens(syntaxSource);
+  if (tokens === undefined) {
+    return undefined;
+  }
+
+  let end = tokens.length;
+  const trailingToken = tokens[end - 1];
+  if (trailingToken?.kind === "punctuation" && trailingToken.value === ";") {
+    if (syntaxSource.slice(trailingToken.end).trim() !== "") {
+      return undefined;
+    }
+    end -= 1;
+  } else if (
+    trailingToken === undefined ||
+    syntaxSource.slice(trailingToken.end).trim() !== ""
+  ) {
+    return undefined;
+  }
+
+  const statementTokens = tokens.slice(0, end);
+  const deleteKeyword = statementTokens[0];
+  const fromKeyword = statementTokens[1];
+  const targetTable = statementTokens[2];
+  const whereKeyword = statementTokens[3];
+  if (
+    statementTokens.length <= 4 ||
+    !isWord(deleteKeyword, "DELETE") ||
+    !isWord(fromKeyword, "FROM") ||
+    (targetTable?.kind !== "word" && targetTable?.kind !== "expression") ||
+    !isWord(whereKeyword, "WHERE") ||
+    deleteKeyword === undefined ||
+    fromKeyword === undefined ||
+    whereKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, deleteKeyword, fromKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, targetTable) ||
+    !onlyWhitespaceBetween(syntaxSource, targetTable, whereKeyword)
+  ) {
+    return undefined;
+  }
+
+  if (
+    statementTokens.slice(4).some((token) => {
+      return (
+        (token.kind === "word" &&
+          UNSUPPORTED_DELETE_PREDICATE_KEYWORDS.has(token.value)) ||
+        (token.kind === "punctuation" &&
+          (token.value === "," || token.value === ";"))
+      );
+    })
+  ) {
+    return undefined;
+  }
+
+  return {
+    targetTableExpressionIndex:
+      targetTable.kind === "expression"
+        ? targetTable.expressionIndex
+        : undefined,
+  };
 }
 
 function simpleLockingSelectMatch(
@@ -673,7 +751,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete simple selects, locking selects, and scalar result queries",
+        "Prefer Drizzle query builders for complete simple deletes, selects, locking selects, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -683,6 +761,8 @@ export const preferDrizzleQueryBuilder = createRule({
         "Use a Drizzle select builder for this complete schema-backed query.",
       lockingQueryBuilder:
         "Use a Drizzle select builder with .for(...) for this complete locking query.",
+      deleteQueryBuilder:
+        "Use a Drizzle delete builder for this complete single-target query.",
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
@@ -763,6 +843,18 @@ export const preferDrizzleQueryBuilder = createRule({
             isRawRowsModule(importSource(declaration))
           );
         }) === true
+      );
+    }
+
+    function isDrizzleExecuteMember(node: TSESTree.MemberExpression): boolean {
+      if (memberName(node) !== "execute") {
+        return false;
+      }
+      const tsProperty = services.esTreeNodeToTSNodeMap.get(node.property);
+      return (
+        checker
+          .getSymbolAtLocation(tsProperty)
+          ?.declarations?.some(isDrizzleDeclaration) === true
       );
     }
 
@@ -1178,8 +1270,58 @@ export const preferDrizzleQueryBuilder = createRule({
       inspectSelectionContainer(fields, new Set<TSESTree.Node>());
     }
 
+    function inspectCompleteDelete(node: TSESTree.CallExpression): void {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(node.callee) !== "execute" ||
+        node.arguments.length !== 1
+      ) {
+        return;
+      }
+      const query = node.arguments[0];
+      if (
+        query === undefined ||
+        query.type !== AST_NODE_TYPES.TaggedTemplateExpression
+      ) {
+        return;
+      }
+
+      const source = query.quasi.quasis
+        .map(quasiText)
+        .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
+      const match = simpleDeleteMatch(sqlCodeMask(source));
+      if (
+        match === undefined ||
+        !isDrizzleSqlTag(checker, services, query.tag) ||
+        !isDrizzleExecuteMember(node.callee)
+      ) {
+        return;
+      }
+
+      const targetTableExpressionIndex = match.targetTableExpressionIndex;
+      if (targetTableExpressionIndex !== undefined) {
+        const targetTable = query.quasi.expressions[targetTableExpressionIndex];
+        if (targetTable === undefined) {
+          return;
+        }
+        const targetTableType = expressionType(targetTable);
+        if (
+          !isDrizzleTableType(
+            checker,
+            targetTableType.type,
+            targetTableType.location,
+          )
+        ) {
+          return;
+        }
+      }
+
+      context.report({ node: query, messageId: "deleteQueryBuilder" });
+    }
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
+        inspectCompleteDelete(node);
         if (
           node.callee.type === AST_NODE_TYPES.MemberExpression &&
           RESULT_FIELD_ARGUMENT.has(memberName(node.callee) ?? "")

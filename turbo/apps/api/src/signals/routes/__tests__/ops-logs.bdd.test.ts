@@ -4,13 +4,16 @@ import { gzipSync, zstdCompressSync } from "node:zlib";
 import AdmZip from "adm-zip";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
 
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { modelStatsRoutes } from "../model-stats";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
@@ -435,6 +438,46 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 
     const fallback = await api.readModelRankings("unsupported");
     expect(fallback.body.period).toBe("week");
+
+    // A failed rebuild must roll back the window DELETE. 1,024 maximum safe
+    // integers still fit in PostgreSQL bigint; the 1,025th overflows SUM.
+    mockNow(mainObservedAt);
+    const overflowEvents = Array.from({ length: 1025 }, () => {
+      return {
+        idempotencyKey: randomUUID(),
+        model,
+        category: "tokens.input" as const,
+        quantity: Number.MAX_SAFE_INTEGER,
+      };
+    });
+    for (let offset = 0; offset < overflowEvents.length; offset += 100) {
+      await webhooks.requestAgentModelUsageObservation(
+        {
+          runId: created.runId,
+          events: overflowEvents.slice(offset, offset + 100),
+        },
+        sandboxHeaders,
+        [200],
+      );
+    }
+
+    mockNow(aggregateAt);
+    const aggregateApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: modelStatsRoutes,
+    });
+    const failedAggregate = await aggregateApp.request(
+      `${cronAggregateModelStatsContract.aggregate.path}?hours=24`,
+      {
+        headers: { authorization: "Bearer test-cron-secret" },
+      },
+    );
+    expect(failedAggregate.status).toBe(500);
+    await expect(failedAggregate.json()).resolves.toStrictEqual({
+      error: "Internal server error",
+    });
+    const afterFailedRebuild = await api.readModelRankings("today");
+    expect(afterFailedRebuild.body).toStrictEqual(reprocessed.body);
 
     // Retention: 33 days later the cron deletes every observation at or
     // before our day; the re-aggregation then empties the window's stats, so
