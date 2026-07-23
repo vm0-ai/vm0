@@ -9,12 +9,10 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { tapError } from "../utils.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import {
   reloadArtifacts$,
   resetArtifactsFilters$,
-  syncArtifacts$,
 } from "./artifacts-signals.ts";
 
 export const setupArtifactsPage$ = command(
@@ -34,6 +32,5 @@ export const setupArtifactsPage$ = command(
     await set(hideAppSkeleton$, signal);
 
     await set(onboardGuard$, signal);
-    await tapError(set(syncArtifacts$, signal));
   },
 );

@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import type { IDBPDatabase } from "idb";
-import { delay } from "signal-timers";
 import {
   artifactItemSchema,
   artifactsContract,
@@ -21,7 +20,7 @@ import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { onRef, resetSignal, settle } from "../utils.ts";
+import { onRef } from "../utils.ts";
 import {
   ensureAgentDraft$,
   loadAgentDraft$,
@@ -34,13 +33,12 @@ const ARTIFACTS_PAGE_SIZE = 2000;
 // Backstop against an unbounded fetch loop (e.g. a server that never returns a
 // null cursor). Sits far above any realistic per-org artifact count.
 const ARTIFACTS_MAX_PAGES = 100;
+// Read the whole locally-cached set back for the cache-first paint.
+const ARTIFACTS_CACHE_READ_LIMIT = ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
+
 // Number of cards the grid makes available per automatic loading step. Row
 // virtualization keeps the mounted DOM bounded independently of this window.
 const ARTIFACT_WINDOW_STEP = 60;
-// The background merge still needs the complete cached snapshot, but first
-// paint only needs the first visible window.
-const ARTIFACTS_FULL_CACHE_READ_LIMIT =
-  ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
 const ARTIFACT_FOCUS_TARGET_SELECTOR =
   'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -53,23 +51,6 @@ const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
 const internalArtifactsGridElement$ = state<HTMLElement | null>(null);
 const internalArtifactsGridWidth$ = state(0);
 const internalArtifactsPendingFocusIndex$ = state<number | null>(null);
-const resetArtifactsSyncSignal$ = resetSignal();
-
-interface ArtifactsPageData {
-  readonly artifacts: readonly ArtifactItem[];
-}
-
-export interface RemoteArtifactsData extends ArtifactsPageData {
-  readonly mergeCachedArtifacts: boolean;
-}
-
-interface RemoteArtifactsProgress extends RemoteArtifactsData {
-  readonly reload: number;
-}
-
-const internalRemoteArtifactsProgress$ = state<RemoteArtifactsProgress | null>(
-  null,
-);
 
 interface ArtifactsScrollMetrics {
   readonly clientHeight: number;
@@ -80,6 +61,10 @@ const internalArtifactsScrollMetrics$ = state<ArtifactsScrollMetrics>({
   clientHeight: 0,
   scrollTop: 0,
 });
+
+interface ArtifactsPageData {
+  readonly artifacts: readonly ArtifactItem[];
+}
 
 function artifactItemCacheStores(dbPromise: Promise<IDBPDatabase>) {
   return createArtifactItemCacheStores(() => {
@@ -265,7 +250,6 @@ export const resetArtifactsFilters$ = command(({ set }) => {
 });
 
 export const reloadArtifacts$ = command(({ set }) => {
-  set(internalRemoteArtifactsProgress$, null);
   set(internalArtifactsReload$, (version) => {
     return version + 1;
   });
@@ -329,272 +313,67 @@ function mergeArtifactItems(
   });
 }
 
-interface InitialRemoteArtifactsPage extends RemoteArtifactsData {
-  readonly nextCursor: string | null;
-  readonly reload: number;
-  readonly syncUntil: string | undefined;
-  readonly updatedAfter: string | undefined;
-}
-
-interface FetchRemainingArtifactPagesInput {
-  readonly initialArtifacts: readonly ArtifactItem[];
-  readonly initialCursor: string | undefined;
-  readonly initialSyncUntil: string | undefined;
-  readonly mergeCachedArtifacts: boolean;
-  readonly reload: number;
-  readonly updatedAfter: string | undefined;
-}
-
-interface RemoteArtifactsSnapshot {
-  readonly artifacts: ArtifactItem[];
-  readonly syncUntil: string | undefined;
-}
-
-// The first remote page resolves independently so the view can render it while
-// later cursor pages continue loading.
-const initialRemoteArtifactsPage$ = computed(
-  async (get): Promise<InitialRemoteArtifactsPage> => {
-    const reload = get(internalArtifactsReload$);
+// Remote source: read the last-known cache immediately, request only rows that
+// changed since its synchronization timestamp, and merge those rows locally.
+// A server without incremental support omits `syncUntil`; in that case its
+// response is treated as the historical full snapshot for rolling-deploy
+// compatibility.
+export const remoteArtifacts$ = computed(
+  async (get): Promise<ArtifactsPageData> => {
+    get(internalArtifactsReload$);
     const dbPromise = get(chatIdb$);
     const client = get(zeroClient$)(artifactsContract);
     const stores = artifactItemCacheStores(dbPromise);
-    const [cachedHead, lastSyncedAt] = await Promise.all([
-      // This best-effort single-row read only preserves the rollout fallback
-      // for caches created before sync timestamps existed. The cache-first
-      // display uses the strict bounded read below.
-      stores.readStore.readRecentBestEffort({ limit: 1 }),
+    const [cachedArtifacts, lastSyncedAt] = await Promise.all([
+      stores.readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT }),
       stores.readStore.readLastSyncedAt(),
     ]);
-    const updatedAfter =
-      cachedHead.length === 0
-        ? undefined
-        : (lastSyncedAt ?? cachedHead[0]?.createdAt);
-    const result = await accept(
-      client.list({
-        query: {
-          limit: ARTIFACTS_PAGE_SIZE,
-          updatedAfter,
-        },
-      }),
-      [200],
-    );
-    const syncUntil = result.body.syncUntil;
-    return {
-      artifacts: mergeArtifactItems(
-        [],
-        result.body.artifacts.map((item) => {
-          return artifactItemSchema.parse(item);
-        }),
-      ),
-      mergeCachedArtifacts: Boolean(updatedAfter && syncUntil),
-      nextCursor: result.body.nextCursor,
-      reload,
-      syncUntil,
-      updatedAfter,
-    };
-  },
-);
-
-// Remote source: publish the first page immediately, then adopt each cumulative
-// page produced by syncArtifacts$.
-export const remoteArtifacts$ = computed(
-  async (get): Promise<RemoteArtifactsData> => {
-    const progress = get(internalRemoteArtifactsProgress$);
-    const initial = await get(initialRemoteArtifactsPage$);
-    const current = progress?.reload === initial.reload ? progress : initial;
-    return {
-      artifacts: current.artifacts,
-      mergeCachedArtifacts: current.mergeCachedArtifacts,
-    };
-  },
-);
-
-const fetchRemainingArtifactPages$ = command(
-  async (
-    { get, set },
-    input: FetchRemainingArtifactPagesInput,
-    signal: AbortSignal,
-  ): Promise<RemoteArtifactsSnapshot | null> => {
-    const client = get(zeroClient$)(artifactsContract);
-    let artifacts = [...input.initialArtifacts];
-    let cursor = input.initialCursor;
-    let syncUntil = input.initialSyncUntil;
-    set(internalRemoteArtifactsProgress$, {
-      artifacts,
-      mergeCachedArtifacts: input.mergeCachedArtifacts,
-      reload: input.reload,
-    });
-
-    for (let page = 1; cursor && page < ARTIFACTS_MAX_PAGES; page += 1) {
+    const updatedAfter = lastSyncedAt ?? cachedArtifacts[0]?.createdAt;
+    const remoteArtifacts: ArtifactItem[] = [];
+    let cursor: string | undefined;
+    let syncUntil: string | undefined;
+    for (let page = 0; page < ARTIFACTS_MAX_PAGES; page += 1) {
       const result = await accept(
         client.list({
           query: {
             limit: ARTIFACTS_PAGE_SIZE,
             cursor,
-            updatedAfter: input.updatedAfter,
+            updatedAfter,
           },
-          fetchOptions: { signal },
         }),
         [200],
       );
-      signal.throwIfAborted();
       syncUntil ??= result.body.syncUntil;
-      artifacts = mergeArtifactItems(
-        artifacts,
-        result.body.artifacts.map((item) => {
+      remoteArtifacts.push(
+        ...result.body.artifacts.map((item) => {
           return artifactItemSchema.parse(item);
         }),
       );
-      if (get(internalArtifactsReload$) !== input.reload) {
-        return null;
+      if (!result.body.nextCursor) {
+        break;
       }
-      set(internalRemoteArtifactsProgress$, {
-        artifacts,
-        mergeCachedArtifacts: input.mergeCachedArtifacts,
-        reload: input.reload,
-      });
-      cursor = result.body.nextCursor ?? undefined;
+      cursor = result.body.nextCursor;
     }
 
-    return { artifacts, syncUntil };
-  },
-);
-
-// Continue the remote cursor walk after first-page paint. Cache persistence is
-// deliberately last so it never gates data already published to the view.
-export const syncArtifacts$ = command(
-  async ({ get, set }, parentSignal: AbortSignal) => {
-    const signal = set(resetArtifactsSyncSignal$, parentSignal);
-    const initial = await get(initialRemoteArtifactsPage$);
-    signal.throwIfAborted();
-    if (get(internalArtifactsReload$) !== initial.reload) {
-      return;
-    }
-
-    const incrementalSnapshot = await set(
-      fetchRemainingArtifactPages$,
-      {
-        initialArtifacts: initial.artifacts,
-        initialCursor: initial.nextCursor ?? undefined,
-        initialSyncUntil: initial.syncUntil,
-        mergeCachedArtifacts: initial.mergeCachedArtifacts,
-        reload: initial.reload,
-        updatedAfter: initial.updatedAfter,
-      },
-      signal,
-    );
-    if (!incrementalSnapshot) {
-      return;
-    }
-    let { artifacts, syncUntil } = incrementalSnapshot;
-
-    signal.throwIfAborted();
-    if (get(internalArtifactsReload$) !== initial.reload) {
-      return;
-    }
-
-    const stores = artifactItemCacheStores(get(chatIdb$));
-    if (initial.mergeCachedArtifacts) {
-      const cachedArtifactsResult = await settle(
-        stores.readStore.readRecent(
-          { limit: ARTIFACTS_FULL_CACHE_READ_LIMIT },
-          signal,
-        ),
-        signal,
-      );
-      if (get(internalArtifactsReload$) !== initial.reload) {
-        return;
-      }
-      if (cachedArtifactsResult.ok) {
-        artifacts = mergeArtifactItems(cachedArtifactsResult.value, artifacts);
-      } else {
-        // An incremental response is incomplete without the full local
-        // snapshot. If IndexedDB cannot provide it within its strict deadline,
-        // recover with an authoritative server snapshot instead of silently
-        // leaving the view capped at its 60-item first-paint window.
-        const result = await accept(
-          get(zeroClient$)(artifactsContract).list({
-            query: { limit: ARTIFACTS_PAGE_SIZE },
-            fetchOptions: { signal },
-          }),
-          [200],
-        );
-        signal.throwIfAborted();
-        if (get(internalArtifactsReload$) !== initial.reload) {
-          return;
-        }
-        const fullSnapshot = await set(
-          fetchRemainingArtifactPages$,
-          {
-            initialArtifacts: mergeArtifactItems(
-              [],
-              result.body.artifacts.map((item) => {
-                return artifactItemSchema.parse(item);
-              }),
-            ),
-            initialCursor: result.body.nextCursor ?? undefined,
-            initialSyncUntil: result.body.syncUntil,
-            mergeCachedArtifacts: false,
-            reload: initial.reload,
-            updatedAfter: undefined,
-          },
-          signal,
-        );
-        if (!fullSnapshot) {
-          return;
-        }
-        ({ artifacts, syncUntil } = fullSnapshot);
-      }
-    }
-    set(internalRemoteArtifactsProgress$, {
-      artifacts,
-      mergeCachedArtifacts: false,
-      reload: initial.reload,
-    });
-
-    // Yield a browser task after publishing the complete snapshot so React can
-    // paint it before a large clear-and-replace transaction starts.
-    await delay(0, { signal });
-    signal.throwIfAborted();
-    if (get(internalArtifactsReload$) !== initial.reload) {
-      return;
-    }
-    const cacheUpdated = await stores.writeStore.replaceItems(
-      artifacts,
-      signal,
-    );
-    signal.throwIfAborted();
-    if (get(internalArtifactsReload$) !== initial.reload) {
-      return;
-    }
+    const mergeBase = updatedAfter && syncUntil ? cachedArtifacts : [];
+    const artifacts = mergeArtifactItems(mergeBase, remoteArtifacts);
+    const cacheUpdated = await stores.writeStore.replaceItems(artifacts);
     if (cacheUpdated && syncUntil) {
-      await stores.writeStore.setLastSyncedAt(syncUntil, signal);
+      await stores.writeStore.setLastSyncedAt(syncUntil);
     }
+    return { artifacts };
   },
 );
 
-export function mergeArtifactSources(
-  cachedArtifacts: readonly ArtifactItem[],
-  remote: RemoteArtifactsData | null,
-): readonly ArtifactItem[] {
-  if (!remote) {
-    return cachedArtifacts;
-  }
-  return remote.mergeCachedArtifacts
-    ? mergeArtifactItems(cachedArtifacts, remote.artifacts)
-    : remote.artifacts;
-}
-
-// Cache-first paint reads only the first visible window. Unlike the background
-// full-snapshot read, failures remain distinguishable from a genuinely empty
-// cache through the loadable state.
+// Cache-first paint: the last-known artifact set from IndexedDB. Never throws
+// (reads degrade to an empty list), so it is always a safe fallback.
 export const cachedArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
     get(internalArtifactsReload$);
     const dbPromise = get(chatIdb$);
     const artifacts = await artifactItemCacheStores(
       dbPromise,
-    ).readStore.readRecent({ limit: ARTIFACT_WINDOW_STEP });
+    ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });
     return { artifacts };
   },
 );
