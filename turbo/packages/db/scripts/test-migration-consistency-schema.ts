@@ -1249,6 +1249,507 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
+const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 650;
+const SESSION_STORAGE_BACKFILL_MIGRATION = 651;
+
+const sessionStorageBackfillFixture = {
+  orgId: "session-storage-backfill-org",
+  userId: "session-storage-backfill-user",
+  composeId: "70000000-0000-4000-8000-000000000001",
+  legacySessionId: "70000000-0000-4000-8000-000000000002",
+  emptySessionId: "70000000-0000-4000-8000-000000000003",
+  canonicalSessionId: "70000000-0000-4000-8000-000000000004",
+  storageIds: {
+    head: "71000000-0000-4000-8000-000000000001",
+    latest: "71000000-0000-4000-8000-000000000002",
+    pinned: "71000000-0000-4000-8000-000000000003",
+    prefix: "71000000-0000-4000-8000-000000000004",
+  },
+  versionIds: {
+    head: "a".repeat(64),
+    latest: "b".repeat(64),
+    pinned: "c".repeat(64),
+    prefix: "d".repeat(64),
+  },
+} as const;
+
+async function seedSessionStorageBackfillFixture(
+  client: Client,
+): Promise<void> {
+  const fixture = sessionStorageBackfillFixture;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES ($1, $2, 'session-storage-backfill', $3)
+    `,
+    [fixture.composeId, fixture.userId, fixture.orgId],
+  );
+
+  for (const name of ["head", "latest", "pinned", "prefix"] as const) {
+    const storageId = fixture.storageIds[name];
+    const versionId = fixture.versionIds[name];
+    await client.query(
+      `
+        INSERT INTO "storages"
+          ("id", "user_id", "name", "type", "org_id", "s3_prefix")
+        VALUES ($1, $2, $3, 'artifact', $4, $5)
+      `,
+      [
+        storageId,
+        fixture.userId,
+        name,
+        fixture.orgId,
+        `session-storage-backfill/${name}`,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "storage_versions"
+          ("id", "storage_id", "s3_key", "archive_size", "created_by")
+        VALUES ($1, $2, $3, 0, 'migration-test')
+      `,
+      [versionId, storageId, `session-storage-backfill/${name}/${versionId}`],
+    );
+    await client.query(
+      `
+        UPDATE "storages"
+        SET "head_version_id" = $1
+        WHERE "id" = $2
+      `,
+      [versionId, storageId],
+    );
+  }
+
+  const legacyArtifacts = [
+    { name: "head", mountPath: "/home/oai/share/head" },
+    {
+      name: "latest",
+      version: "latest",
+      mountPath: "/home/oai/share/latest",
+      missingRootPolicy: "preserveParentVersion",
+    },
+    {
+      name: "pinned",
+      version: fixture.versionIds.pinned,
+      mountPath: "/home/oai/share/pinned",
+    },
+    {
+      name: "prefix",
+      version: fixture.versionIds.prefix.slice(0, 8),
+      mountPath: "/home/oai/share/prefix",
+    },
+  ];
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "updated_at"
+      )
+      VALUES ($1, $2, $3, $4, $5::jsonb, '2020-01-01 00:00:00')
+    `,
+    [
+      fixture.legacySessionId,
+      fixture.userId,
+      fixture.orgId,
+      fixture.composeId,
+      JSON.stringify(legacyArtifacts),
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "updated_at"
+      )
+      VALUES ($1, $2, $3, $4, '[]'::jsonb, '2020-01-02 00:00:00')
+    `,
+    [fixture.emptySessionId, fixture.userId, fixture.orgId, fixture.composeId],
+  );
+
+  const canonicalMounts = [
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "head",
+      storageId: fixture.storageIds.head,
+      mountPath: "/home/oai/share/head",
+      writeback: true,
+    },
+  ];
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "storage_mounts",
+        "updated_at"
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        '[]'::jsonb,
+        $5::jsonb,
+        '2020-01-03 00:00:00'
+      )
+    `,
+    [
+      fixture.canonicalSessionId,
+      fixture.userId,
+      fixture.orgId,
+      fixture.composeId,
+      JSON.stringify(canonicalMounts),
+    ],
+  );
+}
+
+async function seedSessionStorageBackfillRejections(
+  client: Client,
+): Promise<void> {
+  const fixture = sessionStorageBackfillFixture;
+  const rows = [
+    {
+      id: "72000000-0000-4000-8000-000000000001",
+      artifacts: [
+        {
+          name: "head",
+          mountPath: "/home/oai/share/malformed",
+          unexpected: true,
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000002",
+      artifacts: [
+        { name: "head", mountPath: "/home/oai/share/duplicate-one" },
+        { name: "head", mountPath: "/home/oai/share/duplicate-two" },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000003",
+      artifacts: [{ name: "missing", mountPath: "/home/oai/share/missing" }],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000004",
+      artifacts: [
+        {
+          name: "pinned",
+          version: "deadbeef",
+          mountPath: "/home/oai/share/unresolved",
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000005",
+      artifacts: [
+        { name: "head", mountPath: "/home/oai/share/conflict-source" },
+      ],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/conflict-target",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000006",
+      artifacts: [],
+      storageMounts: { malformed: true },
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000007",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/canonical-duplicate-one",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/canonical-duplicate-two",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000008",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: "71000000-0000-4000-8000-000000000099",
+          mountPath: "/home/oai/share/stale-identity",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000009",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "pinned",
+          storageId: fixture.storageIds.pinned,
+          version: "deadbeef",
+          mountPath: "/home/oai/share/canonical-unresolved",
+          writeback: true,
+        },
+      ],
+    },
+  ];
+
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO "agent_sessions" (
+          "id",
+          "user_id",
+          "org_id",
+          "agent_compose_id",
+          "artifacts",
+          "storage_mounts"
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+      `,
+      [
+        row.id,
+        fixture.userId,
+        fixture.orgId,
+        fixture.composeId,
+        JSON.stringify(row.artifacts),
+        row.storageMounts === null ? null : JSON.stringify(row.storageMounts),
+      ],
+    );
+  }
+}
+
+async function validateSessionStorageBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.7: Validate session continuation Storage backfill ===\n",
+  );
+  const successDb = "migration_session_storage_backfill_test";
+  const successDbUrl = createTestDbUrl(successDb);
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(
+      successDbUrl,
+      SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await seedSessionStorageBackfillFixture(client);
+      await applyMigrationsUpToInTransaction(
+        client,
+        SESSION_STORAGE_BACKFILL_MIGRATION,
+      );
+
+      const result = await client.query<{
+        artifacts: unknown;
+        id: string;
+        storage_mounts: unknown;
+        updated_at: string;
+      }>(`
+        SELECT
+          "id",
+          "artifacts",
+          "storage_mounts",
+          "updated_at"::text
+        FROM "agent_sessions"
+        WHERE "id" IN (
+          '${sessionStorageBackfillFixture.legacySessionId}',
+          '${sessionStorageBackfillFixture.emptySessionId}',
+          '${sessionStorageBackfillFixture.canonicalSessionId}'
+        )
+        ORDER BY "id"
+      `);
+      const rowsById = new Map(
+        result.rows.map((row) => {
+          return [row.id, row] as const;
+        }),
+      );
+      const fixture = sessionStorageBackfillFixture;
+      const legacy = rowsById.get(fixture.legacySessionId);
+      assert.ok(legacy);
+      assert.deepEqual(legacy.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/head",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "latest",
+          storageId: fixture.storageIds.latest,
+          version: "latest",
+          mountPath: "/home/oai/share/latest",
+          writeback: true,
+          missingRootPolicy: "preserveParentVersion",
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "pinned",
+          storageId: fixture.storageIds.pinned,
+          version: fixture.versionIds.pinned,
+          mountPath: "/home/oai/share/pinned",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "prefix",
+          storageId: fixture.storageIds.prefix,
+          version: fixture.versionIds.prefix.slice(0, 8),
+          mountPath: "/home/oai/share/prefix",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(legacy.artifacts, [
+        { name: "head", mountPath: "/home/oai/share/head" },
+        {
+          name: "latest",
+          version: "latest",
+          mountPath: "/home/oai/share/latest",
+          missingRootPolicy: "preserveParentVersion",
+        },
+        {
+          name: "pinned",
+          version: fixture.versionIds.pinned,
+          mountPath: "/home/oai/share/pinned",
+        },
+        {
+          name: "prefix",
+          version: fixture.versionIds.prefix.slice(0, 8),
+          mountPath: "/home/oai/share/prefix",
+        },
+      ]);
+      assert.equal(legacy.updated_at, "2020-01-01 00:00:00");
+
+      const empty = rowsById.get(fixture.emptySessionId);
+      assert.ok(empty);
+      assert.deepEqual(empty.storage_mounts, []);
+      assert.equal(empty.updated_at, "2020-01-02 00:00:00");
+
+      const canonical = rowsById.get(fixture.canonicalSessionId);
+      assert.ok(canonical);
+      assert.deepEqual(canonical.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/head",
+          writeback: true,
+        },
+      ]);
+      assert.equal(canonical.updated_at, "2020-01-03 00:00:00");
+
+      const unmigrated = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+      assert.equal(unmigrated.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  const rejectionDb = "migration_session_storage_backfill_rejection_test";
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(
+      rejectionDbUrl,
+      SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await seedSessionStorageBackfillFixture(client);
+      await seedSessionStorageBackfillRejections(client);
+
+      let rejection: unknown;
+      try {
+        await applyMigrationsUpToInTransaction(
+          client,
+          SESSION_STORAGE_BACKFILL_MIGRATION,
+        );
+      } catch (error) {
+        rejection = error;
+      }
+      assert.equal(databaseErrorCode(rejection), "23514");
+      assert.ok(
+        rejection instanceof Error &&
+          rejection.message.includes(
+            "malformed_sessions=1, duplicate_sessions=1, missing_storage_sessions=1, unresolved_version_sessions=1, malformed_canonical_sessions=1, duplicate_canonical_sessions=1, stale_canonical_identity_sessions=1, unresolved_canonical_version_sessions=1, canonical_conflict_sessions=1",
+          ),
+      );
+
+      const unchanged = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+      assert.equal(unchanged.rows[0]?.count, 6);
+
+      const migrationRecord = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "__drizzle_migrations"
+        WHERE "hash" = '0651_backfill_session_continuation_storage_mounts'
+      `);
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Session continuation heads backfill losslessly and readiness failures roll back atomically\n",
+  );
+}
+
 const LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION = 640;
 const LEGACY_MEMORY_CLEANUP_MIGRATION = 641;
 
@@ -2337,6 +2838,7 @@ async function main(): Promise<void> {
 
     await validateStorageArchiveSizeFinalization();
     await validateLegacyMemoryCleanup();
+    await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
     await validateOrgPlanEntitlementBackfill();
 
