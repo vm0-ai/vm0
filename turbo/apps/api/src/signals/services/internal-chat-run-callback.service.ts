@@ -27,7 +27,9 @@ import {
   isNotNull,
   lte,
   max,
+  or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
 
@@ -1438,6 +1440,18 @@ function formatAttachFileIds(
     .join("\n");
 }
 
+function priorMessageContentCondition(structuredPromptEnabled: boolean): SQL {
+  return structuredPromptEnabled
+    ? (or(
+        isNotNull(chatMessages.content),
+        and(
+          eq(chatMessages.role, "user"),
+          isNotNull(chatMessages.structuredPrompt),
+        ),
+      ) as SQL)
+    : isNotNull(chatMessages.content);
+}
+
 function truncatePrior(value: string): string {
   if (value.length <= PRIOR_MESSAGE_CHAR_CAP) {
     return value;
@@ -1509,6 +1523,7 @@ async function getLatestRunsByThreadId(
   threadId: string,
   triggerSource: "web" | "slack",
   limit: number,
+  structuredPromptEnabled: boolean,
 ): Promise<PriorRun[]> {
   const runRows = await db
     .select({
@@ -1551,7 +1566,7 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
-        isNotNull(chatMessages.content),
+        priorMessageContentCondition(structuredPromptEnabled),
         inArray(chatMessages.runId, runIds),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(db),
@@ -1561,9 +1576,13 @@ async function getLatestRunsByThreadId(
 
   const messagesByRunId = new Map<string, PriorRunMessage[]>();
   for (const row of messageRows) {
+    const hasStructuredContent =
+      structuredPromptEnabled &&
+      row.role === "user" &&
+      row.structuredPrompt !== null;
     if (
       row.runId === null ||
-      row.content === null ||
+      (row.content === null && !hasStructuredContent) ||
       (row.role !== "user" && row.role !== "assistant")
     ) {
       continue;
@@ -1571,7 +1590,7 @@ async function getLatestRunsByThreadId(
     const existing = messagesByRunId.get(row.runId) ?? [];
     existing.push({
       role: row.role,
-      content: row.content,
+      content: row.content ?? "",
       structuredPrompt: row.structuredPrompt,
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
@@ -1735,6 +1754,7 @@ async function buildQueuedPriorContext(args: {
       args.threadId,
       args.triggerSource,
       RECENT_CHAT_RUN_LIMIT,
+      args.structuredPromptEnabled,
     ),
     args.triggerSource,
     args.structuredPromptEnabled,
