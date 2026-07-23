@@ -459,6 +459,52 @@ function htmlParagraphs(value: string): string {
     .join("");
 }
 
+type MorningBriefEmailTemplate = Extract<
+  EmailTemplate,
+  { readonly template: "morning-brief" }
+>;
+
+const MORNING_BRIEF_LINK_STYLE = "color:#d94801;text-decoration:underline";
+const MORNING_BRIEF_FALLBACK_HEADLINE =
+  "Good morning. Here's your brief for today.";
+
+function renderMorningBriefTemplate(
+  template: MorningBriefEmailTemplate,
+): string {
+  const sections = template.props.sections
+    .map((section) => {
+      const items = section.items
+        .map((item, index) => {
+          const link = item.url
+            ? ` (<a href="${escapeHtml(item.url)}" style="${MORNING_BRIEF_LINK_STYLE}">view</a>)`
+            : "";
+          const detail = item.detail ? ` — ${escapeHtml(item.detail)}` : "";
+          const margin = index === section.items.length - 1 ? "0" : "0 0 9px";
+          return `<li style="margin:${margin}"><strong>${escapeHtml(
+            item.title,
+          )}</strong>${link}${detail}</li>`;
+        })
+        .join("");
+      return `<p style="margin:0 0 10px"><strong>${escapeHtml(
+        section.title,
+      )}</strong> (${section.items.length})</p><ul style="margin:0 0 22px;padding-left:22px">${items}</ul>`;
+    })
+    .join("");
+  const headline = template.props.headline ?? MORNING_BRIEF_FALLBACK_HEADLINE;
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background-color:#ffffff;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;mso-hide:all">${escapeHtml(
+    template.props.preheader,
+  )}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td align="left" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;text-align:left"><tr><td><p style="margin:0 0 1em">${escapeHtml(
+    headline,
+  )}</p><hr style="height:1px;margin:28px 0;border:0;background-color:#e4e6e8">${sections}<p style="margin:0 0 1em">Continue in Zero if you&rsquo;d like to ask a follow-up or turn any item into a task.</p><p style="margin:0"><a href="${escapeHtml(
+    template.props.continueUrl,
+  )}" style="${MORNING_BRIEF_LINK_STYLE};font-weight:600">Continue in Zero &rarr;</a></p><hr style="height:1px;margin:32px 0 24px;border:0;background-color:#e4e6e8"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ed4e01" style="width:40px;height:40px;border-radius:10px;color:#ffffff;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">0</td><td valign="middle" style="padding-left:12px;line-height:1.4"><div><strong>Zero</strong></div><div style="margin-top:3px;font-size:12px"><a href="${escapeHtml(
+    template.props.continueUrl,
+  )}" style="${MORNING_BRIEF_LINK_STYLE}">Open this brief</a> &middot; <a href="${escapeHtml(
+    template.props.manageUrl,
+  )}" style="${MORNING_BRIEF_LINK_STYLE}">Turn off Morning Brief</a></div></td></tr></table><div style="margin-top:16px;color:#737373;font-size:12px;line-height:1.45">From your &ldquo;Morning Brief&rdquo; routine</div></td></tr></table></td></tr></table></body></html>`;
+}
+
 function renderTemplate(template: EmailTemplate): string {
   switch (template.template) {
     case "agent-reply": {
@@ -514,34 +560,7 @@ function renderTemplate(template: EmailTemplate): string {
       )}</p></main>`;
     }
     case "morning-brief": {
-      const sections = template.props.sections
-        .map((section) => {
-          const items = section.items
-            .map((item) => {
-              const title = item.url
-                ? `<a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>`
-                : escapeHtml(item.title);
-              const detail = item.detail ? ` — ${escapeHtml(item.detail)}` : "";
-              return `<li>${title}${detail}</li>`;
-            })
-            .join("");
-          return `<h2>${escapeHtml(section.title)}</h2><ul>${items}</ul>`;
-        })
-        .join("");
-      const headline = template.props.headline
-        ? `<p>${escapeHtml(template.props.headline)}</p>`
-        : "";
-      // Hidden preheader keeps inbox previews generic; details only render
-      // once the email is opened.
-      return `<main><div style="display:none;max-height:0;overflow:hidden">${escapeHtml(
-        template.props.preheader,
-      )}</div><h1>Morning Briefing - ${escapeHtml(
-        template.props.dateLabel,
-      )}</h1>${headline}${sections}<p><a href="${escapeHtml(
-        template.props.continueUrl,
-      )}">Continue in Zero</a></p><p><a href="${escapeHtml(
-        template.props.manageUrl,
-      )}">Turn off Morning Brief</a></p></main>`;
+      return renderMorningBriefTemplate(template);
     }
     case "credit-low-balance": {
       const remainingCredits =

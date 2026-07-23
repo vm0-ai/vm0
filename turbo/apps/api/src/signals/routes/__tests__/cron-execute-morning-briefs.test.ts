@@ -432,7 +432,7 @@ async function completeMorningBriefRun(
   scenario: Scenario,
   runId: string,
   exitCode: number,
-): Promise<void> {
+): Promise<string> {
   await api.heartbeatRunner(scenario.runnerGroup);
   const claim = await api.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
@@ -454,6 +454,7 @@ async function completeMorningBriefRun(
     [200],
   );
   await flushWaitUntilForTest();
+  return claim.appendSystemPrompt ?? "";
 }
 
 async function drainOutbox(): Promise<void> {
@@ -484,7 +485,8 @@ function sentMorningBriefEmails(): readonly {
 
 const VALID_OUTPUT = JSON.stringify({
   version: 1,
-  headline: "A focused day with one design review and one PR to land.",
+  headline:
+    "Good morning. One design review and one PR deserve your attention today.",
   sections: [
     {
       key: "schedule",
@@ -548,9 +550,14 @@ describe("cron execute morning briefs", () => {
 
     // The agent uploads output.json and the run completes.
     mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(scenario, runId, 0);
+    const appendSystemPrompt = await completeMorningBriefRun(
+      scenario,
+      runId,
+      0,
+    );
     await drainOutbox();
 
+    expect(appendSystemPrompt).toContain("Begin exactly with `Good morning.`");
     const emails = sentMorningBriefEmails();
     expect(emails).toHaveLength(1);
     const email = emails[0];
@@ -563,9 +570,20 @@ describe("cron execute morning briefs", () => {
     expect(email.html).toContain(
       "Your schedule, action items, and updates for today.",
     );
+    expect(email.html).toContain(
+      "Good morning. One design review and one PR deserve your attention today.",
+    );
+    expect(email.html).toContain("<strong>Today's schedule</strong> (1)");
     expect(email.html).toContain("Design review at 10:00");
+    expect(email.html).toContain(
+      '(<a href="https://calendar.google.com/event?eid=evt-1"',
+    );
     expect(email.html).toContain("https://github.com/vm0-ai/vm0/pull/1");
     expect(email.html).toContain("Continue in Zero");
+    expect(email.html).toContain(
+      "From your &ldquo;Morning Brief&rdquo; routine",
+    );
+    expect(email.html).not.toContain("<h1>");
     // Non-allowlisted link hosts are stripped from the email.
     expect(email.html).not.toContain("evil.example.com");
     expect(email.headers?.["List-Unsubscribe"]).toContain(
@@ -631,7 +649,6 @@ describe("cron execute morning briefs", () => {
     mockUploadedBriefOutput(
       JSON.stringify({
         version: 1,
-        headline: "One task finished while you were away.",
         sections: [
           {
             key: "unread_threads",
@@ -660,6 +677,7 @@ describe("cron execute morning briefs", () => {
     if (!email) {
       throw new Error("Expected a morning brief email");
     }
+    expect(email.html).toContain("Good morning. Here's your brief for today.");
     expect(email.html).toContain("Competitor research finished");
     // App-origin thread links survive sanitization; foreign hosts do not.
     expect(email.html).toContain(
