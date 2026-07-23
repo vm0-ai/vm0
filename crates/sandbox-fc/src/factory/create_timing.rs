@@ -177,10 +177,6 @@ impl<'a> SandboxCreateTiming<'a> {
         self.workspace_seed_image_used = true;
     }
 
-    pub(super) fn has_observer(&self) -> bool {
-        self.observer.is_some()
-    }
-
     pub(super) fn record_stage_result<T, E>(
         &mut self,
         stage: SandboxCreateStage,

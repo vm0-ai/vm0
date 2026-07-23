@@ -3,7 +3,6 @@ import {
   chatThreadMessagesContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,7 +10,6 @@ import {
   mockOrganization,
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
@@ -89,22 +87,8 @@ describe("chat message background sync", () => {
     clearMockedAuth();
   });
 
-  it("does not subscribe when the feature switch is disabled", async () => {
-    mockSignedInUser();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: false,
-    });
-
-    await context.store.set(setupChatMessageBackgroundSync$, context.signal);
-
-    expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
-  });
-
   it("fills only messages after the cached thread end", async () => {
     mockSignedInUser();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: true,
-    });
     const appDb = await context.store.get(chatIdb$);
     await context.store.set(
       writeIndexedDbChatMessages$,

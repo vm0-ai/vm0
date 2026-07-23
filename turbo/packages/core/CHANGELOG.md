@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.454.1](https://github.com/vm0-ai/vm0/compare/core-v8.454.0...core-v8.454.1) (2026-07-23)
+
+
+### Refactoring
+
+* **platform:** remove presentation element dragging ([#22696](https://github.com/vm0-ai/vm0/issues/22696)) ([fdb7430](https://github.com/vm0-ai/vm0/commit/fdb74306ad150e81346e81c8b1c633ba1195ac2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.4
+    * @vm0/connectors bumped to 1.182.2
+
 ## [8.454.0](https://github.com/vm0-ai/vm0/compare/core-v8.453.3...core-v8.454.0) (2026-07-23)
 
 

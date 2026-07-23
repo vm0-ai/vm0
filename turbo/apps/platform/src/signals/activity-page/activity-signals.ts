@@ -18,6 +18,7 @@ import {
   scrollToBottomActivityDetail$,
 } from "./activity-detail-scroll.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { formatActivityClockTime } from "./activity-time.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -370,17 +371,7 @@ export const zeroActivityVisibleMessages$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 export function formatLogTime(createdAt: string): string {
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) {
-    return createdAt.trim().length > 0 ? createdAt : "—";
-  }
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? "PM" : "AM";
-  const h12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-  return `${month}/${day} ${String(h12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${ampm}`;
+  return formatActivityClockTime(createdAt);
 }
 
 export function formatDuration(

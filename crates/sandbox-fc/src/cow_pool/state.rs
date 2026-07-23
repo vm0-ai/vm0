@@ -12,8 +12,10 @@ use super::CowPoolSnapshot;
 use super::create::default_slot_spawner;
 use super::{
     AcquireResult, BUFFER_SIZE, CowPoolConfig, CowPoolError, MAX_CONCURRENT_SLOT_CREATIONS,
-    MAX_SLOTS, PrewarmedSlot, SlotSpawner, WARM_RETRY_BACKOFF, destroy_slot_async,
+    MAX_CONCURRENT_SLOT_TEARDOWNS, MAX_SLOTS, PreparedCowSlot, SlotSpawner, WARM_RETRY_BACKOFF,
+    destroy_prepared_slot_async,
 };
+use crate::cow_cleanup::CowCleanupOutcome;
 use crate::duration::duration_ms;
 
 #[derive(Clone, Copy, Debug)]
@@ -25,19 +27,21 @@ enum CreationPurpose {
 pub(super) struct SlotCreationOutcome {
     purpose: CreationPurpose,
     elapsed: Duration,
-    result: Result<PrewarmedSlot, CowPoolError>,
+    result: Result<PreparedCowSlot, CowPoolError>,
 }
 
 struct AcquireWaiter {
     requested_at: StdInstant,
+    ready_hit: bool,
     respond_to: oneshot::Sender<AcquireResult>,
 }
 
 /// Single-owner state for the bounded one-shot COW slot producer.
 pub(super) struct CowPool {
     active: bool,
-    ready: VecDeque<PrewarmedSlot>,
+    ready: VecDeque<PreparedCowSlot>,
     pub(super) pending: JoinSet<SlotCreationOutcome>,
+    pub(super) teardowns: JoinSet<CowCleanupOutcome>,
     waiters: VecDeque<AcquireWaiter>,
     warmup_waiters: Vec<oneshot::Sender<()>>,
     buffer_size: usize,
@@ -74,6 +78,7 @@ impl CowPool {
             active: true,
             ready: VecDeque::with_capacity(buffer_size),
             pending: JoinSet::new(),
+            teardowns: JoinSet::new(),
             waiters: VecDeque::new(),
             warmup_waiters: Vec::new(),
             buffer_size,
@@ -108,6 +113,7 @@ impl CowPool {
 
         self.waiters.push_back(AcquireWaiter {
             requested_at,
+            ready_hit: !self.ready.is_empty(),
             respond_to,
         });
         self.pump();
@@ -146,7 +152,7 @@ impl CowPool {
 
         while self.pipeline_slots() < desired_pipeline
             && self.pipeline_slots() < self.max_slots
-            && self.pending.len() < self.max_concurrent_creations
+            && self.has_slot_task_capacity()
         {
             if !self.spawn_slot_creation(purpose) {
                 break;
@@ -163,6 +169,10 @@ impl CowPool {
         self.ready.len() + self.pending.len()
     }
 
+    fn has_slot_task_capacity(&self) -> bool {
+        self.pending.len() + self.teardowns.len() < self.max_concurrent_creations
+    }
+
     fn prune_closed_waiters(&mut self) {
         self.waiters.retain(|waiter| !waiter.respond_to.is_closed());
     }
@@ -176,15 +186,17 @@ impl CowPool {
         }
     }
 
-    fn assign_slot_to_waiter(&mut self, mut slot: PrewarmedSlot) -> AssignOutcome {
+    fn assign_slot_to_waiter(&mut self, mut slot: PreparedCowSlot) -> AssignOutcome {
         while let Some(waiter) = self.waiters.pop_front() {
             let waited_ms = duration_ms(waiter.requested_at.elapsed());
+            let ready_hit = waiter.ready_hit;
             let slot_id = slot.id().to_owned();
             match waiter.respond_to.send(Ok(slot)) {
                 Ok(()) => {
                     info!(
                         id = %slot_id,
                         waited_ms,
+                        ready_hit,
                         ready = self.ready.len(),
                         pending = self.pending.len(),
                         waiters = self.waiters.len(),
@@ -220,9 +232,7 @@ impl CowPool {
     }
 
     fn spawn_slot_creation(&mut self, purpose: CreationPurpose) -> bool {
-        if !self.active
-            || self.pending.len() >= self.max_concurrent_creations
-            || self.pipeline_slots() >= self.max_slots
+        if !self.active || !self.has_slot_task_capacity() || self.pipeline_slots() >= self.max_slots
         {
             return false;
         }
@@ -245,7 +255,7 @@ impl CowPool {
         true
     }
 
-    pub(super) async fn handle_creation_join(
+    pub(super) fn handle_creation_join(
         &mut self,
         completion: Option<Result<SlotCreationOutcome, tokio::task::JoinError>>,
     ) {
@@ -254,7 +264,7 @@ impl CowPool {
             return;
         };
         match completion {
-            Ok(outcome) => self.handle_creation_outcome(outcome).await,
+            Ok(outcome) => self.handle_creation_outcome(outcome),
             Err(e) => {
                 self.handle_creation_failure(CowPoolError::CowFileCreation(format!("join: {e}")));
             }
@@ -263,23 +273,27 @@ impl CowPool {
         self.maybe_finish_warmup();
     }
 
-    async fn handle_creation_outcome(&mut self, outcome: SlotCreationOutcome) {
+    fn handle_creation_outcome(&mut self, outcome: SlotCreationOutcome) {
         let elapsed_ms = duration_ms(outcome.elapsed);
         match outcome.result {
             Ok(slot) => {
                 let slot_id = slot.id().to_owned();
                 self.warm_retry_at = None;
-                if self.active {
+                self.prune_closed_waiters();
+                let retained = self.active && self.ready.len() < self.desired_pipeline_slots();
+                if retained {
                     self.ready.push_back(slot);
                 } else {
-                    destroy_slot_async(slot).await;
+                    self.start_teardown(slot);
                 }
                 info!(
                     id = %slot_id,
                     purpose = ?outcome.purpose,
                     elapsed_ms,
+                    retained,
                     ready = self.ready.len(),
                     pending = self.pending.len(),
+                    teardowns = self.teardowns.len(),
                     waiters = self.waiters.len(),
                     pipeline_slots = self.pipeline_slots(),
                     "COW slot created"
@@ -292,12 +306,27 @@ impl CowPool {
                     error = %e,
                     ready = self.ready.len(),
                     pending = self.pending.len(),
+                    teardowns = self.teardowns.len(),
                     waiters = self.waiters.len(),
                     pipeline_slots = self.pipeline_slots(),
                     "COW slot creation failed"
                 );
                 self.handle_creation_failure(e);
             }
+        }
+    }
+
+    fn start_teardown(&mut self, slot: PreparedCowSlot) {
+        self.teardowns
+            .spawn(async move { destroy_prepared_slot_async(slot).await });
+    }
+
+    pub(super) fn handle_teardown_join(
+        &mut self,
+        completion: Option<Result<CowCleanupOutcome, tokio::task::JoinError>>,
+    ) {
+        if let Some(Err(e)) = completion {
+            error!(error = %e, "COW slot teardown task panicked");
         }
     }
 
@@ -346,29 +375,55 @@ impl CowPool {
 
     /// Shut down the producer and drop all pool-owned slots.
     pub(super) async fn cleanup(&mut self) {
-        if !self.active && self.pending.is_empty() && self.ready.is_empty() {
+        if !self.active
+            && self.pending.is_empty()
+            && self.teardowns.is_empty()
+            && self.ready.is_empty()
+        {
             return;
         }
 
         let started = StdInstant::now();
         let pending_at_start = self.pending.len();
         let ready_at_start = self.ready.len();
+        let teardowns_at_start = self.teardowns.len();
         self.active = false;
         self.warm_retry_at = None;
         self.fail_all_waiters();
         self.finish_warmup_waiters();
 
-        while let Some(slot) = self.ready.pop_front() {
-            destroy_slot_async(slot).await;
-        }
+        let mut queued = std::mem::take(&mut self.ready);
+        let mut teardowns = std::mem::take(&mut self.teardowns);
+        loop {
+            while teardowns.len() < MAX_CONCURRENT_SLOT_TEARDOWNS {
+                let Some(slot) = queued.pop_front() else {
+                    break;
+                };
+                teardowns.spawn(async move { destroy_prepared_slot_async(slot).await });
+            }
 
-        while let Some(completion) = self.pending.join_next().await {
-            self.handle_cleanup_completion(completion).await;
+            if self.pending.is_empty() && queued.is_empty() && teardowns.is_empty() {
+                break;
+            }
+
+            tokio::select! {
+                Some(completion) = self.pending.join_next(), if !self.pending.is_empty() => {
+                    if let Some(slot) = Self::slot_from_cleanup_completion(completion) {
+                        queued.push_back(slot);
+                    }
+                }
+                Some(result) = teardowns.join_next(), if !teardowns.is_empty() => {
+                    if let Err(e) = result {
+                        error!(error = %e, "COW slot teardown task panicked during cleanup");
+                    }
+                }
+            }
         }
 
         info!(
             pending_at_start,
             ready_at_start,
+            teardowns_at_start,
             elapsed_ms = duration_ms(started.elapsed()),
             "COW pool cleanup complete"
         );
@@ -386,10 +441,9 @@ impl CowPool {
         }
     }
 
-    async fn handle_cleanup_completion(
-        &mut self,
+    fn slot_from_cleanup_completion(
         completion: Result<SlotCreationOutcome, tokio::task::JoinError>,
-    ) {
+    ) -> Option<PreparedCowSlot> {
         match completion {
             Ok(SlotCreationOutcome {
                 result: Ok(slot),
@@ -402,7 +456,7 @@ impl CowPool {
                     elapsed_ms = duration_ms(elapsed),
                     "dropping late COW slot during cleanup"
                 );
-                destroy_slot_async(slot).await;
+                Some(slot)
             }
             Ok(SlotCreationOutcome {
                 result: Err(e),
@@ -414,9 +468,11 @@ impl CowPool {
                     elapsed_ms = duration_ms(elapsed),
                     "pending COW slot creation failed during cleanup"
                 );
+                None
             }
             Err(e) => {
                 error!(error = %e, "pending COW slot task panicked during cleanup");
+                None
             }
         }
     }
@@ -426,6 +482,7 @@ impl CowPool {
         CowPoolSnapshot {
             ready: self.ready.len(),
             pending: self.pending.len(),
+            teardowns: self.teardowns.len(),
             waiters: self.waiters.len(),
             pipeline_slots: self.pipeline_slots(),
             warm_retry_scheduled: self.warm_retry_at.is_some(),
@@ -435,16 +492,21 @@ impl CowPool {
 
 enum AssignOutcome {
     Assigned,
-    NoWaiter(PrewarmedSlot),
+    NoWaiter(PreparedCowSlot),
 }
 
 impl Drop for CowPool {
     fn drop(&mut self) {
-        if self.active || !self.pending.is_empty() || !self.waiters.is_empty() {
+        if self.active
+            || !self.pending.is_empty()
+            || !self.teardowns.is_empty()
+            || !self.waiters.is_empty()
+        {
             warn!(
                 active = self.active,
                 ready = self.ready.len(),
                 pending = self.pending.len(),
+                teardowns = self.teardowns.len(),
                 waiters = self.waiters.len(),
                 pipeline_slots = self.pipeline_slots(),
                 "CowPool dropped without cleanup"

@@ -2,11 +2,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::future::Future;
 use std::io::Write;
+use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use nix::errno::Errno;
 use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, warn};
 
@@ -708,12 +710,33 @@ fn conntrack_command_missing(src: IgnoredCommandOutcome, dst: IgnoredCommandOutc
 // Pool index lock
 // ---------------------------------------------------------------------------
 
+/// Exclusive pool-index flock released when the final file descriptor closes.
+///
+/// Unlike [`Flock`], this guard does not issue an explicit `LOCK_UN` on drop.
+/// That lets a privileged integration test duplicate the open file description
+/// and retain ownership while it verifies shutdown cleanup.
+#[derive(Debug)]
+pub(super) struct PoolIndexLock {
+    _file: File,
+}
+
+impl PoolIndexLock {
+    pub(super) fn try_lock(file: File) -> std::result::Result<Self, (File, Errno)> {
+        // SAFETY: `file` owns a valid descriptor for the duration of the call.
+        let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if result == 0 {
+            Ok(Self { _file: file })
+        } else {
+            Err((file, Errno::last()))
+        }
+    }
+}
+
 /// Try to acquire an exclusive flock on a pool index file (0..MAX_POOLS).
 ///
-/// Returns the first successfully locked `(index, Flock<File>)`. The lock is
-/// held for the lifetime of the returned `Flock` — when the process exits or
-/// the `Flock` is dropped, the OS releases the lock automatically.
-pub(super) fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
+/// Returns the first successfully locked `(index, PoolIndexLock)`. The lock is
+/// held until the final descriptor for its open file description closes.
+pub(super) fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, PoolIndexLock)> {
     for index in 0..MAX_POOLS {
         let path = locks.netns_pool(index);
         // Open for writing without O_CREAT first, fall back to create.
@@ -734,7 +757,7 @@ pub(super) fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)>
                 continue;
             }
         };
-        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+        match PoolIndexLock::try_lock(file) {
             Ok(lock) => {
                 info!(index, "acquired pool index lock");
                 return Ok((index, lock));
@@ -1297,7 +1320,7 @@ async fn cleanup_namespaces_from_snapshot(
 pub(super) async fn reconcile_orphan_namespaces(
     locks: &LockPaths,
     own_index: u32,
-    _own_lock: &Flock<File>,
+    _own_lock: &PoolIndexLock,
 ) {
     let snapshot = ReconciliationSnapshot::capture().await;
     let candidate_indexes = snapshot.candidate_pool_indexes(own_index);
