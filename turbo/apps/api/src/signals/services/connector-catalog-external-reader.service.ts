@@ -48,9 +48,6 @@ import { connectorCatalogSource } from "./connector-catalog-source";
 
 const log = logger("connector-catalog:reader");
 
-type PublicArtifactConnector = ConnectorCatalogArtifactConnector;
-type PublicArtifactAuthMethod = ConnectorCatalogAuthMethod;
-
 export interface ExternalCatalogIdentity {
   readonly sourceId: string;
   readonly schemaVersion: number;
@@ -99,8 +96,8 @@ interface RequestFilteringCounts {
 }
 
 interface EffectiveConnector {
-  readonly connector: PublicArtifactConnector;
-  readonly authMethods: readonly PublicArtifactAuthMethod[];
+  readonly connector: ConnectorCatalogArtifactConnector;
+  readonly authMethods: readonly ConnectorCatalogAuthMethod[];
 }
 
 export interface ExternalConnectorCatalogDiagnostics
@@ -450,7 +447,7 @@ export async function loadAcceptedConnectorCatalogSnapshot(
  * ConnectorActionResolver intentionally does not read them.
  */
 function featureSwitchEnabled(
-  method: PublicArtifactAuthMethod,
+  method: ConnectorCatalogAuthMethod,
   featureStates: ConnectorFeatureStates,
 ): boolean {
   if (method.featureSwitch === null) {
@@ -525,7 +522,7 @@ function diagnostics(
 }
 
 function iconForCatalog(
-  connector: PublicArtifactConnector,
+  connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogIcon {
   return {
     url: staticConnectorIconPublicPathUrl(connector.icon.key),
@@ -554,7 +551,9 @@ function referenceMetadataForCatalog(
   });
 }
 
-function permissionsForCatalog(connector: PublicArtifactConnector): readonly {
+function permissionsForCatalog(
+  connector: ConnectorCatalogArtifactConnector,
+): readonly {
   readonly name: string;
   readonly description?: string;
 }[] {
@@ -579,7 +578,7 @@ function permissionsForCatalog(connector: PublicArtifactConnector): readonly {
 }
 
 function permissionSummaryForCatalog(
-  connector: PublicArtifactConnector,
+  connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogPermissionSummary {
   if (connector.firewall.kind === "none") {
     return {
@@ -603,7 +602,7 @@ function permissionSummaryForCatalog(
 }
 
 function authMethodSummaryForCatalog(
-  method: PublicArtifactAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): PublicConnectorCatalogAuthMethodSummary {
   return {
     id: method.id,
@@ -614,7 +613,7 @@ function authMethodSummaryForCatalog(
 }
 
 function authMethodDetailForCatalog(
-  method: PublicArtifactAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): PublicConnectorCatalogAuthMethodDetail {
   return {
     ...authMethodSummaryForCatalog(method),
@@ -860,7 +859,7 @@ function choosePermissionDefault(args: {
 }
 
 function compactDefaultPolicy(
-  connector: PublicArtifactConnector,
+  connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogPermissionDetail["defaultPolicy"] {
   if (connector.firewall.kind === "none") {
     throw new Error("Connector catalog firewall metadata is unavailable");

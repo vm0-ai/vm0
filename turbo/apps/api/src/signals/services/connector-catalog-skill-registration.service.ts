@@ -5,13 +5,15 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
-import type { ConnectorCatalogArtifact } from "./connector-catalog-artifacts/artifacts";
+import type {
+  ConnectorCatalogArtifact,
+  ConnectorCatalogArtifactConnector,
+} from "./connector-catalog-artifacts/artifacts";
 
 const SYSTEM_STORAGE_CREATOR = "system";
 
-type CatalogConnector = ConnectorCatalogArtifact["connectors"][number];
 type BundledConnectorSkill = Extract<
-  CatalogConnector["skill"],
+  ConnectorCatalogArtifactConnector["skill"],
   { readonly kind: "bundled" }
 >;
 

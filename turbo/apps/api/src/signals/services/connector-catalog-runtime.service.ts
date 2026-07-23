@@ -68,9 +68,6 @@ import {
   type ConnectorServerFirewallCatalog,
 } from "./connector-server-firewall-catalog.service";
 
-type AcceptedAuthMethod = ConnectorCatalogAuthMethod;
-type AcceptedSkill = ConnectorCatalogSkill;
-
 export type ConnectorRuntimeSnapshotIdentity =
   | { readonly source: "static" }
   | ({ readonly source: "external" } & ExternalCatalogIdentity);
@@ -89,7 +86,7 @@ export interface ConnectorRuntimeConnector {
   readonly catalogConnector: PublicConnectorCatalogDetail;
   readonly methods: ReadonlyMap<ConnectorAuthMethodId, ConnectorRuntimeMethod>;
   readonly authoredVisibleMethodIds: ReadonlySet<ConnectorAuthMethodId>;
-  readonly skill: AcceptedSkill | null;
+  readonly skill: ConnectorCatalogSkill | null;
 }
 
 interface ConnectorRuntimeSnapshotBase {
@@ -258,7 +255,7 @@ function platformSecretName(value: string): ConnectorPlatformSecretName {
 }
 
 function runtimeAccess(
-  access: AcceptedAuthMethod["access"],
+  access: ConnectorCatalogAuthMethod["access"],
 ): ConnectorAccessConfig {
   const envBindings: Record<string, ConnectorEnvBindingValue> = {};
   for (const [name, binding] of Object.entries(access.envBindings)) {
@@ -283,13 +280,13 @@ function runtimeAccess(
 }
 
 function runtimeClient(
-  client: AcceptedAuthMethod["client"],
+  client: ConnectorCatalogAuthMethod["client"],
 ): ConnectorAuthClientConfig | undefined {
   return client === undefined ? undefined : { ...client };
 }
 
 function requiredRuntimeClient(
-  method: AcceptedAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): ConnectorAuthClientConfig {
   const client = runtimeClient(method.client);
   if (client === undefined) {
@@ -299,7 +296,7 @@ function requiredRuntimeClient(
 }
 
 function requiredPublicRuntimeClient(
-  method: AcceptedAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): PublicConnectorAuthClientConfig {
   const client = requiredRuntimeClient(method);
   if (client.clientType !== "public") {
@@ -309,7 +306,7 @@ function requiredPublicRuntimeClient(
 }
 
 function manualGrant(
-  grant: Extract<AcceptedAuthMethod["grant"], { kind: "manual" }>,
+  grant: Extract<ConnectorCatalogAuthMethod["grant"], { kind: "manual" }>,
 ): Extract<ConnectorAuthMethodRuntimeConfig["grant"], { kind: "manual" }> {
   const fields: Record<
     string,
@@ -333,7 +330,7 @@ function manualGrant(
 
 function deviceStartOption(
   option: Extract<
-    AcceptedAuthMethod["grant"],
+    ConnectorCatalogAuthMethod["grant"],
     { kind: "device-auth" }
   >["startOptions"][number],
 ): ConnectorDeviceAuthStartOptionConfig {
@@ -359,7 +356,7 @@ function deviceStartOption(
 }
 
 function deviceStartOptions(
-  grant: Extract<AcceptedAuthMethod["grant"], { kind: "device-auth" }>,
+  grant: Extract<ConnectorCatalogAuthMethod["grant"], { kind: "device-auth" }>,
 ): Readonly<Record<string, ConnectorDeviceAuthStartOptionConfig>> | undefined {
   const options: Record<string, ConnectorDeviceAuthStartOptionConfig> = {};
   for (const option of grant.startOptions) {
@@ -369,7 +366,7 @@ function deviceStartOptions(
 }
 
 function runtimeMethod(
-  method: AcceptedAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): ConnectorAuthMethodRuntimeConfig {
   const access = runtimeAccess(method.access);
   const revoke: ConnectorAuthMethodRuntimeConfig["revoke"] =
