@@ -507,7 +507,7 @@ function buildQueuedCreateZeroRunArgs(
       orgRole: "member" as const,
     },
     apiStartTime,
-    firstAssistantTimingStartedAt: input.queuedMessage.apiStartedAt,
+    hasTrustedApiStartTime: input.queuedMessage.apiStartedAt !== null,
     chatThreadId: input.threadId,
     computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.modelPin.modelProviderId ?? undefined,
