@@ -18,6 +18,8 @@ const webClientCompatibilityConfigSchema = z.object({
   minimumSupportedVersion: appVersionSchema,
 });
 
+// This floor is a rollout boundary: raise it only after the matching app build
+// is live so older browser bundles receive 426 before removed routes are matched.
 const { minimumSupportedVersion } =
   webClientCompatibilityConfigSchema.parse(compatibilityConfig);
 
