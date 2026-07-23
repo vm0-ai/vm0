@@ -114,7 +114,7 @@ assert_run_reused_sandbox() {
         "original=\$(cat /home/user/.codex/vm0-e2e-rollout-path)" \
         "thread_id=\$(cat /home/user/.codex/vm0-e2e-thread-id)" \
         "case \"\$original\" in *-\"\$thread_id\".jsonl) ;; *) exit 1 ;; esac" \
-        "if [ -f \"\$original\" ]; then restored=\"\$original\"; elif [ -f \"\$original.zst\" ]; then restored=\"\$original.zst\"; else exit 1; fi" \
+        "test -f \"\$original\"" \
         "matches=\$(find /home/user/.codex/sessions -type f \\( -name \"rollout-*-\$thread_id.jsonl\" -o -name \"rollout-*-\$thread_id.jsonl.zst\" \\))" \
         "count=\$(printf '%s\\n' \"\$matches\" | sed '/^$/d' | wc -l)" \
         "test \"\$count\" -eq 1" \
@@ -123,10 +123,7 @@ assert_run_reused_sandbox() {
         "second_token=\"second-\${first_token#first-}\"" \
         'rollout_contains() {' \
         "  token=\"\$1\"" \
-        "  case \"\$restored\" in" \
-        "    *.zst) zstd -dc -- \"\$restored\" | grep -Fq -- \"\$token\" ;;" \
-        "    *) grep -Fq -- \"\$token\" \"\$restored\" ;;" \
-        '  esac' \
+        "  grep -Fq -- \"\$token\" \"\$original\"" \
         '}' \
         "rollout_contains \"\$first_token\"" \
         "if rollout_contains \"\$second_token\"; then exit 1; fi" \
