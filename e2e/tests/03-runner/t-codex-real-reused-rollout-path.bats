@@ -64,6 +64,7 @@ assert_run_reused_sandbox() {
     local overrides
     overrides='{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
+    # Split runtime markers so command telemetry cannot satisfy output assertions.
     local first_prompt
     first_prompt="$(printf '%s\n' \
         "Remember this exact first memory token for later: ${FIRST_MEMORY_TOKEN}" \
