@@ -2,9 +2,11 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import {
+  ZERO_AIR_QUALITY_ATTRIBUTION,
   ZERO_WEATHER_ATTRIBUTION,
   zeroWeatherContract,
-  type ZeroWeatherResponse,
+  type ZeroAirQualityResponse,
+  type ZeroWeatherConditionsResponse,
 } from "@vm0/api-contracts/contracts/zero-weather";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -29,6 +31,8 @@ const GOOGLE_WEATHER_FORECAST_DAILY_URL =
   "https://weather.googleapis.com/v1/forecast/days:lookup";
 const GOOGLE_WEATHER_HISTORY_HOURLY_URL =
   "https://weather.googleapis.com/v1/history/hours:lookup";
+const GOOGLE_AIR_QUALITY_CURRENT_URL =
+  "https://airquality.googleapis.com/v1/currentConditions:lookup";
 
 const weatherRoutes: readonly RouteEntry[] = [...zeroWeatherRoutes];
 
@@ -88,12 +92,19 @@ async function prepareFreeWeatherActor(actor: ApiTestUser): Promise<void> {
       unitPrice: 0,
       unitSize: 1,
     },
+    {
+      kind: "weather",
+      provider: "google-air-quality",
+      category: "current",
+      unitPrice: 0,
+      unitSize: 1,
+    },
   ]);
 }
 
 function expectFreeWeatherResponse(
-  body: ZeroWeatherResponse,
-  operation: ZeroWeatherResponse["operation"],
+  body: ZeroWeatherConditionsResponse,
+  operation: ZeroWeatherConditionsResponse["operation"],
 ): void {
   expect(body).toMatchObject({
     operation,
@@ -101,6 +112,17 @@ function expectFreeWeatherResponse(
     attribution: ZERO_WEATHER_ATTRIBUTION,
     creditsCharged: 0,
     billingCategory: operation,
+    billingQuantity: 1,
+  });
+}
+
+function expectFreeAirQualityResponse(body: ZeroAirQualityResponse): void {
+  expect(body).toMatchObject({
+    operation: "air-quality.current",
+    provider: "google-air-quality",
+    attribution: ZERO_AIR_QUALITY_ATTRIBUTION,
+    creditsCharged: 0,
+    billingCategory: "current",
     billingQuantity: 1,
   });
 }
@@ -273,6 +295,96 @@ describe("zero weather route", () => {
     expect(providerUrl?.searchParams.get("hours")).toBe("24");
     expect(providerUrl?.searchParams.get("pageSize")).toBe("24");
     expect(providerUrl?.searchParams.get("pageToken")).toBe("history-page");
+  });
+
+  it("returns compact current air quality at zero credits", async () => {
+    const actor = createBddApi(context).user();
+    await prepareFreeWeatherActor(actor);
+    configureProvider();
+    let providerUrl: URL | undefined;
+    let providerBody: unknown;
+    server.use(
+      http.post(GOOGLE_AIR_QUALITY_CURRENT_URL, async ({ request }) => {
+        providerUrl = new URL(request.url);
+        providerBody = await request.json();
+        return HttpResponse.json({
+          dateTime: "2026-07-23T06:00:00Z",
+          indexes: [
+            { code: "uaqi", aqi: 42 },
+            { code: "chn_mee", aqi: 31 },
+          ],
+          pollutants: [
+            {
+              code: "pm25",
+              concentration: {
+                value: 18.2,
+                units: "MICROGRAMS_PER_CUBIC_METER",
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().airQualityCurrent({
+        headers: authenticate(actor),
+        body: {
+          lat: 39.9042,
+          lng: 116.4074,
+          languageCode: "zh-CN",
+        },
+      }),
+      [200],
+    );
+
+    expectFreeAirQualityResponse(response.body);
+    expect(response.body.result).toMatchObject({
+      indexes: [
+        { code: "uaqi", aqi: 42 },
+        { code: "chn_mee", aqi: 31 },
+      ],
+      pollutants: [{ code: "pm25" }],
+    });
+    expect(providerUrl?.searchParams.get("key")).toBe(
+      "test-google-weather-key",
+    );
+    expect(providerBody).toStrictEqual({
+      location: {
+        latitude: 39.9042,
+        longitude: 116.4074,
+      },
+      universalAqi: true,
+      extraComputations: ["LOCAL_AQI", "POLLUTANT_CONCENTRATION"],
+      languageCode: "zh-CN",
+    });
+  });
+
+  it("returns Google Air Quality errors without success billing metadata", async () => {
+    const actor = createBddApi(context).user();
+    await prepareFreeWeatherActor(actor);
+    configureProvider();
+    server.use(
+      http.post(GOOGLE_AIR_QUALITY_CURRENT_URL, () => {
+        return HttpResponse.json(
+          { error: { message: "Air quality location unavailable" } },
+          { status: 400 },
+        );
+      }),
+    );
+
+    const response = await accept(
+      client().airQualityCurrent({
+        headers: authenticate(actor),
+        body: { lat: 39.9042, lng: 116.4074 },
+      }),
+      [502],
+    );
+
+    expect(response.body.error.code).toBe("GOOGLE_AIR_QUALITY_ERROR");
+    expect(response.body.error.message).toBe(
+      "Air quality location unavailable",
+    );
   });
 
   it("returns Google Weather errors without success billing metadata", async () => {

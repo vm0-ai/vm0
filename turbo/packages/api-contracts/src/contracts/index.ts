@@ -1656,21 +1656,28 @@ export {
   type ZeroMapsPlacesDetailsRequest,
 } from "./zero-maps";
 export {
+  ZERO_AIR_QUALITY_ATTRIBUTION,
   ZERO_WEATHER_ATTRIBUTION,
   zeroWeatherContract,
   zeroWeatherOperationSchema,
   zeroWeatherUnitsSchema,
   zeroWeatherResponseSchema,
+  zeroWeatherConditionsResponseSchema,
+  zeroAirQualityResponseSchema,
   zeroWeatherCurrentRequestSchema,
   zeroWeatherForecastHourlyRequestSchema,
   zeroWeatherForecastDailyRequestSchema,
   zeroWeatherHistoryHourlyRequestSchema,
+  zeroAirQualityCurrentRequestSchema,
   type ZeroWeatherContract,
   type ZeroWeatherResponse,
+  type ZeroWeatherConditionsResponse,
+  type ZeroAirQualityResponse,
   type ZeroWeatherCurrentRequest,
   type ZeroWeatherForecastHourlyRequest,
   type ZeroWeatherForecastDailyRequest,
   type ZeroWeatherHistoryHourlyRequest,
+  type ZeroAirQualityCurrentRequest,
 } from "./zero-weather";
 export {
   zeroVideoIoGenerateContract,

@@ -5,6 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
+import { zeroAirQualityCurrent$ } from "../services/zero-air-quality.service";
 import {
   zeroWeatherCurrent$,
   zeroWeatherForecastDaily$,
@@ -16,6 +17,9 @@ const currentBody$ = bodyResultOf(zeroWeatherContract.current);
 const forecastHourlyBody$ = bodyResultOf(zeroWeatherContract.forecastHourly);
 const forecastDailyBody$ = bodyResultOf(zeroWeatherContract.forecastDaily);
 const historyHourlyBody$ = bodyResultOf(zeroWeatherContract.historyHourly);
+const airQualityCurrentBody$ = bodyResultOf(
+  zeroWeatherContract.airQualityCurrent,
+);
 
 const currentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -79,6 +83,22 @@ const historyHourlyInner$ = command(
   },
 );
 
+const airQualityCurrentInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(airQualityCurrentBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    return await set(
+      zeroAirQualityCurrent$,
+      { auth, body: bodyResult.data },
+      signal,
+    );
+  },
+);
+
 const weatherAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -101,5 +121,9 @@ export const zeroWeatherRoutes: readonly RouteEntry[] = [
   {
     route: zeroWeatherContract.historyHourly,
     handler: authRoute(weatherAuth, historyHourlyInner$),
+  },
+  {
+    route: zeroWeatherContract.airQualityCurrent,
+    handler: authRoute(weatherAuth, airQualityCurrentInner$),
   },
 ];

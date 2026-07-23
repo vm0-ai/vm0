@@ -156,7 +156,7 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "maps:read": { group: "Maps", label: "Use managed maps services" },
     "weather:read": {
       group: "Weather",
-      label: "Use managed weather services",
+      label: "Use managed weather and air quality services",
     },
     "scrape:read": {
       group: "Scrape",

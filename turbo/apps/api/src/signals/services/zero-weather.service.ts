@@ -4,7 +4,7 @@ import {
   type ZeroWeatherForecastDailyRequest,
   type ZeroWeatherForecastHourlyRequest,
   type ZeroWeatherHistoryHourlyRequest,
-  type ZeroWeatherResponse,
+  type ZeroWeatherConditionsResponse,
 } from "@vm0/api-contracts/contracts/zero-weather";
 import { command } from "ccstate";
 
@@ -46,7 +46,7 @@ interface WeatherErrorResponse {
 }
 
 type ZeroWeatherCommandResponse =
-  | { readonly status: 200; readonly body: ZeroWeatherResponse }
+  | { readonly status: 200; readonly body: ZeroWeatherConditionsResponse }
   | WeatherErrorResponse
   | ManagedUsageErrorResponse;
 
@@ -69,7 +69,7 @@ interface AuthedWeatherArgs<TBody extends WeatherRequestBody> {
 interface WeatherRequestArgs {
   readonly auth: AuthContext & { readonly orgId: string };
   readonly body: WeatherRequestBody;
-  readonly operation: ZeroWeatherResponse["operation"];
+  readonly operation: ZeroWeatherConditionsResponse["operation"];
   readonly category: string;
   readonly providerUrl: string;
 }
@@ -232,7 +232,7 @@ const zeroWeatherRequest$ = command(
       signal,
     );
 
-    const body: ZeroWeatherResponse = {
+    const body: ZeroWeatherConditionsResponse = {
       operation: args.operation,
       provider: PROVIDER,
       attribution: ZERO_WEATHER_ATTRIBUTION,

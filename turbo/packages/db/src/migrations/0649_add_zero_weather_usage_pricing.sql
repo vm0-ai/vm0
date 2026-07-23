@@ -5,7 +5,8 @@ VALUES
   ('weather', 'google-weather', 'current', 0, 1),
   ('weather', 'google-weather', 'forecast.hourly', 0, 1),
   ('weather', 'google-weather', 'forecast.daily', 0, 1),
-  ('weather', 'google-weather', 'history.hourly', 0, 1)
+  ('weather', 'google-weather', 'history.hourly', 0, 1),
+  ('weather', 'google-air-quality', 'current', 0, 1)
 ON CONFLICT ("kind", "provider", "category")
 DO UPDATE SET
   "unit_price" = EXCLUDED."unit_price",

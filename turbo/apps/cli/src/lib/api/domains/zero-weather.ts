@@ -6,7 +6,8 @@ type ZeroWeatherOperation =
   | "current"
   | "forecast/hourly"
   | "forecast/daily"
-  | "history/hourly";
+  | "history/hourly"
+  | "air-quality/current";
 
 export interface ZeroWeatherResponse {
   readonly operation?: string;

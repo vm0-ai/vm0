@@ -11,6 +11,7 @@ import { zeroWeatherCommand } from "../index";
 
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-weather-home-"));
 const WEATHER_ATTRIBUTION = "Source: Includes weather data from Google";
+const AIR_QUALITY_ATTRIBUTION = "Source: Includes air quality data from Google";
 
 vi.mock("node:os", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:os")>();
@@ -156,6 +157,54 @@ describe("zero weather command", () => {
         },
       }),
     );
+  });
+
+  it("posts compact current air quality requests", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/weather/air-quality/current",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            operation: "air-quality.current",
+            provider: "google-air-quality",
+            attribution: AIR_QUALITY_ATTRIBUTION,
+            creditsCharged: 0,
+            billingCategory: "current",
+            billingQuantity: 1,
+            result: {
+              indexes: [{ code: "uaqi", aqi: 42 }],
+              pollutants: [{ code: "pm25", concentration: { value: 18.2 } }],
+            },
+          });
+        },
+      ),
+    );
+
+    await zeroWeatherCommand.parseAsync([
+      "node",
+      "cli",
+      "air-quality",
+      "current",
+      "--lat",
+      "39.9042",
+      "--lng",
+      "116.4074",
+      "--language",
+      "zh-CN",
+    ]);
+
+    expect(requestBody).toEqual({
+      lat: 39.9042,
+      lng: 116.4074,
+      languageCode: "zh-CN",
+    });
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("✓ Current air quality retrieved");
+    expect(output).toContain("Provider: google-air-quality");
+    expect(output).toContain(AIR_QUALITY_ATTRIBUTION);
+    expect(output).toContain("Credits charged: 0");
   });
 
   it("posts daily forecast options to the daily endpoint", async () => {

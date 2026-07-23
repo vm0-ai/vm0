@@ -12,11 +12,14 @@ interface JsonOption {
   readonly json?: boolean;
 }
 
-interface LocationOptions extends JsonOption {
+interface CoordinateOptions extends JsonOption {
   readonly lat: number;
   readonly lng: number;
-  readonly units: WeatherUnits;
   readonly language?: string;
+}
+
+interface LocationOptions extends CoordinateOptions {
+  readonly units: WeatherUnits;
 }
 
 interface PagedOptions extends LocationOptions {
@@ -73,12 +76,20 @@ function parseWeatherUnits(value: string): WeatherUnits {
   );
 }
 
-function locationPayload(options: LocationOptions): Record<string, unknown> {
+function coordinatePayload(
+  options: CoordinateOptions,
+): Record<string, unknown> {
   return {
     lat: options.lat,
     lng: options.lng,
-    units: options.units,
     languageCode: options.language,
+  };
+}
+
+function locationPayload(options: LocationOptions): Record<string, unknown> {
+  return {
+    ...coordinatePayload(options),
+    units: options.units,
   };
 }
 
@@ -119,7 +130,12 @@ function renderWeatherResponse(
 
 async function runWeatherRequest(
   label: string,
-  endpoint: "current" | "forecast/hourly" | "forecast/daily" | "history/hourly",
+  endpoint:
+    | "current"
+    | "forecast/hourly"
+    | "forecast/daily"
+    | "history/hourly"
+    | "air-quality/current",
   payload: Record<string, unknown>,
   options: JsonOption,
 ): Promise<void> {
@@ -131,18 +147,21 @@ async function runWeatherRequest(
   renderWeatherResponse(label, response);
 }
 
-function addLocationOptions(command: Command): Command {
+function addCoordinateOptions(command: Command): Command {
   return command
     .requiredOption("--lat <number>", "Latitude", parseLatitude)
     .requiredOption("--lng <number>", "Longitude", parseLongitude)
-    .option(
-      "--units <system>",
-      "Units system: metric or imperial",
-      parseWeatherUnits,
-      "metric",
-    )
     .option("--language <code>", "IETF BCP-47 response language code")
-    .option("--json", "Print the raw weather response as JSON");
+    .option("--json", "Print the raw response as JSON");
+}
+
+function addLocationOptions(command: Command): Command {
+  return addCoordinateOptions(command).option(
+    "--units <system>",
+    "Units system: metric or imperial",
+    parseWeatherUnits,
+    "metric",
+  );
 }
 
 function addHourlyPaginationOptions(command: Command): Command {
@@ -231,6 +250,19 @@ const hourlyHistoryCommand = addHourlyPaginationOptions(
     }),
   );
 
+const airQualityCurrentCommand = addCoordinateOptions(
+  new Command().name("current").description("Get current air quality"),
+).action(
+  withErrorHandler(async (options: CoordinateOptions) => {
+    await runWeatherRequest(
+      "Current air quality retrieved",
+      "air-quality/current",
+      coordinatePayload(options),
+      options,
+    );
+  }),
+);
+
 const forecastCommand = new Command()
   .name("forecast")
   .description("Get hourly or daily weather forecasts")
@@ -242,12 +274,18 @@ const historyCommand = new Command()
   .description("Get recent weather history")
   .addCommand(hourlyHistoryCommand);
 
+const airQualityCommand = new Command()
+  .name("air-quality")
+  .description("Get current air quality")
+  .addCommand(airQualityCurrentCommand);
+
 export const zeroWeatherCommand = new Command()
   .name("weather")
-  .description("Use managed Zero weather services")
+  .description("Use managed Zero weather and air quality services")
   .addCommand(currentCommand)
   .addCommand(forecastCommand)
   .addCommand(historyCommand)
+  .addCommand(airQualityCommand)
   .addHelpText(
     "after",
     `
@@ -256,9 +294,10 @@ Examples:
   Hourly forecast:     zero weather forecast hourly --lat 39.9042 --lng 116.4074 --hours 48 --page-size 24 --json
   Daily forecast:      zero weather forecast daily --lat 39.9042 --lng 116.4074 --days 10 --page-size 10 --json
   Hourly history:      zero weather history hourly --lat 39.9042 --lng 116.4074 --hours 24 --json
+  Current air quality: zero weather air-quality current --lat 39.9042 --lng 116.4074 --language zh-CN --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires weather:read capability) or a CLI token
-  - Each command makes one Google Weather API request; use page tokens for additional pages
+  - Each command makes one Google Weather or Air Quality API request; use page tokens for additional weather pages
   - Calls are recorded for usage analytics and currently charge 0 credits`,
   );

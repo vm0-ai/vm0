@@ -131,6 +131,9 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_I
 # Optional: Google Maps API
 ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
 
+# Optional: Google Weather and Air Quality APIs
+ZERO_WEATHER_GOOGLE_WEATHER_TOKEN=op://Development/google/ZERO_WEATHER_GOOGLE_WEATHER_TOKEN
+
 # Optional: Zero Scrape provider (Firecrawl)
 ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 
