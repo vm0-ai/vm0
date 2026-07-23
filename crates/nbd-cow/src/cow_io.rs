@@ -92,20 +92,7 @@ impl CowIo {
     }
 
     pub(crate) fn relocate_cow_file_after_rename(&self, cow_file: PathBuf) -> Result<()> {
-        let mut cow = match self.inner.cow.try_lock() {
-            Ok(cow) => cow,
-            Err(std::sync::TryLockError::WouldBlock) => {
-                return Err(NbdCowError::Io(std::io::Error::new(
-                    std::io::ErrorKind::WouldBlock,
-                    "COW layer busy during backing-file relocation",
-                )));
-            }
-            Err(std::sync::TryLockError::Poisoned(error)) => {
-                return Err(NbdCowError::Io(std::io::Error::other(format!(
-                    "COW layer mutex poisoned during backing-file relocation: {error}"
-                ))));
-            }
-        };
+        let mut cow = lock_cow(&self.inner, "backing-file relocation")?;
         cow.relocate_cow_file_after_rename(cow_file);
         Ok(())
     }
