@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.29](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.28...sandbox-v0.19.29) (2026-07-23)
+
+
+### Performance Improvements
+
+* **runner:** move reused mount validation to idle admission ([#22610](https://github.com/vm0-ai/vm0/issues/22610)) ([710f9da](https://github.com/vm0-ai/vm0/commit/710f9da64fbb6d86a1588df02da2077dfb7c938a))
+
 ## [0.19.28](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.27...sandbox-v0.19.28) (2026-07-22)
 
 
