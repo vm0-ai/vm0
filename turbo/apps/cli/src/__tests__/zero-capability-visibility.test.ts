@@ -41,6 +41,7 @@ function buildCommands(): Command[] {
     new Command("maps"),
     new Command("weather"),
     new Command("scrape"),
+    new Command("people-search"),
     new Command("web-search"),
     new Command("finance"),
     new Command("banking"),
@@ -189,6 +190,7 @@ describe("registerZeroCommands", () => {
       "maps",
       "weather",
       "scrape",
+      "people-search",
       "web-search",
       "finance",
       "banking",
@@ -271,6 +273,22 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("finance");
+  });
+
+  it("should show people-search only with people-search:read capability", () => {
+    const hiddenToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["web-search:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", hiddenToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("people-search");
+
+    const visibleToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["people-search:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", visibleToken);
+    expect(visibleCommandNames(buildProgram())).toContain("people-search");
   });
 
   it("should show credit with either billing read or billing write capability", () => {

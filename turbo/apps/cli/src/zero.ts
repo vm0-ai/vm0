@@ -58,6 +58,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   maps: "maps:read",
   weather: "weather:read",
   scrape: "scrape:read",
+  "people-search": "people-search:read",
   "web-search": "web-search:read",
   finance: "finance:read",
   banking: "banking:read",
@@ -326,6 +327,14 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "people-search",
+    description: "Find professionals through managed zero people search",
+    load: async () => {
+      return (await import("./commands/zero/people-search"))
+        .zeroPeopleSearchCommand;
+    },
+  },
+  {
     name: "web-search",
     description: "Search the public web through managed zero web search",
     load: async () => {
@@ -521,6 +530,15 @@ export function buildZeroHelpText(
     ...(shouldHideCommand("finance", payload, featureSwitchOverrides)
       ? []
       : ["  Get a market quote?   zero finance quote AAPL --json"]),
+    ...(shouldHideCommand(
+      "people-search",
+      payload,
+      featureSwitchOverrides,
+    )
+      ? []
+      : [
+          '  Find a professional?   zero people-search "platform engineering leaders" --json',
+        ]),
     ...(shouldHideCommand("banking", payload, featureSwitchOverrides)
       ? []
       : ["  Read bank data?       zero banking accounts --json"]),

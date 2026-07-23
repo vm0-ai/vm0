@@ -250,6 +250,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroPeopleSearch]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable managed Perplexity People Search and the people-search:read ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:

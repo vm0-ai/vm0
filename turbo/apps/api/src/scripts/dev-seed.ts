@@ -491,6 +491,11 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Pro is $10 per 10,000 requests, so one successful request costs 1 credit.
   ...usageGroup("finance", "apidojo", [["request", usd(0.001), 1]]),
 
+  // Perplexity Agent API People Search fixed vm0 product pricing, reviewed
+  // 2026-07-23. The $0.020 retail price covers the $0.005 tool invocation,
+  // bounded gpt-5-mini input/output tokens, and operating margin.
+  ...usageGroup("people-search", "perplexity", [["request", usd(0.02), 1]]),
+
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
   ...usageGroup("image", "gemini-2.5-flash-image", [

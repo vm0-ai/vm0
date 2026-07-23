@@ -222,6 +222,10 @@ export {
 // Domain modules - Zero Scrape
 export { callZeroScrape, type ZeroScrapeResponse } from "./domains/zero-scrape";
 export {
+  callZeroPeopleSearch,
+  type ZeroPeopleSearchResponse,
+} from "./domains/zero-people-search";
+export {
   callZeroWebSearch,
   type ZeroWebSearchResponse,
 } from "./domains/zero-web-search";
