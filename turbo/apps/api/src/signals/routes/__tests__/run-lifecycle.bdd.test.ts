@@ -7990,6 +7990,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Prefer the workspace directory (`/home/user/workspace`) for file operations and project work",
       "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
       "`agent-browser` provides rendered-page inspection and interaction",
+      "For one known public URL when you only need page content, prefer `zero scrape <url> --format markdown`",
+      "use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction",
       "Local dev servers are useful for agent-side verification",
       "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
