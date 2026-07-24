@@ -7,9 +7,11 @@ import os
 import py_compile
 import subprocess
 import sys
+import threading
 import urllib.error
 from collections.abc import Iterable
 from email.message import Message
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -201,6 +203,39 @@ def test_fetch_source_preserves_http_error_status_message(monkeypatch):
         update_x_tlds.fetch_source()
 
     assert str(exc_info.value) == f"failed to fetch {update_x_tlds.SOURCE_URL}: HTTP 503"
+
+
+def test_fetch_source_rejects_cross_origin_redirect_without_requesting_target(monkeypatch):
+    requested_paths: list[str] = []
+
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requested_paths.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "https://unexpected.example/TLD/tlds-alpha-by-domain.txt")
+            self.end_headers()
+
+        def log_message(self, fmt: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setattr(
+            update_x_tlds,
+            "SOURCE_URL",
+            f"http://127.0.0.1:{server.server_port}{update_x_tlds.SOURCE_PATH}",
+        )
+
+        with pytest.raises(update_x_tlds.TldFetchError, match=r"HTTP 302"):
+            update_x_tlds.fetch_source()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert requested_paths == [update_x_tlds.SOURCE_PATH]
 
 
 def test_fetch_source_reports_response_read_failure_as_fetch_error(monkeypatch):
