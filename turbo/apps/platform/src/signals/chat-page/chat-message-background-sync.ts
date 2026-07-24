@@ -183,11 +183,49 @@ const handleUserChannelMessage$ = command(
   },
 );
 
+const catchUpVisibleChatThreadMessages$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const mainThreadId = get(currentChatThreadId$);
+    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
+    const leftThreadId = get(currentLeftThread$)?.threadId;
+    const rightThreadId = get(currentRightThread$)?.threadId;
+    const visibleThreadIds = new Set<string>();
+
+    if (mainThreadId !== null && leftThreadId === mainThreadId) {
+      visibleThreadIds.add(mainThreadId);
+    }
+    if (sidebarThreadId !== null && rightThreadId === sidebarThreadId) {
+      visibleThreadIds.add(sidebarThreadId);
+    }
+
+    await Promise.all(
+      Array.from(visibleThreadIds, async (threadId) => {
+        const messages = await set(
+          syncChatThreadMessagesToIndexedDb$,
+          { threadId, syncThroughSeqId: null },
+          signal,
+        );
+        signal.throwIfAborted();
+        await set(
+          receiveSyncedMessagesInVisibleThreads$,
+          { threadId, messages },
+          signal,
+        );
+      }),
+    );
+    signal.throwIfAborted();
+    return false;
+  },
+);
+
 const subscribeChatMessageBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       setAblyMessageLoop$,
-      { loopCommand$: handleUserChannelMessage$ },
+      {
+        loopCommand$: handleUserChannelMessage$,
+        catchUpCommand$: catchUpVisibleChatThreadMessages$,
+      },
       signal,
     );
   },

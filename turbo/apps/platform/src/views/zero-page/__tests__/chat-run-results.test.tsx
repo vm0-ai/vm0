@@ -1279,7 +1279,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("catches up after realtime bursts and keeps the latest burst message visible", async () => {
+  it("catches up after a missed realtime burst on reconnect", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000748";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
       return {
@@ -1354,7 +1354,7 @@ describe("chat lifecycle", () => {
       ).toBeFalsy();
       sinceSeqIds.length = 0;
       burstEnabled = true;
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
+      context.mocks.ably.triggerReconnect();
 
       await waitFor(() => {
         expect(finalForwardPageRequested).toBeTruthy();

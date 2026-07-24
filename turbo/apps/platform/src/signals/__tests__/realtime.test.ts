@@ -570,6 +570,46 @@ describe("realtime signals", () => {
     expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
   });
 
+  it("runs user-channel catch-up on reconnect without a queued message", async () => {
+    mockSignedInUser();
+    const subscriber = new AbortController();
+    const handledMessages: unknown[] = [];
+    let catchUps = 0;
+    const loop$ = command(
+      (_ctx, message: unknown, _signal: AbortSignal): boolean => {
+        handledMessages.push(message);
+        return false;
+      },
+    );
+    const catchUp$ = command((_ctx, _signal: AbortSignal): boolean => {
+      catchUps += 1;
+      return false;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyMessageLoop$,
+      {
+        loopCommand$: loop$,
+        catchUpCommand$: catchUp$,
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    context.mocks.ably.triggerReconnect();
+
+    await waitFor(() => {
+      expect(catchUps).toBe(1);
+    });
+    expect(handledMessages).toStrictEqual([]);
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("retries a payload notification after a transient handler error", async () => {
     mockSignedInUser();
     const topic = "test:transient-payload-error";
