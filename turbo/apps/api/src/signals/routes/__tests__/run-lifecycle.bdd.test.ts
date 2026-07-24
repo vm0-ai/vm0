@@ -9408,10 +9408,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         "Survives optional failure",
       ]),
     );
-    const secondMessageId = assistantMessageIdForRunEvent(runId, "msg_bdd_2");
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${threadId}`,
-      { syncThroughMessageId: secondMessageId },
+      null,
     );
     expect(
       sandboxOperationEventsForRunByAction(
@@ -9776,13 +9775,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     });
     expect(assistantContent).toHaveLength(1);
     expect(assistantContent[0]?.content).toBe("First real Codex output");
-    const messageId = assistantMessageIdForRunEvent(
-      runId,
-      "item_bdd_codex_first",
-    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${threadId}`,
-      { syncThroughMessageId: messageId },
+      null,
     );
     expect(
       sandboxOperationEventsForRunByAction(
@@ -9922,12 +9917,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${threadId}`,
-      {
-        syncThroughMessageId: assistantMessageIdForRunEvent(
-          runId,
-          "msg_bdd_mixed_version",
-        ),
-      },
+      null,
     );
     expect(
       sandboxOperationEventsForRunByAction(

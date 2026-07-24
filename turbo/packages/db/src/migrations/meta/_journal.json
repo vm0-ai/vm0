@@ -4621,6 +4621,13 @@
       "when": 1784848519500,
       "tag": "0659_chat_message_seq_id",
       "breakpoints": true
+    },
+    {
+      "idx": 660,
+      "version": "7",
+      "when": 1784859778734,
+      "tag": "0660_curious_professor_monster",
+      "breakpoints": true
     }
   ]
 }
