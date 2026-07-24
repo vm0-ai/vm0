@@ -195,6 +195,26 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates people-search capability behind its staff rollout switch", () => {
+    const defaultToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_nonexistent",
+    );
+    const staffToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "people-search:read",
+    );
+    expect(verifyZeroToken(staffToken)?.capabilities).toContain(
+      "people-search:read",
+    );
+  });
+
   it("grants goal capabilities by default", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
 
