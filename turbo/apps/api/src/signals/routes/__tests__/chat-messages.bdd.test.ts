@@ -698,8 +698,18 @@ async function readThreadComputerUseHostId(
   actor: ApiTestUser,
   threadId: string,
 ): Promise<string | null> {
-  const thread = await chat.readThread(actor, threadId);
-  return thread.computerUseHostId ?? null;
+  return (await readThreadProjection(actor, threadId)).computerUseHostId;
+}
+
+async function readThreadProjection(actor: ApiTestUser, threadId: string) {
+  const snapshot = await chat.getThreadSnapshot(actor);
+  const thread = snapshot.chatThreads.find((candidate) => {
+    return candidate.id === threadId;
+  });
+  if (!thread) {
+    throw new Error("Expected chat thread snapshot projection");
+  }
+  return thread;
 }
 
 /**
@@ -836,8 +846,6 @@ describe("CHAT-02: web chat send and client ids", () => {
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       },
     );
 
@@ -2201,8 +2209,8 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "gpt-5.6-sol",
       runOptions: { codexServiceTier: "fast" },
     });
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
     const { claim } = await claimChatRun(runnerGroup, fast.runId);
     const environment = claimEnvironment(claim);
@@ -2216,8 +2224,8 @@ describe("CHAT-02: model-first provider policies", () => {
       ),
     );
     await cancelChatRun(actor, fast.runId);
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
 
     const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
@@ -2231,8 +2239,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(invalidFastPatch.body.error.message).toBe(
       "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
     );
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
 
     await chat.updateThreadModelSelection(
@@ -2243,9 +2251,9 @@ describe("CHAT-02: model-first provider policies", () => {
         codexServiceTier: null,
       },
     );
-    const updatedFastThread = await chat.readThread(actor, fast.threadId);
-    expect(updatedFastThread).not.toHaveProperty("selectedModel");
-    expect(updatedFastThread.codexServiceTier).toBeNull();
+    expect(
+      (await readThreadProjection(actor, fast.threadId)).serviceTier,
+    ).toBeNull();
     const updatedFastThreadEvents = await chat.requestThreadEvents(
       actor,
       {},
@@ -2284,7 +2292,7 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "gpt-5.5",
     });
     expect(
-      (await chat.readThread(actor, standard.threadId)).codexServiceTier,
+      (await readThreadProjection(actor, standard.threadId)).serviceTier,
     ).toBeNull();
     const { claim: standardClaim } = await claimChatRun(
       runnerGroup,
@@ -2386,7 +2394,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
     expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     expect(
-      (await chat.readThread(actor, first.threadId)).codexServiceTier,
+      (await readThreadProjection(actor, first.threadId)).serviceTier,
     ).toBeNull();
     await expectNoThreadModelUpdateEvent(actor, first.threadId, "gpt-5.5");
     await cancelChatRun(actor, followUp.runId);

@@ -4698,6 +4698,13 @@
       "when": 1784889382187,
       "tag": "0670_chubby_bulldozer",
       "breakpoints": true
+    },
+    {
+      "idx": 671,
+      "version": "7",
+      "when": 1784903241957,
+      "tag": "0671_drop_chat_message_mail_draft_id",
+      "breakpoints": true
     }
   ]
 }

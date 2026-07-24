@@ -376,8 +376,6 @@ export function mockKeyboardNavigationThreads({
     }
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(
@@ -575,8 +573,6 @@ export function mockServerQueuedThreadStories(): void {
     }
     return respond(200, {
       lastReadAt: "2026-06-09T10:00:00Z",
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(

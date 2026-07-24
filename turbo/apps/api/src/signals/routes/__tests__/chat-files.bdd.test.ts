@@ -45,8 +45,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
     let detail = await api.readThread(actor, created.id);
     expect(detail).toStrictEqual({
       lastReadAt: expect.any(String),
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
@@ -325,11 +323,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expect(sent.body.threadId).toStrictEqual(expect.any(String));
 
     const threadId = sent.body.threadId;
-    const detail = await api.readThread(actor, threadId);
-    expect(detail).toMatchObject({
-      computerUseHostId: null,
-      codexServiceTier: null,
-    });
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
       draftContent: null,
       draftStructuredPrompt: null,

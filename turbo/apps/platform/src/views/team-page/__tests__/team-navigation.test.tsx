@@ -792,8 +792,6 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(

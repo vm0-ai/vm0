@@ -95,8 +95,6 @@ function mockThreadDetails(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -447,8 +445,6 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -666,8 +662,6 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
