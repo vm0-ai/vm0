@@ -1,11 +1,12 @@
-import { sql } from "drizzle-orm";
 import { isLimitedFree1RestrictedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { z } from "zod";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
 
 import {
-  executeRawRows,
-  pgInt8ToSafeIntegerSchema,
-} from "../../lib/db-raw-rows";
+  nullableDriverValueDecoder,
+  pgInt8ToSafeIntegerDecoder,
+} from "../../lib/db-structured-result";
 import { insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import {
@@ -14,12 +15,7 @@ import {
 } from "./org-plan-entitlement-read.service";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 
-type CreditDb = Pick<Db, "execute" | "select">;
-
-const creditCheckRowSchema = z.object({
-  credits: pgInt8ToSafeIntegerSchema.nullable(),
-  unsettled_expired: pgInt8ToSafeIntegerSchema.nullable(),
-});
+type CreditDb = Pick<Db, "$with" | "select" | "with">;
 
 interface OrgCreditAvailability {
   readonly status: OrgPlanCapabilities["status"];
@@ -37,27 +33,32 @@ export async function resolveOrgCreditAvailability(params: {
   readonly db: CreditDb;
   readonly orgId: string;
 }): Promise<OrgCreditAvailability | null> {
-  const rows = await executeRawRows(
-    params.db,
-    sql`
-      WITH org AS (
-        SELECT credits FROM org_metadata
-        WHERE org_id = ${params.orgId}
-        LIMIT 1
+  const expired = params.db.$with("expired").as(
+    params.db
+      .select({
+        total: sql`COALESCE(${sum(creditExpiresRecord.remaining)}, 0)::bigint`
+          .mapWith(pgInt8ToSafeIntegerDecoder)
+          .as("total"),
+      })
+      .from(creditExpiresRecord)
+      .where(
+        and(
+          eq(creditExpiresRecord.orgId, params.orgId),
+          lte(creditExpiresRecord.expiresAt, sql`now()`),
+          gt(creditExpiresRecord.remaining, sql`0`),
+        ),
       ),
-      expired AS (
-        SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-        FROM credit_expires_record
-        WHERE org_id = ${params.orgId}
-          AND expires_at <= now()
-          AND remaining > 0
-      )
-      SELECT
-        (SELECT credits FROM org) AS credits,
-        (SELECT total FROM expired) AS unsettled_expired
-    `,
-    creditCheckRowSchema,
   );
+  const rows = await params.db
+    .with(expired)
+    .select({
+      credits: sql`${orgMetadata.credits}`.mapWith(
+        nullableDriverValueDecoder(pgInt8ToSafeIntegerDecoder),
+      ),
+      unsettledExpired: expired.total,
+    })
+    .from(expired)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, params.orgId));
 
   const row = rows[0];
   if (!row || row.credits === null) {
@@ -65,8 +66,7 @@ export async function resolveOrgCreditAvailability(params: {
   }
 
   const credits = row.credits;
-  const unsettledExpired = row.unsettled_expired ?? 0;
-  const spendableCredits = credits - unsettledExpired;
+  const spendableCredits = credits - row.unsettledExpired;
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   if (!capabilities) {
     return null;

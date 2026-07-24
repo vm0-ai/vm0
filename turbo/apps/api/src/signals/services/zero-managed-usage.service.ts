@@ -1,22 +1,20 @@
 import { randomUUID } from "node:crypto";
 
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
 
-import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
+import {
+  nullableDriverValueDecoder,
+  pgInt8ToBigIntDecoder,
+} from "../../lib/db-structured-result";
 import { writeDb$ } from "../external/db";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
-
-const creditCheckRowSchema = z.object({
-  credits: pgInt8ToBigIntSchema.nullable(),
-  unsettled_expired: pgInt8ToBigIntSchema.nullable(),
-  unit_price: pgInt8ToBigIntSchema.nullable(),
-  unit_size: pgInt8ToBigIntSchema.nullable(),
-});
 
 export interface ManagedUsageErrorResponse {
   readonly status: 402 | 503;
@@ -93,40 +91,50 @@ export const checkManagedCredits$ = command(
     signal: AbortSignal,
   ): Promise<ManagedUsageErrorResponse | null> => {
     const writeDb = set(writeDb$);
-    const rows = await executeRawRows(
-      writeDb,
-      sql`
-        WITH pricing AS (
-          SELECT unit_price, unit_size FROM usage_pricing
-          WHERE kind = ${args.resource.kind}
-            AND provider = ${args.resource.provider}
-            AND category = ${args.resource.category}
-          LIMIT 1
+    const expired = writeDb.$with("expired").as(
+      writeDb
+        .select({
+          total: sql`COALESCE(${sum(creditExpiresRecord.remaining)}, 0)::bigint`
+            .mapWith(pgInt8ToBigIntDecoder)
+            .as("total"),
+        })
+        .from(creditExpiresRecord)
+        .where(
+          and(
+            eq(creditExpiresRecord.orgId, args.orgId),
+            lte(creditExpiresRecord.expiresAt, sql`now()`),
+            gt(creditExpiresRecord.remaining, sql`0`),
+          ),
         ),
-        org AS (
-          SELECT credits FROM org_metadata
-          WHERE org_id = ${args.orgId}
-          LIMIT 1
-        ),
-        expired AS (
-          SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-          FROM credit_expires_record
-          WHERE org_id = ${args.orgId}
-            AND expires_at <= now()
-            AND remaining > 0
-        )
-        SELECT
-          (SELECT credits FROM org) AS credits,
-          (SELECT total FROM expired) AS unsettled_expired,
-          (SELECT unit_price FROM pricing) AS unit_price,
-          (SELECT unit_size FROM pricing) AS unit_size
-      `,
-      creditCheckRowSchema,
     );
+    const rows = await writeDb
+      .with(expired)
+      .select({
+        credits: sql`${orgMetadata.credits}`.mapWith(
+          nullableDriverValueDecoder(pgInt8ToBigIntDecoder),
+        ),
+        unsettledExpired: expired.total,
+        unitPrice: sql`${usagePricing.unitPrice}`.mapWith(
+          nullableDriverValueDecoder(pgInt8ToBigIntDecoder),
+        ),
+        unitSize: sql`${usagePricing.unitSize}`.mapWith(
+          nullableDriverValueDecoder(pgInt8ToBigIntDecoder),
+        ),
+      })
+      .from(expired)
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, args.orgId))
+      .leftJoin(
+        usagePricing,
+        and(
+          eq(usagePricing.kind, args.resource.kind),
+          eq(usagePricing.provider, args.resource.provider),
+          eq(usagePricing.category, args.resource.category),
+        ),
+      );
     signal.throwIfAborted();
 
     const row = rows[0];
-    if (row?.unit_price === null || row?.unit_size === null) {
+    if (row?.unitPrice === null || row?.unitSize === null) {
       return pricingNotConfigured(args.label);
     }
 
@@ -135,14 +143,13 @@ export const checkManagedCredits$ = command(
     }
 
     const credits = row.credits;
-    const unsettledExpired = row.unsettled_expired ?? 0n;
     const quantity = args.resource.quantity ?? 1;
     const requiredCredits = estimatedCredits(
-      row.unit_price,
-      row.unit_size,
+      row.unitPrice,
+      row.unitSize,
       quantity,
     );
-    const spendableCredits = credits - unsettledExpired;
+    const spendableCredits = credits - row.unsettledExpired;
     if (spendableCredits >= requiredCredits) {
       return null;
     }
