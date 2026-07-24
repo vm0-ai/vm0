@@ -13,6 +13,7 @@
   "package_managers.pnpm.pnpm-block-exotic-sub-dependencies.pnpm-block-exotic-sub-dependencies": 1,
   "package_managers.pnpm.pnpm-missing-minimum-release-age.pnpm-minimum-release-age": 1,
   "package_managers.pnpm.pnpm-trust-policy.pnpm-trust-policy": 1,
+  "package_managers.uv.uv-missing-dependency-cooldown.uv-missing-dependency-cooldown": 1,
   "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected": 2,
   "typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml": 5,
   "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag": 193

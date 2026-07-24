@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use tracing::warn;
 
 use crate::error::RunnerResult;
@@ -19,12 +17,24 @@ fn version_from_service_lock_name(name: &str) -> Option<&str> {
     Some(version)
 }
 
-async fn version_bin_is_gc_enumerable_dir(path: &Path) -> Result<bool, String> {
-    match tokio::fs::symlink_metadata(path).await {
-        Ok(meta) => Ok(meta.file_type().is_dir()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(format!("stat version bin {}: {e}", path.display())),
+async fn version_has_gc_enumerable_dir(home: &HomePaths, version: &str) -> Result<bool, String> {
+    for (kind, path) in [
+        ("binary", home.bin_dir().join(version)),
+        ("config", home.runners_dir().join(version)),
+    ] {
+        match tokio::fs::symlink_metadata(&path).await {
+            Ok(meta) if meta.file_type().is_dir() => return Ok(true),
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(format!(
+                    "stat version {kind} directory {}: {e}",
+                    path.display()
+                ));
+            }
+        }
     }
+    Ok(false)
 }
 
 pub(super) async fn gc_orphaned_version_service_locks(
@@ -37,8 +47,6 @@ pub(super) async fn gc_orphaned_version_service_locks(
     };
 
     let mut removed = 0u64;
-    let bin_dir = home.bin_dir();
-
     while let Some(entry) = next_entry_warn_or_stop(
         &mut entries,
         "gc_orphaned_version_service_locks",
@@ -52,8 +60,7 @@ pub(super) async fn gc_orphaned_version_service_locks(
             continue;
         };
 
-        let version_bin = bin_dir.join(version);
-        match version_bin_is_gc_enumerable_dir(&version_bin).await {
+        match version_has_gc_enumerable_dir(home, version).await {
             Ok(true) => continue,
             Ok(false) => {}
             Err(e) => {
@@ -67,7 +74,7 @@ pub(super) async fn gc_orphaned_version_service_locks(
             ExistingLockProbe::Free(lock) => {
                 // A version can be recreated between the initial stat and
                 // acquiring the free service lock.
-                match version_bin_is_gc_enumerable_dir(&version_bin).await {
+                match version_has_gc_enumerable_dir(home, version).await {
                     Ok(true) => continue,
                     Ok(false) => {}
                     Err(e) => {
@@ -160,6 +167,37 @@ mod tests {
         assert!(
             service_lock.exists(),
             "existing version dir should keep its service lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_tracks_config_only_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let version = "v1.0.0";
+        let service_lock = create_test_version_service_lock(&home, version);
+        let version_config = home.runners_dir().join(version);
+        std::fs::create_dir_all(&version_config).unwrap();
+
+        let first_removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(first_removed.version_service_locks_removed, 0);
+        assert!(
+            service_lock.exists(),
+            "config-only version should keep its lifecycle lock"
+        );
+
+        std::fs::remove_dir_all(version_config).unwrap();
+        let second_removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(second_removed.version_service_locks_removed, 1);
+        assert!(
+            !service_lock.exists(),
+            "lock should become removable after both managed directories are absent"
         );
     }
 
