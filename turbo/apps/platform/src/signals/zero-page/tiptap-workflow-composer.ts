@@ -60,6 +60,64 @@ import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
+type WorkflowNamesSyncCommand = Command<
+  Promise<void>,
+  [AbortSignal, AbortSignal]
+>;
+
+interface MountedWorkflowNamesSync {
+  readonly command$: WorkflowNamesSyncCommand;
+  readonly mountSignal: AbortSignal;
+}
+
+const mountedWorkflowNamesSyncs$ = state<ReadonlySet<MountedWorkflowNamesSync>>(
+  new Set(),
+);
+
+const registerMountedWorkflowNamesSync$ = command(
+  ({ get, set }, mountedWorkflowNamesSync: MountedWorkflowNamesSync): void => {
+    const current = get(mountedWorkflowNamesSyncs$);
+    if (current.has(mountedWorkflowNamesSync)) {
+      return;
+    }
+    const next = new Set(current);
+    next.add(mountedWorkflowNamesSync);
+    set(mountedWorkflowNamesSyncs$, next);
+  },
+);
+
+const unregisterMountedWorkflowNamesSync$ = command(
+  ({ get, set }, mountedWorkflowNamesSync: MountedWorkflowNamesSync): void => {
+    const current = get(mountedWorkflowNamesSyncs$);
+    if (!current.has(mountedWorkflowNamesSync)) {
+      return;
+    }
+    const next = new Set(current);
+    next.delete(mountedWorkflowNamesSync);
+    set(mountedWorkflowNamesSyncs$, next);
+  },
+);
+
+const reloadMountedWorkflowNames$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    set(reloadWorkflowData$);
+    const pendingSyncs: Promise<void>[] = [];
+    for (const mountedWorkflowNamesSync of get(mountedWorkflowNamesSyncs$)) {
+      if (mountedWorkflowNamesSync.mountSignal.aborted) {
+        continue;
+      }
+      pendingSyncs.push(
+        set(
+          mountedWorkflowNamesSync.command$,
+          mountedWorkflowNamesSync.mountSignal,
+          signal,
+        ),
+      );
+    }
+    await Promise.all(pendingSyncs);
+    signal.throwIfAborted();
+  },
+);
 
 const EDITOR_CONTENT_CLASS =
   // Let the editor grow to 40% of the viewport, capped at 320px, then scroll
@@ -1310,21 +1368,33 @@ function createSyncWorkflowNamesCommand(
   editor: Editor,
   agentId$: Computed<Promise<string | null>>,
   workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>,
-) {
-  return command(async ({ get }, signal: AbortSignal) => {
-    const [agentId, workflows] = await Promise.all([
-      get(agentId$),
-      get(workflows$),
-    ]);
-    signal.throwIfAborted();
-    const workflowNames = buildComposerSlashWorkflows({
-      agentId,
-      workflows,
-    }).map((workflow) => {
-      return workflow.name;
-    });
-    applyWorkflowNames(editor, workflowNames);
-  });
+): WorkflowNamesSyncCommand {
+  return command(
+    async (
+      { get },
+      mountSignal: AbortSignal,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      if (mountSignal.aborted) {
+        return;
+      }
+      const [agentId, workflows] = await Promise.all([
+        get(agentId$),
+        get(workflows$),
+      ]);
+      signal.throwIfAborted();
+      if (mountSignal.aborted) {
+        return;
+      }
+      const workflowNames = buildComposerSlashWorkflows({
+        agentId,
+        workflows,
+      }).map((workflow) => {
+        return workflow.name;
+      });
+      applyWorkflowNames(editor, workflowNames);
+    },
+  );
 }
 
 interface MountEditorOptions {
@@ -1336,7 +1406,7 @@ interface MountEditorOptions {
   selectedSuggestionIndexState$: State<number>;
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
-  syncWorkflowNames$: Command<Promise<void>, [AbortSignal]>;
+  syncWorkflowNames$: WorkflowNamesSyncCommand;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
@@ -1450,17 +1520,26 @@ function createMountEditorCommand({
           );
         },
       });
+      // Workflow cache invalidation is shared by every composer. Keep the
+      // decoration sync registry bounded to real editor mounts so split panes
+      // update together without a render-time callback bridge.
+      const mountedWorkflowNamesSync = {
+        command$: syncWorkflowNames$,
+        mountSignal: signal,
+      };
+      set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
       if (autoFocus && !isIOS()) {
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {
+        set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
         resetMountedWorkflowRuntime(runtime);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
         editor.unmount();
       });
-      await set(syncWorkflowNames$, signal);
+      await set(syncWorkflowNames$, signal, signal);
     }),
   );
 }
@@ -1639,12 +1718,6 @@ export function createWorkflowComposerSignals<
     agentId$,
     workflows$,
   );
-  const reloadWorkflows$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(reloadWorkflowData$);
-      await set(syncWorkflowNames$, signal);
-    },
-  );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
   const feedback = createComposerFeedback(threadId, editor);
 
@@ -1733,7 +1806,7 @@ export function createWorkflowComposerSignals<
     chatThreadSuggestions$,
     agentId$,
     workflows$,
-    reloadWorkflows$,
+    reloadWorkflows$: reloadMountedWorkflowNames$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,

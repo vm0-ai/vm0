@@ -466,6 +466,94 @@ describe("chat composer models", () => {
     expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
+  it("synchronizes workflow highlights across split composers without remounting either editor", async () => {
+    const user = userEvent.setup({ delay: null });
+    let workflows: ReturnType<typeof workflowSummary>[] = [];
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "Left thread" },
+      { id: SUGGESTED_THREAD_ID, agentId: AGENT_ID, title: "Right thread" },
+    ]);
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, workflows);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}?sidebar=${SUGGESTED_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadWorkflowsChanged:${THREAD_ID}`,
+        ),
+      ).toBeTruthy();
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadWorkflowsChanged:${SUGGESTED_THREAD_ID}`,
+        ),
+      ).toBeTruthy();
+    });
+    const threadRegions = await screen.findAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const leftThread = threadRegions[0];
+    const rightThread = threadRegions[1];
+    if (!leftThread || !rightThread) {
+      throw new Error("Split chat threads not found");
+    }
+    const leftEditor = await within(leftThread).findByRole("textbox", {
+      name: "Message",
+    });
+    const rightEditor = await within(rightThread).findByRole("textbox", {
+      name: "Message",
+    });
+    await user.click(leftEditor);
+    await user.keyboard("/");
+    await expect(
+      screen.findByText("No matching workflows"),
+    ).resolves.toBeInTheDocument();
+
+    workflows = [
+      workflowSummary({
+        name: "new-split-workflow",
+        displayName: "New Split Workflow",
+        description: "Created by the right chat run",
+        agentId: AGENT_ID,
+      }),
+    ];
+    act(() => {
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${SUGGESTED_THREAD_ID}`,
+        null,
+      );
+    });
+
+    await expect(
+      screen.findByText("new-split-workflow"),
+    ).resolves.toBeInTheDocument();
+    expect(within(leftThread).getByRole("textbox", { name: "Message" })).toBe(
+      leftEditor,
+    );
+    expect(within(rightThread).getByRole("textbox", { name: "Message" })).toBe(
+      rightEditor,
+    );
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(leftEditor).toHaveTextContent("/new-split-workflow");
+    });
+    const highlightedWorkflow = within(leftEditor)
+      .getAllByText("/new-split-workflow")
+      .find((element) => {
+        return element.tagName.toLowerCase() === "span";
+      });
+    expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
   it("closes the slash workflow menu when focus leaves the composer input", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
