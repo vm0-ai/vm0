@@ -604,6 +604,8 @@ function MailDraftRichMessage({
   return (
     <div
       data-feedback-source
+      data-feedback-source-type="mail"
+      data-feedback-source-id={signals.mailDraftId}
       className="break-words text-sm leading-6 text-foreground [&_a]:text-primary [&_a]:underline [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_hr]:my-3 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_table]:my-2 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_ul]:list-disc"
     >
       {Array.from(document.body.childNodes).map((node, index) => {
@@ -631,6 +633,8 @@ function MailDraftMessage({
   return (
     <div
       data-feedback-source
+      data-feedback-source-type="mail"
+      data-feedback-source-id={signals.mailDraftId}
       className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground"
     >
       {draft.body || "(No message)"}

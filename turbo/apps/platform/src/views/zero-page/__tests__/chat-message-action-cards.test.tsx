@@ -519,6 +519,12 @@ describe("chat message action cards", () => {
       within(sidebar).queryByText("<reference-message@example.com>"),
     ).toBeNull();
     expect(within(sidebar).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(
+      messageSection.querySelector("[data-feedback-source]"),
+    ).toHaveAttribute("data-feedback-source-type", "mail");
+    expect(
+      messageSection.querySelector("[data-feedback-source]"),
+    ).toHaveAttribute("data-feedback-source-id", mailDraftId);
 
     selectMailText(boldText);
     await user.click(await waitForSelectionToolbarButton("Copy"));

@@ -30,6 +30,11 @@ export interface FeedbackSelectionRect {
   readonly height: number;
 }
 
+export interface FeedbackSource {
+  readonly type: "mail";
+  readonly id: string;
+}
+
 export interface FeedbackSelection {
   readonly text: string;
   readonly rect: FeedbackSelectionRect;
@@ -39,6 +44,7 @@ export interface FeedbackSelection {
   // A snapshot of the selected range. Kept so the passage can stay highlighted
   // once the comment is drafted and the native selection clears.
   readonly range: Range | null;
+  readonly source?: FeedbackSource;
 }
 
 // A quoted passage together with the note the user is writing about it. Every
@@ -48,6 +54,7 @@ export interface FeedbackItem {
   readonly id: number;
   readonly quote: string;
   readonly note: string;
+  readonly source?: FeedbackSource;
 }
 
 export interface FeedbackEditorAdapter {
@@ -116,6 +123,18 @@ function resolveSelectionThreadId(source: Element): string | null {
     return null;
   }
   return container.dataset.chatThreadContainerId ?? null;
+}
+
+function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
+  if (!(source instanceof HTMLElement)) {
+    return undefined;
+  }
+  const type = source.dataset.feedbackSourceType;
+  const id = source.dataset.feedbackSourceId;
+  if (type !== "mail" || !id) {
+    return undefined;
+  }
+  return { type, id };
 }
 
 // ---------------------------------------------------------------------------
@@ -246,17 +265,32 @@ function readFeedbackSelection(): FeedbackSelection | null {
     return null;
   }
   const rect = rectFromRange(found.range);
+  const source = resolveFeedbackSource(found.source);
   return {
     text: found.text,
     threadId: resolveSelectionThreadId(found.source),
     range: found.range.cloneRange(),
     rect,
+    ...(source ? { source } : {}),
   };
 }
 
 // Compose every noted fragment into a single follow-up turn, each passage
 // quoted above the note that belongs to it.
 export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
+  const firstMailDraftId = items[0]?.source?.id;
+  const commonMailDraftId =
+    firstMailDraftId !== undefined &&
+    items.every((item) => {
+      return (
+        item.source?.type === "mail" && item.source.id === firstMailDraftId
+      );
+    })
+      ? firstMailDraftId
+      : null;
+  const hasSourceContext = items.some((item) => {
+    return item.source !== undefined;
+  });
   const blocks = items.map((item) => {
     const quoted = item.quote
       .split("\n")
@@ -264,12 +298,21 @@ export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
         return `> ${line}`;
       })
       .join("\n");
-    return `${quoted}\n\n${item.note.trim()}`;
+    const source =
+      commonMailDraftId === null && item.source?.type === "mail"
+        ? `Source: email draft (mail draft ID: ${item.source.id})\n\n`
+        : "";
+    return `${source}${quoted}\n\n${item.note.trim()}`;
   });
-  const intro =
-    items.length === 1
-      ? "Feedback on this part of your reply:"
-      : `Feedback on ${items.length} parts of your reply:`;
+  const intro = commonMailDraftId
+    ? items.length === 1
+      ? `Feedback on this part of an email draft (mail draft ID: ${commonMailDraftId}):`
+      : `Feedback on ${items.length} parts of an email draft (mail draft ID: ${commonMailDraftId}):`
+    : hasSourceContext
+      ? `Feedback on ${items.length} selected ${items.length === 1 ? "passage" : "passages"}:`
+      : items.length === 1
+        ? "Feedback on this part of your reply:"
+        : `Feedback on ${items.length} parts of your reply:`;
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
@@ -378,7 +421,12 @@ function createFeedbackItemSignals({
       return;
     }
     const id = get(nextIdState$);
-    const item = { id, quote: selection.text, note: "" };
+    const item = {
+      id,
+      quote: selection.text,
+      note: "",
+      ...(selection.source ? { source: selection.source } : {}),
+    };
     const items = [...get(itemsState$), item];
     set(nextIdState$, id + 1);
     set(itemsState$, items);

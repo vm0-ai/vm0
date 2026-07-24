@@ -268,6 +268,8 @@ interface FeedbackItemNodeAttributes {
   readonly quote: string;
   readonly showDivider: boolean;
   readonly fill: boolean;
+  readonly sourceType: "mail" | null;
+  readonly sourceId: string | null;
 }
 
 function feedbackItemNodeAttributes(
@@ -277,15 +279,27 @@ function feedbackItemNodeAttributes(
   const quote: unknown = node.attrs.quote;
   const showDivider: unknown = node.attrs.showDivider;
   const fill: unknown = node.attrs.fill;
+  const sourceType: unknown = node.attrs.sourceType;
+  const sourceId: unknown = node.attrs.sourceId;
   if (
     typeof feedbackId !== "number" ||
     typeof quote !== "string" ||
     typeof showDivider !== "boolean" ||
-    typeof fill !== "boolean"
+    typeof fill !== "boolean" ||
+    (sourceType !== null && sourceType !== "mail") ||
+    (sourceId !== null && typeof sourceId !== "string") ||
+    (sourceType === null) !== (sourceId === null)
   ) {
     throw new Error("Feedback item node attributes are invalid");
   }
-  return { feedbackId, quote, showDivider, fill };
+  return {
+    feedbackId,
+    quote,
+    showDivider,
+    fill,
+    sourceType,
+    sourceId,
+  };
 }
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -609,6 +623,8 @@ function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
       quote: item.quote,
       showDivider: false,
       fill: false,
+      sourceType: item.source?.type ?? null,
+      sourceId: item.source?.id ?? null,
     },
     content: feedbackNoteContent(item.note),
   });
@@ -704,6 +720,14 @@ function feedbackItemsFromWorkflowComposer(
       id: attributes.feedbackId,
       quote: attributes.quote,
       note: feedbackNoteFromNode(node),
+      ...(attributes.sourceType === "mail" && attributes.sourceId !== null
+        ? {
+            source: {
+              type: attributes.sourceType,
+              id: attributes.sourceId,
+            },
+          }
+        : {}),
     });
   }
   return items;
@@ -895,6 +919,14 @@ function workflowComposerDocToString(editor: Editor): string {
         id: attributes.feedbackId,
         quote: attributes.quote,
         note: feedbackNoteFromNode(node),
+        ...(attributes.sourceType === "mail" && attributes.sourceId !== null
+          ? {
+              source: {
+                type: attributes.sourceType,
+                id: attributes.sourceId,
+              },
+            }
+          : {}),
       });
       continue;
     }
@@ -1109,6 +1141,8 @@ function createFeedbackItemNode(
         quote: { default: "" },
         showDivider: { default: false },
         fill: { default: false },
+        sourceType: { default: null },
+        sourceId: { default: null },
       };
     },
     parseHTML() {
