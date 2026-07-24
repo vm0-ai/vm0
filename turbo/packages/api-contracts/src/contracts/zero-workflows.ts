@@ -1304,7 +1304,9 @@ export const zeroWorkflowCopyRequestSchema = z.object({
 
 export const zeroWorkflowRunResponseSchema = z.object({
   chatThreadId: z.string().uuid(),
-  runId: z.string(),
+  // Null means the manual invocation is waiting in the chat thread queue and
+  // no run has been created for it yet.
+  runId: z.string().nullable(),
 });
 
 export const zeroWorkflowChatThreadResponseSchema = z.object({
@@ -1681,7 +1683,7 @@ export const zeroWorkflowAutomationsContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Run a workflow automation immediately in its bound chat thread",
+    summary: "Submit a workflow automation run in its bound chat thread",
   },
   revealWebhookSecret: {
     method: "POST",

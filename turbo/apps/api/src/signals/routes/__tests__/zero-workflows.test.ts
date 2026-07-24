@@ -509,7 +509,22 @@ describe("zero workflows", () => {
 
     expect(run.body.chatThreadId).toStrictEqual(expect.any(String));
     expect(run.body.runId).toStrictEqual(expect.any(String));
+    if (!run.body.runId) {
+      throw new Error("Expected an idle workflow invocation to create a run");
+    }
     expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
+
+    const queued = await accept(
+      detailClient().run({
+        headers: authHeaders(actor),
+        params: { workflowId: created.body.id },
+      }),
+      [200],
+    );
+    expect(queued.body).toStrictEqual({
+      chatThreadId: run.body.chatThreadId,
+      runId: null,
+    });
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.body.runId);

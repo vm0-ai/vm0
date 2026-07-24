@@ -188,6 +188,10 @@ type WorkflowAutomationRunNowResult =
       readonly runId: string;
       readonly chatThreadId: string;
     }
+  | {
+      readonly kind: "enqueued";
+      readonly chatThreadId: string;
+    }
   | AutomationActionFailure
   | Exclude<
       RunWorkflowAutomationResult,
@@ -2449,16 +2453,14 @@ export const runOwnedWorkflowAutomationNow$ = command(
           target.agentId,
         ),
         recordLastRunAt: true,
-        // Manual "Run now" is the user's explicit choice to run immediately,
-        // even while the workflow queue is busy.
-        bypassWorkflowQueue: true,
+        coalescePendingScheduleRun: false,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );
     signal.throwIfAborted();
     if (result.kind === "enqueued") {
-      throw new Error("Bypassed workflow queue run cannot be enqueued");
+      return { kind: "enqueued", chatThreadId };
     }
     if (result.kind !== "ok") {
       return result;
