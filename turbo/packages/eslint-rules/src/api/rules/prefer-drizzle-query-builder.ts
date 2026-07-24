@@ -110,6 +110,11 @@ interface ScalarCteBodyMatch {
   readonly guaranteedOneRow: boolean;
 }
 
+interface TopLevelCallMatch {
+  readonly body: string;
+  readonly end: number;
+}
+
 interface CompleteSqlStatement {
   readonly end: number;
   readonly hasTrailingSemicolon: boolean;
@@ -433,23 +438,93 @@ function completeSqlStatement(
   };
 }
 
-function hasUnqualifiedAggregate(selection: string): boolean {
-  const pattern = /\b(?:AVG|COUNT|MAX|MIN|SUM)\s*\(/giu;
-  for (const match of selection.matchAll(pattern)) {
-    let previous = (match.index ?? 0) - 1;
-    while (previous >= 0 && /\s/u.test(selection[previous] ?? "")) {
-      previous -= 1;
-    }
-    const previousCharacter = selection[previous];
-    if (
-      previousCharacter !== "." &&
-      previousCharacter !== '"' &&
-      previousCharacter !== "'"
-    ) {
-      return true;
-    }
+const SCALAR_AGGREGATE_FUNCTIONS = new Set([
+  "AVG",
+  "COUNT",
+  "MAX",
+  "MIN",
+  "SUM",
+]);
+const SCALAR_COALESCE_FUNCTIONS = new Set(["COALESCE"]);
+
+function topLevelCallMatch(
+  source: string,
+  names: ReadonlySet<string>,
+): TopLevelCallMatch | undefined {
+  const tokens = topLevelTokens(source);
+  const name = tokens?.[0];
+  const open = tokens?.[1];
+  const close = tokens?.[2];
+  if (
+    name?.kind !== "word" ||
+    !names.has(name.value) ||
+    open === undefined ||
+    close === undefined ||
+    !isPunctuation(open, "(") ||
+    !isPunctuation(close, ")") ||
+    source.slice(0, name.start).trim() !== "" ||
+    !onlyWhitespaceBetween(source, name, open) ||
+    source.slice(open.end, close.start).trim() === ""
+  ) {
+    return undefined;
   }
-  return false;
+  return {
+    body: source.slice(open.end, close.start),
+    end: close.end,
+  };
+}
+
+function isScalarSelectionSuffix(source: string): boolean {
+  return /^(?:\s*::\s*[A-Za-z_][A-Za-z0-9_$]*)*(?:\s+AS\s+[A-Za-z_][A-Za-z0-9_$]*)?\s*$/iu.test(
+    source,
+  );
+}
+
+function isCompleteScalarAggregateCall(source: string): boolean {
+  const aggregate = topLevelCallMatch(source, SCALAR_AGGREGATE_FUNCTIONS);
+  return aggregate !== undefined && source.slice(aggregate.end).trim() === "";
+}
+
+function isScalarCoalesceFallback(source: string): boolean {
+  const value = source.trim();
+  return (
+    /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/u.test(value) ||
+    /^(?:FALSE|NULL|TRUE)$/iu.test(value) ||
+    value === SQL_TEMPLATE_EXPRESSION_BOUNDARY
+  );
+}
+
+/**
+ * An ungrouped aggregate guarantees one row only while its complete target
+ * expression stays scalar. PostgreSQL target-list set-returning functions can
+ * otherwise expand the aggregate result to zero or multiple rows.
+ */
+function isGuaranteedOneRowAggregateSelection(selection: string): boolean {
+  const aggregate = topLevelCallMatch(selection, SCALAR_AGGREGATE_FUNCTIONS);
+  if (
+    aggregate !== undefined &&
+    isScalarSelectionSuffix(selection.slice(aggregate.end))
+  ) {
+    return true;
+  }
+
+  const coalesce = topLevelCallMatch(selection, SCALAR_COALESCE_FUNCTIONS);
+  if (
+    coalesce === undefined ||
+    !isScalarSelectionSuffix(selection.slice(coalesce.end))
+  ) {
+    return false;
+  }
+  const commas =
+    topLevelTokens(coalesce.body)?.filter((token) => {
+      return isPunctuation(token, ",");
+    }) ?? [];
+  const comma = commas.length === 1 ? commas[0] : undefined;
+  return (
+    comma !== undefined &&
+    isCompleteScalarAggregateCall(coalesce.body.slice(0, comma.start)) &&
+    isScalarCoalesceFallback(coalesce.body.slice(comma.end))
+  );
 }
 
 function scalarCteBodyMatch(
@@ -530,7 +605,7 @@ function scalarCteBodyMatch(
   }
 
   const selection = syntaxSource.slice(selectKeyword.end, fromKeyword.start);
-  const guaranteedOneRow = hasUnqualifiedAggregate(selection);
+  const guaranteedOneRow = isGuaranteedOneRowAggregateSelection(selection);
   if (!guaranteedOneRow && limitIndex === undefined) {
     return undefined;
   }
