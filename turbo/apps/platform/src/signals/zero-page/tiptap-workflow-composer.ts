@@ -57,6 +57,7 @@ import {
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
 import { createComposerWorkflows } from "./composer-workflows.ts";
+import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 
@@ -121,6 +122,7 @@ export interface WorkflowComposerSignals {
   >;
   readonly agentId$: Computed<Promise<string | null>>;
   readonly workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>;
+  readonly reloadWorkflows$: Command<Promise<void>, [AbortSignal]>;
   readonly selectedSuggestionIndex$: Computed<number>;
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
   readonly closeSuggestionMenu$: Command<void, []>;
@@ -1637,6 +1639,12 @@ export function createWorkflowComposerSignals<
     agentId$,
     workflows$,
   );
+  const reloadWorkflows$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(reloadWorkflowData$);
+      await set(syncWorkflowNames$, signal);
+    },
+  );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
   const feedback = createComposerFeedback(threadId, editor);
 
@@ -1725,6 +1733,7 @@ export function createWorkflowComposerSignals<
     chatThreadSuggestions$,
     agentId$,
     workflows$,
+    reloadWorkflows$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,

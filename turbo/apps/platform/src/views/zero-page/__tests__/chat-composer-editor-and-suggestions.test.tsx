@@ -404,7 +404,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("shows a workflow created in the current chat without a page refresh", async () => {
+  it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
     let workflows: ReturnType<typeof workflowSummary>[] = [];
     mockOrgModelRoutes("kimi-k2.7-code");
@@ -451,6 +451,19 @@ describe("chat composer models", () => {
     await expect(
       screen.findByText("new-chat-workflow"),
     ).resolves.toBeInTheDocument();
+    await expect(findComposerEditor()).resolves.toBe(editor);
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("/new-chat-workflow");
+    });
+    const highlightedWorkflow = screen
+      .getAllByText("/new-chat-workflow")
+      .find((element) => {
+        return element.tagName.toLowerCase() === "span";
+      });
+    expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
   it("closes the slash workflow menu when focus leaves the composer input", async () => {
