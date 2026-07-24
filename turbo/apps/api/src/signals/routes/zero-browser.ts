@@ -1,14 +1,10 @@
 import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   createZeroBrowser$,
   getCurrentZeroBrowser$,
@@ -16,29 +12,6 @@ import {
   resumeZeroBrowser$,
   type BrowserServiceError,
 } from "../services/zero-browser.service";
-
-const browserFeatureDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Managed browsers are not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const browserFeatureEnabled$ = command(async ({ get }) => {
-  const auth = get(organizationAuthContext$);
-  if (auth.tokenType === "zero") {
-    return true;
-  }
-  const context = await loadUserFeatureSwitchContext(
-    get(db$),
-    auth.orgId,
-    auth.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ZeroBrowser, context);
-});
 
 function errorResponse(error: BrowserServiceError) {
   return {
@@ -55,9 +28,6 @@ function errorResponse(error: BrowserServiceError) {
 const createBody$ = bodyResultOf(zeroBrowserContract.create);
 const createBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await set(browserFeatureEnabled$))) {
-      return browserFeatureDisabled;
-    }
     const body = await get(createBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -85,9 +55,6 @@ const createBrowserInner$ = command(
 const resumeBody$ = bodyResultOf(zeroBrowserContract.resume);
 const resumeBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await set(browserFeatureEnabled$))) {
-      return browserFeatureDisabled;
-    }
     const body = await get(resumeBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -111,9 +78,6 @@ const resumeBrowserInner$ = command(
 
 const currentBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await set(browserFeatureEnabled$))) {
-      return browserFeatureDisabled;
-    }
     const auth = get(organizationAuthContext$);
     const result = await set(
       getCurrentZeroBrowser$,
@@ -133,9 +97,6 @@ const currentBrowserInner$ = command(
 const getParams$ = pathParamsOf(zeroBrowserContract.get);
 const getQuery$ = queryOf(zeroBrowserContract.get);
 const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await set(browserFeatureEnabled$))) {
-    return browserFeatureDisabled;
-  }
   const auth = get(organizationAuthContext$);
   const result = await set(
     getZeroBrowser$,

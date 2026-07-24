@@ -406,12 +406,13 @@ function isCommandFeatureEnabled(
   featureSwitchOverrides?: FeatureSwitchOverrides,
 ): boolean {
   const featureSwitch = COMMAND_FEATURE_SWITCH_MAP[name];
+  const overrides = featureSwitchOverrides ?? payload?.featureSwitchOverrides;
   return (
     !featureSwitch ||
     isFeatureEnabled(featureSwitch, {
       userId: payload?.userId,
       orgId: payload?.orgId,
-      overrides: featureSwitchOverrides,
+      overrides,
     })
   );
 }

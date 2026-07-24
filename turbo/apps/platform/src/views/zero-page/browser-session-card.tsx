@@ -5,13 +5,10 @@ import {
   IconLoader2,
   IconPlayerPause,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { cn } from "@vm0/ui";
-import { useGet, useLastLoadable } from "ccstate-react";
+import { useLastLoadable } from "ccstate-react";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { Markdown } from "../components/markdown.tsx";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
@@ -64,22 +61,6 @@ export function BrowserSessionCard({
   signals,
   fullPage = false,
 }: BrowserSessionCardProps) {
-  const enabled = useGet(featureSwitch$)[FeatureSwitchKey.ZeroBrowser];
-  if (!enabled) {
-    return (
-      <Markdown
-        source={signals.fallbackMarkdown}
-        style={{ fontSize: "inherit", lineHeight: "inherit" }}
-      />
-    );
-  }
-  return <EnabledBrowserSessionCard signals={signals} fullPage={fullPage} />;
-}
-
-function EnabledBrowserSessionCard({
-  signals,
-  fullPage,
-}: Required<BrowserSessionCardProps>) {
   const sessionLoadable = useLastLoadable(signals.session$);
 
   if (sessionLoadable.state === "loading") {

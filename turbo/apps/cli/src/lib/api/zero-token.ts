@@ -1,9 +1,12 @@
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+
 export interface ZeroTokenPayload {
   userId: string;
   runId: string;
   orgId: string;
   scope: string;
   capabilities: string[];
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   iat: number;
   exp: number;
 }

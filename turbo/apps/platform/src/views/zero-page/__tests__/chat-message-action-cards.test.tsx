@@ -3463,7 +3463,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("renders trusted browser universal links as live iframes scoped to the chat thread", async () => {
+  it("renders trusted browser universal links as live iframes independently of the CLI feature switch", async () => {
     const threadId = "c0000000-0000-4000-a000-000000000080";
     const browserId = "c0000000-0000-4000-a000-000000000081";
     const liveUrl =
@@ -3514,7 +3514,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {
@@ -3537,40 +3536,5 @@ describe("chat message action cards", () => {
         return link.textContent === "Untrusted browser";
       }),
     ).toHaveAttribute("href", untrustedUrl);
-  });
-
-  it("keeps browser universal links as Markdown when managed browsers are disabled", async () => {
-    const threadId = "c0000000-0000-4000-a000-000000000086";
-    const browserId = "c0000000-0000-4000-a000-000000000087";
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Managed browser fallback",
-      chatMessages: [
-        {
-          id: "c0000000-0000-4000-a000-000000000088",
-          role: "assistant",
-          content: `[Open browser](/browsers/${browserId})`,
-          runId: "c0000000-0000-4000-a000-000000000089",
-          createdAt: "2026-07-24T10:00:00.000Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        queryAllByRoleFast("link").find((link) => {
-          return link.textContent === "Open browser";
-        }),
-      ).toHaveAttribute("href", `/browsers/${browserId}`);
-    });
-    expect(
-      document.querySelector("[data-browser-session-card]"),
-    ).not.toBeInTheDocument();
   });
 });
