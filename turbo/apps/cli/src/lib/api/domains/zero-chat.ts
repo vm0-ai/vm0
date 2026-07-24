@@ -17,7 +17,7 @@ export interface ZeroChatThreadSnapshot {
   readonly latestEventId: string | null;
 }
 
-export type ZeroChatThreadEventsResult =
+type ZeroChatThreadEventsResult =
   | {
       readonly kind: "page";
       readonly events: readonly ChatThreadEvent[];

@@ -199,10 +199,7 @@ export {
   searchZeroChat,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
-export type {
-  ZeroChatThreadEventsResult,
-  ZeroChatThreadSnapshot,
-} from "./domains/zero-chat";
+export type { ZeroChatThreadSnapshot } from "./domains/zero-chat";
 
 // Domain modules - Zero Developer Support
 export {
