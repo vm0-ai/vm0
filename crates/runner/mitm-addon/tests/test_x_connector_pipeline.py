@@ -17,8 +17,8 @@ from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.x_flow_helpers import (
-    json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
+    json_body_that_exceeds_nesting_limit,
     make_x_pipeline_flow,
     make_x_stream_pipeline_flow,
 )
@@ -363,11 +363,11 @@ class TestXConnectorResponsePipeline:
     @pytest.mark.parametrize(
         "failed_line",
         [
-            pytest.param(json_body_that_exceeds_decoder_recursion(), id="decoder-recursion"),
+            pytest.param(json_body_that_exceeds_nesting_limit(), id="excessive-nesting"),
             pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
         ],
     )
-    def test_full_streaming_pipeline_continues_after_json_parser_failure(
+    def test_full_streaming_pipeline_continues_after_uninspectable_json_row(
         self, tmp_path, real_flow, mitm_ctx, headers, failed_line
     ):
         """A hostile NDJSON row must not stop later valid rows from billing."""

@@ -15,8 +15,8 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.x_flow_helpers import (
-    json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
+    json_body_that_exceeds_nesting_limit,
 )
 from usage.providers.connectors import x_billing
 
@@ -653,14 +653,14 @@ def test_tweet_create_unparseable_body_stays_conservative(x_usage, tmp_path, rea
 @pytest.mark.parametrize(
     "request_body",
     [
-        pytest.param(json_body_that_exceeds_decoder_recursion(), id="decoder-recursion"),
+        pytest.param(json_body_that_exceeds_nesting_limit(), id="excessive-nesting"),
         pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
     ],
 )
-def test_tweet_create_json_parser_failure_stays_conservative(
+def test_tweet_create_uninspectable_json_stays_conservative(
     x_usage, tmp_path, real_flow, request_body
 ):
-    """Stdlib JSON parser failures must not interrupt tweet-create billing."""
+    """Uninspectable JSON must not interrupt tweet-create billing."""
     flow = x_usage.make_flow(
         real_flow,
         tmp_path,
