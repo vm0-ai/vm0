@@ -114,6 +114,40 @@ async function waitForTransientRetry(
   signal.throwIfAborted();
 }
 
+const addPokeSubscriber$ = command(({ set }, pokeLoop: () => void) => {
+  set(subscriberPokeRegistry$, (prev) => {
+    const next = new Set(prev);
+    next.add(pokeLoop);
+    return next;
+  });
+});
+
+const removePokeSubscriber$ = command(({ set }, pokeLoop: () => void) => {
+  set(subscriberPokeRegistry$, (prev) => {
+    const next = new Set(prev);
+    next.delete(pokeLoop);
+    return next;
+  });
+});
+
+function registerVisibilityPoke(
+  label: string,
+  signal: AbortSignal,
+  pokeLoop: () => void,
+): () => void {
+  const onVisibilityChange = () => {
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    L.debug("tab visible, poking loop", label);
+    pokeLoop();
+  };
+  document.addEventListener("visibilitychange", onVisibilityChange, { signal });
+  return () => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  };
+}
+
 const runWithChannel$ = command(
   async (
     { set },
@@ -144,38 +178,19 @@ const runWithChannel$ = command(
       L.debug("got message from topic", topic, message);
       pokeLoop();
     };
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-      L.debug("tab visible, poking loop", topic);
-      pokeLoop();
-    };
-    let registeredPoke = false;
+    const unregisterVisibilityPoke = registerVisibilityPoke(
+      topic,
+      signal,
+      pokeLoop,
+    );
+    set(addPokeSubscriber$, pokeLoop);
 
     const cleanup = () => {
-      set(subscriberPokeRegistry$, (prev) => {
-        if (!registeredPoke) {
-          return prev;
-        }
-        const next = new Set(prev);
-        next.delete(pokeLoop);
-        return next;
-      });
-      registeredPoke = false;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      set(removePokeSubscriber$, pokeLoop);
+      unregisterVisibilityPoke();
       channel.unsubscribe(topic, callback);
     };
 
-    document.addEventListener("visibilitychange", onVisibilityChange, {
-      signal,
-    });
-    set(subscriberPokeRegistry$, (prev) => {
-      const next = new Set(prev);
-      next.add(pokeLoop);
-      return next;
-    });
-    registeredPoke = true;
     signal.addEventListener("abort", cleanup, { once: true });
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
@@ -274,26 +289,16 @@ const runWithChannelPayload$ = command(
       pendingPayloads.push(passMessage ? message : message.data);
       pokeLoop();
     };
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-      L.debug("tab visible, poking payload loop", subscriptionLabel);
-      pokeLoop();
-    };
-    let registeredPoke = false;
+    const unregisterVisibilityPoke = registerVisibilityPoke(
+      subscriptionLabel,
+      signal,
+      pokeLoop,
+    );
+    set(addPokeSubscriber$, pokeLoop);
 
     const cleanup = () => {
-      set(subscriberPokeRegistry$, (prev) => {
-        if (!registeredPoke) {
-          return prev;
-        }
-        const next = new Set(prev);
-        next.delete(pokeLoop);
-        return next;
-      });
-      registeredPoke = false;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      set(removePokeSubscriber$, pokeLoop);
+      unregisterVisibilityPoke();
       if (topic === null) {
         channel.unsubscribe(callback);
       } else {
@@ -301,15 +306,6 @@ const runWithChannelPayload$ = command(
       }
     };
 
-    document.addEventListener("visibilitychange", onVisibilityChange, {
-      signal,
-    });
-    set(subscriberPokeRegistry$, (prev) => {
-      const next = new Set(prev);
-      next.add(pokeLoop);
-      return next;
-    });
-    registeredPoke = true;
     signal.addEventListener("abort", cleanup, { once: true });
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
