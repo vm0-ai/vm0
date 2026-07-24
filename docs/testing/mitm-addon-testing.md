@@ -4,25 +4,86 @@
 
 The mitmproxy addon (`crates/runner/mitm-addon/`) is a Python module that intercepts HTTPS requests inside sandboxes. Tests live in `tests/` and use pytest.
 
+## Environment Setup
+
+The addon uses uv for dependency management. The supported devcontainer installs
+the exact uv version declared in `pyproject.toml`. In other environments, install
+that version before continuing:
+
+```bash
+cd crates/runner/mitm-addon
+UV_VERSION="$(
+  python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"].removeprefix("=="))'
+)"
+curl --proto '=https' --tlsv1.2 -LsSf \
+  "https://astral.sh/uv/$UV_VERSION/install.sh" |
+  env UV_UNMANAGED_INSTALL="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
+uv --version
+```
+
+Create or update the local environment from the committed lockfile:
+
+```bash
+cd crates/runner/mitm-addon
+uv lock --check
+uv sync --locked
+```
+
+`uv sync --locked` installs the development and test dependency groups into
+`.venv` without changing `uv.lock`.
+
 ## Running Tests
 
 ```bash
 cd crates/runner/mitm-addon
 
 # All tests
-pytest tests/
+uv run --no-sync python -m pytest tests/
 
 # Specific file
-pytest tests/test_request_handler_passthrough.py
+uv run --no-sync python -m pytest tests/test_request_handler_passthrough.py
 
 # Specific test
-pytest tests/test_request_handler_passthrough.py::test_allowed_domain_passes_through
+uv run --no-sync python -m pytest \
+  tests/test_request_handler_passthrough.py::test_allowed_domain_passes_through
 
 # Verbose
-pytest -v tests/
+uv run --no-sync python -m pytest -v tests/
 ```
 
-Pre-commit hooks run `pytest` on staged Python files in the addon.
+Run the same static checks used by CI:
+
+```bash
+uv run --no-sync ruff format --check .
+uv run --no-sync ruff check .
+uv run --no-sync basedpyright -p .
+```
+
+Pre-commit hooks verify the lockfile when dependency metadata changes and run
+Ruff from the locked environment for staged addon Python files. Run pytest
+manually before committing behavior changes.
+
+## Updating Dependencies
+
+Edit the dependency constraints in `pyproject.toml`, then regenerate and verify
+the lockfile:
+
+```bash
+uv lock
+uv sync --locked
+uv lock --check
+```
+
+To deliberately refresh every dependency, use `uv lock --upgrade`. To refresh
+one package and the portion of the graph it constrains, use
+`uv lock --upgrade-package <package>`. Review the resolved versions and hashes
+with `git diff -- uv.lock`, then run all static checks and the complete test
+suite.
+
+Commit `pyproject.toml` and `uv.lock` together. Keep the mitmproxy constraint
+aligned with the standalone runtime version in `crates/runner/src/deps.rs`;
+tests must not resolve a different mitmproxy version from production.
 
 ## Test Files
 

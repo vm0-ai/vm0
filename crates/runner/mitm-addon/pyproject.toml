@@ -1,41 +1,32 @@
-[build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "mitm-addon"
 version = "0.1.0"
 requires-python = ">=3.12"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "Brotli>=1.2.0",
+    { include-group = "test" },
     "basedpyright>=1.39",
-    # Private mitmproxy API use is guarded in src/mitmproxy_compat.py.
-    "mitmproxy==12.2.3",
-    "pytest>=7.0",
-    "pytest-asyncio>=0.23",
     "ruff>=0.8",
-    "wsproto>=1.2",
 ]
 test = [
     "Brotli>=1.2.0",
+    "h2>=4.3.0",
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     # Keep tests on the exact runtime version from crates/runner/src/deps.rs.
     "mitmproxy==12.2.3",
     "wsproto>=1.2",
+    "zstandard>=0.25.0",
 ]
+
+[tool.uv]
+package = false
+required-version = "==0.11.32"
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-extend-exclude = [
-    # setuptools copies src/ here during `pip install`. Ruff 0.15's default
-    # exclude list drops ``build`` (keeps only ``_build`` / ``dist``), so avoid
-    # linting generated package copies under build/lib/.
-    "build",
-]
 
 [tool.ruff.lint]
 select = [

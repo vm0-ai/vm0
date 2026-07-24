@@ -54,13 +54,12 @@ pre-commit:
             run: cargo doc --workspace --all-features --no-deps
             root: crates/
             glob: "crates/**/*.{rs,toml}"
-          - name: ruff-fmt
-            run: ruff format .
+          - name: uv-lock
+            run: uv lock --check
             root: crates/runner/mitm-addon/
-            glob: "crates/runner/mitm-addon/**/*.py"
-            stage_fixed: true
-          - name: ruff-check
-            run: ruff check --fix .
+            glob: "crates/runner/mitm-addon/{pyproject.toml,uv.lock}"
+          - name: ruff
+            run: uv run --locked ruff check --fix . && uv run --no-sync ruff format .
             root: crates/runner/mitm-addon/
             glob: "crates/runner/mitm-addon/**/*.py"
             stage_fixed: true
