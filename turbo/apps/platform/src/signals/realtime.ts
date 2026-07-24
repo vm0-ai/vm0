@@ -1,6 +1,7 @@
 import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
@@ -12,6 +13,17 @@ const L = logger("Realtime");
 const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
   1000, 2000, 5000, 10_000, 30_000,
 ] as const;
+const MAX_TRANSIENT_RETRIES = 3;
+
+const realtimeDegradedToastShown$ = state(false);
+
+const notifyRealtimeDegraded$ = command(({ get, set }) => {
+  if (get(realtimeDegradedToastShown$)) {
+    return;
+  }
+  set(realtimeDegradedToastShown$, true);
+  toast.error("Live updates ran into a problem. Please refresh the page.");
+});
 
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
@@ -195,6 +207,15 @@ const runWithChannel$ = command(
           } catch (error) {
             loopSignal.throwIfAborted();
             throwIfAbort(error);
+            if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+              L.warn(
+                `giving up on ably notification after repeated handler failures`,
+                error,
+              );
+              transientRetryCount = 0;
+              set(notifyRealtimeDegraded$);
+              return false;
+            }
             L.warn(`transient error in ably notification`, error);
             await waitForTransientRetry(loopSignal, transientRetryCount);
             loopSignal.throwIfAborted();
@@ -315,13 +336,26 @@ const runWithChannelPayload$ = command(
           }
 
           let done = false;
-          // eslint-disable-next-line no-restricted-syntax -- payload notifications must retry transient handler failures without dropping the payload
+          // eslint-disable-next-line no-restricted-syntax -- payload notifications retry transient handler failures a few times before dropping the payload
           try {
             done = await set(loopCommand$, payload, loopSignal);
             loopSignal.throwIfAborted();
           } catch (error) {
             loopSignal.throwIfAborted();
             throwIfAbort(error);
+            if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+              L.warn(
+                `dropping ably payload after repeated handler failures`,
+                error,
+              );
+              pendingPayloads.shift();
+              transientRetryCount = 0;
+              set(notifyRealtimeDegraded$);
+              if (pendingPayloads.length > 0) {
+                pokeLoop();
+              }
+              return false;
+            }
             L.warn(`transient error in ably payload notification`, error);
             await waitForTransientRetry(loopSignal, transientRetryCount);
             loopSignal.throwIfAborted();
