@@ -937,7 +937,7 @@ export function zeroChatThreadArtifacts(args: {
 
       const byRun = new Map<string, ChatThreadArtifactRun>();
       for (const row of rowsByUrl.values()) {
-        if (!row.url) {
+        if (!row.url || !row.runId) {
           continue;
         }
         const filename = row.filename ?? row.externalId;
