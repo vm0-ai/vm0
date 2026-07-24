@@ -87,6 +87,35 @@ const deletePreamble = `
   declare const cutoff: Date;
 `;
 
+const unnestUpdatePreamble = `
+  import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const allowanceWindows = pgTable("allowance_windows", {
+    id: text("id").primaryKey(),
+    consumedUnits: integer("consumed_units").notNull(),
+    updatedAt: timestamp("updated_at").notNull(),
+  });
+  const usageEvents = pgTable("usage_events", {
+    id: text("id").primaryKey(),
+    creditsCharged: integer("credits_charged"),
+    status: text("status").notNull(),
+    processedAt: timestamp("processed_at"),
+    billingError: text("billing_error"),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      allowanceWindows: typeof allowanceWindows;
+      usageEvents: typeof usageEvents;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const windowIds: readonly string[];
+  declare const unitDeltas: readonly number[];
+  declare const eventIds: readonly string[];
+  declare const creditsCharged: readonly number[];
+  declare const billingErrors: readonly (string | null)[];
+  declare const updatedAt: Date;
+`;
+
 const upsertPreamble = `
   import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
@@ -190,6 +219,128 @@ const runnerLockingQuery = `
 
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql\`
+          UPDATE \${allowanceWindows}
+          SET
+            "consumed_units" = \${allowanceWindows.consumedUnits} + consumption.units_applied,
+            "updated_at" = \${updatedAt}
+          FROM unnest(
+            \${sql.param(windowIds)}::uuid[],
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`;
+        await db.execute(query);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          async execute(query: unknown) {
+            return query;
+          },
+        };
+        await fakeDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        function sql(
+          strings: TemplateStringsArray,
+          ...values: readonly unknown[]
+        ) {
+          return { strings, values };
+        }
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${windowIds}) AS consumption(window_id)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const notATable = sql\`allowance_windows\`;
+        await db.execute(sql\`
+          UPDATE \${notATable}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH changed AS (SELECT 1)
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+          RETURNING id
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true;
+          SELECT 1
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows} AS target
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE target.id = consumption.window_id
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = incoming.units_applied
+          FROM (VALUES (1)) AS incoming(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units[1] = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[])
+            AS consumption(units_applied bigint)
+          WHERE true
+        \`);
+      `,
+    },
     {
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
@@ -1086,6 +1237,73 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
     },
   ],
   invalid: [
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET
+            "consumed_units" = \${allowanceWindows.consumedUnits} + consumption.units_applied,
+            "updated_at" = \${updatedAt}
+          FROM unnest(
+            \${sql.param(windowIds)}::uuid[],
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${usageEvents}
+          SET
+            "credits_charged" = settlement.credits_charged,
+            "status" = 'processed',
+            "processed_at" = \${updatedAt},
+            "billing_error" = settlement.billing_error
+          FROM unnest(
+            \${sql.param(eventIds)}::uuid[],
+            \${sql.param(creditsCharged)}::bigint[],
+            \${sql.param(billingErrors)}::varchar(50)[]
+          ) AS settlement(usage_event_id, credits_charged, billing_error)
+          WHERE \${usageEvents.id} = settlement.usage_event_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql as query } from "drizzle-orm";
+        await db.execute(query\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${query.param(windowIds)}::uuid[],
+            \${query.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id;
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import * as drizzle from "drizzle-orm";
+        await db["execute"](drizzle.sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${drizzle.sql.param(windowIds)}::uuid[],
+            \${drizzle.sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
     {
       code: `${deletePreamble}
         import { lte, sql } from "drizzle-orm";

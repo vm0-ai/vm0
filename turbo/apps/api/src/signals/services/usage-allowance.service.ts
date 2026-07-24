@@ -793,17 +793,20 @@ async function persistUsageAllowanceWindowConsumption(
   const unitDeltas = changedWindows.map((window) => {
     return window.consumedUnits - window.initialConsumedUnits;
   });
-  await tx.execute(sql`
-    UPDATE ${orgUsageAllowanceWindows}
-    SET
-      "consumed_units" = ${orgUsageAllowanceWindows.consumedUnits} + consumption.units_applied,
-      "updated_at" = ${nowDate()}
-    FROM unnest(
+  const consumptionSource = sql`
+    unnest(
       ${sql.param(windowIds)}::uuid[],
       ${sql.param(unitDeltas)}::bigint[]
     ) AS consumption(window_id, units_applied)
-    WHERE ${orgUsageAllowanceWindows.id} = consumption.window_id
-  `);
+  `;
+  await tx
+    .update(orgUsageAllowanceWindows)
+    .set({
+      consumedUnits: sql`${orgUsageAllowanceWindows.consumedUnits} + consumption.units_applied`,
+      updatedAt: nowDate(),
+    })
+    .from(consumptionSource)
+    .where(eq(orgUsageAllowanceWindows.id, sql`consumption.window_id`));
 }
 
 async function insertUsageAllowanceAllocations(
