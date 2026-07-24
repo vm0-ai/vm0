@@ -30,7 +30,7 @@
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -44,6 +44,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::duration::duration_ms as saturated_duration_ms;
+#[cfg(test)]
 use crate::ids::RunId;
 
 use crate::config::{self, ProfileConfig};
@@ -67,7 +68,7 @@ use crate::provider::{
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
-use crate::run_cancellation::SharedRunCancellationMap;
+use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::{RunnerMode, StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
@@ -403,7 +404,7 @@ async fn run_start_with_home(
     })?;
     let name = runner_config.name;
     let group = runner_config.group;
-    let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let cancel_tokens = RunCancellationRegistry::new();
     let local_group_dir = if args.local {
         let group_dir = home.groups_dir().join(&group);
         crate::local_queue::ensure_group_dir(&group_dir).map_err(|e| {
@@ -642,12 +643,8 @@ async fn run_start_with_home(
         Option<NetworkPolicyRefreshHandle>,
     ) = if let Some(group_dir) = local_group_dir {
         let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-        let provider = LocalProvider::new(
-            group_dir,
-            profiles,
-            cancel.clone(),
-            Arc::clone(&cancel_tokens),
-        );
+        let provider =
+            LocalProvider::new(group_dir, profiles, cancel.clone(), cancel_tokens.clone());
         (provider, group, None)
     } else {
         let group_name = group.clone();
@@ -665,7 +662,7 @@ async fn run_start_with_home(
                 lock_path: paths.builtin_firewall_catalog_cache_lock(),
             },
             cancel.clone(),
-            Arc::clone(&cancel_tokens),
+            cancel_tokens.clone(),
         );
         let network_policy_refresh = provider.network_policy_refresh_handle();
         (provider, group_name, Some(network_policy_refresh))
@@ -833,7 +830,7 @@ struct ProviderState {
     provider: Arc<dyn JobProvider>,
     /// Per-job cancel tokens shared with the provider for cancel events
     /// (Ably for ApiProvider, `.cancel` files for LocalProvider).
-    cancel_tokens: SharedRunCancellationMap,
+    cancel_tokens: RunCancellationRegistry,
     cancel: CancellationToken,
 }
 
@@ -1198,7 +1195,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let signal = match signals.signal_source {
         SignalSource::Real(signals) => SignalController::spawn(
             provider_state.cancel.clone(),
-            Arc::clone(&provider_state.cancel_tokens),
+            provider_state.cancel_tokens.clone(),
             signals,
             shared.parking_gate.clone(),
         ),
@@ -1272,7 +1269,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let startup_mode = lifecycle.mark_startup_ready();
     shared.status.set_mode(startup_mode).await;
 
-    let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
+    let mut jobs: JoinSet<RunCancellationRegistration> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
     // destroys at shutdown so their factory Arcs are released before the
     // exclusive ownership preflight.
@@ -1385,7 +1382,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         exec_config: Arc::clone(&exec_config),
         idle_pool: Arc::clone(&shared.idle_pool),
         status: Arc::clone(&shared.status),
-        cancel_tokens: Arc::clone(&provider_state.cancel_tokens),
         orphaned_active_runs: orphaned_active_runs.clone(),
         parking_gate: shared.parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
@@ -1571,7 +1567,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // normal Running mode can retain completed JoinSet entries and
             // stale cancel tokens until drain, budget exhaustion, or shutdown.
             result = jobs.join_next(), if !jobs.is_empty() => {
-                handle_job_result(result, &provider_state.cancel_tokens).await;
+                handle_job_result(result).await;
                 if !orphaned_active_runs.is_empty() {
                     reap_orphaned_active_runs(
                         &orphaned_active_runs,
@@ -1722,7 +1718,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
             tokio::select! {
                 result = jobs.join_next() => {
-                    handle_job_result(result, &provider_state.cancel_tokens).await;
+                    handle_job_result(result).await;
                     if !orphaned_active_runs.is_empty() {
                         reap_orphaned_active_runs(
                             &orphaned_active_runs,

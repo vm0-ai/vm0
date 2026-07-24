@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::idle_pool::ParkingGate;
-use crate::run_cancellation::SharedRunCancellationMap;
+use crate::run_cancellation::RunCancellationRegistry;
 use crate::status::RunnerMode;
 
 /// Pre-registered signal streams.
@@ -274,7 +274,7 @@ impl SignalController {
     /// construct a controller with no real handler task.
     pub(super) fn spawn(
         cancel: CancellationToken,
-        cancel_tokens: SharedRunCancellationMap,
+        cancel_tokens: RunCancellationRegistry,
         signals: EarlySignals,
         parking_gate: ParkingGate,
     ) -> Self {
@@ -357,7 +357,7 @@ pub(super) fn handle_resume_signal(lifecycle: &LifecycleController) {
 pub(super) async fn handle_stopping_signal(
     name: &str,
     cancel: &CancellationToken,
-    cancel_tokens: &SharedRunCancellationMap,
+    cancel_tokens: &RunCancellationRegistry,
     lifecycle: &LifecycleController,
 ) {
     if lifecycle.current_mode() == RunnerMode::Stopping {
@@ -366,18 +366,12 @@ pub(super) async fn handle_stopping_signal(
         return;
     }
     info!(signal = name, "initiating hard shutdown");
-    // Close parking and send Stopping *before* locking cancel_tokens so that
-    // the main loop's
-    // post-insert `mode_rx.borrow()` check catches any job claimed after
-    // our iteration but before send would otherwise publish the state.
+    // Publish Stopping before entering the registry's hard-stop barrier.
+    // Registrations before the barrier are included in its snapshot; later
+    // registrations are returned already cancelled. The discovery path also
+    // rechecks mode after registration so cancellation still precedes claim.
     lifecycle.hard_stop();
-    let handles = {
-        let tokens = cancel_tokens.lock().await;
-        tokens
-            .iter()
-            .map(|(run_id, handle)| (*run_id, handle.clone()))
-            .collect::<Vec<_>>()
-    };
+    let handles = cancel_tokens.begin_hard_stop().await;
     let count = handles.len();
     for (run_id, handle) in handles {
         info!(run_id = %run_id, "cancelling active job for hard shutdown");
@@ -389,13 +383,11 @@ pub(super) async fn handle_stopping_signal(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::Duration;
 
     use super::*;
     use crate::ids::RunId;
-    use crate::run_cancellation::RunCancellationHandle;
 
     /// Regression test for issue #10416: SIGUSR1 arriving between
     /// `EarlySignals::register()` and `SignalController::spawn` must still
@@ -421,7 +413,7 @@ mod tests {
 
         let controller = SignalController::spawn(
             CancellationToken::new(),
-            Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            RunCancellationRegistry::new(),
             signals,
             ParkingGate::new_open(),
         );
@@ -648,7 +640,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
         let lifecycle = LifecycleController::new(tx, gate.clone());
         let cancel = CancellationToken::new();
-        let tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let tokens = RunCancellationRegistry::new();
 
         // First call: transitions, cancels main cancel.
         handle_stopping_signal("SIGTERM", &cancel, &tokens, &lifecycle).await;
@@ -656,19 +648,15 @@ mod tests {
         assert_eq!(gate.state(), ParkingState::Closed);
         assert!(cancel.is_cancelled());
 
-        // Insert a sentinel token *after* the first call so we can prove
-        // the repeat did not re-iterate the map.
-        let sentinel = RunCancellationHandle::new();
-        let sentinel_token = sentinel.token();
-        tokens.lock().await.insert(RunId::new_v4(), sentinel);
+        // A registration after the first hard-stop barrier is cancelled by
+        // registration itself; repeat-signal handling need not rescan it.
+        let registration = tokens.register(RunId::new_v4()).await.unwrap();
+        assert!(registration.is_cancelled());
 
         // Repeat call: must early-return on the already-Stopping guard.
         handle_stopping_signal("SIGTERM", &cancel, &tokens, &lifecycle).await;
         assert_eq!(lifecycle.current_mode(), RunnerMode::Stopping);
         assert_eq!(gate.state(), ParkingState::Closed);
-        assert!(
-            !sentinel_token.is_cancelled(),
-            "repeat must not re-iterate cancel_tokens and cancel late-inserted sentinel",
-        );
+        assert!(cancel.is_cancelled());
     }
 }

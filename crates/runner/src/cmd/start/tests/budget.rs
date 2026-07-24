@@ -91,7 +91,7 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
         "discovery must not be polled while budget is exhausted"
     );
     assert!(
-        !env.cancel_tokens.lock().await.contains_key(&id2),
+        !env.cancel_tokens.contains(id2).await,
         "queued job must not be claimed while budget is exhausted",
     );
     assert!(
