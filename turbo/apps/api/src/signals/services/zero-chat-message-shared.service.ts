@@ -214,45 +214,53 @@ export async function insertAssistantEventMessages(
   });
   const runGroupId = await runGroupIdForRun(writeDb, args.runId);
 
-  const deterministicRows =
-    itemsWithRunEventId.length === 0
-      ? []
-      : await insertChatMessages(
-          writeDb,
-          itemsWithRunEventId.map((item) => {
-            return {
-              id: assistantMessageIdForRunEvent(args.runId, item.runEventId),
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId,
-              role: "assistant",
-              content: item.content,
-              sequenceNumber: item.sequenceNumber,
-              runEventId: item.runEventId,
-            };
-          }),
-          "any",
-        );
-  signal.throwIfAborted();
+  const [deterministicRows, legacyRows] = await writeDb.transaction(
+    async (tx) => {
+      const deterministicRows =
+        itemsWithRunEventId.length === 0
+          ? []
+          : await insertChatMessages(
+              tx,
+              itemsWithRunEventId.map((item) => {
+                return {
+                  id: assistantMessageIdForRunEvent(
+                    args.runId,
+                    item.runEventId,
+                  ),
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  runGroupId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: item.runEventId,
+                };
+              }),
+              "any",
+            );
+      signal.throwIfAborted();
 
-  const legacyRows =
-    legacyItems.length === 0
-      ? []
-      : await insertChatMessages(
-          writeDb,
-          legacyItems.map((item) => {
-            return {
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId,
-              role: "assistant",
-              content: item.content,
-              sequenceNumber: item.sequenceNumber,
-              runEventId: null,
-            };
-          }),
-          "run-sequence",
-        );
+      const legacyRows =
+        legacyItems.length === 0
+          ? []
+          : await insertChatMessages(
+              tx,
+              legacyItems.map((item) => {
+                return {
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  runGroupId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: null,
+                };
+              }),
+              "run-sequence",
+            );
+      return [deterministicRows, legacyRows] as const;
+    },
+  );
   signal.throwIfAborted();
 
   const insertedRowCount = deterministicRows.length + legacyRows.length;

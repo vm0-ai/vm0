@@ -1978,6 +1978,8 @@ export function zeroChatThreadMessagesPage(args: {
   readonly userId: string;
   readonly sinceSeqId: number | undefined;
   readonly beforeSeqId: number | undefined;
+  readonly sinceId: string | undefined;
+  readonly beforeId: string | undefined;
   readonly limit: number;
 }): Computed<
   Promise<{
@@ -2001,22 +2003,54 @@ export function zeroChatThreadMessagesPage(args: {
       return null;
     }
 
+    const cursors = [
+      args.sinceSeqId,
+      args.beforeSeqId,
+      args.sinceId,
+      args.beforeId,
+    ].filter((cursor) => {
+      return cursor !== undefined;
+    });
+    if (cursors.length > 1) {
+      throw new Error("after and before cursors are mutually exclusive");
+    }
+
+    // Previous browser bundles use UUID cursors. Resolve them to the immutable
+    // per-thread sequence until those clients can no longer remain active.
+    const legacyCursorId = args.sinceId ?? args.beforeId;
+    const [legacyCursor] =
+      legacyCursorId === undefined
+        ? []
+        : await db
+            .select({ seqId: chatMessages.seqId })
+            .from(chatMessages)
+            .where(
+              and(
+                eq(chatMessages.id, legacyCursorId),
+                eq(chatMessages.chatThreadId, args.threadId),
+              ),
+            )
+            .limit(1);
+    if (legacyCursorId !== undefined && !legacyCursor) {
+      return { messages: [], hasHistoryBefore: false };
+    }
+
+    const sinceSeqId =
+      args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
+    const beforeSeqId =
+      args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
     let rows: ChatMessageRow[];
     let hasHistoryBefore = false;
 
-    if (args.sinceSeqId !== undefined && args.beforeSeqId !== undefined) {
-      throw new Error("after and before cursors are mutually exclusive");
-    }
-
-    if (args.sinceSeqId !== undefined) {
+    if (sinceSeqId !== undefined) {
       rows = await selectChatMessagesWithMetadata(db)
-        .where(and(threadFilter, gt(chatMessages.seqId, args.sinceSeqId)))
+        .where(and(threadFilter, gt(chatMessages.seqId, sinceSeqId)))
         .orderBy(asc(chatMessages.seqId))
         .limit(args.limit);
-    } else if (args.beforeSeqId !== undefined) {
+    } else if (beforeSeqId !== undefined) {
       const previousRows = await selectChatMessagesWithMetadata(db)
-        .where(and(threadFilter, lt(chatMessages.seqId, args.beforeSeqId)))
+        .where(and(threadFilter, lt(chatMessages.seqId, beforeSeqId)))
         .orderBy(desc(chatMessages.seqId))
         .limit(args.limit + 1);
       hasHistoryBefore = previousRows.length > args.limit;

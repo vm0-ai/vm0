@@ -937,6 +937,8 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly sinceSeqId?: number;
         readonly beforeSeqId?: number;
+        readonly sinceId?: string;
+        readonly beforeId?: string;
         readonly limit?: number;
       } = {},
     ): Promise<{
@@ -960,6 +962,8 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly sinceSeqId?: number;
         readonly beforeSeqId?: number;
+        readonly sinceId?: string;
+        readonly beforeId?: string;
         readonly limit?: number;
       },
       statuses: readonly (200 | 400 | 401 | 404)[],

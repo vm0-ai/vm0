@@ -1107,6 +1107,7 @@ export const chatSearchContract = c.router({
  * Query params (mutually exclusive):
  *   sinceSeqId  — forward pagination: messages strictly after this cursor
  *   beforeSeqId — backward pagination: messages strictly before this cursor
+ *   sinceId / beforeId — previous frontend UUID cursors retained during rollout
  *   (neither) — initial load anchored at the last user message
  *
  * Response includes `hasMore` for initial load and backward pagination so the
@@ -1121,6 +1122,10 @@ export const chatThreadMessagesContract = c.router({
     query: z.object({
       sinceSeqId: z.coerce.number().int().positive().optional(),
       beforeSeqId: z.coerce.number().int().positive().optional(),
+      // Remove after browser clients from the pre-seqId release can no longer
+      // remain active against the current backend.
+      sinceId: z.string().uuid().optional(),
+      beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {

@@ -118,12 +118,14 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor thread");
   }
 
-  const message = await insertChatMessage(db, {
-    chatThreadId: thread.id,
-    role: "user",
-    content: "orphan monitor fixture",
-    runId: null,
-    error: fixtureKind === "failed-message" ? "INSUFFICIENT_CREDITS" : null,
+  const message = await db.transaction(async (tx) => {
+    return await insertChatMessage(tx, {
+      chatThreadId: thread.id,
+      role: "user",
+      content: "orphan monitor fixture",
+      runId: null,
+      error: fixtureKind === "failed-message" ? "INSUFFICIENT_CREDITS" : null,
+    });
   });
   signal.throwIfAborted();
   if (!message) {
@@ -139,11 +141,13 @@ async function seedFixture(
       chatMessageId: message.id,
     });
   } else if (fixtureKind === "revoked-message") {
-    await updateChatMessage(db, message.id, {
-      chatThreadId: thread.id,
-      role: "user",
-      content: "claimed orphan monitor fixture",
-      runId: randomUUID(),
+    await db.transaction(async (tx) => {
+      await updateChatMessage(tx, message.id, {
+        chatThreadId: thread.id,
+        role: "user",
+        content: "claimed orphan monitor fixture",
+        runId: randomUUID(),
+      });
     });
   } else if (fixtureKind === "active-run") {
     await seedActiveRun(

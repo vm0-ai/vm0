@@ -235,23 +235,26 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  const inserted = await insertChatMessage(
-    args.db,
-    {
-      id: assistantMessageIdForRunEvent(
-        args.runId,
-        INITIAL_THINKING_RUN_EVENT_ID,
-      ),
-      chatThreadId: args.threadId,
-      runId: args.runId,
-      runGroupId: await runGroupIdForRun(args.db, args.runId),
-      role: "assistant",
-      content: null,
-      thinking,
-      runEventId: INITIAL_THINKING_RUN_EVENT_ID,
-    },
-    "any",
-  );
+  const runGroupId = await runGroupIdForRun(args.db, args.runId);
+  const inserted = await args.db.transaction(async (tx) => {
+    return await insertChatMessage(
+      tx,
+      {
+        id: assistantMessageIdForRunEvent(
+          args.runId,
+          INITIAL_THINKING_RUN_EVENT_ID,
+        ),
+        chatThreadId: args.threadId,
+        runId: args.runId,
+        runGroupId,
+        role: "assistant",
+        content: null,
+        thinking,
+        runEventId: INITIAL_THINKING_RUN_EVENT_ID,
+      },
+      "any",
+    );
+  });
 
   if (!inserted) {
     return false;

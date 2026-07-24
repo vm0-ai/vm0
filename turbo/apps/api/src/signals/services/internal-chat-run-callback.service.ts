@@ -1035,19 +1035,21 @@ async function insertRecommendedFollowupsMessage(args: {
   readonly recommendedFollowups: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
-  const inserted = await insertChatMessage(
-    args.db,
-    {
-      id: recommendedFollowupsMessageIdForRun(args.runId),
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: null,
-      runId: args.runId,
-      runGroupId,
-      recommendedFollowups: args.recommendedFollowups,
-    },
-    "id",
-  );
+  const inserted = await args.db.transaction(async (tx) => {
+    return await insertChatMessage(
+      tx,
+      {
+        id: recommendedFollowupsMessageIdForRun(args.runId),
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        runId: args.runId,
+        runGroupId,
+        recommendedFollowups: args.recommendedFollowups,
+      },
+      "id",
+    );
+  });
 
   if (!inserted) {
     return false;

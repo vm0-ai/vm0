@@ -6,6 +6,7 @@ import {
   artifactsContract,
   artifactsListResponseSchema,
   chatMessagesContract,
+  chatThreadMessagesContract,
   chatThreadModelSelectionContract,
   chatThreadsContract,
   generationTemplateRequestSchema,
@@ -78,6 +79,33 @@ describe("chat message response contract", () => {
     expect(parsed.data.workflowSnapshot).toStrictEqual({
       ...workflowSnapshot,
       automationId,
+    });
+  });
+});
+
+describe("chat message pagination request compatibility", () => {
+  it("accepts current sequence cursors", () => {
+    expect(
+      chatThreadMessagesContract.list.query.safeParse({
+        sinceSeqId: "42",
+        limit: "20",
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { sinceSeqId: 42, limit: 20 },
+    });
+  });
+
+  it("accepts previous frontend UUID cursors during rollout", () => {
+    const beforeId = "11111111-1111-4111-8111-111111111111";
+    expect(
+      chatThreadMessagesContract.list.query.safeParse({
+        beforeId,
+        limit: "20",
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { beforeId, limit: 20 },
     });
   });
 });

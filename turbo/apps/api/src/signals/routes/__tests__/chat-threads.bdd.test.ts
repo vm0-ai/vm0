@@ -16,6 +16,10 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import {
+  holdChatMessageInsertTransactionFixture,
+  insertChatMessageTransactionFixture,
+} from "../../../test-fixtures/chat-messages";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -1470,6 +1474,14 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
+    const legacySince = await chat.listThreadMessages(owner, threadId, {
+      sinceId: firstAssistant,
+    });
+    expect(
+      legacySince.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
 
     // Backward pagination strictly before the cursor.
     const before = await chat.listThreadMessages(owner, threadId, {
@@ -1482,6 +1494,16 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(before.hasHistoryBefore).toBeFalsy();
+    const legacyBefore = await chat.listThreadMessages(owner, threadId, {
+      beforeId: secondQueuedUser,
+      limit: 3,
+    });
+    expect(
+      legacyBefore.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
+    expect(legacyBefore.hasHistoryBefore).toBeFalsy();
 
     const beforeOverflow = await chat.listThreadMessages(owner, threadId, {
       beforeSeqId: secondAssistantSeqId,
@@ -1493,6 +1515,58 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
     expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
+  }, 30_000);
+
+  it("serializes concurrent message sequence writes through commit", async () => {
+    const owner = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Concurrent message sequence agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "sequence serialization anchor",
+    });
+
+    const firstContent = `held sequence message ${randomUUID()}`;
+    const secondContent = `blocked sequence message ${randomUUID()}`;
+    const held = await holdChatMessageInsertTransactionFixture({
+      threadId,
+      content: firstContent,
+      signal: context.signal,
+    });
+    const secondInsert = insertChatMessageTransactionFixture({
+      threadId,
+      content: secondContent,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await Promise.allSettled([held.done, secondInsert]);
+    });
+
+    await expect.poll(held.blockedWaiterCount).toBe(1);
+    const beforeCommit = await chat.listThreadMessages(owner, threadId);
+    expect(
+      beforeCommit.messages.some((message) => {
+        return (
+          message.content === firstContent || message.content === secondContent
+        );
+      }),
+    ).toBeFalsy();
+
+    held.release();
+    await held.done;
+    const second = await secondInsert;
+    const committed = await chat.listThreadMessages(owner, threadId);
+    const concurrentRows = committed.messages.filter((message) => {
+      return message.id === held.message.id || message.id === second.id;
+    });
+    expect(
+      concurrentRows.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([held.message.id, second.id]);
+    expect(held.message.seqId).toBeLessThan(second.seqId);
   }, 30_000);
 });
 

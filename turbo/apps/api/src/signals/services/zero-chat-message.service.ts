@@ -5,7 +5,9 @@ import { eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../external/db";
 
 type ChatMessageInsert = typeof chatMessages.$inferInsert;
-type ChatMessageWriteDb = Pick<Db, "insert" | "update">;
+type ChatMessageWriteTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
 
 export type NewChatMessage = Omit<
   ChatMessageInsert,
@@ -41,7 +43,7 @@ interface DeleteChatMessageInput {
 }
 
 async function reserveChatMessageSeqIds(
-  tx: ChatMessageWriteDb,
+  tx: ChatMessageWriteTransaction,
   chatThreadId: string,
   count: number,
 ): Promise<number> {
@@ -63,7 +65,7 @@ async function reserveChatMessageSeqIds(
 }
 
 async function addSeqIdsToMessages(
-  tx: ChatMessageWriteDb,
+  tx: ChatMessageWriteTransaction,
   values: readonly NewChatMessage[],
 ): Promise<readonly (NewChatMessage & { readonly seqId: number })[]> {
   const counts = new Map<string, number>();
@@ -93,7 +95,7 @@ async function addSeqIdsToMessages(
 
 /** Insert an immutable chat message using the caller-owned transaction. */
 export async function insertChatMessage(
-  tx: ChatMessageWriteDb,
+  tx: ChatMessageWriteTransaction,
   values: NewChatMessage,
   conflict: InsertChatMessageConflict = "none",
 ): Promise<ChatMessageCommandResult | null> {
@@ -140,7 +142,7 @@ export async function insertChatMessage(
 }
 
 export async function insertChatMessages(
-  tx: ChatMessageWriteDb,
+  tx: ChatMessageWriteTransaction,
   values: readonly NewChatMessage[],
   conflict: InsertChatMessagesConflict,
 ): Promise<readonly ChatMessageBatchCommandResult[]> {
@@ -172,7 +174,7 @@ export async function insertChatMessages(
 
 /** Append and return a replacement row for an existing chat message. */
 export async function updateChatMessage(
-  tx: ChatMessageWriteDb,
+  tx: ChatMessageWriteTransaction,
   messageId: string,
   replacement: NewChatMessage,
 ): Promise<ChatMessageCommandResult | null> {
@@ -191,7 +193,7 @@ export async function updateChatMessage(
 
 /** Append and return a contentless tombstone for an existing chat message. */
 export async function deleteChatMessage(
-  tx: ChatMessageWriteDb,
+  tx: ChatMessageWriteTransaction,
   messageId: string,
   tombstone: DeleteChatMessageInput,
 ): Promise<ChatMessageCommandResult | null> {

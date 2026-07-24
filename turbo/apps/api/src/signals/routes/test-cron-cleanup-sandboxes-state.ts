@@ -373,12 +373,14 @@ async function seedQueueMarkerForAction(
   if (!thread) {
     return actionBadRequest("failed to seed chat thread");
   }
-  const marker = await insertChatMessage(db, {
-    chatThreadId: thread.id,
-    role: "assistant",
-    content: "Waiting in queue...",
-    runId,
-    runEventId: "queue:queued",
+  const marker = await db.transaction(async (tx) => {
+    return await insertChatMessage(tx, {
+      chatThreadId: thread.id,
+      role: "assistant",
+      content: "Waiting in queue...",
+      runId,
+      runEventId: "queue:queued",
+    });
   });
   signal.throwIfAborted();
   if (!marker) {
