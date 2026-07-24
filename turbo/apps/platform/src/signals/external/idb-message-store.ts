@@ -9,6 +9,7 @@ import {
   CHAT_MESSAGES_STORE,
 } from "./chat-idb-schema.ts";
 import {
+  ChatIdbTimeoutError,
   disabledChatIdbError,
   logChatIdbDisabled,
   withChatIdbTimeout,
@@ -180,7 +181,9 @@ function createIdbMessageStores(getChatIdb: GetDb) {
         return getChatIdb();
       });
     } catch (error) {
-      disableForSession(error);
+      if (!(error instanceof ChatIdbTimeoutError)) {
+        disableForSession(error);
+      }
       throw error;
     }
   }

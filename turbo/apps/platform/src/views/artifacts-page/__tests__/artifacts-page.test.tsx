@@ -1481,7 +1481,7 @@ describe("artifacts page", () => {
     });
   });
 
-  it("shows an error when the post-sync IndexedDB window times out", async () => {
+  it("keeps loading while the post-sync IndexedDB window is pending", async () => {
     setupTeam();
     const scope = testAuthScope("incremental-cache-timeout");
     const lastSyncedAt = "2026-01-02T00:00:00.000Z";
@@ -1522,10 +1522,13 @@ describe("artifacts page", () => {
     setupArtifactsPage({ scope });
 
     await blockedRead.started;
+    const blockedAt = performance.now();
     try {
-      await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-        "Could not load artifacts",
-      );
+      await vi.waitFor(() => {
+        expect(performance.now() - blockedAt).toBeGreaterThanOrEqual(250);
+        expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      });
       expect(
         screen.queryByText(changedArtifact.filename),
       ).not.toBeInTheDocument();
@@ -1534,6 +1537,10 @@ describe("artifacts page", () => {
     } finally {
       blockedRead.release();
     }
+
+    await expect(
+      screen.findByText(changedArtifact.filename),
+    ).resolves.toBeInTheDocument();
   });
 
   it("writes remote artifacts to the IndexedDB cache", async () => {
