@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.458.1](https://github.com/vm0-ai/vm0/compare/core-v8.458.0...core-v8.458.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **workflows:** create template drafts before setup ([#22786](https://github.com/vm0-ai/vm0/issues/22786)) ([cad5b07](https://github.com/vm0-ai/vm0/commit/cad5b07ab35c916a0ef8d6caebfab410208246bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.0
+
 ## [8.458.0](https://github.com/vm0-ai/vm0/compare/core-v8.457.3...core-v8.458.0) (2026-07-23)
 
 
