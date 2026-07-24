@@ -29,6 +29,9 @@ const browserFeatureDisabled = Object.freeze({
 
 const browserFeatureEnabled$ = command(async ({ get }) => {
   const auth = get(organizationAuthContext$);
+  if (auth.tokenType === "zero") {
+    return true;
+  }
   const context = await loadUserFeatureSwitchContext(
     get(db$),
     auth.orgId,
