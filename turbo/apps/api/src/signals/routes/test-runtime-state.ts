@@ -20,7 +20,6 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { storages } from "@vm0/db/schema/storage";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -37,10 +36,7 @@ import {
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
 import { createDeferredPromise, onRejection } from "../utils";
-import {
-  projectLegacyCheckpointStorage,
-  projectLegacyWritebackArtifacts,
-} from "../services/storage-legacy-projection.service";
+import { projectLegacyWritebackArtifacts } from "../services/storage-legacy-projection.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -309,43 +305,6 @@ async function removeSessionCanonicalStorageState(
   signal.throwIfAborted();
 }
 
-async function removeCheckpointCanonicalStorageState(
-  db: Db,
-  checkpointId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [checkpoint] = await db
-    .select({
-      storageMounts: checkpoints.storageMounts,
-    })
-    .from(checkpoints)
-    .where(eq(checkpoints.id, checkpointId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!checkpoint) {
-    throw new Error("Checkpoint not found");
-  }
-  const legacy =
-    checkpoint.storageMounts === null
-      ? null
-      : projectLegacyCheckpointStorage(checkpoint.storageMounts);
-  await db
-    .update(checkpoints)
-    .set({
-      ...(legacy === null
-        ? {}
-        : {
-            artifactSnapshots: legacy.artifactSnapshots
-              ? [...legacy.artifactSnapshots]
-              : null,
-            volumeVersionsSnapshot: legacy.volumeVersionsSnapshot,
-          }),
-      storageMounts: null,
-    })
-    .where(eq(checkpoints.id, checkpointId));
-  signal.throwIfAborted();
-}
-
 async function readStoragePersistenceState(
   db: Db,
   ids: {
@@ -403,9 +362,7 @@ type StorageStateAction = Extract<
   {
     action:
       | "remove-run-canonical-storage-state"
-      | "remove-session-canonical-storage-state"
-      | "remove-checkpoint-canonical-storage-state"
-      | "delete-storage-row";
+      | "remove-session-canonical-storage-state";
   }
 >;
 
@@ -421,8 +378,6 @@ function isStorageStateAction(
   switch (body.action) {
     case "remove-run-canonical-storage-state":
     case "remove-session-canonical-storage-state":
-    case "remove-checkpoint-canonical-storage-state":
-    case "delete-storage-row":
     case "read-storage-persistence-state": {
       return true;
     }
@@ -444,18 +399,6 @@ async function mutateStorageState(
     }
     case "remove-session-canonical-storage-state": {
       await removeSessionCanonicalStorageState(db, body.session_id, signal);
-      break;
-    }
-    case "remove-checkpoint-canonical-storage-state": {
-      await removeCheckpointCanonicalStorageState(
-        db,
-        body.checkpoint_id,
-        signal,
-      );
-      break;
-    }
-    case "delete-storage-row": {
-      await db.delete(storages).where(eq(storages.id, body.storage_id));
       break;
     }
   }

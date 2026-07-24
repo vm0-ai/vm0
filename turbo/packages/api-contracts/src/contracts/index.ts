@@ -614,18 +614,10 @@ export {
 } from "./model-providers";
 export {
   sessionsByIdContract,
-  checkpointsByIdContract,
   sessionResponseSchema,
-  checkpointResponseSchema,
-  agentComposeSnapshotSchema,
-  volumeVersionsSnapshotSchema,
   type SessionsByIdContract,
-  type CheckpointsByIdContract,
   // Inferred types
   type SessionResponse,
-  type CheckpointResponse,
-  type AgentComposeSnapshot,
-  type VolumeVersionsSnapshot,
 } from "./sessions";
 export {
   chatThreadsContract,

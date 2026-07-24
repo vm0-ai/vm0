@@ -36,7 +36,6 @@ Load `e2e/helpers/setup.bash` and use its shared functions:
 - `seed_compose_fixture`: create compose fixtures
 - `create_run_fixture`: create a run and return structured JSON
 - `continue_run_fixture`: continue a saved session
-- `resume_run_fixture`: resume a previous run
 - `cancel_run_fixture`: cancel a run
 - `wait_for_run_fixture`: poll to a terminal status
 - `run_compose_fixture`: create, wait, and print structured run output
