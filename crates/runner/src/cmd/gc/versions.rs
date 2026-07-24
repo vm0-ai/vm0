@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
@@ -15,15 +15,21 @@ use crate::lock;
 use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
-use super::filesystem::{GcDirEntryReader, read_dir_or_missing};
+use super::filesystem::{GcDirEntryReader, GcDirStatus, gc_path_dir_status, read_dir_or_missing};
 use super::lock_file::{ExistingLockProbe, probe_existing_lock, remove_unused_lock_after_probe};
 use super::report::GcReport;
 
 type ServiceUninstallFuture<'a> = Pin<Box<dyn Future<Output = RunnerResult<()>> + 'a>>;
 type ServiceUninstallFn = for<'a> fn(&'a service::RunnerServiceUnit) -> ServiceUninstallFuture<'a>;
+type RemoveDirAllFuture<'a> = Pin<Box<dyn Future<Output = std::io::Result<()>> + 'a>>;
+type RemoveDirAllFn = for<'a> fn(&'a Path) -> RemoveDirAllFuture<'a>;
 
 fn real_uninstall_service_unit(unit: &service::RunnerServiceUnit) -> ServiceUninstallFuture<'_> {
     Box::pin(service::uninstall_service_unit(unit))
+}
+
+fn real_remove_dir_all(path: &Path) -> RemoveDirAllFuture<'_> {
+    Box::pin(tokio::fs::remove_dir_all(path))
 }
 
 /// Parse `v<major>.<minor>.<patch>` into a tuple for ordering. Returns `None`
@@ -40,8 +46,8 @@ pub(super) fn parse_semver(name: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
-async fn version_newest_mtime(home: &HomePaths, bin_dir: &Path, name: &str) -> SystemTime {
-    let version_bin = bin_dir.join(name);
+async fn version_newest_mtime(home: &HomePaths, name: &str) -> SystemTime {
+    let version_bin = home.bin_dir().join(name);
     let version_config = home.runners_dir().join(name);
     let version_binary = version_bin.join("runner");
     let version_config_file = version_config.join("runner.yaml");
@@ -52,7 +58,7 @@ async fn version_newest_mtime(home: &HomePaths, bin_dir: &Path, name: &str) -> S
         &version_config,
         &version_config_file,
     ] {
-        if let Ok(meta) = tokio::fs::metadata(path).await
+        if let Ok(meta) = tokio::fs::symlink_metadata(path).await
             && let Ok(mtime) = meta.modified()
             && mtime > newest_mtime
         {
@@ -62,10 +68,79 @@ async fn version_newest_mtime(home: &HomePaths, bin_dir: &Path, name: &str) -> S
     newest_mtime
 }
 
-async fn version_gc_age(home: &HomePaths, bin_dir: &Path, name: &str) -> Duration {
+async fn version_gc_age(home: &HomePaths, name: &str) -> Duration {
     SystemTime::now()
-        .duration_since(version_newest_mtime(home, bin_dir, name).await)
+        .duration_since(version_newest_mtime(home, name).await)
         .unwrap_or_default()
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+enum VersionArtifactState {
+    #[default]
+    Missing,
+    Directory,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum VersionArtifactKind {
+    Binary,
+    Config,
+}
+
+impl VersionArtifactKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Binary => "binary",
+            Self::Config => "config",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct VersionArtifacts {
+    version: (u32, u32, u32),
+    binary: VersionArtifactState,
+    config: VersionArtifactState,
+}
+
+impl VersionArtifacts {
+    const fn new(version: (u32, u32, u32)) -> Self {
+        Self {
+            version,
+            binary: VersionArtifactState::Missing,
+            config: VersionArtifactState::Missing,
+        }
+    }
+
+    const fn state(&self, kind: VersionArtifactKind) -> VersionArtifactState {
+        match kind {
+            VersionArtifactKind::Binary => self.binary,
+            VersionArtifactKind::Config => self.config,
+        }
+    }
+
+    const fn set_state(&mut self, kind: VersionArtifactKind, state: VersionArtifactState) {
+        match kind {
+            VersionArtifactKind::Binary => self.binary = state,
+            VersionArtifactKind::Config => self.config = state,
+        }
+    }
+
+    const fn has_directory(&self) -> bool {
+        matches!(self.binary, VersionArtifactState::Directory)
+            || matches!(self.config, VersionArtifactState::Directory)
+    }
+
+    const fn has_unexpected_type(&self) -> bool {
+        matches!(self.binary, VersionArtifactState::Other)
+            || matches!(self.config, VersionArtifactState::Other)
+    }
+}
+
+struct VersionArtifactScan {
+    entries: Vec<(String, (u32, u32, u32), VersionArtifactState)>,
+    complete: bool,
 }
 
 /// Why a version survives the current GC pass.
@@ -73,6 +148,8 @@ async fn version_gc_age(home: &HomePaths, bin_dir: &Path, name: &str) -> Duratio
 enum VersionRetentionReason {
     ProtectVersion,
     KeepLatest,
+    IncompleteBinaryScan,
+    UnexpectedArtifactType,
     Recent(Duration),
     InvalidServiceSuffix(String),
     ServiceLockHeld,
@@ -88,6 +165,12 @@ impl VersionRetentionReason {
             }
             Self::KeepLatest => {
                 info!("version {name}: within --keep-latest, skipping");
+            }
+            Self::IncompleteBinaryScan => {
+                warn!("version {name}: binary directory scan incomplete, skipping");
+            }
+            Self::UnexpectedArtifactType => {
+                warn!("version {name}: managed version path is not a directory, skipping");
             }
             Self::Recent(age) => {
                 info!("version {name}: too recent ({}s), skipping", age.as_secs());
@@ -111,13 +194,15 @@ impl VersionRetentionReason {
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct VersionGcEntry {
     name: String,
+    artifacts: VersionArtifacts,
     retained: Option<VersionRetentionReason>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(super) struct VersionGcAnalysis {
     entries: Vec<VersionGcEntry>,
-    directory_scan_complete: bool,
+    binary_scan_complete: bool,
+    config_scan_complete: bool,
 }
 
 impl VersionGcAnalysis {
@@ -129,7 +214,7 @@ impl VersionGcAnalysis {
     }
 
     pub(super) const fn directory_scan_complete(&self) -> bool {
-        self.directory_scan_complete
+        self.binary_scan_complete && self.config_scan_complete
     }
 }
 
@@ -138,59 +223,115 @@ pub(super) async fn analyze_version_gc(
     protect: Option<&str>,
     keep_latest: Option<usize>,
 ) -> RunnerResult<VersionGcAnalysis> {
-    let mut entry_reader = GcDirEntryReader::new();
-    analyze_version_gc_with_reader(home, protect, keep_latest, &mut entry_reader).await
+    let mut binary_reader = GcDirEntryReader::new();
+    let mut config_reader = GcDirEntryReader::new();
+    analyze_version_gc_with_readers(
+        home,
+        protect,
+        keep_latest,
+        &mut binary_reader,
+        &mut config_reader,
+    )
+    .await
 }
 
-async fn analyze_version_gc_with_reader(
-    home: &HomePaths,
-    protect: Option<&str>,
-    keep_latest: Option<usize>,
+async fn scan_version_artifacts(
+    root: &Path,
+    kind: VersionArtifactKind,
     entry_reader: &mut GcDirEntryReader,
-) -> RunnerResult<VersionGcAnalysis> {
-    let bin_dir = home.bin_dir();
-    let Some(mut entries) = read_dir_or_missing(&bin_dir).await? else {
-        return Ok(VersionGcAnalysis {
+) -> RunnerResult<VersionArtifactScan> {
+    let Some(mut entries) = (match read_dir_or_missing(root).await {
+        Ok(entries) => entries,
+        Err(error) if kind == VersionArtifactKind::Binary => return Err(error),
+        Err(error) => {
+            warn!(
+                "gc_versions: cannot scan {} root {} ({error}), marking inventory incomplete",
+                kind.label(),
+                root.display()
+            );
+            return Ok(VersionArtifactScan {
+                entries: Vec::new(),
+                complete: false,
+            });
+        }
+    }) else {
+        return Ok(VersionArtifactScan {
             entries: Vec::new(),
-            directory_scan_complete: true,
+            complete: true,
         });
     };
 
-    // First pass: collect all semver-named dirs. We need the full set to
-    // pick the top `keep_latest` by version, so we can't decide-and-delete
-    // in one pass.
-    let mut semver_dirs: Vec<(String, (u32, u32, u32))> = Vec::new();
-    let mut directory_scan_complete = true;
+    let mut version_entries = Vec::new();
+    let mut complete = true;
     loop {
         let entry = match entry_reader
-            .next_entry_warn(&mut entries, "gc_versions", &bin_dir)
+            .next_entry_warn(&mut entries, "gc_versions", root)
             .await
         {
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(_) => {
-                directory_scan_complete = false;
+                complete = false;
                 break;
             }
+        };
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(version) = parse_semver(name) else {
+            continue;
         };
         let file_type = match entry.file_type().await {
             Ok(file_type) => file_type,
             Err(e) => {
-                directory_scan_complete = false;
+                complete = false;
                 warn!(
-                    "version entry {}: cannot read file type ({e}), skipping",
+                    "{} version entry {}: cannot read file type ({e}), skipping",
+                    kind.label(),
                     entry.path().display()
                 );
                 continue;
             }
         };
-        if !file_type.is_dir() {
-            continue;
-        }
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else { continue };
-        if let Some(ver) = parse_semver(name) {
-            semver_dirs.push((name.to_string(), ver));
+        let state = if file_type.is_dir() {
+            VersionArtifactState::Directory
+        } else {
+            VersionArtifactState::Other
+        };
+        version_entries.push((name.to_string(), version, state));
+    }
+
+    Ok(VersionArtifactScan {
+        entries: version_entries,
+        complete,
+    })
+}
+
+async fn analyze_version_gc_with_readers(
+    home: &HomePaths,
+    protect: Option<&str>,
+    keep_latest: Option<usize>,
+    binary_reader: &mut GcDirEntryReader,
+    config_reader: &mut GcDirEntryReader,
+) -> RunnerResult<VersionGcAnalysis> {
+    let binary_scan =
+        scan_version_artifacts(&home.bin_dir(), VersionArtifactKind::Binary, binary_reader).await?;
+    let config_scan = scan_version_artifacts(
+        &home.runners_dir(),
+        VersionArtifactKind::Config,
+        config_reader,
+    )
+    .await?;
+
+    let mut inventory: BTreeMap<String, VersionArtifacts> = BTreeMap::new();
+    for (kind, scan) in [
+        (VersionArtifactKind::Binary, &binary_scan),
+        (VersionArtifactKind::Config, &config_scan),
+    ] {
+        for (name, version, state) in &scan.entries {
+            inventory
+                .entry(name.clone())
+                .or_insert_with(|| VersionArtifacts::new(*version))
+                .set_state(kind, *state);
         }
     }
 
@@ -200,28 +341,47 @@ async fn analyze_version_gc_with_reader(
     let kept_by_latest: HashSet<String> = if keep_count == 0 {
         HashSet::new()
     } else {
-        let mut sorted = semver_dirs.clone();
-        sorted.sort_by_key(|e| std::cmp::Reverse(e.1));
+        let mut sorted: Vec<_> = inventory
+            .iter()
+            .filter(|(_, artifacts)| {
+                artifacts.state(VersionArtifactKind::Binary) == VersionArtifactState::Directory
+            })
+            .map(|(name, artifacts)| (name.clone(), artifacts.version))
+            .collect();
+        sorted.sort_by_key(|entry| std::cmp::Reverse(entry.1));
         sorted
             .into_iter()
             .take(keep_count)
-            .map(|(n, _)| n)
+            .map(|(name, _)| name)
             .collect()
     };
 
     let mut entries = Vec::new();
-    for (name, _) in &semver_dirs {
-        let retained =
-            version_retention_reason(home, &bin_dir, name, protect, &kept_by_latest).await;
+    for (name, artifacts) in inventory {
+        if !artifacts.has_directory() {
+            continue;
+        }
+        let retained = if artifacts.has_unexpected_type() {
+            Some(VersionRetentionReason::UnexpectedArtifactType)
+        } else if !binary_scan.complete
+            && artifacts.binary == VersionArtifactState::Missing
+            && artifacts.config == VersionArtifactState::Directory
+        {
+            Some(VersionRetentionReason::IncompleteBinaryScan)
+        } else {
+            version_retention_reason(home, &name, protect, &kept_by_latest).await
+        };
         entries.push(VersionGcEntry {
-            name: name.clone(),
+            name,
+            artifacts,
             retained,
         });
     }
 
     Ok(VersionGcAnalysis {
         entries,
-        directory_scan_complete,
+        binary_scan_complete: binary_scan.complete,
+        config_scan_complete: config_scan.complete,
     })
 }
 
@@ -232,13 +392,39 @@ pub(super) async fn analyze_version_gc_with_injected_scan_error(
     keep_latest: Option<usize>,
     successful_entries: usize,
 ) -> RunnerResult<VersionGcAnalysis> {
-    let mut entry_reader = GcDirEntryReader::failing_after(successful_entries);
-    analyze_version_gc_with_reader(home, protect, keep_latest, &mut entry_reader).await
+    let mut binary_reader = GcDirEntryReader::failing_after(successful_entries);
+    let mut config_reader = GcDirEntryReader::new();
+    analyze_version_gc_with_readers(
+        home,
+        protect,
+        keep_latest,
+        &mut binary_reader,
+        &mut config_reader,
+    )
+    .await
+}
+
+#[cfg(test)]
+pub(super) async fn analyze_version_gc_with_injected_config_scan_error(
+    home: &HomePaths,
+    protect: Option<&str>,
+    keep_latest: Option<usize>,
+    successful_entries: usize,
+) -> RunnerResult<VersionGcAnalysis> {
+    let mut binary_reader = GcDirEntryReader::new();
+    let mut config_reader = GcDirEntryReader::failing_after(successful_entries);
+    analyze_version_gc_with_readers(
+        home,
+        protect,
+        keep_latest,
+        &mut binary_reader,
+        &mut config_reader,
+    )
+    .await
 }
 
 async fn version_retention_reason(
     home: &HomePaths,
-    bin_dir: &Path,
     name: &str,
     protect: Option<&str>,
     kept_by_latest: &HashSet<String>,
@@ -251,7 +437,7 @@ async fn version_retention_reason(
         return Some(VersionRetentionReason::KeepLatest);
     }
 
-    let age = version_gc_age(home, bin_dir, name).await;
+    let age = version_gc_age(home, name).await;
     if age < GC_MIN_AGE {
         return Some(VersionRetentionReason::Recent(age));
     }
@@ -289,6 +475,49 @@ async fn version_retention_reason(
     }
 }
 
+async fn version_paths_are_removable(
+    version_bin: &Path,
+    version_config: &Path,
+    name: &str,
+) -> bool {
+    for (kind, path) in [
+        (VersionArtifactKind::Config, version_config),
+        (VersionArtifactKind::Binary, version_bin),
+    ] {
+        match gc_path_dir_status(path).await {
+            Ok(GcDirStatus::RealDir(_) | GcDirStatus::Missing) => {}
+            Ok(GcDirStatus::NotDirectory) => {
+                warn!(
+                    "version {name}: {} path {} is not a directory, skipping",
+                    kind.label(),
+                    path.display()
+                );
+                return false;
+            }
+            Err(error) => {
+                warn!(
+                    "version {name}: cannot inspect {} path {} ({error}), skipping",
+                    kind.label(),
+                    path.display()
+                );
+                return false;
+            }
+        }
+    }
+    true
+}
+
+async fn remove_version_dir(path: &Path, remove_dir_all: RemoveDirAllFn) -> bool {
+    match remove_dir_all(path).await {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => {
+            warn!("cannot remove {}: {error}", path.display());
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 fn successful_fake_uninstall_service_unit(
     _unit: &service::RunnerServiceUnit,
@@ -301,6 +530,23 @@ fn failing_fake_uninstall_service_unit(
     _unit: &service::RunnerServiceUnit,
 ) -> ServiceUninstallFuture<'_> {
     Box::pin(async { Err(RunnerError::Internal("fake uninstall failed".to_string())) })
+}
+
+#[cfg(test)]
+fn failing_fake_remove_config_dir(path: &Path) -> RemoveDirAllFuture<'_> {
+    Box::pin(async move {
+        if path
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "runners")
+        {
+            Err(std::io::Error::other(
+                "injected runner config removal failure",
+            ))
+        } else {
+            tokio::fs::remove_dir_all(path).await
+        }
+    })
 }
 
 #[cfg(test)]
@@ -322,15 +568,15 @@ async fn gc_versions(
 
 /// Remove old deployment version directories that are not actively running.
 ///
-/// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`) and
-/// deletes inactive versions (bin dir, runner config dir, and systemd unit).
+/// Scans the binary and runner-config roots for semver-named subdirectories
+/// (e.g. `v0.2.0`) and deletes inactive versions and their systemd units.
 ///
 /// Survival rules (any one keeps the version):
 /// - `--protect-version` matches the name.
-/// - The version is in the top `keep_latest` by semver descending. This covers
-///   the "staged but not yet installed" case where two overlapping releases
-///   race: the older release's promote must not wipe the newer release's
-///   just-staged binary even though the newer unit isn't active yet.
+/// - A binary version is in the top `keep_latest` by semver descending. This
+///   covers the "staged but not yet installed" case where two overlapping
+///   releases race: the older release's promote must not wipe the newer
+///   release's just-staged binary even though the newer unit isn't active yet.
 /// - The version binary, config file, or their directories are too recent to
 ///   safely delete.
 /// - The corresponding service lifecycle lock is held by another install,
@@ -357,9 +603,27 @@ async fn gc_versions_with_analysis_and_uninstall(
     analysis: VersionGcAnalysis,
     uninstall_service: ServiceUninstallFn,
 ) -> RunnerResult<Vec<String>> {
+    gc_versions_with_analysis_and_operations(
+        home,
+        dry_run,
+        analysis,
+        uninstall_service,
+        real_remove_dir_all,
+    )
+    .await
+}
+
+async fn gc_versions_with_analysis_and_operations(
+    home: &HomePaths,
+    dry_run: bool,
+    analysis: VersionGcAnalysis,
+    uninstall_service: ServiceUninstallFn,
+    remove_dir_all: RemoveDirAllFn,
+) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
     let mut removed: Vec<String> = Vec::new();
     for entry in &analysis.entries {
+        debug_assert!(entry.artifacts.has_directory());
         let name = &entry.name;
         if let Some(reason) = &entry.retained {
             reason.log_skip(name);
@@ -368,7 +632,7 @@ async fn gc_versions_with_analysis_and_uninstall(
 
         let version_bin = bin_dir.join(name);
         let version_config = home.runners_dir().join(name);
-        let age = version_gc_age(home, &bin_dir, name).await;
+        let age = version_gc_age(home, name).await;
         if age < GC_MIN_AGE {
             info!("version {name}: too recent ({}s), skipping", age.as_secs());
             continue;
@@ -422,7 +686,11 @@ async fn gc_versions_with_analysis_and_uninstall(
             }
         };
 
-        let age = version_gc_age(home, &bin_dir, name).await;
+        if !version_paths_are_removable(&version_bin, &version_config, name).await {
+            continue;
+        }
+
+        let age = version_gc_age(home, name).await;
         if age < GC_MIN_AGE {
             info!(
                 "version {name}: became too recent before delete ({}s), skipping",
@@ -463,16 +731,15 @@ async fn gc_versions_with_analysis_and_uninstall(
                 continue;
             }
 
-            // Remove bin directory.
-            if let Err(e) = tokio::fs::remove_dir_all(&version_bin).await
-                && e.kind() != std::io::ErrorKind::NotFound
-            {
-                warn!("cannot remove {}: {e}", version_bin.display());
+            // Remove credential-bearing config before its binary discovery
+            // anchor. Failures leave the version visible for a later GC pass.
+            if !remove_version_dir(&version_config, remove_dir_all).await {
                 continue;
             }
 
-            // Best-effort remove runner config directory.
-            let _ = tokio::fs::remove_dir_all(&version_config).await;
+            if !remove_version_dir(&version_bin, remove_dir_all).await {
+                continue;
+            }
 
             info!("removed version {name}");
             remove_unused_lock_after_probe(

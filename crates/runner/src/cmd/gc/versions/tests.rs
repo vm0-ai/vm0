@@ -96,6 +96,73 @@ async fn analyze_version_gc_marks_partial_directory_scan_incomplete() {
 }
 
 #[tokio::test]
+async fn analyze_version_gc_retains_config_only_entry_when_binary_scan_is_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v2.0.0";
+    std::fs::create_dir_all(home.bin_dir()).unwrap();
+    std::fs::create_dir_all(home.runners_dir().join(version)).unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let analysis = analyze_version_gc_with_injected_scan_error(&home, None, None, 0)
+        .await
+        .unwrap();
+
+    assert!(!analysis.directory_scan_complete());
+    assert_eq!(analysis.entries.len(), 1);
+    assert_eq!(
+        analysis.entries[0].retained,
+        Some(VersionRetentionReason::IncompleteBinaryScan)
+    );
+
+    let removed = gc_versions_with_analysis_and_uninstall(
+        &home,
+        false,
+        analysis,
+        successful_fake_uninstall_service_unit,
+    )
+    .await
+    .unwrap();
+    assert!(removed.is_empty());
+    assert!(home.runners_dir().join(version).exists());
+}
+
+#[tokio::test]
+async fn analyze_version_gc_treats_config_iteration_failure_as_nonfatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
+    std::fs::create_dir_all(home.runners_dir()).unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let analysis = analyze_version_gc_with_injected_config_scan_error(&home, None, None, 0)
+        .await
+        .unwrap();
+
+    assert!(!analysis.directory_scan_complete());
+    assert_eq!(analysis.entries.len(), 1);
+    assert_eq!(analysis.entries[0].name, version);
+}
+
+#[tokio::test]
+async fn analyze_version_gc_treats_config_root_open_failure_as_nonfatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
+    std::fs::create_dir_all(home.runners_dir().parent().unwrap()).unwrap();
+    std::fs::write(home.runners_dir(), "not a directory").unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let analysis = analyze_version_gc(&home, None, None).await.unwrap();
+
+    assert!(!analysis.directory_scan_complete());
+    assert_eq!(analysis.entries.len(), 1);
+    assert_eq!(analysis.entries[0].name, version);
+}
+
+#[tokio::test]
 async fn gc_versions_removes_inactive_semver_dirs() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
@@ -158,6 +225,84 @@ async fn gc_versions_keeps_version_when_service_uninstall_fails() {
 }
 
 #[tokio::test]
+async fn gc_versions_keeps_binary_config_and_lock_when_config_removal_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let version_bin = home.bin_dir().join(version);
+    let version_config = home.runners_dir().join(version);
+    std::fs::create_dir_all(&version_bin).unwrap();
+    std::fs::create_dir_all(&version_config).unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let analysis = analyze_version_gc(&home, None, None).await.unwrap();
+    let removed = gc_versions_with_analysis_and_operations(
+        &home,
+        false,
+        analysis,
+        successful_fake_uninstall_service_unit,
+        failing_fake_remove_config_dir,
+    )
+    .await
+    .unwrap();
+
+    assert!(removed.is_empty());
+    assert!(
+        version_config.exists(),
+        "failed config removal must leave credentials retryable"
+    );
+    assert!(
+        version_bin.exists(),
+        "config removal failure must preserve the binary discovery anchor"
+    );
+    assert!(
+        home.service_lock(&test_version_service_unit_name(version))
+            .exists(),
+        "partial cleanup must preserve its lifecycle lock"
+    );
+}
+
+#[tokio::test]
+async fn gc_versions_retries_config_only_cleanup_after_removal_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let version_config = home.runners_dir().join(version);
+    let service_lock = home.service_lock(&test_version_service_unit_name(version));
+    std::fs::create_dir_all(&version_config).unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let first_analysis = analyze_version_gc(&home, None, None).await.unwrap();
+    let first_removed = gc_versions_with_analysis_and_operations(
+        &home,
+        false,
+        first_analysis,
+        successful_fake_uninstall_service_unit,
+        failing_fake_remove_config_dir,
+    )
+    .await
+    .unwrap();
+
+    assert!(first_removed.is_empty());
+    assert!(version_config.exists());
+    assert!(service_lock.exists());
+
+    let retry_analysis = analyze_version_gc(&home, None, None).await.unwrap();
+    let retry_removed = gc_versions_with_analysis_and_uninstall(
+        &home,
+        false,
+        retry_analysis,
+        successful_fake_uninstall_service_unit,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(retry_removed, [version]);
+    assert!(!version_config.exists());
+    assert!(!service_lock.exists());
+}
+
+#[tokio::test]
 async fn gc_versions_skips_version_when_service_lock_is_held() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
@@ -194,6 +339,24 @@ async fn gc_versions_dry_run() {
     assert!(
         !service_lock_path.exists(),
         "dry-run should not leave a service lock it created"
+    );
+}
+
+#[tokio::test]
+async fn gc_versions_dry_run_reports_config_only_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let version_config = home.runners_dir().join(version);
+    std::fs::create_dir_all(&version_config).unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let removed = gc_versions(&home, true, None, None).await.unwrap();
+
+    assert_eq!(removed, [version]);
+    assert!(
+        version_config.exists(),
+        "dry-run must preserve config-only versions"
     );
 }
 
@@ -333,6 +496,20 @@ async fn gc_versions_keeps_recent_version() {
 }
 
 #[tokio::test]
+async fn gc_versions_keeps_recent_config_only_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let version_config = home.runners_dir().join(version);
+    std::fs::create_dir_all(&version_config).unwrap();
+
+    let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+    assert!(removed.is_empty());
+    assert!(version_config.exists());
+}
+
+#[tokio::test]
 async fn gc_versions_keeps_recent_runner_binary_file() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
@@ -407,10 +584,12 @@ async fn gc_versions_ignores_semver_named_symlink() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let bin_dir = home.bin_dir();
+    let runners_dir = home.runners_dir();
     let target_dir = dir.path().join("external-version");
 
     std::fs::create_dir_all(&bin_dir).unwrap();
     std::fs::create_dir_all(&target_dir).unwrap();
+    std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
     std::os::unix::fs::symlink(&target_dir, bin_dir.join("v1.0.0")).unwrap();
 
     let removed = gc_versions(&home, false, None, None).await.unwrap();
@@ -422,6 +601,10 @@ async fn gc_versions_ignores_semver_named_symlink() {
             .file_type()
             .is_symlink(),
         "semver-named symlinks are not version dirs"
+    );
+    assert!(
+        runners_dir.join("v1.0.0").exists(),
+        "a config dir paired with a suspicious binary path must remain untouched"
     );
 }
 
@@ -451,6 +634,25 @@ async fn gc_versions_skips_when_service_lock_is_held() {
         runners_dir.join("v1.0.0").exists(),
         "locked version config dir should survive"
     );
+}
+
+#[tokio::test]
+async fn gc_versions_keeps_config_only_version_when_service_lock_is_held() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let version_config = home.runners_dir().join(version);
+    std::fs::create_dir_all(&version_config).unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let unit = test_version_service_unit_name(version);
+    let lock_file = lock::open_lock_file(&home.service_lock(&unit)).unwrap();
+    let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+    let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+    assert!(removed.is_empty());
+    assert!(version_config.exists());
 }
 
 #[tokio::test]
@@ -518,6 +720,23 @@ async fn gc_versions_protect_keeps_named_version() {
     assert!(!bin_dir.join("v2.0.0").exists());
 }
 
+#[tokio::test]
+async fn gc_versions_protect_keeps_config_only_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let version_config = home.runners_dir().join(version);
+    std::fs::create_dir_all(&version_config).unwrap();
+    age_version_past_gc_min_age(&home, version);
+
+    let removed = gc_versions(&home, false, Some(version), None)
+        .await
+        .unwrap();
+
+    assert!(removed.is_empty());
+    assert!(version_config.exists());
+}
+
 /// Two overlapping release pipelines can interleave: v0.88.2's promote
 /// runs `gc --keep-latest 6 --protect-version v0.88.2` after v0.88.3 has
 /// already staged its binary. `--keep-latest` must cover semver dirs so
@@ -565,4 +784,24 @@ async fn gc_versions_keep_latest_numeric_ordering() {
     let removed = gc_versions(&home, false, None, Some(1)).await.unwrap();
     assert_eq!(removed, ["v0.9.0"]);
     assert!(bin_dir.join("v0.10.0").exists());
+}
+
+#[tokio::test]
+async fn gc_versions_config_only_version_does_not_consume_keep_latest_slot() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let binary_version = "v1.0.0";
+    let config_only_version = "v9.0.0";
+    std::fs::create_dir_all(home.bin_dir().join(binary_version)).unwrap();
+    std::fs::create_dir_all(home.runners_dir().join(config_only_version)).unwrap();
+    age_versions_past_gc_min_age(&home, &[binary_version, config_only_version]);
+
+    let removed = gc_versions(&home, false, None, Some(1)).await.unwrap();
+
+    assert_eq!(removed, [config_only_version]);
+    assert!(
+        home.bin_dir().join(binary_version).exists(),
+        "the newest real binary must receive the keep-latest slot"
+    );
+    assert!(!home.runners_dir().join(config_only_version).exists());
 }
