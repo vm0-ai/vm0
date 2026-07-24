@@ -1394,7 +1394,7 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
             FROM \${cacheRows}
             WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
               AND \${lte(cacheRows.lastRequestedAt, cutoff)}
-            ORDER BY \${cacheRows.cacheKey}
+            ORDER BY \${cacheRows.cacheKey} ASC
             FOR UPDATE OF \${cacheRows}
           )
           UPDATE \${cacheRows}
@@ -1414,7 +1414,7 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
             FROM \${cacheRows}
             WHERE \${drizzle.inArray(cacheRows.cacheKey, cacheKeys)}
               AND \${drizzle.lte(cacheRows.lastRequestedAt, cutoff)}
-            ORDER BY \${cacheRows.cacheKey}
+            ORDER BY \${cacheRows.cacheKey} DESC
             FOR UPDATE OF \${cacheRows}
           )
           UPDATE \${cacheRows}

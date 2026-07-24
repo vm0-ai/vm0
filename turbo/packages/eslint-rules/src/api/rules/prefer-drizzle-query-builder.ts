@@ -194,15 +194,7 @@ const UNSUPPORTED_DELETE_PREDICATE_KEYWORDS = new Set([
   "USING",
 ]);
 
-const UNSUPPORTED_UNNEST_UPDATE_PREDICATE_KEYWORDS = new Set([
-  "CURRENT",
-  "FETCH",
-  "LIMIT",
-  "ORDER",
-  "RETURNING",
-]);
-
-const UNSUPPORTED_LOCKING_CTE_UPDATE_PREDICATE_KEYWORDS = new Set([
+const UNSUPPORTED_UPDATE_PREDICATE_KEYWORDS = new Set([
   "CURRENT",
   "FETCH",
   "LIMIT",
@@ -625,7 +617,7 @@ function simpleUnnestUpdateMatch(
     tokens.slice(whereIndex + 1).some((token) => {
       return (
         token.kind === "word" &&
-        UNSUPPORTED_UNNEST_UPDATE_PREDICATE_KEYWORDS.has(token.value)
+        UNSUPPORTED_UPDATE_PREDICATE_KEYWORDS.has(token.value)
       );
     })
   ) {
@@ -1032,7 +1024,7 @@ function simpleLockingCteUpdateMatch(
     tokens.slice(whereIndex + 1).some((token) => {
       return (
         token.kind === "word" &&
-        UNSUPPORTED_LOCKING_CTE_UPDATE_PREDICATE_KEYWORDS.has(token.value)
+        UNSUPPORTED_UPDATE_PREDICATE_KEYWORDS.has(token.value)
       );
     })
   ) {
@@ -1063,13 +1055,19 @@ function simpleLockingCteUpdateMatch(
   const selectedColumn = innerTokens[1];
   const orderByKeyword = innerTokens[innerOrderIndex + 1];
   const orderColumn = innerTokens[innerOrderIndex + 2];
+  const possibleOrderDirection = innerTokens[innerOrderIndex + 3];
+  const orderEndIndex =
+    isWord(possibleOrderDirection, "ASC") ||
+    isWord(possibleOrderDirection, "DESC")
+      ? innerOrderIndex + 4
+      : innerOrderIndex + 3;
   if (
     innerFromIndex !== 2 ||
     selectedColumn?.kind !== "expression" ||
     innerOrderIndex <= innerFromIndex ||
     !isWord(orderByKeyword, "BY") ||
     orderColumn?.kind !== "expression" ||
-    innerOrderIndex + 3 !== innerForIndex
+    orderEndIndex !== innerForIndex
   ) {
     return undefined;
   }
