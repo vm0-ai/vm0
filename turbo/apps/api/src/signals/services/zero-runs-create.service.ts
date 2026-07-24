@@ -289,7 +289,7 @@ function buildIntegrationToolsPrompt(
     }
     case "feishu": {
       return [
-        "- Feishu messages: normal replies are automatically sent to the originating conversation, so do not duplicate them. Use `zero feishu message send --help` for a different chat, DM, reply target, or explicit extra message. The current installation, chat, message, and sender IDs are in the integration context. Specify `--installation` when the organization has multiple Feishu bots.",
+        "- Feishu messaging and files: use `zero feishu --help`. Normal replies are automatically sent to the originating conversation, so Feishu commands are for a different chat, DM, reply target, or explicit extra message/file. Use `zero feishu message send --help` for extra messages, `zero feishu download-file -h` for `[Feishu file]` blocks, and `zero feishu upload-file -h` when file delivery is needed. The current installation, chat, message, and sender IDs are in the integration context. Specify `--installation` when the organization has multiple Feishu bots.",
         ...localFileContextLines,
       ];
     }

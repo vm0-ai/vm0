@@ -157,7 +157,12 @@ export {
 } from "./domains/integrations-teams";
 
 // Domain modules - Integrations Feishu
-export { sendFeishuMessage } from "./domains/integrations-feishu";
+export {
+  sendFeishuMessage,
+  downloadFeishuFile,
+  initFeishuFileUpload,
+  completeFeishuFileUpload,
+} from "./domains/integrations-feishu";
 
 // Domain modules - Integrations GitHub
 export {
