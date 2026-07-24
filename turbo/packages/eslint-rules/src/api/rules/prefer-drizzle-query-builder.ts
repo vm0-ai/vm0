@@ -17,6 +17,7 @@ import {
   isVariableDeclarationList,
   NodeFlags,
   SyntaxKind,
+  TypeFlags,
   type Node,
   type Type,
   type VariableDeclaration,
@@ -72,6 +73,14 @@ interface SimpleSelectMatch {
   readonly sourceTableExpressionIndex: number;
 }
 
+interface PaginatedJoinedSelectMatch {
+  readonly clauseExpressionIndexes: readonly number[];
+  readonly joinTableExpressionIndexes: readonly number[];
+  readonly limitExpressionIndex: number | undefined;
+  readonly selectedExpressionIndexes: readonly number[];
+  readonly sourceTableExpressionIndex: number;
+}
+
 interface SimpleLockingSelectMatch {
   readonly sourceTableExpressionIndex: number | undefined;
 }
@@ -116,6 +125,27 @@ const UNSUPPORTED_SCALAR_QUERY_KEYWORDS = new Set([
   ...UNSUPPORTED_TOP_LEVEL_WHERE_KEYWORDS,
   "INTO",
   "OVER",
+]);
+
+const UNSUPPORTED_PAGINATED_JOINED_SELECT_KEYWORDS = new Set([
+  "CROSS",
+  "DISTINCT",
+  "EXCEPT",
+  "FETCH",
+  "FOR",
+  "FULL",
+  "GROUP",
+  "HAVING",
+  "INTERSECT",
+  "INTO",
+  "LATERAL",
+  "OFFSET",
+  "QUALIFY",
+  "RIGHT",
+  "UNION",
+  "USING",
+  "WINDOW",
+  "WITH",
 ]);
 
 const UNSUPPORTED_LOCKING_SELECT_KEYWORDS = new Set([
@@ -861,6 +891,304 @@ function simpleSelectMatch(
   };
 }
 
+function isPaginatedJoinedSelectClauseBoundary(
+  token: SqlToken | undefined,
+): boolean {
+  return (
+    isWord(token, "INNER") ||
+    isWord(token, "LEFT") ||
+    isWord(token, "WHERE") ||
+    isWord(token, "ORDER") ||
+    isWord(token, "LIMIT")
+  );
+}
+
+function expressionIndexesBetween(
+  tokens: readonly SqlToken[],
+  start: number,
+  end: number,
+): number[] {
+  return tokens.slice(start, end).flatMap((token) => {
+    return token.kind === "expression" ? [token.expressionIndex] : [];
+  });
+}
+
+/**
+ * Recognizes only the recurring schema-backed join shape that Drizzle can own:
+ * joins, a predicate, optional ordering, and a bounded result. Unsupported
+ * statement features fail closed instead of being approximated.
+ */
+function paginatedJoinedSelectMatch(
+  syntaxSource: string,
+  selectionKind: "literal-one" | "schema-expression",
+): PaginatedJoinedSelectMatch | undefined {
+  const statement = completeSqlStatement(syntaxSource);
+  if (statement === undefined) {
+    return undefined;
+  }
+  const tokens = statement.tokens;
+  if (
+    !isWord(tokens[0], "SELECT") ||
+    tokens.some((token) => {
+      return (
+        token.kind === "word" &&
+        UNSUPPORTED_PAGINATED_JOINED_SELECT_KEYWORDS.has(token.value)
+      );
+    })
+  ) {
+    return undefined;
+  }
+
+  const fromIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "FROM") ? [index] : [];
+  });
+  const fromIndex = fromIndexes.length === 1 ? fromIndexes[0] : undefined;
+  const selectKeyword = tokens[0];
+  const fromKeyword = fromIndex === undefined ? undefined : tokens[fromIndex];
+  if (
+    fromIndex === undefined ||
+    fromIndex <= 1 ||
+    selectKeyword === undefined ||
+    fromKeyword === undefined ||
+    syntaxSource.slice(selectKeyword.end, fromKeyword.start).trim() === ""
+  ) {
+    return undefined;
+  }
+
+  const selectedExpressionIndexes = expressionIndexesBetween(
+    tokens,
+    1,
+    fromIndex,
+  );
+  if (selectionKind === "literal-one") {
+    const selectedToken = tokens[1];
+    if (
+      fromIndex !== 2 ||
+      selectedToken?.kind !== "number" ||
+      selectedToken.value !== "1" ||
+      !onlyWhitespaceBetween(syntaxSource, selectKeyword, selectedToken) ||
+      !onlyWhitespaceBetween(syntaxSource, selectedToken, fromKeyword)
+    ) {
+      return undefined;
+    }
+  } else if (selectedExpressionIndexes.length === 0) {
+    return undefined;
+  }
+
+  let cursor = fromIndex + 1;
+  const sourceTableExpressionIndex = expressionIndex(tokens[cursor]);
+  const sourceTable = tokens[cursor];
+  if (
+    sourceTableExpressionIndex === undefined ||
+    sourceTable === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, sourceTable)
+  ) {
+    return undefined;
+  }
+  cursor += 1;
+
+  const joinTableExpressionIndexes: number[] = [];
+  const clauseExpressionIndexes: number[] = [];
+  while (isWord(tokens[cursor], "INNER") || isWord(tokens[cursor], "LEFT")) {
+    const joinKind = tokens[cursor];
+    cursor += 1;
+    let joinPrefixEnd = joinKind;
+    if (isWord(joinKind, "LEFT") && isWord(tokens[cursor], "OUTER")) {
+      const outerKeyword = tokens[cursor];
+      if (
+        outerKeyword === undefined ||
+        !onlyWhitespaceBetween(syntaxSource, joinKind, outerKeyword)
+      ) {
+        return undefined;
+      }
+      joinPrefixEnd = outerKeyword;
+      cursor += 1;
+    }
+    const joinKeyword = tokens[cursor];
+    if (
+      joinKind === undefined ||
+      joinPrefixEnd === undefined ||
+      joinKeyword === undefined ||
+      !isWord(joinKeyword, "JOIN") ||
+      !onlyWhitespaceBetween(syntaxSource, joinPrefixEnd, joinKeyword)
+    ) {
+      return undefined;
+    }
+    cursor += 1;
+
+    const joinTable = tokens[cursor];
+    const joinTableExpressionIndex = expressionIndex(joinTable);
+    if (
+      joinTable === undefined ||
+      joinTableExpressionIndex === undefined ||
+      !onlyWhitespaceBetween(syntaxSource, joinKeyword, joinTable)
+    ) {
+      return undefined;
+    }
+    joinTableExpressionIndexes.push(joinTableExpressionIndex);
+    cursor += 1;
+
+    const onKeyword = tokens[cursor];
+    if (
+      onKeyword === undefined ||
+      !isWord(onKeyword, "ON") ||
+      !onlyWhitespaceBetween(syntaxSource, joinTable, onKeyword)
+    ) {
+      return undefined;
+    }
+    cursor += 1;
+    const conditionStart = cursor;
+    while (
+      cursor < tokens.length &&
+      !isPaginatedJoinedSelectClauseBoundary(tokens[cursor])
+    ) {
+      cursor += 1;
+    }
+    const conditionEnd =
+      cursor === tokens.length ? statement.end : tokens[cursor]?.start;
+    const conditionExpressionIndexes = expressionIndexesBetween(
+      tokens,
+      conditionStart,
+      cursor,
+    );
+    if (
+      conditionEnd === undefined ||
+      syntaxSource.slice(onKeyword.end, conditionEnd).trim() === "" ||
+      conditionExpressionIndexes.length === 0
+    ) {
+      return undefined;
+    }
+    clauseExpressionIndexes.push(...conditionExpressionIndexes);
+  }
+  if (joinTableExpressionIndexes.length === 0) {
+    return undefined;
+  }
+
+  const whereKeyword = tokens[cursor];
+  if (whereKeyword === undefined || !isWord(whereKeyword, "WHERE")) {
+    return undefined;
+  }
+  cursor += 1;
+  const whereStart = cursor;
+  while (
+    cursor < tokens.length &&
+    !isWord(tokens[cursor], "ORDER") &&
+    !isWord(tokens[cursor], "LIMIT")
+  ) {
+    cursor += 1;
+  }
+  const whereEnd =
+    cursor === tokens.length ? statement.end : tokens[cursor]?.start;
+  const whereExpressionIndexes = expressionIndexesBetween(
+    tokens,
+    whereStart,
+    cursor,
+  );
+  if (
+    whereEnd === undefined ||
+    syntaxSource.slice(whereKeyword.end, whereEnd).trim() === "" ||
+    whereExpressionIndexes.length === 0
+  ) {
+    return undefined;
+  }
+  clauseExpressionIndexes.push(...whereExpressionIndexes);
+
+  if (isWord(tokens[cursor], "ORDER")) {
+    const orderKeyword = tokens[cursor];
+    const byKeyword = tokens[cursor + 1];
+    if (
+      orderKeyword === undefined ||
+      byKeyword === undefined ||
+      !isWord(byKeyword, "BY") ||
+      !onlyWhitespaceBetween(syntaxSource, orderKeyword, byKeyword)
+    ) {
+      return undefined;
+    }
+    cursor += 2;
+    const orderStart = cursor;
+    while (cursor < tokens.length && !isWord(tokens[cursor], "LIMIT")) {
+      cursor += 1;
+    }
+    const orderEnd =
+      cursor === tokens.length ? statement.end : tokens[cursor]?.start;
+    const orderExpressionIndexes = expressionIndexesBetween(
+      tokens,
+      orderStart,
+      cursor,
+    );
+    if (
+      orderEnd === undefined ||
+      syntaxSource.slice(byKeyword.end, orderEnd).trim() === "" ||
+      orderExpressionIndexes.length === 0
+    ) {
+      return undefined;
+    }
+    clauseExpressionIndexes.push(...orderExpressionIndexes);
+  }
+
+  const limitKeyword = tokens[cursor];
+  const limitValue = tokens[cursor + 1];
+  if (
+    limitKeyword === undefined ||
+    limitValue === undefined ||
+    !isWord(limitKeyword, "LIMIT") ||
+    (limitValue.kind !== "number" && limitValue.kind !== "expression") ||
+    cursor + 2 !== tokens.length ||
+    !onlyWhitespaceBetween(syntaxSource, limitKeyword, limitValue) ||
+    syntaxSource.slice(limitValue.end, statement.end).trim() !== ""
+  ) {
+    return undefined;
+  }
+
+  return {
+    clauseExpressionIndexes,
+    joinTableExpressionIndexes,
+    limitExpressionIndex:
+      limitValue.kind === "expression" ? limitValue.expressionIndex : undefined,
+    selectedExpressionIndexes,
+    sourceTableExpressionIndex,
+  };
+}
+
+function completePaginatedExistsSelectMatch(
+  syntaxSource: string,
+): PaginatedJoinedSelectMatch | undefined {
+  const statement = completeSqlStatement(syntaxSource);
+  if (statement === undefined) {
+    return undefined;
+  }
+  const tokens = statement.tokens;
+  const selectKeyword = tokens[0];
+  const existsKeyword = tokens[1];
+  const open = tokens[2];
+  const close = tokens[3];
+  if (
+    tokens.length !== 6 ||
+    selectKeyword === undefined ||
+    existsKeyword === undefined ||
+    open === undefined ||
+    close === undefined ||
+    !isWord(selectKeyword, "SELECT") ||
+    !isWord(existsKeyword, "EXISTS") ||
+    !isPunctuation(open, "(") ||
+    !isPunctuation(close, ")") ||
+    !isWord(tokens[4], "AS") ||
+    tokens[5]?.kind !== "word" ||
+    !onlyWhitespaceBetween(syntaxSource, selectKeyword, existsKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, existsKeyword, open) ||
+    syntaxSource.slice(close.end, tokens[4]?.start).trim() !== "" ||
+    syntaxSource.slice(tokens[4]?.end, tokens[5]?.start).trim() !== "" ||
+    syntaxSource.slice(tokens[5]?.end, statement.end).trim() !== ""
+  ) {
+    return undefined;
+  }
+
+  const innerSyntaxSource = syntaxSource.slice(open.end, close.start);
+  // The validated outer statement has no interpolations before its inner
+  // SELECT, so the inner expression indexes already address the full template.
+  return paginatedJoinedSelectMatch(innerSyntaxSource, "literal-one");
+}
+
 function parenthesizedScalarSelect(
   source: string,
   syntaxSource: string,
@@ -953,7 +1281,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete simple deletes, upserts, selects, locking selects, and scalar result queries",
+        "Prefer Drizzle query builders for complete schema-backed deletes, upserts, selects, existence checks, locking selects, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -961,6 +1289,8 @@ export const preferDrizzleQueryBuilder = createRule({
     messages: {
       queryBuilder:
         "Use a Drizzle select builder for this complete schema-backed query.",
+      existsQueryBuilder:
+        "Use a Drizzle select builder and row existence check for this complete schema-backed EXISTS query.",
       lockingQueryBuilder:
         "Use a Drizzle select builder with .for(...) for this complete locking query.",
       deleteQueryBuilder:
@@ -1068,6 +1398,59 @@ export const preferDrizzleQueryBuilder = createRule({
         location: tsNode,
         type: checker.getTypeAtLocation(tsNode),
       };
+    }
+
+    function isNumberLikeType(type: Type): boolean {
+      if (type.isUnion()) {
+        return type.types.every(isNumberLikeType);
+      }
+      return (type.flags & (TypeFlags.Number | TypeFlags.NumberLiteral)) !== 0;
+    }
+
+    function isDrizzleWrapperExpression(
+      node: TSESTree.Expression | undefined,
+    ): boolean {
+      return (
+        node !== undefined &&
+        isDrizzleWrapperType(checker, expressionType(node).type)
+      );
+    }
+
+    function isDrizzleTableExpression(
+      node: TSESTree.Expression | undefined,
+    ): boolean {
+      if (node === undefined) {
+        return false;
+      }
+      const value = expressionType(node);
+      return isDrizzleTableType(checker, value.type, value.location);
+    }
+
+    function isSchemaBackedPaginatedJoin(
+      query: TSESTree.TaggedTemplateExpression,
+      match: PaginatedJoinedSelectMatch,
+    ): boolean {
+      const expressions = query.quasi.expressions;
+      const limitExpression =
+        match.limitExpressionIndex === undefined
+          ? undefined
+          : expressions[match.limitExpressionIndex];
+      return (
+        isDrizzleTableExpression(
+          expressions[match.sourceTableExpressionIndex],
+        ) &&
+        match.joinTableExpressionIndexes.every((index) => {
+          return isDrizzleTableExpression(expressions[index]);
+        }) &&
+        match.selectedExpressionIndexes.every((index) => {
+          return isDrizzleWrapperExpression(expressions[index]);
+        }) &&
+        match.clauseExpressionIndexes.every((index) => {
+          return isDrizzleWrapperExpression(expressions[index]);
+        }) &&
+        (limitExpression === undefined ||
+          isNumberLikeType(expressionType(limitExpression).type))
+      );
     }
 
     function symbolAt(node: TSESTree.Node) {
@@ -1595,55 +1978,68 @@ export const preferDrizzleQueryBuilder = createRule({
           return;
         }
 
-        const match = simpleSelectMatch(source, syntaxSource);
-        if (match === undefined) {
-          return;
-        }
-
-        const selectedColumn =
-          query.quasi.expressions[match.selectedColumnExpressionIndex];
-        const sourceTable =
-          query.quasi.expressions[match.sourceTableExpressionIndex];
-        if (selectedColumn === undefined || sourceTable === undefined) {
-          return;
-        }
-        const selectedColumnType = expressionType(selectedColumn);
-        const sourceTableType = expressionType(sourceTable);
+        const simpleMatch = simpleSelectMatch(source, syntaxSource);
+        const joinedMatch =
+          simpleMatch === undefined
+            ? paginatedJoinedSelectMatch(syntaxSource, "schema-expression")
+            : undefined;
+        const existsMatch =
+          simpleMatch === undefined && joinedMatch === undefined
+            ? completePaginatedExistsSelectMatch(syntaxSource)
+            : undefined;
         if (
-          !isDrizzleColumnType(
-            checker,
-            selectedColumnType.type,
-            selectedColumnType.location,
-          ) ||
-          !isDrizzleTableType(
-            checker,
-            sourceTableType.type,
-            sourceTableType.location,
-          ) ||
-          !match.joinTableExpressionIndexes.every((index) => {
-            const expression = query.quasi.expressions[index];
-            if (expression === undefined) {
-              return false;
-            }
-            const expressionValue = expressionType(expression);
-            return isDrizzleTableType(
-              checker,
-              expressionValue.type,
-              expressionValue.location,
-            );
-          }) ||
-          !match.joinConditionExpressionIndexes.every((index) => {
-            const expression = query.quasi.expressions[index];
-            return (
-              expression !== undefined &&
-              isDrizzleWrapperType(checker, expressionType(expression).type)
-            );
-          })
+          simpleMatch === undefined &&
+          joinedMatch === undefined &&
+          existsMatch === undefined
         ) {
           return;
         }
 
-        context.report({ node: query, messageId: "queryBuilder" });
+        if (simpleMatch !== undefined) {
+          const selectedColumn =
+            query.quasi.expressions[simpleMatch.selectedColumnExpressionIndex];
+          const sourceTable =
+            query.quasi.expressions[simpleMatch.sourceTableExpressionIndex];
+          if (selectedColumn === undefined || sourceTable === undefined) {
+            return;
+          }
+          const selectedColumnType = expressionType(selectedColumn);
+          const sourceTableType = expressionType(sourceTable);
+          if (
+            !isDrizzleColumnType(
+              checker,
+              selectedColumnType.type,
+              selectedColumnType.location,
+            ) ||
+            !isDrizzleTableType(
+              checker,
+              sourceTableType.type,
+              sourceTableType.location,
+            ) ||
+            !simpleMatch.joinTableExpressionIndexes.every((index) => {
+              return isDrizzleTableExpression(query.quasi.expressions[index]);
+            }) ||
+            !simpleMatch.joinConditionExpressionIndexes.every((index) => {
+              return isDrizzleWrapperExpression(query.quasi.expressions[index]);
+            })
+          ) {
+            return;
+          }
+        } else {
+          const structuredMatch = joinedMatch ?? existsMatch;
+          if (
+            structuredMatch === undefined ||
+            !isSchemaBackedPaginatedJoin(query, structuredMatch)
+          ) {
+            return;
+          }
+        }
+
+        context.report({
+          node: query,
+          messageId:
+            existsMatch === undefined ? "queryBuilder" : "existsQueryBuilder",
+        });
       },
       TaggedTemplateExpression(node: TSESTree.TaggedTemplateExpression): void {
         const source = node.quasi.quasis

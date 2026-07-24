@@ -50,6 +50,7 @@ const schemaPreamble = `
   declare const rowSchema: never;
   declare const threadId: number;
   declare const excludedRunId: number;
+  declare const pageLimit: number;
 `;
 
 const structuredSelectionPreamble = `
@@ -132,6 +133,47 @@ const directQuery = `
         OR \${eq(runs.id, excludedRunId)}
       )
     LIMIT 1
+  \`
+`;
+
+const joinedHistoryQuery = `
+  sql\`
+    SELECT
+      \${runs.id} AS "rowId",
+      \${runs.threadId} AS "threadId",
+      COALESCE(\${runStates.status}, 'unknown') AS "status"
+    FROM \${runs}
+    INNER JOIN \${runStates}
+      ON \${eq(runStates.id, runs.id)}
+    LEFT JOIN \${callbacks}
+      ON \${callbacks.runId} = COALESCE(
+        \${runs.id},
+        (
+          SELECT \${callbacks.runId}
+          FROM \${callbacks}
+          WHERE \${eq(callbacks.runId, runs.id)}
+          ORDER BY \${callbacks.id}
+          LIMIT 1
+        )
+      )
+    WHERE \${eq(runs.threadId, threadId)}
+      AND \${eq(runs.id, excludedRunId)}
+    ORDER BY \${desc(runs.id)}, \${desc(runs.threadId)}
+    LIMIT \${pageLimit}
+  \`
+`;
+
+const joinedExistsQuery = `
+  sql\`
+    SELECT EXISTS (
+      SELECT 1
+      FROM \${runs}
+      INNER JOIN \${runStates}
+        ON \${eq(runStates.id, runs.id)}
+      WHERE \${eq(runs.threadId, threadId)}
+        AND \${eq(runs.id, excludedRunId)}
+      LIMIT 1
+    ) AS visible
   \`
 `;
 
@@ -485,6 +527,97 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         import { eq, sql } from "drizzle-orm";
         await executeRawRows(
           db,
+          sql\`
+            SELECT (
+              \${eq(runs.id, threadId)}
+              OR \${eq(runs.id, excludedRunId)}
+            ) AS allowed
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT clock_timestamp() AS database_time\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH visible_runs AS MATERIALIZED (
+              SELECT \${runs.id}
+              FROM \${runs}
+              WHERE \${eq(runs.threadId, threadId)}
+            )
+            SELECT id FROM visible_runs
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT count(*)
+              FROM \${runs}
+              INNER JOIN \${runStates}
+                ON \${eq(runStates.id, runs.id)}
+              WHERE \${eq(runs.threadId, threadId)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        const source = sql.identifier("runs");
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}, \${runs.threadId}
+            FROM \${source}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.threadId, threadId)}
+            ORDER BY \${runs.id}
+            LIMIT \${pageLimit}
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}, \${runs.threadId}
+            FROM \${runs}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.threadId, threadId)}
+            ORDER BY \${pageLimit}
+            LIMIT \${pageLimit}
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}, \${runs.threadId}
+            FROM \${runs}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.threadId, threadId)}
+            ORDER BY \${runs.id}
+            LIMIT \${String(pageLimit)}
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
           sql\`SELECT 1 FROM \${runs} WHERE \${eq(runs.id, 1)} LIMIT 1\`,
           rowSchema,
         );
@@ -676,16 +809,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         await executeRawRows(
           db,
           sql\`SELECT \${runs.id} FROM runs WHERE \${eq(runs.id, 1)} LIMIT 1\`,
-          rowSchema,
-        );
-      `,
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(
-          db,
-          sql\`SELECT \${runs.id} FROM \${runs} LEFT JOIN \${runStates} ON \${eq(runStates.id, runs.id)} WHERE \${eq(runs.id, 1)} LIMIT 1\`,
           rowSchema,
         );
       `,
@@ -1061,6 +1184,38 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         \`);
       `,
       errors: [{ messageId: "upsertQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { desc, eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${joinedHistoryQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${joinedExistsQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "existsQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            LEFT OUTER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.id, threadId)}
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
