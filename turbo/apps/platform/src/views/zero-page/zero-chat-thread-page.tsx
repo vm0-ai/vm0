@@ -6520,7 +6520,7 @@ function SlackUserMessageOrigin({
 }
 
 const STRUCTURED_REFERENCE_CHIP_CLASS =
-  "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
+  "mx-1 inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
   "text-xs font-medium";
 
@@ -6553,7 +6553,7 @@ function StructuredTemplateReference({
   return (
     <span
       aria-label={`Message template ${part.titleSnapshot}`}
-      className="inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-muted-foreground"
+      className="mx-1 inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-muted-foreground"
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
     >
       <StructuredTemplateIcon type={part.template.type} />
@@ -6573,7 +6573,7 @@ function StructuredFileReference({
 }) {
   if (attachment) {
     return (
-      <span className="inline-flex align-middle">
+      <span className="mx-1 inline-flex align-middle">
         <FileAttachmentChip
           contentType={part.contentType}
           filename={part.filenameSnapshot}
