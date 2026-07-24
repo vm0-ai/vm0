@@ -23,8 +23,6 @@ export const SUPPORTED_RUN_MODELS = [
   "glm-5.1",
   "mimo-v2.5",
   "hy3-preview",
-  "gpt-5.4",
-  "gpt-5.4-mini",
 ] as const;
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
@@ -57,8 +55,6 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "glm-5.1": "$",
   "mimo-v2.5": "$",
   "hy3-preview": "$",
-  "gpt-5.4": "$$",
-  "gpt-5.4-mini": "$",
 });
 
 export const VM0_MODEL_PRICE_TIER_LABEL = Object.freeze<

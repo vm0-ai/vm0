@@ -7,6 +7,7 @@ import {
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -1853,7 +1854,85 @@ describe("artifacts page", () => {
     await expect(
       screen.findByText("cached-after-error.html"),
     ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Could not load artifacts"),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("falls back to cached artifacts and toasts when refresh is unavailable", async () => {
+    setupTeam();
+    const scope = testAuthScope("remote-network-error");
+    await seedCachedArtifacts(
+      scope,
+      [
+        createArtifact({
+          artifactItemId: "cached-network-error-run:file-1",
+          runId: "cached-network-error-run",
+          filename: "cached-after-network-error.html",
+        }),
+      ],
+      "2026-01-02T00:00:00.000Z",
+    );
+    context.mocks.http.get("*/api/zero/artifacts", () => {
+      return HttpResponse.error();
+    });
+
+    setupArtifactsPage({ scope });
+
+    await expect(
+      screen.findByText("cached-after-network-error.html"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Failed to fetch"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("does not toast when an in-flight refresh is cancelled", async () => {
+    setupTeam();
+    const scope = testAuthScope("cancelled-refresh");
+    await seedCachedArtifacts(
+      scope,
+      [
+        createArtifact({
+          artifactItemId: "cancelled-refresh-run:file-1",
+          runId: "cancelled-refresh-run",
+          filename: "cached-before-cancel.html",
+        }),
+      ],
+      "2026-01-02T00:00:00.000Z",
+    );
+    const requestStarted = Promise.withResolvers<void>();
+    const requestRejected = Promise.withResolvers<void>();
+    context.mocks.http.get("*/api/zero/artifacts", ({ signal }) => {
+      const response = Promise.withResolvers<Response>();
+      requestStarted.resolve();
+      signal.addEventListener(
+        "abort",
+        () => {
+          requestRejected.resolve();
+          response.reject(new Error("Request failed"));
+        },
+        { once: true },
+      );
+      return response.promise;
+    });
+
+    setupArtifactsPage({ scope });
+
+    await requestStarted.promise;
+    await expect(
+      screen.findByText("cached-before-cancel.html"),
+    ).resolves.toBeInTheDocument();
+
+    click(linkByText("Agents"));
+    await requestRejected.promise;
+    await waitFor(() => {
+      expect(pathname()).toBe("/agents");
+    });
+    await screen.findByRole("heading", { name: "Agents" });
+
+    expect(screen.queryByText("Request failed")).not.toBeInTheDocument();
   });
 
   it("loads every artifact by following keyset pagination cursors", async () => {

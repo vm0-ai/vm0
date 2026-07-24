@@ -21,6 +21,7 @@ import { now } from "../../external/time";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
 import { zeroFeishuEventsRoutes } from "../zero-feishu-events";
 import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
+import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
@@ -1393,29 +1394,101 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
     await connectFixtureUser(fixture);
-    const prompt = [
-      "[Feishu file] quarterly-report.pdf",
-      "   [MESSAGE_ID] om_file_message",
-      "   [FILE_KEY] file_quarterly_report",
-      "   [TYPE] file",
-    ].join("\n");
+    const fileKey = `file_v2_${"a".repeat(1400)}`;
     await postEvent(
       callbackUrl,
       directFileMessage(appId, {
         messageId: "om_file_message",
-        fileKey: "file_quarterly_report",
+        fileKey,
         filename: "quarterly-report.pdf",
       }),
       { encrypted: true },
     );
     await flushWaitUntilForTest();
 
-    const run = await findRun(actor, prompt);
+    const listed = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const run = requireValue(
+      listed.runs.find((candidate) => {
+        return candidate.prompt.includes("[Feishu file] quarterly-report.pdf");
+      }),
+      "Expected Feishu file run",
+    );
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
-    expect(claim.prompt).toBe(prompt);
+    const fileId = claim.prompt.match(/ {3}\[FILE_KEY\] ([^\n]+)/u)?.[1];
+    expect(fileId).toMatch(/^feishu_file_[A-Za-z0-9_-]{22}$/u);
+    expect(fileId?.length).toBeLessThan(64);
+    expect(claim.prompt).not.toContain(fileKey);
+    expect(claim.prompt).toContain("   [MESSAGE_ID] om_file_message");
+    expect(claim.prompt).toContain("   [TYPE] file");
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
+
+    const fileBytes = Buffer.from("feishu file bytes");
+    server.use(
+      http.get(
+        "https://open.feishu.cn/open-apis/im/v1/messages/:messageId/resources/:fileKey",
+        ({ params, request }) => {
+          expect(params.messageId).toBe("om_file_message");
+          expect(params.fileKey).toBe(fileKey);
+          expect(new URL(request.url).searchParams.get("type")).toBe("file");
+          return new HttpResponse(fileBytes, {
+            status: 200,
+            headers: {
+              "content-type": "application/pdf",
+              "content-length": String(fileBytes.length),
+              "content-disposition":
+                'attachment; filename="quarterly-report.pdf"',
+            },
+          });
+        },
+      ),
+    );
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroIntegrationsFeishuFileRoutes,
+    });
+    const downloadResponse = await app.request(
+      `/api/zero/integrations/feishu/download-file?${new URLSearchParams({
+        message_id: "om_misquoted_by_model",
+        file_key: fileId ?? "",
+        type: "image",
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${runsApi.zeroTokenForRunWithCapabilities(
+            actor,
+            run.id,
+            ["feishu:write"],
+          )}`,
+        },
+      },
+    );
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("x-file-name")).toBe(
+      "quarterly-report.pdf",
+    );
+    expect(
+      Buffer.from(await downloadResponse.arrayBuffer()).equals(fileBytes),
+    ).toBeTruthy();
+
+    const wrongRunResponse = await app.request(
+      `/api/zero/integrations/feishu/download-file?${new URLSearchParams({
+        message_id: "om_file_message",
+        file_key: fileId ?? "",
+        type: "file",
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${runsApi.zeroTokenForRunWithCapabilities(
+            actor,
+            randomUUID(),
+            ["feishu:write"],
+          )}`,
+        },
+      },
+    );
+    expect(wrongRunResponse.status).toBe(400);
   });
 
   it("runs a Feishu DM with history, audit metadata, and session resume", async () => {
@@ -1450,6 +1523,7 @@ describe("Feishu integration", () => {
     }
     outboundMessages = [];
     context.mocks.ably.publish.mockClear();
+    const historyFileKey = `file_v2_${"b".repeat(200)}`;
     historyMessages = [
       {
         message_id: "om_history_context",
@@ -1463,6 +1537,22 @@ describe("Feishu integration", () => {
         body: {
           content: JSON.stringify({
             text: "Earlier Feishu conversation context",
+          }),
+        },
+      },
+      {
+        message_id: "om_history_file",
+        msg_type: "file",
+        create_time: "2",
+        sender: {
+          id: "ou_previous_user",
+          sender_name: "Previous User",
+          sender_type: "user",
+        },
+        body: {
+          content: JSON.stringify({
+            file_key: historyFileKey,
+            file_name: "history-report.pdf",
           }),
         },
       },
@@ -1490,12 +1580,70 @@ describe("Feishu integration", () => {
     expect(claim.appendSystemPrompt).toContain(
       "Earlier Feishu conversation context",
     );
+    expect(claim.appendSystemPrompt).toContain(
+      "[Feishu file] history-report.pdf",
+    );
+    const historyFileId = (claim.appendSystemPrompt ?? "").match(
+      / {3}\[FILE_KEY\] (feishu_file_[A-Za-z0-9_-]{22})/u,
+    )?.[1];
+    expect(historyFileId).toBeTruthy();
+    expect(claim.appendSystemPrompt).not.toContain(historyFileKey);
     expect(claim.appendSystemPrompt).toContain("Previous User");
     expect(claim.appendSystemPrompt).toContain(
       "zero feishu message send --help",
     );
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
+
+    const historyFileBytes = Buffer.from("feishu history file bytes");
+    server.use(
+      http.get(
+        "https://open.feishu.cn/open-apis/im/v1/messages/:messageId/resources/:fileKey",
+        ({ params, request }) => {
+          expect(params.messageId).toBe("om_history_file");
+          expect(params.fileKey).toBe(historyFileKey);
+          expect(new URL(request.url).searchParams.get("type")).toBe("file");
+          return new HttpResponse(historyFileBytes, {
+            status: 200,
+            headers: {
+              "content-type": "application/pdf",
+              "content-length": String(historyFileBytes.length),
+              "content-disposition":
+                'attachment; filename="history-report.pdf"',
+            },
+          });
+        },
+      ),
+    );
+    const fileApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroIntegrationsFeishuFileRoutes,
+    });
+    const historyDownloadResponse = await fileApp.request(
+      `/api/zero/integrations/feishu/download-file?${new URLSearchParams({
+        message_id: "om_misquoted_by_model",
+        file_key: historyFileId ?? "",
+        type: "image",
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${runsApi.zeroTokenForRunWithCapabilities(
+            actor,
+            run.id,
+            ["feishu:write"],
+          )}`,
+        },
+      },
+    );
+    expect(historyDownloadResponse.status).toBe(200);
+    expect(historyDownloadResponse.headers.get("x-file-name")).toBe(
+      "history-report.pdf",
+    );
+    expect(
+      Buffer.from(await historyDownloadResponse.arrayBuffer()).equals(
+        historyFileBytes,
+      ),
+    ).toBeTruthy();
 
     const cliAgentSessionId = `bdd-feishu-cli-${run.id}`;
     await completeRunSession({

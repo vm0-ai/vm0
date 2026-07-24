@@ -343,6 +343,7 @@ const internalArtifactsSync$ = computed(
             fetchOptions: { signal },
           }),
           [200],
+          signal,
         );
         signal.throwIfAborted();
 

@@ -37,7 +37,7 @@ setup_file() {
     export OPENAI_PROVIDER_ID
     OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
     configure_codex_zero_model_policy \
-        "gpt-5.4-mini" \
+        "gpt-5.5" \
         "openai-api-key" \
         "$OPENAI_PROVIDER_ID"
     configure_codex_zero_model_policy \
@@ -89,7 +89,7 @@ teardown_file() {
     fi
 }
 
-@test "t-codex-zero-byok-smoke-1: gpt-5.4-mini via zero web layer" {
+@test "t-codex-zero-byok-smoke-1: gpt-5.5 via zero web layer" {
     # Trigger a real run by hitting the same unified chat endpoint the web
     # composer uses. This both creates the thread (with eager-pin) and
     # dispatches the codex run in one call. Sets LAST_RUN_ID + LAST_THREAD_ID.
@@ -100,7 +100,7 @@ teardown_file() {
     # non-zero on failure, which fails the test naturally.
     send_chat_run_message "$AGENT_ID" \
         "Compute 123+456 and reply with exactly: RESULT=<answer>" \
-        "gpt-5.4-mini"
+        "gpt-5.5"
 
     THREAD_ID="$LAST_THREAD_ID"
     [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
