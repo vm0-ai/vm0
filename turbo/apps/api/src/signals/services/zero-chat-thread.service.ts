@@ -1892,6 +1892,8 @@ export const createChatThread$ = command(
         eventId: args.eventId,
         title: args.title ?? null,
         selectedModel: args.selectedModel,
+        serviceTier: null,
+        computerUseHostId: null,
         createdAt: createdThread.createdAt,
       });
       return createdThread;

@@ -776,6 +776,8 @@ describe("team page navigation", () => {
             pinnedAt: thread.pinnedAt,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           };
         }),
         latestEventId: null,

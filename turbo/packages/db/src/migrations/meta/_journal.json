@@ -4663,6 +4663,20 @@
       "when": 1784877104375,
       "tag": "0665_curly_mikhail_rasputin",
       "breakpoints": true
+    },
+    {
+      "idx": 666,
+      "version": "7",
+      "when": 1784879085448,
+      "tag": "0666_thread_configuration_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 667,
+      "version": "7",
+      "when": 1784879100126,
+      "tag": "0667_thread_configuration_event_backfill",
+      "breakpoints": true
     }
   ]
 }

@@ -219,6 +219,8 @@ interface ThreadListItem {
   pinnedAt?: string | null;
   renamedAt?: string | null;
   selectedModel?: string | null;
+  serviceTier?: "priority" | null;
+  computerUseHostId?: string | null;
 }
 
 const UUID_PATTERN =
@@ -236,6 +238,8 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
       selectedModel: thread.selectedModel ?? null,
+      serviceTier: thread.serviceTier ?? null,
+      computerUseHostId: thread.computerUseHostId ?? null,
     };
   });
 }
@@ -495,6 +499,7 @@ export function mockChatLifecycle(
   let codexServiceTier: CodexServiceTier | null =
     options?.codexServiceTier ?? null;
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
+  let latestThreadEventId: string | null = null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
   // Version counter: bumped whenever the run reaches a terminal state so
@@ -591,6 +596,8 @@ export function mockChatLifecycle(
         updatedAt: "2026-03-10T00:00:00Z",
         pinnedAt: null,
         selectedModel,
+        serviceTier: codexServiceTier === "fast" ? ("priority" as const) : null,
+        computerUseHostId,
       },
     ];
   };
@@ -856,6 +863,8 @@ export function mockChatLifecycle(
       const modelSelection = modelSelectionFromBody(body);
       selectedModel = modelSelection?.selectedModel ?? null;
       codexServiceTier = body.codexServiceTier ?? null;
+      latestThreadEventId =
+        body.serviceTierEventId ?? body.eventId ?? crypto.randomUUID();
       options?.onModelSelectionUpdate?.({
         model: body.model,
         modelSelection,
@@ -868,6 +877,7 @@ export function mockChatLifecycle(
     chatThreadComputerUseHostContract.update,
     ({ body, respond }) => {
       computerUseHostId = body.computerUseHostId;
+      latestThreadEventId = body.eventId ?? crypto.randomUUID();
       options?.onComputerUseHostUpdate?.({
         computerUseHostId: body.computerUseHostId,
       });
@@ -877,7 +887,7 @@ export function mockChatLifecycle(
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: threadListSnapshot(effectiveThreadList()),
-      latestEventId: null,
+      latestEventId: latestThreadEventId,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -1010,6 +1020,7 @@ export function mockChatLifecycle(
     },
     setCodexServiceTier: (tier) => {
       codexServiceTier = tier;
+      latestThreadEventId = crypto.randomUUID();
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

@@ -15,7 +15,6 @@ import {
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import { createChatThreadSignals } from "../chat-page/create-chat-thread.ts";
 import type { SubscribeRealtimeArgs } from "../chat-page/chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "../chat-page/remote-chat-thread-data-source.ts";
@@ -76,7 +75,6 @@ function abortError(message: string): Error {
 
 function chatThreadRealtimeTopics(threadId: string): readonly string[] {
   return [
-    `chatThreadDetailChanged:${threadId}`,
     `chatThreadMessageUpdated:${threadId}`,
     `chatThreadRunCreated:${threadId}`,
     `chatThreadRunUpdated:${threadId}`,
@@ -116,23 +114,13 @@ function unexpectedDataSourceCall(name: string): never {
 }
 
 function createFailingSubscribeDataSource(): ChatThreadRemote {
-  const thread: ChatThread = {
-    lastReadAt: null,
-    codexServiceTier: null,
-    computerUseHostId: null,
-  };
-
   return {
-    remoteThreadDetail$: computed(() => {
-      return Promise.resolve(thread);
-    }),
     threadDraft$: computed(() => {
       return Promise.resolve({
         draftContent: null,
         draftAttachments: null,
       });
     }),
-    reloadThread$: command(() => {}),
     patchDraft$: command(() => {
       return unexpectedDataSourceCall("patchDraft$");
     }),
@@ -702,7 +690,6 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
-            onThreadDetailChanged$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
@@ -715,7 +702,7 @@ describe("realtime signals", () => {
         context.signal,
       ),
     ).rejects.toThrow(
-      `Realtime subscription ended before ready: chatThreadDetailChanged:${threadId}`,
+      `Realtime subscription ended before ready: chatThreadMessageUpdated:${threadId}`,
     );
 
     expectNoChatThreadSubscriptions(threadId);
@@ -734,7 +721,6 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
-            onThreadDetailChanged$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
@@ -763,7 +749,6 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
-          onThreadDetailChanged$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
@@ -785,7 +770,6 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
-          onThreadDetailChanged$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,

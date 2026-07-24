@@ -7,6 +7,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 
 export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
   "created",
@@ -15,6 +16,8 @@ export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
   "pinned",
   "unpinned",
   "model_selection_updated",
+  "service_tier_updated",
+  "computer_use_host_updated",
   "sort_touched",
 ]);
 
@@ -32,6 +35,10 @@ export const chatThreadEvents = pgTable(
     agentComposeId: uuid("agent_compose_id").notNull(),
     title: text("title"),
     selectedModel: varchar("selected_model", { length: 255 }),
+    serviceTier: varchar("service_tier", {
+      length: 20,
+    }).$type<ChatThreadServiceTier>(),
+    computerUseHostId: uuid("computer_use_host_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

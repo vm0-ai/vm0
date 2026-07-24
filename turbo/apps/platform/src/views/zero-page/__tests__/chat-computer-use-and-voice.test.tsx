@@ -40,6 +40,7 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: "22222222-2222-4222-8222-222222222222",
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -405,6 +406,7 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -457,13 +459,23 @@ describe("chat lifecycle", () => {
 
   it("shows a saved offline Computer Use host selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-saved-offline-selection";
+    const threadId = "44444444-4444-4444-8444-444444444444";
     const hostId = "22222222-2222-4222-8222-222222222222";
-    mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycle(context, {
       threadId,
       threadTitle: "Computer Use",
       computerUseHostId: hostId,
     });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Computer Use",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
+      },
+    ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
