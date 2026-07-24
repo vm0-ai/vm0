@@ -1276,7 +1276,10 @@ describe("chat message action cards", () => {
       configurable: true,
     });
     const openAuthWindow = context.mocks.browser.open(authWindow);
+    const refreshStarted = Promise.withResolvers<void>();
+    const completeRefresh = Promise.withResolvers<void>();
     let reconnectRequired = true;
+    let pauseReadyRefresh = false;
     let catalogRequests = 0;
     let oauthStartRequests = 0;
 
@@ -1332,7 +1335,11 @@ describe("chat message action cards", () => {
         });
       },
     );
-    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+    context.mocks.api(zeroMailContract.getDraft, async ({ respond }) => {
+      if (pauseReadyRefresh && !reconnectRequired) {
+        refreshStarted.resolve();
+        await completeRefresh.promise;
+      }
       return respond(200, {
         mailDraftId,
         mailDraftUrl,
@@ -1407,6 +1414,7 @@ describe("chat message action cards", () => {
     });
 
     reconnectRequired = false;
+    pauseReadyRefresh = true;
     context.mocks.data.connectors([
       connectedConnector({
         type: "gmail",
@@ -1415,6 +1423,13 @@ describe("chat message action cards", () => {
       }),
     ]);
     triggerAblyEvent("connector:changed");
+
+    await refreshStarted.promise;
+    const cardRemainedVisible = card.isConnected;
+    const sidebarRemainedVisible = message.isConnected;
+    completeRefresh.resolve();
+    expect(cardRemainedVisible).toBeTruthy();
+    expect(sidebarRemainedVisible).toBeTruthy();
 
     const refreshedCard = await screen.findByLabelText(
       "Open draft email: Reconnect required",

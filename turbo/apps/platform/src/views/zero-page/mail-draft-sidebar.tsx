@@ -16,7 +16,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-mail";
 import { Button } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { CSSProperties, ReactNode } from "react";
 
@@ -1034,7 +1034,7 @@ function MailDraftDetail({
 }
 
 export function MailDraftSidebar({ signals }: MailDraftSidebarProps) {
-  const draftLoadable = useLoadable(signals.sidebarDraft$);
+  const draftLoadable = useLastLoadable(signals.sidebarDraft$);
   const close = useSet(closeMailDraftSidebar$);
   if (draftLoadable.state === "loading") {
     return <MailDraftSidebarSkeleton close={close} />;

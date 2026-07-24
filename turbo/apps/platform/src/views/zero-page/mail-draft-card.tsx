@@ -6,7 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-mail";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { cn } from "@vm0/ui";
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
@@ -111,7 +111,7 @@ function MailDraftCardContent({
 }
 
 function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
-  const draftLoadable = useLoadable(signals.draft$);
+  const draftLoadable = useLastLoadable(signals.draft$);
   const selectedMailDraftId = useGet(currentMailDraftId$);
   const openSidebar = useSet(openMailDraftSidebar$);
   const reloadSidebar = useSet(signals.reloadSidebar$);
