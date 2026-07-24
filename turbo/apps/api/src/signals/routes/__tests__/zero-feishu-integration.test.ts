@@ -169,6 +169,32 @@ function directMessage(
   });
 }
 
+function directFileMessage(
+  appId: string,
+  options: {
+    readonly messageId: string;
+    readonly fileKey: string;
+    readonly filename: string;
+  },
+): unknown {
+  return v2Event(appId, "im.message.receive_v1", {
+    sender: {
+      sender_id: { open_id: "ou_feishu_user" },
+      sender_type: "user",
+    },
+    message: {
+      message_id: options.messageId,
+      chat_id: "oc_feishu_dm",
+      chat_type: "p2p",
+      message_type: "file",
+      content: JSON.stringify({
+        file_key: options.fileKey,
+        file_name: options.filename,
+      }),
+    },
+  });
+}
+
 function groupMessage(
   appId: string,
   text: string,
@@ -1363,6 +1389,35 @@ describe("Feishu integration", () => {
     );
   });
 
+  it("runs a Feishu DM file with downloadable resource context", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const prompt = [
+      "[Feishu file] quarterly-report.pdf",
+      "   [MESSAGE_ID] om_file_message",
+      "   [FILE_KEY] file_quarterly_report",
+      "   [TYPE] file",
+    ].join("\n");
+    await postEvent(
+      callbackUrl,
+      directFileMessage(appId, {
+        messageId: "om_file_message",
+        fileKey: "file_quarterly_report",
+        filename: "quarterly-report.pdf",
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+
+    const run = await findRun(actor, prompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.prompt).toBe(prompt);
+    expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
+    expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
+  });
+
   it("runs a Feishu DM with history, audit metadata, and session resume", async () => {
     const fixture = await setupFeishuRunFixture({
       useAlternateInstallationDefault: true,
@@ -1439,6 +1494,8 @@ describe("Feishu integration", () => {
     expect(claim.appendSystemPrompt).toContain(
       "zero feishu message send --help",
     );
+    expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
+    expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
 
     const cliAgentSessionId = `bdd-feishu-cli-${run.id}`;
     await completeRunSession({

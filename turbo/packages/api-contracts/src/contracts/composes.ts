@@ -116,7 +116,7 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
     "feishu:write": {
       group: "Integrations",
-      label: "Send Feishu messages",
+      label: "Send Feishu messages and files",
     },
     "teams:write": {
       group: "Integrations",
