@@ -1005,6 +1005,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       prompt,
       modelProvider: "anthropic-api-key",
     });
+    expect(
+      sandboxOperationEventsForRunByAction(
+        created.runId,
+        "first_assistant_message_eligible",
+      ),
+    ).toStrictEqual([]);
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
@@ -9314,6 +9320,23 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       agentId,
       prompt: "bdd assistant events",
     });
+    await flushWaitUntilForTest();
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "first_assistant_message_eligible",
+      ),
+    ).toStrictEqual([
+      {
+        _time: new Date(apiStartedAt).toISOString(),
+        source: "api",
+        op_type: "first_assistant_message_eligible",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: runId,
+      },
+    ]);
 
     const pending = await api.readRun(actor, runId);
     expect(pending.status).toBe("pending");
@@ -9815,10 +9838,33 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     });
     expect((await api.readRun(actor, queued.runId)).status).toBe("queued");
     await expect(readRunApiStart(context, queued.runId)).resolves.toBeNull();
+    expect(
+      sandboxOperationEventsForRunByAction(
+        queued.runId,
+        "first_assistant_message_eligible",
+      ),
+    ).toStrictEqual([]);
 
     mockNow(promotedAt);
     await api.requestCancelRun(actor, first.runId, [200]);
     await waitForRunStatus(api, actor, queued.runId, "pending");
+    await flushWaitUntilForTest();
+    expect(
+      sandboxOperationEventsForRunByAction(
+        queued.runId,
+        "first_assistant_message_eligible",
+      ),
+    ).toStrictEqual([
+      {
+        _time: new Date(promotedAt).toISOString(),
+        source: "api",
+        op_type: "first_assistant_message_eligible",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: queued.runId,
+      },
+    ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
     expect(claim.apiStartTime).toBe(promotedAt);

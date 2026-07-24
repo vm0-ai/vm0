@@ -8,7 +8,7 @@ mod common;
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[tokio::test]
 async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_started()
@@ -29,6 +29,11 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
                 resume_session_id: None,
             },
         )?;
+        let api_start_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)?
+            .as_millis()
+            .saturating_sub(10_000);
+        std::env::set_var("VM0_API_START_TIME", api_start_time.to_string());
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), run_id)
             .map_err(|error| format!("resolve runtime dir: {error}"))?;
         common::set_run_payload_file_env_for_test(
@@ -85,10 +90,50 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
         ],
     );
 
+    let sandbox_ops = read_sandbox_ops(&runtime.paths)?;
+    let output_item_started = sandbox_ops
+        .iter()
+        .filter(|event| {
+            event.get("action_type").and_then(Value::as_str)
+                == Some("api_to_codex_output_item_started")
+        })
+        .collect::<Vec<_>>();
+    let agent_message_item_started = sandbox_ops
+        .iter()
+        .filter(|event| {
+            event.get("action_type").and_then(Value::as_str)
+                == Some("api_to_codex_agent_message_item_started")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(output_item_started.len(), 1);
+    assert_eq!(agent_message_item_started.len(), 1);
+    let output_duration = output_item_started[0]["duration_ms"]
+        .as_u64()
+        .ok_or("output item timing missing duration_ms")?;
+    let agent_message_duration = agent_message_item_started[0]["duration_ms"]
+        .as_u64()
+        .ok_or("agent message item timing missing duration_ms")?;
+    assert!(output_duration <= agent_message_duration);
+
     let thread_id = events[0]
         .get("thread_id")
         .and_then(Value::as_str)
         .ok_or("thread.started missing thread_id")?;
+    let serialized_timings =
+        serde_json::to_string(&[output_item_started[0], agent_message_item_started[0]])?;
+    for excluded in [
+        thread_id,
+        "mock-reasoning-item-0",
+        "mock-reasoning-item-1",
+        "mock-agent-message-item-0",
+        "mock-agent-message-item-1",
+        "mock reasoning content must not enter timing telemetry",
+    ] {
+        assert!(
+            !serialized_timings.contains(excluded),
+            "timing telemetry must not contain {excluded:?}: {serialized_timings}"
+        );
+    }
     let stored_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert_eq!(stored_id, thread_id);
     let marker = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
@@ -154,6 +199,15 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
     );
 
     Ok(())
+}
+
+fn read_sandbox_ops(
+    paths: &guest_agent::paths::GuestPaths,
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let log = std::fs::read_to_string(paths.sandbox_ops_file())?;
+    log.lines()
+        .map(|line| serde_json::from_str(line).map_err(Into::into))
+        .collect()
 }
 
 fn read_agent_log_events(
