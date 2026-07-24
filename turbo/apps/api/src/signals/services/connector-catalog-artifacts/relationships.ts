@@ -341,31 +341,6 @@ export function deriveConnectorCatalogFirewallRouting(
   };
 }
 
-export interface ConnectorCatalogFirewallDiagnostics {
-  readonly apiCount: number;
-  readonly permissionCount: number;
-  readonly ruleCount: number;
-}
-
-export function deriveConnectorCatalogFirewallDiagnostics(
-  firewall: FirewallConfig,
-): ConnectorCatalogFirewallDiagnostics {
-  const permissions = firewall.apis.flatMap((api) => {
-    return api.permissions ?? [];
-  });
-  return {
-    apiCount: firewall.apis.length,
-    permissionCount: new Set(
-      permissions.map((permission) => {
-        return permission.name;
-      }),
-    ).size,
-    ruleCount: permissions.reduce((count, permission) => {
-      return count + permission.rules.length;
-    }, 0),
-  };
-}
-
 function validateFirewallSemantics(artifact: ConnectorCatalogArtifact): void {
   for (const connector of artifact.connectors) {
     if (connector.firewall.kind === "none") {

@@ -21,6 +21,9 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false for disabled switch without context", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ExternalConnectorCatalog, {}),
+    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
@@ -200,6 +203,9 @@ describe("getAllFeatureStates", () => {
 describe("user-overridable switches", () => {
   it("excludes internal switches from user override helpers", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ExternalConnectorCatalog,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ComposerUploadPopover,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
@@ -223,6 +229,7 @@ describe("user-overridable switches", () => {
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
+        [FeatureSwitchKey.ExternalConnectorCatalog]: true,
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,

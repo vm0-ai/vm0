@@ -5,6 +5,7 @@
  */
 export enum FeatureSwitchKey {
   Dummy = "dummy",
+  ExternalConnectorCatalog = "externalConnectorCatalog",
   AhrefsConnector = "ahrefsConnector",
   BillConnector = "billConnector",
   BentomlConnector = "bentomlConnector",
