@@ -1078,7 +1078,7 @@ function mockRunWorkflowAutomation(
     ({ params, respond }) => {
       onRun(params.id);
       return respond(201, {
-        runId: "workflow-automation-run-now",
+        runId: null,
         chatThreadId: AUTOMATION_RUN_THREAD_ID,
       });
     },
@@ -2229,7 +2229,7 @@ describe("workflow detail page", () => {
     expect(screen.getAllByText("Next")).toHaveLength(1);
   });
 
-  it("runs an automation immediately and navigates to the bound chat thread", async () => {
+  it("submits an automation run and navigates to the bound chat thread", async () => {
     const runAutomationIds: string[] = [];
     mockWorkflowApis([salesResearch()]);
     mockChatLifecycle(context, { threadId: AUTOMATION_RUN_THREAD_ID });

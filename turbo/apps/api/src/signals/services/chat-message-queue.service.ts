@@ -167,6 +167,7 @@ interface WorkflowQueueAdmissionArgs {
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
+  readonly coalescePendingScheduleRun: boolean;
   readonly params: WorkflowQueueEventParams;
 }
 
@@ -192,6 +193,7 @@ async function attemptWorkflowQueueAdmission(
     }
 
     if (
+      args.coalescePendingScheduleRun &&
       automation.kind === "schedule" &&
       (await pendingTickExistsForAutomation(tx, automation.id))
     ) {

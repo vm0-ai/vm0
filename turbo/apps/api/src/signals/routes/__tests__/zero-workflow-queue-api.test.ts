@@ -77,6 +77,11 @@ interface WebhookAutomation {
   readonly secret: string;
 }
 
+interface ScheduleAutomation {
+  readonly automationId: string;
+  readonly threadId: string;
+}
+
 async function createWebhookAutomation(
   scenario: Scenario,
 ): Promise<WebhookAutomation> {
@@ -106,6 +111,26 @@ async function createWebhookAutomation(
     threadId: created.body.chatThreadId,
     token,
     secret: created.body.webhookSecret,
+  };
+}
+
+async function createScheduleAutomation(
+  scenario: Scenario,
+): Promise<ScheduleAutomation> {
+  const created = await accept(
+    automationsClient().create({
+      headers: authHeaders(),
+      params: { workflowId: scenario.workflowId },
+      body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+    }),
+    [201],
+  );
+  if (!created.body.chatThreadId) {
+    throw new Error("Expected a thread-bound schedule automation");
+  }
+  return {
+    automationId: created.body.id,
+    threadId: created.body.chatThreadId,
   };
 }
 
@@ -305,5 +330,131 @@ describe("workflow queue API", () => {
     expect(resumed.body.pausedAt).toBeNull();
     expect(resumed.body.running).not.toBeNull();
     expect(resumed.body.pending).toHaveLength(1);
+  });
+
+  it("queues manual Run now behind the active run and existing backlog", async () => {
+    const scenario = await setup();
+    const webhookAutomation = await createWebhookAutomation(scenario);
+    const runningRunId = await postWorkflowWebhook(
+      webhookAutomation,
+      "running",
+    );
+    if (!runningRunId) {
+      throw new Error("Expected the first webhook event to create a run");
+    }
+    await expect(
+      postWorkflowWebhook(webhookAutomation, "already-pending"),
+    ).resolves.toBeNull();
+
+    const scheduleAutomation = await createScheduleAutomation(scenario);
+    expect(scheduleAutomation.threadId).toBe(webhookAutomation.threadId);
+    const manual = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: scheduleAutomation.automationId },
+      }),
+      [201],
+    );
+
+    expect(manual.body).toStrictEqual({
+      runId: null,
+      chatThreadId: webhookAutomation.threadId,
+    });
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: webhookAutomation.threadId },
+      }),
+      [200],
+    );
+    expect(queue.body.running?.runId).toBe(runningRunId);
+    expect(
+      queue.body.pending.map((event) => {
+        return event.automationId;
+      }),
+    ).toStrictEqual([
+      webhookAutomation.automationId,
+      scheduleAutomation.automationId,
+    ]);
+    await expect(
+      workflowRunIds(webhookAutomation.threadId),
+    ).resolves.toStrictEqual([runningRunId]);
+  });
+
+  it("queues manual Run now while the workflow queue is paused", async () => {
+    const scenario = await setup();
+    const automation = await createScheduleAutomation(scenario);
+    await accept(
+      queueClient().pause({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+
+    const manual = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: automation.automationId },
+      }),
+      [201],
+    );
+    expect(manual.body).toStrictEqual({
+      runId: null,
+      chatThreadId: automation.threadId,
+    });
+
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(queue.body.running).toBeNull();
+    expect(
+      queue.body.pending.map((event) => {
+        return event.automationId;
+      }),
+    ).toStrictEqual([automation.automationId]);
+    expect(queue.body.pausedAt).not.toBeNull();
+  });
+
+  it("keeps each explicit schedule Run now as a distinct queued event", async () => {
+    const scenario = await setup();
+    const automation = await createScheduleAutomation(scenario);
+
+    const first = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: automation.automationId },
+      }),
+      [201],
+    );
+    expect(first.body.runId).toStrictEqual(expect.any(String));
+
+    for (let index = 0; index < 2; index++) {
+      const queued = await accept(
+        automationsClient().run({
+          headers: authHeaders(),
+          params: { id: automation.automationId },
+        }),
+        [201],
+      );
+      expect(queued.body.runId).toBeNull();
+    }
+
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(
+      queue.body.pending.map((event) => {
+        return event.automationId;
+      }),
+    ).toStrictEqual([automation.automationId, automation.automationId]);
   });
 });

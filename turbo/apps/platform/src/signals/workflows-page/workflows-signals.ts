@@ -872,7 +872,7 @@ export const runWorkflow$ = command(
     { get },
     workflowId: string,
     signal: AbortSignal,
-  ): Promise<{ chatThreadId: string; runId: string }> => {
+  ): Promise<{ chatThreadId: string; runId: string | null }> => {
     const client = get(zeroClient$)(zeroWorkflowsDetailContract);
     const result = await accept(
       client.run({
@@ -1551,7 +1551,7 @@ export const runWorkflowAutomationNow$ = command(
     { get },
     automationId: string,
     signal: AbortSignal,
-  ): Promise<{ chatThreadId: string; runId: string }> => {
+  ): Promise<{ chatThreadId: string; runId: string | null }> => {
     const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const result = await accept(
       client.run({
