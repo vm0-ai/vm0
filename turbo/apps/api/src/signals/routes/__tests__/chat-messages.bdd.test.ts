@@ -4377,6 +4377,98 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, runId);
   }, 90_000);
 
+  it("preserves real-agent preview mode across queued auto-sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "preview override queue anchor",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const previewMessageId = randomUUID();
+    const previewQueued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued real-agent preview run",
+        clientMessageId: previewMessageId,
+        realAgentInPreview: true,
+      },
+      [201],
+    );
+    expect(previewQueued.body).toMatchObject({ runId: null });
+
+    const mockMessageId = randomUUID();
+    const mockQueued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued preview mock run",
+        clientMessageId: mockMessageId,
+      },
+      [201],
+    );
+    expect(mockQueued.body).toMatchObject({ runId: null });
+
+    // Terminal callbacks and the cleanup safety sweep use the same queued
+    // auto-send builder; finishing the anchor guarantees that builder owns both.
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    const previewMessages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === previewMessageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const previewRunId = userMessages(previewMessages.messages).find(
+      (message) => {
+        return message.revokesMessageId === previewMessageId;
+      },
+    )?.runId;
+    if (!previewRunId) {
+      throw new Error("Expected the preview override message to auto-send");
+    }
+
+    const previewClaim = await claimChatRun(runnerGroup, previewRunId);
+    expect(previewClaim.claim.prompt).toBe("queued real-agent preview run");
+    expect(previewClaim.claim.realAgentInPreview).toBeTruthy();
+    await cancelChatRun(actor, previewRunId);
+
+    const mockMessages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === mockMessageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const mockRunId = userMessages(mockMessages.messages).find((message) => {
+      return message.revokesMessageId === mockMessageId;
+    })?.runId;
+    if (!mockRunId) {
+      throw new Error("Expected the default preview message to auto-send");
+    }
+
+    const mockClaim = await claimChatRun(runnerGroup, mockRunId);
+    expect(mockClaim.claim.prompt).toBe("queued preview mock run");
+    expect(mockClaim.claim.realAgentInPreview).toBeUndefined();
+    await cancelChatRun(actor, mockRunId);
+  }, 90_000);
+
   it("appends a claimed queued message after messages that are still queued", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

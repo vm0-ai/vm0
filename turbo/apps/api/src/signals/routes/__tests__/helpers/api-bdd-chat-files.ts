@@ -158,6 +158,7 @@ type BddSendMessageBody =
       readonly computerUseHostId?: string | null;
       readonly clientMessageId?: string;
       readonly chatThreadSortEventId?: string;
+      readonly realAgentInPreview?: boolean;
       readonly revokesMessageId?: string;
     }
   | {
@@ -1285,6 +1286,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.chatThreadSortEventId === undefined
                   ? {}
                   : { chatThreadSortEventId: body.chatThreadSortEventId }),
+                ...(body.realAgentInPreview === undefined
+                  ? {}
+                  : { realAgentInPreview: body.realAgentInPreview }),
                 ...(body.revokesMessageId === undefined
                   ? {}
                   : { revokesMessageId: body.revokesMessageId }),

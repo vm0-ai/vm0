@@ -37,6 +37,7 @@ const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
   prompt: z.string(),
   appendSystemPrompt: z.string(),
+  realAgentInPreview: z.boolean().optional(),
   slackDelivery: z
     .object({
       channelId: z.string(),
