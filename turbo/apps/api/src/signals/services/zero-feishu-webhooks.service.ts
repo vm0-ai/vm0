@@ -24,8 +24,10 @@ import {
 } from "./feishu-config";
 import {
   dispatchFeishuMessage$,
+  feishuPromptFile,
   formatFeishuFileContext,
   type FeishuInboundMessage,
+  type FeishuPromptFile,
 } from "./zero-feishu-dispatch.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 
@@ -78,6 +80,11 @@ const FEISHU_REPLAY_WINDOW_SECONDS = 60 * 5;
 
 type FeishuEventMessage = z.infer<typeof v2MessageEventSchema>["message"];
 type FeishuEventMention = NonNullable<FeishuEventMessage["mentions"]>[number];
+
+interface FeishuInboundContent {
+  readonly text: string;
+  readonly file: FeishuPromptFile | null;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -156,26 +163,31 @@ function decryptPayload(encrypted: string, encryptKey: string): unknown {
   return JSON.parse(decrypted) as unknown;
 }
 
-function inboundMessageText(
+function inboundMessageContent(
   message: FeishuEventMessage,
   botMention: FeishuEventMention | undefined,
-): string {
+): FeishuInboundContent {
   if (message.message_type !== "text") {
-    return (
-      formatFeishuFileContext({
-        messageId: message.message_id,
-        messageType: message.message_type,
-        content: message.content,
-      }) ?? ""
-    );
+    const file = feishuPromptFile({
+      messageId: message.message_id,
+      messageType: message.message_type,
+      content: message.content,
+    });
+    return {
+      text: file ? formatFeishuFileContext(file) : "",
+      file,
+    };
   }
   const content = textContentSchema.safeParse(safeJsonParse(message.content));
   if (!content.success) {
-    return "";
+    return { text: "", file: null };
   }
-  return botMention
-    ? content.data.text.replaceAll(botMention.key, "")
-    : content.data.text;
+  return {
+    text: botMention
+      ? content.data.text.replaceAll(botMention.key, "")
+      : content.data.text,
+    file: null,
+  };
 }
 
 function inboundMessage(
@@ -206,7 +218,8 @@ function inboundMessage(
   if (chatType !== "p2p" && !botMention) {
     return null;
   }
-  const text = inboundMessageText(event.data.message, botMention).trim();
+  const content = inboundMessageContent(event.data.message, botMention);
+  const text = content.text.trim();
   if (!text) {
     return null;
   }
@@ -223,6 +236,7 @@ function inboundMessage(
     threadId: event.data.message.thread_id ?? null,
     openId: event.data.sender.sender_id.open_id,
     text,
+    file: content.file,
   };
 }
 

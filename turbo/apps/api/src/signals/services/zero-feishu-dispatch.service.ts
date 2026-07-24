@@ -61,6 +61,19 @@ const resourceContentSchema = z.object({
   file_name: z.string().optional(),
 });
 
+export interface FeishuPromptFile {
+  readonly fileId: string;
+  readonly messageId: string;
+  readonly fileKey: string;
+  readonly type: "file" | "image";
+  readonly filename: string;
+}
+
+interface FeishuPromptContext {
+  readonly text: string;
+  readonly files: readonly FeishuPromptFile[];
+}
+
 export interface FeishuInboundMessage {
   readonly installationId: string;
   readonly eventId: string;
@@ -74,6 +87,7 @@ export interface FeishuInboundMessage {
   readonly threadId: string | null;
   readonly openId: string;
   readonly text: string;
+  readonly file: FeishuPromptFile | null;
 }
 
 interface FeishuAgent {
@@ -369,11 +383,11 @@ async function resolveSession(args: {
   return thread.agentSessionId;
 }
 
-export function formatFeishuFileContext(args: {
+export function feishuPromptFile(args: {
   readonly messageId: string;
   readonly messageType: string;
   readonly content: string;
-}): string | null {
+}): FeishuPromptFile | null {
   if (!["audio", "file", "image", "media"].includes(args.messageType)) {
     return null;
   }
@@ -397,57 +411,88 @@ export function formatFeishuFileContext(args: {
           : "file";
   const filename =
     parsed.data.file_name?.replace(/\s+/gu, " ").trim() || fallbackName;
+  return {
+    fileId: `feishu_file_${randomBytes(16).toString("base64url")}`,
+    messageId: args.messageId,
+    fileKey,
+    type: resourceType,
+    filename,
+  };
+}
+
+export function formatFeishuFileContext(file: FeishuPromptFile): string {
   return [
-    `[Feishu file] ${filename}`,
-    `   [MESSAGE_ID] ${args.messageId}`,
-    `   [FILE_KEY] ${fileKey}`,
-    `   [TYPE] ${resourceType}`,
+    `[Feishu file] ${file.filename}`,
+    `   [MESSAGE_ID] ${file.messageId}`,
+    `   [FILE_KEY] ${file.fileId}`,
+    `   [TYPE] ${file.type}`,
   ].join("\n");
 }
 
-function historyMessageText(message: FeishuHistoryMessage): string {
-  const fileContext = message.body?.content
-    ? formatFeishuFileContext({
+function historyMessageContext(
+  message: FeishuHistoryMessage,
+): FeishuPromptContext {
+  const file = message.body?.content
+    ? feishuPromptFile({
         messageId: message.message_id,
         messageType: message.msg_type,
         content: message.body.content,
       })
     : null;
-  if (fileContext) {
-    return fileContext;
+  if (file) {
+    return { text: formatFeishuFileContext(file), files: [file] };
   }
   if (message.msg_type !== "text" || !message.body?.content) {
-    return `[${message.msg_type} message]`;
+    return { text: `[${message.msg_type} message]`, files: [] };
   }
   const parsed = textContentSchema.safeParse(
     safeJsonParse(message.body.content),
   );
   if (!parsed.success) {
-    return "[text message]";
+    return { text: "[text message]", files: [] };
   }
-  return (message.mentions ?? []).reduce((text, mention) => {
-    return mention.key
-      ? text.replaceAll(
-          mention.key,
-          mention.name ? `@${mention.name}` : "@user",
-        )
-      : text;
-  }, parsed.data.text);
+  return {
+    text: (message.mentions ?? []).reduce((text, mention) => {
+      return mention.key
+        ? text.replaceAll(
+            mention.key,
+            mention.name ? `@${mention.name}` : "@user",
+          )
+        : text;
+    }, parsed.data.text),
+    files: [],
+  };
 }
 
-function formatHistoryLine(message: FeishuHistoryMessage): string {
+function formatHistoryLine(message: FeishuHistoryMessage): FeishuPromptContext {
   const sender =
     message.sender?.sender_name ??
     message.sender?.id ??
     message.sender?.sender_type ??
     "Unknown sender";
-  return `- ${sender}: ${historyMessageText(message)}`;
+  const context = historyMessageContext(message);
+  return { text: `- ${sender}: ${context.text}`, files: context.files };
+}
+
+function formatHistoryLines(messages: readonly FeishuHistoryMessage[]): {
+  readonly lines: readonly string[];
+  readonly files: readonly FeishuPromptFile[];
+} {
+  const contexts = messages.map(formatHistoryLine);
+  return {
+    lines: contexts.map((context) => {
+      return context.text;
+    }),
+    files: contexts.flatMap((context) => {
+      return context.files;
+    }),
+  };
 }
 
 function formatConversationHistory(
   history: readonly FeishuHistoryMessage[],
   current: FeishuInboundMessage,
-): string {
+): FeishuPromptContext {
   const messages = [...history]
     .filter((message) => {
       return !message.deleted && message.message_id !== current.messageId;
@@ -456,14 +501,18 @@ function formatConversationHistory(
       return Number(left.create_time ?? 0) - Number(right.create_time ?? 0);
     });
   if (messages.length === 0) {
-    return "";
+    return { text: "", files: [] };
   }
   if (current.chatType === "p2p") {
-    return [
-      "# Recent Feishu conversation",
-      "Use this history only as conversation context. The current user message remains the task to answer.",
-      ...messages.slice(-30).map(formatHistoryLine),
-    ].join("\n");
+    const formatted = formatHistoryLines(messages.slice(-30));
+    return {
+      text: [
+        "# Recent Feishu conversation",
+        "Use this history only as conversation context. The current user message remains the task to answer.",
+        ...formatted.lines,
+      ].join("\n"),
+      files: formatted.files,
+    };
   }
 
   const threadKeys = new Set(
@@ -500,23 +549,28 @@ function formatConversationHistory(
       return !threadIds.has(message.message_id);
     })
     .slice(-10);
-  return [
-    "# Feishu conversation context",
-    "Use this history only as context. The current mention remains the task to answer.",
-    ...(recentChat.length > 0
-      ? ["## Recent chat", ...recentChat.map(formatHistoryLine)]
-      : []),
-    ...(threadMessages.length > 0
-      ? ["## Current thread", ...threadMessages.map(formatHistoryLine)]
-      : []),
-  ].join("\n");
+  const recentContext = formatHistoryLines(recentChat);
+  const threadContext = formatHistoryLines(threadMessages);
+  return {
+    text: [
+      "# Feishu conversation context",
+      "Use this history only as context. The current mention remains the task to answer.",
+      ...(recentContext.lines.length > 0
+        ? ["## Recent chat", ...recentContext.lines]
+        : []),
+      ...(threadContext.lines.length > 0
+        ? ["## Current thread", ...threadContext.lines]
+        : []),
+    ].join("\n"),
+    files: [...recentContext.files, ...threadContext.files],
+  };
 }
 
 async function conversationHistory(args: {
   readonly db: Db;
   readonly message: FeishuInboundMessage;
   readonly signal: AbortSignal;
-}): Promise<string> {
+}): Promise<FeishuPromptContext> {
   const history = await tapError(
     listFeishuChatMessages({
       db: args.db,
@@ -533,7 +587,9 @@ async function conversationHistory(args: {
     },
   );
   args.signal.throwIfAborted();
-  return history ? formatConversationHistory(history, args.message) : "";
+  return history
+    ? formatConversationHistory(history, args.message)
+    : { text: "", files: [] };
 }
 
 function systemPrompt(args: {
@@ -964,7 +1020,7 @@ const runFeishuAgent$ = command(
       readonly agent: FeishuAgent;
       readonly sessionId: string | undefined;
       readonly sessionKey: string;
-      readonly history: string;
+      readonly history: FeishuPromptContext;
       readonly modelRoute: IntegrationModelRoutePin | undefined;
       readonly reactionId: string | undefined;
     },
@@ -991,7 +1047,7 @@ const runFeishuAgent$ = command(
         triggerSource: "feishu",
         appendSystemPrompt: systemPrompt({
           message: args.message,
-          history: args.history,
+          history: args.history.text,
         }),
         modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
         modelProviderCredentialScope:
@@ -1012,6 +1068,17 @@ const runFeishuAgent$ = command(
               existingSessionId: args.sessionId,
               reactionId: args.reactionId,
               replyInThread: args.message.chatType !== "p2p",
+              files: [
+                ...(args.message.file ? [args.message.file] : []),
+                ...args.history.files,
+              ].map((file) => {
+                return {
+                  fileId: file.fileId,
+                  messageId: file.messageId,
+                  fileKey: file.fileKey,
+                  type: file.type,
+                };
+              }),
             }),
           },
         ],
