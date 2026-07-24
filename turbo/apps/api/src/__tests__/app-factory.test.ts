@@ -15,9 +15,13 @@ import { z } from "zod";
 import { vi } from "vitest";
 import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
+import webClientCompatibility from "../lib/web-client-compatibility.json";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
 import { ROUTES } from "../signals/route";
 import { accept, setupApp, testContext } from "./test-helpers";
+
+const MINIMUM_WEB_CLIENT_VERSION =
+  webClientCompatibility.minimumSupportedVersion;
 
 // eslint-disable-next-line api/no-test-vi-mocks
 const { mockFlushLogs } = vi.hoisted(() => {
@@ -896,7 +900,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.622.0",
+          [CLIENT_VERSION_HEADER]: MINIMUM_WEB_CLIENT_VERSION,
         },
       });
 
@@ -910,7 +914,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.622.0",
+          [CLIENT_VERSION_HEADER]: MINIMUM_WEB_CLIENT_VERSION,
         },
       });
 
@@ -923,7 +927,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.622.0",
+          [CLIENT_VERSION_HEADER]: MINIMUM_WEB_CLIENT_VERSION,
           [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
         },
       });
@@ -936,7 +940,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.622.0",
+          [CLIENT_VERSION_HEADER]: MINIMUM_WEB_CLIENT_VERSION,
           [ZERO_MAIL_CLIENT_VERSION_HEADER]: ZERO_MAIL_CLIENT_VERSION,
         },
       });
@@ -966,7 +970,7 @@ describe("createApp", () => {
         headers: {
           "user-agent": "zero-test-agent",
           "x-forwarded-for": "203.0.113.10, 198.51.100.5",
-          "x-client-version": "0.622.0",
+          "x-client-version": MINIMUM_WEB_CLIENT_VERSION,
           "x-client-type": "App",
           "x-client-session-id": "session-test",
           "x-client-request-id": "request-test",
@@ -984,7 +988,7 @@ describe("createApp", () => {
         path_template: "/health",
         remote_addr: "203.0.113.10",
         user_agent: "zero-test-agent",
-        x_client_version: "0.622.0",
+        x_client_version: MINIMUM_WEB_CLIENT_VERSION,
         x_client_type: "App",
         x_client_session_id: "session-test",
         x_client_request_id: "request-test",
