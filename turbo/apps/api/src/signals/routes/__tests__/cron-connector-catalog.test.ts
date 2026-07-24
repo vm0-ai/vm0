@@ -4640,6 +4640,13 @@ describe("connector catalog executable compatibility", () => {
 
     mockExternalConnectorCatalogEnabled(true);
     const actor = bdd.user();
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        "test-oauth",
+        [204, 404],
+      );
+    });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
@@ -4686,7 +4693,6 @@ describe("connector catalog executable compatibility", () => {
     expect(provider.tokenBodies[0]?.get("client_secret")).toBe(
       "test-oauth-secret",
     );
-    await connectorsApi.deleteConnectorByType(actor, "test-oauth");
   });
 
   it("filters unsupported grant, access, and revoke handlers independently", async () => {
