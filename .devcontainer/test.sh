@@ -52,9 +52,10 @@ test_skill_link_directory_conflict() {
     || fail "directory conflict was modified"
 }
 
-test_pgvector_probe_uses_unix_socket() {
-  local workspace="$TEST_ROOT/pgvector-probe"
+test_postgresql_setup() {
+  local workspace="$TEST_ROOT/postgresql-setup"
   local fake_bin="$workspace/fake-bin"
+  local psql_log="$workspace/psql.log"
   local sudo_log="$workspace/sudo.log"
 
   copy_script "$workspace" "setup.sh"
@@ -63,27 +64,55 @@ test_pgvector_probe_uses_unix_socket() {
   printf '%s\n' \
     '#!/usr/bin/env bash' \
     'printf "%s\\n" "$*" >> "$SUDO_CALLS_LOG"' \
-    'if [[ "$*" == "-u postgres psql "* ]]; then' \
+    'if [[ "$*" == *"pg_available_extensions"* ]]; then' \
     "  printf '1\\n'" \
     'fi' \
     > "$fake_bin/sudo"
   printf '%s\n' \
     '#!/usr/bin/env bash' \
+    'printf "%s\\n" "$*" >> "$PSQL_CALLS_LOG"' \
+    "printf '1\\n'" \
+    > "$fake_bin/psql"
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
     'exit 0' \
     > "$fake_bin/lefthook"
-  chmod +x "$fake_bin/sudo" "$fake_bin/lefthook"
+  chmod +x "$fake_bin/sudo" "$fake_bin/psql" "$fake_bin/lefthook"
 
-  HOME="$workspace/home" \
+  DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres" \
+    HOME="$workspace/home" \
     PATH="$fake_bin:$PATH" \
+    PSQL_CALLS_LOG="$psql_log" \
     SUDO_CALLS_LOG="$sudo_log" \
     bash "$workspace/.devcontainer/setup.sh" > /dev/null
 
+  grep -Fxq "service postgresql start" "$sudo_log" \
+    || fail "PostgreSQL service was not started"
+  grep -Fq -- "-u postgres psql -h /var/run/postgresql -d postgres -v ON_ERROR_STOP=1 -c ALTER ROLE postgres PASSWORD 'postgres';" "$sudo_log" \
+    || fail "PostgreSQL password was not configured"
+  grep -Fq -- "postgresql://postgres:postgres@localhost:5432/postgres -v ON_ERROR_STOP=1 -Atqc SELECT 1" "$psql_log" \
+    || fail "PostgreSQL password authentication was not verified"
   grep -Fq -- "-u postgres psql -h /var/run/postgresql -d postgres -Atqc" "$sudo_log" \
     || fail "pgvector availability probe did not use the local Unix socket"
 }
 
+test_devcontainer_postgresql_config() {
+  local config="$REPO_ROOT/.devcontainer/devcontainer.json"
+  local lock="$REPO_ROOT/.devcontainer/devcontainer-lock.json"
+
+  jq -e '.features | has("ghcr.io/itsmechlark/features/postgresql:1") | not' "$config" > /dev/null \
+    || fail "PostgreSQL feature should not duplicate the vm0-dev image"
+  jq -e '.features | has("ghcr.io/itsmechlark/features/postgresql:1") | not' "$lock" > /dev/null \
+    || fail "PostgreSQL feature lock should be removed"
+  jq -e '.postStartCommand | startswith("sudo service postgresql start &&")' "$config" > /dev/null \
+    || fail "PostgreSQL service should start with the container"
+  jq -e '.customizations.vscode.settings."sqltools.connections"[0].password == "postgres"' "$config" > /dev/null \
+    || fail "SQLTools password should match DATABASE_URL"
+}
+
 test_skill_link_file_conflict
 test_skill_link_directory_conflict
-test_pgvector_probe_uses_unix_socket
+test_postgresql_setup
+test_devcontainer_postgresql_config
 
 echo "Devcontainer integration tests passed"
