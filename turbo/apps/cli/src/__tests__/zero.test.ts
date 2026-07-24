@@ -50,6 +50,7 @@ describe("zero CLI program", () => {
       "weather",
       "scrape",
       "web-search",
+      "people-search",
       "finance",
       "banking",
     ];
