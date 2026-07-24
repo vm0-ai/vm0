@@ -1,5 +1,4 @@
-import { delay } from "signal-timers";
-import { throwIfAbort } from "../utils.ts";
+import { createDeferredPromise, throwIfAbort, withCleanup } from "../utils.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatIdbCache");
@@ -30,21 +29,46 @@ export function logChatIdbDisabled(dbName: string, reason: unknown): void {
 
 export async function withChatIdbTimeout<T>(
   label: string,
-  operation: () => Promise<T>,
+  operation: (operationSignal: AbortSignal) => Promise<T>,
   signal?: AbortSignal,
 ): Promise<T> {
   signal?.throwIfAborted();
-  const timeoutSignal = signal ?? AbortSignal.any([]);
+  const operationTimeoutSignal = AbortSignal.timeout(
+    CHAT_IDB_OPERATION_TIMEOUT_MS,
+  );
+  const operationSignal = signal
+    ? AbortSignal.any([signal, operationTimeoutSignal])
+    : operationTimeoutSignal;
+  const timeoutResult = Symbol("chat-idb-timeout");
 
-  const timeoutPromise = (async (): Promise<never> => {
-    await delay(CHAT_IDB_OPERATION_TIMEOUT_MS, { signal: timeoutSignal });
-    throw new ChatIdbTimeoutError(label);
-  })();
+  const timeoutDeferred = createDeferredPromise<typeof timeoutResult>(
+    AbortSignal.any([]),
+  );
+  const onOperationAbort = () => {
+    if (signal?.aborted) {
+      timeoutDeferred.reject(signal.reason);
+    } else if (operationTimeoutSignal.aborted) {
+      timeoutDeferred.resolve(timeoutResult);
+    }
+  };
+  operationSignal.addEventListener("abort", onOperationAbort, { once: true });
   const operationPromise = (async (): Promise<T> => {
-    return await operation();
+    return await operation(operationSignal);
   })();
 
-  return await Promise.race([operationPromise, timeoutPromise]);
+  const result = await withCleanup(
+    Promise.race([operationPromise, timeoutDeferred.promise]),
+    () => {
+      operationSignal.removeEventListener("abort", onOperationAbort);
+      if (!timeoutDeferred.settled()) {
+        timeoutDeferred.resolve(timeoutResult);
+      }
+    },
+  );
+  if (result === timeoutResult) {
+    throw new ChatIdbTimeoutError(label);
+  }
+  return result;
 }
 
 export async function chatIdbReadOr<T>(

@@ -28,6 +28,7 @@ import {
   createRestoredAttachment,
   type DraftSignals,
 } from "../zero-page/chat-draft.ts";
+import { buildDraftPersistencePayload } from "../zero-page/draft-persistence.ts";
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
@@ -985,8 +986,6 @@ function createDraftSync(
         return;
       }
 
-      const input = get(draft.input$);
-      const content = input.trim() || null;
       const attachments = get(draft.attachments$);
 
       const infos = await Promise.allSettled(
@@ -1008,28 +1007,20 @@ function createDraftSync(
         };
       });
       const features = get(featureSwitch$);
-      const editorDocument = set(draft.readEditorDocument$);
-      let structuredPrompt: UserMessageDocument | null = null;
-      if (
-        (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
-        editorDocument
-      ) {
-        structuredPrompt = editorDocument.toMessageDocument({
-          generationTemplate: get(draft.generationTemplate$),
-          attachments: persisted,
-        });
-        if (!structuredPrompt) {
-          throw new Error("Failed to serialize structured draft");
-        }
-      }
+      const payload = buildDraftPersistencePayload({
+        input: get(draft.input$),
+        structuredPromptEnabled:
+          features[FeatureSwitchKey.StructuredPrompt] ?? false,
+        editorDocument: set(draft.readEditorDocument$),
+        generationTemplate: get(draft.generationTemplate$),
+        attachments: persisted,
+      });
 
       await set(
         dataSource.patchDraft$,
         {
           threadId,
-          content,
-          structuredPrompt,
-          attachments: persisted.length > 0 ? persisted : null,
+          ...payload,
         },
         signal,
       );
