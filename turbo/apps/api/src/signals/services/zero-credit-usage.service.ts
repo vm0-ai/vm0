@@ -252,20 +252,23 @@ async function markUsageEventsProcessed(
   const billingErrors = outcomes.map((outcome) => {
     return outcome.billingError;
   });
-  await tx.execute(sql`
-    UPDATE ${usageEvent}
-    SET
-      "credits_charged" = settlement.credits_charged,
-      "status" = 'processed',
-      "processed_at" = ${nowDate()},
-      "billing_error" = settlement.billing_error
-    FROM unnest(
+  const settlementSource = sql`
+    unnest(
       ${sql.param(usageEventIds)}::uuid[],
       ${sql.param(creditsCharged)}::bigint[],
       ${sql.param(billingErrors)}::varchar(50)[]
     ) AS settlement(usage_event_id, credits_charged, billing_error)
-    WHERE ${usageEvent.id} = settlement.usage_event_id
-  `);
+  `;
+  await tx
+    .update(usageEvent)
+    .set({
+      creditsCharged: sql`settlement.credits_charged`,
+      status: "processed",
+      processedAt: nowDate(),
+      billingError: sql`settlement.billing_error`,
+    })
+    .from(settlementSource)
+    .where(eq(usageEvent.id, sql`settlement.usage_event_id`));
 }
 
 async function processOrgUsageEventsInTransaction(

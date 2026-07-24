@@ -89,6 +89,10 @@ interface SimpleDeleteMatch {
   readonly targetTableExpressionIndex: number | undefined;
 }
 
+interface SimpleUnnestUpdateMatch {
+  readonly targetTableExpressionIndex: number;
+}
+
 interface SimpleUpsertMatch {
   readonly targetTableExpressionIndex: number | undefined;
 }
@@ -181,7 +185,19 @@ const UNSUPPORTED_DELETE_PREDICATE_KEYWORDS = new Set([
   "USING",
 ]);
 
+const UNSUPPORTED_UNNEST_UPDATE_PREDICATE_KEYWORDS = new Set([
+  "CURRENT",
+  "FETCH",
+  "LIMIT",
+  "ORDER",
+  "RETURNING",
+]);
+
 const UNSUPPORTED_UPSERT_ASSIGNMENT_KEYWORDS = new Set(["RETURNING", "WHERE"]);
+
+const SIMPLE_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_$]*$/u;
+const SIMPLE_OR_QUOTED_IDENTIFIER_PATTERN =
+  /^(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:""|[^"])+")$/u;
 
 function quasiText(node: TSESTree.TemplateElement): string {
   return node.value.cooked ?? node.value.raw;
@@ -391,6 +407,7 @@ function hasSimpleAssignments(
   syntaxSource: string,
   start: number,
   end: number,
+  targetPattern: RegExp,
 ): boolean {
   const segments: Array<{ readonly start: number; readonly end: number }> = [];
   let depth = 0;
@@ -426,9 +443,9 @@ function hasSimpleAssignments(
     if (assignmentOffset === -1) {
       return false;
     }
-    const target = syntaxSource.slice(segment.start, assignmentOffset).trim();
+    const target = source.slice(segment.start, assignmentOffset).trim();
     const value = source.slice(assignmentOffset + 1, segment.end).trim();
-    return /^[A-Za-z_][A-Za-z0-9_$]*$/u.test(target) && value !== "";
+    return targetPattern.test(target) && value !== "";
   });
 }
 
@@ -483,6 +500,123 @@ function simpleDeleteMatch(
       targetTable.kind === "expression"
         ? targetTable.expressionIndex
         : undefined,
+  };
+}
+
+function simpleUnnestUpdateMatch(
+  source: string,
+  syntaxSource: string,
+  statement: CompleteSqlStatement,
+): SimpleUnnestUpdateMatch | undefined {
+  const tokens = statement.tokens;
+  const trailingToken = tokens[tokens.length - 1];
+  if (
+    !statement.hasTrailingSemicolon &&
+    (trailingToken === undefined ||
+      syntaxSource.slice(trailingToken.end, statement.end).trim() !== "")
+  ) {
+    return undefined;
+  }
+
+  const setIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "SET") ? [index] : [];
+  });
+  const fromIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "FROM") ? [index] : [];
+  });
+  const whereIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "WHERE") ? [index] : [];
+  });
+  if (
+    setIndexes.length !== 1 ||
+    fromIndexes.length !== 1 ||
+    whereIndexes.length !== 1
+  ) {
+    return undefined;
+  }
+
+  const setIndex = setIndexes[0];
+  const fromIndex = fromIndexes[0];
+  const whereIndex = whereIndexes[0];
+  if (
+    setIndex === undefined ||
+    fromIndex === undefined ||
+    whereIndex === undefined
+  ) {
+    return undefined;
+  }
+
+  const updateKeyword = tokens[0];
+  const targetTable = tokens[1];
+  const setKeyword = tokens[setIndex];
+  const fromKeyword = tokens[fromIndex];
+  const unnestKeyword = tokens[fromIndex + 1];
+  const sourceOpen = tokens[fromIndex + 2];
+  const sourceClose = tokens[fromIndex + 3];
+  const asKeyword = tokens[fromIndex + 4];
+  const sourceAlias = tokens[fromIndex + 5];
+  const sourceColumnsOpen = tokens[fromIndex + 6];
+  const sourceColumnsClose = tokens[fromIndex + 7];
+  const whereKeyword = tokens[whereIndex];
+  if (
+    setIndex !== 2 ||
+    whereIndex !== fromIndex + 8 ||
+    !isWord(updateKeyword, "UPDATE") ||
+    targetTable?.kind !== "expression" ||
+    !isWord(setKeyword, "SET") ||
+    !isWord(fromKeyword, "FROM") ||
+    !isWord(unnestKeyword, "UNNEST") ||
+    !isPunctuation(sourceOpen, "(") ||
+    !isPunctuation(sourceClose, ")") ||
+    !isWord(asKeyword, "AS") ||
+    sourceAlias?.kind !== "word" ||
+    !isPunctuation(sourceColumnsOpen, "(") ||
+    !isPunctuation(sourceColumnsClose, ")") ||
+    !isWord(whereKeyword, "WHERE") ||
+    updateKeyword === undefined ||
+    setKeyword === undefined ||
+    fromKeyword === undefined ||
+    unnestKeyword === undefined ||
+    sourceOpen === undefined ||
+    sourceClose === undefined ||
+    asKeyword === undefined ||
+    sourceColumnsOpen === undefined ||
+    sourceColumnsClose === undefined ||
+    whereKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, updateKeyword, targetTable) ||
+    !onlyWhitespaceBetween(syntaxSource, targetTable, setKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, unnestKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, unnestKeyword, sourceOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, sourceClose, asKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, asKeyword, sourceAlias) ||
+    !onlyWhitespaceBetween(syntaxSource, sourceAlias, sourceColumnsOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, sourceColumnsClose, whereKeyword) ||
+    syntaxSource.slice(sourceOpen.end, sourceClose.start).trim() === "" ||
+    !isSimpleIdentifierList(
+      syntaxSource,
+      sourceColumnsOpen,
+      sourceColumnsClose,
+    ) ||
+    !hasSimpleAssignments(
+      source,
+      syntaxSource,
+      setKeyword.end,
+      fromKeyword.start,
+      SIMPLE_OR_QUOTED_IDENTIFIER_PATTERN,
+    ) ||
+    syntaxSource.slice(whereKeyword.end, statement.end).trim() === "" ||
+    tokens.slice(whereIndex + 1).some((token) => {
+      return (
+        token.kind === "word" &&
+        UNSUPPORTED_UNNEST_UPDATE_PREDICATE_KEYWORDS.has(token.value)
+      );
+    })
+  ) {
+    return undefined;
+  }
+
+  return {
+    targetTableExpressionIndex: targetTable.expressionIndex,
   };
 }
 
@@ -567,7 +701,13 @@ function simpleUpsertMatch(
         UNSUPPORTED_UPSERT_ASSIGNMENT_KEYWORDS.has(token.value)
       );
     }) ||
-    !hasSimpleAssignments(source, syntaxSource, setKeyword.end, statement.end)
+    !hasSimpleAssignments(
+      source,
+      syntaxSource,
+      setKeyword.end,
+      statement.end,
+      SIMPLE_IDENTIFIER_PATTERN,
+    )
   ) {
     return undefined;
   }
@@ -1281,7 +1421,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete schema-backed deletes, upserts, selects, existence checks, locking selects, and scalar result queries",
+        "Prefer Drizzle query builders for complete schema-backed deletes, unnest-backed updates, upserts, selects, existence checks, locking selects, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -1297,6 +1437,8 @@ export const preferDrizzleQueryBuilder = createRule({
         "Use a Drizzle delete builder for this complete single-target query.",
       upsertQueryBuilder:
         "Use a Drizzle insert builder with .onConflictDoUpdate(...) for this complete single-row upsert.",
+      unnestUpdateQueryBuilder:
+        "Use a Drizzle update builder with .from(...) for this complete unnest-backed update.",
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
@@ -1882,11 +2024,15 @@ export const preferDrizzleQueryBuilder = createRule({
         return;
       }
       const deleteMatch = simpleDeleteMatch(syntaxSource, statement);
-      const upsertMatch =
+      const unnestUpdateMatch =
         deleteMatch === undefined
+          ? simpleUnnestUpdateMatch(source, syntaxSource, statement)
+          : undefined;
+      const upsertMatch =
+        deleteMatch === undefined && unnestUpdateMatch === undefined
           ? simpleUpsertMatch(source, syntaxSource, statement)
           : undefined;
-      const match = deleteMatch ?? upsertMatch;
+      const match = deleteMatch ?? unnestUpdateMatch ?? upsertMatch;
       if (
         match === undefined ||
         !isDrizzleSqlTag(checker, services, query.tag) ||
@@ -1916,9 +2062,11 @@ export const preferDrizzleQueryBuilder = createRule({
       context.report({
         node: query,
         messageId:
-          deleteMatch === undefined
-            ? "upsertQueryBuilder"
-            : "deleteQueryBuilder",
+          deleteMatch !== undefined
+            ? "deleteQueryBuilder"
+            : unnestUpdateMatch !== undefined
+              ? "unnestUpdateQueryBuilder"
+              : "upsertQueryBuilder",
       });
     }
 
