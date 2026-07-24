@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.629.0](https://github.com/vm0-ai/vm0/compare/app-v0.628.0...app-v0.629.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** source service tier and computer use host from thread events ([#22890](https://github.com/vm0-ai/vm0/issues/22890)) ([173e9c9](https://github.com/vm0-ai/vm0/commit/173e9c99c5e56f2a9cba55b0fd31a93d4e52c60e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.224.0
+    * @vm0/core bumped to 8.461.2
+
 ## [0.628.0](https://github.com/vm0-ai/vm0/compare/app-v0.627.4...app-v0.628.0) (2026-07-24)
 
 
