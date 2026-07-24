@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.147.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.16...runner-rs-v0.147.17) (2026-07-24)
+
+
+### Bug Fixes
+
+* **runner:** make version config gc retryable ([#22889](https://github.com/vm0-ai/vm0/issues/22889)) ([324a425](https://github.com/vm0-ai/vm0/commit/324a42529b537637f93385f286b31f479006b27c))
+
 ## [0.147.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.15...runner-rs-v0.147.16) (2026-07-24)
 
 
