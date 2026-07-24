@@ -763,6 +763,13 @@ describe("chat lifecycle", () => {
   it("keeps the established completed-run layout across container sizes", async () => {
     const finalReply = "The launch plan is ready.";
     const followupPrompt = "Turn it into a presentation";
+    const completedAt = "2026-06-09T10:00:21Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
 
     mockChatLifecycle(context, {
       threadId: "thread-completed-run-layout",
@@ -790,6 +797,12 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-completed-run-layout",
           runLifecycleEvent: "completed",
+          createdAt: completedAt,
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-completed-run-layout",
           recommendedFollowups: [
             {
               prompt: followupPrompt,
@@ -797,7 +810,7 @@ describe("chat lifecycle", () => {
               generationType: "presentation",
             },
           ],
-          createdAt: "2026-06-09T10:00:21Z",
+          createdAt: "2026-06-09T10:00:30Z",
         },
       ],
     });
@@ -853,7 +866,7 @@ describe("chat lifecycle", () => {
     expect(followupList).not.toHaveClass("flex", "gap-1");
     expect(followupButton).not.toHaveClass("border", "bg-background");
 
-    const finishedLabel = screen.getByText("Keep going");
+    const finishedLabel = screen.getByText(`Keep going · ${completedAtLabel}`);
     const finishedLabelRow = finishedLabel.parentElement;
     const finishedDivider = finishedLabelRow!.parentElement;
     const finishedRunRow = finishedDivider!.parentElement;
@@ -1041,6 +1054,47 @@ describe("chat lifecycle", () => {
         "true",
       );
     });
+  });
+
+  it("keeps chat work visible when the run was cancelled", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-cancelled",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the launch status",
+          runId: "run-work-folding-cancelled",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking launch status.",
+          runId: "run-work-folding-cancelled",
+          createdAt: "2026-06-09T10:00:25Z",
+        },
+        {
+          role: "assistant",
+          content: "Run cancelled",
+          error: "Run cancelled",
+          runId: "run-work-folding-cancelled",
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-06-09T10:00:55Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-cancelled",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Checking launch status.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Expand work history")).toBeNull();
   });
 
   it("does not fold a completed run with only a user message and final reply", async () => {

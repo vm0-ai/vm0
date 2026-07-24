@@ -152,6 +152,7 @@ import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
+import { isCancelledAssistantMessage } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
   runGroupExpansionOverrides$,
@@ -802,7 +803,7 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function formatArtifactTime(value: string): string {
+function formatChatTimestamp(value: string): string {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -1461,7 +1462,7 @@ function ArtifactInboxRow({
           <span aria-hidden>·</span>
           <span>{formatBytes(file.size)}</span>
           <span aria-hidden>·</span>
-          <span>{formatArtifactTime(file.createdAt)}</span>
+          <span>{formatChatTimestamp(file.createdAt)}</span>
         </span>
       </span>
       <IconChevronRight
@@ -3147,7 +3148,10 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
-    if (!terminatedRunIds.has(runId)) {
+    if (
+      !terminatedRunIds.has(runId) ||
+      runMessages.some(isCancelledAssistantMessage)
+    ) {
       visibleMessages.push(...runMessages);
       index = endIndex;
       continue;
@@ -4449,7 +4453,13 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const donePhrase = useLastResolved(thread.donePhrase$) ?? "Done";
-  const label = source ? "Keep going" : donePhrase;
+  const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
+  const label =
+    source && runFinishedAt
+      ? `Keep going · ${formatChatTimestamp(runFinishedAt)}`
+      : source
+        ? "Keep going"
+        : donePhrase;
 
   return (
     <div className="flex flex-col gap-2">

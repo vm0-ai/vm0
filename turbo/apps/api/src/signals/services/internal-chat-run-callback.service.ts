@@ -447,6 +447,7 @@ interface CreateQueuedChatRunInput {
     readonly displayName: string;
   } | null;
   readonly triggerSource: "web" | "slack";
+  readonly realAgentInPreview?: boolean;
   readonly slackDelivery?: {
     readonly channelId: string;
     readonly threadTs: string;
@@ -548,6 +549,7 @@ function buildQueuedCreateZeroRunArgs(
       ...(input.effectiveModelProvider
         ? { modelProvider: input.effectiveModelProvider }
         : {}),
+      ...(input.realAgentInPreview ? { realAgentInPreview: true } : {}),
     },
   };
 }
@@ -2030,6 +2032,7 @@ async function buildCreateQueuedChatRunInput(
     codexServiceTier: modelRoute.codexServiceTier,
     computerUseHostGrant,
     triggerSource: args.queuedMessage.triggerSource,
+    realAgentInPreview: sourceParams?.realAgentInPreview,
     slackDelivery: sourceParams?.slackDelivery,
     userInfoExtras: sourceParams?.userInfoExtras,
   };
