@@ -1120,6 +1120,9 @@ export const chatThreadMessagesContract = c.router({
     },
     summary: "Get paginated chat messages for a thread",
   },
+  // Compatibility for already-open app-v0.627.3 browser clients. The next app
+  // no longer calls this route; remove it only after those clients can no
+  // longer reasonably remain active against the current backend.
   get: {
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/messages/:messageId",

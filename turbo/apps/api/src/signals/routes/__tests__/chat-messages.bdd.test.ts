@@ -1713,6 +1713,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
               id: "gmail-agent-reply-message",
               threadId: "gmail-agent-reply-thread",
               payload: {
+                partId: "",
                 mimeType: "text/plain",
                 filename: "",
                 headers: [
@@ -1824,6 +1825,10 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
     expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
+    expect(appendSystemPrompt).toContain(
+      "GET /gmail/v1/users/me/settings/sendAs",
+    );
+    expect(appendSystemPrompt).toContain("append that signature exactly once");
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
     );
@@ -4010,11 +4015,12 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       size: 12,
       url: expect.stringContaining(`${fileId}/notes.txt`),
     });
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      queuedId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original).toMatchObject({
       id: queuedId,
       content: "queued with attachment",
@@ -4357,11 +4363,12 @@ describe("CHAT-02: shared user message queue", () => {
       revokesMessageId: messageId,
     });
     expect(claimed?.id).not.toBe(messageId);
-    const queued = await chat.getThreadMessage(
-      actor,
-      sent.body.threadId,
-      messageId,
-    );
+    const queued = rows.find((message) => {
+      return message.id === messageId;
+    });
+    if (!queued) {
+      throw new Error("Expected the queued message");
+    }
     expect(queued).toMatchObject({
       id: messageId,
       content: "queue-first direct dispatch",
@@ -4842,11 +4849,12 @@ describe("CHAT-02: shared user message queue", () => {
     });
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.runId).toBe(sent.body.runId);
-    const queued = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      messageId,
-    );
+    const queued = userMessages(messages.messages).find((message) => {
+      return message.id === messageId;
+    });
+    if (!queued) {
+      throw new Error("Expected the queued message");
+    }
     expect(queued.runId).toBeUndefined();
 
     const runList = await api.listAgentRuns(actor, {
@@ -4985,11 +4993,12 @@ describe("CHAT-02: shared user message queue", () => {
     if (!claimed?.runId) {
       throw new Error("Expected the queue drain to append a claimed message");
     }
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      messageId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === messageId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original.runId).toBeUndefined();
     expect(claimed.content).toBe("recall races the appended claim");
 
@@ -5298,11 +5307,12 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the queued message to append a replacement");
     }
     expect(promoted.content).toBe("queue-first waits for the anchor");
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      queuedId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original.runId).toBeUndefined();
     expect(Date.parse(promoted.createdAt)).toBeGreaterThan(
       Date.parse(original.createdAt),
@@ -5380,11 +5390,12 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the queued message to fire after cancel");
     }
     expect(fired.content).toBe("queue-first fires after cancel");
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      queuedId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original.runId).toBeUndefined();
 
     const followUp = await api.readRun(actor, fired.runId);

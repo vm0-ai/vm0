@@ -75,7 +75,6 @@ function abortError(message: string): Error {
 
 function chatThreadRealtimeTopics(threadId: string): readonly string[] {
   return [
-    `chatThreadMessageUpdated:${threadId}`,
     `chatThreadRunCreated:${threadId}`,
     `chatThreadRunUpdated:${threadId}`,
     `chatThreadAutomationsChanged:${threadId}`,
@@ -144,9 +143,6 @@ function createFailingSubscribeDataSource(): ChatThreadRemote {
     }),
     listMessagesBefore$: command(() => {
       return unexpectedDataSourceCall("listMessagesBefore$");
-    }),
-    getMessage$: command(() => {
-      return unexpectedDataSourceCall("getMessage$");
     }),
     cancelRuns$: command(() => {
       return unexpectedDataSourceCall("cancelRuns$");
@@ -690,7 +686,6 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
-            onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
@@ -702,7 +697,7 @@ describe("realtime signals", () => {
         context.signal,
       ),
     ).rejects.toThrow(
-      `Realtime subscription ended before ready: chatThreadMessageUpdated:${threadId}`,
+      `Realtime subscription ended before ready: chatThreadRunCreated:${threadId}`,
     );
 
     expectNoChatThreadSubscriptions(threadId);
@@ -721,7 +716,6 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
-            onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
@@ -749,7 +743,6 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
-          onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
@@ -770,7 +763,6 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
-          onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,

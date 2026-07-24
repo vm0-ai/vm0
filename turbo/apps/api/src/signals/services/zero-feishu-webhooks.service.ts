@@ -24,6 +24,7 @@ import {
 } from "./feishu-config";
 import {
   dispatchFeishuMessage$,
+  formatFeishuFileContext,
   type FeishuInboundMessage,
 } from "./zero-feishu-dispatch.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
@@ -74,6 +75,9 @@ const v2MessageEventSchema = z.object({
 });
 const textContentSchema = z.object({ text: z.string() });
 const FEISHU_REPLAY_WINDOW_SECONDS = 60 * 5;
+
+type FeishuEventMessage = z.infer<typeof v2MessageEventSchema>["message"];
+type FeishuEventMention = NonNullable<FeishuEventMessage["mentions"]>[number];
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -152,6 +156,28 @@ function decryptPayload(encrypted: string, encryptKey: string): unknown {
   return JSON.parse(decrypted) as unknown;
 }
 
+function inboundMessageText(
+  message: FeishuEventMessage,
+  botMention: FeishuEventMention | undefined,
+): string {
+  if (message.message_type !== "text") {
+    return (
+      formatFeishuFileContext({
+        messageId: message.message_id,
+        messageType: message.message_type,
+        content: message.content,
+      }) ?? ""
+    );
+  }
+  const content = textContentSchema.safeParse(safeJsonParse(message.content));
+  if (!content.success) {
+    return "";
+  }
+  return botMention
+    ? content.data.text.replaceAll(botMention.key, "")
+    : content.data.text;
+}
+
 function inboundMessage(
   config: FeishuInstallationConfig,
   envelope: z.infer<typeof v2EnvelopeSchema>,
@@ -160,11 +186,7 @@ function inboundMessage(
     return null;
   }
   const event = v2MessageEventSchema.safeParse(envelope.event);
-  if (
-    !event.success ||
-    event.data.message.message_type !== "text" ||
-    event.data.sender.sender_type === "app"
-  ) {
+  if (!event.success || event.data.sender.sender_type === "app") {
     return null;
   }
   const chatType = event.data.message.chat_type;
@@ -184,13 +206,7 @@ function inboundMessage(
   if (chatType !== "p2p" && !botMention) {
     return null;
   }
-  const content = textContentSchema.safeParse(
-    safeJsonParse(event.data.message.content),
-  );
-  const rawText = content.success ? content.data.text : "";
-  const text = (
-    botMention ? rawText.replaceAll(botMention.key, "") : rawText
-  ).trim();
+  const text = inboundMessageText(event.data.message, botMention).trim();
   if (!text) {
     return null;
   }

@@ -400,12 +400,33 @@ describe("zero people-search route", () => {
           name: "PeopleSearchProfiles",
           schema: {
             properties: {
-              profiles: { maxItems: 20 },
+              profiles: {
+                maxItems: 20,
+                items: {
+                  properties: {
+                    sourceIds: {
+                      type: "array",
+                      minItems: 1,
+                      maxItems: 5,
+                      items: { type: "integer", minimum: 1 },
+                    },
+                  },
+                },
+              },
             },
           },
         },
       },
     });
+    expect(requestBody).toHaveProperty(
+      "instructions",
+      expect.stringContaining(
+        "Use only distinct positive integer result IDs from people_search_results in sourceIds.",
+      ),
+    );
+    expect(requestBody).not.toHaveProperty(
+      "response_format.json_schema.schema.properties.profiles.items.properties.sourceIds.uniqueItems",
+    );
     expect(authorization).toBe("Bearer test-people-search-token");
     expect(response.body).toStrictEqual({
       query: "platform engineering leaders at Notion",
@@ -569,6 +590,9 @@ describe("zero people-search route", () => {
       },
       providerResponse({
         profiles: [structuredProfile({ sourceIds: [999] })],
+      }),
+      providerResponse({
+        profiles: [structuredProfile({ sourceIds: [1, 1] })],
       }),
       providerResponse({
         results: [providerResult(), providerResult()],
@@ -737,6 +761,43 @@ describe("zero people-search route", () => {
     const afterCredits = await credits(actor);
     expectApiError(oversized.body);
     expect(oversized.body.error.code).toBe("PEOPLE_SEARCH_OUTPUT_TOO_LARGE");
+    expect(afterCredits).toBe(beforeCredits);
+  });
+
+  it("maps and bounds nested provider errors without billing", async () => {
+    const actor = staffActor();
+    configureProvider();
+    await seedPeopleSearchPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(PERPLEXITY_AGENT_URL, () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: `\u001b]52;c;clipboard\u0007${"x".repeat(5000)}`,
+            },
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroPeopleSearchContract).search({
+        headers: authenticate(actor),
+        body: defaultRequest(),
+      }),
+      [502],
+    );
+    const afterCredits = await credits(actor);
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("PERPLEXITY_ERROR");
+    expect(response.body.error.message).toHaveLength(4096);
+    expect(response.body.error.message.endsWith("...")).toBeTruthy();
+    expect(response.body.error.message).not.toContain("\u001b");
+    expect(response.body.error.message).not.toContain("\u0007");
     expect(afterCredits).toBe(beforeCredits);
   });
 

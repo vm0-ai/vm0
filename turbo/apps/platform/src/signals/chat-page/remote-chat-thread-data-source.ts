@@ -8,13 +8,12 @@ import {
   chatThreadMessagesContract,
   chatMessagesContract,
   type ChatThreadEvent,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { threadCodexServiceTierFromSelection } from "./model-selection-request.ts";
-import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import {
   createDeferredPromise,
   onRejection,
@@ -35,7 +34,6 @@ import {
 import type {
   CancelRunsArgs,
   AppendQueuedMessageArgs,
-  GetMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
@@ -48,20 +46,10 @@ import type {
 
 const L = logger("ChatThread");
 
-type ChatRealtimeSubscription =
-  | {
-      readonly kind: "loop";
-      readonly topic: string;
-      readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
-    }
-  | {
-      readonly kind: "payload";
-      readonly topic: string;
-      readonly loopCommand$: Command<
-        Promise<boolean> | boolean,
-        [unknown, AbortSignal]
-      >;
-    };
+type ChatRealtimeSubscription = {
+  readonly topic: string;
+  readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+};
 
 const patchDraft$ = command(
   async (
@@ -214,16 +202,6 @@ const appendQueuedMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    const messageClient = get(zeroClient$)(chatThreadMessagesContract);
-    const messageResult = await accept(
-      messageClient.get({
-        params: { threadId, messageId: clientMessageId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return messageResult.body;
   },
 );
 
@@ -247,16 +225,6 @@ const recallMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    const messageClient = get(zeroClient$)(chatThreadMessagesContract);
-    const messageResult = await accept(
-      messageClient.get({
-        params: { threadId, messageId: clientMessageId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return messageResult.body;
   },
 );
 
@@ -319,28 +287,6 @@ export const listMessagesBefore$ = command(
       messages: result.body.messages,
       hasHistoryBefore: result.body.hasHistoryBefore ?? false,
     };
-  },
-);
-
-const getMessage$ = command(
-  async (
-    { get },
-    { threadId, messageId }: GetMessageArgs,
-    signal: AbortSignal,
-  ): Promise<PagedChatMessage | null> => {
-    const client = get(zeroClient$)(chatThreadMessagesContract);
-    const result = await accept(
-      client.get({
-        params: { threadId, messageId },
-        fetchOptions: { signal },
-      }),
-      [200, 404],
-    );
-    signal.throwIfAborted();
-    if (result.status === 404) {
-      return null;
-    }
-    return result.body;
   },
 );
 
@@ -415,37 +361,26 @@ function createSubscribeRealtime() {
           const ready = createDeferredPromise<void>(subscriptionSignal);
           const subscriptions: ChatRealtimeSubscription[] = [
             {
-              kind: "payload",
-              topic: `chatThreadMessageUpdated:${threadId}`,
-              loopCommand$: handlers.onMessageUpdated$,
-            },
-            {
-              kind: "loop",
               topic: `chatThreadRunCreated:${threadId}`,
               loopCommand$: handlers.onRunChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadRunUpdated:${threadId}`,
               loopCommand$: handlers.onRunChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadAutomationsChanged:${threadId}`,
               loopCommand$: handlers.onAutomationsChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadArtifactsChanged:${threadId}`,
               loopCommand$: handlers.onArtifactsChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadWorkflowsChanged:${threadId}`,
               loopCommand$: handlers.onWorkflowsChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadWorkflowQueueChanged:${threadId}`,
               loopCommand$: handlers.onWorkflowQueueChanged$,
             },
@@ -462,27 +397,15 @@ function createSubscribeRealtime() {
           const startSubscription = async (
             subscription: ChatRealtimeSubscription,
           ) => {
-            if (subscription.kind === "loop") {
-              await set(
-                setAblyLoop$,
-                {
-                  topic: subscription.topic,
-                  loopCommand$: subscription.loopCommand$,
-                  options,
-                },
-                subscriptionSignal,
-              );
-            } else {
-              await set(
-                setAblyPayloadLoop$,
-                {
-                  topic: subscription.topic,
-                  loopCommand$: subscription.loopCommand$,
-                  options,
-                },
-                subscriptionSignal,
-              );
-            }
+            await set(
+              setAblyLoop$,
+              {
+                topic: subscription.topic,
+                loopCommand$: subscription.loopCommand$,
+                options,
+              },
+              subscriptionSignal,
+            );
             subscriptionSignal.throwIfAborted();
             if (ready.settled()) {
               return;
@@ -549,7 +472,6 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
-    getMessage$,
     cancelRuns$,
     markRead$,
     subscribeRealtime$,

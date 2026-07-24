@@ -44,9 +44,6 @@ const SCHEMA = {
   ENV: z.enum(["production", "preview", "development"]),
   VITEST: z.enum(["true", "false"]).default("false"),
   VM0_DEBUG: z.string().default(""),
-  CONNECTOR_CATALOG_SOURCE_MODE: z
-    .enum(["static", "shadow", "external"])
-    .default("static"),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   // Direct origin of the API backend for self-dispatched internal callbacks
   // (`/api/internal/**`). Optional; when unset, production defaults to the API
