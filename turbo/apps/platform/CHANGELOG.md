@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.627.3](https://github.com/vm0-ai/vm0/compare/app-v0.627.2...app-v0.627.3) (2026-07-24)
+
+
+### Bug Fixes
+
+* **artifacts:** repair indexeddb migration and bulk sync ([#22841](https://github.com/vm0-ai/vm0/issues/22841)) ([cea3ad3](https://github.com/vm0-ai/vm0/commit/cea3ad36b256d24f80b8deed1fc16af6841070f5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.1
+    * @vm0/core bumped to 8.461.0
+
 ## [0.627.2](https://github.com/vm0-ai/vm0/compare/app-v0.627.1...app-v0.627.2) (2026-07-24)
 
 
