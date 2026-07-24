@@ -1163,8 +1163,6 @@ export const deleteZeroMailDraft$ = command(
       details: null,
       detailAvailable: false,
     });
-    await set(writeDb$).delete(mailDrafts).where(eq(mailDrafts.id, row.id));
-    signal.throwIfAborted();
     return okResult(row.id, deletedDraft);
   },
 );
