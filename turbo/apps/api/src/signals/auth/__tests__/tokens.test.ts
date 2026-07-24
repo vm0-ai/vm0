@@ -215,6 +215,29 @@ describe("auth tokens", () => {
     );
   });
 
+  it("keeps browser capabilities disabled without an internal rollout audience", () => {
+    const defaultToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    );
+    const overrideToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      { [FeatureSwitchKey.ZeroBrowser]: true },
+    );
+
+    for (const token of [defaultToken, overrideToken]) {
+      expect(verifyZeroToken(token)?.capabilities).not.toContain(
+        "browser:read",
+      );
+      expect(verifyZeroToken(token)?.capabilities).not.toContain(
+        "browser:write",
+      );
+    }
+  });
+
   it("grants goal capabilities by default", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
 

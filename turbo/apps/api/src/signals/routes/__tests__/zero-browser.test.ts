@@ -16,7 +16,7 @@ import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { cronBrowserReconcileRoutes } from "../cron-browser-reconcile";
 import { zeroBrowserRoutes } from "../zero-browser";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -72,6 +72,7 @@ function providerBrowser(
 
 async function claimChatRun(
   runs: ReturnType<typeof createRunsApi>,
+  actor: ApiTestUser,
   runId: string,
 ) {
   await flushWaitUntilForTest();
@@ -80,8 +81,12 @@ async function claimChatRun(
   if (!zeroToken) {
     throw new Error("Expected the runner claim to include ZERO_TOKEN");
   }
+  const browserToken = runs.zeroTokenForRunWithCapabilities(actor, runId, [
+    "browser:read",
+    "browser:write",
+  ]);
   return {
-    browserHeaders: { authorization: `Bearer ${zeroToken}` },
+    browserHeaders: { authorization: `Bearer ${browserToken}` },
     sandboxHeaders: {
       authorization: `Bearer ${claim.sandboxToken}`,
     },
@@ -140,7 +145,7 @@ describe("zero browser route", () => {
       throw new Error("Expected a chat run");
     }
     const firstRunId = sent.body.runId;
-    const firstClaim = await claimChatRun(runs, firstRunId);
+    const firstClaim = await claimChatRun(runs, actor, firstRunId);
 
     const profileIds = [randomUUID(), randomUUID()] as const;
     const providerIds = [randomUUID(), randomUUID()] as const;
@@ -336,7 +341,7 @@ describe("zero browser route", () => {
     if (!followup) {
       throw new Error("Expected the queued follow-up to be promoted");
     }
-    const secondClaim = await claimChatRun(runs, followup.id);
+    const secondClaim = await claimChatRun(runs, actor, followup.id);
     const resumed = await accept(
       client().resume({
         headers: secondClaim.browserHeaders,

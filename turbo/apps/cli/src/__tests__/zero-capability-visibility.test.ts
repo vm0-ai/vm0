@@ -35,6 +35,7 @@ function buildCommands(): Command[] {
     new Command("phone"),
     new Command("variable"),
     new Command("whoami"),
+    new Command("browser"),
     new Command("generate"),
     new Command("web"),
     new Command("host"),
@@ -150,6 +151,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
     expect(hiddenCommandNames(prog)).toEqual([]);
     expect(registeredCommandNames(prog)).not.toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -205,6 +207,7 @@ describe("registerZeroCommands", () => {
 
     expect(hiddenCommandNames(prog)).toEqual([]);
     expect(registeredCommandNames(prog)).not.toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
   it("should keep default-disabled feature commands unregistered outside zero scope", () => {
@@ -218,6 +221,7 @@ describe("registerZeroCommands", () => {
 
     expect(hiddenCommandNames(prog)).toEqual([]);
     expect(registeredCommandNames(prog)).not.toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
   it("should only show whoami when capabilities array is empty", () => {
@@ -668,6 +672,25 @@ describe("registerZeroCommands", () => {
         [FeatureSwitchKey.PlanUpgradeGuidance]: true,
       }),
     ).toContain("Upgrade plan?");
+  });
+
+  it("should register browser only when its feature switch and capability are enabled", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["browser:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    expect(registeredCommandNames(buildProgram())).not.toContain("browser");
+    expect(
+      visibleCommandNames(
+        buildProgram({
+          [FeatureSwitchKey.ZeroBrowser]: true,
+        }),
+      ),
+    ).toContain("browser");
   });
 
   it("should show billing help examples only for billing capabilities", () => {

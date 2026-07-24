@@ -114,6 +114,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
       true,
@@ -148,6 +149,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
       false,
@@ -224,6 +226,9 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.PlanUpgradeGuidance,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ZeroBrowser,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.GithubWebhookAutomations,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -243,6 +248,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+        [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ZeroPeopleSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
