@@ -570,7 +570,7 @@ async function loadArtifactFile(
 
   const [row] = await db
     .select({
-      runId: zeroRuns.id,
+      runId: runUploadedFiles.runId,
       source: runUploadedFiles.source,
       externalId: runUploadedFiles.externalId,
       filename: runUploadedFiles.filename,
@@ -602,7 +602,10 @@ async function loadArtifactFile(
       ),
     )
     .limit(1);
-  return row ?? null;
+  if (!row?.runId) {
+    return null;
+  }
+  return { ...row, runId: row.runId };
 }
 
 function resolveArtifactS3ObjectFromKey(
