@@ -45,6 +45,7 @@ import type {
 } from "./chat-thread-data-source.ts";
 
 const L = logger("ChatThread");
+export const CHAT_MESSAGES_PAGE_LIMIT = 50;
 
 type ChatRealtimeSubscription = {
   readonly topic: string;
@@ -238,7 +239,7 @@ export const listMessagesAfter$ = command(
     const result = await accept(
       client.list({
         params: { threadId },
-        query: { sinceSeqId, limit: 50 },
+        query: { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
         fetchOptions: { signal },
       }),
       [200],
@@ -360,14 +361,6 @@ function createSubscribeRealtime() {
         (async () => {
           const ready = createDeferredPromise<void>(subscriptionSignal);
           const subscriptions: ChatRealtimeSubscription[] = [
-            {
-              topic: `chatThreadRunCreated:${threadId}`,
-              loopCommand$: handlers.onRunChanged$,
-            },
-            {
-              topic: `chatThreadRunUpdated:${threadId}`,
-              loopCommand$: handlers.onRunChanged$,
-            },
             {
               topic: `chatThreadAutomationsChanged:${threadId}`,
               loopCommand$: handlers.onAutomationsChanged$,

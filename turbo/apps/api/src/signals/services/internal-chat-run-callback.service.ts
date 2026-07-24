@@ -1066,7 +1066,11 @@ async function insertRecommendedFollowupsMessage(args: {
     return false;
   }
 
-  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+  await publishChatThreadMessageCreatedSafely(
+    args.userId,
+    args.threadId,
+    inserted.seqId,
+  );
   return true;
 }
 
