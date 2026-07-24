@@ -1,4 +1,5 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
@@ -714,6 +715,104 @@ describe("chat message action cards", () => {
     const sendButton = await waitForButtonByText("Send", sidebar);
     expect(sendButton).toBeInTheDocument();
     expect(draftRequests).toBe(1);
+  });
+
+  it("keeps mail feedback scoped to the chat that owns the draft in split view", async () => {
+    const user = userEvent.setup({ delay: null });
+    const leftThreadId = "c0000000-0000-4000-a000-000000000031";
+    const rightThreadId = "c0000000-0000-4000-a000-000000000032";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000033";
+    const createdAt = "2026-07-14T10:00:00.000Z";
+
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "gmail",
+        label: "Gmail",
+      }),
+    ]);
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com"],
+          cc: [],
+          bcc: [],
+          subject: "Right chat draft",
+          body: "Feedback belongs to the right chat.",
+          status: "draft",
+          detailAvailable: true,
+          gmailDraftId: "r-right-chat-draft",
+          gmailThreadId: "gmail-right-chat-thread",
+          gmailMessageId: "gmail-right-chat-message",
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: leftThreadId,
+      threadTitle: "Left chat",
+      chatMessages: [],
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, query, respond }) => {
+        if (
+          params.threadId !== rightThreadId ||
+          query.beforeId ||
+          query.sinceId
+        ) {
+          return respond(200, {
+            messages: [],
+            ...(query.beforeId ? { hasHistoryBefore: false } : {}),
+          });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "c0000000-0000-4000-a000-000000000034",
+              role: "assistant",
+              content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
+              runId: "d0000000-0000-4000-a000-000000000035",
+              createdAt,
+            },
+          ],
+          hasHistoryBefore: false,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}&mail-draft=${mailDraftId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(sidebar).toHaveAttribute(
+      "data-chat-thread-container-id",
+      rightThreadId,
+    );
+
+    selectMailText(
+      within(sidebar).getByText("Feedback belongs to the right chat."),
+    );
+    await user.click(await waitForSelectionToolbarButton("Provide feedback"));
+    const chatThreads = await screen.findAllByLabelText("Chat thread");
+    await waitFor(() => {
+      expect(
+        chatThreads[0]?.querySelector("[data-feedback-item]"),
+      ).not.toBeInTheDocument();
+      expect(
+        chatThreads[1]?.querySelector("[data-feedback-item]"),
+      ).toHaveTextContent("Feedback belongs to the right chat.");
+    });
   });
 
   it("switches drafts and reloads a draft when it is reopened", async () => {

@@ -723,7 +723,10 @@ function findAttachmentPart(
   part: GmailMessagePart,
   partId: string,
 ): GmailMessagePart | null {
-  if (part.partId === partId && part.body.attachmentId) {
+  if (
+    part.partId === partId &&
+    (part.body.data !== undefined || part.body.attachmentId)
+  ) {
     return part;
   }
   for (const child of part.parts ?? []) {
@@ -1179,7 +1182,6 @@ async function gmailAttachmentSource(args: {
   readonly partId: string;
   readonly signal: AbortSignal;
 }): Promise<{
-  readonly attachmentId: string;
   readonly messageId: string;
   readonly part: GmailMessagePart;
 } | null> {
@@ -1198,9 +1200,10 @@ async function gmailAttachmentSource(args: {
     const part = message
       ? findAttachmentPart(message.payload, args.partId)
       : null;
-    return message && part?.body.attachmentId
+    return message &&
+      part &&
+      (part.body.data !== undefined || part.body.attachmentId)
       ? {
-          attachmentId: part.body.attachmentId,
           messageId: message.id,
           part,
         }
@@ -1214,13 +1217,35 @@ async function gmailAttachmentSource(args: {
   const part = draft
     ? findAttachmentPart(draft.message.payload, args.partId)
     : null;
-  return draft && part?.body.attachmentId
+  return draft &&
+    part &&
+    (part.body.data !== undefined || part.body.attachmentId)
     ? {
-        attachmentId: part.body.attachmentId,
         messageId: draft.message.id,
         part,
       }
     : null;
+}
+
+async function gmailAttachmentContent(args: {
+  readonly accessToken: string;
+  readonly messageId: string;
+  readonly part: GmailMessagePart;
+  readonly signal: AbortSignal;
+}): Promise<Uint8Array | null> {
+  if (args.part.body.data !== undefined) {
+    return new Uint8Array(Buffer.from(args.part.body.data, "base64url"));
+  }
+  const attachmentId = args.part.body.attachmentId;
+  if (!attachmentId) {
+    return null;
+  }
+  return await gmailGetAttachment({
+    accessToken: args.accessToken,
+    gmailMessageId: args.messageId,
+    attachmentId,
+    signal: args.signal,
+  });
 }
 
 export const linkZeroMailDraft$ = command(
@@ -1395,10 +1420,10 @@ export const getZeroMailDraftAttachment$ = command(
         message: "Mail draft attachment not found",
       };
     }
-    const content = await gmailGetAttachment({
+    const content = await gmailAttachmentContent({
       accessToken: access.accessToken,
-      gmailMessageId: source.messageId,
-      attachmentId: source.attachmentId,
+      messageId: source.messageId,
+      part: source.part,
       signal,
     });
     if (!content) {

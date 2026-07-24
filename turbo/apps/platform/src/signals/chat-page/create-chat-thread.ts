@@ -141,6 +141,7 @@ import {
   parseMailDraftUrl,
 } from "./mail-draft.ts";
 import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
+import { searchParams$ } from "../route.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
   messageDocumentToDisplayText,
@@ -2550,10 +2551,15 @@ function createPagedMessages(
   const mailDraftCardSignalsById$ = computed((get) => {
     get(rawMessages$);
     const selectedMailDraftId = get(currentMailDraftId$);
+    const restoredDraftOwnerThreadId =
+      get(searchParams$).get("sidebar") || threadId;
     const selectedMailDraftDescriptor = selectedMailDraftId
       ? parseMailDraftUrl(`/mail/drafts/${selectedMailDraftId}`)
       : null;
-    if (selectedMailDraftDescriptor) {
+    if (
+      selectedMailDraftDescriptor &&
+      restoredDraftOwnerThreadId === threadId
+    ) {
       mailDraftCardSignals.register(selectedMailDraftDescriptor);
     }
     return new Map(mailDraftCardSignals.entries());

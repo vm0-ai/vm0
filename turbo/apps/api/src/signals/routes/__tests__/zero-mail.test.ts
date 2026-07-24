@@ -44,7 +44,9 @@ function encodedBody(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
 }
 
-function gmailPayload(imageAttachmentId: string = GMAIL_IMAGE_ATTACHMENT_ID) {
+function gmailPayload(
+  imageAttachmentId: string | null = GMAIL_IMAGE_ATTACHMENT_ID,
+) {
   return {
     partId: "",
     mimeType: "multipart/mixed",
@@ -104,10 +106,16 @@ function gmailPayload(imageAttachmentId: string = GMAIL_IMAGE_ATTACHMENT_ID) {
             value: 'inline; filename="email-test-illustration.png"',
           },
         ],
-        body: {
-          attachmentId: imageAttachmentId,
-          size: GMAIL_IMAGE_BYTES.byteLength,
-        },
+        body:
+          imageAttachmentId === null
+            ? {
+                size: GMAIL_IMAGE_BYTES.byteLength,
+                data: GMAIL_IMAGE_BYTES.toString("base64url"),
+              }
+            : {
+                attachmentId: imageAttachmentId,
+                size: GMAIL_IMAGE_BYTES.byteLength,
+              },
       },
     ],
   };
@@ -120,7 +128,9 @@ interface GmailDraftTestState {
   sentBody: unknown;
 }
 
-function mockGmailDraftApi(): GmailDraftTestState {
+function mockGmailDraftApi(options?: {
+  readonly inlineImageData?: boolean;
+}): GmailDraftTestState {
   const state: GmailDraftTestState = {
     exists: true,
     sendCount: 0,
@@ -146,7 +156,9 @@ function mockGmailDraftApi(): GmailDraftTestState {
         message: {
           id: GMAIL_MESSAGE_ID,
           threadId: GMAIL_THREAD_ID,
-          payload: gmailPayload(currentImageAttachmentId),
+          payload: gmailPayload(
+            options?.inlineImageData ? null : currentImageAttachmentId,
+          ),
         },
       });
     }),
@@ -322,6 +334,9 @@ describe("POST /api/zero/mail/drafts/link", () => {
         GMAIL_IMAGE_BYTES,
       ),
     ).toBeTruthy();
+    expect(attachment.headers.get("content-disposition")).toBe(
+      "attachment; filename*=UTF-8''email-test-illustration.png",
+    );
 
     const sent = await accept(
       client().sendDraft({
@@ -350,6 +365,29 @@ describe("POST /api/zero/mail/drafts/link", () => {
       fixture.thread.id,
     );
     expect(page.messages).toHaveLength(0);
+  });
+
+  it("serves an inline image stored directly in the Gmail MIME body", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    mockGmailDraftApi({ inlineImageData: true });
+
+    const linked = await linkDraft(fixture);
+    const attachment = await accept(
+      client().getAttachment({
+        headers: authHeaders(),
+        params: {
+          mailDraftId: linked.body.mailDraftId,
+          partId: "2",
+        },
+      }),
+      [200],
+    );
+
+    expect(
+      Buffer.from(await attachment.body.arrayBuffer()).equals(
+        GMAIL_IMAGE_BYTES,
+      ),
+    ).toBeTruthy();
   });
 
   it("rejects a missing Gmail draft and cross-chat relinking", async () => {

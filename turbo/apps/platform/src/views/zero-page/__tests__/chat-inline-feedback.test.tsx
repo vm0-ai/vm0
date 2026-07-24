@@ -265,6 +265,9 @@ describe("chat inline feedback", () => {
       composerEditor,
       "Mention the dates before the risk summary.",
     );
+    // The composer restores its own selection in a deferred task after paste;
+    // selecting the assistant reply before that settles races the toolbar's
+    // deferred selection capture against the composer's selection restore.
     await waitForDeferredSelectionCapture();
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);

@@ -1,11 +1,4 @@
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -33,7 +26,9 @@ export interface MailDraftSignals extends MailDraftDescriptor {
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
-  attachmentUrl(partId: string): Computed<Promise<string | null>>;
+  readonly attachmentUrls$: Computed<
+    Promise<ReadonlyMap<string, string | null>>
+  >;
   readonly reloadSidebar$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
@@ -127,56 +122,81 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   };
 }
 
-function createAttachmentUrl(
+function createAttachmentUrls(
   descriptor: MailDraftDescriptor,
-  sidebarReloadVersion$: State<number>,
-): MailDraftSignals["attachmentUrl"] {
-  const attachmentUrls = new Map<string, Computed<Promise<string | null>>>();
+  sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>,
+): MailDraftSignals["attachmentUrls$"] {
   const attachmentObjectUrls = new Map<string, string>();
-  const attachmentUrl = (partId: string): Computed<Promise<string | null>> => {
-    const registered = attachmentUrls.get(partId);
-    if (registered) {
-      return registered;
+  let cleanupSignal: AbortSignal | null = null;
+  let loadVersion = 0;
+  const revokeAttachmentObjectUrls = () => {
+    for (const url of attachmentObjectUrls.values()) {
+      URL.revokeObjectURL(url);
     }
-    const imageUrl$ = computed(async (get): Promise<string | null> => {
-      get(sidebarReloadVersion$);
-      const signal = get(pageSignal$);
-      const response = await accept(
-        get(zeroClient$)(zeroMailContract).getAttachment({
-          params: {
-            mailDraftId: descriptor.mailDraftId,
-            partId,
-          },
-          fetchOptions: { signal },
+    attachmentObjectUrls.clear();
+  };
+  return computed(async (get): Promise<ReadonlyMap<string, string | null>> => {
+    const currentLoadVersion = ++loadVersion;
+    const draftPromise = get(sidebarDraft$);
+    const signal = get(pageSignal$);
+    const client = get(zeroClient$)(zeroMailContract);
+    signal.throwIfAborted();
+    if (cleanupSignal !== signal) {
+      cleanupSignal?.removeEventListener("abort", revokeAttachmentObjectUrls);
+      cleanupSignal = signal;
+      signal.addEventListener("abort", revokeAttachmentObjectUrls, {
+        once: true,
+      });
+    }
+    const draft = await draftPromise;
+    signal.throwIfAborted();
+    if (currentLoadVersion !== loadVersion) {
+      return new Map();
+    }
+    const partIds = Array.from(
+      new Set([
+        ...(draft?.inlineImages ?? []).map((image) => {
+          return image.partId;
         }),
-        [200, 404],
-      );
-      const previousUrl = attachmentObjectUrls.get(partId);
-      if (previousUrl) {
-        URL.revokeObjectURL(previousUrl);
-        attachmentObjectUrls.delete(partId);
-      }
+        ...(draft?.version === 3 ? draft.attachments : []).flatMap(
+          (attachment) => {
+            return attachment.partId ? [attachment.partId] : [];
+          },
+        ),
+      ]),
+    );
+    const responses = await Promise.all(
+      partIds.map(async (partId) => {
+        const response = await accept(
+          client.getAttachment({
+            params: {
+              mailDraftId: descriptor.mailDraftId,
+              partId,
+            },
+            fetchOptions: { signal },
+          }),
+          [200, 404],
+        );
+        return { partId, response };
+      }),
+    );
+    signal.throwIfAborted();
+    if (currentLoadVersion !== loadVersion) {
+      return new Map();
+    }
+    revokeAttachmentObjectUrls();
+    const imageUrls = new Map<string, string | null>();
+    for (const { partId, response } of responses) {
       if (response.status === 404) {
-        return null;
+        imageUrls.set(partId, null);
+        continue;
       }
       const url = URL.createObjectURL(response.body);
       attachmentObjectUrls.set(partId, url);
-      signal.addEventListener(
-        "abort",
-        () => {
-          if (attachmentObjectUrls.get(partId) === url) {
-            URL.revokeObjectURL(url);
-            attachmentObjectUrls.delete(partId);
-          }
-        },
-        { once: true },
-      );
-      return url;
-    });
-    attachmentUrls.set(partId, imageUrl$);
-    return imageUrl$;
-  };
-  return attachmentUrl;
+      imageUrls.set(partId, url);
+    }
+    return imageUrls;
+  });
 }
 
 function createMailDraftSignals(
@@ -217,7 +237,7 @@ function createMailDraftSignals(
     );
     return response.status === 200 ? response.body.mailDraft : null;
   });
-  const attachmentUrl = createAttachmentUrl(descriptor, sidebarReloadVersion$);
+  const attachmentUrls$ = createAttachmentUrls(descriptor, sidebarDraft$);
   const reloadSidebar$ = command(({ set }) => {
     set(sidebarDraftOverride$, undefined);
     set(sidebarReloadVersion$, (version) => {
@@ -255,7 +275,7 @@ function createMailDraftSignals(
     threadId,
     draft$,
     sidebarDraft$,
-    attachmentUrl,
+    attachmentUrls$,
     reloadSidebar$,
     delete$,
     send$,

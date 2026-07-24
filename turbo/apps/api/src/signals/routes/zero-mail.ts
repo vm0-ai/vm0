@@ -155,7 +155,7 @@ const getAttachmentInner$ = command(
         headers.set("X-Content-Type-Options", "nosniff");
         headers.set(
           "Content-Disposition",
-          `inline; filename*=UTF-8''${encodeURIComponent(result.filename)}`,
+          `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`,
         );
         const body = new Uint8Array(result.content.byteLength);
         body.set(result.content);

@@ -206,21 +206,14 @@ function AttachmentSummary({
 
 function MailAttachmentPreview({
   attachment,
-  partId,
-  signals,
+  url,
 }: {
   readonly attachment: ZeroMailAttachment;
-  readonly partId: string;
-  readonly signals: MailDraftSignals;
+  readonly url: string | null | undefined;
 }) {
-  const attachmentLoadable = useLoadable(signals.attachmentUrl(partId));
-  if (
-    attachmentLoadable.state !== "hasData" ||
-    attachmentLoadable.data === null
-  ) {
+  if (!url) {
     return <AttachmentSummary attachment={attachment} />;
   }
-  const url = attachmentLoadable.data;
   const kind = classifyChatAttachment({
     filename: attachment.filename,
     contentType: attachment.contentType,
@@ -240,8 +233,7 @@ function MailAttachmentPreview({
     kind === "text" ||
     kind === "json" ||
     kind === "csv" ||
-    kind === "pdf" ||
-    kind === "html"
+    kind === "pdf"
   ) {
     preview = (
       <PreviewableFileAttachmentChip
@@ -337,13 +329,12 @@ function MailMediaAttachmentPreview({
 
 function MailDraftInlineImage({
   image,
-  signals,
+  imageUrl,
 }: {
   readonly image: ZeroMailInlineImage;
-  readonly signals: MailDraftSignals;
+  readonly imageUrl: string | null | undefined;
 }) {
-  const imageLoadable = useLoadable(signals.attachmentUrl(image.partId));
-  if (imageLoadable.state === "loading") {
+  if (imageUrl === undefined) {
     return (
       <span
         aria-label={`Loading ${image.alt}`}
@@ -351,7 +342,7 @@ function MailDraftInlineImage({
       />
     );
   }
-  if (imageLoadable.state === "hasError" || imageLoadable.data === null) {
+  if (imageUrl === null) {
     return (
       <span className="text-sm text-muted-foreground">
         [Image unavailable: {image.alt}]
@@ -360,7 +351,7 @@ function MailDraftInlineImage({
   }
   return (
     <img
-      src={imageLoadable.data}
+      src={imageUrl}
       alt={image.alt}
       className="max-h-80 max-w-full rounded-lg object-contain"
     />
@@ -633,14 +624,18 @@ function renderInlineMailImage(args: {
   readonly element: Element;
   readonly key: string;
   readonly inlineImages: ReadonlyMap<string, ZeroMailInlineImage>;
-  readonly signals: MailDraftSignals;
+  readonly inlineImageUrls: ReadonlyMap<string, string | null> | null;
+  readonly inlineImageUrlsLoading: boolean;
 }): ReactNode {
   const source = args.element.getAttribute("src");
   const image = source?.toLowerCase().startsWith("cid:")
     ? args.inlineImages.get(normalizedContentId(source))
     : undefined;
+  const imageUrl = args.inlineImageUrlsLoading
+    ? undefined
+    : (args.inlineImageUrls?.get(image?.partId ?? "") ?? null);
   return image ? (
-    <MailDraftInlineImage key={args.key} image={image} signals={args.signals} />
+    <MailDraftInlineImage key={args.key} image={image} imageUrl={imageUrl} />
   ) : null;
 }
 
@@ -714,7 +709,8 @@ function renderMailHtmlNode(args: {
   readonly node: ChildNode;
   readonly key: string;
   readonly inlineImages: ReadonlyMap<string, ZeroMailInlineImage>;
-  readonly signals: MailDraftSignals;
+  readonly inlineImageUrls: ReadonlyMap<string, string | null> | null;
+  readonly inlineImageUrlsLoading: boolean;
 }): ReactNode {
   if (args.node.nodeType === 3) {
     return args.node.textContent;
@@ -732,7 +728,8 @@ function renderMailHtmlNode(args: {
       element,
       key: args.key,
       inlineImages: args.inlineImages,
-      signals: args.signals,
+      inlineImageUrls: args.inlineImageUrls,
+      inlineImageUrlsLoading: args.inlineImageUrlsLoading,
     });
   }
   const children = Array.from(element.childNodes).map((child, index) => {
@@ -740,7 +737,8 @@ function renderMailHtmlNode(args: {
       node: child,
       key: `${args.key}-${index}`,
       inlineImages: args.inlineImages,
-      signals: args.signals,
+      inlineImageUrls: args.inlineImageUrls,
+      inlineImageUrlsLoading: args.inlineImageUrlsLoading,
     });
   });
   const allowedTag = allowedMailHtmlElement(tag);
@@ -764,9 +762,13 @@ function renderMailHtmlNode(args: {
 }
 
 function MailDraftRichMessage({
+  attachmentUrls,
+  attachmentUrlsLoading,
   draft,
   signals,
 }: {
+  readonly attachmentUrls: ReadonlyMap<string, string | null> | null;
+  readonly attachmentUrlsLoading: boolean;
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
@@ -793,7 +795,8 @@ function MailDraftRichMessage({
           node,
           key: `mail-html-${index}`,
           inlineImages,
-          signals,
+          inlineImageUrls: attachmentUrls,
+          inlineImageUrlsLoading: attachmentUrlsLoading,
         });
       })}
     </div>
@@ -801,14 +804,25 @@ function MailDraftRichMessage({
 }
 
 function MailDraftMessage({
+  attachmentUrls,
+  attachmentUrlsLoading,
   draft,
   signals,
 }: {
+  readonly attachmentUrls: ReadonlyMap<string, string | null> | null;
+  readonly attachmentUrlsLoading: boolean;
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
   if (draft.bodyHtml && typeof DOMParser !== "undefined") {
-    return <MailDraftRichMessage draft={draft} signals={signals} />;
+    return (
+      <MailDraftRichMessage
+        attachmentUrls={attachmentUrls}
+        attachmentUrlsLoading={attachmentUrlsLoading}
+        draft={draft}
+        signals={signals}
+      />
+    );
   }
   return (
     <div
@@ -833,12 +847,23 @@ function MailDraftDetails({
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
+  const attachmentUrlsLoadable = useLoadable(signals.attachmentUrls$);
+  const attachmentUrls =
+    attachmentUrlsLoadable.state === "hasData"
+      ? attachmentUrlsLoadable.data
+      : null;
+  const attachmentUrlsLoading = attachmentUrlsLoadable.state === "loading";
   const attachments = draft.version === 3 ? draft.attachments : [];
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
       <MailMessageHeader close={close} draft={draft} />
       <div className="py-5">
-        <MailDraftMessage draft={draft} signals={signals} />
+        <MailDraftMessage
+          attachmentUrls={attachmentUrls}
+          attachmentUrlsLoading={attachmentUrlsLoading}
+          draft={draft}
+          signals={signals}
+        />
       </div>
       {attachments.length > 0 ? (
         <div className="grid gap-2.5 border-t border-border/60 pt-4">
@@ -852,8 +877,11 @@ function MailDraftDetails({
                 <MailAttachmentPreview
                   key={key}
                   attachment={attachment}
-                  partId={attachment.partId}
-                  signals={signals}
+                  url={
+                    attachmentUrlsLoading
+                      ? undefined
+                      : (attachmentUrls?.get(attachment.partId) ?? null)
+                  }
                 />
               ) : (
                 <AttachmentSummary key={key} attachment={attachment} />
