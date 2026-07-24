@@ -339,10 +339,12 @@ describe("zero people-search route", () => {
               structuredProfile({
                 name: "Jordan\u001b Lee",
                 summary: "Leads platform work.\nPublic data.",
+                sourceIds: [1, 3],
               }),
               structuredProfile({
                 name: "Jordan\u001b Lee",
-                summary: "Leads platform work.\nPublic data.",
+                summary: "Alternate extraction from the same source.",
+                sourceIds: [3, 1],
               }),
             ],
             results: [
@@ -352,6 +354,10 @@ describe("zero people-search route", () => {
               providerResult({
                 id: 2,
                 url: "file:///unreferenced",
+              }),
+              providerResult({
+                id: 3,
+                title: "Duplicate provider result",
               }),
             ],
             extraOutput: [{ type: "future_provider_item", detail: "ignored" }],
@@ -417,6 +423,45 @@ describe("zero people-search route", () => {
       ],
     });
     expect(beforeCredits - afterCredits).toBe(20);
+  });
+
+  it("deduplicates by validated source identity before enforcing the response budget", async () => {
+    const actor = staffActor();
+    const sourceIds = [1, 2, 3, 4, 5];
+    const profiles = Array.from({ length: 7 }, (_, index) => {
+      return structuredProfile({
+        name: "n".repeat(256),
+        title: index === 0 ? "t".repeat(512) : `alternate ${String(index)}`,
+        company: "c".repeat(256),
+        location: "l".repeat(256),
+        summary: "s".repeat(1000),
+        sourceIds,
+      });
+    });
+    const results = sourceIds.map((id) => {
+      return providerResult({
+        id,
+        title: "r".repeat(512),
+        url: `https://example.com/${"u".repeat(900)}?id=${String(id)}`,
+      });
+    });
+    configureProvider();
+    await seedPeopleSearchPricing();
+    await fundActor(actor);
+    server.use(
+      http.post(PERPLEXITY_AGENT_URL, () => {
+        return HttpResponse.json(providerResponse({ profiles, results }));
+      }),
+    );
+
+    const response = await successfulRequest(
+      actor,
+      defaultRequest({ limit: 7 }),
+    );
+
+    expect(response.body.profiles).toHaveLength(1);
+    expect(response.body.profiles[0]?.title).toBe("t".repeat(512));
+    expect(response.body.profiles[0]?.sources).toHaveLength(5);
   });
 
   it("returns twenty profiles at the supported maximum", async () => {

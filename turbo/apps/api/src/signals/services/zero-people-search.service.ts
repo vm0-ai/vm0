@@ -532,13 +532,17 @@ function normalizedProfile(
     return undefined;
   }
   const sources: ZeroPeopleSearchSource[] = [];
+  const sourceUrls = new Set<string>();
   for (const sourceId of profile.sourceIds) {
     const result = resultsById.get(sourceId);
     const source = result ? normalizedSource(result) : undefined;
     if (!source) {
       return undefined;
     }
-    sources.push(source);
+    if (!sourceUrls.has(source.url)) {
+      sourceUrls.add(source.url);
+      sources.push(source);
+    }
   }
   const title = normalizedOptionalText(
     profile.title,
@@ -564,6 +568,17 @@ function normalizedProfile(
     ...(summary ? { summary } : {}),
     sources,
   };
+}
+
+function profileIdentityKey(profile: ZeroPeopleSearchProfile): string {
+  return JSON.stringify([
+    profile.name,
+    profile.sources
+      .map((source) => {
+        return source.url;
+      })
+      .sort(),
+  ]);
 }
 
 function profileTextCharacters(profile: ZeroPeopleSearchProfile): number {
@@ -626,6 +641,10 @@ function normalizeProfiles(
     if (!normalized) {
       return errorResult(invalidResponse());
     }
+    const profileKey = profileIdentityKey(normalized);
+    if (profileKeys.has(profileKey)) {
+      continue;
+    }
     totalCharacters += profileTextCharacters(normalized);
     if (totalCharacters > MAX_TOTAL_PROFILE_TEXT_CHARS) {
       return errorResult(
@@ -635,11 +654,8 @@ function normalizeProfiles(
         ),
       );
     }
-    const profileKey = JSON.stringify(normalized);
-    if (!profileKeys.has(profileKey)) {
-      profileKeys.add(profileKey);
-      profiles.push(normalized);
-    }
+    profileKeys.add(profileKey);
+    profiles.push(normalized);
   }
   return { kind: "profiles", profiles };
 }
