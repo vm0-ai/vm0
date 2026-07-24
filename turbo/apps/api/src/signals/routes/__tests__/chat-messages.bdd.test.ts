@@ -1713,6 +1713,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
               id: "gmail-agent-reply-message",
               threadId: "gmail-agent-reply-thread",
               payload: {
+                partId: "",
                 mimeType: "text/plain",
                 filename: "",
                 headers: [
@@ -1824,6 +1825,10 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
     expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
+    expect(appendSystemPrompt).toContain(
+      "GET /gmail/v1/users/me/settings/sendAs",
+    );
+    expect(appendSystemPrompt).toContain("append that signature exactly once");
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
     );

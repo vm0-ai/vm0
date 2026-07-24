@@ -136,7 +136,14 @@ import type {
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
-import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
+import {
+  createMailDraftCardSignalsRegistry,
+  parseMailDraftUrl,
+  type MailDraftCardSignalsRegistry,
+  type MailDraftSignals,
+} from "./mail-draft.ts";
+import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
+import { searchParams$ } from "../route.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
   messageDocumentToDisplayText,
@@ -2457,12 +2464,59 @@ function createInitializeIndexedDbMessages({
   });
 }
 
+function createMailDraftCardSignalsById(
+  threadId: string,
+  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
+  mailDraftCardSignals: MailDraftCardSignalsRegistry,
+): Computed<ReadonlyMap<string, MailDraftSignals>> {
+  return computed((get) => {
+    get(rawMessages$);
+    const selectedMailDraftId = get(currentMailDraftId$);
+    const restoredDraftOwnerThreadId =
+      get(searchParams$).get("sidebar") || threadId;
+    const selectedMailDraftDescriptor = selectedMailDraftId
+      ? parseMailDraftUrl(`/mail/drafts/${selectedMailDraftId}`)
+      : null;
+    if (
+      selectedMailDraftDescriptor &&
+      restoredDraftOwnerThreadId === threadId
+    ) {
+      mailDraftCardSignals.register(selectedMailDraftDescriptor);
+    }
+    return new Map(mailDraftCardSignals.entries());
+  });
+}
+
+function createHistoryBackfillProgress(
+  hasReachedOldestMessage$: Computed<boolean>,
+  persistentMessages$: PersistentChatMessages$,
+): Computed<Promise<number | null>> {
+  // Approximate backfill progress from the loaded seqId range. The thread's
+  // true max seqId is not exposed to the client, so the newest loaded message
+  // stands in for it. The reached-oldest computed hides progress once the
+  // first persistent seqId is 1. Null hides the progress bar.
+  return computed((get): Promise<number | null> => {
+    if (get(hasReachedOldestMessage$)) {
+      return Promise.resolve(null);
+    }
+    const messages = get(persistentMessages$);
+    const first = messages[0];
+    const last = messages.at(-1);
+    if (first === undefined || last === undefined) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(
+      (last.message.seqId - first.message.seqId) / last.message.seqId,
+    );
+  });
+}
+
 function createPagedMessages(
   threadId: string,
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
 ) {
-  const mailDraftCardSignals = createMailDraftCardSignalsRegistry();
+  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
   const artifactCardSignals = createArtifactCardSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
@@ -2507,24 +2561,10 @@ function createPagedMessages(
     optimisticMessages$,
     resolveBodyBlocks,
   });
-  // Approximate backfill progress from the loaded seqId range. The thread's
-  // true max seqId is not exposed to the client, so the newest loaded message
-  // stands in for it. The reached-oldest computed hides progress once the
-  // first persistent seqId is 1. Null hides the progress bar.
-  const historyBackfillProgress$ = computed((get): Promise<number | null> => {
-    if (get(hasReachedOldestMessage$)) {
-      return Promise.resolve(null);
-    }
-    const messages = get(persistentChatMessages$);
-    const first = messages[0];
-    const last = messages.at(-1);
-    if (first === undefined || last === undefined) {
-      return Promise.resolve(null);
-    }
-    return Promise.resolve(
-      (last.message.seqId - first.message.seqId) / last.message.seqId,
-    );
-  });
+  const historyBackfillProgress$ = createHistoryBackfillProgress(
+    hasReachedOldestMessage$,
+    persistentChatMessages$,
+  );
   const semanticMessages$ = computed((get): SemanticChatMessage[] => {
     return semanticTranscriptMessagesFromRaw(get(rawMessages$));
   });
@@ -2543,10 +2583,11 @@ function createPagedMessages(
 
   const renderedMessages = createRenderedChatGroups(semanticMessages$);
 
-  const mailDraftCardSignalsById$ = computed((get) => {
-    get(rawMessages$);
-    return mailDraftCardSignals.entries();
-  });
+  const mailDraftCardSignalsById$ = createMailDraftCardSignalsById(
+    threadId,
+    rawMessages$,
+    mailDraftCardSignals,
+  );
 
   const mergePersistentMessages$ = createMergePersistentMessages(
     threadId,
