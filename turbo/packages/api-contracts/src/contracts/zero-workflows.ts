@@ -104,6 +104,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "gmail-new-message",
   "gmail-label-applied",
   "github-label-applied",
+  "github-workflow-run-completed",
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
@@ -226,7 +227,57 @@ export type GithubLabelAppliedEventConfig = z.infer<
   typeof githubLabelAppliedEventConfigSchema
 >;
 
-export type GithubWorkflowEventConfig = GithubLabelAppliedEventConfig;
+export const githubWorkflowRunConclusionSchema = z.enum([
+  "action_required",
+  "cancelled",
+  "failure",
+  "neutral",
+  "skipped",
+  "stale",
+  "success",
+  "timed_out",
+]);
+export type GithubWorkflowRunConclusion = z.infer<
+  typeof githubWorkflowRunConclusionSchema
+>;
+
+const githubWorkflowRunFilterValuesSchema = z
+  .array(z.string().trim().min(1).max(255))
+  .min(1)
+  .max(100);
+
+export const githubWorkflowRunCompletedEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("workflow_run_completed"),
+    filters: z
+      .object({
+        repositories: githubWorkflowRunFilterValuesSchema.optional(),
+        workflows: githubWorkflowRunFilterValuesSchema.optional(),
+        conclusions: z
+          .array(githubWorkflowRunConclusionSchema)
+          .min(1)
+          .max(githubWorkflowRunConclusionSchema.options.length)
+          .optional(),
+        branches: githubWorkflowRunFilterValuesSchema.optional(),
+        events: githubWorkflowRunFilterValuesSchema.optional(),
+        actors: githubWorkflowRunFilterValuesSchema.optional(),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict();
+export type GithubWorkflowRunCompletedEventConfig = z.infer<
+  typeof githubWorkflowRunCompletedEventConfigSchema
+>;
+
+export const githubWorkflowEventConfigSchema = z.discriminatedUnion("event", [
+  githubLabelAppliedEventConfigSchema,
+  githubWorkflowRunCompletedEventConfigSchema,
+]);
+export type GithubWorkflowEventConfig = z.infer<
+  typeof githubWorkflowEventConfigSchema
+>;
 
 export const googleCalendarEventCreatedEventConfigSchema = z
   .object({
@@ -483,6 +534,15 @@ export const zeroWorkflowGithubLabelAppliedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGithubWorkflowRunCompletedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-workflow-run-completed"),
+    eventConfig: githubWorkflowRunCompletedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -566,6 +626,7 @@ export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
     zeroWorkflowGmailNewMessageAutomationSummarySchema,
     zeroWorkflowGmailLabelAppliedAutomationSummarySchema,
     zeroWorkflowGithubLabelAppliedAutomationSummarySchema,
+    zeroWorkflowGithubWorkflowRunCompletedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventUpdatedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventCancelledAutomationSummarySchema,
@@ -630,6 +691,15 @@ export const chatThreadWorkflowGithubLabelAppliedAutomationSchema =
     kind: z.literal("event"),
     eventType: z.literal("github-label-applied"),
     eventConfig: githubLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGithubWorkflowRunCompletedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-workflow-run-completed"),
+    eventConfig: githubWorkflowRunCompletedEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
   });
@@ -709,6 +779,7 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowGmailNewMessageAutomationSchema,
   chatThreadWorkflowGmailLabelAppliedAutomationSchema,
   chatThreadWorkflowGithubLabelAppliedAutomationSchema,
+  chatThreadWorkflowGithubWorkflowRunCompletedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventCreatedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventUpdatedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventCancelledAutomationSchema,
@@ -749,6 +820,14 @@ export const zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema =
     kind: z.literal("event"),
     eventType: z.literal("github-label-applied"),
     eventConfig: githubLabelAppliedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
+export const zeroWorkflowGithubWorkflowRunCompletedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("github-workflow-run-completed"),
+    eventConfig: githubWorkflowRunCompletedEventConfigSchema,
     enabled: z.boolean().optional(),
   });
 
@@ -845,6 +924,7 @@ export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowGmailNewMessageAutomationCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema,
   zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema,
+  zeroWorkflowGithubWorkflowRunCompletedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCreatedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventUpdatedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCancelledAutomationCreateRequestSchema,
@@ -867,7 +947,7 @@ export const zeroWorkflowGmailEventAutomationUpdateRequestSchema = z.object({
 });
 
 export const zeroWorkflowGithubEventAutomationUpdateRequestSchema = z.object({
-  eventConfig: githubLabelAppliedEventConfigSchema,
+  eventConfig: githubWorkflowEventConfigSchema,
 });
 
 export const zeroWorkflowAutomationUpdateRequestSchema = z.union([

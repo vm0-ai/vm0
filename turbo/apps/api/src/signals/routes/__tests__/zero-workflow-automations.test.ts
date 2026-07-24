@@ -107,6 +107,14 @@ async function enableNotionWorkflowAutomations(
   });
 }
 
+async function enableGithubWorkflowRunAutomations(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
+  });
+}
+
 interface WatchCallRecorder {
   calls: number;
 }
@@ -1844,6 +1852,91 @@ describe("zero workflow automations", () => {
       filters: {
         subject: "issues",
         actor: { type: "anyone" },
+      },
+    });
+  });
+
+  it("creates and updates GitHub workflow run completed automations", async () => {
+    const scenario = await setupFixture();
+    await gh.installGithubApp(scenario.actor, scenario.agentId);
+    await enableGithubWorkflowRunAutomations(scenario.fixture);
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-workflow-run-completed",
+          eventConfig: {
+            provider: "github",
+            event: "workflow_run_completed",
+            filters: {
+              repositories: ["vm0-ai/vm0"],
+              workflows: ["Turbo", ".github/workflows/turbo.yml"],
+              conclusions: ["failure", "timed_out"],
+              branches: ["main"],
+              events: ["push", "workflow_dispatch"],
+              actors: ["dependabot[bot]"],
+            },
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "github-workflow-run-completed",
+      eventConfig: {
+        provider: "github",
+        event: "workflow_run_completed",
+        filters: {
+          repositories: ["vm0-ai/vm0"],
+          workflows: ["Turbo", ".github/workflows/turbo.yml"],
+          conclusions: ["failure", "timed_out"],
+          branches: ["main"],
+          events: ["push", "workflow_dispatch"],
+          actors: ["dependabot[bot]"],
+        },
+      },
+      enabled: true,
+      nextRunAt: null,
+    });
+
+    const updated = await accept(
+      automationsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          eventConfig: {
+            provider: "github",
+            event: "workflow_run_completed",
+            filters: {
+              repositories: ["vm0-ai/vm0"],
+              conclusions: ["success"],
+              branches: ["release"],
+            },
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(updated.body).toMatchObject({
+      kind: "event",
+      eventType: "github-workflow-run-completed",
+      eventConfig: {
+        filters: {
+          repositories: ["vm0-ai/vm0"],
+          conclusions: ["success"],
+          branches: ["release"],
+        },
       },
     });
   });

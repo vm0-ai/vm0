@@ -7,6 +7,7 @@ import {
   googleCalendarEventUpdatedEventConfigSchema,
   googleMeetTranscriptGeneratedEventConfigSchema,
   githubLabelAppliedEventConfigSchema,
+  githubWorkflowRunCompletedEventConfigSchema,
   notionChildPageCreatedEventConfigSchema,
   notionDatabaseItemCreatedEventConfigSchema,
   notionPageContentUpdatedEventConfigSchema,
@@ -60,6 +61,8 @@ import {
 import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
+import { githubWorkflowRunAutomationCreationEnabledForOwner } from "./github-workflow-run-automation-feature-switch.service";
+import { prepareGithubWorkflowRunEventConfigForPersist } from "./github-workflow-run-event.service";
 import {
   prepareNotionChildPageEventConfigForPersist,
   prepareNotionDatabaseItemEventConfigForPersist,
@@ -97,7 +100,7 @@ type GmailWorkflowEventType = Extract<
 >;
 type GithubWorkflowEventType = Extract<
   ZeroWorkflowEventType,
-  "github-label-applied"
+  "github-label-applied" | "github-workflow-run-completed"
 >;
 type GoogleCalendarWorkflowEventType = Extract<
   ZeroWorkflowEventType,
@@ -145,6 +148,16 @@ function notionWorkflowAutomationsDisabledResult(): {
   return {
     kind: "bad-request",
     message: "Notion workflow automations are not enabled",
+  };
+}
+
+function githubWorkflowRunAutomationsDisabledResult(): {
+  readonly kind: "bad-request";
+  readonly message: string;
+} {
+  return {
+    kind: "bad-request",
+    message: "GitHub workflow run automations are not enabled",
   };
 }
 
@@ -331,6 +344,7 @@ function supportedWorkflowEventType(
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied" ||
     eventType === "github-label-applied" ||
+    eventType === "github-workflow-run-completed" ||
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
     eventType === "google-calendar-event-cancelled" ||
@@ -353,7 +367,10 @@ function supportedGmailEventType(
 function supportedGithubEventType(
   eventType: string | null,
 ): eventType is GithubWorkflowEventType {
-  return eventType === "github-label-applied";
+  return (
+    eventType === "github-label-applied" ||
+    eventType === "github-workflow-run-completed"
+  );
 }
 
 function supportedGoogleCalendarEventType(
@@ -490,6 +507,18 @@ function eventRowToSummary(
       kind: "event",
       eventType: "github-label-applied",
       eventConfig: githubLabelAppliedEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (row.eventType === "github-workflow-run-completed") {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "github-workflow-run-completed",
+      eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(
+        row.eventConfig,
+      ),
       schedule: null,
       scheduleSummary: null,
     };
@@ -1003,14 +1032,27 @@ interface CreateGmailEventAutomationInput {
   readonly enabled: boolean;
 }
 
-interface CreateGithubEventAutomationInput {
+interface CreateGithubEventAutomationInputBase {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GithubWorkflowEventType;
-  readonly eventConfig: GithubWorkflowEventConfig;
   readonly enabled: boolean;
 }
+type CreateGithubEventAutomationInput =
+  | (CreateGithubEventAutomationInputBase & {
+      readonly eventType: "github-label-applied";
+      readonly eventConfig: Extract<
+        GithubWorkflowEventConfig,
+        { readonly event: "label_applied" }
+      >;
+    })
+  | (CreateGithubEventAutomationInputBase & {
+      readonly eventType: "github-workflow-run-completed";
+      readonly eventConfig: Extract<
+        GithubWorkflowEventConfig,
+        { readonly event: "workflow_run_completed" }
+      >;
+    });
 
 interface CreateGoogleCalendarEventAutomationInput {
   readonly orgId: string;
@@ -1354,7 +1396,10 @@ async function createWebhookEventAutomationForWorkflow(args: {
 
 async function createGithubLabelEventAutomationForWorkflow(args: {
   readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: CreateGithubEventAutomationInput;
+  readonly input: Extract<
+    CreateGithubEventAutomationInput,
+    { readonly eventType: "github-label-applied" }
+  >;
   readonly signal: AbortSignal;
 }): Promise<AutomationResult> {
   const preparedConfig = await prepareGithubLabelEventConfigForPersist(
@@ -1370,6 +1415,36 @@ async function createGithubLabelEventAutomationForWorkflow(args: {
     return preparedConfig;
   }
 
+  const summary = await insertWorkflowEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
+async function createGithubWorkflowRunEventAutomationForWorkflow(args: {
+  readonly context: CreateEventAutomationWorkflowContext;
+  readonly input: Extract<
+    CreateGithubEventAutomationInput,
+    { readonly eventType: "github-workflow-run-completed" }
+  >;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult> {
+  const preparedConfig = await prepareGithubWorkflowRunEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      eventConfig: args.input.eventConfig,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
   const summary = await insertWorkflowEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig.eventConfig },
     workflowId: args.context.workflowId,
@@ -1589,6 +1664,24 @@ const createEventAutomationForWorkflow$ = command(
 
     if (input.eventType === "github-label-applied") {
       return await createGithubLabelEventAutomationForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
+    }
+
+    if (input.eventType === "github-workflow-run-completed") {
+      const featureEnabled = await get(
+        githubWorkflowRunAutomationCreationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return githubWorkflowRunAutomationsDisabledResult();
+      }
+      return await createGithubWorkflowRunEventAutomationForWorkflow({
         context: args,
         input,
         signal,
@@ -1884,32 +1977,42 @@ const updateEventAutomationForWorkflow$ = command(
       };
     }
     if (supportedGithubEventType(args.automation.eventType)) {
-      const parsedConfig = githubLabelAppliedEventConfigSchema.safeParse(
-        args.eventConfig,
-      );
+      const parsedConfig =
+        args.automation.eventType === "github-label-applied"
+          ? githubLabelAppliedEventConfigSchema.safeParse(args.eventConfig)
+          : githubWorkflowRunCompletedEventConfigSchema.safeParse(
+              args.eventConfig,
+            );
       if (!parsedConfig.success) {
         return {
           kind: "bad-request",
-          message: "eventConfig must be a GitHub label applied config",
+          message: "eventConfig must match the GitHub automation type",
         };
       }
-      const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-        args.db,
-        {
-          orgId: args.orgId,
-          userId: args.member.userId,
-          eventConfig: parsedConfig.data,
-        },
-      );
+      const eventConfig =
+        args.automation.eventType === "github-label-applied"
+          ? await prepareGithubLabelEventConfigForPersist(args.db, {
+              orgId: args.orgId,
+              userId: args.member.userId,
+              eventConfig: githubLabelAppliedEventConfigSchema.parse(
+                args.eventConfig,
+              ),
+            })
+          : await prepareGithubWorkflowRunEventConfigForPersist(args.db, {
+              orgId: args.orgId,
+              eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(
+                args.eventConfig,
+              ),
+            });
       signal.throwIfAborted();
-      if (preparedConfig.kind !== "ok") {
-        return preparedConfig;
+      if (eventConfig.kind !== "ok") {
+        return eventConfig;
       }
       return {
         kind: "ok",
         summary: await updateAutomationEventConfig(args.db, {
           automationId: args.automation.id,
-          eventConfig: preparedConfig.eventConfig,
+          eventConfig: eventConfig.eventConfig,
           signal,
         }),
       };
@@ -2222,6 +2325,18 @@ const ensureEventAutomationCanBeEnabled$ = command(
           eventConfig: config,
         },
       );
+      signal.throwIfAborted();
+      return preparedConfig.kind === "ok" ? null : preparedConfig;
+    }
+
+    if (args.automation.eventType === "github-workflow-run-completed") {
+      const preparedConfig =
+        await prepareGithubWorkflowRunEventConfigForPersist(args.db, {
+          orgId: args.orgId,
+          eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(
+            args.automation.eventConfig,
+          ),
+        });
       signal.throwIfAborted();
       return preparedConfig.kind === "ok" ? null : preparedConfig;
     }

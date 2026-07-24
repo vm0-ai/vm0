@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -11,6 +12,7 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -64,6 +66,7 @@ async function setupFixture(): Promise<{
   readonly agentId: string;
   readonly workflowId: string;
 }> {
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   const { actor } = await wf.setupWorkflowOrg();
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
@@ -101,8 +104,37 @@ function githubPayload(
   });
 }
 
+function githubWorkflowRunPayload(args: {
+  readonly conclusion: "failure" | "success";
+  readonly installationId: string;
+}): string {
+  return JSON.stringify({
+    action: "completed",
+    workflow_run: {
+      id: 555,
+      workflow_id: 777,
+      name: "Turbo",
+      path: ".github/workflows/turbo.yml",
+      run_number: 42,
+      run_attempt: 2,
+      status: "completed",
+      conclusion: args.conclusion,
+      head_branch: "main",
+      head_sha: "abc123",
+      event: "push",
+      html_url: "https://github.com/vm0-ai/vm0/actions/runs/555",
+      actor: { id: 101, login: "lancy", type: "User" },
+      triggering_actor: { id: 101, login: "lancy", type: "User" },
+      pull_requests: [{ number: 123 }],
+    },
+    repository: { id: 456, full_name: "vm0-ai/vm0" },
+    installation: { id: Number(args.installationId) },
+    sender: { id: 101, login: "lancy", type: "User" },
+  });
+}
+
 async function postGithubWebhook(args: {
-  readonly event: "issues" | "pull_request";
+  readonly event: "issues" | "pull_request" | "workflow_run";
   readonly deliveryId: string;
   readonly rawBody: string;
 }): Promise<{ readonly status: number; readonly text: string }> {
@@ -131,7 +163,6 @@ async function postGithubWebhook(args: {
 describe("POST /api/webhooks/github for workflow automations", () => {
   it("dispatches matching label events and de-duplicates deliveries", async () => {
     const { fixture, actor, agentId, workflowId } = await setupFixture();
-    const runnerGroup = runsApi.configureRunnerGroup();
     const installed = await gh.installGithubApp(actor, agentId, {
       oauthCode: {
         code: `gh-workflow-${randomUUID().slice(0, 8)}`,
@@ -213,15 +244,13 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     // was recorded as processed and added nothing. Under the per-thread
     // workflow queue, the first matched event creates the only admitted run
     // and the remaining three wait as pending workflow queue events.
-    await runsApi.heartbeatRunner(runnerGroup);
-    const polled = await runsApi.pollRunner(runnerGroup);
-    const admittedRunId = polled.body.job?.runId;
-    if (!admittedRunId) {
+    await runsApi.heartbeatRunner();
+    const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const admittedRunId = listedRuns.runs[0]?.id;
+    if (!admittedRunId || listedRuns.runs.length !== 1) {
       throw new Error("Expected an admitted workflow event run");
     }
     await runsApi.claimRunnerJob(admittedRunId);
-    const idle = await runsApi.pollRunner(runnerGroup);
-    expect(idle.body.job).toBeNull();
 
     const queueState = await runsApi.readRunQueue(actor);
     expect(queueState.body.queue).toHaveLength(0);
@@ -281,5 +310,77 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       expect(serializedTiming).not.toContain(fixture.orgId);
       expect(serializedTiming).not.toContain(fixture.userId);
     }
+  });
+
+  it("dispatches completed workflow runs matching all GitHub filters", async () => {
+    const { fixture, actor, agentId, workflowId } = await setupFixture();
+    const installed = await gh.installGithubApp(actor, agentId);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
+    });
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-workflow-run-completed",
+          eventConfig: {
+            provider: "github",
+            event: "workflow_run_completed",
+            filters: {
+              repositories: ["vm0-ai/vm0"],
+              workflows: [".github/workflows/turbo.yml"],
+              conclusions: ["failure", "timed_out"],
+              branches: ["main"],
+              events: ["push"],
+              actors: ["lancy"],
+            },
+          },
+        },
+      }),
+      [201],
+    );
+
+    const ignored = await postGithubWebhook({
+      event: "workflow_run",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: githubWorkflowRunPayload({
+        conclusion: "success",
+        installationId: installed.remoteInstallationId,
+      }),
+    });
+    expect(ignored).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
+
+    const deliveryId = `delivery-${randomUUID()}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const matching = await postGithubWebhook({
+        event: "workflow_run",
+        deliveryId,
+        rawBody: githubWorkflowRunPayload({
+          conclusion: "failure",
+          installationId: installed.remoteInstallationId,
+        }),
+      });
+      expect(matching).toStrictEqual({ status: 200, text: "OK" });
+      await flushWaitUntilForTest();
+    }
+
+    await runsApi.heartbeatRunner();
+    const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const runId = listedRuns.runs[0]?.id;
+    if (!runId || listedRuns.runs.length !== 1) {
+      throw new Error("Expected a GitHub workflow run automation");
+    }
+    const claim = await runsApi.claimRunnerJob(runId);
+    expect(claim.appendSystemPrompt).toContain(
+      'GitHub Actions workflow "Turbo" completed with conclusion "failure"',
+    );
+    expect(claim.appendSystemPrompt).toContain('"attempt": 2');
+    expect(claim.appendSystemPrompt).toContain('"triggeringEvent": "push"');
   });
 });

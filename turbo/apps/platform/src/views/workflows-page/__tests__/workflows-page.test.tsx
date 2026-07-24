@@ -35,6 +35,10 @@ import {
 } from "../../../signals/workflows-page/workflows-signals.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-automations-page.tsx";
+import {
+  createDefaultMockGithubIntegration,
+  setMockGithubIntegration,
+} from "../../../mocks/handlers/api-integrations-github.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -896,6 +900,13 @@ function mockCreateWorkflowAutomation(
           eventConfig: body.eventConfig,
         });
       }
+      if (body.eventType === "github-workflow-run-completed") {
+        return respond(201, {
+          ...githubLabelWorkflowAutomation(),
+          eventType: "github-workflow-run-completed",
+          eventConfig: body.eventConfig,
+        });
+      }
       if (body.eventType === "google-calendar-event-created") {
         return respond(201, {
           ...googleCalendarWorkflowAutomation(),
@@ -1001,6 +1012,14 @@ function mockUpdateWorkflowAutomation(
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
         if (body.eventConfig.provider === "github") {
+          if (body.eventConfig.event === "workflow_run_completed") {
+            return respond(200, {
+              ...githubLabelWorkflowAutomation(),
+              id: params.id,
+              eventType: "github-workflow-run-completed",
+              eventConfig: body.eventConfig,
+            });
+          }
           return respond(200, {
             ...githubLabelWorkflowAutomation(),
             id: params.id,
@@ -2319,6 +2338,62 @@ describe("workflow detail page", () => {
           provider: "gmail",
           event: "label_applied",
           labelName: "Support",
+        },
+      });
+    });
+  });
+
+  it("creates a GitHub workflow run automation with native filters", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowAutomation((body) => {
+      createBodies.push(body);
+    });
+    setMockGithubIntegration(createDefaultMockGithubIntegration());
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await fill(within(form).getByLabelText("Repositories"), "vm0-ai/vm0");
+    await fill(
+      within(form).getByLabelText("GitHub workflows"),
+      "Turbo, .github/workflows/turbo.yml",
+    );
+    await fill(within(form).getByLabelText("Branches"), "main");
+    await fill(within(form).getByLabelText("Triggering events"), "push");
+    await fill(within(form).getByLabelText("Actors"), "lancy");
+    click(within(form).getByLabelText("Failure"));
+    click(within(form).getByLabelText("Timed out"));
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "github-workflow-run-completed",
+        eventConfig: {
+          provider: "github",
+          event: "workflow_run_completed",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            workflows: ["Turbo", ".github/workflows/turbo.yml"],
+            conclusions: ["failure", "timed_out"],
+            branches: ["main"],
+            events: ["push"],
+            actors: ["lancy"],
+          },
         },
       });
     });

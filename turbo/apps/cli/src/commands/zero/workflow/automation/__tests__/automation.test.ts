@@ -126,6 +126,27 @@ const githubLabelAutomation = {
   nextRunAt: null,
 };
 
+const githubWorkflowRunAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "github-workflow-run-completed",
+  eventConfig: {
+    provider: "github",
+    event: "workflow_run_completed",
+    filters: {
+      repositories: ["vm0-ai/vm0"],
+      workflows: ["Turbo"],
+      conclusions: ["failure", "timed_out"],
+      branches: ["main"],
+      events: ["push"],
+      actors: ["lancy"],
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 const googleCalendarAutomation = {
   ...automationBase,
   kind: "event",
@@ -533,6 +554,50 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("triage");
       expect(logCalls).toContain("pull requests");
       expect(logCalls).toContain("anyone");
+    });
+
+    it("should add a GitHub workflow run completed automation", async () => {
+      const captured = captureCreateAutomation(githubWorkflowRunAutomation);
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "github-workflow-run-completed",
+        "--repository",
+        "vm0-ai/vm0",
+        "--workflow",
+        "Turbo",
+        "--conclusion",
+        "failure,timed_out",
+        "--branch",
+        "main",
+        "--triggering-event",
+        "push",
+        "--actor",
+        "lancy",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "github-workflow-run-completed",
+        eventConfig: {
+          provider: "github",
+          event: "workflow_run_completed",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            workflows: ["Turbo"],
+            conclusions: ["failure", "timed_out"],
+            branches: ["main"],
+            events: ["push"],
+            actors: ["lancy"],
+          },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("GitHub workflow completed");
+      expect(logCalls).toContain("failure, timed_out");
     });
 
     it("should add a Google Calendar event-created automation", async () => {
@@ -1186,6 +1251,50 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("GitHub label applied");
       expect(logCalls).toContain("issues");
       expect(logCalls).toContain("anyone");
+    });
+
+    it("should update and clear GitHub workflow run filters", async () => {
+      const updated = {
+        ...githubWorkflowRunAutomation,
+        eventConfig: {
+          ...githubWorkflowRunAutomation.eventConfig,
+          filters: {
+            ...githubWorkflowRunAutomation.eventConfig.filters,
+            conclusions: ["success"],
+            branches: undefined,
+          },
+        },
+      };
+      const captured = captureUpdateAutomation(
+        updated,
+        githubWorkflowRunAutomation,
+      );
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        AUTOMATION_ID,
+        "--conclusion",
+        "success",
+        "--branch",
+        "any",
+      ]);
+
+      expect(captured.body).toEqual({
+        eventConfig: {
+          provider: "github",
+          event: "workflow_run_completed",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            workflows: ["Turbo"],
+            conclusions: ["success"],
+            branches: undefined,
+            events: ["push"],
+            actors: ["lancy"],
+          },
+        },
+      });
     });
 
     it("should update a Gmail new message automation from a config file", async () => {

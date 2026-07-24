@@ -198,6 +198,9 @@ export function gmailAutomationTitle(
   if (automation.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
+  if (automation.eventType === "github-workflow-run-completed") {
+    return "GitHub workflow completed";
+  }
   if (automation.eventType === "google-calendar-event-created") {
     return "Google Calendar event created";
   }
@@ -236,6 +239,11 @@ export function gmailAutomationSummary(
   }
   if (automation.eventType === "github-label-applied") {
     return `Label ${quote(automation.eventConfig.labelName)}`;
+  }
+  if (automation.eventType === "github-workflow-run-completed") {
+    return (
+      automation.eventConfig.filters.conclusions?.join(", ") ?? "Any result"
+    );
   }
   if (
     automation.eventType === "google-calendar-event-created" ||

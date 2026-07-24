@@ -187,9 +187,7 @@ const createAutomationInner$ = command(
                 },
                 signal,
               )
-            : bodyResult.data.eventType === "google-calendar-event-created" ||
-                bodyResult.data.eventType === "google-calendar-event-updated" ||
-                bodyResult.data.eventType === "google-calendar-event-cancelled"
+            : bodyResult.data.eventType === "github-workflow-run-completed"
               ? await set(
                   createWorkflowAutomation$,
                   {
@@ -199,7 +197,11 @@ const createAutomationInner$ = command(
                   },
                   signal,
                 )
-              : bodyResult.data.eventType === "google-meet-transcript-generated"
+              : bodyResult.data.eventType === "google-calendar-event-created" ||
+                  bodyResult.data.eventType ===
+                    "google-calendar-event-updated" ||
+                  bodyResult.data.eventType ===
+                    "google-calendar-event-cancelled"
                 ? await set(
                     createWorkflowAutomation$,
                     {
@@ -209,10 +211,8 @@ const createAutomationInner$ = command(
                     },
                     signal,
                   )
-                : bodyResult.data.eventType === "notion-child-page-created" ||
-                    bodyResult.data.eventType ===
-                      "notion-database-item-created" ||
-                    bodyResult.data.eventType === "notion-page-content-updated"
+                : bodyResult.data.eventType ===
+                    "google-meet-transcript-generated"
                   ? await set(
                       createWorkflowAutomation$,
                       {
@@ -222,15 +222,29 @@ const createAutomationInner$ = command(
                       },
                       signal,
                     )
-                  : await set(
-                      createWorkflowAutomation$,
-                      {
-                        ...automationInputBase,
-                        eventType: bodyResult.data.eventType,
-                        eventConfig: bodyResult.data.eventConfig,
-                      },
-                      signal,
-                    );
+                  : bodyResult.data.eventType === "notion-child-page-created" ||
+                      bodyResult.data.eventType ===
+                        "notion-database-item-created" ||
+                      bodyResult.data.eventType ===
+                        "notion-page-content-updated"
+                    ? await set(
+                        createWorkflowAutomation$,
+                        {
+                          ...automationInputBase,
+                          eventType: bodyResult.data.eventType,
+                          eventConfig: bodyResult.data.eventConfig,
+                        },
+                        signal,
+                      )
+                    : await set(
+                        createWorkflowAutomation$,
+                        {
+                          ...automationInputBase,
+                          eventType: bodyResult.data.eventType,
+                          eventConfig: bodyResult.data.eventConfig,
+                        },
+                        signal,
+                      );
     signal.throwIfAborted();
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };
