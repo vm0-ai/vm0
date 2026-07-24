@@ -9,7 +9,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
@@ -177,7 +177,8 @@ export function zeroAgentEnabledConnectorTypes(args: {
           eq(userConnectors.userId, args.userId),
           eq(userConnectors.agentId, args.agentId),
         ),
-      );
+      )
+      .orderBy(asc(userConnectors.connectorType));
 
     return rows.map((row) => {
       return connectorRefSchema.parse(row.connectorType);

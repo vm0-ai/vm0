@@ -100,6 +100,7 @@ import { zeroDeveloperSupportRoutes } from "./routes/zero-developer-support";
 import { zeroEmailCallbackRoutes } from "./routes/zero-email-callbacks";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
+import { zeroFinanceRoutes } from "./routes/zero-finance";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
@@ -149,8 +150,10 @@ import { zeroIntegrationsGithubUploadCompleteRoutes } from "./routes/zero-integr
 import { zeroIntegrationsGithubUploadInitRoutes } from "./routes/zero-integrations-github-upload-init";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
+import { zeroIntegrationsFeishuMessageRoutes } from "./routes/zero-integrations-feishu-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
+import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-integrations-slack-upload-materialize";
 import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
 import { zeroIntegrationsTeamsMessageRoutes } from "./routes/zero-integrations-teams-message";
 import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
@@ -166,6 +169,10 @@ import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
 import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
+import { zeroFeishuBrowserConnectRoutes } from "./routes/zero-feishu-browser-connect";
+import { zeroFeishuConnectRoutes } from "./routes/zero-feishu-connect";
+import { zeroFeishuEventsRoutes } from "./routes/zero-feishu-events";
+import { zeroFeishuOauthRoutes } from "./routes/zero-feishu-oauth";
 import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
@@ -293,6 +300,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroEmailCallbackRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
+  ...zeroFinanceRoutes,
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
@@ -346,6 +354,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackCommandsRoutes,
   ...zeroSlackEventsRoutes,
   ...zeroSlackInteractiveRoutes,
+  ...zeroFeishuBrowserConnectRoutes,
+  ...zeroFeishuConnectRoutes,
+  ...zeroFeishuEventsRoutes,
+  ...zeroFeishuOauthRoutes,
   ...zeroTeamsBrowserConnectRoutes,
   ...zeroTeamsBotRoutes,
   ...zeroTeamsConnectRoutes,
@@ -360,8 +372,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsGithubUploadInitRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
+  ...zeroIntegrationsFeishuMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
+  ...zeroIntegrationsSlackUploadMaterializeRoutes,
   ...zeroIntegrationsTeamsDownloadFileRoutes,
   ...zeroIntegrationsTeamsMessageRoutes,
   ...zeroIntegrationsTeamsUploadCompleteRoutes,

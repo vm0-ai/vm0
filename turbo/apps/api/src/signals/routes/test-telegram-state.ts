@@ -20,6 +20,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
+import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -740,6 +741,33 @@ async function seedThreadSessionForAction(
   body: Record<string, unknown>,
   signal: AbortSignal,
 ) {
+  if (readActionString(body, "channel") === "email") {
+    const required = requiredActionStrings(body, [
+      "thread_session_id",
+      "user_id",
+      "agent_id",
+      "agent_session_id",
+      "reply_to_token",
+    ]);
+    if (!required) {
+      return actionBadRequest(
+        "thread_session_id, user_id, agent_id, agent_session_id, and reply_to_token are required",
+      );
+    }
+    await db.insert(emailThreadSessions).values({
+      id: required.thread_session_id!,
+      userId: required.user_id!,
+      agentId: required.agent_id!,
+      agentSessionId: required.agent_session_id!,
+      replyToToken: required.reply_to_token!,
+      orgId: readActionNullableString(body, "org_id") ?? null,
+      lastEmailMessageId:
+        readActionNullableString(body, "last_email_message_id") ?? null,
+    });
+    signal.throwIfAborted();
+    return actionOk({ thread_session_id: required.thread_session_id! });
+  }
+
   const chatId = readActionString(body, "chat_id");
   const rootMessageId = readActionString(body, "root_message_id");
   const userLinkId = readActionOptionalString(body, "user_link_id");
@@ -1200,10 +1228,14 @@ async function getTelegramPostRunStateForAction(
     return actionBadRequest("org_id and user_id are required");
   }
   const prompt = readActionOptionalString(body, "prompt");
+  const runId = readActionOptionalString(body, "run_id");
   const conditions = [
     eq(agentRuns.orgId, required.org_id!),
     eq(agentRuns.userId, required.user_id!),
   ];
+  if (runId) {
+    conditions.push(eq(agentRuns.id, runId));
+  }
   if (prompt) {
     conditions.push(eq(agentRuns.prompt, prompt));
   }
@@ -1707,12 +1739,23 @@ async function ensureStarterCreditGrant(
     return;
   }
 
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, tier, created_at, updated_at)
-        VALUES (${orgId}, ${STARTER_GRANT_AMOUNT}, 'free', now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, tier = 'free', updated_at = now()`,
-  );
+  await tx
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      credits: STARTER_GRANT_AMOUNT,
+      tier: "free",
+      createdAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        credits: sql`${orgMetadata.credits} + ${STARTER_GRANT_AMOUNT}`,
+        tier: "free",
+        updatedAt: sql`now()`,
+      },
+    });
   signal.throwIfAborted();
 }
 

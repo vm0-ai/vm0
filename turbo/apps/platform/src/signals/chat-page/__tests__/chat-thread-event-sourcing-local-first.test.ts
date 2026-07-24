@@ -733,7 +733,7 @@ describe("chat thread event sourcing local-first list", () => {
     await expect(
       context.store.set(
         dataSource.listMessagesAfter$,
-        { threadId: OPTIMISTIC_THREAD_ID, sinceId: undefined },
+        { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
         context.signal,
       ),
     ).resolves.toStrictEqual({

@@ -45,8 +45,8 @@ import { waitUntil } from "../context/wait-until";
 import type { ReadonlyDb } from "../external/db";
 import { settle } from "../utils";
 import type {
-  ConnectorCatalogPrivateArtifact,
-  ConnectorCatalogPublicArtifact,
+  ConnectorCatalogAuthMethod,
+  ConnectorCatalogSkill,
 } from "./connector-catalog-artifacts/artifacts";
 import {
   acceptedConnectorCatalogMethodIsCompatible,
@@ -68,14 +68,6 @@ import {
   type ConnectorServerFirewallCatalog,
 } from "./connector-server-firewall-catalog.service";
 
-type AcceptedPrivateConnector =
-  ConnectorCatalogPrivateArtifact["connectors"][number];
-type AcceptedPrivateAuthMethod =
-  AcceptedPrivateConnector["authMethods"][number];
-type AcceptedPrivateSkill = AcceptedPrivateConnector["skill"];
-type AcceptedPublicAuthMethod =
-  ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
-
 export type ConnectorRuntimeSnapshotIdentity =
   | { readonly source: "static" }
   | ({ readonly source: "external" } & ExternalCatalogIdentity);
@@ -85,8 +77,6 @@ export interface ConnectorRuntimeMethod {
   readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly availableForNewActions: boolean;
-  readonly compatible: boolean;
   readonly executable: boolean;
   readonly registration: ConnectorAuthProviderRegistrationCapability | null;
 }
@@ -95,7 +85,8 @@ export interface ConnectorRuntimeConnector {
   readonly connectorRef: ConnectorRef;
   readonly catalogConnector: PublicConnectorCatalogDetail;
   readonly methods: ReadonlyMap<ConnectorAuthMethodId, ConnectorRuntimeMethod>;
-  readonly skill: AcceptedPrivateSkill | null;
+  readonly authoredVisibleMethodIds: ReadonlySet<ConnectorAuthMethodId>;
+  readonly skill: ConnectorCatalogSkill | null;
 }
 
 interface ConnectorRuntimeSnapshotBase {
@@ -264,7 +255,7 @@ function platformSecretName(value: string): ConnectorPlatformSecretName {
 }
 
 function runtimeAccess(
-  access: AcceptedPrivateAuthMethod["access"],
+  access: ConnectorCatalogAuthMethod["access"],
 ): ConnectorAccessConfig {
   const envBindings: Record<string, ConnectorEnvBindingValue> = {};
   for (const [name, binding] of Object.entries(access.envBindings)) {
@@ -289,13 +280,13 @@ function runtimeAccess(
 }
 
 function runtimeClient(
-  client: AcceptedPrivateAuthMethod["client"],
+  client: ConnectorCatalogAuthMethod["client"],
 ): ConnectorAuthClientConfig | undefined {
   return client === undefined ? undefined : { ...client };
 }
 
 function requiredRuntimeClient(
-  method: AcceptedPrivateAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): ConnectorAuthClientConfig {
   const client = runtimeClient(method.client);
   if (client === undefined) {
@@ -305,7 +296,7 @@ function requiredRuntimeClient(
 }
 
 function requiredPublicRuntimeClient(
-  method: AcceptedPrivateAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): PublicConnectorAuthClientConfig {
   const client = requiredRuntimeClient(method);
   if (client.clientType !== "public") {
@@ -314,15 +305,9 @@ function requiredPublicRuntimeClient(
   return client;
 }
 
-function manualGrant(args: {
-  readonly publicMethod: AcceptedPublicAuthMethod;
-  readonly privateMethod: AcceptedPrivateAuthMethod & {
-    readonly grant: Extract<
-      AcceptedPrivateAuthMethod["grant"],
-      { kind: "manual" }
-    >;
-  };
-}): Extract<ConnectorAuthMethodRuntimeConfig["grant"], { kind: "manual" }> {
+function manualGrant(
+  grant: Extract<ConnectorCatalogAuthMethod["grant"], { kind: "manual" }>,
+): Extract<ConnectorAuthMethodRuntimeConfig["grant"], { kind: "manual" }> {
   const fields: Record<
     string,
     Extract<
@@ -330,31 +315,24 @@ function manualGrant(args: {
       { kind: "manual" }
     >["fields"][string]
   > = {};
-  for (const privateField of args.privateMethod.grant.fields) {
-    const publicField = args.publicMethod.manualFields.find((candidate) => {
-      return candidate.id === privateField.publicId;
-    });
-    if (publicField === undefined) {
-      throw new Error("Accepted connector manual field alignment is missing");
-    }
-    fields[privateField.privateName] = {
-      publicId: privateField.publicId,
-      label: publicField.label,
-      required: publicField.required,
-      ...(publicField.placeholder === null
-        ? {}
-        : { placeholder: publicField.placeholder }),
-      storage: privateField.storage,
-      ...(privateField.normalize === undefined
-        ? {}
-        : { normalize: privateField.normalize }),
+  for (const field of grant.fields) {
+    fields[field.privateName] = {
+      publicId: field.publicId,
+      label: field.label,
+      required: field.required,
+      ...(field.placeholder === null ? {} : { placeholder: field.placeholder }),
+      storage: field.storage,
+      ...(field.normalize === undefined ? {} : { normalize: field.normalize }),
     };
   }
   return { kind: "manual", fields };
 }
 
 function deviceStartOption(
-  option: AcceptedPublicAuthMethod["startOptions"][number],
+  option: Extract<
+    ConnectorCatalogAuthMethod["grant"],
+    { kind: "device-auth" }
+  >["startOptions"][number],
 ): ConnectorDeviceAuthStartOptionConfig {
   const [first, ...rest] = option.options;
   if (first === undefined) {
@@ -362,7 +340,7 @@ function deviceStartOption(
   }
   return {
     kind: "select",
-    publicId: option.id,
+    publicId: option.publicId,
     label: option.label,
     required: option.required,
     ...(option.defaultValue === null
@@ -377,79 +355,59 @@ function deviceStartOption(
   };
 }
 
-function deviceStartOptions(args: {
-  readonly publicMethod: AcceptedPublicAuthMethod;
-  readonly privateMethod: AcceptedPrivateAuthMethod & {
-    readonly grant: Extract<
-      AcceptedPrivateAuthMethod["grant"],
-      { kind: "device-auth" }
-    >;
-  };
-}): Readonly<Record<string, ConnectorDeviceAuthStartOptionConfig>> | undefined {
+function deviceStartOptions(
+  grant: Extract<ConnectorCatalogAuthMethod["grant"], { kind: "device-auth" }>,
+): Readonly<Record<string, ConnectorDeviceAuthStartOptionConfig>> | undefined {
   const options: Record<string, ConnectorDeviceAuthStartOptionConfig> = {};
-  for (const mapping of args.privateMethod.grant.startOptionMappings) {
-    const publicOption = args.publicMethod.startOptions.find((candidate) => {
-      return candidate.id === mapping.publicId;
-    });
-    if (publicOption === undefined) {
-      throw new Error("Accepted connector device option alignment is missing");
-    }
-    options[mapping.privateName] = deviceStartOption(publicOption);
+  for (const option of grant.startOptions) {
+    options[option.privateName] = deviceStartOption(option);
   }
   return Object.keys(options).length === 0 ? undefined : options;
 }
 
-function runtimeMethod(args: {
-  readonly publicMethod: AcceptedPublicAuthMethod;
-  readonly privateMethod: AcceptedPrivateAuthMethod;
-}): ConnectorAuthMethodRuntimeConfig {
-  const access = runtimeAccess(args.privateMethod.access);
-  const revoke =
-    args.privateMethod.revoke.kind === "none"
-      ? { kind: "none" as const }
+function runtimeMethod(
+  method: ConnectorCatalogAuthMethod,
+): ConnectorAuthMethodRuntimeConfig {
+  const access = runtimeAccess(method.access);
+  const revoke: ConnectorAuthMethodRuntimeConfig["revoke"] =
+    method.revoke.kind === "none"
+      ? { kind: "none" }
       : {
-          kind: "token-revoke" as const,
-          inputs: revokeInputBindings(args.privateMethod.revoke.inputs),
-          ...(args.privateMethod.revoke.revokePreviousOnReplace === undefined
+          kind: "token-revoke",
+          inputs: revokeInputBindings(method.revoke.inputs),
+          ...(method.revoke.revokePreviousOnReplace === undefined
             ? {}
             : {
-                revokePreviousOnReplace:
-                  args.privateMethod.revoke.revokePreviousOnReplace,
+                revokePreviousOnReplace: method.revoke.revokePreviousOnReplace,
               }),
         };
   const storage = {
-    version: args.privateMethod.storage.version,
-    secrets: [...args.privateMethod.storage.secrets],
-    variables: [...args.privateMethod.storage.variables],
+    version: method.storage.version,
+    secrets: [...method.storage.secrets],
+    variables: [...method.storage.variables],
   };
 
-  switch (args.privateMethod.grant.kind) {
+  switch (method.grant.kind) {
     case "manual": {
       return {
         storage,
-        grant: manualGrant({
-          publicMethod: args.publicMethod,
-          privateMethod: {
-            ...args.privateMethod,
-            grant: args.privateMethod.grant,
-          },
-        }),
+        grant: manualGrant(method.grant),
         access,
         revoke,
-        ...(args.privateMethod.client === undefined
+        ...(method.client === undefined
           ? {}
-          : { client: runtimeClient(args.privateMethod.client) }),
+          : { client: runtimeClient(method.client) }),
       };
     }
     case "auth-code": {
       return {
-        client: requiredRuntimeClient(args.privateMethod),
+        client: requiredRuntimeClient(method),
         storage,
         grant: {
           kind: "auth-code",
-          scopes: [...args.privateMethod.grant.scopes],
-          callbackOrigin: args.privateMethod.grant.callbackOrigin,
-          outputs: outputBindings(args.privateMethod.grant.outputs),
+          scopes: [...method.grant.scopes],
+          callbackOrigin: method.grant.callbackOrigin,
+          outputs: outputBindings(method.grant.outputs),
         },
         access,
         revoke,
@@ -457,14 +415,14 @@ function runtimeMethod(args: {
     }
     case "openid-auth": {
       return {
-        ...(args.privateMethod.client === undefined
+        ...(method.client === undefined
           ? {}
-          : { client: runtimeClient(args.privateMethod.client) }),
+          : { client: runtimeClient(method.client) }),
         storage,
         grant: {
           kind: "openid-auth",
-          callbackOrigin: args.privateMethod.grant.callbackOrigin,
-          outputs: outputBindings(args.privateMethod.grant.outputs),
+          callbackOrigin: method.grant.callbackOrigin,
+          outputs: outputBindings(method.grant.outputs),
         },
         access,
         revoke,
@@ -472,32 +430,26 @@ function runtimeMethod(args: {
     }
     case "external-code": {
       return {
-        client: requiredRuntimeClient(args.privateMethod),
+        client: requiredRuntimeClient(method),
         storage,
         grant: {
           kind: "external-code",
-          scopes: [...args.privateMethod.grant.scopes],
-          outputs: outputBindings(args.privateMethod.grant.outputs),
+          scopes: [...method.grant.scopes],
+          outputs: outputBindings(method.grant.outputs),
         },
         access,
         revoke,
       };
     }
     case "device-auth": {
-      const startOptions = deviceStartOptions({
-        publicMethod: args.publicMethod,
-        privateMethod: {
-          ...args.privateMethod,
-          grant: args.privateMethod.grant,
-        },
-      });
+      const startOptions = deviceStartOptions(method.grant);
       return {
-        client: requiredPublicRuntimeClient(args.privateMethod),
+        client: requiredPublicRuntimeClient(method),
         storage,
         grant: {
           kind: "device-auth",
-          scopes: [...args.privateMethod.grant.scopes],
-          outputs: outputBindings(args.privateMethod.grant.outputs),
+          scopes: [...method.grant.scopes],
+          outputs: outputBindings(method.grant.outputs),
           ...(startOptions === undefined ? {} : { startOptions }),
         },
         access,
@@ -511,8 +463,6 @@ function runtimeMethodEntry(args: {
   readonly connectorRef: ConnectorRef;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly availableForNewActions: boolean;
-  readonly compatible: boolean;
 }): ConnectorRuntimeMethod {
   const registration = providerRegistrationFor(
     args.connectorRef,
@@ -523,12 +473,11 @@ function runtimeMethodEntry(args: {
     authMethodId: args.catalogMethod.id,
     catalogMethod: args.catalogMethod,
     method: args.method,
-    availableForNewActions: args.availableForNewActions,
-    compatible: args.compatible,
     registration,
-    executable:
-      args.compatible &&
-      registrationSupportsMethod({ method: args.method, registration }),
+    executable: registrationSupportsMethod({
+      method: args.method,
+      registration,
+    }),
   };
 }
 
@@ -542,6 +491,7 @@ const staticRuntimeSnapshot = singleton(() => {
         throw new Error(`Static connector catalog is missing ${connectorRef}`);
       }
       const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
+      const authoredVisibleMethodIds = new Set<ConnectorAuthMethodId>();
       for (const catalogMethod of catalogConnector.authMethods) {
         const method = getConnectorAuthMethod(connectorRef, catalogMethod.id);
         if (method === undefined) {
@@ -555,15 +505,17 @@ const staticRuntimeSnapshot = singleton(() => {
             connectorRef,
             catalogMethod,
             method,
-            availableForNewActions: method.visible !== false,
-            compatible: true,
           }),
         );
+        if (method.visible !== false) {
+          authoredVisibleMethodIds.add(catalogMethod.id);
+        }
       }
       connectors.set(connectorRef, {
         connectorRef,
         catalogConnector,
         methods,
+        authoredVisibleMethodIds,
         skill: null,
       });
     }
@@ -580,62 +532,57 @@ const staticRuntimeSnapshot = singleton(() => {
 function externalRuntimeSnapshot(
   acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
 ): ConnectorRuntimeSnapshot {
-  const privateByRef = new Map(
-    acceptedSnapshot.privateArtifact.connectors.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
   const connectors = new Map<ConnectorRef, ConnectorRuntimeConnector>();
 
-  for (const publicConnector of acceptedSnapshot.publicArtifact.connectors) {
-    const privateConnector = privateByRef.get(publicConnector.connectorRef);
+  for (const connector of acceptedSnapshot.artifact.connectors) {
     const catalogConnector = getAcceptedConnectorCatalogResolutionDetail({
       snapshot: acceptedSnapshot,
-      connectorRef: publicConnector.connectorRef,
+      connectorRef: connector.connectorRef,
     });
-    if (privateConnector === undefined || catalogConnector === null) {
+    if (catalogConnector === null) {
       throw new Error("Accepted connector runtime relationship is incomplete");
     }
-    const privateMethods = new Map(
-      privateConnector.authMethods.map((method) => {
-        return [method.id, method];
-      }),
-    );
     const catalogMethods = new Map(
       catalogConnector.authMethods.map((method) => {
         return [method.id, method];
       }),
     );
     const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
-    for (const publicMethod of publicConnector.authMethods) {
-      const privateMethod = privateMethods.get(publicMethod.id);
-      const catalogMethod = catalogMethods.get(publicMethod.id);
-      if (privateMethod === undefined || catalogMethod === undefined) {
+    const authoredVisibleMethodIds = new Set<ConnectorAuthMethodId>();
+    for (const method of connector.authMethods) {
+      if (method.visible) {
+        authoredVisibleMethodIds.add(method.id);
+      }
+      if (
+        !acceptedConnectorCatalogMethodIsCompatible({
+          snapshot: acceptedSnapshot,
+          connectorRef: connector.connectorRef,
+          authMethodId: method.id,
+        })
+      ) {
+        continue;
+      }
+      const catalogMethod = catalogMethods.get(method.id);
+      if (catalogMethod === undefined) {
         throw new Error(
           "Accepted connector auth method alignment is incomplete",
         );
       }
-      const method = runtimeMethod({ publicMethod, privateMethod });
       methods.set(
-        publicMethod.id,
+        method.id,
         runtimeMethodEntry({
-          connectorRef: publicConnector.connectorRef,
+          connectorRef: connector.connectorRef,
           catalogMethod,
-          method,
-          availableForNewActions: publicMethod.visible,
-          compatible: acceptedConnectorCatalogMethodIsCompatible({
-            snapshot: acceptedSnapshot,
-            connectorRef: publicConnector.connectorRef,
-            authMethodId: publicMethod.id,
-          }),
+          method: runtimeMethod(method),
         }),
       );
     }
-    connectors.set(publicConnector.connectorRef, {
-      connectorRef: publicConnector.connectorRef,
+    connectors.set(connector.connectorRef, {
+      connectorRef: connector.connectorRef,
       catalogConnector,
       methods,
-      skill: privateConnector.skill,
+      authoredVisibleMethodIds,
+      skill: connector.skill,
     });
   }
   const runtimeMethodsByRef = new Map(
@@ -648,15 +595,15 @@ function externalRuntimeSnapshot(
       ];
     }),
   );
+  const serverFirewalls = createExternalConnectorServerFirewallCatalog({
+    artifact: acceptedSnapshot.artifact,
+    runtimeMethodsByRef,
+  });
   return {
     identity: { source: "external", ...acceptedSnapshot.identity },
     acceptedSnapshot,
     connectors,
-    serverFirewalls: createExternalConnectorServerFirewallCatalog({
-      publicArtifact: acceptedSnapshot.publicArtifact,
-      privateFirewallsArtifact: acceptedSnapshot.privateFirewallsArtifact,
-      runtimeMethodsByRef,
-    }),
+    serverFirewalls,
   };
 }
 
@@ -665,7 +612,7 @@ function externalSnapshotKey(identity: ExternalCatalogIdentity): string {
     identity.sourceId,
     identity.schemaVersion,
     identity.catalogVersion,
-    identity.integrityDigest,
+    identity.catalogDigest,
     identity.capabilityDigest,
   ].join("\0");
 }
@@ -718,7 +665,9 @@ function runtimeShadowMethods(
           grantKind: method.method.grant.kind,
           accessKind: method.method.access.kind,
           revokeKind: method.method.revoke.kind,
-          availableForNewActions: method.availableForNewActions,
+          availableForNewActions: connector.authoredVisibleMethodIds.has(
+            method.authMethodId,
+          ),
           executable: method.executable,
         };
       });
@@ -793,7 +742,7 @@ async function compareRuntimeSnapshots(
           sourceId: result.value.identity.sourceId,
           schemaVersion: result.value.identity.schemaVersion,
           catalogVersion: result.value.identity.catalogVersion,
-          integrityDigest: result.value.identity.integrityDigest,
+          catalogDigest: result.value.identity.catalogDigest,
           capabilityDigest: result.value.identity.capabilityDigest,
         }
       : {}),

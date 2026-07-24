@@ -7,6 +7,7 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 
 # Required: API, web, and app URLs
 VM0_API_BACKEND_URL=https://api.vm7.ai:8443
+FEISHU_CALLBACK_BASE_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
 
@@ -139,6 +140,10 @@ ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 
 # Optional: Zero Web Search provider (Perplexity)
 ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
+
+# Optional: Zero Finance provider (APIDojo via RapidAPI)
+# 1Password: Development vault > APIDojo item > RAPIDAPI_KEY concealed field
+ZERO_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
 
 # Optional: Steam Web API
 STEAM_WEB_API_KEY=op://Development/steam/STEAM_WEB_API_KEY

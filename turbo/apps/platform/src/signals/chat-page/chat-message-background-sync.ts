@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
-  hasIndexedDbChatMessage$,
   loadIndexedDbChatMessageBounds$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
@@ -29,33 +28,17 @@ function createdMessageThreadId(message: unknown): string | null {
   return UUID_PATTERN.test(threadId) ? threadId : null;
 }
 
-function createdMessageSyncThroughMessageId(message: unknown): string | null {
-  if (
-    typeof message !== "object" ||
-    message === null ||
-    !("data" in message) ||
-    typeof message.data !== "object" ||
-    message.data === null ||
-    !("syncThroughMessageId" in message.data) ||
-    typeof message.data.syncThroughMessageId !== "string" ||
-    !UUID_PATTERN.test(message.data.syncThroughMessageId)
-  ) {
-    return null;
-  }
-  return message.data.syncThroughMessageId;
-}
-
-export const syncChatThreadMessagesToIndexedDb$ = command(
+const syncChatThreadMessagesToIndexedDb$ = command(
   async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
     const bounds = await set(loadIndexedDbChatMessageBounds$, threadId, signal);
     signal.throwIfAborted();
 
-    let sinceId = bounds.last?.id;
+    let sinceSeqId = bounds.last?.seqId;
 
     async function syncMessagesAfter(): Promise<void> {
       const result = await set(
         listMessagesAfter$,
-        { threadId, sinceId },
+        { threadId, sinceSeqId },
         signal,
       );
       signal.throwIfAborted();
@@ -66,7 +49,7 @@ export const syncChatThreadMessagesToIndexedDb$ = command(
 
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
-      sinceId = result.messages.at(-1)!.id;
+      sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
       await syncMessagesAfter();
     }
 
@@ -83,33 +66,13 @@ const handleUserChannelMessage$ = command(
       return false;
     }
 
-    const syncThroughMessageId = createdMessageSyncThroughMessageId(message);
-    if (syncThroughMessageId !== null) {
-      // Watermark row already cached means every row of this publish is —
-      // the forward sync cursor never leaves gaps below a cached row.
-      const cached = await set(
-        hasIndexedDbChatMessage$,
-        threadId,
-        syncThroughMessageId,
-        signal,
-      );
-      signal.throwIfAborted();
-      if (cached) {
-        L.debug("skipped background sync: watermark already cached", {
-          threadId,
-          syncThroughMessageId,
-        });
-        return false;
-      }
-    }
-
     await set(syncChatThreadMessagesToIndexedDb$, threadId, signal);
     signal.throwIfAborted();
     return false;
   },
 );
 
-export const subscribeChatMessageBackgroundSync$ = command(
+const subscribeChatMessageBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       setAblyMessageLoop$,

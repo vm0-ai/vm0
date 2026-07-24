@@ -214,68 +214,61 @@ export async function insertAssistantEventMessages(
   });
   const runGroupId = await runGroupIdForRun(writeDb, args.runId);
 
-  const deterministicRows =
-    itemsWithRunEventId.length === 0
-      ? []
-      : await insertChatMessages(
-          writeDb,
-          itemsWithRunEventId.map((item) => {
-            return {
-              id: assistantMessageIdForRunEvent(args.runId, item.runEventId),
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId,
-              role: "assistant",
-              content: item.content,
-              sequenceNumber: item.sequenceNumber,
-              runEventId: item.runEventId,
-            };
-          }),
-          "any",
-        );
+  const [deterministicRows, legacyRows] = await writeDb.transaction(
+    async (tx) => {
+      const deterministicRows =
+        itemsWithRunEventId.length === 0
+          ? []
+          : await insertChatMessages(
+              tx,
+              itemsWithRunEventId.map((item) => {
+                return {
+                  id: assistantMessageIdForRunEvent(
+                    args.runId,
+                    item.runEventId,
+                  ),
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  runGroupId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: item.runEventId,
+                };
+              }),
+              "any",
+            );
+      signal.throwIfAborted();
+
+      const legacyRows =
+        legacyItems.length === 0
+          ? []
+          : await insertChatMessages(
+              tx,
+              legacyItems.map((item) => {
+                return {
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  runGroupId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: null,
+                };
+              }),
+              "run-sequence",
+            );
+      return [deterministicRows, legacyRows] as const;
+    },
+  );
   signal.throwIfAborted();
 
-  const legacyRows =
-    legacyItems.length === 0
-      ? []
-      : await insertChatMessages(
-          writeDb,
-          legacyItems.map((item) => {
-            return {
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId,
-              role: "assistant",
-              content: item.content,
-              sequenceNumber: item.sequenceNumber,
-              runEventId: null,
-            };
-          }),
-          "run-sequence",
-        );
-  signal.throwIfAborted();
-
-  const insertedRows = [...deterministicRows, ...legacyRows];
-  const insertedRowCount = insertedRows.length;
+  const insertedRowCount = deterministicRows.length + legacyRows.length;
 
   if (insertedRowCount > 0) {
-    // The watermark must be the batch row that sorts last in server list
-    // order (createdAt, sequenceNumber) — clients skip the refetch when they
-    // already hold it, assuming every earlier batch row is present too.
-    const watermark = insertedRows.reduce((last, row) => {
-      const lastCreated = last.createdAt.getTime();
-      const rowCreated = row.createdAt.getTime();
-      if (rowCreated !== lastCreated) {
-        return rowCreated > lastCreated ? row : last;
-      }
-      return (row.sequenceNumber ?? -1) >= (last.sequenceNumber ?? -1)
-        ? row
-        : last;
-    });
     await publishUserSignal(
       [args.userId],
       `chatThreadMessageCreated:${args.threadId}`,
-      { syncThroughMessageId: watermark.id },
     );
     signal.throwIfAborted();
 

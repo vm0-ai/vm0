@@ -135,6 +135,7 @@ export { linkZeroMailDraft } from "./domains/zero-mail";
 export {
   sendSlackMessage,
   initSlackFileUpload,
+  materializeSlackFileUpload,
   completeSlackFileUpload,
   downloadSlackFile,
 } from "./domains/integrations-slack";
@@ -155,6 +156,9 @@ export {
   completeTeamsFileUpload,
   downloadTeamsFile,
 } from "./domains/integrations-teams";
+
+// Domain modules - Integrations Feishu
+export { sendFeishuMessage } from "./domains/integrations-feishu";
 
 // Domain modules - Integrations GitHub
 export {
@@ -222,6 +226,13 @@ export {
   callZeroWebSearch,
   type ZeroWebSearchResponse,
 } from "./domains/zero-web-search";
+export {
+  callZeroFinanceChart,
+  callZeroFinanceProfile,
+  callZeroFinanceQuote,
+  callZeroFinanceSearch,
+  type ZeroFinanceResponse,
+} from "./domains/zero-finance";
 
 // Domain modules - Zero Banking
 export {
@@ -232,6 +243,7 @@ export {
 // Domain modules - Web
 export {
   downloadWebFile,
+  inferWebUploadContentType,
   uploadWebFile,
   generateWebVoice,
   generateWebImage,

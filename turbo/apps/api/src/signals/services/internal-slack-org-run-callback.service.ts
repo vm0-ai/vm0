@@ -1,27 +1,14 @@
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
-import {
-  getFrameworkForType,
-  modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, countDistinct, eq } from "drizzle-orm";
 
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
@@ -38,6 +25,7 @@ import {
 import { getRunOutputText } from "./run-output.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
+import { resolveIntegrationAgentResponsePresentation } from "./integration-agent-response-presentation.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
@@ -47,8 +35,6 @@ import {
 } from "./slack-org-callback-payload";
 
 const L = logger("InternalCallbacksSlackOrg");
-const ORG_SENTINEL_USER_ID = "__org__";
-
 type TerminalStatus = "completed" | "failed";
 
 interface RunContext {
@@ -114,10 +100,6 @@ function dispatchResultFromResponse(
   };
 }
 
-function buildLogsUrl(runId: string): string {
-  return `${env("APP_URL")}/activities/${encodeURIComponent(runId)}`;
-}
-
 async function loadInstallation(args: {
   readonly db: Db;
   readonly workspaceId: string;
@@ -152,18 +134,6 @@ async function loadRunContext(args: {
     .limit(1);
   args.signal.throwIfAborted();
   return run;
-}
-
-async function resolveRunSelectedModel(
-  db: Db,
-  runId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return row?.selectedModel ?? undefined;
 }
 
 async function resolveReplyToMention(
@@ -201,123 +171,6 @@ async function countThreadMentioners(args: {
       ),
     );
   return row?.count ?? 0;
-}
-
-async function resolveRespondedByLabel(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly composeId: string;
-}): Promise<string | undefined> {
-  const [orgRow] = await args.db
-    .select({ defaultAgentId: orgMetadata.defaultAgentId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, args.orgId))
-    .limit(1);
-
-  if (args.composeId === orgRow?.defaultAgentId) {
-    return undefined;
-  }
-
-  const [agent] = await args.db
-    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, args.composeId))
-    .limit(1);
-  const label = agent?.displayName ?? agent?.name;
-  return label ? `Responded by ${label}` : undefined;
-}
-
-async function resolveOrgDefaultModelProviderSelectedModel(
-  db: Db,
-  orgId: string,
-): Promise<string | undefined> {
-  const rows = await db
-    .select({
-      type: modelProviders.type,
-      selectedModel: modelProviders.selectedModel,
-    })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    );
-  const row = rows.find((candidate) => {
-    const parsed = modelProviderTypeSchema.safeParse(candidate.type);
-    return parsed.success && getFrameworkForType(parsed.data) === "claude-code";
-  });
-  return row?.selectedModel ?? undefined;
-}
-
-async function resolveModelLabel(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly runId: string;
-}): Promise<string | undefined> {
-  const selectedModel = await resolveRunSelectedModel(args.db, args.runId);
-  const model =
-    selectedModel ??
-    (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));
-  return model ? getModelDisplayName(model) : undefined;
-}
-
-export async function resolveSlackAgentResponsePresentation(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly agentId: string;
-  readonly replyToMention?: string;
-  readonly getFeatureOverrides: (
-    orgId: string,
-    userId: string,
-  ) => Promise<Record<string, boolean>>;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly logsUrl: string | undefined;
-  readonly footerText: string | undefined;
-}> {
-  const [respondedBy, modelLabel, overrides] = await Promise.all([
-    resolveRespondedByLabel({
-      db: args.db,
-      orgId: args.orgId,
-      composeId: args.agentId,
-    }),
-    resolveModelLabel({
-      db: args.db,
-      orgId: args.orgId,
-      runId: args.runId,
-    }),
-    args.getFeatureOverrides(args.orgId, args.userId),
-  ]);
-  args.signal.throwIfAborted();
-
-  const parts: string[] = [];
-  if (respondedBy) {
-    parts.push(respondedBy);
-  }
-  if (args.replyToMention) {
-    parts.push(`Reply to ${args.replyToMention}`);
-  }
-  if (modelLabel) {
-    parts.push(modelLabel);
-  }
-
-  const typedOverrides =
-    Object.keys(overrides).length > 0
-      ? (overrides as Partial<Record<FeatureSwitchKey, boolean>>)
-      : undefined;
-  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
-    userId: args.userId,
-    orgId: args.orgId,
-    overrides: typedOverrides,
-  });
-  return {
-    logsUrl: enabled ? buildLogsUrl(args.runId) : undefined,
-    footerText: parts.length > 0 ? parts.join(" · ") : undefined,
-  };
 }
 
 async function saveOrgThreadSession(args: {
@@ -476,7 +329,7 @@ async function resolveLegacySlackAgentResponsePresentation(args: {
     mentionerCount > 1
       ? await resolveReplyToMention(args.db, args.payload.connectionId)
       : undefined;
-  return await resolveSlackAgentResponsePresentation({
+  return await resolveIntegrationAgentResponsePresentation({
     db: args.db,
     orgId: args.run.orgId,
     userId: args.run.userId,

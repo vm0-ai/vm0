@@ -29,36 +29,31 @@ import {
 } from "@vm0/db/schema/connector-catalog";
 import { and, eq } from "drizzle-orm";
 
-import type { ReadonlyDb } from "../external/db";
-import { safeJsonParse } from "../utils";
+import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
+import type { ReadonlyDb } from "../external/db";
+import { onRejection, settle } from "../utils";
 import {
-  connectorCatalogIntegrityArtifactSchema,
-  connectorCatalogPrivateArtifactSchema,
-  connectorCatalogPrivateFirewallsArtifactSchema,
-  connectorCatalogPublicArtifactSchema,
-  connectorCatalogRunnerFirewallsArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-  type ConnectorCatalogPrivateArtifact,
-  type ConnectorCatalogPrivateFirewallsArtifact,
-  type ConnectorCatalogPublicArtifact,
-  type ConnectorCatalogRunnerFirewallsArtifact,
-  validateConnectorCatalogArtifacts,
+  type ConnectorCatalogArtifact,
+  type ConnectorCatalogArtifactConnector,
+  type ConnectorCatalogAuthMethod,
 } from "./connector-catalog-artifacts/artifacts";
+import {
+  connectorCatalogArtifactFailureCode,
+  decodeConnectorCatalogSnapshot,
+} from "./connector-catalog-artifacts/loader";
+import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
-import { connectorCatalogSource } from "./connector-catalog-sync.service";
+import { connectorCatalogSource } from "./connector-catalog-source";
 
-type PublicArtifactConnector =
-  ConnectorCatalogPublicArtifact["connectors"][number];
-type PublicArtifactAuthMethod = PublicArtifactConnector["authMethods"][number];
-type PrivateArtifactAuthMethod =
-  ConnectorCatalogPrivateArtifact["connectors"][number]["authMethods"][number];
+const log = logger("connector-catalog:reader");
 
 export interface ExternalCatalogIdentity {
   readonly sourceId: string;
   readonly schemaVersion: number;
   readonly catalogVersion: string;
-  readonly integrityDigest: string;
+  readonly catalogDigest: string;
   readonly capabilityDigest: string;
 }
 
@@ -69,10 +64,11 @@ interface PrivateAuthMethodFacts {
 
 export interface AcceptedConnectorCatalogSnapshot {
   readonly identity: ExternalCatalogIdentity;
-  readonly publicArtifact: ConnectorCatalogPublicArtifact;
-  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
-  readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
-  readonly runnerFirewallsArtifact: ConnectorCatalogRunnerFirewallsArtifact;
+  readonly artifact: ConnectorCatalogArtifact;
+  readonly connectorByRef: ReadonlyMap<
+    string,
+    ConnectorCatalogArtifactConnector
+  >;
   readonly privateMethodFacts: ReadonlyMap<string, PrivateAuthMethodFacts>;
   readonly filteredMethodKeys: ReadonlySet<string>;
   readonly compatibilityReasonCounts: Readonly<
@@ -84,8 +80,16 @@ export interface AcceptedConnectorCatalogSnapshot {
 }
 
 interface PreparedExternalCatalogCache {
-  key: string | undefined;
-  catalog: AcceptedConnectorCatalogSnapshot | undefined;
+  completed:
+    | {
+        readonly key: string;
+        readonly catalog: AcceptedConnectorCatalogSnapshot;
+      }
+    | undefined;
+  readonly inFlight: Map<
+    string,
+    Promise<AcceptedConnectorCatalogSnapshot | undefined>
+  >;
 }
 
 interface RequestFilteringCounts {
@@ -96,8 +100,8 @@ interface RequestFilteringCounts {
 }
 
 interface EffectiveConnector {
-  readonly connector: PublicArtifactConnector;
-  readonly authMethods: readonly PublicArtifactAuthMethod[];
+  readonly connector: ConnectorCatalogArtifactConnector;
+  readonly authMethods: readonly ConnectorCatalogAuthMethod[];
 }
 
 export interface ExternalConnectorCatalogDiagnostics
@@ -152,7 +156,10 @@ export class ExternalConnectorCatalogUnavailableError extends Error {
 }
 
 const preparedCatalogCache = singleton((): PreparedExternalCatalogCache => {
-  return { key: undefined, catalog: undefined };
+  return {
+    completed: undefined,
+    inFlight: new Map<string, Promise<AcceptedConnectorCatalogSnapshot>>(),
+  };
 });
 
 function authMethodKey(connectorRef: string, authMethodId: string): string {
@@ -164,9 +171,19 @@ function identityKey(identity: ExternalCatalogIdentity): string {
     identity.sourceId,
     identity.schemaVersion,
     identity.catalogVersion,
-    identity.integrityDigest,
+    identity.catalogDigest,
     identity.capabilityDigest,
   ].join("\0");
+}
+
+function identityLogFields(identity: ExternalCatalogIdentity) {
+  return {
+    sourceId: identity.sourceId,
+    schemaVersion: identity.schemaVersion,
+    catalogVersion: identity.catalogVersion,
+    catalogDigest: identity.catalogDigest,
+    capabilityDigest: identity.capabilityDigest,
+  };
 }
 
 function isRecognizedFeatureSwitchKey(
@@ -177,7 +194,7 @@ function isRecognizedFeatureSwitchKey(
   });
 }
 
-function requiredScopes(method: PrivateArtifactAuthMethod): readonly string[] {
+function requiredScopes(method: ConnectorCatalogAuthMethod): readonly string[] {
   switch (method.grant.kind) {
     case "auth-code":
     case "device-auth":
@@ -192,10 +209,10 @@ function requiredScopes(method: PrivateArtifactAuthMethod): readonly string[] {
 }
 
 function privateMethodFacts(
-  privateArtifact: ConnectorCatalogPrivateArtifact,
+  artifact: ConnectorCatalogArtifact,
 ): ReadonlyMap<string, PrivateAuthMethodFacts> {
   const facts = new Map<string, PrivateAuthMethodFacts>();
-  for (const connector of privateArtifact.connectors) {
+  for (const connector of artifact.connectors) {
     for (const method of connector.authMethods) {
       facts.set(authMethodKey(connector.connectorRef, method.id), {
         requiredScopes: [...requiredScopes(method)],
@@ -234,8 +251,8 @@ function externalCatalogJoin() {
       connectorCatalogActiveSnapshot.catalogVersion,
     ),
     eq(
-      connectorCatalogCompatibilityEvaluation.integrityDigest,
-      connectorCatalogActiveSnapshot.integrityDigest,
+      connectorCatalogCompatibilityEvaluation.catalogDigest,
+      connectorCatalogActiveSnapshot.catalogDigest,
     ),
   );
 }
@@ -249,7 +266,7 @@ async function readCurrentIdentity(args: {
     .select({
       schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
       catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-      integrityDigest: connectorCatalogActiveSnapshot.integrityDigest,
+      catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
     })
     .from(connectorCatalogActiveSnapshot)
     .innerJoin(connectorCatalogCompatibilityEvaluation, externalCatalogJoin())
@@ -272,7 +289,7 @@ async function readCurrentIdentity(args: {
         sourceId: args.sourceId,
         schemaVersion: row.schemaVersion,
         catalogVersion: row.catalogVersion,
-        integrityDigest: row.integrityDigest,
+        catalogDigest: row.catalogDigest,
         capabilityDigest: args.capabilityDigest,
       }
     : undefined;
@@ -280,24 +297,12 @@ async function readCurrentIdentity(args: {
 
 async function readCurrentCatalog(args: {
   readonly db: ReadonlyDb;
-  readonly sourceId: string;
-  readonly capabilityDigest: string;
+  readonly identity: ExternalCatalogIdentity;
 }): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
   const [row] = await args.db
     .select({
-      schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
-      catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-      integrityDigest: connectorCatalogActiveSnapshot.integrityDigest,
-      publicCatalogDigest: connectorCatalogActiveSnapshot.publicCatalogDigest,
-      privateCatalogDigest: connectorCatalogActiveSnapshot.privateCatalogDigest,
-      privateFirewallsDigest:
-        connectorCatalogActiveSnapshot.privateFirewallsDigest,
-      runnerFirewallsDigest:
-        connectorCatalogActiveSnapshot.runnerFirewallsDigest,
-      publicCatalog: connectorCatalogActiveSnapshot.publicCatalog,
-      privateCatalog: connectorCatalogActiveSnapshot.privateCatalog,
-      privateFirewalls: connectorCatalogActiveSnapshot.privateFirewalls,
-      runnerFirewalls: connectorCatalogActiveSnapshot.runnerFirewalls,
+      catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
+      catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
       filteredAuthMethods:
         connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
     })
@@ -305,14 +310,22 @@ async function readCurrentCatalog(args: {
     .innerJoin(connectorCatalogCompatibilityEvaluation, externalCatalogJoin())
     .where(
       and(
-        eq(connectorCatalogActiveSnapshot.sourceId, args.sourceId),
+        eq(connectorCatalogActiveSnapshot.sourceId, args.identity.sourceId),
         eq(
           connectorCatalogActiveSnapshot.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+          args.identity.schemaVersion,
+        ),
+        eq(
+          connectorCatalogActiveSnapshot.catalogVersion,
+          args.identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogActiveSnapshot.catalogDigest,
+          args.identity.catalogDigest,
         ),
         eq(
           connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-          args.capabilityDigest,
+          args.identity.capabilityDigest,
         ),
       ),
     )
@@ -321,72 +334,83 @@ async function readCurrentCatalog(args: {
     return undefined;
   }
 
-  const publicArtifact = connectorCatalogPublicArtifactSchema.parse(
-    safeJsonParse(row.publicCatalog),
-  );
-  const privateArtifact = connectorCatalogPrivateArtifactSchema.parse(
-    safeJsonParse(row.privateCatalog),
-  );
-  const privateFirewallsArtifact =
-    connectorCatalogPrivateFirewallsArtifactSchema.parse(
-      safeJsonParse(row.privateFirewalls),
-    );
-  const runnerFirewallsArtifact =
-    connectorCatalogRunnerFirewallsArtifactSchema.parse(
-      safeJsonParse(row.runnerFirewalls),
-    );
-  const integrity = connectorCatalogIntegrityArtifactSchema.parse({
-    artifactSchemaVersion: row.schemaVersion,
-    catalogVersion: row.catalogVersion,
-    artifacts: {
-      publicCatalog: row.publicCatalogDigest,
-      privateCatalog: row.privateCatalogDigest,
-      privateFirewalls: row.privateFirewallsDigest,
-      runnerFirewalls: row.runnerFirewallsDigest,
-    },
+  const decoded = decodeConnectorCatalogSnapshot({
+    catalogGzip: row.catalogGzip,
+    catalogRawSize: row.catalogRawSize,
+    catalogVersion: args.identity.catalogVersion,
+    catalogDigest: args.identity.catalogDigest,
   });
-  validateConnectorCatalogArtifacts({
-    publicArtifact,
-    privateArtifact,
-    privateFirewallsArtifact,
-    runnerFirewallsArtifact,
-    integrity,
-  });
-  const filteredAuthMethods = connectorCatalogFilteredAuthMethodsSchema.parse(
-    row.filteredAuthMethods,
-  );
-  const identity: ExternalCatalogIdentity = {
-    sourceId: args.sourceId,
-    schemaVersion: row.schemaVersion,
-    catalogVersion: row.catalogVersion,
-    integrityDigest: row.integrityDigest,
-    capabilityDigest: args.capabilityDigest,
-  };
+  const filteredAuthMethods =
+    connectorCatalogFilteredAuthMethodsSchema.safeParse(
+      row.filteredAuthMethods,
+    );
+  if (!filteredAuthMethods.success) {
+    log.error("Rejected persisted connector catalog compatibility evaluation", {
+      ...identityLogFields(args.identity),
+      failureCode: "invalid-compatibility-evaluation",
+    });
+    throw new ExternalConnectorCatalogUnavailableError();
+  }
+  const artifact = decoded.artifact;
 
   return {
-    identity,
-    publicArtifact,
-    privateArtifact,
-    privateFirewallsArtifact,
-    runnerFirewallsArtifact,
-    privateMethodFacts: privateMethodFacts(privateArtifact),
+    identity: args.identity,
+    artifact,
+    connectorByRef: new Map(
+      artifact.connectors.map((connector) => {
+        return [connector.connectorRef, connector];
+      }),
+    ),
+    privateMethodFacts: privateMethodFacts(artifact),
     filteredMethodKeys: new Set(
-      filteredAuthMethods.map((filtered) => {
+      filteredAuthMethods.data.map((filtered) => {
         return authMethodKey(filtered.connectorRef, filtered.authMethodId);
       }),
     ),
-    compatibilityReasonCounts: compatibilityReasonCounts(filteredAuthMethods),
-    rawConnectorCount: publicArtifact.connectors.length,
-    rawAuthMethodCount: publicArtifact.connectors.reduce((count, connector) => {
+    compatibilityReasonCounts: compatibilityReasonCounts(
+      filteredAuthMethods.data,
+    ),
+    rawConnectorCount: artifact.connectors.length,
+    rawAuthMethodCount: artifact.connectors.reduce((count, connector) => {
       return count + connector.authMethods.length;
     }, 0),
-    compatibilityFilteredMethodCount: filteredAuthMethods.length,
+    compatibilityFilteredMethodCount: filteredAuthMethods.data.length,
   };
 }
 
-export async function loadAcceptedConnectorCatalogSnapshot(
+async function loadCurrentCatalog(args: {
+  readonly db: ReadonlyDb;
+  readonly identity: ExternalCatalogIdentity;
+}): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
+  const result = await settle(readCurrentCatalog(args));
+  if (result.ok) {
+    return result.value;
+  }
+
+  const failureCode = connectorCatalogArtifactFailureCode(result.error);
+  if (failureCode === undefined) {
+    throw result.error;
+  }
+  log.error("Rejected persisted connector catalog snapshot", {
+    ...identityLogFields(args.identity),
+    failureCode,
+  });
+  throw new ExternalConnectorCatalogUnavailableError();
+}
+
+function deleteInFlightCatalog(
+  cache: PreparedExternalCatalogCache,
+  key: string,
+  promise: Promise<AcceptedConnectorCatalogSnapshot | undefined>,
+): void {
+  if (cache.inFlight.get(key) === promise) {
+    cache.inFlight.delete(key);
+  }
+}
+
+async function loadAcceptedConnectorCatalogSnapshotAttempt(
   db: ReadonlyDb,
-): Promise<AcceptedConnectorCatalogSnapshot> {
+): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
   const sourceId = connectorCatalogSource().sourceId;
   const capabilityDigest = connectorCatalogExecutableCapabilityDigest();
   const currentIdentity = await readCurrentIdentity({
@@ -399,17 +423,44 @@ export async function loadAcceptedConnectorCatalogSnapshot(
   }
   const currentKey = identityKey(currentIdentity);
   const cache = preparedCatalogCache();
-  if (cache.key === currentKey && cache.catalog) {
-    return cache.catalog;
+  if (cache.completed?.key === currentKey) {
+    return cache.completed.catalog;
   }
 
-  const catalog = await readCurrentCatalog({ db, sourceId, capabilityDigest });
+  const existing = cache.inFlight.get(currentKey);
+  if (existing) {
+    return await existing;
+  }
+
+  const promise = loadCurrentCatalog({ db, identity: currentIdentity });
+  cache.inFlight.set(currentKey, promise);
+  const catalog = await onRejection(promise, () => {
+    deleteInFlightCatalog(cache, currentKey, promise);
+  });
+  deleteInFlightCatalog(cache, currentKey, promise);
   if (!catalog) {
+    return undefined;
+  }
+  cache.completed = { key: currentKey, catalog };
+  return catalog;
+}
+
+export async function loadAcceptedConnectorCatalogSnapshot(
+  db: ReadonlyDb,
+): Promise<AcceptedConnectorCatalogSnapshot> {
+  const first = await loadAcceptedConnectorCatalogSnapshotAttempt(db);
+  if (first) {
+    return first;
+  }
+
+  // The active row is intentionally the only durable catalog snapshot. If an
+  // activation commits between the identity and payload queries, the old
+  // identity no longer has a row; retry once against the newly active identity.
+  const second = await loadAcceptedConnectorCatalogSnapshotAttempt(db);
+  if (!second) {
     throw new ExternalConnectorCatalogUnavailableError();
   }
-  cache.key = identityKey(catalog.identity);
-  cache.catalog = catalog;
-  return catalog;
+  return second;
 }
 
 /**
@@ -418,7 +469,7 @@ export async function loadAcceptedConnectorCatalogSnapshot(
  * ConnectorActionResolver intentionally does not read them.
  */
 function featureSwitchEnabled(
-  method: PublicArtifactAuthMethod,
+  method: ConnectorCatalogAuthMethod,
   featureStates: ConnectorFeatureStates,
 ): boolean {
   if (method.featureSwitch === null) {
@@ -440,33 +491,31 @@ function effectiveConnectors(args: {
   let visibilityFilteredMethodCount = 0;
   let rolloutFilteredMethodCount = 0;
   let removedConnectorCount = 0;
-  const connectors = args.catalog.publicArtifact.connectors.flatMap(
-    (connector) => {
-      const authMethods = connector.authMethods.filter((method) => {
-        if (
-          args.catalog.filteredMethodKeys.has(
-            authMethodKey(connector.connectorRef, method.id),
-          )
-        ) {
-          return false;
-        }
-        if (!method.visible) {
-          visibilityFilteredMethodCount += 1;
-          return false;
-        }
-        if (!featureSwitchEnabled(method, args.featureStates)) {
-          rolloutFilteredMethodCount += 1;
-          return false;
-        }
-        return true;
-      });
-      if (authMethods.length === 0) {
-        removedConnectorCount += 1;
-        return [];
+  const connectors = args.catalog.artifact.connectors.flatMap((connector) => {
+    const authMethods = connector.authMethods.filter((method) => {
+      if (
+        args.catalog.filteredMethodKeys.has(
+          authMethodKey(connector.connectorRef, method.id),
+        )
+      ) {
+        return false;
       }
-      return [{ connector, authMethods }];
-    },
-  );
+      if (!method.visible) {
+        visibilityFilteredMethodCount += 1;
+        return false;
+      }
+      if (!featureSwitchEnabled(method, args.featureStates)) {
+        rolloutFilteredMethodCount += 1;
+        return false;
+      }
+      return true;
+    });
+    if (authMethods.length === 0) {
+      removedConnectorCount += 1;
+      return [];
+    }
+    return [{ connector, authMethods }];
+  });
   return {
     connectors,
     counts: {
@@ -495,10 +544,10 @@ function diagnostics(
 }
 
 function iconForCatalog(
-  connector: PublicArtifactConnector,
+  connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogIcon {
   return {
-    url: staticConnectorIconPublicPathUrl(connector.icon.asset.key),
+    url: staticConnectorIconPublicPathUrl(connector.icon.key),
     invertInDarkMode: connector.icon.invertInDarkMode,
     ...(connector.icon.scale === undefined
       ? {}
@@ -511,7 +560,7 @@ function referenceMetadataForCatalog(
   connectorRefs: readonly string[],
 ): readonly ConnectorCatalogReferenceMetadata[] {
   const requestedRefs = new Set(connectorRefs);
-  return catalog.publicArtifact.connectors.flatMap((connector) => {
+  return catalog.artifact.connectors.flatMap((connector) => {
     return requestedRefs.has(connector.connectorRef)
       ? [
           {
@@ -525,7 +574,7 @@ function referenceMetadataForCatalog(
 }
 
 function permissionSummaryForCatalog(
-  connector: PublicArtifactConnector,
+  connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogPermissionSummary {
   if (connector.firewall.kind === "none") {
     return {
@@ -535,7 +584,9 @@ function permissionSummaryForCatalog(
       hasDefaultPolicyOverrides: false,
     };
   }
-  const permissionCount = connector.firewall.permissions.length;
+  const permissionCount = deriveConnectorCatalogFirewallPermissions(
+    connector.firewall.config.apis,
+  ).length;
   const defaultPolicy = compactDefaultPolicy(connector);
   return {
     hasPermissions: permissionCount > 0,
@@ -549,32 +600,48 @@ function permissionSummaryForCatalog(
 }
 
 function authMethodSummaryForCatalog(
-  method: PublicArtifactAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): PublicConnectorCatalogAuthMethodSummary {
   return {
     id: method.id,
     label: method.label,
     description: method.description,
-    grantKind: method.grantKind,
+    grantKind: method.grant.kind,
   };
 }
 
 function authMethodDetailForCatalog(
-  method: PublicArtifactAuthMethod,
+  method: ConnectorCatalogAuthMethod,
 ): PublicConnectorCatalogAuthMethodDetail {
   return {
     ...authMethodSummaryForCatalog(method),
-    manualFields: method.manualFields.map((field) => {
-      return { ...field };
-    }),
-    startOptions: method.startOptions.map((option) => {
-      return {
-        ...option,
-        options: option.options.map((choice) => {
-          return { ...choice };
-        }),
-      };
-    }),
+    manualFields:
+      method.grant.kind === "manual"
+        ? method.grant.fields.map((field) => {
+            return {
+              id: field.publicId,
+              label: field.label,
+              required: field.required,
+              placeholder: field.placeholder,
+              inputType: field.storage === "variable" ? "text" : "password",
+            };
+          })
+        : [],
+    startOptions:
+      method.grant.kind === "device-auth"
+        ? method.grant.startOptions.map((option) => {
+            return {
+              id: option.publicId,
+              kind: option.kind,
+              label: option.label,
+              required: option.required,
+              defaultValue: option.defaultValue,
+              options: option.options.map((choice) => {
+                return { ...choice };
+              }),
+            };
+          })
+        : [],
   };
 }
 
@@ -607,9 +674,7 @@ export function getAcceptedConnectorCatalogResolutionDetail(args: {
   readonly snapshot: AcceptedConnectorCatalogSnapshot;
   readonly connectorRef: string;
 }): PublicConnectorCatalogDetail | null {
-  const connector = args.snapshot.publicArtifact.connectors.find((entry) => {
-    return entry.connectorRef === args.connectorRef;
-  });
+  const connector = args.snapshot.connectorByRef.get(args.connectorRef);
   return connector
     ? connectorCatalogDetail({
         connector,
@@ -666,7 +731,7 @@ function categoryMetadataForConnectors(
       return effective.connector.category;
     }),
   );
-  const categories = catalog.publicArtifact.categoryMetadata.categories.filter(
+  const categories = catalog.artifact.categoryMetadata.categories.filter(
     (category) => {
       return visibleCategories.has(category.id);
     },
@@ -680,7 +745,7 @@ function categoryMetadataForConnectors(
     categories: categories.map((category) => {
       return { ...category };
     }),
-    groups: catalog.publicArtifact.categoryMetadata.groups
+    groups: catalog.artifact.categoryMetadata.groups
       .filter((group) => {
         return visibleGroups.has(group.id);
       })
@@ -770,7 +835,7 @@ function connectorCatalogStatusItem(args: {
     tokenExpiresAt: connector?.tokenExpiresAt ?? null,
     singleAuthCodeAuthMethodId:
       args.effective.authMethods.length === 1 &&
-      singleMethod?.grantKind === "auth-code"
+      singleMethod?.grant.kind === "auth-code"
         ? singleMethod.id
         : null,
     connectNotice: null,
@@ -792,12 +857,14 @@ function choosePermissionDefault(args: {
 }
 
 function compactDefaultPolicy(
-  connector: PublicArtifactConnector,
+  connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogPermissionDetail["defaultPolicy"] {
   if (connector.firewall.kind === "none") {
     throw new Error("Connector catalog firewall metadata is unavailable");
   }
-  const permissionNames = connector.firewall.permissions.map((permission) => {
+  const permissionNames = deriveConnectorCatalogFirewallPermissions(
+    connector.firewall.config.apis,
+  ).map((permission) => {
     return permission.name;
   });
   const permissionDefault = choosePermissionDefault({
@@ -954,13 +1021,16 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
     };
   }
   const firewall = entry.connector.firewall;
+  const permissions = deriveConnectorCatalogFirewallPermissions(
+    firewall.config.apis,
+  );
   return {
     value: {
       connectorRef: entry.connector.connectorRef,
       label: entry.connector.label,
       icon: iconForCatalog(entry.connector),
-      permissionCount: firewall.permissions.length,
-      permissions: firewall.permissions.map((permission) => {
+      permissionCount: permissions.length,
+      permissions: permissions.map((permission) => {
         return { ...permission };
       }),
       categories:

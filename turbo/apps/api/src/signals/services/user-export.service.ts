@@ -763,7 +763,7 @@ async function collectConversationMessages(
           inArray(chatMessages.role, ["user", "assistant"]),
         ),
       )
-      .orderBy(asc(chatMessages.createdAt));
+      .orderBy(asc(chatMessages.seqId));
     runtime.signal.throwIfAborted();
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {

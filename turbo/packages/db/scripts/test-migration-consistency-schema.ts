@@ -28,6 +28,7 @@
  */
 
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -173,7 +174,11 @@ async function validateChatEventSourcesAreAppendOnly(
 
     const thread = await client.query<{ id: string }>(
       `
-        INSERT INTO "chat_threads" ("user_id", "agent_compose_id", "title")
+        INSERT INTO "chat_threads" (
+          "user_id",
+          "agent_compose_id",
+          "title"
+        )
         VALUES ('append-only-test-user', $1, 'append-only migration test')
         RETURNING "id"
       `,
@@ -184,11 +189,17 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    const message = await client.query<{ id: string }>(
+    // Simulate the API version serving during migration: it does not know
+    // about seq_id and relies on the temporary database allocator.
+    const message = await client.query<{ id: string; seqId: string }>(
       `
-        INSERT INTO "chat_messages" ("chat_thread_id", "role", "content")
+        INSERT INTO "chat_messages" (
+          "chat_thread_id",
+          "role",
+          "content"
+        )
         VALUES ($1, 'user', 'append-only migration test')
-        RETURNING "id"
+        RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId],
     );
@@ -196,6 +207,29 @@ async function validateChatEventSourcesAreAppendOnly(
     if (!messageId) {
       throw new Error("Failed to create append-only chat message fixture");
     }
+    assert.equal(message.rows[0]?.seqId, "1");
+    const nextMessage = await client.query<{ seqId: string }>(
+      `
+        INSERT INTO "chat_messages" (
+          "chat_thread_id",
+          "role",
+          "content"
+        )
+        VALUES ($1, 'assistant', 'second legacy API migration test')
+        RETURNING "seq_id" AS "seqId"
+      `,
+      [threadId],
+    );
+    assert.equal(nextMessage.rows[0]?.seqId, "2");
+    const sequenceState = await client.query<{ lastSeqId: string }>(
+      `
+        SELECT "last_chat_message_seq_id" AS "lastSeqId"
+        FROM "chat_threads"
+        WHERE "id" = $1
+      `,
+      [threadId],
+    );
+    assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
 
     const event = await client.query<{ id: string }>(
       `
@@ -237,6 +271,9 @@ async function validateChatEventSourcesAreAppendOnly(
 
     console.log("   ✅ chat_messages rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
+    console.log(
+      "   ✅ previous API writes receive a database-allocated seq_id\n",
+    );
   } finally {
     if (eventId) {
       await client.query(`DELETE FROM "chat_thread_events" WHERE "id" = $1`, [
@@ -1247,6 +1284,729 @@ async function applyMigrationsUpToInTransaction(
     await client.query("ROLLBACK");
     throw error;
   }
+}
+
+const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
+const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
+
+const sessionStorageBackfillFixture = {
+  orgId: "session-storage-backfill-org",
+  userId: "session-storage-backfill-user",
+  composeId: "70000000-0000-4000-8000-000000000001",
+  legacySessionId: "70000000-0000-4000-8000-000000000002",
+  emptySessionId: "70000000-0000-4000-8000-000000000003",
+  canonicalSessionId: "70000000-0000-4000-8000-000000000004",
+  provenanceSessionId: "70000000-0000-4000-8000-000000000005",
+  missingLatestSessionId: "70000000-0000-4000-8000-000000000006",
+  missingImplicitLatestSessionId: "70000000-0000-4000-8000-000000000007",
+  storageIds: {
+    head: "71000000-0000-4000-8000-000000000001",
+    latest: "71000000-0000-4000-8000-000000000002",
+    pinned: "71000000-0000-4000-8000-000000000003",
+    prefix: "71000000-0000-4000-8000-000000000004",
+  },
+  versionIds: {
+    head: "a".repeat(64),
+    latest: "b".repeat(64),
+    pinned: "c".repeat(64),
+    prefix: "d".repeat(64),
+  },
+} as const;
+
+async function seedSessionStorageBackfillFixture(
+  client: Client,
+): Promise<void> {
+  const fixture = sessionStorageBackfillFixture;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES ($1, $2, 'session-storage-backfill', $3)
+    `,
+    [fixture.composeId, fixture.userId, fixture.orgId],
+  );
+
+  for (const name of ["head", "latest", "pinned", "prefix"] as const) {
+    const storageId = fixture.storageIds[name];
+    const versionId = fixture.versionIds[name];
+    await client.query(
+      `
+        INSERT INTO "storages"
+          ("id", "user_id", "name", "type", "org_id", "s3_prefix")
+        VALUES ($1, $2, $3, 'artifact', $4, $5)
+      `,
+      [
+        storageId,
+        fixture.userId,
+        name,
+        fixture.orgId,
+        `session-storage-backfill/${name}`,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "storage_versions"
+          ("id", "storage_id", "s3_key", "archive_size", "created_by")
+        VALUES ($1, $2, $3, 0, 'migration-test')
+      `,
+      [versionId, storageId, `session-storage-backfill/${name}/${versionId}`],
+    );
+    await client.query(
+      `
+        UPDATE "storages"
+        SET "head_version_id" = $1
+        WHERE "id" = $2
+      `,
+      [versionId, storageId],
+    );
+  }
+
+  const legacyArtifacts = [
+    { name: "head", mountPath: "/home/oai/share/head" },
+    {
+      name: "latest",
+      version: "latest",
+      mountPath: "/home/oai/share/latest",
+      missingRootPolicy: "preserveParentVersion",
+    },
+    {
+      name: "pinned",
+      version: fixture.versionIds.pinned,
+      mountPath: "/home/oai/share/pinned",
+    },
+    {
+      name: "prefix",
+      version: fixture.versionIds.prefix.slice(0, 8),
+      mountPath: "/home/oai/share/prefix",
+    },
+  ];
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "updated_at"
+      )
+      VALUES ($1, $2, $3, $4, $5::jsonb, '2020-01-01 00:00:00')
+    `,
+    [
+      fixture.legacySessionId,
+      fixture.userId,
+      fixture.orgId,
+      fixture.composeId,
+      JSON.stringify(legacyArtifacts),
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "updated_at"
+      )
+      VALUES ($1, $2, $3, $4, '[]'::jsonb, '2020-01-02 00:00:00')
+    `,
+    [fixture.emptySessionId, fixture.userId, fixture.orgId, fixture.composeId],
+  );
+
+  const canonicalMounts = [
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "head",
+      storageId: fixture.storageIds.head,
+      mountPath: "/home/oai/share/head",
+      writeback: true,
+    },
+  ];
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "storage_mounts",
+        "updated_at"
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        '[]'::jsonb,
+        $5::jsonb,
+        '2020-01-03 00:00:00'
+      )
+    `,
+    [
+      fixture.canonicalSessionId,
+      fixture.userId,
+      fixture.orgId,
+      fixture.composeId,
+      JSON.stringify(canonicalMounts),
+    ],
+  );
+
+  const historicalSessions = [
+    {
+      id: fixture.provenanceSessionId,
+      artifacts: [
+        {
+          name: "head",
+          mountPath: "/home/oai/share/provenance",
+          generatedBy: "apiAutoMemory",
+        },
+      ],
+      updatedAt: "2020-01-04 00:00:00",
+    },
+    {
+      id: fixture.missingLatestSessionId,
+      artifacts: [
+        {
+          name: "recreated",
+          version: "latest",
+          mountPath: "/home/oai/share/recreated-latest",
+          generatedBy: "apiAutoMemory",
+        },
+      ],
+      updatedAt: "2020-01-05 00:00:00",
+    },
+    {
+      id: fixture.missingImplicitLatestSessionId,
+      artifacts: [
+        {
+          name: "recreated",
+          mountPath: "/home/oai/share/recreated-implicit",
+        },
+      ],
+      updatedAt: "2020-01-06 00:00:00",
+    },
+  ] as const;
+
+  for (const session of historicalSessions) {
+    await client.query(
+      `
+        INSERT INTO "agent_sessions" (
+          "id",
+          "user_id",
+          "org_id",
+          "agent_compose_id",
+          "artifacts",
+          "updated_at"
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+      `,
+      [
+        session.id,
+        fixture.userId,
+        fixture.orgId,
+        fixture.composeId,
+        JSON.stringify(session.artifacts),
+        session.updatedAt,
+      ],
+    );
+  }
+}
+
+async function seedSessionStorageBackfillRejections(
+  client: Client,
+): Promise<void> {
+  const fixture = sessionStorageBackfillFixture;
+  const rows = [
+    {
+      id: "72000000-0000-4000-8000-000000000001",
+      artifacts: [
+        {
+          name: "head",
+          mountPath: "/home/oai/share/malformed",
+          unexpected: true,
+        },
+        {
+          name: "latest",
+          mountPath: "/home/oai/share/malformed-generated-by",
+          generatedBy: "unknown",
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000002",
+      artifacts: [
+        { name: "head", mountPath: "/home/oai/share/duplicate-one" },
+        { name: "head", mountPath: "/home/oai/share/duplicate-two" },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000003",
+      artifacts: [
+        {
+          name: "missing",
+          version: "deadbeef",
+          mountPath: "/home/oai/share/missing",
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000004",
+      artifacts: [
+        {
+          name: "pinned",
+          version: "deadbeef",
+          mountPath: "/home/oai/share/unresolved",
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000005",
+      artifacts: [
+        { name: "head", mountPath: "/home/oai/share/conflict-source" },
+      ],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/conflict-target",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000006",
+      artifacts: [],
+      storageMounts: { malformed: true },
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000007",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/canonical-duplicate-one",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/canonical-duplicate-two",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000008",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: "71000000-0000-4000-8000-000000000099",
+          mountPath: "/home/oai/share/stale-identity",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000009",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "pinned",
+          storageId: fixture.storageIds.pinned,
+          version: "deadbeef",
+          mountPath: "/home/oai/share/canonical-unresolved",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000010",
+      artifacts: [
+        {
+          name: "rollback-latest",
+          version: "latest",
+          mountPath: "/home/oai/share/rollback-latest",
+        },
+      ],
+      storageMounts: null,
+    },
+  ];
+
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO "agent_sessions" (
+          "id",
+          "user_id",
+          "org_id",
+          "agent_compose_id",
+          "artifacts",
+          "storage_mounts"
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+      `,
+      [
+        row.id,
+        fixture.userId,
+        fixture.orgId,
+        fixture.composeId,
+        JSON.stringify(row.artifacts),
+        row.storageMounts === null ? null : JSON.stringify(row.storageMounts),
+      ],
+    );
+  }
+}
+
+async function validateSessionStorageBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.7: Validate session continuation Storage backfill ===\n",
+  );
+  const successDb = "migration_session_storage_backfill_test";
+  const successDbUrl = createTestDbUrl(successDb);
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(
+      successDbUrl,
+      SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await seedSessionStorageBackfillFixture(client);
+      await applyMigrationsUpToInTransaction(
+        client,
+        SESSION_STORAGE_BACKFILL_MIGRATION,
+      );
+
+      const result = await client.query<{
+        artifacts: unknown;
+        id: string;
+        storage_mounts: unknown;
+        updated_at: string;
+      }>(`
+        SELECT
+          "id",
+          "artifacts",
+          "storage_mounts",
+          "updated_at"::text
+        FROM "agent_sessions"
+        WHERE "id" IN (
+          '${sessionStorageBackfillFixture.legacySessionId}',
+          '${sessionStorageBackfillFixture.emptySessionId}',
+          '${sessionStorageBackfillFixture.canonicalSessionId}',
+          '${sessionStorageBackfillFixture.provenanceSessionId}',
+          '${sessionStorageBackfillFixture.missingLatestSessionId}',
+          '${sessionStorageBackfillFixture.missingImplicitLatestSessionId}'
+        )
+        ORDER BY "id"
+      `);
+      const rowsById = new Map(
+        result.rows.map((row) => {
+          return [row.id, row] as const;
+        }),
+      );
+      const fixture = sessionStorageBackfillFixture;
+      const legacy = rowsById.get(fixture.legacySessionId);
+      assert.ok(legacy);
+      assert.deepEqual(legacy.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/head",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "latest",
+          storageId: fixture.storageIds.latest,
+          version: "latest",
+          mountPath: "/home/oai/share/latest",
+          writeback: true,
+          missingRootPolicy: "preserveParentVersion",
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "pinned",
+          storageId: fixture.storageIds.pinned,
+          version: fixture.versionIds.pinned,
+          mountPath: "/home/oai/share/pinned",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "prefix",
+          storageId: fixture.storageIds.prefix,
+          version: fixture.versionIds.prefix.slice(0, 8),
+          mountPath: "/home/oai/share/prefix",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(legacy.artifacts, [
+        { name: "head", mountPath: "/home/oai/share/head" },
+        {
+          name: "latest",
+          version: "latest",
+          mountPath: "/home/oai/share/latest",
+          missingRootPolicy: "preserveParentVersion",
+        },
+        {
+          name: "pinned",
+          version: fixture.versionIds.pinned,
+          mountPath: "/home/oai/share/pinned",
+        },
+        {
+          name: "prefix",
+          version: fixture.versionIds.prefix.slice(0, 8),
+          mountPath: "/home/oai/share/prefix",
+        },
+      ]);
+      assert.equal(legacy.updated_at, "2020-01-01 00:00:00");
+
+      const empty = rowsById.get(fixture.emptySessionId);
+      assert.ok(empty);
+      assert.deepEqual(empty.storage_mounts, []);
+      assert.equal(empty.updated_at, "2020-01-02 00:00:00");
+
+      const canonical = rowsById.get(fixture.canonicalSessionId);
+      assert.ok(canonical);
+      assert.deepEqual(canonical.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/head",
+          writeback: true,
+        },
+      ]);
+      assert.equal(canonical.updated_at, "2020-01-03 00:00:00");
+
+      const provenance = rowsById.get(fixture.provenanceSessionId);
+      assert.ok(provenance);
+      assert.deepEqual(provenance.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/provenance",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(provenance.artifacts, [
+        {
+          name: "head",
+          mountPath: "/home/oai/share/provenance",
+          generatedBy: "apiAutoMemory",
+        },
+      ]);
+      assert.equal(provenance.updated_at, "2020-01-04 00:00:00");
+
+      const recreatedStorage = await client.query<{
+        archive_size: number;
+        created_by: string;
+        file_count: number;
+        head_version_id: string;
+        id: string;
+        message: string;
+        name: string;
+        s3_key: string;
+        s3_prefix: string;
+        size: number;
+        type: string;
+      }>(`
+        SELECT
+          storage."id",
+          storage."name",
+          storage."type",
+          storage."s3_prefix",
+          storage."head_version_id",
+          version."s3_key",
+          version."size"::integer,
+          version."archive_size"::integer,
+          version."file_count",
+          version."message",
+          version."created_by"
+        FROM "storages" AS storage
+        INNER JOIN "storage_versions" AS version
+          ON version."id" = storage."head_version_id"
+        WHERE storage."org_id" = '${fixture.orgId}'
+          AND storage."user_id" = '${fixture.userId}'
+          AND storage."name" = 'recreated'
+      `);
+      assert.equal(recreatedStorage.rows.length, 1);
+      const recreatedStorageRow = recreatedStorage.rows[0];
+      assert.ok(recreatedStorageRow);
+      const recreatedStorageId = recreatedStorageRow.id;
+      const expectedEmptyVersionId = createHash("sha256")
+        .update(`storage:${recreatedStorageId}\n`)
+        .digest("hex");
+      assert.deepEqual(recreatedStorageRow, {
+        id: recreatedStorageId,
+        name: "recreated",
+        type: "artifact",
+        s3_prefix: `${fixture.orgId}/${recreatedStorageId}`,
+        head_version_id: expectedEmptyVersionId,
+        s3_key: `${fixture.orgId}/${recreatedStorageId}/${expectedEmptyVersionId}`,
+        size: 0,
+        archive_size: 0,
+        file_count: 0,
+        message: "Initial empty artifact",
+        created_by: fixture.userId,
+      });
+
+      const recreatedLatest = rowsById.get(fixture.missingLatestSessionId);
+      assert.ok(recreatedLatest);
+      assert.deepEqual(recreatedLatest.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "recreated",
+          storageId: recreatedStorageId,
+          version: "latest",
+          mountPath: "/home/oai/share/recreated-latest",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(recreatedLatest.artifacts, [
+        {
+          name: "recreated",
+          version: "latest",
+          mountPath: "/home/oai/share/recreated-latest",
+          generatedBy: "apiAutoMemory",
+        },
+      ]);
+      assert.equal(recreatedLatest.updated_at, "2020-01-05 00:00:00");
+
+      const recreatedImplicit = rowsById.get(
+        fixture.missingImplicitLatestSessionId,
+      );
+      assert.ok(recreatedImplicit);
+      assert.deepEqual(recreatedImplicit.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "recreated",
+          storageId: recreatedStorageId,
+          mountPath: "/home/oai/share/recreated-implicit",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(recreatedImplicit.artifacts, [
+        {
+          name: "recreated",
+          mountPath: "/home/oai/share/recreated-implicit",
+        },
+      ]);
+      assert.equal(recreatedImplicit.updated_at, "2020-01-06 00:00:00");
+
+      const unmigrated = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+      assert.equal(unmigrated.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  const rejectionDb = "migration_session_storage_backfill_rejection_test";
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(
+      rejectionDbUrl,
+      SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await seedSessionStorageBackfillFixture(client);
+      await seedSessionStorageBackfillRejections(client);
+
+      const beforeRejection = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+
+      let rejection: unknown;
+      try {
+        await applyMigrationsUpToInTransaction(
+          client,
+          SESSION_STORAGE_BACKFILL_MIGRATION,
+        );
+      } catch (error) {
+        rejection = error;
+      }
+      assert.equal(databaseErrorCode(rejection), "23514");
+      assert.ok(
+        rejection instanceof Error &&
+          rejection.message.includes(
+            "malformed_sessions=1, duplicate_sessions=1, missing_storage_sessions=1, unresolved_version_sessions=1, malformed_canonical_sessions=1, duplicate_canonical_sessions=1, stale_canonical_identity_sessions=1, unresolved_canonical_version_sessions=1, canonical_conflict_sessions=1",
+          ),
+      );
+
+      const unchanged = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+      assert.equal(unchanged.rows[0]?.count, beforeRejection.rows[0]?.count);
+
+      const rolledBackStorage = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "storages"
+        WHERE "org_id" = '${sessionStorageBackfillFixture.orgId}'
+          AND "user_id" = '${sessionStorageBackfillFixture.userId}'
+          AND "name" = 'rollback-latest'
+      `);
+      assert.equal(rolledBackStorage.rows[0]?.count, 0);
+
+      const migrationRecord = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "__drizzle_migrations"
+        WHERE "hash" = '0654_backfill_session_continuation_storage_mounts'
+      `);
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Session continuation heads backfill losslessly and readiness failures roll back atomically\n",
+  );
 }
 
 const LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION = 640;
@@ -2337,6 +3097,7 @@ async function main(): Promise<void> {
 
     await validateStorageArchiveSizeFinalization();
     await validateLegacyMemoryCleanup();
+    await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
     await validateOrgPlanEntitlementBackfill();
 

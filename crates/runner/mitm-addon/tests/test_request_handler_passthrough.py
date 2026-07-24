@@ -68,15 +68,167 @@ async def test_allowed_domain_passes_through(registry_file, real_flow, mitm_ctx)
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
-async def test_vm0_api_auto_allowed(registry_file, real_flow, mitm_ctx):
-    flow = real_flow(with_response=False, host="api.vm0.ai")
+@pytest.mark.parametrize(
+    ("api_url", "host", "scheme", "port"),
+    [
+        pytest.param(
+            "https://api.vm0.ai",
+            "api.vm0.ai",
+            "https",
+            443,
+            id="https-default-port",
+        ),
+        pytest.param(
+            "http://api.vm0.ai",
+            "api.vm0.ai",
+            "http",
+            80,
+            id="http-default-port",
+        ),
+        pytest.param(
+            "https://api.vm0.ai:8443",
+            "api.vm0.ai",
+            "https",
+            8443,
+            id="explicit-non-default-port",
+        ),
+        pytest.param(
+            "https://api.vm0.ai",
+            "preview.api.vm0.ai",
+            "https",
+            443,
+            id="subdomain",
+        ),
+    ],
+)
+async def test_vm0_api_auto_allowed(
+    registry_file,
+    real_flow,
+    mitm_ctx,
+    api_url,
+    host,
+    scheme,
+    port,
+):
+    flow = real_flow(
+        with_response=False,
+        host=host,
+        scheme=scheme,
+        port=port,
+    )
 
     with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_file), api_url=api_url),
     ):
         await mitm_addon.request(flow)
 
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == host
+    assert binding.port == port
+    assert binding.kinds == frozenset(("api_allow",))
+
+
+async def test_vm0_api_wrong_port_uses_matching_firewall_deny_policy(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="alternate-api-port",
+            api_entry={
+                "base": "https://api.vm0.ai:8443",
+                "auth": {"headers": {}},
+                "permissions": [{"name": "read", "rules": ["GET /restricted"]}],
+            },
+            network_policy={
+                "allow": [],
+                "deny": ["read"],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.vm0.ai",
+        port=8443,
+        path="/restricted",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["reason"] == "permission_denied"
+    assert body["permissions"] == ["read"]
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_vm0_api_wrong_port_uses_normal_connector_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="alternate-api-port",
+            api_entry={
+                "base": "https://api.vm0.ai:8443",
+                "auth": {
+                    "headers": {
+                        "Authorization": "Bearer ${{ secrets.API_TOKEN }}",
+                    }
+                },
+                "permissions": [{"name": "read", "rules": ["GET /restricted"]}],
+            },
+            network_policy={
+                "allow": ["read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.vm0.ai",
+        port=8443,
+        path="/restricted",
+        request_headers=headers(("Host", "api.vm0.ai:8443")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved-api-token"}) as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+        assert binding.host == "api.vm0.ai"
+        assert binding.port == 8443
+        assert binding.kinds == frozenset(("connector_auth",))
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.vm0.ai:8443"
+    assert flow.request.headers["Authorization"] == "Bearer resolved-api-token"
 
 
 async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, real_flow, mitm_ctx):

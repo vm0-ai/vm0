@@ -172,20 +172,26 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("scrape:read");
   });
 
-  it("grants web-search capability from user feature switch overrides", () => {
+  it("grants web-search capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("web-search:read");
+  });
+
+  it("grants finance capability from user feature switch overrides", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const overrideToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.ZeroWebSearch]: true },
+      { [FeatureSwitchKey.ZeroFinance]: true },
     );
 
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
-      "web-search:read",
+      "finance:read",
     );
     expect(verifyZeroToken(overrideToken)?.capabilities).toContain(
-      "web-search:read",
+      "finance:read",
     );
   });
 

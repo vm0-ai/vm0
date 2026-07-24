@@ -28,12 +28,21 @@ async function deductOrgCredits(
   orgId: string,
   amount: number,
 ): Promise<void> {
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-        VALUES (${orgId}, ${-amount}, now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits - ${amount}, updated_at = now()`,
-  );
+  await tx
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      credits: -amount,
+      createdAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        credits: sql`${orgMetadata.credits} - ${amount}`,
+        updatedAt: sql`now()`,
+      },
+    });
 }
 
 async function getOrgCredits(tx: WriteTx, orgId: string): Promise<number> {

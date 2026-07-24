@@ -108,7 +108,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
@@ -126,7 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationExport]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
@@ -137,7 +137,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
@@ -205,7 +205,7 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ZeroWebSearch,
+      FeatureSwitchKey.ZeroFinance,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ComposerConnectorPermissions,
@@ -216,12 +216,10 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
-        [FeatureSwitchKey.ZeroWebSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
-      [FeatureSwitchKey.ZeroWebSearch]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
     });

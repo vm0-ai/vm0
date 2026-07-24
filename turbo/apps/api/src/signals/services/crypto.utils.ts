@@ -20,7 +20,7 @@ const envelopeKmsCiphertextSchema = z.object({
   encryptedDataKey: z.string().min(1),
   iv: z.string().min(1),
   authTag: z.string().min(1),
-  ciphertext: z.string().min(1),
+  ciphertext: z.string(),
 });
 
 const kmsCiphertextSchema = z.union([

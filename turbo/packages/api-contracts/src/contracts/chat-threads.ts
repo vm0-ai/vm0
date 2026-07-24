@@ -22,13 +22,40 @@ const attachFileSchema = z.object({
   size: z.number(),
 });
 
+const assetMaterializationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("ready") }),
+  z.object({ status: z.literal("pending") }),
+  z.object({
+    status: z.literal("failed"),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      retryable: z.boolean(),
+    }),
+  }),
+]);
+
+const assetRefSchema = z.object({
+  id: z.string().uuid(),
+  classification: z.enum(["input", "published-output"]),
+  access: z.enum(["private", "published"]),
+  materialization: assetMaterializationSchema,
+  provenance: z
+    .object({
+      provider: z.string(),
+    })
+    .optional(),
+});
+
 /**
  * Attach file returned to the frontend with a resolved URL.
- * `url` is the public artifact CDN URL; consumers may render, cache, or share
- * it freely.
+ * Legacy attachments expose a public artifact URL. Canonical input assets use
+ * an authenticated same-origin URL and identify their durable asset through
+ * `assetRef`.
  */
 const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
+  assetRef: assetRefSchema.optional(),
 });
 
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
@@ -67,6 +94,7 @@ const artifactItemSchema = z.object({
   contentType: z.string(),
   size: z.number().default(0),
   url: z.string(),
+  assetRef: assetRefSchema.optional(),
   previewImageUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -372,6 +400,8 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  /** Server-assigned strict position within the chat thread. */
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),
@@ -1015,6 +1045,7 @@ const chatSearchMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   createdAt: z.string(),
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable(),
   runId: z.string().nullable(),
 });
@@ -1071,11 +1102,12 @@ export const chatSearchContract = c.router({
 
 /**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using message UUID as sinceId / beforeId.
+ * Cursor-based pagination using the thread-scoped message sequence.
  *
  * Query params (mutually exclusive):
- *   sinceId  — forward pagination: messages strictly after this cursor
- *   beforeId — backward pagination: messages strictly before this cursor
+ *   sinceSeqId  — forward pagination: messages strictly after this cursor
+ *   beforeSeqId — backward pagination: messages strictly before this cursor
+ *   sinceId / beforeId — previous frontend UUID cursors retained during rollout
  *   (neither) — initial load anchored at the last user message
  *
  * Response includes `hasMore` for initial load and backward pagination so the
@@ -1088,6 +1120,10 @@ export const chatThreadMessagesContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      beforeSeqId: z.coerce.number().int().positive().optional(),
+      // Remove after browser clients from the pre-seqId release can no longer
+      // remain active against the current backend.
       sinceId: z.string().uuid().optional(),
       beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
@@ -1434,6 +1470,7 @@ export type ChatMessageUsagePayload = z.infer<
 >;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
+export type AssetRef = z.infer<typeof assetRefSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<
   typeof chatThreadArtifactFileSchema

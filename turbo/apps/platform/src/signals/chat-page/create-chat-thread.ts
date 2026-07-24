@@ -41,6 +41,7 @@ import {
   type OptimisticChatMessageEntry,
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
+import type { ChatMessage } from "./chat-message-types.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
@@ -60,7 +61,6 @@ import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
@@ -75,6 +75,7 @@ import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
+import { isCancelledAssistantMessage } from "./chat-run-lifecycle.ts";
 import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
@@ -135,6 +136,7 @@ import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
   messageDocumentToDisplayText,
+  messageDocumentToPrompt,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
 
@@ -161,7 +163,7 @@ function createChatThreadScrollSignals(threadId: string) {
   });
 }
 
-function isRecallControlMessage(msg: PagedChatMessage): boolean {
+function isRecallControlMessage(msg: ChatMessage): boolean {
   return (
     ((msg.role === "user" && msg.runId === undefined && msg.content === null) ||
       (msg.role === "assistant" && msg.content === null)) &&
@@ -169,7 +171,7 @@ function isRecallControlMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
+function isQueueMarkerMessage(msg: ChatMessage): boolean {
   return (
     msg.role === "assistant" &&
     msg.runEventId === QUEUED_RUN_MARKER_EVENT_ID &&
@@ -177,7 +179,7 @@ function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
+function isGoalMarkerMessage(msg: ChatMessage): boolean {
   return msg.role === "assistant" && msg.goalEvent !== undefined;
 }
 
@@ -186,7 +188,7 @@ function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
  * composer. Goal markers are chronological and last-write-wins: active shows
  * the cached objective brief; paused, blocked, complete, and cleared hide it.
  */
-function foldActiveGoal(messages: readonly PagedChatMessage[]): string | null {
+function foldActiveGoal(messages: readonly ChatMessage[]): string | null {
   let objective: string | null = null;
   for (const message of messages) {
     const goalEvent =
@@ -208,16 +210,16 @@ function foldActiveGoal(messages: readonly PagedChatMessage[]): string | null {
   return trimmed || null;
 }
 
-function isUsageMessage(msg: PagedChatMessage): msg is Extract<
-  PagedChatMessage,
+function isUsageMessage(msg: ChatMessage): msg is Extract<
+  ChatMessage,
   { role: "assistant" }
 > & {
-  usage: NonNullable<PagedChatMessage["usage"]>;
+  usage: NonNullable<ChatMessage["usage"]>;
 } {
   return msg.role === "assistant" && msg.usage !== undefined;
 }
 
-function isInterruptControlMessage(msg: PagedChatMessage): boolean {
+function isInterruptControlMessage(msg: ChatMessage): boolean {
   return (
     msg.role === "user" &&
     msg.runId === undefined &&
@@ -225,19 +227,10 @@ function isInterruptControlMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
-  return (
-    msg.role === "assistant" &&
-    msg.runId !== undefined &&
-    (msg.runLifecycleEvent === "cancelled" ||
-      msg.error?.trim().toLowerCase() === "run cancelled")
-  );
-}
-
 function createInterruptedAssistantProjection(
-  message: PagedChatMessage,
+  message: ChatMessage,
   runId: string,
-): PagedChatMessage {
+): ChatMessage {
   return {
     ...message,
     role: "assistant" as const,
@@ -266,7 +259,7 @@ function completedRunIdsFromMessages(
 }
 
 function isInterruptedAssistantCancellation(
-  message: PagedChatMessage,
+  message: ChatMessage,
   interruptedRunIds: Set<string>,
 ): boolean {
   const runId = message.runId;
@@ -341,7 +334,7 @@ const DONE_PHRASES = [
   },
 ] as const;
 
-function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
+function formatDonePhrase(lastMsg: ChatMessage | undefined): string {
   const time = lastMsg
     ? new Date(lastMsg.createdAt).toLocaleString("en-US", {
         month: "short",
@@ -399,10 +392,7 @@ function terminatedRunIdsFromRawMessages(
 
 type RunIndicatorState = "running" | "queued" | null;
 
-type AssistantPagedChatMessage = Extract<
-  PagedChatMessage,
-  { role: "assistant" }
->;
+type AssistantChatMessage = Extract<ChatMessage, { role: "assistant" }>;
 
 function runActivityIndicatorState(
   terminatedRunIds: ReadonlySet<string>,
@@ -416,7 +406,7 @@ function runActivityIndicatorState(
 
 function assistantRunIndicatorState(
   terminatedRunIds: ReadonlySet<string>,
-  message: AssistantPagedChatMessage,
+  message: AssistantChatMessage,
 ): RunIndicatorState | undefined {
   const runId = message.runId;
   if (isQueueMarkerMessage(message)) {
@@ -1316,27 +1306,6 @@ function compareCreatedAt(left: string, right: string): number {
   return leftTime - rightTime;
 }
 
-function compareServerMessageOrder(
-  left: PagedChatMessage,
-  right: PagedChatMessage,
-): number {
-  const createdAtOrder = compareCreatedAt(left.createdAt, right.createdAt);
-  if (createdAtOrder !== 0) {
-    return createdAtOrder;
-  }
-
-  const leftSequence = chatMessageOrderSequence(left);
-  const rightSequence = chatMessageOrderSequence(right);
-  if (leftSequence !== rightSequence) {
-    return leftSequence - rightSequence;
-  }
-
-  // The API exposes createdAt at millisecond precision, so messages that are
-  // distinct on the server can appear tied here. Preserve their stable source
-  // order instead of inventing an ID order that can reverse queued messages.
-  return 0;
-}
-
 function mergeRegisteredMessages(
   messageSets: readonly (readonly RegisteredChatMessage[])[],
 ): RegisteredChatMessage[] {
@@ -1347,7 +1316,7 @@ function mergeRegisteredMessages(
     }
   }
   return Array.from(byId.values()).sort((left, right) => {
-    return compareServerMessageOrder(left.message, right.message);
+    return left.message.seqId - right.message.seqId;
   });
 }
 
@@ -1424,12 +1393,23 @@ function createWritePersistentMessages(
   );
 }
 
-interface ChatMessageProjectionEntry {
+interface ServerChatMessageProjectionEntry {
   message: PagedChatMessage;
-  source: "server" | "optimistic";
+  source: "server";
+  blocks: BodyRenderBlock[];
+  optimisticUserMessageAssociation?: never;
+}
+
+interface OptimisticChatMessageProjectionEntry {
+  message: OptimisticChatMessageEntry["message"];
+  source: "optimistic";
   blocks: BodyRenderBlock[];
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
 }
+
+type ChatMessageProjectionEntry =
+  | ServerChatMessageProjectionEntry
+  | OptimisticChatMessageProjectionEntry;
 
 function projectRawMessages({
   persistentMessages,
@@ -1448,6 +1428,8 @@ function projectRawMessages({
   const optimistic = optimisticEntries.filter((entry) => {
     return !serverIds.has(entry.message.id);
   });
+  // Optimistic messages do not have a server sequence yet. Keep their array
+  // order and append them after every persistent message.
   return [
     ...persistentMessages.map((entry) => {
       return { ...entry, source: "server" as const };
@@ -1511,7 +1493,7 @@ function createTranscriptMessagesComputed(
 }
 
 interface SemanticChatMessage {
-  readonly message: PagedChatMessage;
+  readonly message: ChatMessage;
   readonly blocks: BodyRenderBlock[];
   readonly isQueued: boolean;
   readonly isOptimisticRun: boolean;
@@ -1693,7 +1675,7 @@ function groupSemanticChatMessages(
 
 function queuedMessagesFromSemanticMessages(
   semanticMessages: readonly SemanticChatMessage[],
-): PagedChatMessage[] {
+): ChatMessage[] {
   return semanticMessages.flatMap((entry) => {
     const { message } = entry;
     return message.role === "user" && entry.isQueued ? [message] : [];
@@ -1702,7 +1684,7 @@ function queuedMessagesFromSemanticMessages(
 
 function queuedMessagesFromRaw(
   raw: readonly ChatMessageProjectionEntry[],
-): PagedChatMessage[] {
+): ChatMessage[] {
   return queuedMessagesFromSemanticMessages(
     semanticTranscriptMessagesFromRaw(raw),
   );
@@ -1911,7 +1893,7 @@ function createMessageSemanticSignals(
   const semanticGroups$ = computed((get): SemanticChatGroups => {
     return groupSemanticChatMessages(get(semanticMessages$));
   });
-  const queuedMessages$ = computed((get): PagedChatMessage[] => {
+  const queuedMessages$ = computed((get): ChatMessage[] => {
     return queuedMessagesFromSemanticMessages(get(semanticMessages$));
   });
   const thinkingIndicatorProjection$ = computed(
@@ -2146,25 +2128,28 @@ function createSyncRemoteMessagesCommand({
   return command(async ({ get, set }, signal: AbortSignal) => {
     const persistentMessages = get(persistentMessages$);
     const accumulatedMessages: PagedChatMessage[] = [];
-    let sinceId = persistentMessages.at(-1)?.message.id;
-    const startedWithoutCursor = sinceId === undefined;
+    const latestPersistentMessage = persistentMessages.at(-1);
+    let sinceSeqId = latestPersistentMessage?.message.seqId;
+    const startedWithoutCursor = latestPersistentMessage === undefined;
+    let initialPageOldestMessage: PagedChatMessage | undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
-      const requestedSinceId = sinceId;
+      const requestedSinceSeqId = sinceSeqId;
+      const isInitialPage = requestedSinceSeqId === undefined;
       const result = await set(
         dataSource.listMessagesAfter$,
-        { threadId, sinceId: requestedSinceId },
+        { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
       L.debug("syncRemoteMessages$ listMessagesAfter result", {
         threadId,
-        sinceId: requestedSinceId ?? null,
+        sinceSeqId: requestedSinceSeqId ?? null,
         gotCount: result.messages.length,
       });
 
-      if (requestedSinceId === undefined) {
+      if (isInitialPage) {
         initialHasHistoryBefore = result.hasHistoryBefore;
       }
 
@@ -2172,10 +2157,15 @@ function createSyncRemoteMessagesCommand({
         return;
       }
 
-      accumulatedMessages.push(...result.messages);
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
-      sinceId = result.messages.at(-1)!.id;
+      if (isInitialPage) {
+        initialPageOldestMessage = result.messages[0]!;
+        set(mergePersistentMessages$, result.messages);
+      } else {
+        accumulatedMessages.push(...result.messages);
+      }
+      sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
 
       return syncMessagesAfter();
     }
@@ -2183,25 +2173,29 @@ function createSyncRemoteMessagesCommand({
     signal.throwIfAborted();
 
     if (!get(hasReachedOldestMessage$)) {
-      const oldestMessageId =
-        persistentMessages[0]?.message.id ?? accumulatedMessages[0]?.id;
+      const oldestMessage =
+        persistentMessages[0]?.message ??
+        initialPageOldestMessage ??
+        accumulatedMessages[0];
       if (
         (startedWithoutCursor && initialHasHistoryBefore === false) ||
-        oldestMessageId === undefined
+        oldestMessage === undefined
       ) {
-        set(hasReachedOldestMessage$, true);
+        if (initialHasHistoryBefore === false) {
+          set(hasReachedOldestMessage$, true);
+        }
       } else {
-        let beforeId = oldestMessageId;
+        let beforeSeqId = oldestMessage.seqId;
         async function syncMessagesBefore(): Promise<void> {
           const result = await set(
             dataSource.listMessagesBefore$,
-            { threadId, beforeId },
+            { threadId, beforeSeqId },
             signal,
           );
           signal.throwIfAborted();
           L.debug("syncRemoteMessages$ listMessagesBefore result", {
             threadId,
-            beforeId,
+            beforeSeqId,
             gotCount: result.messages.length,
             hasHistoryBefore: result.hasHistoryBefore,
           });
@@ -2222,7 +2216,7 @@ function createSyncRemoteMessagesCommand({
             return;
           }
 
-          beforeId = result.messages[0]!.id;
+          beforeSeqId = result.messages[0]!.seqId;
 
           return syncMessagesBefore();
         }
@@ -2232,21 +2226,6 @@ function createSyncRemoteMessagesCommand({
     signal.throwIfAborted();
     set(mergePersistentMessages$, accumulatedMessages);
   });
-}
-
-function messageCreatedPayloadSyncThroughMessageId(
-  payload: unknown,
-): string | null {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("syncThroughMessageId" in payload) ||
-    typeof payload.syncThroughMessageId !== "string" ||
-    !uuidPattern.test(payload.syncThroughMessageId)
-  ) {
-    return null;
-  }
-  return payload.syncThroughMessageId;
 }
 
 function messageUpdatedPayloadMessageId(payload: unknown): string | null {
@@ -2556,14 +2535,6 @@ function createPagedMessages(
 
   const latestMessageSignals = createLatestMessageSignals(rawMessages$);
 
-  const persistentChatMessageIds$ = computed((get): Set<string> => {
-    return new Set(
-      get(persistentChatMessages$).map((entry) => {
-        return entry.message.id;
-      }),
-    );
-  });
-
   const runSyncRemoteMessages$ = createSyncRemoteMessagesCommand({
     threadId,
     persistentMessages$: persistentChatMessages$,
@@ -2594,7 +2565,6 @@ function createPagedMessages(
     messageRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
-    persistentChatMessageIds$,
     syncRemoteMessages$,
     fetchUpdatedMessage$,
   };
@@ -2740,7 +2710,6 @@ interface RunTrackingDeps {
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  persistentChatMessageIds$: Computed<Set<string>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   mergeNewIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
@@ -2976,62 +2945,14 @@ function createOnSubscribedCommand({
     signal.throwIfAborted();
     if (latestMessageId) {
       // In-place message updates, such as completed marker followups, are not
-      // returned by a sinceId fetch. Refresh the latest loaded row after the
-      // realtime callbacks are registered so update events racing with this
-      // fetch are queued instead of missed.
+      // returned by a sequence-cursor fetch. Refresh the latest loaded row
+      // after the realtime callbacks are registered so update events racing
+      // with this fetch are queued instead of missed.
       await set(fetchUpdatedMessage$, { messageId: latestMessageId }, signal);
     }
     await set(markThreadReadIfNeeded$, signal);
     signal.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
-  });
-}
-
-function createOnMessageCreatedCommand({
-  threadId,
-  mergeNewIndexedDbMessages$,
-  persistentChatMessageIds$,
-  syncRemoteMessages$,
-  markThreadReadIfNeeded$,
-  autoScroll$,
-}: Pick<
-  RunTrackingDeps,
-  | "threadId"
-  | "mergeNewIndexedDbMessages$"
-  | "persistentChatMessageIds$"
-  | "syncRemoteMessages$"
-  | "autoScroll$"
-> & {
-  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
-}): Command<Promise<boolean>, [unknown, AbortSignal]> {
-  return command(async ({ get, set }, payload: unknown, sig: AbortSignal) => {
-    L.debug("onMessageCreated$ fired", { threadId });
-    await set(mergeNewIndexedDbMessages$, sig);
-    sig.throwIfAborted();
-    const syncThroughMessageId =
-      messageCreatedPayloadSyncThroughMessageId(payload);
-    if (
-      syncThroughMessageId !== null &&
-      get(persistentChatMessageIds$).has(syncThroughMessageId)
-    ) {
-      // The event's watermark row is already local (background sync or an
-      // earlier fetch), so every row of this publish is present too.
-      L.debug("onMessageCreated$ skipped sync: watermark already local", {
-        threadId,
-        syncThroughMessageId,
-      });
-    } else {
-      await set(syncRemoteMessages$, sig);
-      L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
-    }
-    await set(markThreadReadIfNeeded$, sig);
-    animationFrame(
-      () => {
-        set(autoScroll$);
-      },
-      { signal: sig },
-    );
-    return false;
   });
 }
 
@@ -3041,7 +2962,6 @@ function createRunTracking({
   remoteThreadDetail$,
   latestChatMessageId$,
   latestRunFinishCreatedAt$,
-  persistentChatMessageIds$,
   initializeIndexedDbMessages$,
   mergeNewIndexedDbMessages$,
   syncRemoteMessages$,
@@ -3075,15 +2995,6 @@ function createRunTracking({
     markThreadReadIfNeeded$,
   });
 
-  const onMessageCreated$ = createOnMessageCreatedCommand({
-    threadId,
-    mergeNewIndexedDbMessages$,
-    persistentChatMessageIds$,
-    syncRemoteMessages$,
-    markThreadReadIfNeeded$,
-    autoScroll$,
-  });
-
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
     await set(initializeIndexedDbMessages$, signal);
@@ -3092,6 +3003,22 @@ function createRunTracking({
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(reloadThread$);
+      return false;
+    });
+
+    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+      L.debug("onMessageCreated$ fired", { threadId });
+      await set(mergeNewIndexedDbMessages$, sig);
+      sig.throwIfAborted();
+      await set(syncRemoteMessages$, sig);
+      L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
+      await set(markThreadReadIfNeeded$, sig);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal: sig },
+      );
       return false;
     });
 
@@ -3809,13 +3736,23 @@ function createRecallMessage(deps: RecallMessageDeps) {
         },
       });
       const features = get(featureSwitch$);
+      const structuredPrompt =
+        (features[FeatureSwitchKey.StructuredPrompt] ?? false)
+          ? (message.structuredPrompt ?? null)
+          : null;
+      const templatePart = structuredPrompt?.parts.find((part) => {
+        return part.type === "template";
+      });
       set(draft.seed$, {
-        content: message.content ?? "",
-        structuredPrompt:
-          (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-            ? (message.structuredPrompt ?? null)
-            : null,
-        generationTemplate: message.generationTemplate,
+        content: structuredPrompt
+          ? (messageDocumentToPrompt(structuredPrompt) ?? "")
+          : (message.content ?? ""),
+        structuredPrompt,
+        generationTemplate: structuredPrompt
+          ? templatePart?.type === "template"
+            ? templatePart.template
+            : undefined
+          : message.generationTemplate,
         attachments: (message.attachFiles ?? []).map(createRestoredAttachment),
       });
 
@@ -4453,7 +4390,6 @@ export function createChatThreadSignals(
     remoteThreadDetail$,
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
-    persistentChatMessageIds$: messages.persistentChatMessageIds$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     mergeNewIndexedDbMessages$: messages.mergeNewIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,

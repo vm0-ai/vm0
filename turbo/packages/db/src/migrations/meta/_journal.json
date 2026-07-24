@@ -4558,6 +4558,69 @@
       "when": 1784788562522,
       "tag": "0650_add_zero_weather_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 651,
+      "version": "7",
+      "when": 1784802577194,
+      "tag": "0651_charming_loa",
+      "breakpoints": true
+    },
+    {
+      "idx": 652,
+      "version": "7",
+      "when": 1784802647826,
+      "tag": "0652_lame_spot",
+      "breakpoints": true
+    },
+    {
+      "idx": 653,
+      "version": "7",
+      "when": 1784802655700,
+      "tag": "0653_backfill_feishu_setup_completed_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 654,
+      "version": "7",
+      "when": 1784803241911,
+      "tag": "0654_backfill_session_continuation_storage_mounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 655,
+      "version": "7",
+      "when": 1784808457028,
+      "tag": "0655_add_zero_finance_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 656,
+      "version": "7",
+      "when": 1784808457029,
+      "tag": "0656_first_leper_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 657,
+      "version": "7",
+      "when": 1784811338014,
+      "tag": "0657_pale_mister_fear",
+      "breakpoints": true
+    },
+    {
+      "idx": 658,
+      "version": "7",
+      "when": 1784823623330,
+      "tag": "0658_new_grandmaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 659,
+      "version": "7",
+      "when": 1784848519500,
+      "tag": "0659_chat_message_seq_id",
+      "breakpoints": true
     }
   ]
 }
