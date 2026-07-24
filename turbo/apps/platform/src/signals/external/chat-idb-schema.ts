@@ -1,7 +1,8 @@
 import type { IDBPDatabase } from "idb";
 
 const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_SEQ_ID_RESET_VERSION;
+const ARTIFACT_INDEX_RESET_VERSION = 19;
+const CHAT_IDB_SCHEMA_VERSION = ARTIFACT_INDEX_RESET_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
@@ -79,14 +80,20 @@ function deleteLocalCacheStores(db: IDBPDatabase): void {
   deleteObjectStoreIfExists(db, CHAT_THREAD_SNAPSHOT_STORE);
   deleteObjectStoreIfExists(db, CHAT_THREAD_EVENTS_STORE);
   deleteObjectStoreIfExists(db, CHAT_THREAD_EVENT_SYNC_STORE);
+  deleteArtifactCacheStores(db);
+  deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
+}
+
+function deleteArtifactCacheStores(db: IDBPDatabase): void {
   deleteObjectStoreIfExists(db, ARTIFACT_ITEMS_STORE);
   deleteObjectStoreIfExists(db, ARTIFACT_SYNC_STORE);
-  deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
 }
 
 export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   if (oldVersion < CHAT_IDB_SEQ_ID_RESET_VERSION) {
     deleteLocalCacheStores(db);
+  } else if (oldVersion < ARTIFACT_INDEX_RESET_VERSION) {
+    deleteArtifactCacheStores(db);
   }
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
