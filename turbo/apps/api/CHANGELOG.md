@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.314.0](https://github.com/vm0-ai/vm0/compare/api-v1.313.2...api-v1.314.0) (2026-07-24)
+
+
+### Features
+
+* add feishu file transfer commands ([#22895](https://github.com/vm0-ai/vm0/issues/22895)) ([6ebf407](https://github.com/vm0-ai/vm0/commit/6ebf407f7b2bfdc7ca1d8d2393b7fcde31494ac8))
+* **mail:** add rich draft rendering and selection feedback ([#22775](https://github.com/vm0-ai/vm0/issues/22775)) ([d91894a](https://github.com/vm0-ai/vm0/commit/d91894a9653b3d854f90ed1f5389afd8cca6e9b1))
+
+
+### Bug Fixes
+
+* **zero:** restore managed people search requests ([#22896](https://github.com/vm0-ai/vm0/issues/22896)) ([705e31d](https://github.com/vm0-ai/vm0/commit/705e31d44d528f1efe8681ecc200052b8bdafdac))
+
+
+### Refactoring
+
+* **api:** gate external connector catalog with feature switch ([#22884](https://github.com/vm0-ai/vm0/issues/22884)) ([2b37dd2](https://github.com/vm0-ai/vm0/commit/2b37dd2dde88860dfbd7e98c6fc2c8cd4a39cb45))
+* **api:** replace cache touch locking cte with drizzle builders ([#22873](https://github.com/vm0-ai/vm0/issues/22873)) ([3586ba7](https://github.com/vm0-ai/vm0/commit/3586ba7d55c801a0f0cc77afaf95246cb26f34c6))
+* **chat:** remove message-by-id api and sync path ([#22874](https://github.com/vm0-ai/vm0/issues/22874)) ([fa699ed](https://github.com/vm0-ai/vm0/commit/fa699ed9417569bd14a12535a8d371a4f81c0c63))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.223.0
+    * @vm0/connectors bumped to 1.189.1
+    * @vm0/core bumped to 8.461.1
+    * @vm0/db bumped to 1.134.0
+
 ## [1.313.2](https://github.com/vm0-ai/vm0/compare/api-v1.313.1...api-v1.313.2) (2026-07-24)
 
 
