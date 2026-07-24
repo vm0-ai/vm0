@@ -1583,9 +1583,10 @@ describe("Feishu integration", () => {
     expect(claim.appendSystemPrompt).toContain(
       "[Feishu file] history-report.pdf",
     );
-    expect(claim.appendSystemPrompt).toMatch(
-      / {3}\[FILE_KEY\] feishu_file_[A-Za-z0-9_-]{22}/u,
-    );
+    const historyFileId = (claim.appendSystemPrompt ?? "").match(
+      / {3}\[FILE_KEY\] (feishu_file_[A-Za-z0-9_-]{22})/u,
+    )?.[1];
+    expect(historyFileId).toBeTruthy();
     expect(claim.appendSystemPrompt).not.toContain(historyFileKey);
     expect(claim.appendSystemPrompt).toContain("Previous User");
     expect(claim.appendSystemPrompt).toContain(
@@ -1593,6 +1594,56 @@ describe("Feishu integration", () => {
     );
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
+
+    const historyFileBytes = Buffer.from("feishu history file bytes");
+    server.use(
+      http.get(
+        "https://open.feishu.cn/open-apis/im/v1/messages/:messageId/resources/:fileKey",
+        ({ params, request }) => {
+          expect(params.messageId).toBe("om_history_file");
+          expect(params.fileKey).toBe(historyFileKey);
+          expect(new URL(request.url).searchParams.get("type")).toBe("file");
+          return new HttpResponse(historyFileBytes, {
+            status: 200,
+            headers: {
+              "content-type": "application/pdf",
+              "content-length": String(historyFileBytes.length),
+              "content-disposition":
+                'attachment; filename="history-report.pdf"',
+            },
+          });
+        },
+      ),
+    );
+    const fileApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroIntegrationsFeishuFileRoutes,
+    });
+    const historyDownloadResponse = await fileApp.request(
+      `/api/zero/integrations/feishu/download-file?${new URLSearchParams({
+        message_id: "om_misquoted_by_model",
+        file_key: historyFileId ?? "",
+        type: "image",
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${runsApi.zeroTokenForRunWithCapabilities(
+            actor,
+            run.id,
+            ["feishu:write"],
+          )}`,
+        },
+      },
+    );
+    expect(historyDownloadResponse.status).toBe(200);
+    expect(historyDownloadResponse.headers.get("x-file-name")).toBe(
+      "history-report.pdf",
+    );
+    expect(
+      Buffer.from(await historyDownloadResponse.arrayBuffer()).equals(
+        historyFileBytes,
+      ),
+    ).toBeTruthy();
 
     const cliAgentSessionId = `bdd-feishu-cli-${run.id}`;
     await completeRunSession({
