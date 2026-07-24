@@ -280,7 +280,6 @@ import {
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
-import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
   useZeroChatComposer,
@@ -4098,7 +4097,7 @@ function useChatThreadComputerUse(
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
       : [];
-  const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
+  const storedComputerUseHostId = useGet(thread.computerUseHostId$);
   const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
   const selectedComputerUseHostId =
     computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0

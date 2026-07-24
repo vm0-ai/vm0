@@ -16,7 +16,10 @@ import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  chatThreadServiceTierFromCodex,
+} from "../services/zero-chat-thread-event.service";
 import {
   isCodexFastServiceTierSupported,
   resolveModelFirstProviderAdmission,
@@ -154,6 +157,18 @@ const updateModelSelectionInner$ = command(
         agentComposeId: thread.agentComposeId,
         eventId: body.data.eventId,
         selectedModel: pin.selectedModel,
+        createdAt: updatedAt,
+      });
+      await appendChatThreadEvent(tx, {
+        kind: "service_tier_updated",
+        userId: auth.userId,
+        orgId: auth.orgId,
+        chatThreadId: thread.id,
+        agentComposeId: thread.agentComposeId,
+        eventId: body.data.serviceTierEventId,
+        serviceTier: chatThreadServiceTierFromCodex(
+          body.data.codexServiceTier ?? null,
+        ),
         createdAt: updatedAt,
       });
       return true;

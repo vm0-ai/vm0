@@ -123,7 +123,12 @@ function rebuiltCte(): SQL {
             'updatedAt', thread.updated_at,
             'pinnedAt', thread.pinned_at,
             'renamedAt', thread.renamed_at,
-            'selectedModel', thread.selected_model
+            'selectedModel', thread.selected_model,
+            'serviceTier', CASE
+              WHEN thread.codex_service_tier = 'fast' THEN 'priority'
+              ELSE NULL
+            END,
+            'computerUseHostId', thread.computer_use_host_id
           )
           ORDER BY
             (thread.pinned_at IS NULL) ASC,

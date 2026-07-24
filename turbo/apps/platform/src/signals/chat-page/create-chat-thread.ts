@@ -43,7 +43,6 @@ import {
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
 import type { ChatMessage } from "./chat-message-types.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadArtifactsContract,
@@ -586,18 +585,11 @@ function cancellableRunIdsFromRawMessages(
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: remote thread detail fetching
+// Sub-factory: remote thread draft fetching
 // ---------------------------------------------------------------------------
 
-// The data source owns remote thread detail/draft reads plus `reloadThread$`
-// as the detail invalidation lever. Local mode never reloads; remote mode bumps
-// an internal counter on its `remoteThreadDetail$` computed.
-function createRemoteThreadDetail(dataSource: ChatThreadRemote) {
-  return {
-    remoteThreadDetail$: dataSource.remoteThreadDetail$,
-    threadDraft$: dataSource.threadDraft$,
-    reloadThread$: dataSource.reloadThread$,
-  };
+function createRemoteThreadDraft(dataSource: ChatThreadRemote) {
+  return dataSource.threadDraft$;
 }
 
 function createThreadMeta(threadId: string) {
@@ -635,7 +627,6 @@ function createThreadSettledInServer(threadId: string) {
 function createModelSelection(
   threadId: string,
   threadMeta$: Computed<ThreadMeta | null>,
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadRemote,
 ) {
   const selectedModel$ = computed((get): string | null => {
@@ -655,7 +646,6 @@ function createModelSelection(
         signal,
       );
       signal.throwIfAborted();
-      set(dataSource.reloadThread$);
     },
   );
 
@@ -674,7 +664,7 @@ function createModelSelection(
     ) {
       return false;
     }
-    return (await get(remoteThreadDetail$))?.codexServiceTier === "fast";
+    return get(threadMeta$)?.serviceTier === "priority";
   });
 
   const selectedModelOauthAvailable$ = computed(
@@ -751,7 +741,7 @@ function createModelSelectionForSend({
 
 function createComputerUseHostSelection(
   threadId: string,
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
+  threadMeta$: Computed<ThreadMeta | null>,
   dataSource: ChatThreadRemote,
 ) {
   const optimisticCreateUnsettled$ =
@@ -760,13 +750,12 @@ function createComputerUseHostSelection(
     { kind: "unset" } | { kind: "set"; value: string | null; dirty: boolean }
   >({ kind: "unset" });
 
-  const computerUseHostId$ = computed(async (get): Promise<string | null> => {
+  const computerUseHostId$ = computed((get): string | null => {
     const user = get(internalUserOverride$);
     if (user.kind === "set") {
       return user.value;
     }
-    const thread = await get(remoteThreadDetail$);
-    return thread?.computerUseHostId ?? null;
+    return get(threadMeta$)?.computerUseHostId ?? null;
   });
 
   const computerUseHostIdExplicit$ = computed((get): boolean => {
@@ -811,11 +800,8 @@ function createComputerUseHostSelection(
       );
       signal.throwIfAborted();
       set(internalUserOverride$, {
-        kind: "set",
-        value: computerUseHostId,
-        dirty: false,
+        kind: "unset",
       });
-      set(dataSource.reloadThread$);
     },
   );
 
@@ -2683,8 +2669,6 @@ function createLoadMoreRenderedChatGroupsWithPrependScroll(
 
 interface RunTrackingDeps {
   threadId: string;
-  reloadThread$: Command<void, []>;
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   mergePersistentMessages$: Command<void, [PagedChatMessage[]]>;
@@ -2701,7 +2685,6 @@ interface RunTrackingDeps {
 
 interface MarkThreadReadDeps {
   threadId: string;
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   locallyMarkedReadAt$: State<string | undefined>;
   dataSource: ChatThreadRemote;
@@ -2834,7 +2817,6 @@ function createChatRenderWindow({
 
 function createMarkThreadReadIfNeeded({
   threadId,
-  remoteThreadDetail$,
   latestRunFinishCreatedAt$,
   locallyMarkedReadAt$,
   dataSource,
@@ -2855,14 +2837,9 @@ function createMarkThreadReadIfNeeded({
       return;
     }
 
-    const thread = await get(remoteThreadDetail$);
-    sig.throwIfAborted();
-    if (thread === null) {
-      return;
-    }
-    const lastReadAt = get(locallyMarkedReadAt$) ?? thread.lastReadAt;
+    const lastReadAt = get(locallyMarkedReadAt$);
     if (
-      lastReadAt !== null &&
+      lastReadAt !== undefined &&
       compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
     ) {
       return;
@@ -2881,20 +2858,13 @@ function createMarkThreadReadIfNeeded({
 
 function createOnSubscribedCommand({
   threadId,
-  reloadThread$,
-  remoteThreadDetail$,
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
   markThreadReadIfNeeded$,
 }: Pick<
   RunTrackingDeps,
-  | "threadId"
-  | "reloadThread$"
-  | "remoteThreadDetail$"
-  | "syncRemoteMessages$"
-  | "settleMessageSync$"
-  | "reloadArtifacts$"
+  "threadId" | "syncRemoteMessages$" | "settleMessageSync$" | "reloadArtifacts$"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<void>, [AbortSignal]> {
@@ -2902,15 +2872,11 @@ function createOnSubscribedCommand({
     optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
-    set(reloadThread$);
     set(reloadArtifacts$);
     set(reloadWorkflowData$);
-    await Promise.all([
-      get(remoteThreadDetail$),
-      get(optimisticCreateUnsettled$)
-        ? set(settleMessageSync$)
-        : set(syncRemoteMessages$, signal),
-    ]);
+    await (get(optimisticCreateUnsettled$)
+      ? set(settleMessageSync$)
+      : set(syncRemoteMessages$, signal));
     signal.throwIfAborted();
     await set(markThreadReadIfNeeded$, signal);
     signal.throwIfAborted();
@@ -2955,8 +2921,6 @@ function createReceiveSyncedMessagesCommand({
 
 function createRunTracking({
   threadId,
-  reloadThread$,
-  remoteThreadDetail$,
   latestRunFinishCreatedAt$,
   initializeIndexedDbMessages$,
   mergePersistentMessages$,
@@ -2972,7 +2936,6 @@ function createRunTracking({
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
-    remoteThreadDetail$,
     latestRunFinishCreatedAt$,
     locallyMarkedReadAt$,
     dataSource,
@@ -2987,8 +2950,6 @@ function createRunTracking({
 
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
-    reloadThread$,
-    remoteThreadDetail$,
     syncRemoteMessages$,
     settleMessageSync$,
     reloadArtifacts$,
@@ -2999,12 +2960,6 @@ function createRunTracking({
     L.debug("subscribeChatThread$ start", { threadId });
     await set(initializeIndexedDbMessages$, signal);
     signal.throwIfAborted();
-
-    const onThreadDetailChanged$ = command(({ set }) => {
-      L.debug("onThreadDetailChanged$ fired", { threadId });
-      set(reloadThread$);
-      return false;
-    });
 
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
@@ -3035,7 +2990,6 @@ function createRunTracking({
           {
             threadId,
             handlers: {
-              onThreadDetailChanged$,
               onAutomationsChanged$,
               onArtifactsChanged$,
               onWorkflowsChanged$,
@@ -4285,21 +4239,19 @@ export function createChatThreadSignals(
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
 ): ChatThreadSignals {
-  const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
-    createRemoteThreadDetail(dataSource);
+  const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
   const threadSettledInServer$ = createThreadSettledInServer(threadId);
   const modelSelection = createModelSelection(
     threadId,
     threadMeta$,
-    remoteThreadDetail$,
     dataSource,
   );
   const modelSelectionForSend$ = createModelSelectionForSend(modelSelection);
   const computerUseHostSelection = createComputerUseHostSelection(
     threadId,
-    remoteThreadDetail$,
+    threadMeta$,
     dataSource,
   );
   const {
@@ -4326,8 +4278,6 @@ export function createChatThreadSignals(
   const artifact = createArtifacts(threadId);
   const runTracking = createRunTracking({
     threadId,
-    reloadThread$,
-    remoteThreadDetail$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     mergePersistentMessages$: messages.mergePersistentMessages$,
@@ -4355,10 +4305,8 @@ export function createChatThreadSignals(
   const composer = createThreadComposer(draft, threadId, threadOwned.agentId$);
   return {
     threadId,
-    remoteThreadDetail$,
     threadDraft$,
     threadMeta$,
-    reloadThread$,
     ...threadTitle,
     threadSettledInServer$,
     ...modelSelection,
