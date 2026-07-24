@@ -49,8 +49,10 @@ if [[ ! "$poll_seconds" =~ ^[0-9]+$ || ! "$timeout_seconds" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-active_statuses=(queued in_progress pending waiting requested)
-superseded_runs=$(
+discover_superseded_runs() {
+  local active_statuses=(queued in_progress pending waiting requested)
+  local status
+
   for status in "${active_statuses[@]}"; do
     gh api --method GET \
       "repos/${GITHUB_REPOSITORY}/actions/runs" \
@@ -93,7 +95,32 @@ superseded_runs=$(
         | @tsv
       ' |
     sort -n -u
-)
+}
+
+previous_run_ids=""
+have_previous_run_ids=false
+discovery_started_at=$SECONDS
+# Each status filter is a separate API snapshot. Require the selected run IDs
+# to stabilize so a run changing statuses cannot fall between those snapshots.
+while true; do
+  discovered_runs=$(discover_superseded_runs)
+  discovered_run_ids=$(printf '%s\n' "$discovered_runs" | cut -f1)
+
+  if $have_previous_run_ids; then
+    if [ "$discovered_run_ids" = "$previous_run_ids" ]; then
+      superseded_runs=$discovered_runs
+      break
+    fi
+
+    if ((SECONDS - discovery_started_at >= timeout_seconds)); then
+      echo "::error::Timed out waiting for superseded CI run discovery to stabilize" >&2
+      exit 1
+    fi
+  fi
+
+  previous_run_ids=$discovered_run_ids
+  have_previous_run_ids=true
+done
 
 if [ -z "$superseded_runs" ]; then
   echo "No superseded CI runs found for PR #${pr_number}."

@@ -38,7 +38,29 @@ case "$endpoint" in
     printf 'feature/safe-shared-runner\tvm0-ai/vm0\n'
     ;;
   repos/vm0-ai/vm0/actions/runs)
-    if [ "${MOCK_NO_TARGETS:-0}" = "1" ] || [ "$status_filter" != "in_progress" ]; then
+    if [ "${MOCK_NO_TARGETS:-0}" = "1" ]; then
+      printf '[{"workflow_runs":[]}]\n'
+      exit 0
+    fi
+    if [ "${MOCK_STATUS_TRANSITION:-0}" = "1" ] && [ "$status_filter" = "queued" ]; then
+      queued_query_count=0
+      if [ -f "$MOCK_QUEUED_QUERY_COUNT" ]; then
+        queued_query_count=$(cat "$MOCK_QUEUED_QUERY_COUNT")
+      fi
+      queued_query_count=$((queued_query_count + 1))
+      printf '%s\n' "$queued_query_count" >"$MOCK_QUEUED_QUERY_COUNT"
+      if [ "$queued_query_count" -ge 2 ]; then
+        cat <<'JSON'
+[{"workflow_runs":[
+  {"id":125,"name":"Runner Image","status":"queued","event":"merge_group","head_sha":"old-transitioning","head_branch":"gh-readonly-queue/main/pr-42-old-transitioning","path":".github/workflows/runner-image.yml","pull_requests":[],"html_url":"https://example.test/125"}
+]}]
+JSON
+      else
+        printf '[{"workflow_runs":[]}]\n'
+      fi
+      exit 0
+    fi
+    if [ "$status_filter" != "in_progress" ]; then
       printf '[{"workflow_runs":[]}]\n'
       exit 0
     fi
@@ -96,6 +118,7 @@ run_cancel() {
     MOCK_CANCEL_LOG="${tmp_dir}/cancel.log" \
     MOCK_SLEEP_LOG="${tmp_dir}/sleep.log" \
     MOCK_RUNS_RELEASED="${tmp_dir}/runs-released" \
+    MOCK_QUEUED_QUERY_COUNT="${tmp_dir}/queued-query-count" \
     SUPERSEDED_RUN_POLL_SECONDS=0 \
     SUPERSEDED_RUN_TIMEOUT_SECONDS=10 \
     "$@" \
@@ -113,6 +136,16 @@ cancelled_runs=$(cat "${tmp_dir}/cancel.log")
   fail "expected only older same-PR consumer runs to be cancelled, got: ${cancelled_runs}"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
   fail "already-completed superseded runs must not poll"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+rm -f "${tmp_dir}/queued-query-count"
+output=$(run_cancel MOCK_STATUS_TRANSITION=1)
+cancelled_runs=$(cat "${tmp_dir}/cancel.log")
+[ "$cancelled_runs" = $'100\n110\n120\n125' ] ||
+  fail "expected a run that changed status during discovery to be cancelled, got: ${cancelled_runs}"
+[ "$(cat "${tmp_dir}/queued-query-count")" -ge 3 ] ||
+  fail "expected discovery to rescan until the active run set stabilized"
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
