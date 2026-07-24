@@ -27,6 +27,10 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import {
+  createConnectorBddApi,
+  mockGoogleDriveConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -47,8 +51,17 @@ const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const chatApi = createChatFilesBddApi(context);
+const connectorsApi = createConnectorBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
+
+function authorizationState(authorizationUrl: string): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected connector authorization URL to include state");
+  }
+  return state;
+}
 
 function assistantEvent(
   sequenceNumber: number,
@@ -136,6 +149,7 @@ interface RunScopedContext {
   readonly runId: string;
   readonly threadId: string;
   readonly runnerGroup: string;
+  readonly agentId: string;
 }
 
 describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
@@ -266,6 +280,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       runId: sent.body.runId,
       threadId: sent.body.threadId,
       runnerGroup,
+      agentId: agent.agentId,
     };
   }
 
@@ -428,8 +443,8 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     });
   });
 
-  it("binds one canonical output asset to the final reply and Slack delivery", async () => {
-    const { orgId, userId, runId, threadId, runnerGroup } =
+  it("binds one canonical output asset to the final reply, Slack, and Google Drive", async () => {
+    const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
     await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
       [FeatureSwitchKey.CanonicalSlackAssets]: true,
@@ -554,6 +569,64 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       fileId: canonicalAssetId,
       assetRef: { id: canonicalAssetId },
     });
+
+    mockGoogleDriveConnectorOAuth();
+    const oauth = await connectorsApi.startOauth(
+      actorFor({ orgId, userId }),
+      "google-drive",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("google-drive", {
+      code: "canonical-asset-drive",
+      state: authorizationState(oauth.authorizationUrl),
+    });
+    await runsApi.enableAgentConnectors(actorFor({ orgId, userId }), agentId, [
+      "google-drive",
+    ]);
+
+    let folderCount = 0;
+    const driveUploadBodies: string[] = [];
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", () => {
+        return HttpResponse.json({ files: [] });
+      }),
+      http.post(
+        "https://www.googleapis.com/drive/v3/files",
+        async ({ request }) => {
+          const body = (await request.json()) as { name?: string };
+          folderCount += 1;
+          return HttpResponse.json({
+            id: `drive-folder-${String(folderCount)}`,
+            name: body.name ?? "folder",
+          });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/upload/drive/v3/files",
+        async ({ request }) => {
+          driveUploadBodies.push(await request.text());
+          return HttpResponse.json({
+            id: "drive-canonical-asset",
+            name: "report.csv",
+            webViewLink:
+              "https://drive.google.com/file/d/drive-canonical-asset/view",
+          });
+        },
+      ),
+    );
+    const driveSync = await chatApi.requestSyncThreadArtifact(
+      actorFor({ orgId, userId }),
+      threadId,
+      { runId, fileId: canonicalAssetId },
+      [200],
+    );
+    expect(driveSync.body).toStrictEqual({
+      id: "drive-canonical-asset",
+      name: "report.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-canonical-asset/view",
+    });
+    expect(driveUploadBodies).toHaveLength(1);
+    expect(driveUploadBodies[0]).toContain(`"vm0FileId":"${canonicalAssetId}"`);
 
     const claim = await claimRun(runnerGroup, runId);
     await completeRun({
