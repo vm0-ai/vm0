@@ -188,9 +188,10 @@ After the latest session continuation heads were backfilled and verified,
 application readers require canonical run, session, and checkpoint persistence.
 Legacy API response shapes are still projected from canonical mounts. The
 physical legacy columns remain temporarily for rollback-safe deployment and are
-removed only after API versions that read them have drained. The short-lived
-runner job queue also retains its legacy claim projection until old Runner
-output is removed.
+not selected or written by application code. Remove them only after the detached
+API release is healthy and every rollback-eligible API version that accesses
+them has drained. The short-lived runner job queue also retains its legacy claim
+projection until old Runner output is removed.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical
