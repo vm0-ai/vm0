@@ -1363,7 +1363,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  clearMockedExternalConnectorCatalogEnabled();
+  mockExternalConnectorCatalogEnabled(false);
   clearMockNow();
 });
 
@@ -1517,7 +1517,7 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
-  it("does not let a user select the external catalog source", async () => {
+  it("does not let a user override the global external catalog source", async () => {
     configureSource();
     const release = buildRelease({
       version: "2026-07-15.user-source-override",
@@ -1525,6 +1525,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
+    clearMockedExternalConnectorCatalogEnabled();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
@@ -1533,7 +1534,7 @@ describe("connector catalog valid lifecycle", () => {
         headers,
         body: {
           switches: {
-            [FeatureSwitchKey.ExternalConnectorCatalog]: true,
+            [FeatureSwitchKey.ExternalConnectorCatalog]: false,
           },
         },
       }),
@@ -1544,7 +1545,7 @@ describe("connector catalog valid lifecycle", () => {
     ).toBeUndefined();
     expect(
       update.body.effectiveSwitches[FeatureSwitchKey.ExternalConnectorCatalog],
-    ).toBeFalsy();
+    ).toBeTruthy();
 
     const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
@@ -1555,7 +1556,7 @@ describe("connector catalog valid lifecycle", () => {
       publicCatalog.body.connectors.some((connector) => {
         return connector.connectorRef === release.connectorRef;
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
       callsBeforePublicCatalog,
     );

@@ -20,10 +20,13 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should return false for disabled switch without context", () => {
+  it("should enable the external connector catalog globally", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.ExternalConnectorCatalog, {}),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(

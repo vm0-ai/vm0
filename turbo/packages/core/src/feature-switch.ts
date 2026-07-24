@@ -50,7 +50,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Use the accepted external catalog as the global source for official connectors",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
