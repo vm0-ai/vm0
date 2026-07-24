@@ -71,8 +71,12 @@ export const setupArtifactsPageData$ = command(
         // ccstate keeps an unmounted computed's last Promise cached. Force the
         // inactive branches now so fulfilled Promises cannot retain artifact
         // arrays after this page is gone.
+        const releasedCache = get(completeCachedArtifacts$);
         const releasedSource = get(artifacts$);
-        if (releasedSource instanceof Promise) {
+        if (
+          releasedCache instanceof Promise ||
+          releasedSource instanceof Promise
+        ) {
           throw new Error("Artifact page data release must be synchronous");
         }
       },
@@ -270,6 +274,45 @@ export const reloadArtifacts$ = command(({ set }) => {
   });
 });
 
+const internalArtifactsReadOptions$ = computed((get) => {
+  const search = get(internalArtifactsSearch$);
+  const agentId = get(internalArtifactsAgentId$);
+  const artifactCategory = get(internalArtifactsCategory$);
+
+  return {
+    ...(search ? { query: search } : {}),
+    ...(agentId ? { agentId } : {}),
+    ...(artifactCategory ? { artifactCategory } : {}),
+    limit: get(internalArtifactsWindow$) + 1,
+  };
+});
+
+// A completed cache can render without waiting for the remote refresh. An
+// absent sync marker means the cache may only contain part of a full sync.
+export const completeCachedArtifacts$ = computed(
+  (
+    get,
+    { signal },
+  ): ArtifactsPageData | null | Promise<ArtifactsPageData | null> => {
+    get(internalArtifactsReload$);
+    if (get(internalArtifactsPageSession$) === null) {
+      return null;
+    }
+
+    const stores = artifactItemCacheStores(get(chatIdb$));
+    const readOptions = get(internalArtifactsReadOptions$);
+
+    return (async (): Promise<ArtifactsPageData | null> => {
+      if ((await stores.readStore.readLastSyncedAt(signal)) === null) {
+        return null;
+      }
+      const artifacts = await stores.readStore.readRecent(readOptions, signal);
+      signal.throwIfAborted();
+      return { artifacts };
+    })();
+  },
+);
+
 // Remote pages are normalized and persisted one at a time. This keeps
 // IndexedDB as the only complete artifact collection; the synchronization
 // computed retains no full cache or remote snapshot.
@@ -341,10 +384,7 @@ export const artifacts$ = computed(
 
     const sync = Promise.resolve(get(internalArtifactsSync$));
     const stores = artifactItemCacheStores(get(chatIdb$));
-    const search = get(internalArtifactsSearch$);
-    const agentId = get(internalArtifactsAgentId$);
-    const artifactCategory = get(internalArtifactsCategory$);
-    const limit = get(internalArtifactsWindow$) + 1;
+    const readOptions = get(internalArtifactsReadOptions$);
 
     return (async (): Promise<ArtifactsPageData> => {
       const syncResult = await settle(sync, signal);
@@ -354,15 +394,7 @@ export const artifacts$ = computed(
       ) {
         throw syncResult.error;
       }
-      const artifacts = await stores.readStore.readRecent(
-        {
-          ...(search ? { query: search } : {}),
-          ...(agentId ? { agentId } : {}),
-          ...(artifactCategory ? { artifactCategory } : {}),
-          limit,
-        },
-        signal,
-      );
+      const artifacts = await stores.readStore.readRecent(readOptions, signal);
       signal.throwIfAborted();
       return { artifacts };
     })();
