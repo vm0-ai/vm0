@@ -295,6 +295,8 @@ jobs:
     needs: [prepare]
     if: >-
       ${{
+        !cancelled() &&
+        needs.prepare.result == 'success' &&
         needs.prepare.outputs.current-runner-image-needed == 'true' &&
         needs.prepare.outputs.runner-binary-miss-count != '0'
       }}
