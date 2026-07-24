@@ -13,7 +13,9 @@ type EntrypointScript = (
 ) => void;
 
 function getInstatusLoaderSource(): string {
-  const inlineScripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  const inlineScripts = [
+    ...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi),
+  ]
     .map((match) => {
       return match[1];
     })
