@@ -313,6 +313,36 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("activates an embedded template control with Enter without sending the draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await selectTemplate(user, template);
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Keep this draft");
+
+    const removeTemplate = screen.getByLabelText(
+      `Remove template ${template.title}`,
+    );
+    removeTemplate.focus();
+    expect(removeTemplate).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+      expect(editor).toHaveTextContent("Keep this draft");
+    });
+  });
+
   it("keeps a selected template attached when replacing all prompt text", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;

@@ -122,7 +122,6 @@ import {
 } from "./run-group-folding.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
-import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
 import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
@@ -2675,6 +2674,7 @@ interface RunTrackingDeps {
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   settleMessageSync$: Command<Promise<void>, []>;
   reloadArtifacts$: Command<void, []>;
+  reloadComposerWorkflows$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   automationSignals: Pick<
     ChatThreadSignals,
@@ -2861,10 +2861,15 @@ function createOnSubscribedCommand({
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
+  reloadComposerWorkflows$,
   markThreadReadIfNeeded$,
 }: Pick<
   RunTrackingDeps,
-  "threadId" | "syncRemoteMessages$" | "settleMessageSync$" | "reloadArtifacts$"
+  | "threadId"
+  | "syncRemoteMessages$"
+  | "settleMessageSync$"
+  | "reloadArtifacts$"
+  | "reloadComposerWorkflows$"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<void>, [AbortSignal]> {
@@ -2873,10 +2878,12 @@ function createOnSubscribedCommand({
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadArtifacts$);
-    set(reloadWorkflowData$);
-    await (get(optimisticCreateUnsettled$)
-      ? set(settleMessageSync$)
-      : set(syncRemoteMessages$, signal));
+    await Promise.all([
+      set(reloadComposerWorkflows$, signal),
+      get(optimisticCreateUnsettled$)
+        ? set(settleMessageSync$)
+        : set(syncRemoteMessages$, signal),
+    ]);
     signal.throwIfAborted();
     await set(markThreadReadIfNeeded$, signal);
     signal.throwIfAborted();
@@ -2927,6 +2934,7 @@ function createRunTracking({
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
+  reloadComposerWorkflows$,
   autoScroll$,
   automationSignals,
   dataSource,
@@ -2953,6 +2961,7 @@ function createRunTracking({
     syncRemoteMessages$,
     settleMessageSync$,
     reloadArtifacts$,
+    reloadComposerWorkflows$,
     markThreadReadIfNeeded$,
   });
 
@@ -2972,11 +2981,13 @@ function createRunTracking({
       return false;
     });
 
-    const onWorkflowsChanged$ = command(({ set }) => {
-      L.debug("onWorkflowsChanged$ fired", { threadId });
-      set(reloadWorkflowData$);
-      return false;
-    });
+    const onWorkflowsChanged$ = command(
+      async ({ set }, signal: AbortSignal): Promise<boolean> => {
+        L.debug("onWorkflowsChanged$ fired", { threadId });
+        await set(reloadComposerWorkflows$, signal);
+        return false;
+      },
+    );
 
     const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
     const subscriptionSignal = subscriptionScope.signal;
@@ -4264,6 +4275,7 @@ export function createChatThreadSignals(
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
+  const composer = createThreadComposer(draft, threadId, threadOwned.agentId$);
   const messages = createChatThreadMessagePipeline({
     threadId,
     dataSource,
@@ -4284,6 +4296,7 @@ export function createChatThreadSignals(
     syncRemoteMessages$: messages.syncRemoteMessages$,
     settleMessageSync$: messages.settleMessageSync$,
     reloadArtifacts$: artifact.reloadArtifacts$,
+    reloadComposerWorkflows$: composer.workflowComposer.reloadWorkflows$,
     autoScroll$: scrollSignals.autoScroll$,
     automationSignals: threadOwned,
     dataSource,
@@ -4302,7 +4315,6 @@ export function createChatThreadSignals(
     appendOptimisticMessage$: messages.appendOptimisticMessage$,
     dataSource,
   });
-  const composer = createThreadComposer(draft, threadId, threadOwned.agentId$);
   return {
     threadId,
     threadDraft$,
