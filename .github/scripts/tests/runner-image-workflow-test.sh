@@ -62,6 +62,8 @@ jq -e '
 jq -e '
   .jobs.compile["runs-on"] == "ubuntu-latest-8-cores" and
   (.jobs.compile.container.image | startswith("ghcr.io/vm0-ai/vm0-toolchain-rust@sha256:")) and
+  (.jobs.compile.if | contains("!cancelled()")) and
+  (.jobs.compile.if | contains("needs.prepare.result == '\''success'\''")) and
   (.jobs.compile.if | contains("runner-binary-miss-count != '\''0'\''")) and
   .jobs.compile.strategy.matrix.include == "${{ fromJSON(needs.prepare.outputs.runner-binary-compile-matrix) }}" and
   any(.jobs.compile.steps[];
