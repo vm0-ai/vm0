@@ -177,10 +177,22 @@ interface ComposerKeyDownContext {
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }
 
+function eventTargetsNonEditableNodeView(event: Event): boolean {
+  return (
+    event.target instanceof Element &&
+    event.target.closest('[contenteditable="false"]') !== null
+  );
+}
+
 function handleComposerKeyDownCapture(
   event: KeyboardEvent,
   context: ComposerKeyDownContext,
 ): boolean {
+  // ProseMirror normally gives node views first ownership through stopEvent.
+  // React capture runs earlier, so preserve that boundary for their controls.
+  if (eventTargetsNonEditableNodeView(event)) {
+    return false;
+  }
   if (event.isComposing || event.keyCode === 229) {
     context.onKeyDown(event);
     return event.defaultPrevented;
@@ -396,6 +408,9 @@ export function TiptapWorkflowComposer({
     event: ClipboardEvent,
     currentTarget: HTMLElement,
   ): boolean {
+    if (eventTargetsNonEditableNodeView(event)) {
+      return false;
+    }
     const clipboardData = event.clipboardData;
     const preventedBeforeHandler = event.defaultPrevented;
     onPaste({
