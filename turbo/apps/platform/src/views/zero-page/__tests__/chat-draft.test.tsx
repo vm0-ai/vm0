@@ -82,6 +82,8 @@ function mockThreadDetails(): void {
           pinnedAt: null,
           renamedAt: null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         };
       }),
       latestEventId: null,

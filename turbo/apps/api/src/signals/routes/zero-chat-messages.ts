@@ -114,7 +114,10 @@ import {
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
 } from "../services/zero-chat-queued-message.service";
-import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  chatThreadServiceTierFromCodex,
+} from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
@@ -1151,6 +1154,7 @@ async function maybePersistExplicitModelFirstSelection(params: {
 
 async function maybePersistExplicitCodexServiceTier(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly body: NormalSendBody;
@@ -1158,18 +1162,38 @@ async function maybePersistExplicitCodexServiceTier(params: {
   if (params.body.modelSelection === undefined) {
     return;
   }
-  await params.db
-    .update(chatThreads)
-    .set({
-      codexServiceTier: params.body.runOptions?.codexServiceTier ?? null,
-      updatedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(chatThreads.id, params.threadId),
-        eq(chatThreads.userId, params.userId),
-      ),
-    );
+  const codexServiceTier = params.body.runOptions?.codexServiceTier ?? null;
+  await params.db.transaction(async (tx) => {
+    const updatedAt = nowDate();
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({
+        codexServiceTier,
+        updatedAt,
+      })
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "service_tier_updated",
+      userId: params.userId,
+      orgId: params.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
+      createdAt: updatedAt,
+    });
+  });
 }
 
 function hasComputerUseHostSelection(body: NormalSendBody): boolean {
@@ -1178,19 +1202,39 @@ function hasComputerUseHostSelection(body: NormalSendBody): boolean {
 
 async function updateThreadComputerUseHost(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly hostId: string | null;
 }): Promise<void> {
-  await params.db
-    .update(chatThreads)
-    .set({ computerUseHostId: params.hostId, updatedAt: nowDate() })
-    .where(
-      and(
-        eq(chatThreads.id, params.threadId),
-        eq(chatThreads.userId, params.userId),
-      ),
-    );
+  await params.db.transaction(async (tx) => {
+    const updatedAt = nowDate();
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({ computerUseHostId: params.hostId, updatedAt })
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "computer_use_host_updated",
+      userId: params.userId,
+      orgId: params.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      computerUseHostId: params.hostId,
+      createdAt: updatedAt,
+    });
+  });
 }
 
 async function selectedComputerUseHostGrant(params: {
@@ -1239,6 +1283,7 @@ async function resolveComputerUseHostGrant(params: {
     if (explicitSelection && params.thread.computerUseHostId !== null) {
       await updateThreadComputerUseHost({
         db: params.db,
+        orgId: params.orgId,
         threadId: params.thread.threadId,
         userId: params.userId,
         hostId: null,
@@ -1259,6 +1304,7 @@ async function resolveComputerUseHostGrant(params: {
     }
     await updateThreadComputerUseHost({
       db: params.db,
+      orgId: params.orgId,
       threadId: params.thread.threadId,
       userId: params.userId,
       hostId: null,
@@ -1272,6 +1318,7 @@ async function resolveComputerUseHostGrant(params: {
   ) {
     await updateThreadComputerUseHost({
       db: params.db,
+      orgId: params.orgId,
       threadId: params.thread.threadId,
       userId: params.userId,
       hostId: requestedHostId,
@@ -1316,6 +1363,8 @@ async function createChatThread(
           eventId: args.chatThreadEventId,
           title: null,
           selectedModel: args.pin.selectedModel,
+          serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
+          computerUseHostId: null,
           createdAt: thread.createdAt,
         });
         return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -1360,6 +1409,8 @@ async function createChatThread(
       eventId: args.chatThreadEventId,
       title: null,
       selectedModel: args.pin.selectedModel,
+      serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
+      computerUseHostId: null,
       createdAt: thread.createdAt,
     });
     return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -2249,6 +2300,7 @@ function maybePersistTimedExplicitCodexServiceTier(
     () => {
       return maybePersistExplicitCodexServiceTier({
         db,
+        orgId: args.orgId,
         threadId,
         userId: args.userId,
         body: args.body,

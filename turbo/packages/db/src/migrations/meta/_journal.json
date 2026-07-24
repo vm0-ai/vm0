@@ -4667,8 +4667,22 @@
     {
       "idx": 666,
       "version": "7",
-      "when": 1784883303456,
-      "tag": "0666_familiar_microchip",
+      "when": 1784879085448,
+      "tag": "0666_thread_configuration_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 667,
+      "version": "7",
+      "when": 1784879100126,
+      "tag": "0667_thread_configuration_event_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 668,
+      "version": "7",
+      "when": 1784884678880,
+      "tag": "0668_fine_zodiak",
       "breakpoints": true
     }
   ]

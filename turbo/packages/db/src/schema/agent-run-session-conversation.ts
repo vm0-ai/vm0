@@ -54,7 +54,8 @@ export const agentRuns = pgTable(
     vars: jsonb("vars").$type<AgentRunVars>(),
     // Secret names for validation (values never stored - must be provided at runtime)
     secretNames: jsonb("secret_names").$type<AgentRunSecretNames>(),
-    // Historical additional-volume projection retained for legacy row reads.
+    // Physical rollback column retained until pre-detach API versions drain.
+    // Application code must not select or write it.
     additionalVolumes:
       jsonb("additional_volumes").$type<AgentRunAdditionalVolumes>(),
     // Canonical resolved mounts used by new run writers.
@@ -134,12 +135,13 @@ export const agentSessions = pgTable(
         onDelete: "set null",
       },
     ),
+    // Physical rollback column retained until pre-detach API versions drain.
+    // Application code must not select or write it.
     artifacts: jsonb("artifacts")
       .$type<AgentSessionArtifacts>()
       .notNull()
       .default([]),
-    // Canonical writeback mounts used by session continuation. artifacts
-    // contains only historical rollback data; new writers leave it empty.
+    // Canonical writeback mounts used by session continuation.
     storageMounts: jsonb("storage_mounts").$type<AgentSessionStorageMounts>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -775,7 +775,7 @@ describe("chat composer models", () => {
 
     lifecycle.setCodexServiceTier(null);
     act(() => {
-      triggerAblyEvent(`chatThreadDetailChanged:${THREAD_ID}`);
+      triggerAblyEvent("threadListChanged");
     });
     await user.click(screen.getByRole("combobox", { name: /GPT 5\.5/ }));
     const runSpeed = await screen.findByRole("group", { name: "Run speed" });
@@ -2169,6 +2169,8 @@ describe("chat composer models", () => {
       agentId: OTHER_AGENT_ID,
       title: "Renamed other agent thread",
       selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: "2026-07-22T09:00:00.000Z",
     };
     triggerAblyEvent("threadListChanged");

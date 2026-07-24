@@ -320,7 +320,6 @@ async function readStoragePersistenceState(
   const [[run], [session], [checkpoint]] = await Promise.all([
     db
       .select({
-        additionalVolumes: agentRuns.additionalVolumes,
         storageMounts: agentRuns.storageMounts,
       })
       .from(agentRuns)
@@ -328,7 +327,6 @@ async function readStoragePersistenceState(
       .limit(1),
     db
       .select({
-        artifacts: agentSessions.artifacts,
         storageMounts: agentSessions.storageMounts,
       })
       .from(agentSessions)
@@ -336,8 +334,6 @@ async function readStoragePersistenceState(
       .limit(1),
     db
       .select({
-        artifactSnapshots: checkpoints.artifactSnapshots,
-        volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
         storageMounts: checkpoints.storageMounts,
       })
       .from(checkpoints)
@@ -350,13 +346,8 @@ async function readStoragePersistenceState(
   }
   return {
     run_canonical: run.storageMounts !== null,
-    run_legacy: (run.additionalVolumes?.length ?? 0) > 0,
     session_canonical: session.storageMounts !== null,
-    session_legacy: session.artifacts.length > 0,
     checkpoint_canonical: checkpoint.storageMounts !== null,
-    checkpoint_legacy_artifacts:
-      (checkpoint.artifactSnapshots?.length ?? 0) > 0,
-    checkpoint_legacy_volumes: checkpoint.volumeVersionsSnapshot !== null,
   };
 }
 

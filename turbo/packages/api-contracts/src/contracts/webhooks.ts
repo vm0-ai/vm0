@@ -492,8 +492,8 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
-        // Multi-artifact snapshots validated by artifactSnapshotsSchema and
-        // persisted to checkpoints.artifact_snapshots.
+        // Multi-artifact snapshots are folded into canonical checkpoint mounts
+        // and projected back into the legacy response shape.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })

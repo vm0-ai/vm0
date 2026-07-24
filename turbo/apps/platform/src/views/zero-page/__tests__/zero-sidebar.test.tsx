@@ -161,6 +161,8 @@ function mockChatThreadSnapshot(
           pinnedAt: thread.pinnedAt ?? null,
           renamedAt: thread.renamedAt ?? null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         };
       }),
       latestEventId: null,
@@ -434,6 +436,8 @@ describe("zero sidebar", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
         latestEventId: null,

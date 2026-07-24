@@ -19,18 +19,30 @@ function snapshotThread(
     pinnedAt: null,
     renamedAt: null,
     selectedModel: null,
+    serviceTier: null,
+    computerUseHostId: null,
     ...params,
   };
 }
 
 function event(
-  params: Omit<ChatThreadEvent, "id" | "createdAt" | "selectedModel"> & {
+  params: Omit<
+    ChatThreadEvent,
+    "id" | "createdAt" | "selectedModel" | "serviceTier" | "computerUseHostId"
+  > & {
     readonly id: string;
     readonly createdAt: string;
     readonly selectedModel?: string | null;
+    readonly serviceTier?: "priority" | null;
+    readonly computerUseHostId?: string | null;
   },
 ): ChatThreadEvent {
-  return { ...params, selectedModel: params.selectedModel ?? null };
+  return {
+    ...params,
+    selectedModel: params.selectedModel ?? null,
+    serviceTier: params.serviceTier ?? null,
+    computerUseHostId: params.computerUseHostId ?? null,
+  };
 }
 
 describe("replayChatThreadEvents", () => {
@@ -91,6 +103,8 @@ describe("replayChatThreadEvents", () => {
         pinnedAt: null,
         renamedAt: null,
         selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
       },
     ]);
   });
@@ -197,8 +211,49 @@ describe("replayChatThreadEvents", () => {
     ]);
   });
 
-  it("applies selected model updates that arrive before same-timestamp creation", () => {
+  it("replays service tier and Computer Use host updates", () => {
+    const computerUseHostId = "11111111-1111-4111-8111-111111111111";
+    const [thread] = replayChatThreadEvents(
+      [
+        snapshotThread({
+          id: "thread-a",
+          agentId: "agent-1",
+          sortAt: "2026-07-01T03:00:00.000Z",
+        }),
+      ],
+      [
+        event({
+          id: "event-1",
+          kind: "service_tier_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          serviceTier: "priority",
+          createdAt: "2026-07-01T05:00:00.000Z",
+        }),
+        event({
+          id: "event-2",
+          kind: "computer_use_host_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          computerUseHostId,
+          createdAt: "2026-07-01T06:00:00.000Z",
+        }),
+      ],
+    );
+
+    expect(thread).toMatchObject({
+      serviceTier: "priority",
+      computerUseHostId,
+      sortAt: "2026-07-01T03:00:00.000Z",
+      updatedAt: "2026-07-01T06:00:00.000Z",
+    });
+  });
+
+  it("applies configuration updates that arrive before same-timestamp creation", () => {
     const sameTimestamp = "2026-07-01T05:00:00.000Z";
+    const computerUseHostId = "11111111-1111-4111-8111-111111111111";
     const result = replayChatThreadEvents(
       [],
       [
@@ -213,6 +268,24 @@ describe("replayChatThreadEvents", () => {
         }),
         event({
           id: "event-2",
+          kind: "service_tier_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          serviceTier: "priority",
+          createdAt: sameTimestamp,
+        }),
+        event({
+          id: "event-3",
+          kind: "computer_use_host_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          computerUseHostId,
+          createdAt: sameTimestamp,
+        }),
+        event({
+          id: "event-4",
           kind: "created",
           chatThreadId: "thread-a",
           agentId: "agent-1",
@@ -233,6 +306,8 @@ describe("replayChatThreadEvents", () => {
         pinnedAt: null,
         renamedAt: null,
         selectedModel: "claude-sonnet-4-6",
+        serviceTier: "priority",
+        computerUseHostId,
       },
     ]);
   });
