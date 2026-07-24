@@ -316,20 +316,27 @@ describe("zero browser route", () => {
     );
     await firstStopStarted.promise;
 
-    const busyAcrossThreads = await accept(
-      client().create({
-        headers: otherThreadClaim.browserHeaders,
-        body: {
-          name: "research",
-          proxyCountryCode: null,
-          timeoutMinutes: 30,
-          maxCredits: 150,
-        },
+    const busyAcrossThreads = await createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroBrowserRoutes,
+    }).request("/api/zero/browsers", {
+      method: "POST",
+      headers: {
+        ...otherThreadClaim.browserHeaders,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "research",
+        proxyCountryCode: null,
+        timeoutMinutes: 30,
+        maxCredits: 150,
       }),
-      [409],
-    );
-    expect(busyAcrossThreads.body.error).toMatchObject({
-      code: "BROWSER_PROFILE_BUSY",
+    });
+    expect(busyAcrossThreads.status).toBe(409);
+    await expect(busyAcrossThreads.json()).resolves.toMatchObject({
+      error: {
+        code: "BROWSER_PROFILE_BUSY",
+      },
     });
     expect(providerCreates).toBe(1);
 
@@ -397,15 +404,22 @@ describe("zero browser route", () => {
       throw new Error("Expected the queued follow-up to be promoted");
     }
     const followupClaim = await claimChatRun(runs, actor, followup.id);
-    const blockedResume = await accept(
-      client().resume({
-        headers: followupClaim.browserHeaders,
-        body: {},
-      }),
-      [409],
-    );
-    expect(blockedResume.body.error).toMatchObject({
-      code: "BROWSER_PROFILE_BUSY",
+    const blockedResume = await createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroBrowserRoutes,
+    }).request("/api/zero/browsers/resume", {
+      method: "POST",
+      headers: {
+        ...followupClaim.browserHeaders,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    expect(blockedResume.status).toBe(409);
+    await expect(blockedResume.json()).resolves.toMatchObject({
+      error: {
+        code: "BROWSER_PROFILE_BUSY",
+      },
     });
 
     await webhooks.requestAgentComplete(
