@@ -1084,6 +1084,7 @@ function ArtifactPreviewDialogActions({
     preview.kind === "html" &&
     artifact?.artifactKind === "hosted-site" &&
     Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
+  const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
@@ -1109,7 +1110,13 @@ function ArtifactPreviewDialogActions({
   };
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <ArtifactShareButton ariaLabel="Share" iconSize={18} url={preview.url} />
+      {showShare && (
+        <ArtifactShareButton
+          ariaLabel="Share"
+          iconSize={18}
+          url={preview.url}
+        />
+      )}
       <ArtifactDownloadMenu
         ariaLabel="Download options"
         artifactKind={artifact?.artifactKind}
@@ -1318,12 +1325,16 @@ export function FileAttachmentChip({
 
 export function PreviewableFileAttachmentChip({
   filename,
-  url,
   kind,
+  shareAvailable,
+  splitViewAvailable,
+  url,
 }: {
   filename: string;
-  url: string;
   kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+  shareAvailable?: boolean;
+  splitViewAvailable?: boolean;
+  url: string;
 }) {
   const openDocumentLightbox = useSet(openDocumentLightbox$);
 
@@ -1331,7 +1342,13 @@ export function PreviewableFileAttachmentChip({
     <button
       type="button"
       onClick={() => {
-        openDocumentLightbox({ kind, url, filename });
+        openDocumentLightbox({
+          kind,
+          url,
+          filename,
+          ...(shareAvailable === undefined ? {} : { shareAvailable }),
+          ...(splitViewAvailable === undefined ? {} : { splitViewAvailable }),
+        });
       }}
       title={filename}
       aria-label={`Open ${kind} preview for ${filename}`}
@@ -1349,10 +1366,14 @@ export function PreviewableFileAttachmentChip({
 export function PreviewableAudioAttachmentChip({
   contentType,
   filename,
+  shareAvailable,
+  splitViewAvailable,
   url,
 }: {
   contentType?: string;
   filename: string;
+  shareAvailable?: boolean;
+  splitViewAvailable?: boolean;
   url: string;
 }) {
   const openAudioLightbox = useSet(openAudioLightbox$);
@@ -1361,7 +1382,12 @@ export function PreviewableAudioAttachmentChip({
     <button
       type="button"
       onClick={() => {
-        openAudioLightbox({ url, filename });
+        openAudioLightbox({
+          url,
+          filename,
+          ...(shareAvailable === undefined ? {} : { shareAvailable }),
+          ...(splitViewAvailable === undefined ? {} : { splitViewAvailable }),
+        });
       }}
       title={filename}
       aria-label={`Open audio preview for ${filename}`}

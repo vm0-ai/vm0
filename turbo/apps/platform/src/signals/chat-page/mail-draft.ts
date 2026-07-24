@@ -33,7 +33,7 @@ export interface MailDraftSignals extends MailDraftDescriptor {
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
-  attachmentImageUrl(partId: string): Computed<Promise<string | null>>;
+  attachmentUrl(partId: string): Computed<Promise<string | null>>;
   readonly reloadSidebar$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
@@ -127,19 +127,14 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   };
 }
 
-function createAttachmentImageUrl(
+function createAttachmentUrl(
   descriptor: MailDraftDescriptor,
   sidebarReloadVersion$: State<number>,
-): MailDraftSignals["attachmentImageUrl"] {
-  const attachmentImageUrls = new Map<
-    string,
-    Computed<Promise<string | null>>
-  >();
+): MailDraftSignals["attachmentUrl"] {
+  const attachmentUrls = new Map<string, Computed<Promise<string | null>>>();
   const attachmentObjectUrls = new Map<string, string>();
-  const attachmentImageUrl = (
-    partId: string,
-  ): Computed<Promise<string | null>> => {
-    const registered = attachmentImageUrls.get(partId);
+  const attachmentUrl = (partId: string): Computed<Promise<string | null>> => {
+    const registered = attachmentUrls.get(partId);
     if (registered) {
       return registered;
     }
@@ -178,10 +173,10 @@ function createAttachmentImageUrl(
       );
       return url;
     });
-    attachmentImageUrls.set(partId, imageUrl$);
+    attachmentUrls.set(partId, imageUrl$);
     return imageUrl$;
   };
-  return attachmentImageUrl;
+  return attachmentUrl;
 }
 
 function createMailDraftSignals(
@@ -222,10 +217,7 @@ function createMailDraftSignals(
     );
     return response.status === 200 ? response.body.mailDraft : null;
   });
-  const attachmentImageUrl = createAttachmentImageUrl(
-    descriptor,
-    sidebarReloadVersion$,
-  );
+  const attachmentUrl = createAttachmentUrl(descriptor, sidebarReloadVersion$);
   const reloadSidebar$ = command(({ set }) => {
     set(sidebarDraftOverride$, undefined);
     set(sidebarReloadVersion$, (version) => {
@@ -263,7 +255,7 @@ function createMailDraftSignals(
     threadId,
     draft$,
     sidebarDraft$,
-    attachmentImageUrl,
+    attachmentUrl,
     reloadSidebar$,
     delete$,
     send$,

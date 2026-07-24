@@ -271,6 +271,7 @@ describe("chat message action cards", () => {
     let sent = false;
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
     const imageBytes = new TextEncoder().encode("mail draft image");
+    const pdfBytes = new TextEncoder().encode("mail draft pdf");
     const mailDraftHtml =
       '<div>Mail body <strong>before</strong></div><p><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><br>After image</p><hr><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a>';
 
@@ -331,6 +332,7 @@ describe("chat message action cards", () => {
               filename: "report.pdf",
               contentType: "application/pdf",
               size: 248_192,
+              partId: "1",
             },
           ],
           createdAt,
@@ -378,6 +380,7 @@ describe("chat message action cards", () => {
               filename: "report.pdf",
               contentType: "application/pdf",
               size: 248_192,
+              partId: "1",
             },
           ],
           createdAt,
@@ -390,6 +393,12 @@ describe("chat message action cards", () => {
       "*/api/zero/mail/drafts/:mailDraftId/attachments/:partId",
       ({ params }) => {
         expect(params.mailDraftId).toBe(mailDraftId);
+        if (params.partId === "1") {
+          return new HttpResponse(pdfBytes, {
+            status: 200,
+            headers: { "Content-Type": "application/pdf" },
+          });
+        }
         expect(params.partId).toBe("2");
         return new HttpResponse(imageBytes, {
           status: 200,
@@ -460,16 +469,25 @@ describe("chat message action cards", () => {
     await user.click(cards[0]!);
 
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(
+      within(sidebar).getByRole("heading", { name: "Hello" }),
+    ).toBeInTheDocument();
+    expect(within(sidebar).queryByText("Message")).toBeNull();
     expect(within(sidebar).getByText("sender@example.com")).toBeInTheDocument();
     expect(
       within(sidebar).getByText(
-        "recipient@example.com, teammate@example.com, reviewer@example.com",
+        /to recipient@example\.com, teammate@example\.com, reviewer@example\.com/u,
       ),
     ).toBeInTheDocument();
-    expect(within(sidebar).getByText("copy@example.com")).toBeInTheDocument();
-    expect(within(sidebar).getByText("hidden@example.com")).toBeInTheDocument();
-    const messageLabel = within(sidebar).getByText("Message");
-    const messageSection = messageLabel.parentElement;
+    expect(
+      within(sidebar).getByText(/cc copy@example\.com/u),
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText(/bcc hidden@example\.com/u),
+    ).toBeInTheDocument();
+    const messageSection = sidebar.querySelector<HTMLElement>(
+      "[data-feedback-source]",
+    );
     if (!messageSection) {
       throw new Error("Expected mail message section");
     }
@@ -488,7 +506,28 @@ describe("chat message action cards", () => {
     );
     expect(reviewLink).toHaveAttribute("href", "https://example.com/review");
     expect(within(sidebar).getByText("report.pdf")).toBeInTheDocument();
-    expect(within(sidebar).getByText("242 KB")).toBeInTheDocument();
+    let pdfPreview: HTMLButtonElement | null = null;
+    await waitFor(() => {
+      pdfPreview = sidebar.querySelector(
+        '[aria-label="Open pdf preview for report.pdf"]',
+      );
+      expect(pdfPreview).toBeInstanceOf(HTMLButtonElement);
+    });
+    if (!pdfPreview) {
+      throw new Error("Expected PDF attachment preview");
+    }
+    await user.click(pdfPreview);
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(within(lightbox).getByTitle("report.pdf preview")).toHaveAttribute(
+      "src",
+      expect.stringMatching(/^blob:.+#navpanes=0$/u),
+    );
+    expect(within(lightbox).queryByLabelText("Share")).toBeNull();
+    expect(within(lightbox).queryByLabelText("Open in split view")).toBeNull();
+    await user.click(within(lightbox).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
+    });
     const inlineImage = await within(messageSection).findByRole("img", {
       name: "Cheerful envelope illustration",
     });
@@ -514,18 +553,16 @@ describe("chat message action cards", () => {
       within(sidebar).queryByText("<reference-message@example.com>"),
     ).toBeNull();
     expect(within(sidebar).queryByRole("textbox")).not.toBeInTheDocument();
-    expect(
-      messageSection.querySelector("[data-feedback-source]"),
-    ).toHaveAttribute("data-feedback-source-type", "mail");
-    expect(
-      messageSection.querySelector("[data-feedback-source]"),
-    ).toHaveAttribute("data-feedback-source-id", mailDraftId);
-    expect(
-      messageSection.querySelector("[data-feedback-source]"),
-    ).toHaveAttribute("data-feedback-source-status", "draft");
-    expect(
-      messageSection.querySelector("[data-feedback-source]"),
-    ).not.toHaveAttribute("data-feedback-source-sent-id");
+    expect(messageSection).toHaveAttribute("data-feedback-source-type", "mail");
+    expect(messageSection).toHaveAttribute(
+      "data-feedback-source-id",
+      mailDraftId,
+    );
+    expect(messageSection).toHaveAttribute(
+      "data-feedback-source-status",
+      "draft",
+    );
+    expect(messageSection).not.toHaveAttribute("data-feedback-source-sent-id");
 
     selectMailText(boldText);
     await user.click(await waitForSelectionToolbarButton("Copy"));
@@ -545,21 +582,27 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(sent).toBeTruthy();
-      expect(screen.getAllByText("Sent")).toHaveLength(2);
+      expect(screen.getByText("Email sent")).toBeInTheDocument();
     });
-    sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await waitFor(() => {
+      sidebar = screen.getByTestId("mail-draft-sidebar");
+      expect(within(sidebar).getByText("Sent")).toBeInTheDocument();
+    });
     expect(queryButtonByText("Send", sidebar)).toBeNull();
-    const sentMessageSection =
-      within(sidebar).getByText("Message").parentElement;
+    const sentMessageSection = sidebar.querySelector<HTMLElement>(
+      "[data-feedback-source]",
+    );
     if (!sentMessageSection) {
       throw new Error("Expected sent mail message section");
     }
-    expect(
-      sentMessageSection.querySelector("[data-feedback-source]"),
-    ).toHaveAttribute("data-feedback-source-status", "sent");
-    expect(
-      sentMessageSection.querySelector("[data-feedback-source]"),
-    ).toHaveAttribute("data-feedback-source-sent-id", "gmail-sent-message-id");
+    expect(sentMessageSection).toHaveAttribute(
+      "data-feedback-source-status",
+      "sent",
+    );
+    expect(sentMessageSection).toHaveAttribute(
+      "data-feedback-source-sent-id",
+      "gmail-sent-message-id",
+    );
     expect(draftRequests).toBe(2);
   });
 
@@ -662,9 +705,11 @@ describe("chat message action cards", () => {
     });
 
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(within(sidebar).getAllByText("Restored draft")).toHaveLength(2);
+    expect(within(sidebar).getByText("Restored draft")).toBeInTheDocument();
     expect(
-      within(sidebar).getByText("recipient@example.com, teammate@example.com"),
+      within(sidebar).getByText(
+        /to recipient@example\.com, teammate@example\.com/u,
+      ),
     ).toBeInTheDocument();
     const sendButton = await waitForButtonByText("Send", sidebar);
     expect(sendButton).toBeInTheDocument();
@@ -747,7 +792,7 @@ describe("chat message action cards", () => {
     );
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
     await waitFor(() => {
-      expect(within(sidebar).getAllByText("First draft")).toHaveLength(2);
+      expect(within(sidebar).getByText("First draft")).toBeInTheDocument();
     });
 
     await user.click(
@@ -755,7 +800,7 @@ describe("chat message action cards", () => {
     );
     await waitFor(() => {
       sidebar = screen.getByTestId("mail-draft-sidebar");
-      expect(within(sidebar).getAllByText("Second draft")).toHaveLength(2);
+      expect(within(sidebar).getByText("Second draft")).toBeInTheDocument();
     });
 
     await user.click(within(sidebar).getByLabelText("Close email details"));
@@ -769,9 +814,9 @@ describe("chat message action cards", () => {
     );
     sidebar = await screen.findByTestId("mail-draft-sidebar");
     await waitFor(() => {
-      expect(within(sidebar).getAllByText("Updated second draft")).toHaveLength(
-        2,
-      );
+      expect(
+        within(sidebar).getByText("Updated second draft"),
+      ).toBeInTheDocument();
     });
     expect(
       screen.getByLabelText("Open draft email: Second draft"),

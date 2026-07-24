@@ -29,6 +29,7 @@ export type AttachmentLightboxState =
       filename?: string;
       artifact?: AttachmentArtifactMetadata;
       editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     }
@@ -38,6 +39,7 @@ export type AttachmentLightboxState =
       filename: string;
       artifact?: AttachmentArtifactMetadata;
       editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     }
@@ -47,6 +49,7 @@ export type AttachmentLightboxState =
       filename: string;
       artifact?: AttachmentArtifactMetadata;
       editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     };
@@ -105,6 +108,7 @@ export const openImageLightbox$ = command(
           filename?: string;
           artifact?: AttachmentArtifactMetadata;
           editAvailable?: boolean;
+          shareAvailable?: boolean;
           showSizeInSubtitle?: boolean;
           splitViewAvailable?: boolean;
         },
@@ -136,6 +140,7 @@ export const navigateImageLightbox$ = command(
       filename?: string;
       artifact?: AttachmentArtifactMetadata;
       editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },
@@ -153,6 +158,7 @@ export const openDocumentLightbox$ = command(
       filename: string;
       artifact?: AttachmentArtifactMetadata;
       editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },
@@ -174,6 +180,7 @@ export const openVideoLightbox$ = command(
       filename: string;
       artifact?: AttachmentArtifactMetadata;
       editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },
@@ -195,6 +202,7 @@ export const openAudioLightbox$ = command(
       filename: string;
       artifact?: AttachmentArtifactMetadata;
       editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },

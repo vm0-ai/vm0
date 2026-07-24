@@ -1,7 +1,10 @@
 import {
+  IconCircleCheck,
   IconExternalLink,
   IconLoader2,
   IconPaperclip,
+  IconPencil,
+  IconPlayerPlay,
   IconSend,
   IconTrash,
   IconX,
@@ -12,14 +15,25 @@ import type {
   ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
 import { Button } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { CSSProperties, ReactNode } from "react";
 
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
+import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  openImageLightbox$,
+  openVideoLightbox$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import { closeMailDraftSidebar$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  FileAttachmentChip,
+  PreviewableAudioAttachmentChip,
+  PreviewableFileAttachmentChip,
+} from "./zero-attachment-chips.tsx";
 
 interface MailDraftSidebarProps {
   readonly signals: MailDraftSignals;
@@ -45,29 +59,24 @@ function MailDraftSidebarSkeleton({ close }: { readonly close: () => void }) {
       aria-label="Loading email details"
       className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
     >
-      <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
-        <div className="min-w-0 flex-1 space-y-1.5 animate-pulse">
-          <div className="h-4 w-40 rounded bg-muted/60" />
-          <div className="h-3 w-20 rounded bg-muted/50" />
-          <div className="h-3 w-64 max-w-full rounded bg-muted/50" />
+      <div className="min-h-0 flex-1 overflow-hidden px-5 py-5 animate-pulse">
+        <div className="border-b border-border/60 pb-5">
+          <div className="flex items-start gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="h-6 w-52 max-w-full rounded bg-muted/60" />
+              <div className="relative top-0.5 h-5 w-12 shrink-0 rounded-full bg-muted/50" />
+            </div>
+            <SidebarCloseButton close={close} />
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <div className="size-9 shrink-0 rounded-full bg-muted/60" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-4 w-44 max-w-full rounded bg-muted/60" />
+              <div className="h-3 w-64 max-w-full rounded bg-muted/50" />
+            </div>
+          </div>
         </div>
-        <SidebarCloseButton close={close} />
-      </div>
-      <div className="min-h-0 flex-1 space-y-5 overflow-hidden px-4 py-4 animate-pulse">
-        <div className="space-y-1.5">
-          <div className="h-3 w-10 rounded bg-muted/50" />
-          <div className="h-4 w-48 max-w-full rounded bg-muted/60" />
-        </div>
-        <div className="space-y-1.5">
-          <div className="h-3 w-6 rounded bg-muted/50" />
-          <div className="h-4 w-64 max-w-full rounded bg-muted/60" />
-        </div>
-        <div className="space-y-1.5">
-          <div className="h-3 w-14 rounded bg-muted/50" />
-          <div className="h-4 w-52 max-w-full rounded bg-muted/60" />
-        </div>
-        <div className="space-y-1.5">
-          <div className="h-3 w-12 rounded bg-muted/50" />
+        <div className="space-y-2 py-5">
           <div className="h-4 w-full rounded bg-muted/60" />
           <div className="h-4 w-5/6 rounded bg-muted/60" />
           <div className="h-4 w-2/3 rounded bg-muted/60" />
@@ -104,35 +113,80 @@ function UnavailableMailDraftSidebar({
   );
 }
 
-function DetailField({
-  label,
-  value,
+function MailMessageHeader({
+  close,
+  draft,
 }: {
-  readonly label: string;
-  readonly value: string;
+  readonly close: () => void;
+  readonly draft: ZeroMailDraft;
 }) {
+  const active = draft.status === "draft";
+  const senderName = draft.fromName?.trim() || null;
+  const senderInitial = (senderName ?? draft.from).slice(0, 1).toUpperCase();
   return (
-    <div className="grid gap-1.5">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="break-words text-sm text-foreground">{value}</div>
-    </div>
+    <header className="border-b border-border/60 pb-5">
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <h1 className="break-words text-xl font-semibold leading-7 tracking-[-0.015em] text-foreground">
+            {draft.subject || "(No subject)"}
+          </h1>
+          <span
+            className={
+              active
+                ? "relative top-0.5 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                : "relative top-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400"
+            }
+          >
+            {active ? (
+              <IconPencil size={11} stroke={2} />
+            ) : (
+              <IconCircleCheck size={11} stroke={2} />
+            )}
+            {active ? "Draft" : "Sent"}
+          </span>
+        </div>
+        <SidebarCloseButton close={close} />
+      </div>
+      <div className="mt-4 flex min-w-0 items-center gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground/[0.07] text-sm font-semibold text-foreground/75">
+          {senderInitial}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+            {senderName ? (
+              <span className="truncate text-sm font-semibold text-foreground">
+                {senderName}
+              </span>
+            ) : null}
+            <span
+              className={
+                senderName
+                  ? "truncate text-xs text-muted-foreground"
+                  : "truncate text-sm font-semibold text-foreground"
+              }
+            >
+              {draft.from}
+            </span>
+          </div>
+          <div className="mt-0.5 min-w-0 break-words text-xs leading-5 text-muted-foreground">
+            <span>to {draft.to.join(", ") || "—"}</span>
+            {draft.cc.length > 0 ? (
+              <>
+                <span aria-hidden="true"> · </span>
+                <span>cc {draft.cc.join(", ")}</span>
+              </>
+            ) : null}
+            {draft.bcc.length > 0 ? (
+              <>
+                <span aria-hidden="true"> · </span>
+                <span>bcc {draft.bcc.join(", ")}</span>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </header>
   );
-}
-
-function formatAttachmentSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ["KB", "MB", "GB"] as const;
-  let value = bytes / 1024;
-  for (let i = 0; i < units.length; i++) {
-    const unit = units[i]!;
-    if (value < 1024 || i === units.length - 1) {
-      return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
-    }
-    value = value / 1024;
-  }
-  return `${bytes} B`;
 }
 
 function AttachmentSummary({
@@ -141,19 +195,143 @@ function AttachmentSummary({
   readonly attachment: ZeroMailAttachment;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-gray-50 px-3 py-2.5">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
-        <IconPaperclip size={15} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-foreground">
-          {attachment.filename}
-        </span>
-        <span className="block truncate text-xs text-muted-foreground">
-          {formatAttachmentSize(attachment.size)}
-        </span>
+    <div className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-foreground/15 bg-background/80 px-1.5">
+      <IconPaperclip size={14} className="shrink-0 text-muted-foreground" />
+      <span className="min-w-0 truncate text-xs font-medium">
+        {attachment.filename}
       </span>
     </div>
+  );
+}
+
+function MailAttachmentPreview({
+  attachment,
+  partId,
+  signals,
+}: {
+  readonly attachment: ZeroMailAttachment;
+  readonly partId: string;
+  readonly signals: MailDraftSignals;
+}) {
+  const attachmentLoadable = useLoadable(signals.attachmentUrl(partId));
+  if (
+    attachmentLoadable.state !== "hasData" ||
+    attachmentLoadable.data === null
+  ) {
+    return <AttachmentSummary attachment={attachment} />;
+  }
+  const url = attachmentLoadable.data;
+  const kind = classifyChatAttachment({
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+    url,
+  });
+  let preview: ReactNode;
+  if (kind === "image" || kind === "video") {
+    preview = (
+      <MailMediaAttachmentPreview
+        filename={attachment.filename}
+        kind={kind}
+        url={url}
+      />
+    );
+  } else if (
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv" ||
+    kind === "pdf" ||
+    kind === "html"
+  ) {
+    preview = (
+      <PreviewableFileAttachmentChip
+        filename={attachment.filename}
+        kind={kind}
+        shareAvailable={false}
+        splitViewAvailable={false}
+        url={url}
+      />
+    );
+  } else if (kind === "audio") {
+    preview = (
+      <PreviewableAudioAttachmentChip
+        contentType={attachment.contentType}
+        filename={attachment.filename}
+        shareAvailable={false}
+        splitViewAvailable={false}
+        url={url}
+      />
+    );
+  } else {
+    preview = (
+      <FileAttachmentChip
+        contentType={attachment.contentType}
+        filename={attachment.filename}
+        url={url}
+      />
+    );
+  }
+  return preview;
+}
+
+function MailMediaAttachmentPreview({
+  filename,
+  kind,
+  url,
+}: {
+  readonly filename: string;
+  readonly kind: "image" | "video";
+  readonly url: string;
+}) {
+  const openImageLightbox = useSet(openImageLightbox$);
+  const openVideoLightbox = useSet(openVideoLightbox$);
+  const onPreview = () => {
+    if (kind === "image") {
+      openImageLightbox({
+        url,
+        filename,
+        shareAvailable: false,
+        splitViewAvailable: false,
+      });
+      return;
+    }
+    openVideoLightbox({
+      url,
+      filename,
+      shareAvailable: false,
+      splitViewAvailable: false,
+    });
+  };
+  return (
+    <button
+      type="button"
+      onClick={onPreview}
+      aria-label={`Preview ${filename}`}
+      title={filename}
+      className="group relative aspect-[10/9] w-[50px] max-w-full cursor-pointer overflow-hidden rounded-lg border border-foreground/10 bg-muted/30 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30"
+    >
+      {kind === "image" ? (
+        <img
+          src={url}
+          alt={filename}
+          className="block h-full w-full object-contain"
+        />
+      ) : (
+        <>
+          <video
+            src={`${url}#t=0.001`}
+            preload="metadata"
+            muted
+            playsInline
+            aria-hidden="true"
+            className="h-full w-full object-contain"
+          />
+          <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition-colors group-hover:bg-black/30">
+            <IconPlayerPlay size={16} stroke={1.8} />
+          </span>
+        </>
+      )}
+    </button>
   );
 }
 
@@ -164,7 +342,7 @@ function MailDraftInlineImage({
   readonly image: ZeroMailInlineImage;
   readonly signals: MailDraftSignals;
 }) {
-  const imageLoadable = useLoadable(signals.attachmentImageUrl(image.partId));
+  const imageLoadable = useLoadable(signals.attachmentUrl(image.partId));
   if (imageLoadable.state === "loading") {
     return (
       <span
@@ -647,42 +825,39 @@ function MailDraftMessage({
 }
 
 function MailDraftDetails({
+  close,
   draft,
   signals,
 }: {
+  readonly close: () => void;
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
   const attachments = draft.version === 3 ? draft.attachments : [];
   return (
-    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
-      <DetailField
-        label="From"
-        value={
-          draft.fromName ? `${draft.fromName} <${draft.from}>` : draft.from
-        }
-      />
-      <DetailField label="To" value={draft.to.join(", ") || "—"} />
-      {draft.cc.length > 0 ? (
-        <DetailField label="Cc" value={draft.cc.join(", ")} />
-      ) : null}
-      {draft.bcc.length > 0 ? (
-        <DetailField label="Bcc" value={draft.bcc.join(", ")} />
-      ) : null}
-      <DetailField label="Subject" value={draft.subject || "(No subject)"} />
-      <div className="grid gap-1.5">
-        <div className="text-xs font-medium text-muted-foreground">Message</div>
+    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+      <MailMessageHeader close={close} draft={draft} />
+      <div className="py-5">
         <MailDraftMessage draft={draft} signals={signals} />
       </div>
       {attachments.length > 0 ? (
-        <div className="grid gap-2">
-          <div className="text-xs font-medium text-muted-foreground">
+        <div className="grid gap-2.5 border-t border-border/60 pt-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Attachments
           </div>
-          <div className="grid gap-2">
+          <div className="flex flex-wrap gap-3">
             {attachments.map((attachment) => {
               const key = `${attachment.filename}-${attachment.contentType}-${attachment.size}`;
-              return <AttachmentSummary key={key} attachment={attachment} />;
+              return attachment.partId ? (
+                <MailAttachmentPreview
+                  key={key}
+                  attachment={attachment}
+                  partId={attachment.partId}
+                  signals={signals}
+                />
+              ) : (
+                <AttachmentSummary key={key} attachment={attachment} />
+              );
             })}
           </div>
         </div>
@@ -717,6 +892,13 @@ function MailDraftDetail({
     };
     detach(deleteAndClose(), Reason.DomCallback);
   };
+  const onSend = () => {
+    const sendAndNotify = async () => {
+      await send(pageSignal);
+      toast.success("Email sent");
+    };
+    detach(sendAndNotify(), Reason.DomCallback);
+  };
 
   return (
     <aside
@@ -725,18 +907,7 @@ function MailDraftDetail({
       data-testid="mail-draft-sidebar"
       className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0 animate-in fade-in slide-in-from-right-2 duration-[180ms] ease"
     >
-      <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {draft.subject || "(No subject)"}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            {active ? "Gmail draft" : "Sent email"}
-          </div>
-        </div>
-        <SidebarCloseButton close={close} />
-      </div>
-      <MailDraftDetails draft={draft} signals={signals} />
+      <MailDraftDetails close={close} draft={draft} signals={signals} />
       <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
         {active ? (
           <Button
@@ -767,14 +938,7 @@ function MailDraftDetail({
             </Button>
           ) : null}
           {active ? (
-            <Button
-              type="button"
-              size="sm"
-              disabled={pending}
-              onClick={() => {
-                detach(send(pageSignal), Reason.DomCallback);
-              }}
-            >
+            <Button type="button" size="sm" disabled={pending} onClick={onSend}>
               {sendLoadable.state === "loading" ? (
                 <IconLoader2 size={15} className="animate-spin" />
               ) : (
