@@ -135,6 +135,7 @@ export { linkZeroMailDraft } from "./domains/zero-mail";
 export {
   sendSlackMessage,
   initSlackFileUpload,
+  materializeSlackFileUpload,
   completeSlackFileUpload,
   downloadSlackFile,
 } from "./domains/integrations-slack";
@@ -251,6 +252,7 @@ export {
 // Domain modules - Web
 export {
   downloadWebFile,
+  inferWebUploadContentType,
   uploadWebFile,
   generateWebVoice,
   generateWebImage,

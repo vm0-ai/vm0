@@ -76,6 +76,7 @@ import { activeChatRunExists } from "./zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
+import { attachCanonicalPublishedAssetsToAssistantResponse } from "./canonical-published-asset-message.service";
 import {
   decryptQueuedUserMessageRunParams,
   loadNextUnclaimedQueuedUserMessage,
@@ -971,6 +972,14 @@ async function insertRunLifecycleMarker(args: {
   const markerCreatedAt = nowDate();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
+    if (args.event === "completed") {
+      await attachCanonicalPublishedAssetsToAssistantResponse(tx, {
+        runId: args.runId,
+        threadId: args.threadId,
+        runGroupId,
+        createdAt: markerCreatedAt,
+      });
+    }
     const marker = await insertChatMessage(
       tx,
       {

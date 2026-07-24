@@ -1933,12 +1933,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     ).resolves.toStrictEqual({
       run_canonical: true,
-      run_legacy: false,
       session_canonical: true,
-      session_legacy: false,
       checkpoint_canonical: true,
-      checkpoint_legacy_artifacts: false,
-      checkpoint_legacy_volumes: false,
     });
 
     const sessionRun = await api.createDirectRun(actor, {

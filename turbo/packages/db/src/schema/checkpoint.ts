@@ -34,13 +34,14 @@ export const checkpoints = pgTable("checkpoints", {
   agentComposeSnapshot: jsonb("agent_compose_snapshot")
     .$type<CheckpointAgentComposeSnapshot>()
     .notNull(),
+  // Physical rollback columns retained until pre-detach API versions drain.
+  // Application code must not select or write them.
   artifactSnapshots:
     jsonb("artifact_snapshots").$type<CheckpointArtifactSnapshots>(),
   volumeVersionsSnapshot: jsonb(
     "volume_versions_snapshot",
   ).$type<CheckpointVolumeVersionsSnapshot>(),
-  // Canonical exact mount snapshot. Legacy artifact/volume snapshots contain
-  // only historical rollback data; new writers leave them null.
+  // Canonical exact mount snapshot.
   storageMounts: jsonb("storage_mounts").$type<CheckpointStorageMounts>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

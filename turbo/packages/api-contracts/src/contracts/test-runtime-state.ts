@@ -83,12 +83,8 @@ export const testRuntimeStateActionResponseSchema = z.object({
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),
-      run_legacy: z.boolean(),
       session_canonical: z.boolean(),
-      session_legacy: z.boolean(),
       checkpoint_canonical: z.boolean(),
-      checkpoint_legacy_artifacts: z.boolean(),
-      checkpoint_legacy_volumes: z.boolean(),
     })
     .optional(),
 });

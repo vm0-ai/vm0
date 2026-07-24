@@ -42,7 +42,14 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import {
+  CANONICAL_ASSET_ACCESS_LEVELS,
+  CANONICAL_ASSET_CLASSIFICATIONS,
+  CANONICAL_ASSET_MATERIALIZATION_STATUSES,
+  CANONICAL_ASSET_VERSION,
+  chatMessageAssetRefs,
+  runUploadedFiles,
+} from "@vm0/db/schema/run-uploaded-file";
 import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -82,6 +89,7 @@ import {
   pgInt8ToSafeIntegerDecoder,
   pgIntegerDecoder,
   pgTextDecoder,
+  zodDriverValueDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
@@ -154,8 +162,25 @@ type ChatMessageRow = {
   readonly workflowAutomationUserTimezone: string | null;
 };
 
+const canonicalAssetClassificationSchema = z.enum(
+  CANONICAL_ASSET_CLASSIFICATIONS,
+);
+const canonicalAssetAccessLevelSchema = z.enum(CANONICAL_ASSET_ACCESS_LEVELS);
+const canonicalAssetMaterializationStatusSchema = z.enum(
+  CANONICAL_ASSET_MATERIALIZATION_STATUSES,
+);
+const canonicalAssetMaterializationErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  retryable: z.boolean(),
+});
+const canonicalAssetProvenanceSchema = z.object({
+  provider: z.string(),
+});
+
 const artifactListSqlRowSchema = z.object({
   row_id: z.string(),
+  asset_version: z.number().nullable(),
   run_id: z.string(),
   external_id: z.string(),
   filename: z.string().nullable(),
@@ -164,6 +189,11 @@ const artifactListSqlRowSchema = z.object({
   url: z.string(),
   preview_image_url: z.string().nullable(),
   metadata: z.unknown(),
+  classification: canonicalAssetClassificationSchema.nullable(),
+  access_level: canonicalAssetAccessLevelSchema.nullable(),
+  materialization_status: canonicalAssetMaterializationStatusSchema.nullable(),
+  materialization_error: canonicalAssetMaterializationErrorSchema.nullable(),
+  provenance: canonicalAssetProvenanceSchema.nullable(),
   created_at: pgTimestampWithoutTimezoneToDateSchema,
   updated_at: pgTimestampWithoutTimezoneToDateSchema,
   cursor_created_at: z.string(),
@@ -179,6 +209,24 @@ type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
 type ArtifactListRow = Omit<ArtifactListSqlRow, "url"> & {
   readonly url: string | null;
 };
+
+const nullableCanonicalAssetClassificationDecoder = nullableDriverValueDecoder(
+  zodEnumDriverValueDecoder(canonicalAssetClassificationSchema),
+);
+const nullableCanonicalAssetAccessLevelDecoder = nullableDriverValueDecoder(
+  zodEnumDriverValueDecoder(canonicalAssetAccessLevelSchema),
+);
+const nullableCanonicalAssetMaterializationStatusDecoder =
+  nullableDriverValueDecoder(
+    zodEnumDriverValueDecoder(canonicalAssetMaterializationStatusSchema),
+  );
+const nullableCanonicalAssetMaterializationErrorDecoder =
+  nullableDriverValueDecoder(
+    zodDriverValueDecoder(canonicalAssetMaterializationErrorSchema),
+  );
+const nullableCanonicalAssetProvenanceDecoder = nullableDriverValueDecoder(
+  zodDriverValueDecoder(canonicalAssetProvenanceSchema),
+);
 
 const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 
@@ -499,11 +547,124 @@ export function zeroChatThreadDraft(args: {
   });
 }
 
+function privateCanonicalAssetUrl(assetId: string): string {
+  return `/api/zero/web/download-file?file_id=${encodeURIComponent(assetId)}`;
+}
+
+function canonicalAssetMaterialization(
+  status: "pending" | "ready" | "failed" | null,
+  error: {
+    readonly code: string;
+    readonly message: string;
+    readonly retryable: boolean;
+  } | null,
+): NonNullable<ResolvedAttachFile["assetRef"]>["materialization"] {
+  if (status === "ready") {
+    return { status: "ready" };
+  }
+  if (status === "pending") {
+    return { status: "pending" };
+  }
+  return {
+    status: "failed",
+    error: error ?? {
+      code: "materialization-failed",
+      message: "The attachment could not be imported",
+      retryable: false,
+    },
+  };
+}
+
+async function canonicalMessageAttachments(
+  db: ReadonlyDb,
+  userId: string,
+  messageIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly ResolvedAttachFile[]>> {
+  if (messageIds.length === 0) {
+    return new Map();
+  }
+  const rows = await db
+    .select({
+      messageId: chatMessageAssetRefs.chatMessageId,
+      position: chatMessageAssetRefs.position,
+      assetId: runUploadedFiles.id,
+      filename: runUploadedFiles.filename,
+      contentType: runUploadedFiles.contentType,
+      sizeBytes: runUploadedFiles.sizeBytes,
+      status: runUploadedFiles.materializationStatus,
+      error: runUploadedFiles.materializationError,
+      provenance: runUploadedFiles.provenance,
+      url: runUploadedFiles.url,
+      classification: runUploadedFiles.classification,
+      accessLevel: runUploadedFiles.accessLevel,
+    })
+    .from(chatMessageAssetRefs)
+    .innerJoin(
+      runUploadedFiles,
+      eq(runUploadedFiles.id, chatMessageAssetRefs.assetId),
+    )
+    .where(
+      and(
+        inArray(chatMessageAssetRefs.chatMessageId, [...messageIds]),
+        eq(runUploadedFiles.userId, userId),
+        eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
+        or(
+          and(
+            eq(runUploadedFiles.classification, "input"),
+            eq(runUploadedFiles.accessLevel, "private"),
+          ),
+          and(
+            eq(runUploadedFiles.classification, "published-output"),
+            eq(runUploadedFiles.accessLevel, "published"),
+          ),
+        ),
+      ),
+    )
+    .orderBy(
+      asc(chatMessageAssetRefs.chatMessageId),
+      asc(chatMessageAssetRefs.position),
+    );
+
+  const byMessage = new Map<string, ResolvedAttachFile[]>();
+  for (const row of rows) {
+    const filename = row.filename ?? row.assetId;
+    const isPublishedOutput =
+      row.classification === "published-output" &&
+      row.accessLevel === "published";
+    const attachments = byMessage.get(row.messageId) ?? [];
+    attachments.push({
+      id: row.assetId,
+      filename,
+      contentType: row.contentType ?? inferMimetype(filename),
+      size: row.sizeBytes ?? 0,
+      url:
+        isPublishedOutput && row.url
+          ? row.url
+          : privateCanonicalAssetUrl(row.assetId),
+      assetRef: {
+        id: row.assetId,
+        classification: isPublishedOutput ? "published-output" : "input",
+        access: isPublishedOutput ? "published" : "private",
+        materialization: canonicalAssetMaterialization(row.status, row.error),
+        ...(row.provenance
+          ? { provenance: { provider: row.provenance.provider } }
+          : {}),
+      },
+    });
+    byMessage.set(row.messageId, attachments);
+  }
+  return byMessage;
+}
+
 function chatMessageAttachFiles(
   userId: string,
   row: ChatMessageRow,
+  canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<readonly ResolvedAttachFile[] | undefined>> {
   return computed(async (get) => {
+    if (canonicalAttachments.length > 0) {
+      return canonicalAttachments;
+    }
     if (row.attachFileMetadata && row.attachFileMetadata.length > 0) {
       return resolveAttachFileMetadataUrls(row.attachFileMetadata);
     }
@@ -586,33 +747,61 @@ function workflowSnapshotFromRow(
   };
 }
 
+function nullToUndefined<T>(value: T | null): T | undefined {
+  return value === null ? undefined : value;
+}
+
+function pagedMessageContent(
+  row: ChatMessageRow,
+  role: "user" | "assistant",
+  canonicalAttachmentCount: number,
+): string | null {
+  if (
+    role !== "user" ||
+    canonicalAttachmentCount === 0 ||
+    !row.slackMessagePermalink
+  ) {
+    return row.content;
+  }
+  return (row.content ?? "")
+    .split(/\n{2,}/)
+    .filter((block) => {
+      return !block.trimStart().startsWith("[Slack file] ");
+    })
+    .join("\n\n");
+}
+
 function toPagedMessage(
   userId: string,
   row: ChatMessageRow,
+  canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<PagedChatMessage>> {
   return computed(async (get): Promise<PagedChatMessage> => {
-    const attachFiles = await get(chatMessageAttachFiles(userId, row));
+    const attachFiles = await get(
+      chatMessageAttachFiles(userId, row, canonicalAttachments),
+    );
     const workflowSnapshot = workflowSnapshotFromRow(row);
 
     const role = messageRoleSchema.parse(row.role);
+    const content = pagedMessageContent(row, role, canonicalAttachments.length);
     const message = {
       id: row.id,
       role,
-      content: row.content,
-      runId: row.runId ?? undefined,
-      runGroupId: row.runGroupId ?? undefined,
-      triggerSource: row.triggerSource ?? undefined,
-      slackMessagePermalink: row.slackMessagePermalink ?? undefined,
+      content,
+      runId: nullToUndefined(row.runId),
+      runGroupId: nullToUndefined(row.runGroupId),
+      triggerSource: nullToUndefined(row.triggerSource),
+      slackMessagePermalink: nullToUndefined(row.slackMessagePermalink),
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
-      runEventId: row.runEventId ?? undefined,
-      goalEvent: row.goalEvent ?? undefined,
-      goalSnapshot: row.goalSnapshot ?? undefined,
-      revokesMessageId: row.revokesMessageId ?? undefined,
-      interruptsRunId: row.interruptsRunId ?? undefined,
-      error: row.error ?? undefined,
+      runEventId: nullToUndefined(row.runEventId),
+      goalEvent: nullToUndefined(row.goalEvent),
+      goalSnapshot: nullToUndefined(row.goalSnapshot),
+      revokesMessageId: nullToUndefined(row.revokesMessageId),
+      interruptsRunId: nullToUndefined(row.interruptsRunId),
+      error: nullToUndefined(row.error),
       attachFiles: attachFiles ? [...attachFiles] : undefined,
-      generationTemplate: row.generationTemplate ?? undefined,
+      generationTemplate: nullToUndefined(row.generationTemplate),
       seqId: row.seqId,
       sequenceNumber: row.sequenceNumber,
       workflowSnapshot,
@@ -622,7 +811,7 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
-        structuredPrompt: row.structuredPrompt ?? undefined,
+        structuredPrompt: nullToUndefined(row.structuredPrompt),
       };
     }
     const recommendedFollowups = normalizeRecommendedFollowups(
@@ -631,7 +820,7 @@ function toPagedMessage(
     return {
       ...message,
       role: "assistant" as const,
-      thinking: row.thinking ?? undefined,
+      thinking: nullToUndefined(row.thinking),
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
       recommendedFollowups:
         recommendedFollowups.length > 0 ? recommendedFollowups : undefined,
@@ -865,6 +1054,53 @@ export function zeroChatThreadDraftIds(args: {
   });
 }
 
+function loadZeroChatThreadArtifactRows(
+  db: ReadonlyDb,
+  args: { readonly threadId: string; readonly userId: string },
+) {
+  return db
+    .select({
+      assetId: runUploadedFiles.id,
+      assetVersion: runUploadedFiles.assetVersion,
+      runId: runUploadedFiles.runId,
+      externalId: runUploadedFiles.externalId,
+      filename: runUploadedFiles.filename,
+      contentType: runUploadedFiles.contentType,
+      sizeBytes: runUploadedFiles.sizeBytes,
+      url: runUploadedFiles.url,
+      metadata: runUploadedFiles.metadata,
+      classification: runUploadedFiles.classification,
+      accessLevel: runUploadedFiles.accessLevel,
+      materializationStatus: runUploadedFiles.materializationStatus,
+      materializationError: runUploadedFiles.materializationError,
+      provenance: runUploadedFiles.provenance,
+      createdAt: runUploadedFiles.createdAt,
+    })
+    .from(runUploadedFiles)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
+    .where(
+      and(
+        eq(runUploadedFiles.userId, args.userId),
+        or(
+          eq(zeroRuns.chatThreadId, args.threadId),
+          exists(
+            db
+              .select({ id: chatMessages.id })
+              .from(chatMessages)
+              .where(
+                and(
+                  eq(chatMessages.runId, runUploadedFiles.runId),
+                  eq(chatMessages.chatThreadId, args.threadId),
+                ),
+              ),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
+}
+
 export function zeroChatThreadArtifacts(args: {
   readonly threadId: string;
   readonly userId: string;
@@ -877,53 +1113,24 @@ export function zeroChatThreadArtifacts(args: {
       }
 
       const db = get(db$);
-      const rows = await db
-        .select({
-          runId: runUploadedFiles.runId,
-          externalId: runUploadedFiles.externalId,
-          filename: runUploadedFiles.filename,
-          contentType: runUploadedFiles.contentType,
-          sizeBytes: runUploadedFiles.sizeBytes,
-          url: runUploadedFiles.url,
-          metadata: runUploadedFiles.metadata,
-          createdAt: runUploadedFiles.createdAt,
-        })
-        .from(runUploadedFiles)
-        .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-        .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
-        .where(
-          and(
-            eq(runUploadedFiles.userId, args.userId),
-            or(
-              eq(zeroRuns.chatThreadId, args.threadId),
-              exists(
-                db
-                  .select({ id: chatMessages.id })
-                  .from(chatMessages)
-                  .where(
-                    and(
-                      eq(chatMessages.runId, runUploadedFiles.runId),
-                      eq(chatMessages.chatThreadId, args.threadId),
-                    ),
-                  ),
-              ),
-            ),
-          ),
-        )
-        .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
+      const rows = await loadZeroChatThreadArtifactRows(db, args);
 
       const hostedArtifactRunIds = new Set(
         rows
           .filter((row) => {
             return (
+              row.runId !== null &&
               parseHostedArtifactKindFromMetadata(row.metadata) !== undefined
             );
           })
-          .map((row) => {
-            return row.runId;
+          .flatMap((row) => {
+            return row.runId ? [row.runId] : [];
           }),
       );
       const visibleRows = rows.filter((row) => {
+        if (!row.runId) {
+          return false;
+        }
         const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
         return (
           !hostedArtifactRunIds.has(row.runId) || artifactKind !== undefined
@@ -950,12 +1157,36 @@ export function zeroChatThreadArtifacts(args: {
           files: [],
         };
         const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
+        const canonical =
+          row.assetVersion === CANONICAL_ASSET_VERSION &&
+          row.classification === "published-output" &&
+          row.accessLevel === "published";
         existing.files.push({
-          id: row.externalId,
+          id: canonical ? row.assetId : row.externalId,
           filename,
           contentType: row.contentType ?? inferMimetype(filename),
           size: row.sizeBytes ?? 0,
           url: row.url,
+          ...(canonical
+            ? {
+                assetRef: {
+                  id: row.assetId,
+                  classification: "published-output" as const,
+                  access: "published" as const,
+                  materialization: canonicalAssetMaterialization(
+                    row.materializationStatus,
+                    row.materializationError,
+                  ),
+                  ...(row.provenance
+                    ? {
+                        provenance: {
+                          provider: row.provenance.provider,
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
           ...(artifactKind ? { artifactKind } : {}),
           createdAt: row.createdAt.toISOString(),
         });
@@ -1037,11 +1268,17 @@ function toArtifactItem(row: ArtifactListRow): ArtifactItem {
 
   const filename = row.filename ?? row.external_id;
   const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
+  const canonical =
+    row.asset_version === CANONICAL_ASSET_VERSION &&
+    row.classification === "published-output" &&
+    row.access_level === "published";
   return {
-    artifactItemId: `${row.run_id}:${row.external_id}`,
+    artifactItemId: canonical
+      ? `asset:${row.row_id}`
+      : `${row.run_id}:${row.external_id}`,
     threadId: row.thread_id,
     runId: row.run_id,
-    fileId: row.external_id,
+    fileId: canonical ? row.row_id : row.external_id,
     agentId: row.agent_id,
     agentName: row.agent_name,
     agentAvatarUrl: row.agent_avatar_url,
@@ -1054,6 +1291,26 @@ function toArtifactItem(row: ArtifactListRow): ArtifactItem {
     updatedAt: row.updated_at.toISOString(),
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
+      : {}),
+    ...(canonical
+      ? {
+          assetRef: {
+            id: row.row_id,
+            classification: "published-output" as const,
+            access: "published" as const,
+            materialization: canonicalAssetMaterialization(
+              row.materialization_status,
+              row.materialization_error,
+            ),
+            ...(row.provenance
+              ? {
+                  provenance: {
+                    provider: row.provenance.provider,
+                  },
+                }
+              : {}),
+          },
+        }
       : {}),
     ...(artifactKind ? { artifactKind } : {}),
   };
@@ -1219,6 +1476,7 @@ async function listChangedArtifacts(args: {
       )
       SELECT
         ${runUploadedFiles.id} AS row_id,
+        ${runUploadedFiles.assetVersion} AS asset_version,
         ${runUploadedFiles.runId} AS run_id,
         ${runUploadedFiles.externalId} AS external_id,
         ${runUploadedFiles.filename} AS filename,
@@ -1227,6 +1485,11 @@ async function listChangedArtifacts(args: {
         ${runUploadedFiles.url} AS url,
         ${runUploadedFiles.previewImageUrl} AS preview_image_url,
         ${runUploadedFiles.metadata} AS metadata,
+        ${runUploadedFiles.classification} AS classification,
+        ${runUploadedFiles.accessLevel} AS access_level,
+        ${runUploadedFiles.materializationStatus} AS materialization_status,
+        ${runUploadedFiles.materializationError} AS materialization_error,
+        ${runUploadedFiles.provenance} AS provenance,
         ${runUploadedFiles.createdAt} AS created_at,
         ${runUploadedFiles.updatedAt} AS updated_at,
         to_char(
@@ -1290,6 +1553,7 @@ async function listArtifactHistory(args: {
   const rows: ArtifactListRow[] = await args.db
     .select({
       row_id: runUploadedFiles.id,
+      asset_version: runUploadedFiles.assetVersion,
       run_id: agentRuns.id,
       external_id: runUploadedFiles.externalId,
       filename: runUploadedFiles.filename,
@@ -1300,6 +1564,21 @@ async function listArtifactHistory(args: {
       url: runUploadedFiles.url,
       preview_image_url: runUploadedFiles.previewImageUrl,
       metadata: runUploadedFiles.metadata,
+      classification: sql`${runUploadedFiles.classification}`
+        .mapWith(nullableCanonicalAssetClassificationDecoder)
+        .as("classification"),
+      access_level: sql`${runUploadedFiles.accessLevel}`
+        .mapWith(nullableCanonicalAssetAccessLevelDecoder)
+        .as("access_level"),
+      materialization_status: sql`${runUploadedFiles.materializationStatus}`
+        .mapWith(nullableCanonicalAssetMaterializationStatusDecoder)
+        .as("materialization_status"),
+      materialization_error: sql`${runUploadedFiles.materializationError}`
+        .mapWith(nullableCanonicalAssetMaterializationErrorDecoder)
+        .as("materialization_error"),
+      provenance: sql`${runUploadedFiles.provenance}`
+        .mapWith(nullableCanonicalAssetProvenanceDecoder)
+        .as("provenance"),
       created_at: runUploadedFiles.createdAt,
       updated_at: runUploadedFiles.updatedAt,
       thread_id: chatThreads.id,
@@ -1807,13 +2086,40 @@ export function zeroChatThreadMessagesPage(args: {
     }
 
     return {
-      messages: await Promise.all(
-        rows.map((row) => {
-          return get(toPagedMessage(args.userId, row));
+      messages: await get(
+        pagedMessagesWithAssets({
+          userId: args.userId,
+          rows,
         }),
       ),
       hasHistoryBefore,
     };
+  });
+}
+
+function pagedMessagesWithAssets(args: {
+  readonly userId: string;
+  readonly rows: readonly ChatMessageRow[];
+}): Computed<Promise<readonly PagedChatMessage[]>> {
+  return computed(async (get) => {
+    const canonicalByMessage = await canonicalMessageAttachments(
+      get(db$),
+      args.userId,
+      args.rows.map((row) => {
+        return row.id;
+      }),
+    );
+    return await Promise.all(
+      args.rows.map((row) => {
+        return get(
+          toPagedMessage(
+            args.userId,
+            row,
+            canonicalByMessage.get(row.id) ?? [],
+          ),
+        );
+      }),
+    );
   });
 }
 
@@ -1841,7 +2147,13 @@ export function zeroChatThreadMessageById(args: {
       return null;
     }
 
-    return await get(toPagedMessage(args.userId, row));
+    const [message] = await get(
+      pagedMessagesWithAssets({
+        userId: args.userId,
+        rows: [row],
+      }),
+    );
+    return message ?? null;
   });
 }
 

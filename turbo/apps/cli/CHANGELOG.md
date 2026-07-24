@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.252.0](https://github.com/vm0-ai/vm0/compare/cli-v9.251.1...cli-v9.252.0) (2026-07-24)
+
+
+### Features
+
+* add feishu file transfer commands ([#22895](https://github.com/vm0-ai/vm0/issues/22895)) ([6ebf407](https://github.com/vm0-ai/vm0/commit/6ebf407f7b2bfdc7ca1d8d2393b7fcde31494ac8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.223.0
+    * @vm0/connectors bumped to 1.189.1
+    * @vm0/core bumped to 8.461.1
+
 ## [9.251.1](https://github.com/vm0-ai/vm0/compare/cli-v9.251.0...cli-v9.251.1) (2026-07-24)
 
 
