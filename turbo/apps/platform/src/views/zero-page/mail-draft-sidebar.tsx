@@ -847,6 +847,7 @@ function MailDraftDetails({
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
+  const setAttachmentScopeRef = useSet(signals.setAttachmentScopeRef$);
   const attachmentUrlsLoadable = useLoadable(signals.attachmentUrls$);
   const attachmentUrls =
     attachmentUrlsLoadable.state === "hasData"
@@ -855,7 +856,10 @@ function MailDraftDetails({
   const attachmentUrlsLoading = attachmentUrlsLoadable.state === "loading";
   const attachments = draft.version === 3 ? draft.attachments : [];
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+    <div
+      ref={setAttachmentScopeRef}
+      className="min-h-0 flex-1 overflow-y-auto px-5 py-5"
+    >
       <MailMessageHeader close={close} draft={draft} />
       <div className="py-5">
         <MailDraftMessage

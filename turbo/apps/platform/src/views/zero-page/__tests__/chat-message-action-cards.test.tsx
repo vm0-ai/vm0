@@ -21,7 +21,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   detachedSetupPage,
@@ -261,6 +261,19 @@ describe("chat message action cards", () => {
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const clipboard = context.mocks.browser.clipboardWriteText();
+    const nativeCreateObjectUrl = URL.createObjectURL.bind(URL);
+    const nativeRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
+    const createdAttachmentUrls: string[] = [];
+    const revokedAttachmentUrls: string[] = [];
+    vi.spyOn(URL, "createObjectURL").mockImplementation((object) => {
+      const url = nativeCreateObjectUrl(object);
+      createdAttachmentUrls.push(url);
+      return url;
+    });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
+      revokedAttachmentUrls.push(url);
+      nativeRevokeObjectUrl(url);
+    });
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
     const secondMessageId = "c0000000-0000-4000-a000-000000000013";
@@ -605,6 +618,23 @@ describe("chat message action cards", () => {
       "gmail-sent-message-id",
     );
     expect(draftRequests).toBe(2);
+
+    let liveAttachmentUrls: string[] = [];
+    await waitFor(() => {
+      liveAttachmentUrls = createdAttachmentUrls.filter((url) => {
+        return !revokedAttachmentUrls.includes(url);
+      });
+      expect(liveAttachmentUrls.length).toBeGreaterThan(0);
+    });
+    await user.click(within(sidebar).getByLabelText("Close email details"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
+      expect(
+        liveAttachmentUrls.every((url) => {
+          return revokedAttachmentUrls.includes(url);
+        }),
+      ).toBeTruthy();
+    });
   });
 
   it("renders canonical connector actions on alternate production origins", async () => {
