@@ -4,11 +4,11 @@
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
- * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable any
- * switch via `POST /api/zero/feature-switches` — overrides are read by
- * `isFeatureEnabled` before the registry. For money-granting, credential,
- * or privilege-escalation endpoints, gate with a hard identity check
- * (e.g. `isStaffOrg()` from `./staff-org`) instead of this system.
+ * NOT AN AUTHORIZATION BOUNDARY. User-overridable switches can be self-enabled
+ * through `POST /api/zero/feature-switches`, and `userOverridable: false` only
+ * excludes a switch from that API. For money-granting, credential, or
+ * privilege-escalation endpoints, gate with a hard identity check (e.g.
+ * `isStaffOrg()` from `./staff-org`) instead of this system.
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
@@ -45,6 +45,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Test-only feature switch for flag system validation",
     enabled: true,
+  },
+  [FeatureSwitchKey.ExternalConnectorCatalog]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Use the accepted external catalog as the global source for official connectors",
+    enabled: false,
+    userOverridable: false,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "yuma@vm0.ai",

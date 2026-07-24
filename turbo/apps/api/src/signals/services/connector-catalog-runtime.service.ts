@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import type {
   ConnectorAuthMethodId,
   ConnectorRef,
@@ -38,19 +36,15 @@ import {
   type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-utils";
 
-import { env } from "../../lib/env";
-import { logger } from "../../lib/log";
+import { isExternalConnectorCatalogEnabled } from "../../lib/connector-catalog-source-selection";
 import { singleton } from "../../lib/singleton";
-import { waitUntil } from "../context/wait-until";
 import type { ReadonlyDb } from "../external/db";
-import { settle } from "../utils";
 import type {
   ConnectorCatalogAuthMethod,
   ConnectorCatalogSkill,
 } from "./connector-catalog-artifacts/artifacts";
 import {
   acceptedConnectorCatalogMethodIsCompatible,
-  ExternalConnectorCatalogUnavailableError,
   getAcceptedConnectorCatalogAvailableDetail,
   getAcceptedConnectorCatalogResolutionDetail,
   listAcceptedConnectorCatalogAvailableRefs,
@@ -109,8 +103,6 @@ export type ConnectorRuntimeSnapshot =
       >;
       readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
     });
-
-const log = logger("connector-catalog:runtime-shadow");
 
 function methodKey(connectorRef: string, authMethodId: string): string {
   return `${connectorRef}\0${authMethodId}`;
@@ -643,124 +635,13 @@ async function loadExternalRuntimeSnapshot(
   return snapshot;
 }
 
-interface RuntimeShadowMethod {
-  readonly connectorRef: string;
-  readonly authMethodId: string;
-  readonly grantKind: ConnectorAuthMethodRuntimeConfig["grant"]["kind"];
-  readonly accessKind: ConnectorAuthMethodRuntimeConfig["access"]["kind"];
-  readonly revokeKind: ConnectorAuthMethodRuntimeConfig["revoke"]["kind"];
-  readonly availableForNewActions: boolean;
-  readonly executable: boolean;
-}
-
-function runtimeShadowMethods(
-  snapshot: ConnectorRuntimeSnapshot,
-): readonly RuntimeShadowMethod[] {
-  return [...snapshot.connectors.values()]
-    .flatMap((connector) => {
-      return [...connector.methods.values()].map((method) => {
-        return {
-          connectorRef: method.connectorRef,
-          authMethodId: method.authMethodId,
-          grantKind: method.method.grant.kind,
-          accessKind: method.method.access.kind,
-          revokeKind: method.method.revoke.kind,
-          availableForNewActions: connector.authoredVisibleMethodIds.has(
-            method.authMethodId,
-          ),
-          executable: method.executable,
-        };
-      });
-    })
-    .sort((left, right) => {
-      return (
-        left.connectorRef.localeCompare(right.connectorRef) ||
-        left.authMethodId.localeCompare(right.authMethodId)
-      );
-    });
-}
-
-function runtimeShadowDigest(methods: readonly RuntimeShadowMethod[]): string {
-  return `sha256:${createHash("sha256")
-    .update(JSON.stringify(methods))
-    .digest("hex")}`;
-}
-
-async function serverFirewallShadowDigest(
-  snapshot: ConnectorRuntimeSnapshot,
-): Promise<string> {
-  return `sha256:${createHash("sha256")
-    .update(JSON.stringify(await snapshot.serverFirewalls.shadowProjection()))
-    .digest("hex")}`;
-}
-
-async function compareRuntimeSnapshots(
-  staticSnapshot: ConnectorRuntimeSnapshot,
-  db: ReadonlyDb,
-): Promise<void> {
-  const result = await settle(loadExternalRuntimeSnapshot(db));
-  if (!result.ok) {
-    log.warn("Connector runtime catalog shadow comparison unavailable", {
-      type: "connector_runtime_catalog_shadow_comparison",
-      outcome:
-        result.error instanceof ExternalConnectorCatalogUnavailableError
-          ? "unavailable"
-          : "error",
-    });
-    return;
-  }
-  const staticMethods = runtimeShadowMethods(staticSnapshot);
-  const externalMethods = runtimeShadowMethods(result.value);
-  const staticDigest = runtimeShadowDigest(staticMethods);
-  const externalDigest = runtimeShadowDigest(externalMethods);
-  const [staticServerFirewallDigest, externalServerFirewallDigest] =
-    await Promise.all([
-      serverFirewallShadowDigest(staticSnapshot),
-      serverFirewallShadowDigest(result.value),
-    ]);
-  log.debug("Connector runtime catalog shadow comparison completed", {
-    type: "connector_runtime_catalog_shadow_comparison",
-    outcome:
-      staticDigest === externalDigest &&
-      staticServerFirewallDigest === externalServerFirewallDigest
-        ? "match"
-        : "difference",
-    staticConnectorCount: staticSnapshot.connectors.size,
-    externalConnectorCount: result.value.connectors.size,
-    staticMethodCount: staticMethods.length,
-    externalMethodCount: externalMethods.length,
-    staticDigest,
-    externalDigest,
-    staticServerFirewallCount:
-      staticSnapshot.serverFirewalls.connectorRefs.length,
-    externalServerFirewallCount:
-      result.value.serverFirewalls.connectorRefs.length,
-    staticServerFirewallDigest,
-    externalServerFirewallDigest,
-    ...(result.value.identity.source === "external"
-      ? {
-          sourceId: result.value.identity.sourceId,
-          schemaVersion: result.value.identity.schemaVersion,
-          catalogVersion: result.value.identity.catalogVersion,
-          catalogDigest: result.value.identity.catalogDigest,
-          capabilityDigest: result.value.identity.capabilityDigest,
-        }
-      : {}),
-  });
-}
-
 export async function loadConnectorRuntimeSnapshot(
   db: ReadonlyDb,
 ): Promise<ConnectorRuntimeSnapshot> {
-  const sourceMode = env("CONNECTOR_CATALOG_SOURCE_MODE");
-  if (sourceMode === "external") {
+  if (isExternalConnectorCatalogEnabled()) {
     return await loadExternalRuntimeSnapshot(db);
   }
-  const snapshot = await staticRuntimeSnapshot();
-  if (sourceMode === "shadow") {
-    waitUntil(compareRuntimeSnapshots(snapshot, db));
-  }
-  return snapshot;
+  return await staticRuntimeSnapshot();
 }
 
 export function getConnectorRuntimeConnector(

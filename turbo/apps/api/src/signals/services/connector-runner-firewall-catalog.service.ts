@@ -13,14 +13,10 @@ import {
 } from "@vm0/connectors/firewall-metadata/runner-runtime-catalog";
 import type { Firewall } from "@vm0/connectors/firewall-types";
 
-import { env } from "../../lib/env";
-import { logger } from "../../lib/log";
+import { isExternalConnectorCatalogEnabled } from "../../lib/connector-catalog-source-selection";
 import { singleton } from "../../lib/singleton";
-import { waitUntil } from "../context/wait-until";
 import type { ReadonlyDb } from "../external/db";
-import { settle } from "../utils";
 import {
-  ExternalConnectorCatalogUnavailableError,
   loadAcceptedConnectorCatalogSnapshot,
   type AcceptedConnectorCatalogSnapshot,
   type ExternalCatalogIdentity,
@@ -47,8 +43,6 @@ interface ExternalCatalogCache {
 }
 
 type ReadonlyDbLoader = () => ReadonlyDb;
-
-const log = logger("connector-catalog:runner-firewall-shadow");
 
 function externalIdentityKey(identity: ExternalCatalogIdentity): string {
   return [
@@ -146,53 +140,14 @@ async function loadExternalCatalog(
 async function loadExternalCatalogFromDb(
   loadDb: ReadonlyDbLoader,
 ): Promise<ExternalConnectorRunnerFirewallCatalog> {
-  // Keep DB initialization inside this async boundary so shadow mode can
-  // contain synchronous loader failures without affecting the static result.
   return await loadExternalCatalog(loadDb());
-}
-
-async function compareShadowCatalog(loadDb: ReadonlyDbLoader): Promise<void> {
-  const result = await settle(loadExternalCatalogFromDb(loadDb));
-  if (!result.ok) {
-    log.warn("Connector runner firewall shadow comparison unavailable", {
-      type: "connector_runner_firewall_shadow_comparison",
-      outcome:
-        result.error instanceof ExternalConnectorCatalogUnavailableError
-          ? "unavailable"
-          : "error",
-    });
-    return;
-  }
-  const staticValue = staticCatalog();
-  const externalValue = result.value;
-  log.debug("Connector runner firewall shadow comparison completed", {
-    type: "connector_runner_firewall_shadow_comparison",
-    outcome:
-      staticValue.catalogDigest === externalValue.catalogDigest
-        ? "match"
-        : "difference",
-    staticFirewallCount: staticValue.names.length,
-    externalFirewallCount: externalValue.names.length,
-    staticCatalogDigest: staticValue.catalogDigest,
-    externalCatalogDigest: externalValue.catalogDigest,
-    sourceId: externalValue.acceptedIdentity.sourceId,
-    schemaVersion: externalValue.acceptedIdentity.schemaVersion,
-    catalogVersion: externalValue.acceptedIdentity.catalogVersion,
-    catalogDigest: externalValue.acceptedIdentity.catalogDigest,
-    capabilityDigest: externalValue.acceptedIdentity.capabilityDigest,
-  });
 }
 
 export async function loadConnectorRunnerFirewallCatalog(
   loadDb: ReadonlyDbLoader,
 ): Promise<ConnectorRunnerFirewallCatalog> {
-  const sourceMode = env("CONNECTOR_CATALOG_SOURCE_MODE");
-  if (sourceMode === "external") {
+  if (isExternalConnectorCatalogEnabled()) {
     return await loadExternalCatalogFromDb(loadDb);
   }
-  const catalog = staticCatalog();
-  if (sourceMode === "shadow") {
-    waitUntil(compareShadowCatalog(loadDb));
-  }
-  return catalog;
+  return staticCatalog();
 }
