@@ -625,7 +625,6 @@ function createRunBody(args: {
     sessionId: args.body.sessionId,
     agentComposeVersionId: args.body.agentComposeVersionId,
     conversationId: args.body.conversationId,
-    checkpointId: args.body.checkpointId,
     additionalVolumes: args.body.additionalVolumes,
     realAgentInPreview: args.body.realAgentInPreview,
     captureNetworkBodies: args.body.captureNetworkBodies,

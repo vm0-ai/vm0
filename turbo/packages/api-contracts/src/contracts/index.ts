@@ -199,15 +199,7 @@ export {
   type TestTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeResponse,
 } from "./test-teams-dispatch-probe";
-export {
-  zeroEmailInboundContract,
-  zeroEmailReplyCallbackContract,
-  zeroEmailReplyCallbackPayloadSchema,
-  zeroEmailTriggerCallbackContract,
-  zeroEmailTriggerCallbackPayloadSchema,
-  type ZeroEmailReplyCallbackPayload,
-  type ZeroEmailTriggerCallbackPayload,
-} from "./zero-email";
+export { zeroEmailInboundContract } from "./zero-email";
 export {
   sandboxReuseResultSchema,
   webhookClerkContract,
@@ -614,18 +606,10 @@ export {
 } from "./model-providers";
 export {
   sessionsByIdContract,
-  checkpointsByIdContract,
   sessionResponseSchema,
-  checkpointResponseSchema,
-  agentComposeSnapshotSchema,
-  volumeVersionsSnapshotSchema,
   type SessionsByIdContract,
-  type CheckpointsByIdContract,
   // Inferred types
   type SessionResponse,
-  type CheckpointResponse,
-  type AgentComposeSnapshot,
-  type VolumeVersionsSnapshot,
 } from "./sessions";
 export {
   chatThreadsContract,

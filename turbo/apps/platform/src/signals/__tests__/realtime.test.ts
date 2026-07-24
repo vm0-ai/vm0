@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -598,6 +599,88 @@ describe("realtime signals", () => {
     await expect(loopPromise).resolves.toBeUndefined();
     expect(runs).toBe(2);
     expect(payloads).toStrictEqual([{ messageId: "message-1" }]);
+  });
+
+  it("drops a payload after repeated handler failures and processes later payloads", async () => {
+    mockSignedInUser();
+    const topic = "test:poison-payload";
+    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    const handled: unknown[] = [];
+    let poisonAttempts = 0;
+    const loop$ = command((_ctx, payload: unknown, _signal: AbortSignal) => {
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "poison" in payload
+      ) {
+        poisonAttempts += 1;
+        throw new Error("permanent payload failure");
+      }
+      handled.push(payload);
+      return true;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic, { poison: "first" });
+    context.mocks.ably.trigger(topic, { poison: "second" });
+    context.mocks.ably.trigger(topic, { messageId: "message-1" });
+
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(poisonAttempts).toBe(8);
+    expect(handled).toStrictEqual([{ messageId: "message-1" }]);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    toastError.mockRestore();
+  });
+
+  it("stops retrying a failing notification handler until the next poke", async () => {
+    mockSignedInUser();
+    const topic = "test:poison-notification";
+    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      if (runs <= 4) {
+        throw new Error("permanent notification failure");
+      }
+      return true;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledTimes(1);
+    });
+    expect(runs).toBe(4);
+
+    context.mocks.ably.trigger(topic);
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(runs).toBe(5);
+    toastError.mockRestore();
   });
 
   it("fails and cleans up when a chat realtime subscription ends before ready", async () => {

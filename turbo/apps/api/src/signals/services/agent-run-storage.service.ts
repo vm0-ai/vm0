@@ -102,11 +102,6 @@ interface AgentComposeContent {
   readonly volumes?: Record<string, VolumeConfig | undefined>;
 }
 
-interface LegacyCheckpointStorageInputs {
-  readonly volumeVersions: Record<string, string> | undefined;
-  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-}
-
 interface PrepareAgentRunStorageManifestArgs {
   readonly db: Db;
   readonly content: AgentComposeContent;
@@ -121,12 +116,8 @@ interface PrepareAgentRunStorageManifestArgs {
     | readonly StorageManifestSource[]
     | undefined;
   readonly framework: SupportedFramework;
-  /** Canonical persistence reader. Complete snapshots replace all declarations;
-   * writeback snapshots replace only matching legacy artifact declarations. */
-  readonly persistedStorageMounts?: {
-    readonly mounts: readonly PersistedStorageMount[];
-    readonly mode: "complete" | "writeback";
-  };
+  /** Canonical session persistence replaces matching legacy writeback artifacts. */
+  readonly persistedStorageMounts?: readonly PersistedStorageMount[];
   readonly timing?: ApiDispatchTimingCollector;
   readonly stats?: StorageManifestBuildStats;
 }
@@ -1023,69 +1014,6 @@ function resolveComposeVolumes(args: {
   }
 
   return resolved;
-}
-
-export function projectLegacyCheckpointStorageInputs(args: {
-  readonly content: AgentComposeContent;
-  readonly vars: Record<string, string> | undefined;
-  readonly mounts: readonly PersistedStorageMount[];
-}): LegacyCheckpointStorageInputs {
-  const mountsByPath = new Map(
-    args.mounts.map((mount) => {
-      return [mount.mountPath, mount] as const;
-    }),
-  );
-  const composeMountPaths = new Set<string>();
-  const volumeVersions: Record<string, string> = {};
-  const entry = firstAgentEntry(args.content);
-
-  for (const declaration of entry?.agent.volumes ?? []) {
-    const parsed = parseVolumeDeclaration(declaration);
-    const config = args.content.volumes?.[parsed.name];
-    if (!config) {
-      throw new Error(
-        `Volume "${parsed.name}" is not defined in the volumes section`,
-      );
-    }
-    const storageName = expandTemplate(
-      config.name,
-      args.vars,
-      `Volume "${parsed.name}" name`,
-    );
-    const mount = mountsByPath.get(parsed.mountPath);
-    if (!mount || mount.writeback || mount.name !== storageName) {
-      continue;
-    }
-    composeMountPaths.add(mount.mountPath);
-    if (mount.version !== undefined) {
-      volumeVersions[parsed.name] = mount.version;
-    }
-  }
-
-  const additionalVolumes = args.mounts.flatMap((mount) => {
-    if (
-      mount.writeback ||
-      composeMountPaths.has(mount.mountPath) ||
-      mount.instructionsTargetFilename !== undefined ||
-      mount.orgId === SYSTEM_ORG_ID
-    ) {
-      return [];
-    }
-    return [
-      {
-        name: mount.name,
-        ...(mount.version === undefined ? {} : { version: mount.version }),
-        mountPath: mount.mountPath,
-      },
-    ];
-  });
-
-  return {
-    volumeVersions:
-      Object.keys(volumeVersions).length === 0 ? undefined : volumeVersions,
-    additionalVolumes:
-      additionalVolumes.length === 0 ? undefined : additionalVolumes,
-  };
 }
 
 function dedupArtifacts(
@@ -2171,40 +2099,6 @@ async function resolveStorageManifestInputs(
   );
 }
 
-function projectLegacyStorageNames(args: {
-  readonly manifest: LegacyStorageManifest;
-  readonly composeVolumes: readonly ResolvedVolume[];
-  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-}): LegacyStorageManifest {
-  const declarationByMountPath = new Map<
-    string,
-    { readonly name: string; readonly storageName: string }
-  >();
-  for (const volume of args.composeVolumes) {
-    declarationByMountPath.set(volume.mountPath, {
-      name: volume.name,
-      storageName: volume.vasStorageName,
-    });
-  }
-  for (const volume of args.additionalVolumes ?? []) {
-    declarationByMountPath.set(volume.mountPath, {
-      name: volume.name,
-      storageName: volume.name,
-    });
-  }
-
-  return {
-    storages: args.manifest.storages.map((storage) => {
-      const declaration = declarationByMountPath.get(storage.mountPath);
-      if (!declaration || declaration.storageName !== storage.vasStorageName) {
-        return storage;
-      }
-      return { ...storage, name: declaration.name };
-    }),
-    artifacts: args.manifest.artifacts,
-  };
-}
-
 async function ensureStorageManifestArtifacts(
   get: ComputedGetter,
   args: {
@@ -2786,49 +2680,6 @@ async function assembleStorageManifest(args: {
   );
 }
 
-async function prepareCompletePersistedStorageManifest(
-  get: ComputedGetter,
-  args: PrepareAgentRunStorageManifestArgs,
-  bucket: string,
-): Promise<PreparedAgentRunStorageManifest> {
-  const mounts = args.persistedStorageMounts?.mounts ?? [];
-  const writebackCount = mounts.filter((mount) => {
-    return Boolean(mount.writeback);
-  }).length;
-  args.stats?.recordRequestedInputs({
-    composeCount: 0,
-    additionalCount: mounts.length - writebackCount,
-    artifactCount: writebackCount,
-    dedupedArtifactCount: writebackCount,
-  });
-  const entries = await buildEntriesFromPersistedStorageMounts(get, {
-    db: args.db,
-    bucket,
-    mounts,
-    timing: args.timing,
-    stats: args.stats,
-  });
-  const prepared = await assembleStorageManifest({
-    ...entries,
-    timing: args.timing,
-    stats: args.stats,
-  });
-  // The complete canonical snapshot stays authoritative. Legacy declarations
-  // are used only to restore aliases for rollback-compatible runner output.
-  const legacyInputs = await settle(resolveStorageManifestInputs(args));
-  if (!legacyInputs.ok) {
-    return prepared;
-  }
-  return {
-    ...prepared,
-    storageManifest: projectLegacyStorageNames({
-      manifest: prepared.storageManifest,
-      composeVolumes: legacyInputs.value.composeVolumes,
-      additionalVolumes: args.additionalVolumes,
-    }),
-  };
-}
-
 interface SessionStorageOverlay {
   readonly canonicalWritebackMounts: readonly PersistedStorageMount[];
   readonly legacyArtifacts: readonly ContextArtifact[];
@@ -2945,7 +2796,7 @@ async function prepareStorageManifestWithSessionOverlay(
   const { canonicalWritebackMounts, legacyArtifacts } =
     resolveSessionStorageOverlay({
       artifacts,
-      persistedStorageMounts: args.persistedStorageMounts?.mounts,
+      persistedStorageMounts: args.persistedStorageMounts,
     });
   const legacyEntries = await buildLegacyStorageManifestEntries(
     get,
@@ -2982,9 +2833,6 @@ export function prepareAgentRunStorageManifest(
 ): Computed<Promise<PreparedAgentRunStorageManifest>> {
   return computed(async (get): Promise<PreparedAgentRunStorageManifest> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    if (args.persistedStorageMounts?.mode === "complete") {
-      return await prepareCompletePersistedStorageManifest(get, args, bucket);
-    }
     return await prepareStorageManifestWithSessionOverlay(get, args, bucket);
   });
 }

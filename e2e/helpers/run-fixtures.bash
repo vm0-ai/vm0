@@ -169,14 +169,6 @@ continue_run_fixture() {
     run_fixture "$request"
 }
 
-# Usage: resume_run_fixture <checkpoint-id> <prompt> [overrides-json]
-resume_run_fixture() {
-    local checkpoint_id="$1" prompt="$2" overrides="${3:-}" request
-    [[ -n "$overrides" ]] || overrides='{}'
-    request="$(_run_fixture_request "checkpointId" "$checkpoint_id" "$prompt" "$overrides")" || return 1
-    run_fixture "$request"
-}
-
 # Extract one field from the first metadata line emitted by run_fixture.
 # Usage: run_fixture_field <captured-output> <jq-filter>
 run_fixture_field() {

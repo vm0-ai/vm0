@@ -809,8 +809,8 @@ describe("GET /api/zero/artifacts", () => {
       expect(pages).toBeLessThanOrEqual(10);
     } while (cursor);
 
-    // Every raw artifact row surfaced exactly once across pages with no cursor
-    // drift, repeated rows, or skips.
+    // Every visible artifact row surfaced exactly once across pages with no
+    // cursor drift, repeated rows, or skips.
     expect(collected).toHaveLength(created.length);
     expect(new Set(collected)).toStrictEqual(new Set(created));
   }, 120_000);
@@ -959,7 +959,22 @@ describe("POST /api/zero/artifacts/favorite", () => {
   }, 120_000);
 
   it("rejects favorite requests for artifacts outside the caller visibility set", async () => {
-    const owner = await artifactActor("Artifacts API favorites visibility");
+    const userId = `user_${randomUUID()}`;
+    const owner = await artifactActor(
+      "Artifacts API favorites visibility",
+      bdd.user({ userId, orgId: `org_${randomUUID()}` }),
+    );
+    const otherOrg = await artifactActor(
+      "Artifacts API other-org favorite",
+      bdd.user({ userId, orgId: `org_${randomUUID()}` }),
+    );
+    const otherOrgArtifact = await createRunUploadedFile({
+      owner: otherOrg,
+      prompt: "create an artifact outside the favorite visibility scope",
+      filename: `other-org-${randomUUID().slice(0, 8)}.txt`,
+      contentType: "text/plain",
+    });
+
     const missing = await chat.requestFavoriteArtifact(
       owner.actor,
       `https://artifacts.example.com/${randomUUID()}.html`,
@@ -970,5 +985,15 @@ describe("POST /api/zero/artifacts/favorite", () => {
       throw new Error("Expected missing artifact favorite request to 404");
     }
     expect(missing.body.error.code).toBe("NOT_FOUND");
+
+    const otherOrganization = await chat.requestFavoriteArtifact(
+      owner.actor,
+      otherOrgArtifact.url,
+      [404],
+    );
+    if (otherOrganization.status !== 404) {
+      throw new Error("Expected other-organization favorite request to 404");
+    }
+    expect(otherOrganization.body.error.code).toBe("NOT_FOUND");
   }, 120_000);
 });

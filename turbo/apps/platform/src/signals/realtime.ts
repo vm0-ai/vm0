@@ -1,6 +1,7 @@
 import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
@@ -12,6 +13,17 @@ const L = logger("Realtime");
 const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
   1000, 2000, 5000, 10_000, 30_000,
 ] as const;
+const MAX_TRANSIENT_RETRIES = 3;
+
+const realtimeDegradedToastShown$ = state(false);
+
+const notifyRealtimeDegraded$ = command(({ get, set }) => {
+  if (get(realtimeDegradedToastShown$)) {
+    return;
+  }
+  set(realtimeDegradedToastShown$, true);
+  toast.error("Live updates ran into a problem. Please refresh the page.");
+});
 
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
@@ -102,6 +114,40 @@ async function waitForTransientRetry(
   signal.throwIfAborted();
 }
 
+const addPokeSubscriber$ = command(({ set }, pokeLoop: () => void) => {
+  set(subscriberPokeRegistry$, (prev) => {
+    const next = new Set(prev);
+    next.add(pokeLoop);
+    return next;
+  });
+});
+
+const removePokeSubscriber$ = command(({ set }, pokeLoop: () => void) => {
+  set(subscriberPokeRegistry$, (prev) => {
+    const next = new Set(prev);
+    next.delete(pokeLoop);
+    return next;
+  });
+});
+
+function registerVisibilityPoke(
+  label: string,
+  signal: AbortSignal,
+  pokeLoop: () => void,
+): () => void {
+  const onVisibilityChange = () => {
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    L.debug("tab visible, poking loop", label);
+    pokeLoop();
+  };
+  document.addEventListener("visibilitychange", onVisibilityChange, { signal });
+  return () => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  };
+}
+
 const runWithChannel$ = command(
   async (
     { set },
@@ -132,38 +178,19 @@ const runWithChannel$ = command(
       L.debug("got message from topic", topic, message);
       pokeLoop();
     };
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-      L.debug("tab visible, poking loop", topic);
-      pokeLoop();
-    };
-    let registeredPoke = false;
+    const unregisterVisibilityPoke = registerVisibilityPoke(
+      topic,
+      signal,
+      pokeLoop,
+    );
+    set(addPokeSubscriber$, pokeLoop);
 
     const cleanup = () => {
-      set(subscriberPokeRegistry$, (prev) => {
-        if (!registeredPoke) {
-          return prev;
-        }
-        const next = new Set(prev);
-        next.delete(pokeLoop);
-        return next;
-      });
-      registeredPoke = false;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      set(removePokeSubscriber$, pokeLoop);
+      unregisterVisibilityPoke();
       channel.unsubscribe(topic, callback);
     };
 
-    document.addEventListener("visibilitychange", onVisibilityChange, {
-      signal,
-    });
-    set(subscriberPokeRegistry$, (prev) => {
-      const next = new Set(prev);
-      next.add(pokeLoop);
-      return next;
-    });
-    registeredPoke = true;
     signal.addEventListener("abort", cleanup, { once: true });
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
@@ -195,6 +222,15 @@ const runWithChannel$ = command(
           } catch (error) {
             loopSignal.throwIfAborted();
             throwIfAbort(error);
+            if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+              L.warn(
+                `giving up on ably notification after repeated handler failures`,
+                error,
+              );
+              transientRetryCount = 0;
+              set(notifyRealtimeDegraded$);
+              return false;
+            }
             L.warn(`transient error in ably notification`, error);
             await waitForTransientRetry(loopSignal, transientRetryCount);
             loopSignal.throwIfAborted();
@@ -253,26 +289,16 @@ const runWithChannelPayload$ = command(
       pendingPayloads.push(passMessage ? message : message.data);
       pokeLoop();
     };
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-      L.debug("tab visible, poking payload loop", subscriptionLabel);
-      pokeLoop();
-    };
-    let registeredPoke = false;
+    const unregisterVisibilityPoke = registerVisibilityPoke(
+      subscriptionLabel,
+      signal,
+      pokeLoop,
+    );
+    set(addPokeSubscriber$, pokeLoop);
 
     const cleanup = () => {
-      set(subscriberPokeRegistry$, (prev) => {
-        if (!registeredPoke) {
-          return prev;
-        }
-        const next = new Set(prev);
-        next.delete(pokeLoop);
-        return next;
-      });
-      registeredPoke = false;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      set(removePokeSubscriber$, pokeLoop);
+      unregisterVisibilityPoke();
       if (topic === null) {
         channel.unsubscribe(callback);
       } else {
@@ -280,15 +306,6 @@ const runWithChannelPayload$ = command(
       }
     };
 
-    document.addEventListener("visibilitychange", onVisibilityChange, {
-      signal,
-    });
-    set(subscriberPokeRegistry$, (prev) => {
-      const next = new Set(prev);
-      next.add(pokeLoop);
-      return next;
-    });
-    registeredPoke = true;
     signal.addEventListener("abort", cleanup, { once: true });
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
@@ -315,13 +332,26 @@ const runWithChannelPayload$ = command(
           }
 
           let done = false;
-          // eslint-disable-next-line no-restricted-syntax -- payload notifications must retry transient handler failures without dropping the payload
+          // eslint-disable-next-line no-restricted-syntax -- payload notifications retry transient handler failures a few times before dropping the payload
           try {
             done = await set(loopCommand$, payload, loopSignal);
             loopSignal.throwIfAborted();
           } catch (error) {
             loopSignal.throwIfAborted();
             throwIfAbort(error);
+            if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+              L.warn(
+                `dropping ably payload after repeated handler failures`,
+                error,
+              );
+              pendingPayloads.shift();
+              transientRetryCount = 0;
+              set(notifyRealtimeDegraded$);
+              if (pendingPayloads.length > 0) {
+                pokeLoop();
+              }
+              return false;
+            }
             L.warn(`transient error in ably payload notification`, error);
             await waitForTransientRetry(loopSignal, transientRetryCount);
             loopSignal.throwIfAborted();

@@ -19,38 +19,6 @@ const sessionResponseSchema = z.object({
 });
 
 /**
- * Agent compose snapshot schema (stored in checkpoints)
- */
-const agentComposeSnapshotSchema = z.object({
-  agentComposeVersionId: z.string(),
-  vars: z.record(z.string(), z.string()).optional(),
-  secretNames: z.array(z.string()).optional(),
-});
-
-/**
- * Volume versions snapshot schema
- */
-const volumeVersionsSnapshotSchema = z.object({
-  versions: z.record(z.string(), z.string()),
-});
-
-/**
- * Checkpoint response schema
- * Represents an immutable snapshot of agent run state
- */
-const checkpointResponseSchema = z.object({
-  id: z.string(),
-  runId: z.string(),
-  conversationId: z.string(),
-  agentComposeSnapshot: agentComposeSnapshotSchema,
-  // Checkpoints persist context-artifact arrays, while the GET handler
-  // projects them to this stable name-to-version response map.
-  artifactSnapshots: z.record(z.string(), z.string()).nullable(),
-  volumeVersionsSnapshot: volumeVersionsSnapshotSchema.nullable(),
-  createdAt: z.string(),
-});
-
-/**
  * Sessions by ID route contract (/api/agent/sessions/[id])
  */
 export const sessionsByIdContract = c.router({
@@ -75,46 +43,10 @@ export const sessionsByIdContract = c.router({
   },
 });
 
-/**
- * Checkpoints by ID route contract (/api/agent/checkpoints/[id])
- */
-export const checkpointsByIdContract = c.router({
-  /**
-   * GET /api/agent/checkpoints/:id
-   * Get checkpoint by ID
-   */
-  getById: {
-    method: "GET",
-    path: "/api/agent/checkpoints/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().min(1, "Checkpoint ID is required"),
-    }),
-    responses: {
-      200: checkpointResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get checkpoint by ID",
-  },
-});
-
 export type SessionsByIdContract = typeof sessionsByIdContract;
-export type CheckpointsByIdContract = typeof checkpointsByIdContract;
 
 // Export schemas for reuse
-export {
-  sessionResponseSchema,
-  checkpointResponseSchema,
-  agentComposeSnapshotSchema,
-  volumeVersionsSnapshotSchema,
-};
+export { sessionResponseSchema };
 
 // Export inferred types for consumers
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
-export type CheckpointResponse = z.infer<typeof checkpointResponseSchema>;
-export type AgentComposeSnapshot = z.infer<typeof agentComposeSnapshotSchema>;
-export type VolumeVersionsSnapshot = z.infer<
-  typeof volumeVersionsSnapshotSchema
->;

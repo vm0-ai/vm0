@@ -570,7 +570,7 @@ async function loadArtifactFile(
 
   const [row] = await db
     .select({
-      runId: runUploadedFiles.runId,
+      runId: zeroRuns.id,
       source: runUploadedFiles.source,
       externalId: runUploadedFiles.externalId,
       filename: runUploadedFiles.filename,
