@@ -1,9 +1,20 @@
-import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 
-import { integrationsSlackUploadCompleteContract } from "@vm0/api-contracts/contracts/integrations";
+import {
+  integrationsSlackUploadCompleteContract,
+  integrationsSlackUploadInitContract,
+  integrationsSlackUploadMaterializeContract,
+} from "@vm0/api-contracts/contracts/integrations";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -11,11 +22,17 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import {
+  createConnectorBddApi,
+  mockGoogleDriveConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteSlackIntegrationFixture$,
@@ -34,7 +51,63 @@ const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const chatApi = createChatFilesBddApi(context);
+const connectorsApi = createConnectorBddApi(context);
 const runsApi = createRunsApi(context);
+const webhooks = createWebhookCallbackApi(context);
+
+function authorizationState(authorizationUrl: string): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected connector authorization URL to include state");
+  }
+  return state;
+}
+
+function assistantEvent(
+  sequenceNumber: number,
+  text: string,
+): Record<string, unknown> {
+  return {
+    eventType: "assistant",
+    sequenceNumber,
+    eventData: { message: { content: [{ type: "text", text }] } },
+  };
+}
+
+async function completeRun(args: {
+  readonly runId: string;
+  readonly sandboxToken: string;
+  readonly events: readonly Record<string, unknown>[];
+  readonly lastEventSequence?: number;
+}): Promise<void> {
+  chatCallbacks.mockChatOutputEvents(args.events);
+  const authorization = `Bearer ${args.sandboxToken}`;
+  const historyHash = createHash("sha256")
+    .update(`canonical Slack upload ${args.runId}`)
+    .digest("hex");
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId: args.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `canonical-slack-${args.runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    { authorization },
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    {
+      runId: args.runId,
+      exitCode: 0,
+      ...(args.lastEventSequence === undefined
+        ? {}
+        : { lastEventSequence: args.lastEventSequence }),
+    },
+    { authorization },
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
 
 function zeroToken(args: {
   readonly userId: string;
@@ -75,6 +148,8 @@ interface RunScopedContext {
   readonly userId: string;
   readonly runId: string;
   readonly threadId: string;
+  readonly runnerGroup: string;
+  readonly agentId: string;
 }
 
 describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
@@ -179,6 +254,8 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   async function seedRunScoped(): Promise<RunScopedContext> {
     const base = await seedWithInstallation();
     const actor = actorFor(base);
+    runsApi.acceptStorageDownloads();
+    runsApi.acceptTelemetryIngest();
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     const runnerGroup = runsApi.configureRunnerGroup();
@@ -202,7 +279,33 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       userId: base.userId,
       runId: sent.body.runId,
       threadId: sent.body.threadId,
+      runnerGroup,
+      agentId: agent.agentId,
     };
+  }
+
+  async function claimRun(runnerGroup: string, runId: string) {
+    await runsApi.heartbeatRunner(runnerGroup);
+    let response:
+      | Awaited<ReturnType<typeof runsApi.requestClaimRunnerJob>>
+      | undefined;
+    await expect
+      .poll(
+        async () => {
+          response = await runsApi.requestClaimRunnerJob(
+            true,
+            runId,
+            [200, 404],
+          );
+          return response.status;
+        },
+        { interval: 100, timeout: 10_000 },
+      )
+      .toBe(200);
+    if (!response || response.status !== 200) {
+      throw new Error("Expected the canonical upload run to be claimable");
+    }
+    return response.body;
   }
 
   it("returns 401 when no auth token is provided", async () => {
@@ -337,6 +440,487 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       contentType: "text/csv",
       size: 42,
       url: `https://slack.example/files/${fileId}`,
+    });
+  });
+
+  it("binds one canonical output asset to the final reply, Slack, and Google Drive", async () => {
+    const { orgId, userId, runId, threadId, runnerGroup, agentId } =
+      await seedRunScoped();
+    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
+      [FeatureSwitchKey.CanonicalSlackAssets]: true,
+    });
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
+    const operationId = randomUUID();
+    const token = zeroToken({ userId, orgId, runId });
+    context.mocks.slack.files.getUploadURLExternal.mockClear();
+    context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
+      ok: true,
+      upload_url: "https://files.slack.com/upload/v1/canonical",
+      file_id: "F-CANONICAL",
+    });
+    mockSlackFileInfo("F-CANONICAL");
+
+    const initClient = setupApp({ context })(
+      integrationsSlackUploadInitContract,
+    );
+    const initialized = await accept(
+      initClient.init({
+        body: {
+          filename: "report.csv",
+          length: 42,
+          canonical: {
+            operationId,
+            contentType: "text/csv",
+            checksumSha256: "a".repeat(64),
+            channel: "C123",
+            threadTs: "123.456",
+            title: "Canonical report",
+          },
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    if (!("kind" in initialized.body)) {
+      throw new Error("Expected canonical Slack upload initialization");
+    }
+    const canonicalAssetId = initialized.body.assetId;
+    expect(initialized.body.kind).toBe("canonical");
+    expect(
+      context.mocks.slack.files.getUploadURLExternal,
+    ).not.toHaveBeenCalled();
+    objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: `artifacts/${userId}/${canonicalAssetId}/report.csv`,
+      size: 42,
+      body: Buffer.alloc(42, "a"),
+    });
+
+    const materializeClient = setupApp({ context })(
+      integrationsSlackUploadMaterializeContract,
+    );
+    const materialized = await accept(
+      materializeClient.materialize({
+        body: {
+          assetId: canonicalAssetId,
+          operationId,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(materialized.body).toMatchObject({
+      assetId: canonicalAssetId,
+      delivery: {
+        status: "pending",
+        fileId: "F-CANONICAL",
+      },
+    });
+    expect(
+      context.mocks.slack.files.getUploadURLExternal,
+    ).toHaveBeenCalledTimes(1);
+
+    const completeClient = setupApp({ context })(
+      integrationsSlackUploadCompleteContract,
+    );
+    const completed = await accept(
+      completeClient.complete({
+        body: {
+          fileId: "F-CANONICAL",
+          channel: "C123",
+          threadTs: "123.456",
+          canonicalAssetId,
+          operationId,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(completed.body).toMatchObject({
+      fileId: "F-CANONICAL",
+      assetId: canonicalAssetId,
+      deliveryStatus: "delivered",
+    });
+
+    const files = await visibleUploadedFiles({
+      orgId,
+      userId,
+      runId,
+      threadId,
+    });
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({
+      id: canonicalAssetId,
+      filename: "report.csv",
+      url: initialized.body.url,
+      assetRef: {
+        id: canonicalAssetId,
+        classification: "published-output",
+        access: "published",
+        materialization: { status: "ready" },
+      },
+    });
+    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
+    expect(
+      artifacts.artifacts.find((artifact) => {
+        return artifact.assetRef?.id === canonicalAssetId;
+      }),
+    ).toMatchObject({
+      fileId: canonicalAssetId,
+      assetRef: { id: canonicalAssetId },
+    });
+
+    mockGoogleDriveConnectorOAuth();
+    const oauth = await connectorsApi.startOauth(
+      actorFor({ orgId, userId }),
+      "google-drive",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("google-drive", {
+      code: "canonical-asset-drive",
+      state: authorizationState(oauth.authorizationUrl),
+    });
+    await runsApi.enableAgentConnectors(actorFor({ orgId, userId }), agentId, [
+      "google-drive",
+    ]);
+
+    let folderCount = 0;
+    const driveUploadBodies: string[] = [];
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", () => {
+        return HttpResponse.json({ files: [] });
+      }),
+      http.post(
+        "https://www.googleapis.com/drive/v3/files",
+        async ({ request }) => {
+          const body = (await request.json()) as { name?: string };
+          folderCount += 1;
+          return HttpResponse.json({
+            id: `drive-folder-${String(folderCount)}`,
+            name: body.name ?? "folder",
+          });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/upload/drive/v3/files",
+        async ({ request }) => {
+          driveUploadBodies.push(await request.text());
+          return HttpResponse.json({
+            id: "drive-canonical-asset",
+            name: "report.csv",
+            webViewLink:
+              "https://drive.google.com/file/d/drive-canonical-asset/view",
+          });
+        },
+      ),
+    );
+    const driveSync = await chatApi.requestSyncThreadArtifact(
+      actorFor({ orgId, userId }),
+      threadId,
+      { runId, fileId: canonicalAssetId },
+      [200],
+    );
+    expect(driveSync.body).toStrictEqual({
+      id: "drive-canonical-asset",
+      name: "report.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-canonical-asset/view",
+    });
+    expect(driveUploadBodies).toHaveLength(1);
+    expect(driveUploadBodies[0]).toContain(`"vm0FileId":"${canonicalAssetId}"`);
+
+    const claim = await claimRun(runnerGroup, runId);
+    await completeRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      events: [assistantEvent(0, "The canonical report is ready.")],
+      lastEventSequence: 0,
+    });
+
+    const messages = await chatApi.listThreadMessages(
+      actorFor({ orgId, userId }),
+      threadId,
+    );
+    const finalReply = messages.messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.content === "The canonical report is ready."
+      );
+    });
+    expect(finalReply?.attachFiles).toHaveLength(1);
+    expect(finalReply?.attachFiles?.[0]).toMatchObject({
+      id: canonicalAssetId,
+      filename: "report.csv",
+      assetRef: {
+        id: canonicalAssetId,
+        classification: "published-output",
+        access: "published",
+        materialization: { status: "ready" },
+      },
+    });
+
+    const lifecycleMarker = messages.messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === runId &&
+        message.runLifecycleEvent === "completed"
+      );
+    });
+    expect(lifecycleMarker).toBeDefined();
+    expect(lifecycleMarker?.content).toBeNull();
+    expect(lifecycleMarker?.attachFiles).toBeUndefined();
+  }, 20_000);
+
+  it("creates a real assistant reply when a canonical output has no text", async () => {
+    const { orgId, userId, runId, threadId, runnerGroup } =
+      await seedRunScoped();
+    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
+      [FeatureSwitchKey.CanonicalSlackAssets]: true,
+    });
+    const operationId = randomUUID();
+    const token = zeroToken({ userId, orgId, runId });
+    const initClient = setupApp({ context })(
+      integrationsSlackUploadInitContract,
+    );
+    const initialized = await accept(
+      initClient.init({
+        body: {
+          filename: "attachment-only.pdf",
+          length: 128,
+          canonical: {
+            operationId,
+            contentType: "application/pdf",
+            checksumSha256: "b".repeat(64),
+            channel: "C123",
+          },
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    if (!("kind" in initialized.body)) {
+      throw new Error("Expected canonical Slack upload initialization");
+    }
+    const canonicalAssetId = initialized.body.assetId;
+
+    const claim = await claimRun(runnerGroup, runId);
+    await completeRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      events: [],
+    });
+
+    const messages = await chatApi.listThreadMessages(
+      actorFor({ orgId, userId }),
+      threadId,
+    );
+    const attachmentReply = messages.messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === runId &&
+        message.runLifecycleEvent === undefined &&
+        message.attachFiles?.some((file) => {
+          return file.id === canonicalAssetId;
+        })
+      );
+    });
+    expect(attachmentReply).toBeDefined();
+    expect(attachmentReply?.content).toBeNull();
+    expect(attachmentReply?.attachFiles?.[0]).toMatchObject({
+      id: canonicalAssetId,
+      filename: "attachment-only.pdf",
+      assetRef: {
+        id: canonicalAssetId,
+        classification: "published-output",
+        access: "published",
+        materialization: { status: "pending" },
+      },
+    });
+
+    const lifecycleMarker = messages.messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === runId &&
+        message.runLifecycleEvent === "completed"
+      );
+    });
+    expect(lifecycleMarker).toBeDefined();
+    expect(lifecycleMarker?.attachFiles).toBeUndefined();
+  }, 20_000);
+
+  it("keeps one Slack delivery authoritative across concurrent retries", async () => {
+    const { orgId, userId, runId } = await seedRunScoped();
+    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
+      [FeatureSwitchKey.CanonicalSlackAssets]: true,
+    });
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
+    const operationId = randomUUID();
+    const token = zeroToken({ userId, orgId, runId });
+    const allocations: string[] = [];
+    const bothAllocationsStarted = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!bothAllocationsStarted.settled()) {
+        bothAllocationsStarted.resolve(undefined);
+      }
+    });
+    context.mocks.slack.files.getUploadURLExternal.mockImplementation(
+      async () => {
+        const fileId = `F-CONCURRENT-${allocations.length + 1}`;
+        allocations.push(fileId);
+        if (allocations.length === 2 && !bothAllocationsStarted.settled()) {
+          bothAllocationsStarted.resolve(undefined);
+        }
+        await bothAllocationsStarted.promise;
+        return {
+          ok: true,
+          upload_url: `https://files.slack.com/upload/v1/${fileId}`,
+          file_id: fileId,
+        };
+      },
+    );
+
+    const initClient = setupApp({ context })(
+      integrationsSlackUploadInitContract,
+    );
+    const initialized = await accept(
+      initClient.init({
+        body: {
+          filename: "report.csv",
+          length: 42,
+          canonical: {
+            operationId,
+            contentType: "text/csv",
+            checksumSha256: "a".repeat(64),
+            channel: "C123",
+            threadTs: "123.456",
+            title: "Canonical report",
+          },
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    if (!("kind" in initialized.body)) {
+      throw new Error("Expected canonical Slack upload initialization");
+    }
+    const canonicalAssetId = initialized.body.assetId;
+    objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: `artifacts/${userId}/${canonicalAssetId}/report.csv`,
+      size: 42,
+      body: Buffer.alloc(42, "a"),
+    });
+
+    const materializeClient = setupApp({ context })(
+      integrationsSlackUploadMaterializeContract,
+    );
+    const materialize = () => {
+      return accept(
+        materializeClient.materialize({
+          body: {
+            assetId: canonicalAssetId,
+            operationId,
+          },
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        [200],
+      );
+    };
+    const materialized = await Promise.all([materialize(), materialize()]);
+    const deliveries = materialized.map((response) => {
+      return response.body.delivery;
+    });
+    const pendingDeliveries = deliveries.filter((delivery) => {
+      return delivery.status === "pending";
+    });
+    const failedDeliveries = deliveries.filter((delivery) => {
+      return delivery.status === "failed";
+    });
+    expect(pendingDeliveries).toHaveLength(1);
+    expect(failedDeliveries).toHaveLength(1);
+    expect(failedDeliveries[0]).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("already in progress"),
+      retryable: true,
+    });
+    const pendingDelivery = pendingDeliveries[0];
+    if (!pendingDelivery || pendingDelivery.status !== "pending") {
+      throw new Error("Expected one authoritative pending Slack delivery");
+    }
+    const staleFileId = allocations.find((fileId) => {
+      return fileId !== pendingDelivery.fileId;
+    });
+    if (!staleFileId) {
+      throw new Error("Expected a stale concurrent Slack file allocation");
+    }
+
+    const completeClient = setupApp({ context })(
+      integrationsSlackUploadCompleteContract,
+    );
+    const staleCompletion = await accept(
+      completeClient.complete({
+        body: {
+          fileId: staleFileId,
+          channel: "C123",
+          threadTs: "123.456",
+          canonicalAssetId,
+          operationId,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(staleCompletion.body).toMatchObject({
+      fileId: staleFileId,
+      assetId: canonicalAssetId,
+      deliveryStatus: "failed",
+      deliveryError: expect.stringContaining("already in progress"),
+    });
+
+    mockSlackFileInfo(pendingDelivery.fileId);
+    const completed = await accept(
+      completeClient.complete({
+        body: {
+          fileId: pendingDelivery.fileId,
+          channel: "C123",
+          threadTs: "123.456",
+          canonicalAssetId,
+          operationId,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(completed.body).toMatchObject({
+      fileId: pendingDelivery.fileId,
+      assetId: canonicalAssetId,
+      deliveryStatus: "delivered",
+    });
+
+    const staleFailure = await accept(
+      completeClient.complete({
+        body: {
+          fileId: staleFileId,
+          channel: "C123",
+          threadTs: "123.456",
+          canonicalAssetId,
+          operationId,
+          uploadError: "stale upload failed",
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(staleFailure.body).toMatchObject({
+      fileId: pendingDelivery.fileId,
+      assetId: canonicalAssetId,
+      deliveryStatus: "delivered",
+    });
+
+    const rematerialized = await materialize();
+    expect(rematerialized.body.delivery).toMatchObject({
+      status: "delivered",
+      fileId: pendingDelivery.fileId,
+      permalink: `https://slack.example/files/${pendingDelivery.fileId}`,
     });
   });
 

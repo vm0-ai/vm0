@@ -891,7 +891,7 @@ describe("chat lifecycle", () => {
     expect(finishedLabelRow!.lastElementChild).not.toHaveClass("hidden");
   });
 
-  it("folds completed chat work without hiding the answer before the lifecycle marker", async () => {
+  it("does not let an attached lifecycle marker hide the final answer", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completion-marker",
       chatMessages: [
@@ -918,6 +918,15 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-work-folding-completion-marker",
           runLifecycleEvent: "completed",
+          attachFiles: [
+            {
+              id: "legacy-completion-attachment",
+              filename: "launch-status.pdf",
+              contentType: "application/pdf",
+              size: 4096,
+              url: "https://example.com/launch-status.pdf",
+            },
+          ],
           createdAt: "2026-06-09T10:00:56Z",
         },
       ],
