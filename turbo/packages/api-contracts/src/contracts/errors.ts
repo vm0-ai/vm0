@@ -90,6 +90,10 @@ export const apiErrorSchema = z.object({
 
 export type ApiErrorResponse = z.infer<typeof apiErrorSchema>;
 
+export const PLAN_UPGRADE_RUN_GUIDANCE =
+  "Return the plan upgrade link to the user.";
+export const PLAN_UPGRADE_CLI_HINT = "zero upgrade pro";
+
 /**
  * Centralized guidance registry for run error codes.
  * All client surfaces (Web, CLI, Slack, Telegram) use this to render
@@ -120,9 +124,7 @@ export const RUN_ERROR_GUIDANCE: Record<
   },
   PRO_REQUIRED: {
     title: "Paid plan required",
-    guidance:
-      "Built-in video generation is unavailable on the current plan. Return the plan upgrade link to the user.",
-    cliHint: "zero upgrade pro",
+    guidance: "Built-in video generation is unavailable on the current plan.",
   },
   PROVIDER_INCOMPATIBLE: {
     title: "Provider not compatible",

@@ -4905,9 +4905,10 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
   const featureSwitches = useGet(featureSwitch$);
   if (!featureSwitches[FeatureSwitchKey.PlanUpgradeGuidance]) {
     return (
-      <a href={signals.href} target="_blank" rel="noreferrer">
-        {signals.originalUrl}
-      </a>
+      <Markdown
+        source={signals.fallbackMarkdown}
+        style={{ fontSize: "inherit", lineHeight: "inherit" }}
+      />
     );
   }
 

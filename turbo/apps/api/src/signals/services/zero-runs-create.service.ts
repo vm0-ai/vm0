@@ -1,13 +1,18 @@
 import { randomBytes } from "node:crypto";
 
+import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   agentComposeVersions,
@@ -323,6 +328,7 @@ function buildIntegrationToolsPrompt(
 
 function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
+  readonly planUpgradeGuidanceEnabled: boolean;
   readonly zeroFinanceEnabled: boolean;
   readonly zeroMailEnabled: boolean;
 }): string {
@@ -352,7 +358,11 @@ function buildAgentToolsPrompt(args: {
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
     "- Credit diagnostics: use `zero doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins. If it says credit purchases are unavailable, do not run `zero credit`.",
     "- Buy credits: use `zero credit <credits>` only when diagnostics say the current plan can buy credits. It creates a Stripe checkout link for org admins and supports `--auto-recharge`, `--auto-recharge-threshold`, and `--auto-recharge-amount`; non-admins should run `zero doctor credit`.",
-    "- Upgrade plan: use `zero upgrade pro` when the current plan blocks a requested capability or cannot buy credits. Return the generated plan link to the user so chat can render the upgrade card.",
+    ...(args.planUpgradeGuidanceEnabled
+      ? [
+          `- Upgrade plan: use \`${PLAN_UPGRADE_CLI_HINT}\` when the current plan blocks a requested capability or cannot buy credits. Return the generated plan link to the user so chat can render the upgrade card.`,
+        ]
+      : []),
     "- If a connector appears unconnected, unauthenticated, missing auth/token environment names, blocked by firewall, or denied by permission policy, diagnose it with `zero connector check --help` before trying ad hoc fixes.",
     "- An attached generation template takes precedence. Follow its exact commands and resources directly; do not run `zero generate -h` or list providers unless the template explicitly names type-specific help as a fallback.",
     '- Without an attached generation template, when the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website), run `zero generate -h`. Use `zero generate <type>` (no --prompt) to list every provider available for that type; then run `zero generate <type> --provider built-in --prompt "..."` to execute via vm0, or `zero generate <type> --provider <connector>` to get connector skill-invocation guidance. Do not claim support for other generated content.',
@@ -414,6 +424,7 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
 
 function buildAppendSystemPrompt(args: {
   readonly agent: ZeroAgentRunRecord;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
   readonly zeroFinanceEnabled: boolean;
@@ -424,6 +435,10 @@ function buildAppendSystemPrompt(args: {
     identity,
     buildAgentToolsPrompt({
       triggerSource: args.triggerSource,
+      planUpgradeGuidanceEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PlanUpgradeGuidance,
+        args.featureSwitchContext,
+      ),
       zeroFinanceEnabled: args.zeroFinanceEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
     }),
@@ -602,6 +617,7 @@ function zeroRunOrigin(args: {
 function createRunBody(args: {
   readonly body: ZeroRunCreateBody;
   readonly agent: ZeroAgentRunRecord;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly zeroFinanceEnabled: boolean;
   readonly zeroMailEnabled: boolean;
@@ -615,6 +631,7 @@ function createRunBody(args: {
     (args.triggerAgentId ? ("agent" as const) : ("web" as const));
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
     agent: args.agent,
+    featureSwitchContext: args.featureSwitchContext,
     userInfo: args.userInfo,
     triggerSource,
     zeroFinanceEnabled: args.zeroFinanceEnabled,
@@ -648,6 +665,7 @@ function createIntegrationRunBody(args: {
   readonly prompt: string;
   readonly sessionId: string | undefined;
   readonly agent: ZeroAgentRunRecord;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly zeroFinanceEnabled: boolean;
   readonly zeroMailEnabled: boolean;
@@ -664,6 +682,7 @@ function createIntegrationRunBody(args: {
     appendSystemPrompt: mergeAppendSystemPrompt(
       buildAppendSystemPrompt({
         agent: args.agent,
+        featureSwitchContext: args.featureSwitchContext,
         userInfo: args.userInfo,
         triggerSource: args.triggerSource,
         zeroFinanceEnabled: args.zeroFinanceEnabled,
@@ -815,6 +834,7 @@ async function loadZeroRunPostAuthorizationContext(
 function buildZeroCreateAgentRunArgs(args: {
   readonly command: AnyCreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly zeroFinanceEnabled: boolean;
   readonly zeroMailEnabled: boolean;
@@ -834,6 +854,7 @@ function buildZeroCreateAgentRunArgs(args: {
     body: createRunBody({
       body: command.body,
       agent: args.agent,
+      featureSwitchContext: args.featureSwitchContext,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       zeroFinanceEnabled: args.zeroFinanceEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
@@ -892,6 +913,7 @@ function buildZeroCreateAgentRunArgs(args: {
 function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly command: CreateZeroIntegrationRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly zeroFinanceEnabled: boolean;
   readonly zeroMailEnabled: boolean;
@@ -909,6 +931,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
       prompt: command.prompt,
       sessionId: command.sessionId,
       agent: args.agent,
+      featureSwitchContext: args.featureSwitchContext,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       zeroFinanceEnabled: args.zeroFinanceEnabled,
       zeroMailEnabled: args.zeroMailEnabled,

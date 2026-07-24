@@ -1961,6 +1961,7 @@ describe("chat message action cards", () => {
   it("keeps plan links ordinary when upgrade guidance is disabled", async () => {
     const absoluteUrl =
       "https://app.vm0.ai/?settings=billing&billingView=plans";
+    const relativeUrl = "/?settings=billing&billingView=plans";
 
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-plan-upgrade-disabled`,
@@ -1976,7 +1977,9 @@ describe("chat message action cards", () => {
         {
           id: "msg-assistant-plan-upgrade-link",
           role: "assistant",
-          content: absoluteUrl,
+          content: [absoluteUrl, `[Compare plans](${relativeUrl})`].join(
+            "\n\n",
+          ),
           runId: "run-plan-upgrade-disabled",
           createdAt: "2026-06-09T10:01:00Z",
         },
@@ -1992,11 +1995,12 @@ describe("chat message action cards", () => {
     });
 
     await waitFor(() => {
-      expect(linkByText(absoluteUrl, document)).toHaveAttribute(
-        "href",
-        "/?settings=billing&billingView=plans",
-      );
+      expect(linkByText(absoluteUrl, document)).toBeInTheDocument();
     });
+    expect(linkByText("Compare plans", document)).toHaveAttribute(
+      "href",
+      relativeUrl,
+    );
     expect(screen.queryByTestId("plan-upgrade-card")).not.toBeInTheDocument();
   });
 

@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { program, registerZeroCommands } from "../zero";
 
 describe("zero CLI program", () => {
-  registerZeroCommands(program);
+  registerZeroCommands(program, undefined, {
+    [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+  });
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
   });

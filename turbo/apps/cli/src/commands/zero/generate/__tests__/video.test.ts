@@ -345,7 +345,7 @@ describe("zero generate video command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Paid plan required");
-    expect(stderr).toContain("zero upgrade pro");
+    expect(stderr).not.toContain("zero upgrade pro");
     expect(generationRequests).toBe(0);
   });
 });

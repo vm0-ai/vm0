@@ -790,11 +790,11 @@ function createActionBlockFromLine(line: string): Extract<
     };
   }
 
-  const planUpgrade = parsePlanUpgradeUrl(url);
+  const planUpgrade = parsePlanUpgradeUrl(url, line);
   if (planUpgrade) {
     return {
       type: "plan-upgrade",
-      resourceKey: planUpgrade.href,
+      resourceKey: planUpgrade.fallbackMarkdown,
       descriptor: planUpgrade,
     };
   }
