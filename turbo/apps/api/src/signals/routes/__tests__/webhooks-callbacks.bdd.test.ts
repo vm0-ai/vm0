@@ -1043,27 +1043,6 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
     );
     expect(invalidReplyResponse.body).toStrictEqual({ received: true });
   });
-
-  it("skips email automation callbacks while outbound email is not configured", async () => {
-    api.disableResendApiKey();
-
-    const response = await api.requestEmailTriggerCallback(
-      {
-        runId: randomUUID(),
-        status: "completed",
-        payload: {
-          senderEmail: "sender@example.test",
-          agentId: randomUUID(),
-          userId: `user_${randomUUID()}`,
-          inboundEmailId: `email_${randomUUID()}`,
-          replyToken: `reply_${randomUUID()}`,
-        },
-      },
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ success: true, skipped: true });
-  });
 });
 
 describe("WHCB-04: internal callback and event-consumer boundaries", () => {

@@ -1,15 +1,10 @@
 import crypto from "node:crypto";
 
 import type { createClerkClient } from "@clerk/backend";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
-import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
-import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { users } from "@vm0/db/schema/user";
 import { command } from "ccstate";
 import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
@@ -22,7 +17,6 @@ import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { bestEffort } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -33,7 +27,6 @@ interface EmailOutboxDrainContext {
 }
 
 const log = logger("zero:email");
-const ORG_CACHE_TTL_MS = 60_000;
 const USER_CACHE_TTL_MS = 900_000;
 const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 1000;
@@ -58,22 +51,6 @@ export const CREDIT_LOW_BALANCE_EMAIL_SUBJECT =
   "Your credit balance is running low";
 
 const emailTemplateSchema = z.discriminatedUnion("template", [
-  z.object({
-    template: z.literal("agent-reply"),
-    props: z.object({
-      agentName: z.string(),
-      output: z.string(),
-      logsUrl: z.string().optional(),
-      unsubscribeUrl: z.string().optional(),
-    }),
-  }),
-  z.object({
-    template: z.literal("inbound-error"),
-    props: z.object({
-      errorMessage: z.string(),
-      unsubscribeUrl: z.string().optional(),
-    }),
-  }),
   z.object({
     template: z.literal("data-export-ready"),
     props: z.object({
@@ -132,32 +109,7 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
   }),
 ]);
 
-const postSendActionSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("save_thread_session"),
-    userId: z.string(),
-    agentId: z.string(),
-    agentSessionId: z.string(),
-    replyToToken: z.string(),
-    orgId: z.string().optional(),
-  }),
-  z.object({
-    action: z.literal("update_thread_session"),
-    sessionId: z.string(),
-    agentSessionId: z.string().optional(),
-  }),
-]);
-
 export type EmailTemplate = z.output<typeof emailTemplateSchema>;
-type PostSendAction = z.output<typeof postSendActionSchema>;
-type SaveThreadSessionAction = Extract<
-  PostSendAction,
-  { readonly action: "save_thread_session" }
->;
-type UpdateThreadSessionAction = Extract<
-  PostSendAction,
-  { readonly action: "update_thread_session" }
->;
 
 const emailAddressesSchema = z.union([z.string(), z.array(z.string())]);
 const outboxRowSchema = z.object({
@@ -169,7 +121,6 @@ const outboxRowSchema = z.object({
   reply_to: z.string().nullable(),
   headers: z.record(z.string(), z.string()).nullable(),
   template: emailTemplateSchema,
-  post_send_action: postSendActionSchema.nullable(),
   attempts: z.int(),
 });
 type OutboxRow = z.output<typeof outboxRowSchema>;
@@ -184,27 +135,8 @@ function outboxRowSelection() {
     reply_to: emailOutbox.replyTo,
     headers: emailOutbox.headers,
     template: emailOutbox.template,
-    post_send_action: emailOutbox.postSendAction,
     attempts: emailOutbox.attempts,
   };
-}
-
-interface EnqueueEmailOptions {
-  readonly from: string;
-  readonly to: string | readonly string[];
-  readonly subject: string;
-  readonly template: EmailTemplate;
-  readonly cc?: string | readonly string[];
-  readonly replyTo?: string;
-  readonly headers?: Record<string, string>;
-  readonly threadAction?: PostSendAction;
-}
-
-interface OrgIdentity {
-  readonly orgId: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly createdBy?: string;
 }
 
 function getResendClient(): Resend {
@@ -213,10 +145,6 @@ function getResendClient(): Resend {
     throw new Error("RESEND_API_KEY is not configured");
   }
   return new Resend(apiKey);
-}
-
-export function isResendConfigured(): boolean {
-  return Boolean(env("RESEND_API_KEY"));
 }
 
 function apiUrl(): string {
@@ -233,10 +161,6 @@ function getFromDomain(): string {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
   }
   return domain;
-}
-
-export function buildReplyToAddress(token: string): string {
-  return `reply+${token}@${getFromDomain()}`;
 }
 
 export function buildFromAddress(localPart: string): string {
@@ -356,29 +280,6 @@ function renderMorningBriefTemplate(
 
 function renderTemplate(template: EmailTemplate): string {
   switch (template.template) {
-    case "agent-reply": {
-      const logs = template.props.logsUrl
-        ? `<p><a href="${escapeHtml(template.props.logsUrl)}">View logs</a></p>`
-        : "";
-      const unsubscribe = template.props.unsubscribeUrl
-        ? `<p><a href="${escapeHtml(
-            template.props.unsubscribeUrl,
-          )}">Unsubscribe</a></p>`
-        : "";
-      return `<main><h1>${escapeHtml(
-        template.props.agentName,
-      )}</h1>${htmlParagraphs(template.props.output)}${logs}${unsubscribe}</main>`;
-    }
-    case "inbound-error": {
-      const unsubscribe = template.props.unsubscribeUrl
-        ? `<p><a href="${escapeHtml(
-            template.props.unsubscribeUrl,
-          )}">Unsubscribe</a></p>`
-        : "";
-      return `<main><h1>Email delivery failed</h1>${htmlParagraphs(
-        template.props.errorMessage,
-      )}${unsubscribe}</main>`;
-    }
     case "data-export-ready": {
       const unsubscribe = template.props.unsubscribeUrl
         ? `<p><a href="${escapeHtml(
@@ -468,16 +369,6 @@ async function sendEmailDirect(options: {
   return { ok: true, resendId: data.id };
 }
 
-async function getMessageId(resendId: string): Promise<string | null> {
-  const { data, error } = await getResendClient().emails.get(resendId);
-  if (error || !data) {
-    return null;
-  }
-  return "message_id" in data && typeof data.message_id === "string"
-    ? data.message_id
-    : null;
-}
-
 async function findSuppressedAddress(
   tx: Transaction,
   addresses: readonly string[],
@@ -510,53 +401,6 @@ async function findSuppressedAddress(
       return address.toLowerCase() === matchedLower;
     }) ?? matchedLower
   );
-}
-
-type EmailThreadSessionDb = Pick<Db, "insert" | "update">;
-
-async function saveEmailThreadSession(
-  db: EmailThreadSessionDb,
-  action: SaveThreadSessionAction,
-  lastEmailMessageId: string | null,
-): Promise<void> {
-  await db.insert(emailThreadSessions).values({
-    userId: action.userId,
-    agentId: action.agentId,
-    agentSessionId: action.agentSessionId,
-    lastEmailMessageId,
-    replyToToken: action.replyToToken,
-    orgId: action.orgId ?? null,
-  });
-}
-
-async function updateEmailThreadSession(
-  db: EmailThreadSessionDb,
-  action: UpdateThreadSessionAction,
-  lastEmailMessageId: string | null,
-): Promise<void> {
-  await db
-    .update(emailThreadSessions)
-    .set({
-      ...(action.agentSessionId
-        ? { agentSessionId: action.agentSessionId }
-        : {}),
-      lastEmailMessageId,
-      updatedAt: nowDate(),
-    })
-    .where(eq(emailThreadSessions.id, action.sessionId));
-}
-
-async function executePostSendAction(
-  db: EmailThreadSessionDb,
-  action: PostSendAction,
-  resendId: string,
-): Promise<void> {
-  const messageId = await getMessageId(resendId);
-  if (action.action === "save_thread_session") {
-    await saveEmailThreadSession(db, action, messageId);
-    return;
-  }
-  await updateEmailThreadSession(db, action, messageId);
 }
 
 async function processOutboxItem(
@@ -621,24 +465,7 @@ async function processOutboxItem(
     .update(emailOutbox)
     .set({ status: "sent", resendId: result.resendId })
     .where(eq(emailOutbox.id, itemId));
-
-  const postSendAction = row.post_send_action;
-  if (postSendAction) {
-    await executePostSendAction(tx, postSendAction, result.resendId);
-  }
   return true;
-}
-
-async function drainById(db: Db, itemId: string): Promise<boolean> {
-  return await db.transaction(async (tx) => {
-    const [selectedRow] = await tx
-      .select(outboxRowSelection())
-      .from(emailOutbox)
-      .where(and(eq(emailOutbox.id, itemId), eq(emailOutbox.status, "pending")))
-      .for("update", { skipLocked: true });
-    const row = selectedRow ? outboxRowSchema.parse(selectedRow) : undefined;
-    return row ? await processOutboxItem(tx, row) : false;
-  });
 }
 
 async function drainNextOutboxItem(
@@ -725,39 +552,6 @@ export const cleanupExpiredEmailOutbox$ = command(
   },
 );
 
-export const enqueueEmail$ = command(
-  async (
-    { set },
-    options: EnqueueEmailOptions,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const [row] = await db
-      .insert(emailOutbox)
-      .values({
-        fromAddress: options.from,
-        toAddresses: options.to,
-        ccAddresses: options.cc ?? null,
-        subject: options.subject,
-        replyTo: options.replyTo ?? null,
-        headers: options.headers ?? null,
-        template: options.template,
-        postSendAction: options.threadAction ?? null,
-        status: "pending",
-        attempts: 0,
-      })
-      .returning({ id: emailOutbox.id });
-    signal.throwIfAborted();
-
-    if (!row) {
-      throw new Error("Failed to insert email outbox row");
-    }
-
-    await bestEffort(drainById(db, row.id), signal);
-    signal.throwIfAborted();
-  },
-);
-
 export function getSvixHeaders(headers: Headers): {
   readonly "svix-id": string;
   readonly "svix-timestamp": string;
@@ -788,57 +582,6 @@ export function verifyResendWebhook(
     throw new Error("RESEND_WEBHOOK_SECRET is not configured");
   }
   return new Webhook(secret).verify(payload, headers);
-}
-
-export async function getOrgNameAndSlug(
-  db: Db,
-  clerk: ClerkClient,
-  orgId: string,
-): Promise<OrgIdentity> {
-  const [cached] = await db
-    .select()
-    .from(orgCache)
-    .where(eq(orgCache.orgId, orgId))
-    .limit(1);
-  if (cached && now() - cached.cachedAt.getTime() < ORG_CACHE_TTL_MS) {
-    return {
-      orgId,
-      slug: cached.slug,
-      name: cached.name,
-      createdBy: cached.createdBy ?? undefined,
-    };
-  }
-
-  const org = await clerk.organizations.getOrganization({
-    organizationId: orgId,
-  });
-  if (!org.slug) {
-    throw new Error(`Clerk organization ${orgId} has no slug`);
-  }
-  await db
-    .insert(orgCache)
-    .values({
-      orgId,
-      slug: org.slug,
-      name: org.name,
-      createdBy: org.createdBy ?? null,
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: orgCache.orgId,
-      set: {
-        slug: org.slug,
-        name: org.name,
-        createdBy: org.createdBy ?? null,
-        cachedAt: nowDate(),
-      },
-    });
-  return {
-    orgId,
-    slug: org.slug,
-    name: org.name,
-    createdBy: org.createdBy ?? undefined,
-  };
 }
 
 export async function getUserEmail(
@@ -950,34 +693,6 @@ export async function resolveDefaultAgent(
   return row?.defaultAgentId ?? null;
 }
 
-export async function resolveEmailAuditLogsUrl(
-  db: Db,
-  opts: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly runId: string;
-  },
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ switches: userFeatureSwitches.switches })
-    .from(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, opts.orgId),
-        eq(userFeatureSwitches.userId, opts.userId),
-      ),
-    )
-    .limit(1);
-  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
-    orgId: opts.orgId,
-    userId: opts.userId,
-    overrides: row?.switches ?? {},
-  });
-  return enabled
-    ? `${appUrl()}/activities/${encodeURIComponent(opts.runId)}`
-    : undefined;
-}
-
 export async function unsubscribeUser(db: Db, userId: string): Promise<void> {
   await db
     .insert(users)
@@ -986,27 +701,4 @@ export async function unsubscribeUser(db: Db, userId: string): Promise<void> {
       target: users.id,
       set: { emailUnsubscribed: true, updatedAt: nowDate() },
     });
-}
-
-export function completedOutputText(
-  status: "completed" | "failed" | "progress",
-  rawOutput: string | null | undefined,
-  error: string | undefined,
-): string {
-  if (status !== "completed") {
-    return error ?? "The agent run failed.";
-  }
-  if (!rawOutput) {
-    return "Task completed successfully.";
-  }
-  return rawOutput.length > 2000 ? `${rawOutput.slice(0, 2000)}...` : rawOutput;
-}
-
-export function extractAgentSessionId(result: unknown): string | undefined {
-  return result &&
-    typeof result === "object" &&
-    "agentSessionId" in result &&
-    typeof result.agentSessionId === "string"
-    ? result.agentSessionId
-    : undefined;
 }
