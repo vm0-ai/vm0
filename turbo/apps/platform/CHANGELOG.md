@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.631.1](https://github.com/vm0-ai/vm0/compare/app-v0.631.0...app-v0.631.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **platform:** restrict instatus widget to production app domains ([#22934](https://github.com/vm0-ai/vm0/issues/22934)) ([6b3dd72](https://github.com/vm0-ai/vm0/commit/6b3dd72b081b1d1d84d662f28ed43912294bc378))
+
 ## [0.631.0](https://github.com/vm0-ai/vm0/compare/app-v0.630.0...app-v0.631.0) (2026-07-24)
 
 
