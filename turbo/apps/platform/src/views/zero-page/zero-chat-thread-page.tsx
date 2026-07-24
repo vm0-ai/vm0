@@ -3556,8 +3556,11 @@ function ChatHistoryBackfillProgress({
 }: {
   thread: ChatThreadSignals;
 }) {
+  const featureSwitches = useGet(featureSwitch$);
+  const enabled =
+    featureSwitches[FeatureSwitchKey.ChatHistoryBackfillProgress] ?? false;
   const progress = useLastResolved(thread.historyBackfillProgress$);
-  if (progress === null || progress === undefined) {
+  if (!enabled || progress === null || progress === undefined) {
     return null;
   }
   const percent = Math.min(100, Math.max(0, progress * 100));

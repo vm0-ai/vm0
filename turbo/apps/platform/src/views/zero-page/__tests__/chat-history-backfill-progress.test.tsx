@@ -1,5 +1,6 @@
 import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatThreadMessagesContract,
   type PagedChatMessage,
@@ -41,40 +42,54 @@ function messagesInRange(
   return messages;
 }
 
+function mockPagedHistory(): {
+  finalHistoryPage: ReturnType<typeof context.mocks.deferred<void>>;
+  beforeSeqIds: number[];
+} {
+  mockChatLifecycle(context, { threadId: THREAD_ID });
+  const finalHistoryPage = context.mocks.deferred<void>();
+  const beforeSeqIds: number[] = [];
+  context.mocks.api(
+    chatThreadMessagesContract.list,
+    async ({ query, respond }) => {
+      if (query.sinceSeqId !== undefined) {
+        return respond(200, { messages: [] });
+      }
+      if (query.beforeSeqId === undefined) {
+        return respond(200, {
+          messages: messagesInRange(
+            TOTAL_MESSAGES - PAGE_SIZE + 1,
+            TOTAL_MESSAGES,
+          ),
+          hasHistoryBefore: true,
+        });
+      }
+      beforeSeqIds.push(query.beforeSeqId);
+      if (query.beforeSeqId === GATED_BEFORE_SEQ_ID) {
+        await finalHistoryPage.promise;
+      }
+      const toSeqId = query.beforeSeqId - 1;
+      const fromSeqId = Math.max(1, toSeqId - PAGE_SIZE + 1);
+      return respond(200, {
+        messages: messagesInRange(fromSeqId, toSeqId),
+        hasHistoryBefore: fromSeqId > 1,
+      });
+    },
+  );
+  return { finalHistoryPage, beforeSeqIds };
+}
+
 describe("chat history backfill progress", () => {
   it("shows incremental progress during backfill and hides it once history completes", async () => {
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-    const finalHistoryPage = context.mocks.deferred<void>();
-    const beforeSeqIds: number[] = [];
-    context.mocks.api(
-      chatThreadMessagesContract.list,
-      async ({ query, respond }) => {
-        if (query.sinceSeqId !== undefined) {
-          return respond(200, { messages: [] });
-        }
-        if (query.beforeSeqId === undefined) {
-          return respond(200, {
-            messages: messagesInRange(
-              TOTAL_MESSAGES - PAGE_SIZE + 1,
-              TOTAL_MESSAGES,
-            ),
-            hasHistoryBefore: true,
-          });
-        }
-        beforeSeqIds.push(query.beforeSeqId);
-        if (query.beforeSeqId === GATED_BEFORE_SEQ_ID) {
-          await finalHistoryPage.promise;
-        }
-        const toSeqId = query.beforeSeqId - 1;
-        const fromSeqId = Math.max(1, toSeqId - PAGE_SIZE + 1);
-        return respond(200, {
-          messages: messagesInRange(fromSeqId, toSeqId),
-          hasHistoryBefore: fromSeqId > 1,
-        });
-      },
-    );
+    const { finalHistoryPage, beforeSeqIds } = mockPagedHistory();
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatHistoryBackfillProgress]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(beforeSeqIds).toContain(GATED_BEFORE_SEQ_ID);
@@ -93,5 +108,19 @@ describe("chat history backfill progress", () => {
         document.querySelector("[data-history-backfill-progress]"),
       ).toBeNull();
     });
+  });
+
+  it("stays hidden during backfill when the feature switch is off", async () => {
+    const { finalHistoryPage, beforeSeqIds } = mockPagedHistory();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(beforeSeqIds).toContain(GATED_BEFORE_SEQ_ID);
+    });
+    expect(
+      document.querySelector("[data-history-backfill-progress]"),
+    ).toBeNull();
+    finalHistoryPage.resolve();
   });
 });

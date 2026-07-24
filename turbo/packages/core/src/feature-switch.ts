@@ -389,6 +389,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Progress bar under the chat thread header showing history backfill progress while older messages load.",
+    // Not rolled out to anyone yet; enable per-user via the Lab page.
+    enabled: false,
+  },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
     description:
