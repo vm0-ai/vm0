@@ -27,9 +27,6 @@ import {
 } from "./usage-period";
 
 const MODEL_USAGE_KIND = "model";
-const PEOPLE_SEARCH_USAGE_KIND = "people-search";
-const PEOPLE_SEARCH_USAGE_PROVIDER = "perplexity";
-const PEOPLE_SEARCH_DISPLAY_PROVIDER = "perplexity-people-search";
 const MODEL_TOKEN_CATEGORIES = [
   "tokens.input",
   "tokens.output",
@@ -143,19 +140,8 @@ function usageKindExpr() {
   );
   return sql`
     CASE
-      WHEN ue.kind = ${PEOPLE_SEARCH_USAGE_KIND} THEN 'connector'
       WHEN ue.kind IN (${usageKindList}) THEN ue.kind
       ELSE 'other'
-    END`;
-}
-
-function usageProviderExpr() {
-  return sql`
-    CASE
-      WHEN ue.kind = ${PEOPLE_SEARCH_USAGE_KIND}
-        AND ue.provider = ${PEOPLE_SEARCH_USAGE_PROVIDER}
-        THEN ${PEOPLE_SEARCH_DISPLAY_PROVIDER}
-      ELSE COALESCE(NULLIF(ue.provider, ''), 'unknown')
     END`;
 }
 
@@ -364,7 +350,6 @@ async function queryUsageRecordBreakdown(
   );
   const sourceSql = sourceExpr();
   const kindSql = usageKindExpr();
-  const providerSql = usageProviderExpr();
 
   const rows = await executeRawRows(
     db,
@@ -376,7 +361,7 @@ async function queryUsageRecordBreakdown(
           ue.run_id,
           ue.user_id,
           ${kindSql} AS kind,
-          ${providerSql} AS provider,
+          COALESCE(NULLIF(ue.provider, ''), 'unknown') AS provider,
           ${usageCreditsExpr()}::bigint AS credits
         FROM usage_event ue
         LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id

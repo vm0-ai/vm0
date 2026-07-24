@@ -636,7 +636,7 @@ describe("zero people-search route", () => {
     expect(afterCredits).toBe(beforeCredits);
   });
 
-  it("attributes usage to a run with a backward-compatible display identity", async () => {
+  it("attributes usage to a run", async () => {
     const actor = staffActor();
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -695,11 +695,11 @@ describe("zero people-search route", () => {
     });
 
     expect(usageRow?.breakdown).toContainEqual({
-      kind: "connector",
+      kind: "other",
       credits: 20,
       providers: [
         {
-          provider: "perplexity-people-search",
+          provider: "perplexity",
           credits: 20,
         },
       ],
