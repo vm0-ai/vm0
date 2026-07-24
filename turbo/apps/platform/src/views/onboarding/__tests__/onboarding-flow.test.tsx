@@ -600,11 +600,16 @@ describe("onboarding flow", () => {
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
     let runPrompt: string | undefined;
     let generationType: string | undefined;
+    let checkoutCompletionAttempts = 0;
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
         generationType = body.generationTemplate?.type;
       },
+    });
+    context.mocks.api(zeroBillingCheckoutContract.complete, ({ respond }) => {
+      checkoutCompletionAttempts += 1;
+      return respond(200, { completed: checkoutCompletionAttempts >= 2 });
     });
     mockOnboardingNeeded();
     const params = new URLSearchParams({
@@ -623,6 +628,7 @@ describe("onboarding flow", () => {
     await waitFor(() => {
       expect(runPrompt).toBe("Create a launch video");
       expect(generationType).toBe("video");
+      expect(checkoutCompletionAttempts).toBe(2);
       expect(pathname()).toMatch(/^\/chats\//u);
     });
   });

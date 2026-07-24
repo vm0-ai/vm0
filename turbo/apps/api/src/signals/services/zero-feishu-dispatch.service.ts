@@ -55,6 +55,11 @@ const FEISHU_THINKING_EMOJI = "Typing";
 const FEISHU_AGENT_PICKER_MAX_OPTIONS = 100;
 const FEISHU_MODEL_PICKER_MAX_OPTIONS = 100;
 const textContentSchema = z.object({ text: z.string() });
+const resourceContentSchema = z.object({
+  file_key: z.string().optional(),
+  image_key: z.string().optional(),
+  file_name: z.string().optional(),
+});
 
 export interface FeishuInboundMessage {
   readonly installationId: string;
@@ -364,7 +369,53 @@ async function resolveSession(args: {
   return thread.agentSessionId;
 }
 
+export function formatFeishuFileContext(args: {
+  readonly messageId: string;
+  readonly messageType: string;
+  readonly content: string;
+}): string | null {
+  if (!["audio", "file", "image", "media"].includes(args.messageType)) {
+    return null;
+  }
+  const parsed = resourceContentSchema.safeParse(safeJsonParse(args.content));
+  if (!parsed.success) {
+    return null;
+  }
+  const resourceType = args.messageType === "image" ? "image" : "file";
+  const fileKey =
+    resourceType === "image" ? parsed.data.image_key : parsed.data.file_key;
+  if (!fileKey) {
+    return null;
+  }
+  const fallbackName =
+    args.messageType === "image"
+      ? "image"
+      : args.messageType === "audio"
+        ? "audio"
+        : args.messageType === "media"
+          ? "video"
+          : "file";
+  const filename =
+    parsed.data.file_name?.replace(/\s+/gu, " ").trim() || fallbackName;
+  return [
+    `[Feishu file] ${filename}`,
+    `   [MESSAGE_ID] ${args.messageId}`,
+    `   [FILE_KEY] ${fileKey}`,
+    `   [TYPE] ${resourceType}`,
+  ].join("\n");
+}
+
 function historyMessageText(message: FeishuHistoryMessage): string {
+  const fileContext = message.body?.content
+    ? formatFeishuFileContext({
+        messageId: message.message_id,
+        messageType: message.msg_type,
+        content: message.body.content,
+      })
+    : null;
+  if (fileContext) {
+    return fileContext;
+  }
   if (message.msg_type !== "text" || !message.body?.content) {
     return `[${message.msg_type} message]`;
   }

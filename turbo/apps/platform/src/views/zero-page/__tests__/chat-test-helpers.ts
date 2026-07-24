@@ -34,7 +34,6 @@ import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
 import {
-  normalizeMockChatEvent,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -471,7 +470,6 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       codexServiceTier?: CodexServiceTier | null;
     }) => void;
-    onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
@@ -831,26 +829,6 @@ export function mockChatLifecycle(
     };
     options?.afterInitialMessagesList?.();
     return respond(200, body);
-  });
-  context.mocks.api(chatThreadEventsContract.get, ({ params, respond }) => {
-    options?.onMessageGet?.(params.eventId);
-    if (params.threadId !== threadId) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    const message = buildPagedMessages().find((item) => {
-      return item.id === params.eventId;
-    });
-    if (!message) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(
-      200,
-      normalizeMockChatEvent(cloneMockPagedMessage(message), message.id),
-    );
   });
   context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
     if (options?.threadGate) {

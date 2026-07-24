@@ -13,6 +13,13 @@ export const zeroMailAttachmentSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  partId: z.string().optional(),
+});
+
+export const zeroMailInlineImageSchema = z.object({
+  contentId: z.string().min(1),
+  partId: z.string().min(1),
+  alt: z.string(),
 });
 
 const zeroMailDraftBaseSchema = z.object({
@@ -24,6 +31,9 @@ const zeroMailDraftBaseSchema = z.object({
   bcc: z.array(z.email()),
   subject: z.string(),
   body: z.string(),
+  bodyHtml: z.string().optional(),
+  inlineImages: z.array(zeroMailInlineImageSchema).optional(),
+  accessStatus: z.enum(["ready", "reconnect"]).optional(),
   replyTo: z.string().optional(),
   inReplyTo: z.string().optional(),
   references: z.array(z.string()),
@@ -58,6 +68,11 @@ const zeroMailDraftPathParamsSchema = z.object({
   mailDraftId: z.string().uuid(),
 });
 
+const zeroMailDraftAttachmentPathParamsSchema =
+  zeroMailDraftPathParamsSchema.extend({
+    partId: z.string().min(1),
+  });
+
 export const zeroMailContract = c.router({
   linkDraft: {
     method: "POST",
@@ -90,6 +105,23 @@ export const zeroMailContract = c.router({
       409: apiErrorSchema,
     },
     summary: "Get an email draft by ID",
+  },
+  getAttachment: {
+    method: "GET",
+    path: "/api/zero/mail/drafts/:mailDraftId/attachments/:partId",
+    headers: authHeadersSchema,
+    pathParams: zeroMailDraftAttachmentPathParamsSchema,
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/octet-stream",
+        body: c.type<Blob>(),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Get a Gmail draft attachment",
   },
   deleteDraft: {
     method: "DELETE",
@@ -127,5 +159,6 @@ export const zeroMailContract = c.router({
 export type ZeroMailProvider = z.infer<typeof zeroMailProviderSchema>;
 export type ZeroMailDraftStatus = z.infer<typeof zeroMailDraftStatusSchema>;
 export type ZeroMailAttachment = z.infer<typeof zeroMailAttachmentSchema>;
+export type ZeroMailInlineImage = z.infer<typeof zeroMailInlineImageSchema>;
 export type ZeroMailDraft = z.infer<typeof zeroMailDraftSchema>;
 export type ZeroMailContract = typeof zeroMailContract;

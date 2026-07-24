@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
@@ -23,7 +22,6 @@ import {
 import {
   getBuiltinConnectorHostOwner,
   getFirewallExecutionMetadata,
-  listBuiltinConnectorFixedHostOwners,
   loadFirewallPermissionIndex,
   normalizeConnectorFixedHost,
 } from "@vm0/connectors/firewall-metadata/server";
@@ -41,10 +39,8 @@ import type {
 } from "./connector-catalog-artifacts/artifacts";
 import {
   connectorCatalogFirewallConfig,
-  deriveConnectorCatalogFirewallDiagnostics,
   deriveConnectorCatalogFirewallPermissions,
   deriveConnectorCatalogFirewallRouting,
-  type ConnectorCatalogFirewallDiagnostics,
   type ConnectorCatalogFirewallRouting,
 } from "./connector-catalog-artifacts/relationships";
 
@@ -66,8 +62,6 @@ interface AcceptedServerFirewall {
   readonly billable: boolean;
   readonly firewall: AcceptedFirewallConfig;
   readonly routing: ConnectorCatalogFirewallRouting;
-  readonly diagnostics: ConnectorCatalogFirewallDiagnostics;
-  readonly categories: AcceptedGeneratedFirewall["categories"];
   readonly defaultAllowed: AcceptedGeneratedFirewall["defaultAllowed"];
   readonly defaultUnknownPolicy: AcceptedGeneratedFirewall["defaultUnknownPolicy"];
 }
@@ -116,31 +110,6 @@ export interface ConnectorServerFirewallHostOwner {
   readonly label: string;
 }
 
-interface ConnectorServerFirewallShadowItem {
-  readonly connectorRef: ConnectorRef;
-  readonly label: string;
-  readonly billable: boolean;
-  readonly permissionCount: number;
-  readonly hasCategories: boolean;
-  readonly hasDefaultPolicyOverrides: boolean;
-  readonly permissionDigest: string;
-  readonly routingDigest: string;
-  readonly routingBases: readonly string[];
-  readonly baseUrlVarNames: readonly string[];
-  readonly baseUrlTemplates: readonly ConnectorServerFirewallExecutionBaseUrlTemplate[];
-  readonly secretPlaceholderNames: readonly string[];
-}
-
-interface ConnectorServerFirewallShadowHostOwner {
-  readonly host: string;
-  readonly connectorRef: ConnectorRef;
-}
-
-export interface ConnectorServerFirewallShadowProjection {
-  readonly items: readonly ConnectorServerFirewallShadowItem[];
-  readonly fixedHostOwners: readonly ConnectorServerFirewallShadowHostOwner[];
-}
-
 export interface ConnectorServerFirewallCatalog {
   readonly connectorRefs: readonly ConnectorRef[];
   has(connectorRef: string): boolean;
@@ -157,7 +126,6 @@ export interface ConnectorServerFirewallCatalog {
     connectorRef: string,
   ): Promise<ConnectorServerFirewallRoutingMetadata | null>;
   getFixedHostOwner(host: string): ConnectorServerFirewallHostOwner | null;
-  shadowProjection(): Promise<ConnectorServerFirewallShadowProjection>;
 }
 
 interface ExternalConnectorServerFirewallEntry {
@@ -165,7 +133,6 @@ interface ExternalConnectorServerFirewallEntry {
   readonly executionMetadata: ConnectorServerFirewallExecutionMetadata;
   readonly routingIndexMetadata: ConnectorServerFirewallRoutingIndexMetadata;
   readonly routingMetadata: ConnectorServerFirewallRoutingMetadata;
-  readonly shadowItem: ConnectorServerFirewallShadowItem;
 }
 
 function compareStrings(left: string, right: string): number {
@@ -247,43 +214,6 @@ function compactDefaultPolicy(args: {
       : {}),
     unknownPolicy: args.defaultUnknownPolicy,
   };
-}
-
-function hasDefaultPolicyOverrides(
-  defaultPolicy: FirewallPermissionDefaultPolicyMetadata,
-): boolean {
-  return (
-    defaultPolicy.permissionDefault !== "allow" ||
-    defaultPolicy.unknownPolicy !== "allow" ||
-    Object.keys(defaultPolicy.permissionOverrides ?? {}).length > 0
-  );
-}
-
-function shadowDetailDigest(value: unknown): string {
-  return `sha256:${createHash("sha256")
-    .update(JSON.stringify(value))
-    .digest("hex")}`;
-}
-
-function permissionShadowDigest(
-  index: ConnectorServerFirewallPermissionIndex,
-): string {
-  return shadowDetailDigest({
-    permissions: [...index.permissionNames].sort(compareStrings).map((name) => {
-      return {
-        name,
-        description: index.permissionDescription(name),
-        policy: index.policyResolver.permission(name),
-      };
-    }),
-    unknownPolicy: index.policyResolver.unknown(),
-  });
-}
-
-function routingShadowDigest(
-  metadata: ConnectorServerFirewallRoutingMetadata,
-): string {
-  return shadowDetailDigest(metadata.apis);
 }
 
 function externalPermissionIndex(
@@ -472,33 +402,6 @@ function externalRoutingMetadata(
   };
 }
 
-function externalShadowItem(args: {
-  readonly firewall: AcceptedServerFirewall;
-  readonly permissionIndex: ConnectorServerFirewallPermissionIndex;
-  readonly executionMetadata: ConnectorServerFirewallExecutionMetadata;
-  readonly routingIndexMetadata: ConnectorServerFirewallRoutingIndexMetadata;
-  readonly routingMetadata: ConnectorServerFirewallRoutingMetadata;
-}): ConnectorServerFirewallShadowItem {
-  return {
-    connectorRef: args.firewall.connectorRef,
-    label: args.firewall.label,
-    billable: args.firewall.billable,
-    permissionCount: args.firewall.diagnostics.permissionCount,
-    hasCategories: args.firewall.categories !== null,
-    hasDefaultPolicyOverrides: hasDefaultPolicyOverrides(
-      args.permissionIndex.defaultPolicy,
-    ),
-    permissionDigest: permissionShadowDigest(args.permissionIndex),
-    routingDigest: routingShadowDigest(args.routingMetadata),
-    routingBases: args.routingIndexMetadata.apis.map((api) => {
-      return api.base;
-    }),
-    baseUrlVarNames: args.executionMetadata.baseUrlVarNames,
-    baseUrlTemplates: args.executionMetadata.baseUrlTemplates,
-    secretPlaceholderNames: args.executionMetadata.secretPlaceholderNames,
-  };
-}
-
 function staticPermissionIndex(
   connectorRef: ConnectorRef,
   index: NonNullable<Awaited<ReturnType<typeof loadFirewallPermissionIndex>>>,
@@ -564,9 +467,6 @@ async function staticRoutingMetadata(
 function staticCompactMetadata(connectorRef: ConnectorRef): {
   readonly execution: ConnectorServerFirewallExecutionMetadata;
   readonly routing: ConnectorServerFirewallRoutingIndexMetadata;
-  readonly summary: NonNullable<
-    ReturnType<typeof getFirewallPermissionSummary>
-  >;
 } | null {
   const execution = staticExecutionMetadata(connectorRef);
   const routing = staticRoutingIndexMetadata(connectorRef);
@@ -579,7 +479,7 @@ function staticCompactMetadata(connectorRef: ConnectorRef): {
       `Static connector server firewall metadata is incomplete: ${connectorRef}`,
     );
   }
-  return { execution, routing, summary };
+  return { execution, routing };
 }
 
 export function createStaticConnectorServerFirewallCatalog(
@@ -597,22 +497,6 @@ export function createStaticConnectorServerFirewallCatalog(
   }
   const refs = sortedUniqueStrings(compactMetadata.keys());
   const refSet = new Set<string>(refs);
-  const fixedHostOwners = listBuiltinConnectorFixedHostOwners()
-    .filter((owner) => {
-      return refSet.has(owner.type);
-    })
-    .map((owner) => {
-      return { host: owner.host, connectorRef: owner.type };
-    })
-    .sort((left, right) => {
-      return (
-        compareStrings(left.host, right.host) ||
-        compareStrings(left.connectorRef, right.connectorRef)
-      );
-    });
-  let shadowProjectionPromise:
-    | Promise<ConnectorServerFirewallShadowProjection>
-    | undefined;
   return {
     connectorRefs: refs,
     has: (connectorRef) => {
@@ -654,44 +538,6 @@ export function createStaticConnectorServerFirewallCatalog(
         ? { connectorRef: owner.type, label: owner.label }
         : null;
     },
-    shadowProjection: () => {
-      shadowProjectionPromise ??= (async () => {
-        const items = await Promise.all(
-          refs.map(async (connectorRef) => {
-            const metadata = compactMetadata.get(connectorRef);
-            const permissionIndex =
-              await loadFirewallPermissionIndex(connectorRef);
-            const routingMetadata = await staticRoutingMetadata(connectorRef);
-            if (!metadata || !permissionIndex || !routingMetadata) {
-              throw new Error(
-                `Static connector server firewall metadata is missing: ${connectorRef}`,
-              );
-            }
-            return {
-              connectorRef,
-              label: metadata.summary.label,
-              billable: metadata.execution.billable,
-              permissionCount: metadata.summary.permissionCount,
-              hasCategories: metadata.summary.hasCategories,
-              hasDefaultPolicyOverrides:
-                metadata.summary.hasDefaultPolicyOverrides,
-              permissionDigest: permissionShadowDigest(
-                staticPermissionIndex(connectorRef, permissionIndex),
-              ),
-              routingDigest: routingShadowDigest(routingMetadata),
-              routingBases: metadata.routing.apis.map((api) => {
-                return api.base;
-              }),
-              baseUrlVarNames: metadata.execution.baseUrlVarNames,
-              baseUrlTemplates: metadata.execution.baseUrlTemplates,
-              secretPlaceholderNames: metadata.execution.secretPlaceholderNames,
-            };
-          }),
-        );
-        return { items, fixedHostOwners };
-      })();
-      return shadowProjectionPromise;
-    },
   };
 }
 
@@ -715,8 +561,6 @@ function acceptedServerFirewalls(
         billable: connector.firewall.billable,
         firewall,
         routing: deriveConnectorCatalogFirewallRouting(firewall),
-        diagnostics: deriveConnectorCatalogFirewallDiagnostics(firewall),
-        categories: connector.firewall.categories,
         defaultAllowed: connector.firewall.defaultAllowed,
         defaultUnknownPolicy: connector.firewall.defaultUnknownPolicy,
       },
@@ -756,13 +600,6 @@ function externalEntries(args: {
       executionMetadata,
       routingIndexMetadata,
       routingMetadata,
-      shadowItem: externalShadowItem({
-        firewall,
-        permissionIndex,
-        executionMetadata,
-        routingIndexMetadata,
-        routingMetadata,
-      }),
     });
   }
   return entries;
@@ -810,27 +647,6 @@ export function createExternalConnectorServerFirewallCatalog(args: {
   });
   const connectorRefs = [...entries.keys()].sort(compareStrings);
   const fixedHostOwners = externalFixedHostOwners(firewalls);
-  const shadowProjection: ConnectorServerFirewallShadowProjection = {
-    items: connectorRefs.map((connectorRef) => {
-      const entry = entries.get(connectorRef);
-      if (!entry) {
-        throw new Error(
-          `Accepted connector server firewall is missing: ${connectorRef}`,
-        );
-      }
-      return entry.shadowItem;
-    }),
-    fixedHostOwners: [...fixedHostOwners.entries()]
-      .map(([host, owner]) => {
-        return { host, connectorRef: owner.connectorRef };
-      })
-      .sort((left, right) => {
-        return (
-          compareStrings(left.host, right.host) ||
-          compareStrings(left.connectorRef, right.connectorRef)
-        );
-      }),
-  };
   return {
     connectorRefs,
     has: (connectorRef) => {
@@ -855,9 +671,6 @@ export function createExternalConnectorServerFirewallCatalog(args: {
     getFixedHostOwner: (host) => {
       const normalized = normalizeConnectorFixedHost(host);
       return normalized ? (fixedHostOwners.get(normalized) ?? null) : null;
-    },
-    shadowProjection: () => {
-      return Promise.resolve(shadowProjection);
     },
   };
 }

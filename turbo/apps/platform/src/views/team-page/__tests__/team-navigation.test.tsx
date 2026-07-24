@@ -824,26 +824,6 @@ describe("team page navigation", () => {
         });
       },
     );
-    context.mocks.api(chatThreadEventsContract.get, ({ params, respond }) => {
-      if (
-        params.threadId === firstThreadId &&
-        params.eventId === firstMessageId
-      ) {
-        return respond(200, {
-          id: firstMessageId,
-          threadId: firstThreadId,
-          eventType: "input.prompt" as const,
-          role: "user",
-          content: "First shortcut thread message",
-          seqId: 1,
-          createdAt: "2026-06-01T00:02:00Z",
-        });
-      }
-      return respond(404, {
-        error: { message: "Event not found", code: "NOT_FOUND" },
-      });
-    });
-
     detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });
 
     await waitFor(() => {

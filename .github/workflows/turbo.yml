@@ -49,7 +49,9 @@ jobs:
           if [[ "$EVENT_NAME" == "merge_group" ]] && [[ -n "$MQ_HEAD_REF" ]]; then
             PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [[ -n "$PR_NUM" ]]; then
-              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName 2>/dev/null || echo "")
+              # Fail closed because a missed release classification would bypass
+              # release-presence validation.
+              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName)
               if [[ "$PR_BRANCH" == release-please--branches--* ]]; then
                 echo "skip=true" >> "$GITHUB_OUTPUT"
                 echo "Release-please merge queue entry detected (PR #$PR_NUM, branch: $PR_BRANCH)"
@@ -60,6 +62,54 @@ jobs:
 
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "Not a release-please context"
+
+  validate-release-presence:
+    name: Validate release presence
+    needs: [detect-release]
+    if: ${{ github.event_name == 'merge_group' && needs.detect-release.outputs.skip == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check intervening component releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_number=$(
+            printf '%s\n' "$MERGE_GROUP_HEAD_REF" |
+              grep -oE 'pr-[0-9]+' |
+              head -1 |
+              sed 's/pr-//'
+          )
+          if [ -z "$pr_number" ]; then
+            echo "::error::Could not resolve pull request number from merge queue ref: $MERGE_GROUP_HEAD_REF"
+            exit 1
+          fi
+
+          release_pr_head=$(
+            gh pr view "$pr_number" \
+              --repo "$REPO" \
+              --json headRefOid \
+              --jq .headRefOid
+          )
+          git fetch --no-tags origin "$release_pr_head"
+
+          .github/scripts/check-release-please-component-releases.sh \
+            "$MERGE_GROUP_BASE_SHA" \
+            "$MERGE_GROUP_HEAD_SHA" \
+            "$release_pr_head"
 
   detect-turbo-ts-checks:
     needs: [detect-release]
@@ -2525,6 +2575,7 @@ jobs:
     # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
       - detect-release
+      - validate-release-presence
       - detect-turbo-ts-checks
       - prepare
       - file-size-check
@@ -2558,10 +2609,16 @@ jobs:
     steps:
       - name: Validate CI results
         env:
+          EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
+          RELEASE_PRESENCE_RESULT: ${{ needs.validate-release-presence.result }}
         run: |
           # Auto-pass for release-please PRs, commits, and merge queue entries
           if [[ "$IS_RELEASE" == "true" ]]; then
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_PRESENCE_RESULT" != "success" ]]; then
+              echo "::error::validate-release-presence: expected success, got $RELEASE_PRESENCE_RESULT"
+              exit 1
+            fi
             if [[ "${{ needs.block-connector-source-changes.result }}" != "success" ]]; then
               echo "::error::block-connector-source-changes: expected success, got ${{ needs.block-connector-source-changes.result }}"
               exit 1

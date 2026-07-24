@@ -275,7 +275,7 @@ function buildIntegrationToolsPrompt(
         crossIntegrationMessage,
         ...(zeroMailEnabled
           ? [
-              "- Email from web chat: use the Gmail skill and `GMAIL_TOKEN` to create the draft directly in Gmail. For attachments, upload a valid RFC822 multipart message through Gmail's draft media-upload endpoint. Never call `messages.send` or `drafts.send`. After Gmail returns the draft ID, run `zero mail link <gmail-draft-id>` and return the link from the command to the user.",
+              "- Email from web chat: use the Gmail skill and `GMAIL_TOKEN` to create the draft directly in Gmail. Before composing, list `GET /gmail/v1/users/me/settings/sendAs`; select the entry matching the message's From address, or the `isDefault` entry when no From address is specified. If it has a non-empty HTML `signature`, append that signature exactly once to the draft's HTML body and include a readable text equivalent in the plain-text body. For attachments, upload a valid RFC822 multipart message through Gmail's draft media-upload endpoint. Never call `messages.send` or `drafts.send`. After Gmail returns the draft ID, run `zero mail link <gmail-draft-id>` and return the link from the command to the user.",
             ]
           : []),
         ...localFileContextLines,
@@ -289,7 +289,7 @@ function buildIntegrationToolsPrompt(
     }
     case "feishu": {
       return [
-        "- Feishu messages: normal replies are automatically sent to the originating conversation, so do not duplicate them. Use `zero feishu message send --help` for a different chat, DM, reply target, or explicit extra message. The current installation, chat, message, and sender IDs are in the integration context. Specify `--installation` when the organization has multiple Feishu bots.",
+        "- Feishu messaging and files: use `zero feishu --help`. Normal replies are automatically sent to the originating conversation, so Feishu commands are for a different chat, DM, reply target, or explicit extra message/file. Use `zero feishu message send --help` for extra messages, `zero feishu download-file -h` for `[Feishu file]` blocks, and `zero feishu upload-file -h` when file delivery is needed. The current installation, chat, message, and sender IDs are in the integration context. Specify `--installation` when the organization has multiple Feishu bots.",
         ...localFileContextLines,
       ];
     }

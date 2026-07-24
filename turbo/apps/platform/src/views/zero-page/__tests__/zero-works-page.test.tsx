@@ -489,6 +489,7 @@ describe("works page", () => {
     expect(document.body).toHaveTextContent("im:message.group_at_msg:readonly");
     expect(document.body).toHaveTextContent("im:message.group_msg");
     expect(document.body).toHaveTextContent("im:message.reactions:write_only");
+    expect(document.body).toHaveTextContent("im:resource");
     click(getRole("button", "Next"));
 
     expect(

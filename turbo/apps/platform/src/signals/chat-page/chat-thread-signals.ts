@@ -143,7 +143,6 @@ export interface ChatThreadSignals {
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // -- Paged messages (sole rendering path) --------------------------------
-  latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;

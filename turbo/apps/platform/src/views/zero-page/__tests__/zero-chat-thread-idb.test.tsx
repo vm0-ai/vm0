@@ -507,9 +507,6 @@ describe("zero chat thread IndexedDB fallback", () => {
       messageListRequests += 1;
       return never();
     });
-    context.mocks.api(chatThreadEventsContract.get, ({ never }) => {
-      return never();
-    });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ never }) => {
       return never();
     });

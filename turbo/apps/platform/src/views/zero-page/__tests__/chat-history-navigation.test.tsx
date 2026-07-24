@@ -59,16 +59,10 @@ describe("chat lifecycle", () => {
       seqId: 1,
     } satisfies ChatEvent;
     const beforeSeqIds: number[] = [];
-    const messageRefreshCompleted = context.mocks.deferred<void>();
 
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Complete history",
-      onMessageGet: (messageId) => {
-        if (messageId === initialEvent.id) {
-          messageRefreshCompleted.resolve();
-        }
-      },
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       if (query.beforeSeqId !== undefined) {
@@ -89,7 +83,6 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await messageRefreshCompleted.promise;
     await expect(
       screen.findByText(initialEvent.content),
     ).resolves.toBeInTheDocument();
