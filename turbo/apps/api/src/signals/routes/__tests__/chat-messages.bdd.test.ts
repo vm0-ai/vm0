@@ -8,11 +8,13 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatMessagesContract,
   type AttachFile,
   type ChatRunOptionsRequest,
+  type ChatThreadEvent,
   type GenerationTemplateRequest,
   type PagedChatMessage,
   type UserMessageDocument,
@@ -703,11 +705,39 @@ async function readThreadComputerUseHostId(
 
 async function readThreadProjection(actor: ApiTestUser, threadId: string) {
   const snapshot = await chat.getThreadSnapshot(actor);
-  const thread = snapshot.chatThreads.find((candidate) => {
-    return candidate.id === threadId;
-  });
+  const events: ChatThreadEvent[] = [];
+  let cursor = snapshot.latestEventId;
+
+  for (let page = 0; page < 20; page++) {
+    const response = await chat.requestThreadEvents(
+      actor,
+      cursor ? { sinceEventId: cursor } : {},
+      [200],
+    );
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+
+    events.push(...response.body.events);
+    if (!response.body.hasMore) {
+      break;
+    }
+
+    const lastEvent = response.body.events.at(-1);
+    if (!lastEvent) {
+      throw new Error("Expected paginated chat thread events");
+    }
+    cursor = lastEvent.id;
+  }
+
+  const thread = replayChatThreadEvents(snapshot.chatThreads, events).find(
+    (candidate) => {
+      return candidate.id === threadId;
+    },
+  );
   if (!thread) {
-    throw new Error("Expected chat thread snapshot projection");
+    throw new Error("Expected chat thread event projection");
   }
   return thread;
 }
