@@ -464,6 +464,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Create immutable hosted artifact versions behind stable site aliases.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",

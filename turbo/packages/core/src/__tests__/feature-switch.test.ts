@@ -127,7 +127,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
