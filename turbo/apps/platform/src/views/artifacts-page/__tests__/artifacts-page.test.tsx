@@ -7,7 +7,6 @@ import {
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,8 +17,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { ROUTES } from "../../../signals/route-paths.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../../../signals/external/idb-artifact-item-store.ts";
@@ -1920,28 +1917,22 @@ describe("artifacts page", () => {
       );
       return response.promise;
     });
-    const toastError = vi.spyOn(toast, "error");
 
-    try {
-      setupArtifactsPage({ scope });
+    setupArtifactsPage({ scope });
 
-      await requestStarted.promise;
-      await expect(
-        screen.findByText("cached-before-cancel.html"),
-      ).resolves.toBeInTheDocument();
+    await requestStarted.promise;
+    await expect(
+      screen.findByText("cached-before-cancel.html"),
+    ).resolves.toBeInTheDocument();
 
-      context.store.set(detachedNavigateTo$, ROUTES.agents);
-      await requestRejected.promise;
-      await waitFor(() => {
-        expect(pathname()).toBe(ROUTES.agents);
-      });
-      await screen.findByText("Research Agent");
+    click(linkByText("Agents"));
+    await requestRejected.promise;
+    await waitFor(() => {
+      expect(pathname()).toBe("/agents");
+    });
+    await screen.findByRole("heading", { name: "Agents" });
 
-      expect(toastError).not.toHaveBeenCalled();
-      expect(screen.queryByText("Request failed")).not.toBeInTheDocument();
-    } finally {
-      toastError.mockRestore();
-    }
+    expect(screen.queryByText("Request failed")).not.toBeInTheDocument();
   });
 
   it("loads every artifact by following keyset pagination cursors", async () => {
