@@ -411,6 +411,8 @@ export function mockThread(options?: {
           pinnedAt: null,
           renamedAt: null,
           selectedModel: options?.selectedModel ?? null,
+          serviceTier: null,
+          computerUseHostId: null,
         },
       ],
       latestEventId: null,
@@ -459,6 +461,8 @@ export function mockComposerThreadSnapshot(
           pinnedAt: null,
           renamedAt: null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         };
       }),
       latestEventId: null,

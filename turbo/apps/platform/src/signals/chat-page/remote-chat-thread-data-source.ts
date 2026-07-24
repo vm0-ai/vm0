@@ -1,4 +1,4 @@
-import { command, computed, state, type Command } from "ccstate";
+import { command, computed, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -31,7 +31,6 @@ import {
   optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
   AppendQueuedMessageArgs,
@@ -82,17 +81,33 @@ const patchModelSelection$ = command(
     { threadId, modelSelection }: PatchModelSelectionArgs,
     signal: AbortSignal,
   ) => {
-    const eventId = crypto.randomUUID();
+    const modelSelectionEventId = crypto.randomUUID();
+    const serviceTierEventId = crypto.randomUUID();
     const threadMeta = get(chatThreadMetaMap$).get(threadId);
     if (threadMeta) {
+      const createdAt = nowDate().toISOString();
       set(registerOptimisticChatThreadEvent$, {
-        id: eventId,
+        id: modelSelectionEventId,
         kind: "model_selection_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
         title: null,
         selectedModel: modelSelection?.selectedModel ?? null,
-        createdAt: nowDate().toISOString(),
+        serviceTier: null,
+        computerUseHostId: null,
+        createdAt,
+      } satisfies ChatThreadEvent);
+      set(registerOptimisticChatThreadEvent$, {
+        id: serviceTierEventId,
+        kind: "service_tier_updated",
+        chatThreadId: threadId,
+        agentId: threadMeta.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier:
+          modelSelection?.codexServiceTier === "fast" ? "priority" : null,
+        computerUseHostId: null,
+        createdAt,
       } satisfies ChatThreadEvent);
     }
 
@@ -103,7 +118,8 @@ const patchModelSelection$ = command(
         body: {
           model: modelSelection?.selectedModel ?? null,
           codexServiceTier: threadCodexServiceTierFromSelection(modelSelection),
-          eventId,
+          eventId: modelSelectionEventId,
+          serviceTierEventId,
         },
         fetchOptions: { signal },
       }),
@@ -114,15 +130,30 @@ const patchModelSelection$ = command(
 
 const patchComputerUseHost$ = command(
   async (
-    { get },
+    { get, set },
     { threadId, computerUseHostId }: PatchComputerUseHostArgs,
     signal: AbortSignal,
   ) => {
+    const eventId = crypto.randomUUID();
+    const threadMeta = get(chatThreadMetaMap$).get(threadId);
+    if (threadMeta) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "computer_use_host_updated",
+        chatThreadId: threadId,
+        agentId: threadMeta.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId,
+        createdAt: nowDate().toISOString(),
+      } satisfies ChatThreadEvent);
+    }
     const client = get(zeroClient$)(chatThreadComputerUseHostContract);
     await accept(
       client.update({
         params: { id: threadId },
-        body: { computerUseHostId },
+        body: { computerUseHostId, eventId },
         fetchOptions: { signal },
       }),
       [204],
@@ -330,10 +361,6 @@ function createSubscribeRealtime() {
           const ready = createDeferredPromise<void>(subscriptionSignal);
           const subscriptions: ChatRealtimeSubscription[] = [
             {
-              topic: `chatThreadDetailChanged:${threadId}`,
-              loopCommand$: handlers.onThreadDetailChanged$,
-            },
-            {
               topic: `chatThreadRunCreated:${threadId}`,
               loopCommand$: handlers.onRunChanged$,
             },
@@ -417,33 +444,9 @@ function createSubscribeRealtime() {
 }
 
 export function createRemoteChatThreadDataSource(threadId: string) {
-  const reloadCounter$ = state(0);
   const subscribeRealtime$ = createSubscribeRealtime();
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
-
-  const remoteThreadDetail$ = computed(
-    async (get): Promise<ChatThread | null> => {
-      if (get(optimisticCreateUnsettled$)) {
-        return null;
-      }
-      get(reloadCounter$);
-      const threadClient = get(zeroClient$)(chatThreadByIdContract);
-      const threadResult = await accept(
-        threadClient.get({ params: { id: threadId } }),
-        [200, 404],
-      );
-      if (threadResult.status === 404) {
-        return null;
-      }
-      const body = threadResult.body;
-      return {
-        lastReadAt: body.lastReadAt,
-        computerUseHostId: body.computerUseHostId ?? null,
-        codexServiceTier: body.codexServiceTier ?? null,
-      };
-    },
-  );
 
   const threadDraft$ = computed(async (get) => {
     if (get(optimisticCreateUnsettled$)) {
@@ -460,16 +463,8 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     return result.body;
   });
 
-  const reloadThread$ = command(({ set }) => {
-    set(reloadCounter$, (v) => {
-      return v + 1;
-    });
-  });
-
   return {
-    remoteThreadDetail$,
     threadDraft$,
-    reloadThread$,
     patchDraft$,
     patchModelSelection$,
     patchComputerUseHost$,
