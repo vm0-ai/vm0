@@ -96,8 +96,8 @@ export const compactModelUsageObservation = pgTable(
  * Temporary cross-format identity ledger for the compact observation rollout.
  *
  * Legacy inserts and compact ingestion claim the same category key here. The
- * ledger expires with raw observations and is removed after the compact writer
- * has been the only active format for a complete retention window.
+ * ledger covers the bounded old-runner drain and retry horizon independently
+ * of raw observation retention, then is removed after the compact rollout.
  */
 export const modelUsageObservationLegacyKey = pgTable(
   "model_usage_observation_legacy_key",

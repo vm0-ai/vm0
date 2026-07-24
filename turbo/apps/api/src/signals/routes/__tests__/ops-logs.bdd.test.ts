@@ -579,6 +579,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     };
     const baseTotal = baseline.body.totalTokens;
 
+    const exactInputLegacyKey = randomUUID();
+    const exactInputQuantity = 101;
     const exactRequest = {
       runId: created.runId,
       events: [
@@ -586,8 +588,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
           idempotencyKey: randomUUID(),
           model,
           inputTokens: {
-            legacyIdempotencyKey: randomUUID(),
-            quantity: 101,
+            legacyIdempotencyKey: exactInputLegacyKey,
+            quantity: exactInputQuantity,
           },
           outputTokens: {
             legacyIdempotencyKey: randomUUID(),
@@ -978,6 +980,67 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       previousTotalTokens: baseRow.previousTotalTokens,
     });
     expect(reprocessed.body.totalTokens).toBe(baseTotal + 6694);
+
+    // The cross-format ledger only covers the bounded old-runner drain and
+    // retry horizon. Compact identity remains durable after that ledger entry
+    // expires, so an exact compact retry is still idempotent.
+    mockNow(dayStart + 9 * HOUR_MS);
+    await api.requestAggregateModelStats("valid", 24, [200]);
+    mockNow(dayStart + 9 * HOUR_MS + 5 * 60_000);
+    await webhooks.requestAgentModelUsageObservationV2(
+      exactRequest,
+      sandboxHeaders,
+      [200],
+    );
+
+    // Once the renewed six-hour ledger window also expires, a legacy-format
+    // replay is outside the rollout compatibility guarantee. Its raw row is
+    // still retained for normal aggregation independently of ledger cleanup.
+    mockNow(dayStart + 16 * HOUR_MS);
+    await api.requestAggregateModelStats("valid", 24, [200]);
+    const afterCompatibilitySweep = await api.readModelRankings("today");
+    const afterCompatibilitySweepRow = afterCompatibilitySweep.body.rows.find(
+      (row) => {
+        return row.model === model;
+      },
+    ) ?? {
+      model,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      previousTotalTokens: 0,
+    };
+    mockNow(dayStart + 16 * HOUR_MS + 10 * 60_000);
+    await webhooks.requestAgentModelUsageObservation(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: exactInputLegacyKey,
+            model,
+            category: "tokens.input",
+            quantity: exactInputQuantity,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(dayStart + 18 * HOUR_MS);
+    await api.requestAggregateModelStats("valid", 24, [200]);
+    const afterExpiredLegacyReplay = await api.readModelRankings("today");
+    expect(
+      afterExpiredLegacyReplay.body.rows.find((row) => {
+        return row.model === model;
+      }),
+    ).toStrictEqual({
+      ...afterCompatibilitySweepRow,
+      inputTokens: afterCompatibilitySweepRow.inputTokens + exactInputQuantity,
+      totalTokens: afterCompatibilitySweepRow.totalTokens + exactInputQuantity,
+    });
+    expect(afterExpiredLegacyReplay.body.totalTokens).toBe(
+      afterCompatibilitySweep.body.totalTokens + exactInputQuantity,
+    );
 
     mockNow(dayStart + 33 * DAY_MS + 4 * HOUR_MS);
     await api.requestAggregateModelStats("valid", undefined, [200]);

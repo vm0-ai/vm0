@@ -23,6 +23,7 @@ import { nowDate } from "../external/time";
 const HOUR_MS = 60 * 60_000;
 export const DEFAULT_MODEL_STATS_REPROCESS_HOURS = 24;
 const MAX_MODEL_STATS_REPROCESS_HOURS = CRON_AGGREGATE_MODEL_STATS_MAX_HOURS;
+const MODEL_USAGE_LEGACY_KEY_RETENTION_HOURS = 6;
 export const MODEL_RANKING_PERIODS = ["today", "week", "month"] as const;
 const TOKEN_CATEGORY_INPUT = "tokens.input";
 const TOKEN_CATEGORY_OUTPUT = "tokens.output";
@@ -306,18 +307,23 @@ async function replaceModelStats(
 
 async function deleteExpiredModelUsageObservations(
   db: Db,
-  retentionStart: Date,
+  observationRetentionStart: Date,
+  legacyKeyRetentionStart: Date,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
       .delete(modelUsageObservation)
-      .where(lt(modelUsageObservation.observedAt, retentionStart));
+      .where(lt(modelUsageObservation.observedAt, observationRetentionStart));
     await tx
       .delete(compactModelUsageObservation)
-      .where(lt(compactModelUsageObservation.observedAt, retentionStart));
+      .where(
+        lt(compactModelUsageObservation.observedAt, observationRetentionStart),
+      );
     await tx
       .delete(modelUsageObservationLegacyKey)
-      .where(lt(modelUsageObservationLegacyKey.observedAt, retentionStart));
+      .where(
+        lt(modelUsageObservationLegacyKey.observedAt, legacyKeyRetentionStart),
+      );
   });
 }
 
@@ -396,14 +402,21 @@ export const aggregateModelStats$ = command(
     const db = set(writeDb$);
     const windowEnd = utcHourStart(nowDate());
     const windowStart = new Date(windowEnd.getTime() - hours * HOUR_MS);
-    const retentionStart = new Date(
+    const observationRetentionStart = new Date(
       windowEnd.getTime() - MAX_MODEL_STATS_REPROCESS_HOURS * HOUR_MS,
+    );
+    const legacyKeyRetentionStart = new Date(
+      windowEnd.getTime() - MODEL_USAGE_LEGACY_KEY_RETENTION_HOURS * HOUR_MS,
     );
 
     signal.throwIfAborted();
     const aggregated = await replaceModelStats(db, windowStart, windowEnd);
     signal.throwIfAborted();
-    await deleteExpiredModelUsageObservations(db, retentionStart);
+    await deleteExpiredModelUsageObservations(
+      db,
+      observationRetentionStart,
+      legacyKeyRetentionStart,
+    );
     signal.throwIfAborted();
 
     return {

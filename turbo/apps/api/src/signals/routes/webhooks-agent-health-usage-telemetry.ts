@@ -78,6 +78,15 @@ interface CompactModelUsageObservationValue {
   readonly observedAt: Date;
 }
 
+interface StoredCompactModelUsageObservation {
+  readonly idempotencyKey: string;
+  readonly model: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
+}
+
 class CompactModelUsageObservationConflictError extends Error {
   constructor() {
     super("Compact model usage observation idempotency key is already in use");
@@ -228,6 +237,48 @@ function compactModelUsageObservationValues(
   });
 }
 
+async function compactModelUsageObservationsMatchStoredRows(
+  tx: DbTransaction,
+  values: readonly CompactModelUsageObservationValue[],
+  signal: AbortSignal,
+): Promise<boolean> {
+  const rows: StoredCompactModelUsageObservation[] = await tx
+    .select({
+      idempotencyKey: compactModelUsageObservation.idempotencyKey,
+      model: compactModelUsageObservation.model,
+      inputTokens: compactModelUsageObservation.inputTokens,
+      outputTokens: compactModelUsageObservation.outputTokens,
+      cacheReadInputTokens: compactModelUsageObservation.cacheReadInputTokens,
+      cacheCreationInputTokens:
+        compactModelUsageObservation.cacheCreationInputTokens,
+    })
+    .from(compactModelUsageObservation)
+    .where(
+      inArray(
+        compactModelUsageObservation.idempotencyKey,
+        values.map((value) => {
+          return value.idempotencyKey;
+        }),
+      ),
+    );
+  signal.throwIfAborted();
+  const rowsByIdempotencyKey = new Map(
+    rows.map((row) => {
+      return [row.idempotencyKey, row] as const;
+    }),
+  );
+  return values.every((value) => {
+    const row = rowsByIdempotencyKey.get(value.idempotencyKey);
+    return (
+      row?.model === value.model &&
+      row.inputTokens === value.inputTokens &&
+      row.outputTokens === value.outputTokens &&
+      row.cacheReadInputTokens === value.cacheReadInputTokens &&
+      row.cacheCreationInputTokens === value.cacheCreationInputTokens
+    );
+  });
+}
+
 async function persistCompactModelUsageObservations(
   db: Db,
   body: CompactModelUsageObservationBody,
@@ -276,7 +327,10 @@ async function persistCompactModelUsageObservations(
         idempotencyKey: compactModelUsageObservation.idempotencyKey,
       });
     signal.throwIfAborted();
-    if (insertedRows.length !== values.length) {
+    if (
+      insertedRows.length !== values.length &&
+      !(await compactModelUsageObservationsMatchStoredRows(tx, values, signal))
+    ) {
       throw new CompactModelUsageObservationConflictError();
     }
     return "accepted" as const;

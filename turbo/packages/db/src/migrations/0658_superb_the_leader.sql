@@ -19,7 +19,7 @@ CREATE INDEX "idx_model_usage_observation_legacy_key_observed_at" ON "model_usag
 -- compact observation writers are adopted. Historical keys remain queryable
 -- through the legacy table's existing unique index, so no backfill is needed.
 -- Remove this trigger with the compatibility ledger after the rollout and
--- retention gates in #22760 and #22774.
+-- old-writer drain gates in #22760 and #22774.
 CREATE FUNCTION "claim_model_usage_observation_legacy_key"() RETURNS trigger AS $$
 BEGIN
 	INSERT INTO "model_usage_observation_legacy_key" (
