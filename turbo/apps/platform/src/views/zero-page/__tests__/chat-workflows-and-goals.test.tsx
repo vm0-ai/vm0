@@ -960,7 +960,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("shows a paused latest workflow run group expanded by default", async () => {
+  it("keeps a paused latest workflow run group collapsed by default", async () => {
     const threadId = "thread-paused-workflow-run-group";
     const runGroupId = "f0000001-0000-4000-a000-00000000074b";
     const workflowPrompt = "/daily-workflow";
@@ -1026,18 +1026,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
 
     await waitFor(() => {
-      expect(screen.getByText("First workflow result")).toBeInTheDocument();
-      expect(
-        screen.getByText("Paused mid-thought — pick it back up whenever."),
-      ).toBeInTheDocument();
-      expect(buttonByLabel("Collapse grouped run history")).toHaveTextContent(
-        "1 run for Daily workflow summary",
-      );
-    });
-
-    fireEvent.click(buttonByLabel("Collapse grouped run history"));
-
-    await waitFor(() => {
       expect(
         screen.queryByText("First workflow result"),
       ).not.toBeInTheDocument();
@@ -1045,6 +1033,18 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         screen.getByText("Paused mid-thought — pick it back up whenever."),
       ).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "1 run for Daily workflow summary",
+      );
+    });
+
+    fireEvent.click(buttonByLabel("Expand grouped run history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First workflow result")).toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Collapse grouped run history")).toHaveTextContent(
         "1 run for Daily workflow summary",
       );
     });
