@@ -552,7 +552,7 @@ describe("zero chat thread IndexedDB fallback", () => {
       screen.findByText(ASSISTANT_MESSAGE),
     ).resolves.toBeInTheDocument();
     expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-    expect(threadDetailRequests).toBeGreaterThan(0);
+    expect(threadDetailRequests).toBe(0);
     expect(messageListRequests).toBeGreaterThan(0);
     expect(threadEventRequests).toBeGreaterThan(0);
   });
