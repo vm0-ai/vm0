@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.626.2](https://github.com/vm0-ai/vm0/compare/app-v0.626.1...app-v0.626.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **chat:** serialize inline feedback prompts ([#22838](https://github.com/vm0-ai/vm0/issues/22838)) ([88f051c](https://github.com/vm0-ai/vm0/commit/88f051cdfcdc16cbef67456a55beb16b5885ed11))
+
 ## [0.626.1](https://github.com/vm0-ai/vm0/compare/app-v0.626.0...app-v0.626.1) (2026-07-24)
 
 
