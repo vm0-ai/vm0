@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.460.0](https://github.com/vm0-ai/vm0/compare/core-v8.459.0...core-v8.460.0) (2026-07-24)
+
+
+### Features
+
+* **zero:** add managed people search ([#22787](https://github.com/vm0-ai/vm0/issues/22787)) ([b26febe](https://github.com/vm0-ai/vm0/commit/b26febee464f6023cd3773030bcb45d03172aa56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.0
+    * @vm0/connectors bumped to 1.189.0
+
 ## [8.459.0](https://github.com/vm0-ai/vm0/compare/core-v8.458.2...core-v8.459.0) (2026-07-24)
 
 
