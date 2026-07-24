@@ -145,10 +145,11 @@ const PEOPLE_SEARCH_JSON_SCHEMA = {
             ],
           },
           sourceIds: {
+            // Perplexity rejects JSON Schema uniqueItems; vm0 enforces
+            // uniqueness after generation with structuredProfileSchema.
             type: "array",
             minItems: 1,
             maxItems: ZERO_PEOPLE_SEARCH_MAX_SOURCES,
-            uniqueItems: true,
             items: { type: "integer", minimum: 1 },
           },
         },
@@ -289,6 +290,10 @@ function perplexityErrorMessage(body: unknown): string {
         return boundedErrorMessage(value);
       }
     }
+    const providerError = body.error;
+    if (isRecord(providerError) && typeof providerError.message === "string") {
+      return boundedErrorMessage(providerError.message);
+    }
   }
   if (typeof body === "string" && body.trim()) {
     return boundedErrorMessage(body);
@@ -322,7 +327,7 @@ function providerRequestBody(request: ZeroPeopleSearchRequest) {
       `Return at most ${request.limit} profiles.`,
       "Extract concise profile fields from the tool results.",
       "Keep extracted fields limited to public professional information; do not return email addresses, phone numbers, home addresses, or other personal contact details.",
-      "Use only positive integer result IDs from people_search_results in sourceIds.",
+      "Use only distinct positive integer result IDs from people_search_results in sourceIds.",
       "Do not include URLs in the structured output.",
     ].join(" "),
     response_format: {
