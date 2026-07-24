@@ -1,13 +1,29 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
+  chatThreadsContract,
+  type ChatThreadEvent,
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadRenameContract,
   chatSearchContract,
   type ChatThreadMetadata,
+  type ChatThreadSnapshotProjection,
   type ChatSearchResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { getClientConfig, handleError } from "../core/client-factory";
+
+export interface ZeroChatThreadSnapshot {
+  readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+  readonly latestEventId: string | null;
+}
+
+export type ZeroChatThreadEventsResult =
+  | {
+      readonly kind: "page";
+      readonly events: readonly ChatThreadEvent[];
+      readonly hasMore: boolean;
+    }
+  | { readonly kind: "expired" };
 
 export async function searchZeroChat(options: {
   keyword: string;
@@ -31,6 +47,37 @@ export async function searchZeroChat(options: {
   });
   if (result.status === 200) return result.body;
   handleError(result, "Failed to search chat messages");
+}
+
+export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapshot> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadsContract, config);
+  const result = await client.snapshot();
+  if (result.status === 200) {
+    return result.body;
+  }
+  handleError(result, "Failed to get chat thread snapshot");
+}
+
+export async function listZeroChatThreadEvents(options: {
+  sinceEventId?: string;
+}): Promise<ZeroChatThreadEventsResult> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadsContract, config);
+  const result = await client.events({
+    query: options.sinceEventId ? { sinceEventId: options.sinceEventId } : {},
+  });
+  if (result.status === 200) {
+    return {
+      kind: "page",
+      events: result.body.events,
+      hasMore: result.body.hasMore,
+    };
+  }
+  if (result.status === 410) {
+    return { kind: "expired" };
+  }
+  handleError(result, "Failed to list chat thread events");
 }
 
 export async function renameZeroChatThread(options: {

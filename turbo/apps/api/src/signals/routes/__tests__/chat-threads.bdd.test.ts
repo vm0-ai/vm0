@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadsContract,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
@@ -333,18 +336,21 @@ const GOAL_CAPABILITIES = [
   "goal:agent-result:write",
   "goal:user-control:write",
 ] as const satisfies readonly ZeroCapability[];
+const CHAT_THREAD_READ_CAPABILITIES = [
+  "chat-thread:read",
+] as const satisfies readonly ZeroCapability[];
 
 function goalsClient() {
   return setupApp({ context })(zeroGoalsContract);
 }
 
-/** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
-function zeroGoalHeaders(
+function zeroCapabilityHeaders(
   actor: ApiTestUser,
   runId: string,
+  capabilities: readonly ZeroCapability[],
 ): { readonly authorization: string } {
   if (!actor.orgId) {
-    throw new Error("Expected an org-scoped actor for goal auth");
+    throw new Error("Expected an org-scoped actor for zero auth");
   }
   const seconds = Math.floor(now() / 1000);
   return {
@@ -353,11 +359,19 @@ function zeroGoalHeaders(
       userId: actor.userId,
       orgId: actor.orgId,
       runId,
-      capabilities: [...GOAL_CAPABILITIES],
+      capabilities: [...capabilities],
       iat: seconds,
       exp: seconds + 600,
     })}`,
   };
+}
+
+/** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
+function zeroGoalHeaders(
+  actor: ApiTestUser,
+  runId: string,
+): { readonly authorization: string } {
+  return zeroCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
 }
 
 async function createThreadGoal(
@@ -465,6 +479,59 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       readonly error: { readonly code: string };
     };
     expect(unauthenticatedBody.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("allows chat-thread read zero tokens to sync snapshots and events", async () => {
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await api.ensureOrgModelProvider(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          role: actor.orgRole ?? "org:admin",
+          organization: { id: actor.orgId },
+          publicUserData: { userId: actor.userId },
+        },
+      ],
+    });
+    const zeroClient = setupApp({ context })(chatThreadsContract);
+    const zeroHeaders = zeroCapabilityHeaders(
+      actor,
+      randomUUID(),
+      CHAT_THREAD_READ_CAPABILITIES,
+    );
+
+    const snapshot = await accept(
+      zeroClient.snapshot({ headers: zeroHeaders }),
+      [200],
+    );
+    expect(snapshot.body).toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+    const events = await accept(
+      zeroClient.events({ headers: zeroHeaders, query: {} }),
+      [200],
+    );
+    expect(events.body).toStrictEqual({
+      events: [],
+      hasMore: false,
+    });
+
+    const missingCapability = await accept(
+      zeroClient.snapshot({
+        headers: zeroGoalHeaders(actor, randomUUID()),
+      }),
+      [403],
+    );
+    expect(missingCapability.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: chat-thread:read",
+        code: "FORBIDDEN",
+      },
+    });
   });
 
   it("rejects thread creation for unknown, cross-org, and org-less callers", async () => {
