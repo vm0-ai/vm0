@@ -81,7 +81,6 @@ import {
   holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
   removeRunCanonicalStorageState,
-  removeSessionCanonicalStorageState,
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
@@ -1976,9 +1975,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, sessionRun.runId, [200]);
   });
 
-  it("falls back to legacy run and session Storage state", async () => {
+  it("keeps the short-lived legacy runner queue projection", async () => {
     const api = createRunsApi(context);
-    const storages = createStoragesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
     const composeName = `bdd-legacy-storage-state-${randomUUID().slice(0, 8)}`;
@@ -2007,90 +2005,22 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       expectLegacyStorageManifest(legacyRunClaim.storageManifest)?.artifacts,
     ).toContainEqual(expect.objectContaining({ vasStorageName: "memory" }));
-    await api.requestCancelRun(actor, pendingLegacyRun.runId, [200]);
 
-    const initialRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
-      prompt: "create legacy session and checkpoint projections",
-    });
-    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
-      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
-    });
-    const initialManifest = initialClaim.storageManifest;
-    if (!initialManifest || !("storageMounts" in initialManifest)) {
-      throw new Error("Expected initial canonical Storage mounts");
-    }
-    const initialMemory = initialManifest.storageMounts.find((mount) => {
-      return mount.name === "memory";
-    });
-    if (!initialMemory) {
-      throw new Error("Expected the initial memory mount");
-    }
-
-    const memoryFile = storageTextFile(
-      "MEMORY.md",
-      `legacy projection ${initialRun.runId}`,
-    );
-    const preparedMemory = await storages.prepareStorage(actor, {
-      storageName: "memory",
-      storageType: "artifact",
-      files: [memoryFile],
-    });
-    await storages.commitStorage(actor, {
-      storageName: "memory",
-      storageType: "artifact",
-      versionId: preparedMemory.versionId,
-      files: [memoryFile],
-    });
-    const historyHash = createHash("sha256")
-      .update(`legacy storage state ${initialRun.runId}`)
-      .digest("hex");
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    const rejectedCheckpoint = await webhooks.requestAgentCheckpoint(
       {
-        runId: initialRun.runId,
+        runId: pendingLegacyRun.runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-legacy-cli-${initialRun.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
-        artifactSnapshots: [
-          {
-            name: initialMemory.name,
-            version: preparedMemory.versionId,
-            mountPath: initialMemory.mountPath,
-          },
-        ],
+        cliAgentSessionId: `bdd-canonical-required-${pendingLegacyRun.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`canonical required ${pendingLegacyRun.runId}`)
+          .digest("hex"),
       },
-      { authorization: `Bearer ${initialClaim.sandboxToken}` },
-      [200],
+      { authorization: `Bearer ${legacyRunClaim.sandboxToken}` },
+      [500],
     );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected the legacy projection checkpoint to succeed");
-    }
-    await webhooks.requestAgentComplete(
-      { runId: initialRun.runId, exitCode: 0 },
-      { authorization: `Bearer ${initialClaim.sandboxToken}` },
-      [200],
-    );
+    expect(rejectedCheckpoint.status).toBe(500);
 
-    await removeSessionCanonicalStorageState(context, initialRun.sessionId);
-    const sessionRun = await api.createDirectRun(actor, {
-      sessionId: initialRun.sessionId,
-      prompt: "continue a pre-canonical Storage session",
-    });
-    const sessionClaim = await api.claimRunnerJob(sessionRun.runId, {
-      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
-    });
-    const sessionManifest = sessionClaim.storageManifest;
-    if (!sessionManifest || !("storageMounts" in sessionManifest)) {
-      throw new Error("Expected canonical mounts from legacy session state");
-    }
-    expect(sessionManifest.storageMounts).toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        versionId: preparedMemory.versionId,
-        writeback: true,
-      }),
-    );
-    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    await api.requestCancelRun(actor, pendingLegacyRun.runId, [200]);
   });
 
   it("keeps a committed artifact head after initial empty artifact creation", async () => {
@@ -7990,6 +7920,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Prefer the workspace directory (`/home/user/workspace`) for file operations and project work",
       "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
       "`agent-browser` provides rendered-page inspection and interaction",
+      "For one known public URL when you only need page content, prefer `zero scrape <url> --format markdown`",
+      "use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction",
       "Local dev servers are useful for agent-side verification",
       "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
@@ -8132,6 +8064,67 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").not.toContain("zero finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").not.toContain(
+      "zero people-search <query>",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("advertises managed people search only for enrolled staff runs", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    onTestFinished(async () => {
+      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+    });
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    await bdd.bootstrapOnboarding(actor, {
+      displayName: "BDD people search staff",
+    });
+    await seedOrgMetadata({
+      orgId: STAFF_ORG_ID,
+      tier: "limited-free-1",
+      credits: 20_000,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD people search staff agent",
+      visibility: "private",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "find public professional information",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const prompt = claim.appendSystemPrompt ?? "";
+
+    expect(prompt).toContain("zero people-search <query>");
+    expect(prompt).toContain("model-extracted");
+    expect(prompt).toContain("provider-backed sources");
+    expect(prompt).toContain("zero web-search --help");
+    expect(prompt).toContain("zero scrape --help");
+    expect(claim.disallowedTools).toStrictEqual(
+      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -10334,15 +10327,17 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       "session_history_ref_hash",
     );
 
-    const observed = await webhooks.requestAgentModelUsageObservation(
+    const observed = await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 120,
+            inputTokens: 120,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
@@ -10581,7 +10576,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("checkpoints direct compose runs without vars and canonicalizes usage by event model", async () => {
+  it("checkpoints direct compose runs without vars and accepts compact usage by event model", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -10614,21 +10609,25 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
 
     // With no pinned model the event model drives canonicalization: the
     // unsupported event is skipped while the supported one is recorded.
-    const observed = await webhooks.requestAgentModelUsageObservation(
+    const observed = await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: run.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 50,
+            inputTokens: 50,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
           {
             idempotencyKey: randomUUID(),
             model: "custom-bdd-model",
-            category: "tokens.output",
-            quantity: 7,
+            inputTokens: 0,
+            outputTokens: 7,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },

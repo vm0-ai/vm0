@@ -77,7 +77,6 @@ function abortError(message: string): Error {
 function chatThreadRealtimeTopics(threadId: string): readonly string[] {
   return [
     `chatThreadDetailChanged:${threadId}`,
-    `chatThreadMessageUpdated:${threadId}`,
     `chatThreadAutomationsChanged:${threadId}`,
     `chatThreadArtifactsChanged:${threadId}`,
     `chatThreadWorkflowsChanged:${threadId}`,
@@ -154,9 +153,6 @@ function createFailingSubscribeDataSource(): ChatThreadRemote {
     }),
     listMessagesBefore$: command(() => {
       return unexpectedDataSourceCall("listMessagesBefore$");
-    }),
-    getMessage$: command(() => {
-      return unexpectedDataSourceCall("getMessage$");
     }),
     cancelRuns$: command(() => {
       return unexpectedDataSourceCall("cancelRuns$");
@@ -741,7 +737,6 @@ describe("realtime signals", () => {
           threadId,
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
-            onMessageUpdated$: keepAlivePayloadLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
@@ -772,7 +767,6 @@ describe("realtime signals", () => {
           threadId,
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
-            onMessageUpdated$: keepAlivePayloadLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
@@ -800,7 +794,6 @@ describe("realtime signals", () => {
         threadId,
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
-          onMessageUpdated$: keepAlivePayloadLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
           onWorkflowsChanged$: keepAliveLoop$,
@@ -821,7 +814,6 @@ describe("realtime signals", () => {
         threadId,
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
-          onMessageUpdated$: keepAlivePayloadLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
           onWorkflowsChanged$: keepAliveLoop$,

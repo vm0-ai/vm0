@@ -2923,6 +2923,237 @@ async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   }
 }
 
+async function validateCompactModelUsageObservationBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.9: Validate compact model observation backfill ===\n",
+  );
+  const testDb = "migration_compact_model_observation_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 660);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        WITH boundary AS (
+          SELECT date_trunc('hour', NOW() AT TIME ZONE 'UTC') AS current_hour
+        )
+        INSERT INTO "model_usage_observation" (
+          "idempotency_key",
+          "org_id",
+          "user_id",
+          "model",
+          "category",
+          "quantity",
+          "observed_at"
+        )
+        SELECT *
+        FROM (
+          VALUES
+            (
+              '66000000-0000-4000-8000-000000000001'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'model-a',
+              'tokens.input',
+              10::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            ),
+            (
+              '66000000-0000-4000-8000-000000000002'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'model-a',
+              'tokens.input',
+              7::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            ),
+            (
+              '66000000-0000-4000-8000-000000000003'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'model-a',
+              'tokens.output',
+              5::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            ),
+            (
+              '66000000-0000-4000-8000-000000000004'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'model-a',
+              'tokens.cache_read',
+              3::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            ),
+            (
+              '66000000-0000-4000-8000-000000000005'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'model-a',
+              'tokens.cache_creation',
+              2::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            ),
+            (
+              '66000000-0000-4000-8000-000000000006'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'model-b',
+              'tokens.output',
+              9::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            ),
+            (
+              '66000000-0000-4000-8000-000000000007'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'boundary-model',
+              'tokens.input',
+              11::bigint,
+              (
+                SELECT current_hour - INTERVAL '32 days' + INTERVAL '5 minutes'
+                FROM boundary
+              )
+            ),
+            (
+              '66000000-0000-4000-8000-000000000008'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'expired-model',
+              'tokens.input',
+              100::bigint,
+              (
+                SELECT current_hour - INTERVAL '32 days' - INTERVAL '1 second'
+                FROM boundary
+              )
+            ),
+            (
+              '66000000-0000-4000-8000-000000000009'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'ignored-model',
+              'tokens.unknown',
+              20::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            ),
+            (
+              '66000000-0000-4000-8000-000000000010'::uuid,
+              'compact-backfill-org',
+              'compact-backfill-user',
+              'ignored-model',
+              'tokens.input',
+              0::bigint,
+              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
+            )
+        ) AS fixture (
+          idempotency_key,
+          org_id,
+          user_id,
+          model,
+          category,
+          quantity,
+          observed_at
+        )
+      `);
+
+      await applyMigrationsUpTo(client, 663);
+
+      const compactRows = await client.query<{
+        cacheCreationInputTokens: string;
+        cacheReadInputTokens: string;
+        inputTokens: string;
+        model: string;
+        outputTokens: string;
+        window: string;
+      }>(`
+        SELECT
+          "model",
+          CASE
+            WHEN "observed_at" =
+              date_trunc('hour', NOW() AT TIME ZONE 'UTC') - INTERVAL '2 hours'
+              THEN 'recent'
+            WHEN "observed_at" =
+              date_trunc('hour', NOW() AT TIME ZONE 'UTC') - INTERVAL '32 days'
+              THEN 'boundary'
+            ELSE 'unexpected'
+          END AS "window",
+          "input_tokens"::text AS "inputTokens",
+          "output_tokens"::text AS "outputTokens",
+          "cache_read_input_tokens"::text AS "cacheReadInputTokens",
+          "cache_creation_input_tokens"::text AS "cacheCreationInputTokens"
+        FROM "compact_model_usage_observation"
+        ORDER BY "window", "model"
+      `);
+      assert.deepEqual(compactRows.rows, [
+        {
+          model: "boundary-model",
+          window: "boundary",
+          inputTokens: "11",
+          outputTokens: "0",
+          cacheReadInputTokens: "0",
+          cacheCreationInputTokens: "0",
+        },
+        {
+          model: "model-a",
+          window: "recent",
+          inputTokens: "17",
+          outputTokens: "5",
+          cacheReadInputTokens: "3",
+          cacheCreationInputTokens: "2",
+        },
+        {
+          model: "model-b",
+          window: "recent",
+          inputTokens: "0",
+          outputTokens: "9",
+          cacheReadInputTokens: "0",
+          cacheCreationInputTokens: "0",
+        },
+      ]);
+
+      await client.query(`
+        INSERT INTO "model_usage_observation" (
+          "idempotency_key",
+          "org_id",
+          "user_id",
+          "model",
+          "category",
+          "quantity"
+        )
+        VALUES (
+          '66000000-0000-4000-8000-000000000100',
+          'legacy-api-org',
+          'legacy-api-user',
+          'legacy-api-model',
+          'tokens.input',
+          1
+        )
+      `);
+
+      const finalKey = await client.query<{ present: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_indexes
+          WHERE schemaname = 'public'
+            AND tablename = 'model_stat'
+            AND indexname = 'uq_model_stat_hour_model'
+        ) AS present
+      `);
+      assert.equal(finalKey.rows[0]?.present, true);
+      console.log(
+        "   ✅ Compact rows preserve retained four-counter totals and legacy writes remain valid\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -3100,6 +3331,7 @@ async function main(): Promise<void> {
     await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
     await validateOrgPlanEntitlementBackfill();
+    await validateCompactModelUsageObservationBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

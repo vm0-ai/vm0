@@ -31,6 +31,7 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
+  ["people-search:read", FeatureSwitchKey.ZeroPeopleSearch],
   ["weather:read", FeatureSwitchKey.ZeroWeather],
   ["finance:read", FeatureSwitchKey.ZeroFinance],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];

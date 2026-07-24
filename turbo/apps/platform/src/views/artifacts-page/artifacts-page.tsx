@@ -48,6 +48,7 @@ import {
   artifactsScrollMetrics$,
   artifactsScrollViewport$,
   artifactsWindow$,
+  completeCachedArtifacts$,
   getArtifactFocusTarget,
   growArtifactsWindow$,
   navigateToArtifactThread$,
@@ -1204,14 +1205,21 @@ export function ArtifactsPage() {
   const syncScrollMetrics = useSet(syncArtifactsScrollMetrics$);
   const openArtifactPreview = useOpenArtifactPreview();
   const lightboxUrl = useGet(lightboxUrl$);
+  const cachedArtifactsLoadable = useLoadable(completeCachedArtifacts$);
   const artifactsLoadable = useLoadable(artifacts$);
   const agents = useLastResolved(agents$) ?? [];
-  const artifacts =
+  const pageData =
     artifactsLoadable.state === "hasData"
-      ? artifactsLoadable.data.artifacts
-      : [];
-  const loading = artifactsLoadable.state === "loading";
-  const error = artifactsLoadable.state === "hasError";
+      ? artifactsLoadable.data
+      : cachedArtifactsLoadable.state === "hasData"
+        ? cachedArtifactsLoadable.data
+        : null;
+  const artifacts = pageData?.artifacts ?? [];
+  const loading =
+    pageData === null &&
+    (artifactsLoadable.state === "loading" ||
+      cachedArtifactsLoadable.state === "loading");
+  const error = pageData === null && !loading;
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     const viewport = event.currentTarget;
     syncScrollMetrics(viewport);

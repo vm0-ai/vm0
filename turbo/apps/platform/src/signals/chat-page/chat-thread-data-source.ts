@@ -9,10 +9,6 @@ import type {
 
 export interface ChatThreadRealtimeHandlers {
   onThreadDetailChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
-  onMessageUpdated$: Command<
-    Promise<boolean> | boolean,
-    [unknown, AbortSignal]
-  >;
   onAutomationsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   onArtifactsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   onWorkflowsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
@@ -75,11 +71,6 @@ export interface ListMessagesAfterArgs {
 export interface ListMessagesBeforeArgs {
   threadId: string;
   beforeSeqId: number;
-}
-
-export interface GetMessageArgs {
-  threadId: string;
-  messageId: string;
 }
 
 export interface CancelRunsArgs {

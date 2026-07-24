@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.627.4](https://github.com/vm0-ai/vm0/compare/app-v0.627.3...app-v0.627.4) (2026-07-24)
+
+
+### Performance Improvements
+
+* **platform:** skip history fetch before seq one ([#22875](https://github.com/vm0-ai/vm0/issues/22875)) ([9862d50](https://github.com/vm0-ai/vm0/commit/9862d50a3b024aa14394bb8d94432de227200a8d))
+
+## [0.627.3](https://github.com/vm0-ai/vm0/compare/app-v0.627.2...app-v0.627.3) (2026-07-24)
+
+
+### Bug Fixes
+
+* **artifacts:** repair indexeddb migration and bulk sync ([#22841](https://github.com/vm0-ai/vm0/issues/22841)) ([cea3ad3](https://github.com/vm0-ai/vm0/commit/cea3ad36b256d24f80b8deed1fc16af6841070f5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.1
+    * @vm0/core bumped to 8.461.0
+
+## [0.627.2](https://github.com/vm0-ai/vm0/compare/app-v0.627.1...app-v0.627.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **platform:** preserve run finish time with follow-ups ([#22852](https://github.com/vm0-ai/vm0/issues/22852)) ([a11f2fd](https://github.com/vm0-ai/vm0/commit/a11f2fdc3a167e54b2a288805cde3399a9e8912e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.0
+    * @vm0/connectors bumped to 1.189.0
+    * @vm0/core bumped to 8.460.0
+
+## [0.627.1](https://github.com/vm0-ai/vm0/compare/app-v0.627.0...app-v0.627.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **chat:** keep cancelled run work history visible and drop paused run group auto-expansion ([#22847](https://github.com/vm0-ai/vm0/issues/22847)) ([60c5544](https://github.com/vm0-ai/vm0/commit/60c5544281c20c5e289da7ec2a8520f01428254a))
+
 ## [0.627.0](https://github.com/vm0-ai/vm0/compare/app-v0.626.2...app-v0.627.0) (2026-07-24)
 
 

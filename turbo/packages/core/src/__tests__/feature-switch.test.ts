@@ -21,6 +21,9 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false for disabled switch without context", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ExternalConnectorCatalog, {}),
+    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
@@ -110,6 +113,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
       true,
@@ -140,6 +144,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
       false,
@@ -198,6 +203,9 @@ describe("getAllFeatureStates", () => {
 describe("user-overridable switches", () => {
   it("excludes internal switches from user override helpers", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ExternalConnectorCatalog,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ComposerUploadPopover,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
@@ -210,6 +218,9 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.PlanUpgradeGuidance,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroPeopleSearch,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroFinance,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -218,14 +229,17 @@ describe("user-overridable switches", () => {
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
+        [FeatureSwitchKey.ExternalConnectorCatalog]: true,
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+        [FeatureSwitchKey.ZeroPeopleSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
+      [FeatureSwitchKey.ZeroPeopleSearch]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
     });

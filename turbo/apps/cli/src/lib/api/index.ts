@@ -157,7 +157,12 @@ export {
 } from "./domains/integrations-teams";
 
 // Domain modules - Integrations Feishu
-export { sendFeishuMessage } from "./domains/integrations-feishu";
+export {
+  sendFeishuMessage,
+  downloadFeishuFile,
+  initFeishuFileUpload,
+  completeFeishuFileUpload,
+} from "./domains/integrations-feishu";
 
 // Domain modules - Integrations GitHub
 export {
@@ -221,6 +226,10 @@ export {
 
 // Domain modules - Zero Scrape
 export { callZeroScrape, type ZeroScrapeResponse } from "./domains/zero-scrape";
+export {
+  callZeroPeopleSearch,
+  type ZeroPeopleSearchResponse,
+} from "./domains/zero-people-search";
 export {
   callZeroWebSearch,
   type ZeroWebSearchResponse,

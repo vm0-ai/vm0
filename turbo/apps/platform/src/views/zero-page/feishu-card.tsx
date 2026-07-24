@@ -103,6 +103,7 @@ const FEISHU_PERMISSION_CONFIG = JSON.stringify(
         "im:message:readonly",
         "im:message.reactions:write_only",
         "im:message:send_as_bot",
+        "im:resource",
       ],
       user: [],
     },
@@ -617,8 +618,8 @@ function FeishuPermissionsStep() {
         <p className="leading-relaxed">
           Open Permission Management in the Feishu developer console, choose
           batch import, and paste the JSON below. These permissions enable
-          direct messages, group mentions, conversation history, replies, and
-          the thinking indicator.
+          direct messages, group mentions, conversation history, replies, file
+          transfers, and the thinking indicator.
         </p>
       </div>
       <div className="space-y-2 rounded-lg border border-border p-4">

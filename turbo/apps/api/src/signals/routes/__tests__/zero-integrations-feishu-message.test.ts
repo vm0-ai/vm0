@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 
+import { GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
-import { integrationsFeishuMessageContract } from "@vm0/api-contracts/contracts/integrations";
+import {
+  integrationsFeishuMessageContract,
+  integrationsFeishuUploadCompleteContract,
+  integrationsFeishuUploadInitContract,
+} from "@vm0/api-contracts/contracts/integrations";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -15,13 +21,17 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
+const chatApi = createChatFilesBddApi(context);
+const runsApi = createRunsApi(context);
 
 interface CapturedRequest {
   readonly kind: "reply" | "send";
@@ -42,13 +52,14 @@ interface FeishuRequestBody {
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly runId?: string;
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
     scope: "zero",
     userId: args.userId,
     orgId: args.orgId,
-    runId: `run_${randomUUID()}`,
+    runId: args.runId ?? `run_${randomUUID()}`,
     capabilities: ["feishu:write"],
     iat: seconds,
     exp: seconds + 60,
@@ -79,6 +90,7 @@ async function setupFeishuInstallation(
   actorOverride?: FeishuTestActor,
 ): Promise<{
   readonly actor: FeishuTestActor;
+  readonly agentId: string;
   readonly installationId: string;
 }> {
   const userId = `user_${randomUUID()}`;
@@ -127,7 +139,7 @@ async function setupFeishuInstallation(
     [200],
   );
   mockClerkMembership(context, actor, "org:admin");
-  return { actor, installationId };
+  return { actor, agentId: agent.agentId, installationId };
 }
 
 function requireTestValue<T>(value: T | null | undefined, message: string): T {
@@ -439,5 +451,191 @@ describe("POST /api/zero/integrations/feishu/message", () => {
       [200],
     );
     expect(selected.body.ok).toBeTruthy();
+  });
+
+  it("downloads a resource from a Feishu message", async () => {
+    const { actor, installationId } = await setupFeishuInstallation();
+    const payload = Buffer.from("feishu resource bytes");
+    server.use(
+      http.get(
+        "https://open.feishu.cn/open-apis/im/v1/messages/:messageId/resources/:fileKey",
+        ({ params, request }) => {
+          expect(params.messageId).toBe("om_resource");
+          expect(params.fileKey).toBe("file_resource");
+          expect(new URL(request.url).searchParams.get("type")).toBe("file");
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer tenant-access-token",
+          );
+          return new HttpResponse(payload, {
+            status: 200,
+            headers: {
+              "content-type": "application/pdf",
+              "content-length": String(payload.length),
+              "content-disposition": 'attachment; filename="report.pdf"',
+            },
+          });
+        },
+      ),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({
+      installation_id: installationId,
+      message_id: "om_resource",
+      file_key: "file_resource",
+      type: "file",
+    });
+    const response = await app.request(
+      `/api/zero/integrations/feishu/download-file?${query.toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${zeroToken(actor)}`,
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("x-file-name")).toBe("report.pdf");
+    expect(response.headers.get("x-file-mimetype")).toBe("application/pdf");
+    expect(
+      Buffer.from(await response.arrayBuffer()).equals(payload),
+    ).toBeTruthy();
+  });
+
+  it("uploads a stored file and sends it as a Feishu message", async () => {
+    const { actor, agentId, installationId } = await setupFeishuInstallation();
+    await runsApi.grantProEntitlement(actor);
+    await runsApi.ensureOrgModelProvider(actor);
+    const runnerGroup = runsApi.configureRunnerGroup();
+    await runsApi.heartbeatRunner(runnerGroup);
+    const sent = await chatApi.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "Create a run for Feishu file upload completion",
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected chat send to create a run for Feishu upload");
+    }
+    const token = zeroToken({ ...actor, runId: sent.body.runId });
+    const content = Buffer.from("feishu upload bytes");
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://storage.test/feishu-upload",
+    );
+    const initClient = setupApp({ context })(
+      integrationsFeishuUploadInitContract,
+    );
+    const initialized = await accept(
+      initClient.init({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          filename: "report.pdf",
+          contentType: "application/pdf",
+          length: content.length,
+        },
+      }),
+      [200],
+    );
+    const key = `artifacts/${encodeURIComponent(actor.userId)}/${initialized.body.uploadId}/report.pdf`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({
+          Contents: [
+            {
+              Key: key,
+              Size: content.length,
+              LastModified: new Date("2026-01-01T00:00:00.000Z"),
+            },
+          ],
+        });
+      }
+      if (command instanceof GetObjectCommand) {
+        return Promise.resolve({
+          ContentLength: content.length,
+          Body: (async function* stream(): AsyncIterable<Uint8Array> {
+            yield content;
+          })(),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    server.use(
+      http.post(
+        "https://open.feishu.cn/open-apis/im/v1/files",
+        async ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer tenant-access-token",
+          );
+          const form = await request.formData();
+          expect(form.get("file_type")).toBe("stream");
+          expect(form.get("file_name")).toBe("report.pdf");
+          const file = form.get("file");
+          if (!(file instanceof Blob)) {
+            throw new Error("Expected Feishu upload to include file bytes");
+          }
+          await expect(file.text()).resolves.toBe(content.toString());
+          return HttpResponse.json({
+            code: 0,
+            data: { file_key: "file_uploaded" },
+          });
+        },
+      ),
+    );
+    captured = [];
+    const completeClient = setupApp({ context })(
+      integrationsFeishuUploadCompleteContract,
+    );
+    const completed = await accept(
+      completeClient.complete({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          uploadId: initialized.body.uploadId,
+          installationId,
+          chat: "oc_file_target",
+          contentType: "application/pdf",
+        },
+      }),
+      [200],
+    );
+
+    expect(completed.body).toMatchObject({
+      messageId: "om_1",
+      chatId: "oc_feishu_cli",
+      fileKey: "file_uploaded",
+      filename: "report.pdf",
+      mimetype: "application/pdf",
+      size: content.length,
+    });
+    expect(completed.body.url).toContain(initialized.body.uploadId);
+    expect(captured).toStrictEqual([
+      {
+        kind: "send",
+        receiveIdType: "chat_id",
+        target: "oc_file_target",
+        msgType: "file",
+        content: { file_key: "file_uploaded" },
+        replyInThread: false,
+      },
+    ]);
+    const artifacts = await chatApi.listThreadArtifacts(
+      actor,
+      sent.body.threadId,
+    );
+    const files =
+      artifacts.runs.find((run) => {
+        return run.runId === sent.body.runId;
+      })?.files ?? [];
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({
+      id: "om_1",
+      filename: "report.pdf",
+      contentType: "application/pdf",
+      size: content.length,
+      url: completed.body.url,
+    });
   });
 });

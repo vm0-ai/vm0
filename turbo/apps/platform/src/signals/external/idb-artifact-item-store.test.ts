@@ -43,6 +43,8 @@ interface IndexedRow {
   readonly value: ArtifactItem;
 }
 
+type PutArtifact = (item: ArtifactItem) => Promise<void>;
+
 class MemoryCursor implements FakeCursor {
   private position = 0;
 
@@ -135,6 +137,12 @@ class MemoryArtifactDb {
   private readonly rows = new Map<string, ArtifactItem>();
   private syncState: unknown;
 
+  constructor(
+    private readonly putArtifact: PutArtifact = () => {
+      return Promise.resolve();
+    },
+  ) {}
+
   get db(): IDBPDatabase {
     return {
       transaction: (storeNames: string | string[]) => {
@@ -196,10 +204,10 @@ class MemoryArtifactDb {
 
   private store(): FakeStore {
     return {
-      put: (value) => {
+      put: async (value) => {
         const item = value as ArtifactItem;
+        await this.putArtifact(item);
         this.rows.set(item.artifactItemId, item);
-        return Promise.resolve();
       },
       delete: (key) => {
         if (typeof key === "string") {
@@ -492,18 +500,7 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     await expect(stores.readStore.readRecent()).rejects.toThrow("open failed");
   });
 
-  it("rejects strict cache reads when IndexedDB misses the deadline", async () => {
-    const pendingDb = Promise.withResolvers<IDBPDatabase>();
-    const stores = createArtifactItemCacheStores(() => {
-      return pendingDb.promise;
-    });
-
-    await expect(stores.readStore.readRecent()).rejects.toThrow(
-      "IndexedDB operation timed out: artifacts:readRecent",
-    );
-  });
-
-  it("classifies a timeout-aborted transaction as a deadline failure", async () => {
+  it("aborts a pending transaction when the page leaves", async () => {
     const pendingCursor = Promise.withResolvers<FakeCursor | null>();
     let transactionAborted = false;
     const index: FakeIndex = {
@@ -553,9 +550,9 @@ describe("artifact item IndexedDB cache writes and failures", () => {
       return Promise.resolve(db);
     });
 
-    await expect(stores.readStore.readRecent()).rejects.toThrow(
-      "IndexedDB operation timed out: artifacts:readRecent",
-    );
+    await expect(
+      stores.readStore.readRecent(undefined, AbortSignal.timeout(50)),
+    ).rejects.toThrow();
     expect(transactionAborted).toBeTruthy();
   });
 
@@ -585,5 +582,29 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     await expect(stores.writeStore.upsertItems([])).resolves.toBeUndefined();
 
     expect(getDb).not.toHaveBeenCalled();
+  });
+});
+
+describe("artifact item IndexedDB cache batch writes", () => {
+  it("enqueues a full remote page before waiting for writes", async () => {
+    const itemCount = 2000;
+    const writes = Promise.withResolvers<void>();
+    let writeCount = 0;
+    const db = new MemoryArtifactDb(() => {
+      writeCount += 1;
+      return writes.promise;
+    });
+    const stores = setupStores(db).stores;
+    const items = Array.from({ length: itemCount }, (_, index) => {
+      return artifact(index + 1);
+    });
+
+    const upsert = stores.writeStore.upsertItems(items);
+
+    await vi.waitFor(() => {
+      expect(writeCount).toBe(itemCount);
+    });
+    writes.resolve();
+    await expect(upsert).resolves.toBeUndefined();
   });
 });

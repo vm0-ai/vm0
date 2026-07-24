@@ -1,5 +1,68 @@
 # Changelog
 
+## [1.313.2](https://github.com/vm0-ai/vm0/compare/api-v1.313.1...api-v1.313.2) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.133.4
+
+## [1.313.1](https://github.com/vm0-ai/vm0/compare/api-v1.313.0...api-v1.313.1) (2026-07-24)
+
+
+### Refactoring
+
+* **api:** require canonical persisted storage state ([#22868](https://github.com/vm0-ai/vm0/issues/22868)) ([a9d7b47](https://github.com/vm0-ai/vm0/commit/a9d7b47c0b8191a16bd752cc1be827966115fa34))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.1
+    * @vm0/core bumped to 8.461.0
+    * @vm0/db bumped to 1.133.3
+
+## [1.313.0](https://github.com/vm0-ai/vm0/compare/api-v1.312.2...api-v1.313.0) (2026-07-24)
+
+
+### Features
+
+* **api:** prefer zero scrape for public pages ([#22861](https://github.com/vm0-ai/vm0/issues/22861)) ([96c52aa](https://github.com/vm0-ai/vm0/commit/96c52aace5242dc934232730bd5aee9e523badb3))
+
+## [1.312.2](https://github.com/vm0-ai/vm0/compare/api-v1.312.1...api-v1.312.2) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.0
+    * @vm0/connectors bumped to 1.189.0
+    * @vm0/core bumped to 8.460.0
+    * @vm0/db bumped to 1.133.2
+
+## [1.312.1](https://github.com/vm0-ai/vm0/compare/api-v1.312.0...api-v1.312.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **api:** preserve preview override for queued chat runs ([#22843](https://github.com/vm0-ai/vm0/issues/22843)) ([691aadd](https://github.com/vm0-ai/vm0/commit/691aaddee11573d6f5053c5b7afe4456ba6b66f2))
+
+
+### Refactoring
+
+* **api:** use builders for unnest-backed bulk updates ([#22840](https://github.com/vm0-ai/vm0/issues/22840)) ([d0b13bd](https://github.com/vm0-ai/vm0/commit/d0b13bd29b4a7f4be9fcd314ec2880cf3196553b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.133.1
+
 ## [1.312.0](https://github.com/vm0-ai/vm0/compare/api-v1.311.0...api-v1.312.0) (2026-07-24)
 
 

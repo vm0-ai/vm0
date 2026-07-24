@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.147.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.15...runner-rs-v0.147.16) (2026-07-24)
+
+
+### Bug Fixes
+
+* **python:** normalize X billing method casing ([#22882](https://github.com/vm0-ai/vm0/issues/22882)) ([e43a2ab](https://github.com/vm0-ai/vm0/commit/e43a2ab9e9959471fc27d8dfc945982adde97413))
+* **runner:** trigger patch release ([#22876](https://github.com/vm0-ai/vm0/issues/22876)) ([24d9daa](https://github.com/vm0-ai/vm0/commit/24d9daaf4e7595b952d709bbd638da88262cf5d4))
+
+## [0.147.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.14...runner-rs-v0.147.15) (2026-07-24)
+
+
+### Performance Improvements
+
+* compact model usage observations ([#22848](https://github.com/vm0-ai/vm0/issues/22848)) ([80d3241](https://github.com/vm0-ai/vm0/commit/80d3241799f4a710e9fc942f5a5685e7cabd7498))
+
 ## [0.147.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.13...runner-rs-v0.147.14) (2026-07-24)
 
 

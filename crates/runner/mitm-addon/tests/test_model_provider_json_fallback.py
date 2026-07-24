@@ -33,6 +33,7 @@ from tests.model_provider_response_helpers import (
     standard_success_payload,
 )
 from tests.stream_buffer_helpers import set_response_stream_buffer
+from tests.usage_helpers import compact_observation_quantities
 
 
 class TestModelProviderJsonFallback:
@@ -564,7 +565,7 @@ class TestModelProviderJsonFallback:
 
         assert webhook.usage_events() == []
         observations = webhook.model_usage_observation_events()
-        by_category = {event["category"]: event["quantity"] for event in observations}
+        by_category = compact_observation_quantities(observations)
         assert by_category == expected_event_quantities(OPENAI_RESPONSES_CASE)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
 

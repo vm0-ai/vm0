@@ -65,6 +65,7 @@ export const ZERO_CAPABILITIES = [
   "maps:read",
   "weather:read",
   "scrape:read",
+  "people-search:read",
   "web-search:read",
   "finance:read",
   "computer-use:write",
@@ -115,7 +116,7 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
     "feishu:write": {
       group: "Integrations",
-      label: "Send Feishu messages",
+      label: "Send Feishu messages and files",
     },
     "teams:write": {
       group: "Integrations",
@@ -167,6 +168,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "scrape:read": {
       group: "Scrape",
       label: "Use managed web scraping",
+    },
+    "people-search:read": {
+      group: "People Search",
+      label: "Use managed people search",
     },
     "web-search:read": {
       group: "Web Search",

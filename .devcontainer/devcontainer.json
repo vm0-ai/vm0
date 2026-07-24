@@ -2,9 +2,6 @@
   "name": "VM0 Development",
   "image": "ghcr.io/vm0-ai/vm0-dev:20260710",
   "features": {
-    "ghcr.io/itsmechlark/features/postgresql:1": {
-      "version": "17"
-    },
     "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"
     }
@@ -51,7 +48,7 @@
     "source=agent-browser,target=/home/vscode/.local/share/agent-browser"
   ],
   "postCreateCommand": "bash .devcontainer/setup.sh",
-  "postStartCommand": "bash .devcontainer/link-agent-skills.sh && gh auth setup-git && bash .devcontainer/start-vnc.sh",
+  "postStartCommand": "sudo service postgresql start && bash .devcontainer/link-agent-skills.sh && gh auth setup-git && bash .devcontainer/start-vnc.sh",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -75,7 +72,7 @@
             "name": "local",
             "username": "postgres",
             "database": "postgres",
-            "password": ""
+            "password": "postgres"
           }
         ],
         "terminal.integrated.defaultProfile.linux": "zsh",

@@ -5,7 +5,7 @@ const L = logger("ChatIdbCache");
 
 const CHAT_IDB_OPERATION_TIMEOUT_MS = 200;
 
-class ChatIdbTimeoutError extends Error {
+export class ChatIdbTimeoutError extends Error {
   constructor(label: string) {
     super(`IndexedDB operation timed out: ${label}`);
     this.name = "ChatIdbTimeoutError";
@@ -31,11 +31,10 @@ export async function withChatIdbTimeout<T>(
   label: string,
   operation: (operationSignal: AbortSignal) => Promise<T>,
   signal?: AbortSignal,
+  timeoutMs = CHAT_IDB_OPERATION_TIMEOUT_MS,
 ): Promise<T> {
   signal?.throwIfAborted();
-  const operationTimeoutSignal = AbortSignal.timeout(
-    CHAT_IDB_OPERATION_TIMEOUT_MS,
-  );
+  const operationTimeoutSignal = AbortSignal.timeout(timeoutMs);
   const operationSignal = signal
     ? AbortSignal.any([signal, operationTimeoutSignal])
     : operationTimeoutSignal;

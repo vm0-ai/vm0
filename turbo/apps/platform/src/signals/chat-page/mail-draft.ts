@@ -15,6 +15,8 @@ import {
   getOrCreateCardSignals,
   registeredCardSignals,
 } from "./card-signal-map.ts";
+import { onRef } from "../utils.ts";
+import { connectorChangedVersion$ } from "../connector-reload.ts";
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
@@ -23,7 +25,17 @@ export interface MailDraftDescriptor {
 }
 
 export interface MailDraftSignals extends MailDraftDescriptor {
+  readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
+  readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
+  readonly attachmentUrls$: Computed<
+    Promise<ReadonlyMap<string, string | null>>
+  >;
+  readonly setAttachmentScopeRef$: Command<
+    (() => void) | undefined,
+    [HTMLDivElement | null]
+  >;
+  readonly reloadSidebar$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
 }
@@ -116,12 +128,124 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   };
 }
 
+function createAttachmentUrls(
+  descriptor: MailDraftDescriptor,
+  sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>,
+): Pick<MailDraftSignals, "attachmentUrls$" | "setAttachmentScopeRef$"> {
+  const attachmentObjectUrls = new Map<string, string>();
+  const attachmentScopeActive$ = state(false);
+  let cleanupSignal: AbortSignal | null = null;
+  let loadVersion = 0;
+  const revokeAttachmentObjectUrls = () => {
+    for (const url of attachmentObjectUrls.values()) {
+      URL.revokeObjectURL(url);
+    }
+    attachmentObjectUrls.clear();
+  };
+  const releaseAttachmentObjectUrls = () => {
+    loadVersion += 1;
+    revokeAttachmentObjectUrls();
+  };
+  const attachmentUrls$ = computed(
+    async (get): Promise<ReadonlyMap<string, string | null>> => {
+      if (!get(attachmentScopeActive$)) {
+        return new Map();
+      }
+      const currentLoadVersion = ++loadVersion;
+      const draftPromise = get(sidebarDraft$);
+      const signal = get(pageSignal$);
+      const client = get(zeroClient$)(zeroMailContract);
+      signal.throwIfAborted();
+      if (cleanupSignal !== signal) {
+        cleanupSignal?.removeEventListener(
+          "abort",
+          releaseAttachmentObjectUrls,
+        );
+        cleanupSignal = signal;
+        signal.addEventListener("abort", releaseAttachmentObjectUrls, {
+          once: true,
+        });
+      }
+      const draft = await draftPromise;
+      signal.throwIfAborted();
+      if (currentLoadVersion !== loadVersion) {
+        return new Map();
+      }
+      const partIds = Array.from(
+        new Set([
+          ...(draft?.inlineImages ?? []).map((image) => {
+            return image.partId;
+          }),
+          ...(draft?.version === 3 ? draft.attachments : []).flatMap(
+            (attachment) => {
+              return attachment.partId ? [attachment.partId] : [];
+            },
+          ),
+        ]),
+      );
+      const responses = await Promise.all(
+        partIds.map(async (partId) => {
+          const response = await accept(
+            client.getAttachment({
+              params: {
+                mailDraftId: descriptor.mailDraftId,
+                partId,
+              },
+              fetchOptions: { signal },
+            }),
+            [200, 404],
+          );
+          return { partId, response };
+        }),
+      );
+      signal.throwIfAborted();
+      if (currentLoadVersion !== loadVersion) {
+        return new Map();
+      }
+      revokeAttachmentObjectUrls();
+      const imageUrls = new Map<string, string | null>();
+      for (const { partId, response } of responses) {
+        if (response.status === 404) {
+          imageUrls.set(partId, null);
+          continue;
+        }
+        const url = URL.createObjectURL(response.body);
+        attachmentObjectUrls.set(partId, url);
+        imageUrls.set(partId, url);
+      }
+      return imageUrls;
+    },
+  );
+  const setAttachmentScopeRef$ = onRef(
+    command(({ set }, _element: HTMLDivElement, signal: AbortSignal) => {
+      set(attachmentScopeActive$, true);
+      signal.addEventListener(
+        "abort",
+        () => {
+          releaseAttachmentObjectUrls();
+          set(attachmentScopeActive$, false);
+        },
+        { once: true },
+      );
+    }),
+  );
+  return { attachmentUrls$, setAttachmentScopeRef$ };
+}
+
 function createMailDraftSignals(
+  threadId: string,
   descriptor: MailDraftDescriptor,
 ): MailDraftSignals {
-  const reloadVersion$ = state(0);
+  const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
+  const sidebarDraftOverride$ = state<ZeroMailDraft | null | undefined>(
+    undefined,
+  );
   const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
-    get(reloadVersion$);
+    get(connectorChangedVersion$);
+    const override = get(draftOverride$);
+    if (override !== undefined) {
+      return override;
+    }
     const response = await accept(
       get(zeroClient$)(zeroMailContract).getDraft({
         params: { mailDraftId: descriptor.mailDraftId },
@@ -131,8 +255,27 @@ function createMailDraftSignals(
     );
     return response.status === 200 ? response.body.mailDraft : null;
   });
-  const reload$ = command(({ set }) => {
-    set(reloadVersion$, (version) => {
+  const sidebarReloadVersion$ = state(0);
+  const sidebarDraft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
+    get(connectorChangedVersion$);
+    get(sidebarReloadVersion$);
+    const override = get(sidebarDraftOverride$);
+    if (override !== undefined) {
+      return override;
+    }
+    const response = await accept(
+      get(zeroClient$)(zeroMailContract).getDraft({
+        params: { mailDraftId: descriptor.mailDraftId },
+        fetchOptions: { signal: get(pageSignal$) },
+      }),
+      [200, 404],
+    );
+    return response.status === 200 ? response.body.mailDraft : null;
+  });
+  const attachmentUrls = createAttachmentUrls(descriptor, sidebarDraft$);
+  const reloadSidebar$ = command(({ set }) => {
+    set(sidebarDraftOverride$, undefined);
+    set(sidebarReloadVersion$, (version) => {
       return version + 1;
     });
   });
@@ -146,11 +289,12 @@ function createMailDraftSignals(
         [204],
       );
       signal.throwIfAborted();
-      set(reload$);
+      set(draftOverride$, null);
+      set(sidebarDraftOverride$, null);
     },
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
-    await accept(
+    const response = await accept(
       get(zeroClient$)(zeroMailContract).sendDraft({
         params: { mailDraftId: descriptor.mailDraftId },
         fetchOptions: { signal },
@@ -158,12 +302,24 @@ function createMailDraftSignals(
       [200],
     );
     signal.throwIfAborted();
-    set(reload$);
+    set(draftOverride$, response.body.mailDraft);
+    set(sidebarDraftOverride$, response.body.mailDraft);
   });
-  return { ...descriptor, draft$, delete$, send$ };
+  return {
+    ...descriptor,
+    threadId,
+    draft$,
+    sidebarDraft$,
+    ...attachmentUrls,
+    reloadSidebar$,
+    delete$,
+    send$,
+  };
 }
 
-export function createMailDraftCardSignalsRegistry(): MailDraftCardSignalsRegistry {
+export function createMailDraftCardSignalsRegistry(
+  threadId: string,
+): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
   return {
     register(descriptor) {
@@ -171,7 +327,7 @@ export function createMailDraftCardSignalsRegistry(): MailDraftCardSignalsRegist
         signalsByResourceKey,
         descriptor.mailDraftId,
         () => {
-          return createMailDraftSignals(descriptor);
+          return createMailDraftSignals(threadId, descriptor);
         },
       );
     },
