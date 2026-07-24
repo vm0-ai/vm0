@@ -306,6 +306,8 @@ describe("chat lifecycle", () => {
     const sidebar = screen.getByTestId("automation-sidebar");
     expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
     expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Status")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Active")).toBeInTheDocument();
     expect(within(sidebar).getAllByText("Schedule").length).toBeGreaterThan(0);
     expect(within(sidebar).getByText("Every 1 minute")).toBeInTheDocument();
     expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
@@ -373,6 +375,22 @@ describe("chat lifecycle", () => {
     expect(within(sidebar).getByText("View")).toBeInTheDocument();
     expect(within(sidebar).getByText("Run now")).toBeInTheDocument();
     expect(within(sidebar).queryByText("Edit")).not.toBeInTheDocument();
+  });
+
+  it("shows a disabled workflow automation status in the sidebar", async () => {
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
+        id: "e0000001-0000-4000-a000-000000000007",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        enabled: false,
+        workflow: {
+          displayName: "Nightly sync",
+        },
+      }),
+    );
+
+    expect(within(sidebar).getByText("Disabled")).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("switch")).not.toBeInTheDocument();
   });
 
   it("updates a schedule workflow automation from the sidebar", async () => {
