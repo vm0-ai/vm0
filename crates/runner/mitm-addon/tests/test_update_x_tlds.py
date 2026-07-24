@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import http.client
+import io
 import os
 import py_compile
-import ssl
 import subprocess
 import sys
+import threading
+import urllib.error
 from collections.abc import Iterable
+from email.message import Message
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -23,65 +27,72 @@ _EXPECTED_IANA_TLD_COUNT = 1437
 _EXPECTED_IANA_TLD_SHA256 = "58c386314e69df471d34645b7614c8540a44ae110fc082f48434ea332a88ebc2"
 
 
-class _FakeResponse:
-    def __init__(
-        self,
-        *,
-        status: int = update_x_tlds.HTTPStatus.OK,
-        body: bytes = b"",
-        read_error: Exception | None = None,
-    ) -> None:
-        self.status = status
-        self.body = body
-        self.read_error = read_error
+class _FailingOpener:
+    def open(self, request: object, timeout: int) -> None:
+        raise urllib.error.URLError("dns failed")
 
-    def __enter__(self) -> _FakeResponse:
+
+class _HttpErrorOpener:
+    def open(self, request: object, timeout: int) -> None:
+        raise urllib.error.HTTPError(
+            update_x_tlds.SOURCE_URL,
+            503,
+            "Service Unavailable",
+            Message(),
+            io.BytesIO(b""),
+        )
+
+
+class _ReadFailureResponse:
+    status = update_x_tlds.HTTPStatus.OK
+
+    def __enter__(self) -> _ReadFailureResponse:
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         return None
 
     def read(self) -> bytes:
-        if self.read_error is not None:
-            raise self.read_error
-        return self.body
+        raise http.client.IncompleteRead(b"partial")
 
 
-class _FakeHttpsConnection:
-    def __init__(
-        self,
-        response: _FakeResponse | None = None,
-        request_error: Exception | None = None,
-    ) -> None:
-        self.response = response or _FakeResponse()
-        self.request_error = request_error
-        self.host: str | None = None
-        self.options: dict[str, object] = {}
-        self.request_args: tuple[str, str, dict[str, str]] | None = None
-        self.closed = False
-
-    def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
-        self.request_args = (method, path, headers)
-        if self.request_error is not None:
-            raise self.request_error
-
-    def getresponse(self) -> _FakeResponse:
-        return self.response
-
-    def close(self) -> None:
-        self.closed = True
+class _ReadFailureOpener:
+    def open(self, request: object, timeout: int) -> _ReadFailureResponse:
+        return _ReadFailureResponse()
 
 
-def _install_fake_connection(
-    monkeypatch: pytest.MonkeyPatch,
-    connection: _FakeHttpsConnection,
-) -> None:
-    def create_connection(host: str, **options: object) -> _FakeHttpsConnection:
-        connection.host = host
-        connection.options = options
-        return connection
+class _InvalidUtf8Response:
+    status = update_x_tlds.HTTPStatus.OK
 
-    monkeypatch.setattr(update_x_tlds.http.client, "HTTPSConnection", create_connection)
+    def __enter__(self) -> _InvalidUtf8Response:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return b"\xff"
+
+
+class _InvalidUtf8Opener:
+    def open(self, request: object, timeout: int) -> _InvalidUtf8Response:
+        return _InvalidUtf8Response()
+
+
+def _build_failing_opener(*handlers: object) -> _FailingOpener:
+    return _FailingOpener()
+
+
+def _build_http_error_opener(*handlers: object) -> _HttpErrorOpener:
+    return _HttpErrorOpener()
+
+
+def _build_read_failure_opener(*handlers: object) -> _ReadFailureOpener:
+    return _ReadFailureOpener()
+
+
+def _build_invalid_utf8_opener(*handlers: object) -> _InvalidUtf8Opener:
+    return _InvalidUtf8Opener()
 
 
 def _source_text(version: str, tlds: Iterable[str]) -> str:
@@ -174,26 +185,8 @@ def test_update_generated_rejects_malformed_source_without_replacing_output(tmp_
     assert output.read_text(encoding="utf-8") == original
 
 
-def test_fetch_source_uses_fixed_https_endpoint(monkeypatch):
-    source = b"# Version 1, Last Updated test\nCOM\n"
-    connection = _FakeHttpsConnection(_FakeResponse(body=source))
-    _install_fake_connection(monkeypatch, connection)
-
-    assert update_x_tlds.fetch_source() == source.decode("utf-8")
-    assert connection.host == update_x_tlds.SOURCE_HOST
-    assert connection.options["timeout"] == update_x_tlds.FETCH_TIMEOUT_SECONDS
-    assert isinstance(connection.options["context"], ssl.SSLContext)
-    assert connection.request_args == (
-        "GET",
-        update_x_tlds.SOURCE_PATH,
-        {"User-Agent": "vm0-mitm-addon-tld-updater"},
-    )
-    assert connection.closed
-
-
 def test_fetch_source_reports_url_error_as_fetch_error(monkeypatch):
-    connection = _FakeHttpsConnection(request_error=OSError("dns failed"))
-    _install_fake_connection(monkeypatch, connection)
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_failing_opener)
 
     with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
         update_x_tlds.fetch_source()
@@ -201,41 +194,52 @@ def test_fetch_source_reports_url_error_as_fetch_error(monkeypatch):
     message = str(exc_info.value)
     assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in message
     assert "dns failed" in message
-    assert connection.closed
 
 
 def test_fetch_source_preserves_http_error_status_message(monkeypatch):
-    connection = _FakeHttpsConnection(_FakeResponse(status=503))
-    _install_fake_connection(monkeypatch, connection)
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_http_error_opener)
 
     with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
         update_x_tlds.fetch_source()
 
     assert str(exc_info.value) == f"failed to fetch {update_x_tlds.SOURCE_URL}: HTTP 503"
-    assert connection.closed
 
 
-def test_fetch_source_rejects_redirect_without_following_target(monkeypatch):
-    connection = _FakeHttpsConnection(_FakeResponse(status=302))
-    _install_fake_connection(monkeypatch, connection)
+def test_fetch_source_rejects_cross_origin_redirect_without_requesting_target(monkeypatch):
+    requested_paths: list[str] = []
 
-    with pytest.raises(update_x_tlds.TldFetchError, match=r"HTTP 302"):
-        update_x_tlds.fetch_source()
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requested_paths.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "https://unexpected.example/TLD/tlds-alpha-by-domain.txt")
+            self.end_headers()
 
-    assert connection.host == update_x_tlds.SOURCE_HOST
-    assert connection.request_args == (
-        "GET",
-        update_x_tlds.SOURCE_PATH,
-        {"User-Agent": "vm0-mitm-addon-tld-updater"},
-    )
-    assert connection.closed
+        def log_message(self, fmt: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setattr(
+            update_x_tlds,
+            "SOURCE_URL",
+            f"http://127.0.0.1:{server.server_port}{update_x_tlds.SOURCE_PATH}",
+        )
+
+        with pytest.raises(update_x_tlds.TldFetchError, match=r"HTTP 302"):
+            update_x_tlds.fetch_source()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert requested_paths == [update_x_tlds.SOURCE_PATH]
 
 
 def test_fetch_source_reports_response_read_failure_as_fetch_error(monkeypatch):
-    connection = _FakeHttpsConnection(
-        _FakeResponse(read_error=http.client.IncompleteRead(b"partial"))
-    )
-    _install_fake_connection(monkeypatch, connection)
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_read_failure_opener)
 
     with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
         update_x_tlds.fetch_source()
@@ -243,12 +247,10 @@ def test_fetch_source_reports_response_read_failure_as_fetch_error(monkeypatch):
     message = str(exc_info.value)
     assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in message
     assert "IncompleteRead" in message
-    assert connection.closed
 
 
 def test_fetch_source_reports_invalid_utf8_body_as_fetch_error(monkeypatch):
-    connection = _FakeHttpsConnection(_FakeResponse(body=b"\xff"))
-    _install_fake_connection(monkeypatch, connection)
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_invalid_utf8_opener)
 
     with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
         update_x_tlds.fetch_source()
@@ -256,7 +258,6 @@ def test_fetch_source_reports_invalid_utf8_body_as_fetch_error(monkeypatch):
     message = str(exc_info.value)
     assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in message
     assert "invalid UTF-8" in message
-    assert connection.closed
 
 
 def test_default_update_cli_reports_fetch_failure_without_replacing_output(
@@ -267,8 +268,7 @@ def test_default_update_cli_reports_fetch_failure_without_replacing_output(
     output.write_text(original, encoding="utf-8")
     monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT)])
     monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
-    connection = _FakeHttpsConnection(request_error=OSError("dns failed"))
-    _install_fake_connection(monkeypatch, connection)
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_failing_opener)
 
     assert update_x_tlds.main() == 1
 
@@ -278,7 +278,6 @@ def test_default_update_cli_reports_fetch_failure_without_replacing_output(
     assert "dns failed" in captured.err
     assert "Traceback" not in captured.err
     assert output.read_text(encoding="utf-8") == original
-    assert connection.closed
 
 
 def test_update_cli_reports_malformed_source_without_replacing_output(

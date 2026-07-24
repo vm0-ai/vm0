@@ -21,7 +21,6 @@ test = [
 ]
 
 [tool.uv]
-exclude-newer = "7 days"
 package = false
 required-version = "==0.11.32"
 

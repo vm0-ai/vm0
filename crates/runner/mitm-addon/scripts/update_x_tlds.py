@@ -10,6 +10,8 @@ import runpy
 import ssl
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from http import HTTPStatus
 from pathlib import Path
 from typing import NamedTuple
@@ -22,6 +24,11 @@ ADDON_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ADDON_ROOT / "src/usage/providers/connectors/x_tlds.py"
 VERSION_RE = re.compile(r"^# Version (?P<version>\d+), Last Updated (?P<timestamp>.+)$")
 TLD_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class TldFetchError(RuntimeError):
@@ -50,29 +57,29 @@ class SnapshotComparison(NamedTuple):
 
 
 def fetch_source() -> str:
-    # The low-level HTTPS client fixes both the scheme and authority and does
-    # not follow redirects away from the IANA endpoint.
-    connection = http.client.HTTPSConnection(
-        SOURCE_HOST,
-        timeout=FETCH_TIMEOUT_SECONDS,
-        context=ssl.create_default_context(),
+    # SOURCE_URL is a fixed https:// IANA endpoint, not user input. The opener
+    # uses the default CA-verifying SSL context and disables redirects.
+    request = urllib.request.Request(
+        SOURCE_URL,
+        headers={"User-Agent": "vm0-mitm-addon-tld-updater"},
+        method="GET",
+    )
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+        _NoRedirect,
     )
     try:
-        connection.request(
-            "GET",
-            SOURCE_PATH,
-            headers={"User-Agent": "vm0-mitm-addon-tld-updater"},
-        )
-        with connection.getresponse() as response:
+        with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             if response.status != HTTPStatus.OK:
                 raise TldFetchError(f"failed to fetch {SOURCE_URL}: HTTP {response.status}")
             return response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        with exc:
+            raise TldFetchError(f"failed to fetch {SOURCE_URL}: HTTP {exc.code}") from exc
     except UnicodeDecodeError as exc:
         raise TldFetchError(f"failed to fetch {SOURCE_URL}: invalid UTF-8 response body") from exc
     except (OSError, http.client.HTTPException) as exc:
         raise TldFetchError(f"failed to fetch {SOURCE_URL}: {exc}") from exc
-    finally:
-        connection.close()
 
 
 def parse_source(source: str) -> tuple[str, tuple[str, ...]]:
