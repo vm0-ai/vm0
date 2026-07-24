@@ -381,7 +381,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     expect(refreshCalls).toBe(0);
   });
 
-  it("deletes Gmail only for an explicit draft deletion", async () => {
+  it("deletes Gmail without removing the linked mail draft", async () => {
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();
     const linked = await linkDraft(fixture);
@@ -395,13 +395,13 @@ describe("POST /api/zero/mail/drafts/link", () => {
     );
     expect(gmail.deleteCount).toBe(1);
 
-    const deleted = await accept(
+    const preserved = await accept(
       stateClient().get({
         params: { mailDraftId: linked.body.mailDraftId },
       }),
       [200],
     );
-    expect(deleted.body.exists).toBeFalsy();
+    expect(preserved.body.exists).toBeTruthy();
   });
 
   it("only removes the link when its chat thread is deleted", async () => {
