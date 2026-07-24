@@ -991,7 +991,7 @@ export function parseBodyBlocks(
       continue;
     }
 
-    const actionBlock = createActionBlockFromLine(line);
+    const actionBlock = previews ? createActionBlockFromLine(line) : null;
     if (actionBlock) {
       if (actionBlock.type === "connector-action") {
         const retainedMarkdown = retainedConnectorActionMarkdown(

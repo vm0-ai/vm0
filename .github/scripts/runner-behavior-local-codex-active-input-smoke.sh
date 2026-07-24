@@ -72,7 +72,7 @@ if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
   --group "$GROUP" \
   --timeout 240 \
   --cli-agent-type codex \
-  --env OPENAI_MODEL=gpt-5.4-mini \
+  --env OPENAI_MODEL=gpt-5.6-luna \
   --secret-env OPENAI_API_KEY="$OPENAI_API_KEY" \
   --prompt "$PROMPT" \
   --active-input 'after=100ms,text=codex-active-one-2p9' \

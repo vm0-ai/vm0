@@ -167,6 +167,7 @@ interface WorkflowQueueAdmissionArgs {
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
+  readonly coalescePendingScheduleRun: boolean;
   readonly params: WorkflowQueueEventParams;
 }
 
@@ -186,12 +187,17 @@ async function attemptWorkflowQueueAdmission(
         tx,
         args.chatThreadId,
       );
-      if (!busy && !(await pendingWorkflowEventExists(tx, args.chatThreadId))) {
+      if (
+        !busy &&
+        !(await hasUnclaimedQueuedUserMessage(tx, args.chatThreadId)) &&
+        !(await pendingWorkflowEventExists(tx, args.chatThreadId))
+      ) {
         return { kind: "proceed" };
       }
     }
 
     if (
+      args.coalescePendingScheduleRun &&
       automation.kind === "schedule" &&
       (await pendingTickExistsForAutomation(tx, automation.id))
     ) {
@@ -423,6 +429,7 @@ export async function pendingChatThreadQueueThreadIds(
           inArray(chatMessageQueue.itemType, [
             "user_message",
             "slack_user_message",
+            "feishu_user_message",
           ]),
           and(
             eq(chatMessageQueue.itemType, "workflow_event"),

@@ -3,7 +3,7 @@ import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { replayChatThreadEvents } from "../chat-thread-event-replay.ts";
+import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
 
 function snapshotThread(
   params: Partial<ChatThreadSnapshotProjection> & {

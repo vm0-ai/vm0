@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { ZeroFeishuSettingsPage } from "../../views/zero-page/feishu-card.tsx";
+import { ZeroFeishuConnectPage } from "../../views/zero-page/zero-feishu-connect-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -15,17 +16,28 @@ import {
   showFeishuSettingsResult$,
   startFeishuSettingsRealtime$,
 } from "./zero-feishu.ts";
+import { hasFeishuConnectParams$ } from "./feishu-connect-signals.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupFeishuSettingsPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const features = get(featureSwitch$);
-    if (!features[FeatureSwitchKey.FeishuIntegration]) {
-      set(detachedNavigateTo$, ROUTES.home, { replace: true });
-      return;
+    const isAccountConnect = get(hasFeishuConnectParams$);
+    if (!isAccountConnect) {
+      const features = get(featureSwitch$);
+      if (!features[FeatureSwitchKey.FeishuIntegration]) {
+        set(detachedNavigateTo$, ROUTES.home, { replace: true });
+        return;
+      }
     }
 
     if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
+    if (isAccountConnect) {
+      set(updatePage$, createElement(ZeroFeishuConnectPage));
+      set(updateDocumentTitle$, "Connect Feishu");
+      await set(hideAppSkeleton$, signal);
       return;
     }
 

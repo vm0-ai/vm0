@@ -90,6 +90,8 @@ export interface UserInfo {
   readonly timezone: string | null;
   readonly slackDisplayName?: string;
   readonly slackUserId?: string;
+  readonly feishuDisplayName?: string;
+  readonly feishuOpenId?: string;
   readonly teamsUserDisplayName?: string;
   readonly teamsUserPrincipalName?: string;
   readonly teamsUserId?: string;

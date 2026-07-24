@@ -2342,6 +2342,9 @@ describe("zero workflow automations", () => {
     );
 
     expect(run.body.chatThreadId).toBe(threadId);
+    if (!run.body.runId) {
+      throw new Error("Expected an idle manual automation run to start");
+    }
     const timingEvents = sandboxOperationEventsForRun(run.body.runId);
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([

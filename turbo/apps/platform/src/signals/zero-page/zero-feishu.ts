@@ -27,7 +27,6 @@ const FEISHU_SETUP_STEP_ORDER = [
   "create",
   "credentials",
   "tokens",
-  "permissions",
   "redirect",
   "events",
   "publish",
@@ -52,6 +51,8 @@ export interface FeishuBotInstallation extends Omit<
   readonly oauthRedirectUrl: string | null;
   readonly setupCompleted: boolean;
 }
+
+const internalInstallations$ = state<FeishuBotInstallation[] | null>(null);
 
 export const feishuInstallations$ = computed(
   async (get): Promise<FeishuBotInstallation[]> => {
@@ -116,6 +117,7 @@ export const disconnectFeishuOrg$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
+    toast.success("Disconnected from Feishu");
   },
 );
 
@@ -131,7 +133,6 @@ export type FeishuSetupStep =
   | "create"
   | "credentials"
   | "tokens"
-  | "permissions"
   | "redirect"
   | "events"
   | "publish";
@@ -303,6 +304,7 @@ export const completeFeishuInstallationSetup$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
+    toast.success("Feishu bot installed successfully");
   },
 );
 
@@ -320,6 +322,7 @@ export const uninstallFeishuInstallation$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
+    toast.success("Feishu bot uninstalled");
   },
 );
 
@@ -341,7 +344,7 @@ export const showFeishuSettingsResult$ = command(() => {
   if (error) {
     toast.error(error);
   } else if (params.get("status") === "connected") {
-    toast.success("Feishu account connected");
+    toast.success("Feishu connected successfully");
   } else {
     return;
   }
@@ -349,9 +352,33 @@ export const showFeishuSettingsResult$ = command(() => {
 });
 
 export const startFeishuSettingsRealtime$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    const onFeishuChanged$ = command(({ set }) => {
+  async ({ get, set }, signal: AbortSignal) => {
+    const current = await get(feishuInstallations$);
+    signal.throwIfAborted();
+    set(internalInstallations$, current);
+
+    const onFeishuChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+      const previous = get(internalInstallations$);
       set(reloadFeishuInstallations$);
+      const next = await get(feishuInstallations$);
+      sig.throwIfAborted();
+      set(internalInstallations$, next);
+      if (
+        previous?.some((installation) => {
+          return (
+            !installation.isConnected &&
+            next.some((candidate) => {
+              return (
+                (candidate.id ?? candidate.appId) ===
+                  (installation.id ?? installation.appId) &&
+                candidate.isConnected
+              );
+            })
+          );
+        })
+      ) {
+        toast.success("Feishu connected successfully");
+      }
       return false;
     });
 
@@ -371,6 +398,7 @@ export const resetFeishuSettingsUi$ = command(({ set }) => {
   set(internalDialogExisting$, false);
   set(internalDialogInstallationId$, null);
   set(internalUninstallInstallationId$, null);
+  set(internalInstallations$, null);
   set(internalSetupStep$, "create");
   set(internalSetupForm$, {
     appId: "",
