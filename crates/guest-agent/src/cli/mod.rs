@@ -799,7 +799,7 @@ async fn execute_cli_inner(
         http.clone(),
         runtime.event_error_flag.to_string(),
         &runtime.run_id,
-    );
+    )?;
 
     let mut heartbeat_done = false;
     let mut cli_exit_at: Option<Instant> = None;

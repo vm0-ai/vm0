@@ -80,6 +80,7 @@ pub fn unique_temp_path(prefix: &str) -> PathBuf {
 pub struct RecordedRequest {
     pub path: String,
     pub authorization: Option<String>,
+    pub content_type: Option<String>,
     pub body: String,
 }
 
@@ -364,6 +365,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         .to_string();
 
     let mut authorization = None;
+    let mut content_type = None;
     let mut content_length = 0usize;
     for line in header_lines.lines() {
         let Some((name, value)) = line.split_once(':') else {
@@ -373,6 +375,9 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         let trimmed_value = value.trim();
         if trimmed_name.eq_ignore_ascii_case("authorization") {
             authorization = Some(trimmed_value.to_string());
+        }
+        if trimmed_name.eq_ignore_ascii_case("content-type") {
+            content_type = Some(trimmed_value.to_string());
         }
         if trimmed_name.eq_ignore_ascii_case("content-length") {
             content_length = trimmed_value
@@ -411,6 +416,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
     Ok(RecordedRequest {
         path,
         authorization,
+        content_type,
         body,
     })
 }

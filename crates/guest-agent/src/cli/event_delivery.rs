@@ -8,6 +8,7 @@
 use crate::error::AgentError;
 use crate::events;
 use crate::http::HttpClient;
+use bytes::Bytes;
 use guest_common::{log_info, log_warn};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -25,7 +26,7 @@ const EVENT_DELIVERY_DRAIN_TIMEOUT: Duration = Duration::from_secs(120);
 
 struct PreparedEvent {
     sequence: u32,
-    event: serde_json::Value,
+    event: Bytes,
     conservative_bytes: usize,
     byte_budget: OwnedSemaphorePermit,
 }
@@ -34,7 +35,7 @@ pub(super) struct EventDeliverySender {
     tx: mpsc::Sender<PreparedEvent>,
     byte_budget: Arc<Semaphore>,
     pressure: Arc<DeliveryPressure>,
-    run_id: Arc<str>,
+    payload_envelope: Arc<events::EventPayloadEnvelope>,
 }
 
 impl EventDeliverySender {
@@ -43,10 +44,8 @@ impl EventDeliverySender {
         sequence: u32,
         event: serde_json::Value,
     ) -> Result<(), AgentError> {
-        let conservative_bytes = events::serialized_event_payload_size_for_run_id(
-            std::slice::from_ref(&event),
-            &self.run_id,
-        )?;
+        let event = Bytes::from(serde_json::to_vec(&event)?);
+        let conservative_bytes = self.payload_envelope.singleton_bytes(event.len());
         if conservative_bytes > EVENT_DELIVERY_MAX_REQUEST_BYTES {
             return Err(AgentError::Execution(format!(
                 "CLI event delivery payload at sequence {sequence} is {conservative_bytes} bytes, exceeding the {EVENT_DELIVERY_MAX_REQUEST_BYTES}-byte request limit"
@@ -99,28 +98,32 @@ pub(super) struct EventDeliveryRuntime {
 }
 
 impl EventDeliveryRuntime {
-    pub(super) fn start(http: HttpClient, event_error_flag: String, run_id: &str) -> Self {
+    pub(super) fn start(
+        http: HttpClient,
+        event_error_flag: String,
+        run_id: &str,
+    ) -> Result<Self, AgentError> {
         let (tx, event_rx) = mpsc::channel(EVENT_DELIVERY_QUEUE_CAPACITY);
         let pressure = Arc::new(DeliveryPressure::default());
-        let run_id: Arc<str> = Arc::from(run_id);
+        let payload_envelope = Arc::new(events::EventPayloadEnvelope::new(run_id)?);
         let sender = EventDeliverySender {
             tx,
             byte_budget: Arc::new(Semaphore::new(EVENT_DELIVERY_MAX_BYTES)),
             pressure: Arc::clone(&pressure),
-            run_id: Arc::clone(&run_id),
+            payload_envelope: Arc::clone(&payload_envelope),
         };
         let worker = tokio::spawn(run_event_sender(
             event_rx,
             http,
             event_error_flag,
-            run_id,
+            payload_envelope,
             Arc::clone(&pressure),
         ));
-        Self {
+        Ok(Self {
             sender,
             worker,
             pressure,
-        }
+        })
     }
 
     pub(super) fn sender(&self) -> &EventDeliverySender {
@@ -277,7 +280,7 @@ async fn run_event_sender(
     mut event_rx: mpsc::Receiver<PreparedEvent>,
     http: HttpClient,
     event_error_flag: String,
-    run_id: Arc<str>,
+    payload_envelope: Arc<events::EventPayloadEnvelope>,
     pressure: Arc<DeliveryPressure>,
 ) -> Option<u32> {
     let mut acked_prefix = AckedEventPrefix::default();
@@ -299,18 +302,15 @@ async fn run_event_sender(
         let (batch, next_carried_event) = collect_batch(first_event, &mut event_rx, &pressure);
         let last_sequence = batch.last().map_or(first_sequence, |event| event.sequence);
         carried_event = next_carried_event;
-        let batch = EventBatch::new(batch, &run_id);
-        let event_count = batch.sequences.len();
-        let send_result =
-            events::post_event_with_error_flag(&http, &batch.payload, &event_error_flag).await;
-
         let EventBatch {
             sequences,
-            payload: _,
+            payload,
             conservative_bytes,
             byte_budgets,
-            ..
-        } = batch;
+        } = EventBatch::new(batch, &payload_envelope);
+        let event_count = sequences.len();
+        let send_result =
+            events::post_serialized_event_with_error_flag(&http, payload, &event_error_flag).await;
         drop(byte_budgets);
         pressure.release_bytes(conservative_bytes);
 
@@ -386,28 +386,28 @@ fn collect_batch(
 
 struct EventBatch {
     sequences: Vec<u32>,
-    payload: serde_json::Value,
+    payload: Bytes,
     conservative_bytes: usize,
     byte_budgets: Vec<OwnedSemaphorePermit>,
 }
 
 impl EventBatch {
-    fn new(events: Vec<PreparedEvent>, run_id: &str) -> Self {
+    fn new(events: Vec<PreparedEvent>, payload_envelope: &events::EventPayloadEnvelope) -> Self {
         let mut sequences = Vec::with_capacity(events.len());
-        let mut values = Vec::with_capacity(events.len());
+        let mut event_bytes = Vec::with_capacity(events.len());
         let mut conservative_bytes = 0usize;
         let mut byte_budgets = Vec::with_capacity(events.len());
 
         for event in events {
             sequences.push(event.sequence);
-            values.push(event.event);
+            event_bytes.push(event.event);
             conservative_bytes += event.conservative_bytes;
             byte_budgets.push(event.byte_budget);
         }
 
         Self {
             sequences,
-            payload: events::event_payload_for_run_id(values, run_id),
+            payload: payload_envelope.payload(&event_bytes),
             conservative_bytes,
             byte_budgets,
         }

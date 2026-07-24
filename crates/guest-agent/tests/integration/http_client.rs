@@ -6,10 +6,28 @@ use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
 use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
+use serde::{Serialize, Serializer};
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::time::Duration;
 use uuid::Uuid;
+
+struct CountingJsonBody<'a> {
+    serializations: &'a AtomicUsize,
+}
+
+impl Serialize for CountingJsonBody<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.serializations.fetch_add(1, Ordering::SeqCst);
+        json!({ "request": "body" }).serialize(serializer)
+    }
+}
 
 // =========================================================================
 // post_json core
@@ -120,19 +138,27 @@ async fn post_json_retry_then_succeed() {
     let server = api.server();
 
     let mock = server.mock(|when, then| {
-        when.method(POST).path("/test/retry-succeed");
+        when.method(POST)
+            .path("/test/retry-succeed")
+            .header("content-type", "application/json")
+            .json_body(json!({ "request": "body" }));
         then.respond_with(retry_then_response(
             2,
             json_http_response(200, json!({"recovered": true})),
         ));
     });
 
+    let serializations = AtomicUsize::new(0);
+    let body = CountingJsonBody {
+        serializations: &serializations,
+    };
     let url = api.url("/test/retry-succeed");
-    let result = http_client!().post_json(&url, &json!({}), 3).await;
+    let result = http_client!().post_json(&url, &body, 3).await;
 
     let val = result.unwrap().unwrap();
     assert_eq!(val["recovered"], true);
     mock.assert_calls_async(3).await;
+    assert_eq!(serializations.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
