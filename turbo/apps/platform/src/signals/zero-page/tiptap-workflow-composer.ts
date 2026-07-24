@@ -19,7 +19,7 @@ import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { onRef } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createFeedbackSignals,
@@ -1369,21 +1369,28 @@ function createSyncWorkflowNamesCommand(
   agentId$: Computed<Promise<string | null>>,
   workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>,
 ): WorkflowNamesSyncCommand {
+  const resetWorkflowNamesSyncSignal$ = resetSignal();
   return command(
     async (
-      { get },
+      { get, set },
       mountSignal: AbortSignal,
       signal: AbortSignal,
     ): Promise<void> => {
       if (mountSignal.aborted) {
         return;
       }
+      signal.throwIfAborted();
+      const syncSignal = set(
+        resetWorkflowNamesSyncSignal$,
+        mountSignal,
+        signal,
+      );
       const [agentId, workflows] = await Promise.all([
         get(agentId$),
         get(workflows$),
       ]);
       signal.throwIfAborted();
-      if (mountSignal.aborted) {
+      if (syncSignal.aborted) {
         return;
       }
       const workflowNames = buildComposerSlashWorkflows({
