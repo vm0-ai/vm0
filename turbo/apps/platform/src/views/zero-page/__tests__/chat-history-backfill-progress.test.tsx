@@ -23,8 +23,11 @@ function messageForSeq(seqId: number): PagedChatMessage {
   return {
     id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
     role: "assistant",
-    content: `History message ${seqId}`,
+    // Control rows participate in history pagination without rendering
+    // hundreds of unrelated transcript nodes in this progress-only test.
+    content: null,
     seqId,
+    goalEvent: { type: "cleared" },
     createdAt: new Date(
       Date.parse("2026-03-10T00:00:00.000Z") + seqId * 1000,
     ).toISOString(),
