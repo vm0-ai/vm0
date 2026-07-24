@@ -52,13 +52,6 @@ export const connectorCatalogSyncState = pgTable(
     lastObservedCatalogVersion: varchar("last_observed_catalog_version", {
       length: 255,
     }),
-    // TODO(#22765): Remove deployment-overlap-only legacy columns.
-    legacyLastObservedIntegrityDigest: varchar(
-      "last_observed_integrity_digest",
-      {
-        length: 71,
-      },
-    ),
     lastObservedCatalogKey: text("last_observed_catalog_key"),
     lastObservedCatalogDigest: varchar("last_observed_catalog_digest", {
       length: 71,
@@ -75,12 +68,6 @@ export const connectorCatalogSyncState = pgTable(
     lastRejectedCatalogVersion: varchar("last_rejected_catalog_version", {
       length: 255,
     }),
-    legacyLastRejectedIntegrityDigest: varchar(
-      "last_rejected_integrity_digest",
-      {
-        length: 71,
-      },
-    ),
     lastRejectedCatalogKey: text("last_rejected_catalog_key"),
     lastRejectedCatalogDigest: varchar("last_rejected_catalog_digest", {
       length: 71,
@@ -173,28 +160,10 @@ export const connectorCatalogActiveSnapshot = pgTable(
     sourceId: varchar("source_id", { length: 64 }).notNull(),
     schemaVersion: integer("schema_version").notNull(),
     catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
-    // TODO(#22765): Remove deployment-overlap-only legacy columns.
-    legacyIntegrityDigest: varchar("integrity_digest", { length: 71 }),
     catalogKey: text("catalog_key").notNull(),
     catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
     catalogRawSize: integer("catalog_raw_size").notNull(),
     catalogGzip: byteaColumn("catalog_gzip").notNull(),
-    legacyPublicCatalogDigest: varchar("public_catalog_digest", {
-      length: 71,
-    }),
-    legacyPrivateCatalogDigest: varchar("private_catalog_digest", {
-      length: 71,
-    }),
-    legacyPrivateFirewallsDigest: varchar("private_firewalls_digest", {
-      length: 71,
-    }),
-    legacyRunnerFirewallsDigest: varchar("runner_firewalls_digest", {
-      length: 71,
-    }),
-    legacyPublicCatalog: text("public_catalog"),
-    legacyPrivateCatalog: text("private_catalog"),
-    legacyPrivateFirewalls: text("private_firewalls"),
-    legacyRunnerFirewalls: text("runner_firewalls"),
     activatedAt: timestamp("activated_at").notNull(),
   },
   (table) => {
@@ -233,8 +202,6 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
     sourceId: varchar("source_id", { length: 64 }).notNull(),
     schemaVersion: integer("schema_version").notNull(),
     catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
-    // TODO(#22765): Remove the deployment-overlap-only legacy column.
-    legacyIntegrityDigest: varchar("integrity_digest", { length: 71 }),
     catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
     executableCapabilityDigest: varchar("executable_capability_digest", {
       length: 71,
