@@ -207,6 +207,8 @@ const listChatThreadMessagesInner$ = command(
       zeroChatThreadMessagesPage({
         threadId: params.threadId,
         userId: auth.userId,
+        sinceSeqId: query.sinceSeqId,
+        beforeSeqId: query.beforeSeqId,
         sinceId: query.sinceId,
         beforeId: query.beforeId,
         limit: query.limit,
@@ -236,6 +238,8 @@ const listChatThreadMessagesInner$ = command(
         zeroChatThreadMessagesPage({
           threadId: params.threadId,
           userId: auth.userId,
+          sinceSeqId: query.sinceSeqId,
+          beforeSeqId: query.beforeSeqId,
           sinceId: query.sinceId,
           beforeId: query.beforeId,
           limit: query.limit,

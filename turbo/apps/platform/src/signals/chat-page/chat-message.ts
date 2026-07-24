@@ -11,13 +11,13 @@ import {
   chatThreadUnpinContract,
   chatThreadRenameContract,
   type ChatMessageUsagePayload,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
+import type { ChatMessage } from "./chat-message-types.ts";
 
 export { chatThreads$ } from "../agent-chat.ts";
 
@@ -41,7 +41,7 @@ export {
 
 export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
-export type EnrichedChatMessage = PagedChatMessage & {
+export type EnrichedChatMessage = ChatMessage & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;
   isOptimisticRun: boolean;

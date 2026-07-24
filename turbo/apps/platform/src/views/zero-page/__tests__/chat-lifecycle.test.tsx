@@ -347,6 +347,11 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
+    expectTextBefore(
+      document.body,
+      "Existing assistant answer",
+      "Pending follow-up",
+    );
 
     await user.click(linkByText("Other thread"));
     await waitFor(() => {
@@ -361,6 +366,11 @@ describe("chat lifecycle", () => {
         screen.getByText("Existing context before follow-up"),
       ).toBeInTheDocument();
     });
+    expectTextBefore(
+      document.body,
+      "Existing assistant answer",
+      "Pending follow-up",
+    );
   });
 
   it("renders completed markdown and returns the composer to send mode", async () => {

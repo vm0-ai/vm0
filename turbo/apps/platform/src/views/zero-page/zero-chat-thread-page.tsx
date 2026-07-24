@@ -6014,7 +6014,7 @@ interface ResolvedMessageAttachment {
 }
 
 function resolveAttachments(
-  message: PagedChatMessage,
+  message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
 ): ResolvedMessageAttachment[] {
   const source =
@@ -6054,7 +6054,7 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function clipboardAttachmentsFromMessage(
-  message: PagedChatMessage,
+  message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
 ): ChatClipboardAttachment[] {
   const source =

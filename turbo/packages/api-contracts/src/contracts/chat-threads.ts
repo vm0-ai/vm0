@@ -400,6 +400,8 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  /** Server-assigned strict position within the chat thread. */
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),
@@ -1043,6 +1045,7 @@ const chatSearchMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   createdAt: z.string(),
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable(),
   runId: z.string().nullable(),
 });
@@ -1099,11 +1102,12 @@ export const chatSearchContract = c.router({
 
 /**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using message UUID as sinceId / beforeId.
+ * Cursor-based pagination using the thread-scoped message sequence.
  *
  * Query params (mutually exclusive):
- *   sinceId  — forward pagination: messages strictly after this cursor
- *   beforeId — backward pagination: messages strictly before this cursor
+ *   sinceSeqId  — forward pagination: messages strictly after this cursor
+ *   beforeSeqId — backward pagination: messages strictly before this cursor
+ *   sinceId / beforeId — previous frontend UUID cursors retained during rollout
  *   (neither) — initial load anchored at the last user message
  *
  * Response includes `hasMore` for initial load and backward pagination so the
@@ -1116,6 +1120,10 @@ export const chatThreadMessagesContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      beforeSeqId: z.coerce.number().int().positive().optional(),
+      // Remove after browser clients from the pre-seqId release can no longer
+      // remain active against the current backend.
       sinceId: z.string().uuid().optional(),
       beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),

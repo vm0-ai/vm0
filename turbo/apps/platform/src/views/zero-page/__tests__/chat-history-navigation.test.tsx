@@ -53,13 +53,14 @@ describe("chat lifecycle", () => {
         role: "assistant" as const,
         content: `Delayed history reply ${itemNumber}`,
         createdAt: new Date(Date.UTC(2026, 5, 9, 10, index, 0)).toISOString(),
+        seqId: itemNumber,
       } satisfies PagedChatMessage;
     });
     const initialPageGate = context.mocks.deferred<void>();
     const beforePageGate = context.mocks.deferred<void>();
     let initialPageRequested = false;
-    const beforeIds: string[] = [];
-    const sinceIds: string[] = [];
+    const beforeSeqIds: number[] = [];
+    const sinceSeqIds: number[] = [];
 
     mockChatLifecycle(context, {
       threadId,
@@ -75,9 +76,9 @@ describe("chat lifecycle", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       async ({ query, respond }) => {
-        if (query.beforeId) {
-          beforeIds.push(query.beforeId);
-          if (query.beforeId === messages[10]!.id) {
+        if (query.beforeSeqId) {
+          beforeSeqIds.push(query.beforeSeqId);
+          if (query.beforeSeqId === messages[10]!.seqId) {
             await beforePageGate.promise;
             return respond(200, {
               messages: messages.slice(0, 10),
@@ -89,8 +90,8 @@ describe("chat lifecycle", () => {
             hasHistoryBefore: true,
           });
         }
-        if (query.sinceId) {
-          sinceIds.push(query.sinceId);
+        if (query.sinceSeqId) {
+          sinceSeqIds.push(query.sinceSeqId);
           return respond(200, { messages: [] });
         }
 
@@ -112,12 +113,15 @@ describe("chat lifecycle", () => {
       await waitFor(() => {
         expect(initialPageRequested).toBeTruthy();
       });
-      expect(beforeIds).toStrictEqual([]);
+      expect(beforeSeqIds).toStrictEqual([]);
       expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
 
       initialPageGate.resolve();
       await waitFor(() => {
-        expect(beforeIds).toStrictEqual([messages[20]!.id, messages[10]!.id]);
+        expect(beforeSeqIds).toStrictEqual([
+          messages[20]!.seqId,
+          messages[10]!.seqId,
+        ]);
       });
       expect(screen.getByText("Delayed history reply 70")).toBeInTheDocument();
       expect(
@@ -140,8 +144,8 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Delayed history reply 60")).toBeInTheDocument();
     });
 
-    const forwardRequestCount = sinceIds.length;
-    const latestMessageId = messages.at(-1)!.id;
+    const forwardRequestCount = sinceSeqIds.length;
+    const latestMessageSeqId = messages.at(-1)!.seqId;
     await waitFor(() => {
       expect(
         context.mocks.ably.hasSubscription(
@@ -151,12 +155,15 @@ describe("chat lifecycle", () => {
     });
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
     await waitFor(() => {
-      expect(sinceIds.slice(forwardRequestCount)).toStrictEqual([
-        latestMessageId,
-        latestMessageId,
+      expect(sinceSeqIds.slice(forwardRequestCount)).toStrictEqual([
+        latestMessageSeqId,
+        latestMessageSeqId,
       ]);
     });
-    expect(beforeIds).toStrictEqual([messages[20]!.id, messages[10]!.id]);
+    expect(beforeSeqIds).toStrictEqual([
+      messages[20]!.seqId,
+      messages[10]!.seqId,
+    ]);
   });
 
   it("renders new messages after a payload-less created event", async () => {
@@ -166,12 +173,14 @@ describe("chat lifecycle", () => {
       role: "assistant" as const,
       content: "Reply already visible",
       createdAt: "2026-06-09T10:00:00.000Z",
+      seqId: 1,
     } satisfies PagedChatMessage;
     const newMessage = {
       id: "00000000-0000-4000-8000-000000000742",
       role: "assistant" as const,
       content: "Reply delivered while the thread stays open",
       createdAt: "2026-06-09T10:01:00.000Z",
+      seqId: 2,
     } satisfies PagedChatMessage;
     let exposeNewMessage = false;
     let emptyForwardRequests = 0;
@@ -188,13 +197,13 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-      if (!query.sinceId) {
+      if (query.sinceSeqId === undefined) {
         return respond(200, {
           messages: [initialMessage],
           hasHistoryBefore: false,
         });
       }
-      if (query.sinceId === initialMessage.id) {
+      if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposeNewMessage) {
           emptyForwardRequests += 1;
           return respond(200, { messages: [], hasHistoryBefore: false });
@@ -204,7 +213,7 @@ describe("chat lifecycle", () => {
           hasHistoryBefore: false,
         });
       }
-      if (query.sinceId === newMessage.id) {
+      if (query.sinceSeqId === newMessage.seqId) {
         return respond(200, { messages: [], hasHistoryBefore: false });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
@@ -235,9 +244,7 @@ describe("chat lifecycle", () => {
     });
 
     exposeNewMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {
-      syncThroughMessageId: newMessage.id,
-    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
 
     await waitFor(() => {
       expect(screen.getByText(newMessage.content)).toBeInTheDocument();
@@ -400,6 +407,7 @@ describe("chat lifecycle", () => {
           content: `Render window reply ${index}`,
           runId: `render-window-run-${index}`,
           runLifecycleEvent: "completed",
+          seqId: index + 1,
           createdAt: `2026-06-09T10:${String(index).padStart(2, "0")}:00Z`,
         };
       },

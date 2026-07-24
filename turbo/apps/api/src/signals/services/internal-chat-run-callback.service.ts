@@ -936,7 +936,7 @@ async function insertAssistantErrorMessage(args: {
         })
       : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, message.createdAt);
-    return { slackDeliveryCallbackId, messageId: message.id };
+    return { slackDeliveryCallbackId };
   });
   if (!inserted) {
     return { inserted: false };
@@ -945,7 +945,6 @@ async function insertAssistantErrorMessage(args: {
   await publishUserSignal(
     [args.userId],
     `chatThreadMessageCreated:${args.threadId}`,
-    { syncThroughMessageId: inserted.messageId },
   );
   await publishThreadListChanged(args.userId);
   return {
@@ -1036,29 +1035,27 @@ async function insertRecommendedFollowupsMessage(args: {
   readonly recommendedFollowups: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
-  const inserted = await insertChatMessage(
-    args.db,
-    {
-      id: recommendedFollowupsMessageIdForRun(args.runId),
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: null,
-      runId: args.runId,
-      runGroupId,
-      recommendedFollowups: args.recommendedFollowups,
-    },
-    "id",
-  );
+  const inserted = await args.db.transaction(async (tx) => {
+    return await insertChatMessage(
+      tx,
+      {
+        id: recommendedFollowupsMessageIdForRun(args.runId),
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        runId: args.runId,
+        runGroupId,
+        recommendedFollowups: args.recommendedFollowups,
+      },
+      "id",
+    );
+  });
 
   if (!inserted) {
     return false;
   }
 
-  await publishChatThreadMessageCreatedSafely(
-    args.userId,
-    args.threadId,
-    inserted.id,
-  );
+  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
   return true;
 }
 
@@ -1568,7 +1565,7 @@ async function getLatestRunsByThreadId(
         visibleChatMessageCondition(db),
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+    .orderBy(asc(chatMessages.seqId));
 
   const messagesByRunId = new Map<string, PriorRunMessage[]>();
   for (const row of messageRows) {

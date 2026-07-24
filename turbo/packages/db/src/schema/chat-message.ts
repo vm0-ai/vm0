@@ -6,6 +6,7 @@ import {
   timestamp,
   index,
   integer,
+  bigint,
   uniqueIndex,
   jsonb,
   type AnyPgColumn,
@@ -105,6 +106,8 @@ export const chatMessages = pgTable(
     runLifecycleEvent: text("run_lifecycle_event"),
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
+    /** Strictly increasing position within the owning chat thread. */
+    seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatMessageGoalEvent>(),
     goalSnapshot: jsonb("goal_snapshot").$type<ChatMessageGoalSnapshot>(),
     attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
@@ -151,6 +154,10 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
+      ),
+      uniqueIndex("chat_messages_thread_seq_unique").on(
+        table.chatThreadId,
+        table.seqId,
       ),
       uniqueIndex("chat_messages_run_lifecycle_unique")
         .on(table.runId)

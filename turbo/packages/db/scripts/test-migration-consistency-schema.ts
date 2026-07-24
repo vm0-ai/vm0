@@ -174,7 +174,11 @@ async function validateChatEventSourcesAreAppendOnly(
 
     const thread = await client.query<{ id: string }>(
       `
-        INSERT INTO "chat_threads" ("user_id", "agent_compose_id", "title")
+        INSERT INTO "chat_threads" (
+          "user_id",
+          "agent_compose_id",
+          "title"
+        )
         VALUES ('append-only-test-user', $1, 'append-only migration test')
         RETURNING "id"
       `,
@@ -185,11 +189,17 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    const message = await client.query<{ id: string }>(
+    // Simulate the API version serving during migration: it does not know
+    // about seq_id and relies on the temporary database allocator.
+    const message = await client.query<{ id: string; seqId: string }>(
       `
-        INSERT INTO "chat_messages" ("chat_thread_id", "role", "content")
+        INSERT INTO "chat_messages" (
+          "chat_thread_id",
+          "role",
+          "content"
+        )
         VALUES ($1, 'user', 'append-only migration test')
-        RETURNING "id"
+        RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId],
     );
@@ -197,6 +207,29 @@ async function validateChatEventSourcesAreAppendOnly(
     if (!messageId) {
       throw new Error("Failed to create append-only chat message fixture");
     }
+    assert.equal(message.rows[0]?.seqId, "1");
+    const nextMessage = await client.query<{ seqId: string }>(
+      `
+        INSERT INTO "chat_messages" (
+          "chat_thread_id",
+          "role",
+          "content"
+        )
+        VALUES ($1, 'assistant', 'second legacy API migration test')
+        RETURNING "seq_id" AS "seqId"
+      `,
+      [threadId],
+    );
+    assert.equal(nextMessage.rows[0]?.seqId, "2");
+    const sequenceState = await client.query<{ lastSeqId: string }>(
+      `
+        SELECT "last_chat_message_seq_id" AS "lastSeqId"
+        FROM "chat_threads"
+        WHERE "id" = $1
+      `,
+      [threadId],
+    );
+    assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
 
     const event = await client.query<{ id: string }>(
       `
@@ -238,6 +271,9 @@ async function validateChatEventSourcesAreAppendOnly(
 
     console.log("   ✅ chat_messages rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
+    console.log(
+      "   ✅ previous API writes receive a database-allocated seq_id\n",
+    );
   } finally {
     if (eventId) {
       await client.query(`DELETE FROM "chat_thread_events" WHERE "id" = $1`, [

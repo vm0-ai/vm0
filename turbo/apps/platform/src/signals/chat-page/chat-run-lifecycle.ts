@@ -1,8 +1,6 @@
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatMessage } from "./chat-message-types.ts";
 
-export function isCancelledAssistantMessage(
-  message: PagedChatMessage,
-): boolean {
+export function isCancelledAssistantMessage(message: ChatMessage): boolean {
   return (
     message.role === "assistant" &&
     message.runId !== undefined &&
