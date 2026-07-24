@@ -14,14 +14,7 @@ const browserUseCostSchema = z
 const browserUseLiveUrlSchema = z.url().refine((value) => {
   return new URL(value).origin === "https://live.browser-use.com";
 });
-const browserUseCdpUrlSchema = z.url().refine((value) => {
-  const url = new URL(value);
-  return (
-    url.protocol === "wss:" &&
-    (url.hostname === "browser-use.com" ||
-      url.hostname.endsWith(".browser-use.com"))
-  );
-});
+const browserUseCdpUrlSchema = z.string().min(1);
 
 const browserUseProfileSchema = z.object({
   id: z.uuid(),
