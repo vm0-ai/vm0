@@ -321,6 +321,7 @@ function providerRequestBody(request: ZeroPeopleSearchRequest) {
       "Use exactly one people_search tool call for public professional research.",
       `Return at most ${request.limit} profiles.`,
       "Extract concise profile fields from the tool results.",
+      "Keep extracted fields limited to public professional information; do not return email addresses, phone numbers, home addresses, or other personal contact details.",
       "Use only positive integer result IDs from people_search_results in sourceIds.",
       "Do not include URLs in the structured output.",
     ].join(" "),

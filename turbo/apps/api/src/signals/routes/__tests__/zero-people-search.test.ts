@@ -391,6 +391,9 @@ describe("zero people-search route", () => {
       max_output_tokens: 4000,
       store: false,
       input: "platform engineering leaders at Notion",
+      instructions: expect.stringContaining(
+        "do not return email addresses, phone numbers, home addresses, or other personal contact details",
+      ),
       response_format: {
         type: "json_schema",
         json_schema: {
