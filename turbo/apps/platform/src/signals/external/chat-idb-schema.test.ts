@@ -1,13 +1,13 @@
 import type { IDBPDatabase } from "idb";
 import { describe, expect, it, vi } from "vitest";
 import {
-  ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_RUN_FILE_INDEX,
+  ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX,
+  ARTIFACT_ITEMS_RUN_HOSTED_INDEX,
   ARTIFACT_ITEMS_STORE,
+  ARTIFACT_ITEMS_UPDATED_AT_INDEX,
+  ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX,
   ARTIFACT_SYNC_STORE,
+  CHAT_IDB_VERSION,
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_EVENTS_ORDER_INDEX,
@@ -106,35 +106,30 @@ function expectArtifactItemsStoreCreated(
   });
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_CREATED_AT_INDEX, [
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_UPDATED_AT_INDEX, [
+    "updatedAt",
     "createdAt",
     "artifactItemId",
   ]);
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX, [
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX, [
     "agentId",
+    "updatedAt",
     "createdAt",
     "artifactItemId",
   ]);
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX, [
-    "artifactKind",
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX, [
+    "url",
+    "updatedAt",
     "createdAt",
     "artifactItemId",
   ]);
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX, [
-    "agentId",
-    "artifactKind",
-    "createdAt",
-    "artifactItemId",
-  ]);
-  expect(
-    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_RUN_FILE_INDEX, ["runId", "fileId"]);
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_RUN_HOSTED_INDEX, ["runId", "hosted"]);
 }
 
 function expectArtifactSyncStoreCreated(
@@ -218,7 +213,7 @@ describe("upgradeChatIdb local cache resets", () => {
     expectArtifactSyncStoreCreated(createObjectStore);
   });
 
-  it("replaces the obsolete v17 message ordering index", () => {
+  it("rebuilds all local caches with v18 indexes from v17", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_SNAPSHOT_STORE,
@@ -237,5 +232,21 @@ describe("upgradeChatIdb local cache resets", () => {
     expectThreadEventStoresCreated(createdStores, createObjectStore);
     expectArtifactItemsStoreCreated(createdStores, createObjectStore);
     expectArtifactSyncStoreCreated(createObjectStore);
+  });
+
+  it("does not rebuild local caches at the current schema version", () => {
+    const { db, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      ARTIFACT_ITEMS_STORE,
+      ARTIFACT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, CHAT_IDB_VERSION);
+
+    expect(deleteObjectStore).not.toHaveBeenCalled();
+    expect(createObjectStore).not.toHaveBeenCalled();
   });
 });
