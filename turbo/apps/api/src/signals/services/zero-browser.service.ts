@@ -167,10 +167,17 @@ function providerFailure(error: unknown): BrowserServiceError {
     return serviceError(error.status, error.code, error.message);
   }
   if (error instanceof z.ZodError) {
+    const issueSummary = error.issues
+      .slice(0, 8)
+      .map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join(".") : "<root>";
+        return `${path}: ${issue.message}`;
+      })
+      .join("; ");
     return serviceError(
       502,
       "BROWSER_USE_INVALID_RESPONSE",
-      "Managed browser provider returned an invalid response",
+      `Managed browser provider returned an invalid response (${issueSummary})`,
     );
   }
   throw error;
