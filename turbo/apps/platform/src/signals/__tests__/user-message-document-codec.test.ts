@@ -235,6 +235,78 @@ describe("user message document codec", () => {
     expect(messageDocumentToPrompt(structured)).toBe("");
   });
 
+  it("serializes feedback cards with their surrounding prompt sections", () => {
+    const editorDocument = workflowComposerDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Before" }],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 1,
+            quote: "First quote",
+            showDivider: false,
+            fill: false,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "First note" }],
+            },
+          ],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 2,
+            quote: "Second quote",
+            showDivider: true,
+            fill: true,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Second note" },
+                { type: "hardBreak" },
+                {
+                  type: "chatThreadMention",
+                  attrs: { threadId: THREAD_ID, title: "Project Alpha" },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "After" }],
+        },
+      ],
+    });
+
+    const structured = editorDocToMessageDocument(editorDocument);
+    expect(structured).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "text",
+          text:
+            "Before\n\nFeedback on 2 parts of your reply:\n\n" +
+            "> First quote\n\nFirst note\n\n---\n\n" +
+            `> Second quote\n\nSecond note\n[Project Alpha](/chats/${THREAD_ID})\n\nAfter`,
+        },
+      ],
+    });
+    expect(messageDocumentToPrompt(structured)).toBe(
+      "Before\n\nFeedback on 2 parts of your reply:\n\n" +
+        "> First quote\n\nFirst note\n\n---\n\n" +
+        `> Second quote\n\nSecond note\n[Project Alpha](/chats/${THREAD_ID})\n\nAfter`,
+    );
+  });
+
   it("returns null for malformed or unsupported documents", () => {
     const unsupportedEditorDocument = workflowComposerDocument({
       type: "doc",
@@ -242,17 +314,12 @@ describe("user message document codec", () => {
         {
           type: "feedbackItem",
           attrs: {
-            feedbackId: 1,
+            feedbackId: "invalid",
             quote: "Unsupported",
             showDivider: false,
             fill: false,
           },
-          content: [
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: "Unsupported" }],
-            },
-          ],
+          content: [{ type: "paragraph" }],
         },
       ],
     });
