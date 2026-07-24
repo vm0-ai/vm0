@@ -729,11 +729,6 @@ function MailDraftDetail({
           <div className="truncate text-xs text-muted-foreground">
             {active ? "Gmail draft" : "Sent email"}
           </div>
-          {active ? (
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              You can ask your agent to continue editing this draft.
-            </div>
-          ) : null}
         </div>
         <SidebarCloseButton close={close} />
       </div>

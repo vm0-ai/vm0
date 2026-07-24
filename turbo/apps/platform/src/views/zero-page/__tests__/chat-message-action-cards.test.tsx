@@ -460,11 +460,6 @@ describe("chat message action cards", () => {
     await user.click(cards[0]!);
 
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(
-      within(sidebar).getByText(
-        "You can ask your agent to continue editing this draft.",
-      ),
-    ).toBeInTheDocument();
     expect(within(sidebar).getByText("sender@example.com")).toBeInTheDocument();
     expect(
       within(sidebar).getByText(
@@ -548,11 +543,6 @@ describe("chat message action cards", () => {
     });
     sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(queryButtonByText("Send", sidebar)).toBeNull();
-    expect(
-      screen.queryByText(
-        "You can ask your agent to continue editing this draft.",
-      ),
-    ).toBeNull();
     expect(draftRequests).toBe(2);
   });
 
@@ -656,11 +646,6 @@ describe("chat message action cards", () => {
 
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(within(sidebar).getAllByText("Restored draft")).toHaveLength(2);
-    expect(
-      within(sidebar).getByText(
-        "You can ask your agent to continue editing this draft.",
-      ),
-    ).toBeInTheDocument();
     expect(
       within(sidebar).getByText("recipient@example.com, teammate@example.com"),
     ).toBeInTheDocument();
