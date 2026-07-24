@@ -6,7 +6,11 @@ import {
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
   googleMeetTranscriptGeneratedEventConfigSchema,
+  githubDeploymentStatusCreatedEventConfigSchema,
+  githubIssueCommentCreatedEventConfigSchema,
   githubLabelAppliedEventConfigSchema,
+  githubPullRequestReviewSubmittedEventConfigSchema,
+  githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
   notionChildPageCreatedEventConfigSchema,
   notionDatabaseItemCreatedEventConfigSchema,
@@ -61,6 +65,7 @@ import {
 import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
+import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
 import { githubWorkflowRunAutomationCreationEnabledForOwner } from "./github-workflow-run-automation-feature-switch.service";
 import { prepareGithubWorkflowRunEventConfigForPersist } from "./github-workflow-run-event.service";
 import {
@@ -100,7 +105,19 @@ type GmailWorkflowEventType = Extract<
 >;
 type GithubWorkflowEventType = Extract<
   ZeroWorkflowEventType,
-  "github-label-applied" | "github-workflow-run-completed"
+  | "github-deployment-status-created"
+  | "github-issue-comment-created"
+  | "github-label-applied"
+  | "github-pull-request-review-submitted"
+  | "github-workflow-job-completed"
+  | "github-workflow-run-completed"
+>;
+type GithubWebhookWorkflowEventType = Extract<
+  GithubWorkflowEventType,
+  | "github-deployment-status-created"
+  | "github-issue-comment-created"
+  | "github-pull-request-review-submitted"
+  | "github-workflow-job-completed"
 >;
 type GoogleCalendarWorkflowEventType = Extract<
   ZeroWorkflowEventType,
@@ -344,6 +361,10 @@ function supportedWorkflowEventType(
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied" ||
     eventType === "github-label-applied" ||
+    eventType === "github-deployment-status-created" ||
+    eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request-review-submitted" ||
+    eventType === "github-workflow-job-completed" ||
     eventType === "github-workflow-run-completed" ||
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
@@ -369,7 +390,22 @@ function supportedGithubEventType(
 ): eventType is GithubWorkflowEventType {
   return (
     eventType === "github-label-applied" ||
+    eventType === "github-deployment-status-created" ||
+    eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request-review-submitted" ||
+    eventType === "github-workflow-job-completed" ||
     eventType === "github-workflow-run-completed"
+  );
+}
+
+function supportedGithubWebhookEventType(
+  eventType: string | null,
+): eventType is GithubWebhookWorkflowEventType {
+  return (
+    eventType === "github-deployment-status-created" ||
+    eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request-review-submitted" ||
+    eventType === "github-workflow-job-completed"
   );
 }
 
@@ -477,6 +513,75 @@ function notionPageContentUpdatedRowSummary(
   };
 }
 
+function githubEventRowToSummary(
+  row: AutomationRow,
+  chatThreadId: string | null,
+): ZeroWorkflowAutomationSummary | null {
+  const summaryBase = {
+    ...rowSummaryBase(row, chatThreadId),
+    kind: "event" as const,
+    schedule: null,
+    scheduleSummary: null,
+  };
+  switch (row.eventType) {
+    case "github-label-applied": {
+      return {
+        ...summaryBase,
+        eventType: "github-label-applied",
+        eventConfig: githubLabelAppliedEventConfigSchema.parse(row.eventConfig),
+      };
+    }
+    case "github-workflow-run-completed": {
+      return {
+        ...summaryBase,
+        eventType: "github-workflow-run-completed",
+        eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(
+          row.eventConfig,
+        ),
+      };
+    }
+    case "github-workflow-job-completed": {
+      return {
+        ...summaryBase,
+        eventType: "github-workflow-job-completed",
+        eventConfig: githubWorkflowJobCompletedEventConfigSchema.parse(
+          row.eventConfig,
+        ),
+      };
+    }
+    case "github-pull-request-review-submitted": {
+      return {
+        ...summaryBase,
+        eventType: "github-pull-request-review-submitted",
+        eventConfig: githubPullRequestReviewSubmittedEventConfigSchema.parse(
+          row.eventConfig,
+        ),
+      };
+    }
+    case "github-deployment-status-created": {
+      return {
+        ...summaryBase,
+        eventType: "github-deployment-status-created",
+        eventConfig: githubDeploymentStatusCreatedEventConfigSchema.parse(
+          row.eventConfig,
+        ),
+      };
+    }
+    case "github-issue-comment-created": {
+      return {
+        ...summaryBase,
+        eventType: "github-issue-comment-created",
+        eventConfig: githubIssueCommentCreatedEventConfigSchema.parse(
+          row.eventConfig,
+        ),
+      };
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
@@ -501,27 +606,9 @@ function eventRowToSummary(
       scheduleSummary: null,
     };
   }
-  if (row.eventType === "github-label-applied") {
-    return {
-      ...rowSummaryBase(row, chatThreadId),
-      kind: "event",
-      eventType: "github-label-applied",
-      eventConfig: githubLabelAppliedEventConfigSchema.parse(row.eventConfig),
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  if (row.eventType === "github-workflow-run-completed") {
-    return {
-      ...rowSummaryBase(row, chatThreadId),
-      kind: "event",
-      eventType: "github-workflow-run-completed",
-      eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(
-        row.eventConfig,
-      ),
-      schedule: null,
-      scheduleSummary: null,
-    };
+  const githubSummary = githubEventRowToSummary(row, chatThreadId);
+  if (githubSummary) {
+    return githubSummary;
   }
   if (row.eventType === "google-calendar-event-created") {
     return {
@@ -1052,6 +1139,34 @@ type CreateGithubEventAutomationInput =
         GithubWorkflowEventConfig,
         { readonly event: "workflow_run_completed" }
       >;
+    })
+  | (CreateGithubEventAutomationInputBase & {
+      readonly eventType: "github-workflow-job-completed";
+      readonly eventConfig: Extract<
+        GithubWorkflowEventConfig,
+        { readonly event: "workflow_job_completed" }
+      >;
+    })
+  | (CreateGithubEventAutomationInputBase & {
+      readonly eventType: "github-pull-request-review-submitted";
+      readonly eventConfig: Extract<
+        GithubWorkflowEventConfig,
+        { readonly event: "pull_request_review_submitted" }
+      >;
+    })
+  | (CreateGithubEventAutomationInputBase & {
+      readonly eventType: "github-deployment-status-created";
+      readonly eventConfig: Extract<
+        GithubWorkflowEventConfig,
+        { readonly event: "deployment_status_created" }
+      >;
+    })
+  | (CreateGithubEventAutomationInputBase & {
+      readonly eventType: "github-issue-comment-created";
+      readonly eventConfig: Extract<
+        GithubWorkflowEventConfig,
+        { readonly event: "issue_comment_created" }
+      >;
     });
 
 interface CreateGoogleCalendarEventAutomationInput {
@@ -1119,6 +1234,15 @@ function automationCreateInputIsGmail(
   args: CreateEventAutomationInput,
 ): args is CreateGmailEventAutomationInput {
   return supportedGmailEventType(args.eventType);
+}
+
+function automationCreateInputIsGithubWebhook(
+  args: CreateEventAutomationInput,
+): args is Extract<
+  CreateGithubEventAutomationInput,
+  { readonly eventType: GithubWebhookWorkflowEventType }
+> {
+  return supportedGithubWebhookEventType(args.eventType);
 }
 
 function automationCreateInputIsGoogleCalendar(
@@ -1456,6 +1580,37 @@ async function createGithubWorkflowRunEventAutomationForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+async function createGithubWebhookEventAutomationForWorkflow(args: {
+  readonly context: CreateEventAutomationWorkflowContext;
+  readonly input: Extract<
+    CreateGithubEventAutomationInput,
+    { readonly eventType: GithubWebhookWorkflowEventType }
+  >;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult> {
+  const preparedConfig = await prepareGithubWebhookEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      eventType: args.input.eventType,
+      eventConfig: args.input.eventConfig,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
+  const summary = await insertWorkflowEventAutomation(args.context.db, {
+    input: args.input,
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
 function parseGoogleCalendarEventConfig(
   eventType: GoogleCalendarWorkflowEventType,
   eventConfig: unknown,
@@ -1682,6 +1837,14 @@ const createEventAutomationForWorkflow$ = command(
         return githubWorkflowRunAutomationsDisabledResult();
       }
       return await createGithubWorkflowRunEventAutomationForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
+    }
+
+    if (automationCreateInputIsGithubWebhook(input)) {
+      return await createGithubWebhookEventAutomationForWorkflow({
         context: args,
         input,
         signal,
@@ -1938,6 +2101,79 @@ async function updateAutomationEventConfig(
   return await rowToSummary(db, row);
 }
 
+function parseGithubAutomationEventConfig(
+  eventType: GithubWorkflowEventType,
+  eventConfig: unknown,
+): GithubWorkflowEventConfig | null {
+  const result =
+    eventType === "github-label-applied"
+      ? githubLabelAppliedEventConfigSchema.safeParse(eventConfig)
+      : eventType === "github-workflow-run-completed"
+        ? githubWorkflowRunCompletedEventConfigSchema.safeParse(eventConfig)
+        : eventType === "github-workflow-job-completed"
+          ? githubWorkflowJobCompletedEventConfigSchema.safeParse(eventConfig)
+          : eventType === "github-pull-request-review-submitted"
+            ? githubPullRequestReviewSubmittedEventConfigSchema.safeParse(
+                eventConfig,
+              )
+            : eventType === "github-deployment-status-created"
+              ? githubDeploymentStatusCreatedEventConfigSchema.safeParse(
+                  eventConfig,
+                )
+              : githubIssueCommentCreatedEventConfigSchema.safeParse(
+                  eventConfig,
+                );
+  return result.success ? result.data : null;
+}
+
+async function prepareGithubAutomationEventConfig(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly eventType: GithubWorkflowEventType;
+    readonly eventConfig: unknown;
+  },
+) {
+  const parsed = parseGithubAutomationEventConfig(
+    args.eventType,
+    args.eventConfig,
+  );
+  if (!parsed) {
+    return {
+      kind: "bad-request" as const,
+      message: "eventConfig must match the GitHub automation type",
+    };
+  }
+  if (args.eventType === "github-label-applied") {
+    return await prepareGithubLabelEventConfigForPersist(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      eventConfig: githubLabelAppliedEventConfigSchema.parse(parsed),
+    });
+  }
+  if (args.eventType === "github-workflow-run-completed") {
+    return await prepareGithubWorkflowRunEventConfigForPersist(db, {
+      orgId: args.orgId,
+      eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(parsed),
+    });
+  }
+
+  const eventConfig =
+    args.eventType === "github-workflow-job-completed"
+      ? githubWorkflowJobCompletedEventConfigSchema.parse(parsed)
+      : args.eventType === "github-pull-request-review-submitted"
+        ? githubPullRequestReviewSubmittedEventConfigSchema.parse(parsed)
+        : args.eventType === "github-deployment-status-created"
+          ? githubDeploymentStatusCreatedEventConfigSchema.parse(parsed)
+          : githubIssueCommentCreatedEventConfigSchema.parse(parsed);
+  return await prepareGithubWebhookEventConfigForPersist(db, {
+    orgId: args.orgId,
+    eventType: args.eventType,
+    eventConfig,
+  });
+}
+
 const updateEventAutomationForWorkflow$ = command(
   async (
     _,
@@ -1977,33 +2213,12 @@ const updateEventAutomationForWorkflow$ = command(
       };
     }
     if (supportedGithubEventType(args.automation.eventType)) {
-      const parsedConfig =
-        args.automation.eventType === "github-label-applied"
-          ? githubLabelAppliedEventConfigSchema.safeParse(args.eventConfig)
-          : githubWorkflowRunCompletedEventConfigSchema.safeParse(
-              args.eventConfig,
-            );
-      if (!parsedConfig.success) {
-        return {
-          kind: "bad-request",
-          message: "eventConfig must match the GitHub automation type",
-        };
-      }
-      const eventConfig =
-        args.automation.eventType === "github-label-applied"
-          ? await prepareGithubLabelEventConfigForPersist(args.db, {
-              orgId: args.orgId,
-              userId: args.member.userId,
-              eventConfig: githubLabelAppliedEventConfigSchema.parse(
-                args.eventConfig,
-              ),
-            })
-          : await prepareGithubWorkflowRunEventConfigForPersist(args.db, {
-              orgId: args.orgId,
-              eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(
-                args.eventConfig,
-              ),
-            });
+      const eventConfig = await prepareGithubAutomationEventConfig(args.db, {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        eventType: args.automation.eventType,
+        eventConfig: args.eventConfig,
+      });
       signal.throwIfAborted();
       if (eventConfig.kind !== "ok") {
         return eventConfig;
@@ -2313,30 +2528,13 @@ const ensureEventAutomationCanBeEnabled$ = command(
       return null;
     }
 
-    if (args.automation.eventType === "github-label-applied") {
-      const config = githubLabelAppliedEventConfigSchema.parse(
-        args.automation.eventConfig,
-      );
-      const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-        args.db,
-        {
-          orgId: args.orgId,
-          userId: args.member.userId,
-          eventConfig: config,
-        },
-      );
-      signal.throwIfAborted();
-      return preparedConfig.kind === "ok" ? null : preparedConfig;
-    }
-
-    if (args.automation.eventType === "github-workflow-run-completed") {
-      const preparedConfig =
-        await prepareGithubWorkflowRunEventConfigForPersist(args.db, {
-          orgId: args.orgId,
-          eventConfig: githubWorkflowRunCompletedEventConfigSchema.parse(
-            args.automation.eventConfig,
-          ),
-        });
+    if (supportedGithubEventType(args.automation.eventType)) {
+      const preparedConfig = await prepareGithubAutomationEventConfig(args.db, {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        eventType: args.automation.eventType,
+        eventConfig: args.automation.eventConfig,
+      });
       signal.throwIfAborted();
       return preparedConfig.kind === "ok" ? null : preparedConfig;
     }
