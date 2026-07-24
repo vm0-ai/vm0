@@ -105,13 +105,6 @@ function firstAssistantMessageEventsForRun(
   });
 }
 
-function requireDefined<T>(value: T | undefined, message: string): T {
-  if (value === undefined) {
-    throw new Error(message);
-  }
-  return value;
-}
-
 function slackBotOauthResponse(args: {
   readonly accessToken: string;
   readonly botUserId: string;
@@ -1639,20 +1632,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
-    const queuedSlackIngress = requireDefined(
-      state.chat_ingress.find((ingress) => {
-        return ingress.eventId === stickyEventId;
-      }),
-      "Expected the queued canonical Slack ingress",
-    );
-    const queuedSlackMessage = requireDefined(
-      state.chat_message_queue.find((message) => {
-        return message.chatMessageId === queuedSlackIngress.id;
-      }),
-      "Expected the queued canonical Slack message",
-    );
-    expect(queuedSlackMessage.apiStartedAt).toBe(queuedSlackIngress.createdAt);
-
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
@@ -1741,7 +1720,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
 
     const run2Id = await pollSlackRun(runnerGroup);
     const claim2 = await runs.claimRunnerJob(run2Id);
-    expect(claim2.apiStartTime).toBe(Date.parse(queuedSlackIngress.createdAt));
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     expect(claim2.resumeSession?.sessionId).not.toBe(
       `bdd-slack-cli-${webRunId}`,

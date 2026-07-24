@@ -26,7 +26,6 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { clearWorkflowQueueApiStart } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -247,29 +246,6 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   });
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function firstAssistantMessageEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
-    const dataset = call[0];
-    const events = call[1];
-    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
-      return [];
-    }
-    return events.filter((event): event is Record<string, unknown> => {
-      return (
-        isRecord(event) &&
-        event.run_id === runId &&
-        event.op_type === "api_to_first_assistant_message"
-      );
-    });
-  });
-}
-
 async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
@@ -329,7 +305,8 @@ describe("workflow queue", () => {
     ]);
 
     // Completing the run drains exactly one event into the next run.
-    mockNow(secondApiStartTime + 10_000);
+    const dequeuedAt = secondApiStartTime + 10_000;
+    mockNow(dequeuedAt);
     await completeRunThroughSandbox(scenario, firstRunId);
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
@@ -337,55 +314,7 @@ describe("workflow queue", () => {
       scenario,
       afterFirst[1]!,
     );
-    expect(secondClaim.apiStartTime).toBe(secondApiStartTime);
-  });
-
-  it("skips timing for a mixed-version workflow queue row", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    useSecretKmsProbe();
-
-    const firstRunId = expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "first"),
-    );
-    const queuedAt = now() + 60_000;
-    mockNow(queuedAt);
-    expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
-    await clearWorkflowQueueApiStart(context, automation.automationId);
-
-    const dequeuedAt = queuedAt + 10_000;
-    mockNow(dequeuedAt);
-    await completeRunThroughSandbox(scenario, firstRunId);
-    const runIds = await workflowRunIds(automation.threadId);
-    expect(runIds).toHaveLength(2);
-    const secondRunId = runIds[1]!;
-
-    await runsApi.heartbeatRunner(scenario.runnerGroup);
-    const claim = await runsApi.claimRunnerJob(secondRunId);
-    expect(claim.apiStartTime).toBe(dequeuedAt);
-
-    mockNow(dequeuedAt + 1234);
-    await webhooksApi.requestAgentEvents(
-      {
-        runId: secondRunId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              id: "msg_workflow_queue_mixed_version",
-              content: [{ type: "text", text: "Visible workflow output" }],
-            },
-          },
-        ],
-      },
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      [200],
-    );
-    await flushWaitUntilForTest();
-    expect(firstAssistantMessageEventsForRun(secondRunId)).toStrictEqual([]);
-
-    await runsApi.requestCancelRun(scenario.actor, secondRunId, [200]);
+    expect(secondClaim.apiStartTime).toBe(dequeuedAt);
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {

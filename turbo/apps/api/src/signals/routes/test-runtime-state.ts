@@ -16,14 +16,13 @@ import {
 } from "@vm0/api-contracts/contracts/test-runtime-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -252,43 +251,6 @@ async function clearRunApiStart(
   }
 }
 
-async function clearChatMessageQueueApiStart(
-  db: Db,
-  chatMessageId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [cleared] = await db
-    .update(chatMessageQueue)
-    .set({ apiStartedAt: null })
-    .where(eq(chatMessageQueue.chatMessageId, chatMessageId))
-    .returning({ id: chatMessageQueue.id });
-  signal.throwIfAborted();
-  if (!cleared) {
-    throw new Error("Expected a queued chat message timing row");
-  }
-}
-
-async function clearWorkflowQueueApiStart(
-  db: Db,
-  automationId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const cleared = await db
-    .update(chatMessageQueue)
-    .set({ apiStartedAt: null })
-    .where(
-      and(
-        eq(chatMessageQueue.automationId, automationId),
-        eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    )
-    .returning({ id: chatMessageQueue.id });
-  signal.throwIfAborted();
-  if (cleared.length !== 1) {
-    throw new Error("Expected one queued workflow event timing row");
-  }
-}
-
 async function readRunApiStart(
   db: Db,
   runId: string,
@@ -505,13 +467,7 @@ async function storageStateActionResponse(
 
 type TimingStateAction = Extract<
   TestRuntimeStateActionBody,
-  {
-    action:
-      | "clear-run-api-start"
-      | "clear-chat-message-queue-api-start"
-      | "clear-workflow-queue-api-start"
-      | "read-run-api-start";
-  }
+  { action: "clear-run-api-start" | "read-run-api-start" }
 >;
 
 function isTimingStateAction(
@@ -519,8 +475,6 @@ function isTimingStateAction(
 ): body is TimingStateAction {
   return (
     body.action === "clear-run-api-start" ||
-    body.action === "clear-chat-message-queue-api-start" ||
-    body.action === "clear-workflow-queue-api-start" ||
     body.action === "read-run-api-start"
   );
 }
@@ -533,14 +487,6 @@ async function timingStateActionResponse(
   switch (body.action) {
     case "clear-run-api-start": {
       await clearRunApiStart(db, body.run_id, signal);
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "clear-chat-message-queue-api-start": {
-      await clearChatMessageQueueApiStart(db, body.chat_message_id, signal);
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "clear-workflow-queue-api-start": {
-      await clearWorkflowQueueApiStart(db, body.automation_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "read-run-api-start": {

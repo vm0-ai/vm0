@@ -215,26 +215,6 @@ export async function clearRunApiStart(
   });
 }
 
-export async function clearChatMessageQueueApiStart(
-  context: TestContext,
-  chatMessageId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "clear-chat-message-queue-api-start",
-    chat_message_id: chatMessageId,
-  });
-}
-
-export async function clearWorkflowQueueApiStart(
-  context: TestContext,
-  automationId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "clear-workflow-queue-api-start",
-    automation_id: automationId,
-  });
-}
-
 export async function readRunApiStart(
   context: TestContext,
   runId: string,

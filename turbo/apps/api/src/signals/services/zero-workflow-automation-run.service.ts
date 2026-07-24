@@ -78,7 +78,6 @@ type ModelContext =
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly apiStartTime: number;
-  readonly apiToFirstAssistantMessageStartedAt?: Date | null;
   readonly sessionId?: string;
   // Overrides the default `/<workflowName>` slash-command prompt.
   readonly prompt?: string;
@@ -418,7 +417,6 @@ async function enqueueWorkflowAutomationEventIfBusy(input: {
       return await admitWorkflowAutomationEvent(db, {
         automation,
         chatThreadId,
-        apiStartedAt: new Date(args.apiStartTime),
         triggerSource: args.triggerSource ?? "workflow-schedule",
         triggerBrief: args.triggerBrief,
         params: {
@@ -586,8 +584,6 @@ export const runWorkflowAutomationNow$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        apiToFirstAssistantMessageStartedAt:
-          args.apiToFirstAssistantMessageStartedAt,
         triggerSource: args.triggerSource ?? "workflow-schedule",
         chatThreadId,
         computerUseHostId: computerUseHostGrant?.hostId,

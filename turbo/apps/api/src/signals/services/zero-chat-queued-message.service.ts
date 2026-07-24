@@ -62,7 +62,6 @@ const queuedUserMessageItemTypes = [
 
 export interface QueuedUserMessage {
   readonly id: string;
-  readonly apiStartedAt: Date | null;
   readonly content: string | null;
   readonly structuredPrompt: ChatMessageStructuredPrompt | null;
   readonly attachFiles: readonly string[] | null;
@@ -161,7 +160,6 @@ export async function loadNextUnclaimedQueuedUserMessage(
   const [message] = await db
     .select({
       id: chatMessages.id,
-      apiStartedAt: chatMessageQueue.apiStartedAt,
       content: chatMessages.content,
       structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
@@ -231,7 +229,6 @@ export async function enqueueUserMessageQueueItem(
     readonly chatMessageId: string;
     readonly triggerSource?: "web" | "slack";
     readonly encryptedParams?: string;
-    readonly apiStartedAt?: Date;
   },
 ): Promise<void> {
   await db
@@ -245,7 +242,6 @@ export async function enqueueUserMessageQueueItem(
       chatMessageId: args.chatMessageId,
       triggerSource: args.triggerSource,
       encryptedParams: args.encryptedParams,
-      apiStartedAt: args.apiStartedAt,
     })
     .onConflictDoNothing();
 }

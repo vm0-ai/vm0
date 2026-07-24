@@ -637,8 +637,6 @@ export interface CreateAgentRunArgs {
   readonly orgId: string;
   readonly body: CreateRunBody;
   readonly apiStartTime: number;
-  // Omit to reuse apiStartTime; null means no durable metric origin.
-  readonly apiToFirstAssistantMessageStartedAt?: Date | null;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
@@ -4592,7 +4590,6 @@ async function insertLaunchRunRows(
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
     readonly apiStartTime: number;
-    readonly apiToFirstAssistantMessageStartedAt: Date | null | undefined;
     readonly runnerGroup: string | undefined;
     readonly error: string | undefined;
   },
@@ -4642,12 +4639,7 @@ async function insertLaunchRunRows(
     zeroRunModelPin: args.zeroRunModelPin,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
-    apiStartedAt:
-      args.status === "queued"
-        ? null
-        : args.apiToFirstAssistantMessageStartedAt === undefined
-          ? new Date(args.apiStartTime)
-          : args.apiToFirstAssistantMessageStartedAt,
+    apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   });
 
   if (args.callbackRows.length > 0) {
@@ -5392,8 +5384,6 @@ async function commitFailedLaunch(args: {
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
         apiStartTime: args.createArgs.apiStartTime,
-        apiToFirstAssistantMessageStartedAt:
-          args.createArgs.apiToFirstAssistantMessageStartedAt,
         runnerGroup: undefined,
         error: message,
       });
@@ -5465,8 +5455,6 @@ async function insertAtomicLaunchRunRecord(args: {
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
         apiStartTime: args.commit.createArgs.apiStartTime,
-        apiToFirstAssistantMessageStartedAt:
-          args.commit.createArgs.apiToFirstAssistantMessageStartedAt,
         runnerGroup: args.runnerGroup,
         error: undefined,
       });

@@ -32,7 +32,6 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { clearChatMessageQueueApiStart } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
@@ -986,133 +985,94 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it.each([
-    {
-      behavior: "preserves the original Web API start",
-      clearQueuedApiStart: false,
-    },
-    {
-      behavior: "skips timing for a mixed-version queue row",
-      clearQueuedApiStart: true,
-    },
-  ])(
-    "$behavior when a queued message auto-sends",
-    async ({ clearQueuedApiStart }) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      chatCallbacks.failIfChatCallbackRouteIsFetched();
+  it("uses the dequeue API start when a queued message auto-sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
-      const first = await startChatRun(actor, {
-        agentId,
-        prompt: "hold the thread while the next message queues",
-      });
-      const firstHeaders = await claimChatRun(runnerGroup, first.runId);
-      const queuedApiStartedAt = now() + 60_000;
-      const dequeuedAt = queuedApiStartedAt + 1000;
-      const queuedPrompt = clearQueuedApiStart
-        ? "measure from a mixed-version queued request"
-        : "measure from my original queued request";
-      mockNow(queuedApiStartedAt);
-      onTestFinished(() => {
-        clearMockNow();
-      });
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "hold the thread while the next message queues",
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    const queuedAt = now() + 60_000;
+    const dequeuedAt = queuedAt + 1000;
+    const queuedPrompt = "measure from queued message dequeue";
+    mockNow(queuedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
 
-      await queueChatMessage(actor, {
-        agentId,
-        threadId: first.threadId,
-        prompt: queuedPrompt,
-      });
-      if (clearQueuedApiStart) {
-        const queuedMessages = await chat.listThreadMessages(
-          actor,
-          first.threadId,
-        );
-        const queuedMessage = userMessages(queuedMessages.messages).find(
-          (message) => {
-            return (
-              message.content === queuedPrompt && message.runId === undefined
-            );
-          },
-        );
-        if (!queuedMessage) {
-          throw new Error("Expected the queued Web message fixture");
-        }
-        await clearChatMessageQueueApiStart(context, queuedMessage.id);
-      }
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: queuedPrompt,
+    });
 
-      mockNow(dequeuedAt);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "finish the blocking run"),
-      ]);
-      await completeChatRunOk(first.runId, firstHeaders, {
-        lastEventSequence: 0,
-      });
+    mockNow(dequeuedAt);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "finish the blocking run"),
+    ]);
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
 
-      const afterAutoSend = await waitForThreadMessages(
-        actor,
-        first.threadId,
-        (messages) => {
-          return userMessages(messages).some((message) => {
-            return (
-              message.content === queuedPrompt && message.runId !== undefined
-            );
-          });
-        },
-      );
-      const claimed = userMessages(afterAutoSend.messages).find((message) => {
-        return message.content === queuedPrompt && message.runId !== undefined;
-      });
-      if (!claimed?.runId) {
-        throw new Error("Expected the queued Web message to auto-send");
-      }
+    const afterAutoSend = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.content === queuedPrompt && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(afterAutoSend.messages).find((message) => {
+      return message.content === queuedPrompt && message.runId !== undefined;
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queued Web message to auto-send");
+    }
 
-      const expectedApiStartTime = clearQueuedApiStart
-        ? dequeuedAt
-        : queuedApiStartedAt;
-      const acknowledgedAt = expectedApiStartTime + 7000;
-      const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
-      expect(secondClaim.apiStartTime).toBe(expectedApiStartTime);
-      const secondHeaders = {
-        authorization: `Bearer ${secondClaim.sandboxToken}`,
-      };
-      await flushWaitUntilForTest();
-      context.mocks.ably.publish.mockClear();
-      mockNow(acknowledgedAt);
-      await webhooks.requestAgentEvents(
-        {
-          runId: claimed.runId,
-          events: [
-            {
-              type: "assistant",
-              sequenceNumber: 0,
-              message: {
-                id: "msg_bdd_queued_first_output",
-                content: [{ type: "text", text: "Queued run real output" }],
-              },
+    const acknowledgedAt = dequeuedAt + 7000;
+    const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
+    expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+    const secondHeaders = {
+      authorization: `Bearer ${secondClaim.sandboxToken}`,
+    };
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+    mockNow(acknowledgedAt);
+    await webhooks.requestAgentEvents(
+      {
+        runId: claimed.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_queued_first_output",
+              content: [{ type: "text", text: "Queued run real output" }],
             },
-          ],
-        },
-        secondHeaders,
-        [200],
-      );
-      await flushWaitUntilForTest();
+          },
+        ],
+      },
+      secondHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
 
-      expect(firstAssistantMessageEventsForRun(claimed.runId)).toStrictEqual(
-        clearQueuedApiStart
-          ? []
-          : [
-              expect.objectContaining({
-                _time: new Date(acknowledgedAt).toISOString(),
-                duration_ms: acknowledgedAt - expectedApiStartTime,
-                run_id: claimed.runId,
-              }),
-            ],
-      );
+    expect(firstAssistantMessageEventsForRun(claimed.runId)).toStrictEqual([
+      expect.objectContaining({
+        _time: new Date(acknowledgedAt).toISOString(),
+        duration_ms: acknowledgedAt - dequeuedAt,
+        run_id: claimed.runId,
+      }),
+    ]);
 
-      await api.requestCancelRun(actor, claimed.runId, [200]);
-      await waitForRunStatus(actor, claimed.runId, "cancelled");
-    },
-    90_000,
-  );
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
 
   it.each([
     { projection: "structured", structuredPromptEnabled: true },

@@ -507,7 +507,6 @@ function buildQueuedCreateZeroRunArgs(
       orgRole: "member" as const,
     },
     apiStartTime,
-    apiToFirstAssistantMessageStartedAt: input.queuedMessage.apiStartedAt,
     chatThreadId: input.threadId,
     computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.modelPin.modelProviderId ?? undefined,
@@ -2955,7 +2954,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     if (!createQueuedRun) {
       return;
     }
-    const dequeueApiStartTime = now();
+    const apiStartTime = now();
     await autoSendQueuedMessageForThread({
       db,
       chatThreadId: args.chatThreadId,
@@ -2968,12 +2967,7 @@ export const drainQueuedUserMessagesForThread$ = command(
           input,
           signal,
           createRun: (runInput) => {
-            return createQueuedRun(
-              runInput,
-              runInput.queuedMessage.apiStartedAt?.getTime() ??
-                dequeueApiStartTime,
-              signal,
-            );
+            return createQueuedRun(runInput, apiStartTime, signal);
           },
         });
       },

@@ -71,14 +71,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("clear-chat-message-queue-api-start"),
-    chat_message_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("clear-workflow-queue-api-start"),
-    automation_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("read-run-api-start"),
     run_id: z.uuid(),
   }),
