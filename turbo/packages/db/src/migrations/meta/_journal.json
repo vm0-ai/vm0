@@ -4628,6 +4628,13 @@
       "when": 1784859778734,
       "tag": "0660_curious_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 661,
+      "version": "7",
+      "when": 1784864947732,
+      "tag": "0661_awesome_paper_doll",
+      "breakpoints": true
     }
   ]
 }

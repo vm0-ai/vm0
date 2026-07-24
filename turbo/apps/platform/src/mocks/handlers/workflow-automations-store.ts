@@ -9,6 +9,7 @@ type MockWorkflowAutomationOverrides = Partial<
     | "gmail-new-message"
     | "gmail-label-applied"
     | "github-label-applied"
+    | "github-workflow-run-completed"
     | "google-calendar-event-created"
     | "google-calendar-event-updated"
     | "google-calendar-event-cancelled"
@@ -143,6 +144,27 @@ function createMockGithubLabelAutomation(
   } as ChatThreadWorkflowAutomation;
 }
 
+function createMockGithubWorkflowRunAutomation(
+  base: MockWorkflowAutomationBase,
+  overrides: MockWorkflowAutomationOverrides,
+  workflow: ChatThreadWorkflowAutomation["workflow"],
+): ChatThreadWorkflowAutomation {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "github-workflow-run-completed",
+    eventConfig: {
+      provider: "github",
+      event: "workflow_run_completed",
+      filters: {},
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ...overrides,
+    workflow,
+  } as ChatThreadWorkflowAutomation;
+}
+
 function createMockGoogleCalendarAutomation(
   base: MockWorkflowAutomationBase,
   overrides: MockWorkflowAutomationOverrides,
@@ -196,6 +218,9 @@ export function createMockWorkflowAutomation(
     }
     if (overrides.eventType === "github-label-applied") {
       return createMockGithubLabelAutomation(base, overrides, workflow);
+    }
+    if (overrides.eventType === "github-workflow-run-completed") {
+      return createMockGithubWorkflowRunAutomation(base, overrides, workflow);
     }
     if (overrides.eventType?.startsWith("google-calendar-event-")) {
       return createMockGoogleCalendarAutomation(base, overrides, workflow);

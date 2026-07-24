@@ -272,6 +272,8 @@ function workflowAutomationKindLabel(
       return "Gmail label applied";
     case "github-label-applied":
       return "GitHub label applied";
+    case "github-workflow-run-completed":
+      return "GitHub workflow completed";
     case "google-calendar-event-created":
       return "Google Calendar event created";
     case "google-calendar-event-updated":
@@ -350,6 +352,30 @@ export function printWorkflowAutomationsTable(
   }
 }
 
+function printGithubWorkflowRunFilters(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (
+    automation.kind !== "event" ||
+    automation.eventType !== "github-workflow-run-completed"
+  ) {
+    return;
+  }
+  const printFilter = (
+    label: string,
+    values: readonly string[] | undefined,
+  ) => {
+    console.log(`${`${label}:`.padEnd(14)}${values?.join(", ") ?? "any"}`);
+  };
+  const { filters } = automation.eventConfig;
+  printFilter("Repositories", filters.repositories);
+  printFilter("Workflows", filters.workflows);
+  printFilter("Conclusions", filters.conclusions);
+  printFilter("Branches", filters.branches);
+  printFilter("Events", filters.events);
+  printFilter("Actors", filters.actors);
+}
+
 export function printWorkflowAutomationDetails(
   automation: ZeroWorkflowAutomationSummary,
   options?: { readonly workflowRef?: string },
@@ -395,6 +421,7 @@ export function printWorkflowAutomationDetails(
       `${"Actor:".padEnd(14)}${automation.eventConfig.filters.actor.type}`,
     );
   }
+  printGithubWorkflowRunFilters(automation);
   if (isGoogleCalendarAutomation(automation)) {
     console.log(
       `${"Calendar:".padEnd(14)}${automation.eventConfig.calendarId}`,

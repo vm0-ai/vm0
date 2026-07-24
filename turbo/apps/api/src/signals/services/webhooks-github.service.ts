@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { githubWorkflowRunConclusionSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -38,6 +39,10 @@ import {
   type GitHubIssuesCallbackPayload,
 } from "./github-issues-callback-payload";
 import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
+import {
+  dispatchGithubWorkflowRunAutomations$,
+  type GithubWorkflowRunEventPayload,
+} from "./github-workflow-run-event.service";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
@@ -111,6 +116,34 @@ export const gitHubPullRequestEventSchema = z.object({
   installation: gitHubInstallationRefSchema,
   sender: gitHubUserSchema,
 });
+
+export const gitHubWorkflowRunEventSchema: z.ZodType<GithubWorkflowRunEventPayload> =
+  z.object({
+    action: z.string(),
+    workflow_run: z.object({
+      id: z.number(),
+      workflow_id: z.number(),
+      name: z.string().nullable(),
+      path: z.string(),
+      run_number: z.number(),
+      run_attempt: z.number(),
+      status: z.string(),
+      conclusion: githubWorkflowRunConclusionSchema.nullable(),
+      head_branch: z.string().nullable(),
+      head_sha: z.string(),
+      event: z.string(),
+      html_url: z.string(),
+      actor: gitHubUserSchema.nullable(),
+      triggering_actor: gitHubUserSchema.nullable(),
+      pull_requests: z.array(z.object({ number: z.number() })),
+    }),
+    repository: z.object({
+      id: z.number(),
+      full_name: z.string(),
+    }),
+    installation: gitHubInstallationRefSchema,
+    sender: gitHubUserSchema,
+  });
 
 const gitHubInstallationAccountSchema = z.object({
   id: z.number(),
@@ -1209,6 +1242,30 @@ export const handleGithubPullRequestEvent$ = command(
           sender: args.payload.sender,
         },
         subjectKind: "pull_request",
+        apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
+      },
+      signal,
+    );
+  },
+);
+
+export const handleGithubWorkflowRunEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly payload: GithubWorkflowRunEventPayload;
+      readonly deliveryId: string;
+      readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      dispatchGithubWorkflowRunAutomations$,
+      {
+        deliveryId: args.deliveryId,
+        payload: args.payload,
         apiStartTime: args.apiStartTime,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },

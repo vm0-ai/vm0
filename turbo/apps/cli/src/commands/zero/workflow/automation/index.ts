@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import type {
   GithubLabelAppliedSubjectFilter,
+  GithubWorkflowRunConclusion,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -42,6 +43,11 @@ interface AddOptions extends GmailAutomationOptions {
   readonly agent?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly repository?: string;
+  readonly workflow?: string;
+  readonly conclusion?: string;
+  readonly branch?: string;
+  readonly triggeringEvent?: string;
   readonly calendarId?: string;
   readonly pageUrl?: string;
   readonly parentPageUrl?: string;
@@ -55,6 +61,11 @@ interface UpdateOptions extends GmailAutomationOptions {
   readonly timezone?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly repository?: string;
+  readonly workflow?: string;
+  readonly conclusion?: string;
+  readonly branch?: string;
+  readonly triggeringEvent?: string;
 }
 
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
@@ -62,6 +73,7 @@ const EVENT_KINDS = [
   "gmail-new-message",
   "gmail-label-applied",
   "github-label-applied",
+  "github-workflow-run-completed",
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
@@ -122,7 +134,24 @@ function addGithubAutomationOptions(command: Command): Command {
     )
     .option(
       "--actor <actor>",
-      "GitHub actor filter for github-label-applied: me | anyone",
+      "GitHub actor filter: me | anyone for labels, or comma-separated logins for workflow runs",
+    )
+    .option(
+      "--repository <repositories>",
+      "GitHub workflow run repositories, comma-separated owner/name values",
+    )
+    .option(
+      "--workflow <workflows>",
+      "GitHub workflows, comma-separated IDs, names, or paths",
+    )
+    .option(
+      "--conclusion <conclusions>",
+      "Workflow run conclusions, comma-separated values",
+    )
+    .option("--branch <branches>", "Workflow run branches, comma-separated")
+    .option(
+      "--triggering-event <events>",
+      "Workflow run triggering events, comma-separated",
     );
 }
 
@@ -298,10 +327,31 @@ function hasScheduleAddOptions(options: AddOptions): boolean {
   );
 }
 
-function hasGithubAutomationOptions(
+function hasGithubLabelAutomationOptions(
   options: AddOptions | UpdateOptions,
 ): boolean {
   return options.subject !== undefined || options.actor !== undefined;
+}
+
+function hasGithubWorkflowRunSpecificOptions(
+  options: AddOptions | UpdateOptions,
+): boolean {
+  return (
+    options.repository !== undefined ||
+    options.workflow !== undefined ||
+    options.conclusion !== undefined ||
+    options.branch !== undefined ||
+    options.triggeringEvent !== undefined
+  );
+}
+
+function hasGithubAutomationOptions(
+  options: AddOptions | UpdateOptions,
+): boolean {
+  return (
+    hasGithubLabelAutomationOptions(options) ||
+    hasGithubWorkflowRunSpecificOptions(options)
+  );
 }
 
 function hasCalendarAutomationOptions(options: AddOptions): boolean {
@@ -435,6 +485,104 @@ function buildGithubLabelAppliedEventConfig(
   };
 }
 
+const GITHUB_WORKFLOW_RUN_CONCLUSIONS: readonly GithubWorkflowRunConclusion[] =
+  [
+    "action_required",
+    "cancelled",
+    "failure",
+    "neutral",
+    "skipped",
+    "stale",
+    "startup_failure",
+    "success",
+    "timed_out",
+  ];
+
+function parseGithubWorkflowRunFilter(
+  value: string | undefined,
+  fallback: readonly string[] | undefined,
+): string[] | undefined {
+  if (value === undefined) {
+    return fallback ? [...fallback] : undefined;
+  }
+  if (value.trim().toLowerCase() === "any") {
+    return undefined;
+  }
+  const values = Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((part) => {
+          return part.trim();
+        })
+        .filter(Boolean),
+    ),
+  );
+  if (values.length === 0) {
+    throw new Error("GitHub workflow run filters cannot be empty; use any");
+  }
+  return values;
+}
+
+function parseGithubWorkflowRunConclusions(
+  value: string | undefined,
+  fallback: readonly GithubWorkflowRunConclusion[] | undefined,
+): GithubWorkflowRunConclusion[] | undefined {
+  const values = parseGithubWorkflowRunFilter(value, fallback);
+  if (!values) {
+    return undefined;
+  }
+  return values.map((conclusion) => {
+    if (
+      GITHUB_WORKFLOW_RUN_CONCLUSIONS.includes(
+        conclusion as GithubWorkflowRunConclusion,
+      )
+    ) {
+      return conclusion as GithubWorkflowRunConclusion;
+    }
+    throw new Error(
+      `Invalid --conclusion "${conclusion}". Use one of: ${GITHUB_WORKFLOW_RUN_CONCLUSIONS.join(", ")}, any`,
+    );
+  });
+}
+
+function buildGithubWorkflowRunCompletedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    {
+      readonly kind: "event";
+      readonly eventType: "github-workflow-run-completed";
+    }
+  >,
+) {
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "workflow_run_completed" as const,
+    filters: {
+      repositories: parseGithubWorkflowRunFilter(
+        options.repository,
+        filters?.repositories,
+      ),
+      workflows: parseGithubWorkflowRunFilter(
+        options.workflow,
+        filters?.workflows,
+      ),
+      conclusions: parseGithubWorkflowRunConclusions(
+        options.conclusion,
+        filters?.conclusions,
+      ),
+      branches: parseGithubWorkflowRunFilter(options.branch, filters?.branches),
+      events: parseGithubWorkflowRunFilter(
+        options.triggeringEvent,
+        filters?.events,
+      ),
+      actors: parseGithubWorkflowRunFilter(options.actor, filters?.actors),
+    },
+  };
+}
+
 function buildGmailNewMessageCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -482,10 +630,38 @@ function buildGithubLabelAppliedCreateRequest(
   }
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  if (hasGithubWorkflowRunSpecificOptions(options)) {
+    throw new Error(
+      "Workflow run filter flags only apply to github-workflow-run-completed automations",
+    );
+  }
   return {
     kind: "event",
     eventType: "github-label-applied",
     eventConfig: buildGithubLabelAppliedEventConfig(options),
+  };
+}
+
+function buildGithubWorkflowRunCompletedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailAutomationOptions(options) || hasGmailLabelOption(options)) {
+    throw new Error(
+      "Gmail automation flags only apply to Gmail event automations",
+    );
+  }
+  if (options.subject !== undefined) {
+    throw new Error(
+      "--subject only applies to github-label-applied automations",
+    );
+  }
+  assertNoCalendarAutomationOptions(options);
+  assertNoNotionAutomationOptions(options);
+  return {
+    kind: "event",
+    eventType: "github-workflow-run-completed",
+    eventConfig: buildGithubWorkflowRunCompletedEventConfig(options),
   };
 }
 
@@ -705,6 +881,8 @@ function buildCreateRequest(
       return buildGmailLabelAppliedCreateRequest(options);
     case "github-label-applied":
       return buildGithubLabelAppliedCreateRequest(options);
+    case "github-workflow-run-completed":
+      return buildGithubWorkflowRunCompletedCreateRequest(options);
     case "google-calendar-event-created":
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-updated":
@@ -746,6 +924,11 @@ function buildEventUpdate(
         "Gmail match flags only apply to Gmail event automations",
       );
     }
+    if (hasGithubWorkflowRunSpecificOptions(options)) {
+      throw new Error(
+        "Workflow run filter flags only apply to github-workflow-run-completed automations",
+      );
+    }
     if (!hasLabelOption && !hasGithubOptions) {
       throw new Error(
         "Provide --label, --subject, or --actor for github-label-applied automations",
@@ -753,6 +936,25 @@ function buildEventUpdate(
     }
     return {
       eventConfig: buildGithubLabelAppliedEventConfig(options, existing),
+    };
+  }
+
+  if (existing.eventType === "github-workflow-run-completed") {
+    if (hasGmailOptions || hasLabelOption || options.subject !== undefined) {
+      throw new Error(
+        "Gmail, label, and subject flags do not apply to GitHub workflow run automations",
+      );
+    }
+    if (!hasGithubAutomationOptions(options)) {
+      throw new Error(
+        "Provide a GitHub workflow run filter flag; use any to clear a filter",
+      );
+    }
+    return {
+      eventConfig: buildGithubWorkflowRunCompletedEventConfig(
+        options,
+        existing,
+      ),
     };
   }
 
@@ -880,6 +1082,7 @@ Examples:
   zero workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
   zero workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
   zero workflow automation add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
+  zero workflow automation add ci-triage --agent <agent-id> github-workflow-run-completed --repository vm0-ai/vm0 --workflow Turbo --conclusion failure,timed_out --branch main --triggering-event push --actor dependabot[bot]
   zero workflow automation add triage --agent <agent-id> google-calendar-event-created
   zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
   zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
@@ -892,7 +1095,8 @@ Examples:
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID
   - Gmail automations match all inbound messages when no text match rules are provided
-  - GitHub label automations require the GitHub App installation in the workspace
+  - GitHub automations require the GitHub App installation in the workspace
+  - GitHub workflow run filters accept comma-separated values; omit a filter to match any value
   - Webhook automations print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
   )
@@ -926,7 +1130,7 @@ const updateCommand = addGithubAutomationOptions(
     new Command()
       .name("update")
       .description(
-        "Replace a workflow automation's schedule or Gmail match config",
+        "Replace a workflow automation's schedule or event filter config",
       )
       .argument("<automation>", "Workflow automation ID")
       .option("--expr <expression>", 'New cron schedule (e.g. "0 9 * * *")')
@@ -945,7 +1149,9 @@ Examples:
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --config ./gmail-automation.json
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone`,
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --conclusion failure,timed_out --branch main
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor any`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {

@@ -11,6 +11,7 @@ import {
   type GoogleCalendarEventUpdatedEventConfig,
   type GoogleMeetTranscriptGeneratedEventConfig,
   type GithubLabelAppliedEventConfig,
+  type GithubWorkflowRunCompletedEventConfig,
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventCreateConfig,
@@ -86,6 +87,7 @@ export type WorkflowAutomationCreateDialog =
   | "gmail"
   | "gmail-label"
   | "github-label"
+  | "github-workflow-run"
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
@@ -1018,6 +1020,33 @@ export const createWorkflowGithubLabelAppliedAutomation$ = command(
   },
 );
 
+export const createWorkflowGithubWorkflowRunCompletedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GithubWorkflowRunCompletedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-workflow-run-completed",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const createWorkflowGoogleCalendarEventAutomation$ = command(
   async (
     { get, set },
@@ -1296,6 +1325,29 @@ export const updateWorkflowGithubLabelAppliedAutomation$ = command(
     input: {
       readonly automationId: string;
       readonly eventConfig: GithubLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.update({
+        params: { id: input.automationId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGithubWorkflowRunCompletedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly automationId: string;
+      readonly eventConfig: GithubWorkflowRunCompletedEventConfig;
     },
     signal: AbortSignal,
   ) => {

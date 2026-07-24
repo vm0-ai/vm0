@@ -15,10 +15,12 @@ import {
   gitHubIssueCommentEventSchema,
   gitHubIssuesEventSchema,
   gitHubPullRequestEventSchema,
+  gitHubWorkflowRunEventSchema,
   handleGithubInstallationEvent$,
   handleGithubIssueCommentEvent$,
   handleGithubIssuesEvent$,
   handleGithubPullRequestEvent$,
+  handleGithubWorkflowRunEvent$,
 } from "../services/webhooks-github.service";
 
 const L = logger("WebhookGithubRoute");
@@ -56,6 +58,66 @@ function verifyGitHubWebhookSignature(args: {
   });
   return "ok" in result ? result.ok : false;
 }
+
+const postGithubWorkflowRunWebhook$ = command(
+  (
+    { set },
+    args: {
+      readonly payload: unknown;
+      readonly deliveryId: string;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Response => {
+    const parsed = gitHubWorkflowRunEventSchema.safeParse(args.payload);
+    if (!parsed.success) {
+      L.error("Invalid workflow_run event payload", {
+        error: parsed.error,
+      });
+      return jsonError("Invalid payload structure", 400);
+    }
+
+    const backgroundScheduledAt = now();
+    waitUntil(
+      tapError(
+        set(
+          handleGithubWorkflowRunEvent$,
+          {
+            payload: parsed.data,
+            deliveryId: args.deliveryId,
+            apiStartTime: args.apiStartTime,
+            backgroundScheduledAt,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling workflow_run event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
+
+const postGithubInstallationWebhook$ = command(
+  ({ set }, payload: unknown, signal: AbortSignal): Response => {
+    const parsed = gitHubInstallationEventSchema.safeParse(payload);
+    if (!parsed.success) {
+      L.error("Invalid installation event payload", { error: parsed.error });
+      return jsonError("Invalid payload structure", 400);
+    }
+
+    waitUntil(
+      tapError(
+        set(handleGithubInstallationEvent$, parsed.data, signal),
+        (error) => {
+          L.error("Error handling installation event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
 
 const postGithubWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
@@ -181,22 +243,20 @@ const postGithubWebhook$ = command(
       return new Response("OK", { status: 200 });
     }
 
-    if (headers.event === "installation") {
-      const parsed = gitHubInstallationEventSchema.safeParse(payload);
-      if (!parsed.success) {
-        L.error("Invalid installation event payload", { error: parsed.error });
-        return jsonError("Invalid payload structure", 400);
-      }
-
-      waitUntil(
-        tapError(
-          set(handleGithubInstallationEvent$, parsed.data, signal),
-          (error) => {
-            L.error("Error handling installation event", { error });
-          },
-        ),
+    if (headers.event === "workflow_run") {
+      return await set(
+        postGithubWorkflowRunWebhook$,
+        {
+          payload,
+          deliveryId: headers.deliveryId,
+          apiStartTime,
+        },
+        signal,
       );
-      return new Response("OK", { status: 200 });
+    }
+
+    if (headers.event === "installation") {
+      return await set(postGithubInstallationWebhook$, payload, signal);
     }
 
     L.debug("Ignoring unhandled GitHub event", { event: headers.event });

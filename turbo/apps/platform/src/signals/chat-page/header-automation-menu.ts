@@ -77,6 +77,9 @@ function workflowAutomationSummary(
     if (automation.eventType === "github-label-applied") {
       return "GitHub label applied";
     }
+    if (automation.eventType === "github-workflow-run-completed") {
+      return "GitHub workflow completed";
+    }
     if (automation.eventType === "notion-child-page-created") {
       return "New Notion child page";
     }

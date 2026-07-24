@@ -171,6 +171,23 @@ function notionReadableAutomationRuleLabel(
     : "When Notion database item content is updated";
 }
 
+function githubAutomationRuleLabel(
+  automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event" }
+  >,
+): string | null {
+  if (automation.eventType === "github-label-applied") {
+    return `When GitHub label ${quote(automation.eventConfig.labelName)} is applied`;
+  }
+  if (automation.eventType !== "github-workflow-run-completed") {
+    return null;
+  }
+  const workflows = automation.eventConfig.filters.workflows;
+  const conclusions = automation.eventConfig.filters.conclusions;
+  return `When ${workflows ? workflows.join(", ") : "a GitHub workflow"} completes${conclusions ? ` with ${conclusions.join(", ")}` : ""}`;
+}
+
 export function humanReadableAutomationRuleLabel(
   automation: ZeroWorkflowAutomationSummary,
   displayTimezone: string,
@@ -210,8 +227,9 @@ export function humanReadableAutomationRuleLabel(
   if (automation.eventType === "gmail-label-applied") {
     return `When Gmail label ${quote(automation.eventConfig.labelName)} is applied`;
   }
-  if (automation.eventType === "github-label-applied") {
-    return `When GitHub label ${quote(automation.eventConfig.labelName)} is applied`;
+  const githubLabel = githubAutomationRuleLabel(automation);
+  if (githubLabel) {
+    return githubLabel;
   }
   if (automation.eventType === "google-calendar-event-created") {
     return `When calendar ${quote(automation.eventConfig.calendarId)} gets a new event`;
@@ -247,7 +265,10 @@ export function automationTypeLabel(
   ) {
     return "Gmail";
   }
-  if (automation.eventType === "github-label-applied") {
+  if (
+    automation.eventType === "github-label-applied" ||
+    automation.eventType === "github-workflow-run-completed"
+  ) {
     return "GitHub";
   }
   if (
@@ -327,7 +348,10 @@ export function AutomationListIcon({
     if (automation.eventType === "webhook-received") {
       return IconLink;
     }
-    if (automation.eventType === "github-label-applied") {
+    if (
+      automation.eventType === "github-label-applied" ||
+      automation.eventType === "github-workflow-run-completed"
+    ) {
       return IconBrandGithub;
     }
     if (automation.eventType === "google-meet-transcript-generated") {

@@ -9,6 +9,8 @@ import type {
   GmailNewMessageEventConfig,
   GithubLabelAppliedEventConfig,
   GithubLabelAppliedSubjectFilter,
+  GithubWorkflowRunCompletedEventConfig,
+  GithubWorkflowRunConclusion,
   NotionPageContentUpdatedEventCreateConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
@@ -91,6 +93,7 @@ import {
   checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
   createWorkflowGithubLabelAppliedAutomation$,
+  createWorkflowGithubWorkflowRunCompletedAutomation$,
   createWorkflowGoogleCalendarEventAutomation$,
   createWorkflowGoogleMeetTranscriptGeneratedAutomation$,
   createWorkflowGmailLabelAppliedAutomation$,
@@ -140,6 +143,7 @@ import {
   setWorkflowAutomationCreateDialog$,
   setWorkflowAutomationEnabled$,
   updateWorkflowGithubLabelAppliedAutomation$,
+  updateWorkflowGithubWorkflowRunCompletedAutomation$,
   updateWorkflowGmailNewMessageAutomation$,
   updateWorkflowGmailLabelAppliedAutomation$,
   updateWorkflowScheduleAutomation$,
@@ -242,7 +246,9 @@ type GithubWorkflowAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   {
     readonly kind: "event";
-    readonly eventType: "github-label-applied";
+    readonly eventType:
+      | "github-label-applied"
+      | "github-workflow-run-completed";
   }
 >;
 type WebhookWorkflowAutomationSummary = Extract<
@@ -284,6 +290,21 @@ const GITHUB_ACTOR_OPTIONS: readonly {
 }[] = [
   { value: "me", label: "Me" },
   { value: "anyone", label: "Anyone" },
+];
+
+const GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS: readonly {
+  readonly value: GithubWorkflowRunConclusion;
+  readonly label: string;
+}[] = [
+  { value: "success", label: "Success" },
+  { value: "failure", label: "Failure" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "timed_out", label: "Timed out" },
+  { value: "action_required", label: "Action required" },
+  { value: "neutral", label: "Neutral" },
+  { value: "skipped", label: "Skipped" },
+  { value: "stale", label: "Stale" },
+  { value: "startup_failure", label: "Startup failure" },
 ];
 
 const WORKFLOW_CRON_FREQUENCY_OPTIONS: readonly {
@@ -345,7 +366,8 @@ function isGithubWorkflowAutomation(
 ): automation is GithubWorkflowAutomationSummary {
   return (
     automation.kind === "event" &&
-    automation.eventType === "github-label-applied"
+    (automation.eventType === "github-label-applied" ||
+      automation.eventType === "github-workflow-run-completed")
   );
 }
 
@@ -604,6 +626,8 @@ function AutomationCreateAction() {
     capabilities?.workflowWebhookAutomationAllowed ?? true;
   const notionWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
+  const githubWorkflowRunAutomationsEnabled =
+    features[FeatureSwitchKey.GithubWorkflowRunAutomations] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -615,6 +639,7 @@ function AutomationCreateAction() {
         setCreateDialog(kind);
       }}
       githubLabelAutomationsEnabled
+      githubWorkflowRunAutomationsEnabled={githubWorkflowRunAutomationsEnabled}
       googleCalendarAutomationsEnabled
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
@@ -2700,6 +2725,60 @@ function buildGithubLabelAppliedEventConfig(
   };
 }
 
+function githubWorkflowRunFilterValues(
+  form: FormData,
+  name: string,
+): string[] | undefined {
+  const value = formTextValue(form, name);
+  if (!value) {
+    return undefined;
+  }
+  const values = Array.from(
+    new Set(
+      value
+        .split(/[,\n]/u)
+        .map((part) => {
+          return part.trim();
+        })
+        .filter(Boolean),
+    ),
+  );
+  return values.length > 0 ? values : undefined;
+}
+
+function githubWorkflowRunConclusions(
+  form: FormData,
+): GithubWorkflowRunConclusion[] | undefined {
+  const values = form
+    .getAll("conclusions")
+    .filter((value): value is GithubWorkflowRunConclusion => {
+      return (
+        typeof value === "string" &&
+        GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS.some((option) => {
+          return option.value === value;
+        })
+      );
+    });
+  return values.length > 0 ? values : undefined;
+}
+
+function buildGithubWorkflowRunCompletedEventConfig(
+  form: FormData,
+): GithubWorkflowRunCompletedEventConfig {
+  return {
+    provider: "github",
+    event: "workflow_run_completed",
+    filters: {
+      repositories: githubWorkflowRunFilterValues(form, "repositories"),
+      workflows: githubWorkflowRunFilterValues(form, "workflows"),
+      conclusions: githubWorkflowRunConclusions(form),
+      branches: githubWorkflowRunFilterValues(form, "branches"),
+      events: githubWorkflowRunFilterValues(form, "events"),
+      actors: githubWorkflowRunFilterValues(form, "actors"),
+    },
+  };
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -2761,6 +2840,9 @@ function workflowAutomationTitle(
   if (automation.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
+  if (automation.eventType === "github-workflow-run-completed") {
+    return "GitHub workflow completed";
+  }
   if (automation.eventType === "google-calendar-event-created") {
     return "Google Calendar event created";
   }
@@ -2785,6 +2867,39 @@ function workflowAutomationTitle(
   return "Webhook";
 }
 
+function githubWorkflowAutomationSummary(
+  automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event" }
+  >,
+): string | null {
+  if (automation.eventType === "github-label-applied") {
+    const subject =
+      GITHUB_SUBJECT_OPTIONS.find((option) => {
+        return option.value === automation.eventConfig.filters.subject;
+      })?.label ?? "Issues and pull requests";
+    const actor =
+      automation.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
+    return `Label ${quote(automation.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
+  }
+  if (automation.eventType !== "github-workflow-run-completed") {
+    return null;
+  }
+  const filters = automation.eventConfig.filters;
+  const parts = [
+    filters.repositories
+      ? `Repositories ${filters.repositories.join(", ")}`
+      : "Any repository",
+    filters.workflows
+      ? `Workflows ${filters.workflows.join(", ")}`
+      : "Any workflow",
+    filters.conclusions
+      ? `Conclusions ${filters.conclusions.join(", ")}`
+      : "Any conclusion",
+  ];
+  return parts.join(" · ");
+}
+
 function workflowAutomationSummary(
   automation: ZeroWorkflowAutomationSummary,
 ): string | null {
@@ -2797,14 +2912,9 @@ function workflowAutomationSummary(
   if (automation.eventType === "gmail-label-applied") {
     return `Label ${quote(automation.eventConfig.labelName)}`;
   }
-  if (automation.eventType === "github-label-applied") {
-    const subject =
-      GITHUB_SUBJECT_OPTIONS.find((option) => {
-        return option.value === automation.eventConfig.filters.subject;
-      })?.label ?? "Issues and pull requests";
-    const actor =
-      automation.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
-    return `Label ${quote(automation.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
+  const githubSummary = githubWorkflowAutomationSummary(automation);
+  if (githubSummary) {
+    return githubSummary;
   }
   if (
     automation.eventType === "google-calendar-event-created" ||
@@ -2842,6 +2952,7 @@ type AutomationCreateDialogKind =
   | "gmail"
   | "gmail-label"
   | "github-label"
+  | "github-workflow-run"
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
@@ -2875,9 +2986,11 @@ type AutomationCreateCategory = {
 
 function buildIntegrationAutomationOptions({
   githubLabelAutomationsEnabled,
+  githubWorkflowRunAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
+  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
   const integrationOptions: AutomationCreateOption[] = [];
@@ -2886,6 +2999,14 @@ function buildIntegrationAutomationOptions({
       kind: "github-label",
       title: "GitHub label applied",
       description: "Run when an issue or pull request gets a label.",
+      icon: IconBrandGithub,
+    });
+  }
+  if (githubWorkflowRunAutomationsEnabled) {
+    integrationOptions.push({
+      kind: "github-workflow-run",
+      title: "GitHub workflow completed",
+      description: "Run when a matching Actions workflow run completes.",
       icon: IconBrandGithub,
     });
   }
@@ -2941,12 +3062,14 @@ const AUTOMATION_CATEGORY_CHIP: Readonly<
 
 function buildAutomationCreateCategories({
   githubLabelAutomationsEnabled,
+  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
+  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
@@ -2986,6 +3109,7 @@ function buildAutomationCreateCategories({
 
   const integrationOptions = buildIntegrationAutomationOptions({
     githubLabelAutomationsEnabled,
+    githubWorkflowRunAutomationsEnabled,
     webhookTierEligible,
   });
   const notionOptions = buildNotionAutomationOptions(
@@ -3134,6 +3258,7 @@ function AutomationCreateOptionCard({
 function AutomationCreateMenu({
   onSelect,
   githubLabelAutomationsEnabled,
+  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
@@ -3141,6 +3266,7 @@ function AutomationCreateMenu({
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
   readonly githubLabelAutomationsEnabled: boolean;
+  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
@@ -3152,6 +3278,7 @@ function AutomationCreateMenu({
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
     githubLabelAutomationsEnabled,
+    githubWorkflowRunAutomationsEnabled,
     googleCalendarAutomationsEnabled,
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
@@ -3450,6 +3577,13 @@ function WorkflowAutomationCreateDialogs({
         open={createDialog === "github-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "github-label" : null);
+        }}
+      />
+      <CreateGithubWorkflowRunCompletedAutomationDialog
+        workflowId={workflowId}
+        open={createDialog === "github-workflow-run"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-workflow-run" : null);
         }}
       />
       <GoogleCalendarAutomationDialogs
@@ -4922,6 +5056,105 @@ function GithubLabelAutomationFields({
   );
 }
 
+function GithubWorkflowRunAutomationFields({
+  disabled,
+  defaultConfig,
+}: {
+  readonly disabled: boolean;
+  readonly defaultConfig?: GithubWorkflowRunCompletedEventConfig;
+}) {
+  const filters = defaultConfig?.filters;
+  const fields: readonly {
+    readonly name: string;
+    readonly label: string;
+    readonly placeholder: string;
+    readonly defaultValues: readonly string[] | undefined;
+  }[] = [
+    {
+      name: "repositories",
+      label: "Repositories",
+      placeholder: "vm0-ai/vm0, owner/another-repo",
+      defaultValues: filters?.repositories,
+    },
+    {
+      name: "workflows",
+      label: "GitHub workflows",
+      placeholder: "Turbo, .github/workflows/release.yml",
+      defaultValues: filters?.workflows,
+    },
+    {
+      name: "branches",
+      label: "Branches",
+      placeholder: "main, release",
+      defaultValues: filters?.branches,
+    },
+    {
+      name: "events",
+      label: "Triggering events",
+      placeholder: "push, pull_request, workflow_dispatch",
+      defaultValues: filters?.events,
+    },
+    {
+      name: "actors",
+      label: "Actors",
+      placeholder: "octocat, dependabot[bot]",
+      defaultValues: filters?.actors,
+    },
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Leave a filter empty to match any value. Separate multiple values with
+        commas.
+      </p>
+      {fields.map((field) => {
+        return (
+          <label
+            key={field.name}
+            className="flex flex-col gap-1 text-xs text-muted-foreground"
+          >
+            {field.label}
+            <input
+              name={field.name}
+              aria-label={field.label}
+              disabled={disabled}
+              defaultValue={field.defaultValues?.join(", ") ?? ""}
+              placeholder={field.placeholder}
+              className={FIELD_CLASS}
+            />
+          </label>
+        );
+      })}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-xs text-muted-foreground">Conclusions</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS.map((option) => {
+            return (
+              <label
+                key={option.value}
+                className="flex items-center gap-2 text-xs text-foreground"
+              >
+                <input
+                  type="checkbox"
+                  name="conclusions"
+                  value={option.value}
+                  disabled={disabled}
+                  defaultChecked={filters?.conclusions?.includes(option.value)}
+                  className="size-4 accent-primary"
+                />
+                {option.label}
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Select none to match any completed conclusion.
+        </p>
+      </fieldset>
+    </div>
+  );
+}
+
 function GithubLabelAutomationAvailabilityMessages({
   githubLoaded,
   isInstalled,
@@ -5102,6 +5335,90 @@ function CreateGithubLabelAppliedAutomationDialog({
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
               Add label automation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CreateGithubWorkflowRunCompletedAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const githubLoadable = useLoadable(githubIntegrationData$);
+  const githubData =
+    githubLoadable.state === "hasData" ? githubLoadable.data : null;
+  const [createLoadable, createGithubWorkflowRunAutomation] = useLoadableSet(
+    createWorkflowGithubWorkflowRunCompletedAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const loadingGithub = githubLoadable.state === "loading";
+  const githubLoadError = githubLoadable.state === "hasError";
+  const isInstalled = githubData?.isInstalled ?? false;
+  const submitDisabled =
+    creating || loadingGithub || githubLoadError || !isInstalled;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add GitHub workflow automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a matching GitHub Actions workflow run
+            completes.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add GitHub workflow automation"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const eventConfig = buildGithubWorkflowRunCompletedEventConfig(
+              new FormData(event.currentTarget),
+            );
+            detach(
+              (async () => {
+                await createGithubWorkflowRunAutomation(
+                  { workflowId, eventConfig },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <GithubWorkflowRunAutomationFields
+            disabled={creating || loadingGithub || githubLoadError}
+          />
+          {githubLoadable.state === "hasData" && !isInstalled ? (
+            <GithubNotInstalledNotice />
+          ) : null}
+          {githubLoadError ? <GithubLoadErrorNotice /> : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitDisabled}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add workflow automation
             </Button>
           </DialogFooter>
         </form>
@@ -5966,6 +6283,9 @@ function editWorkflowAutomationTitle(
   if (automation.eventType === "gmail-new-message") {
     return "Edit match";
   }
+  if (automation.eventType === "github-workflow-run-completed") {
+    return "Edit GitHub workflow filters";
+  }
   return "Edit label";
 }
 
@@ -5989,7 +6309,8 @@ function EditWorkflowAutomationDialog({
       <DialogContent
         className={
           automation.kind === "event" &&
-          automation.eventType === "gmail-new-message"
+          (automation.eventType === "gmail-new-message" ||
+            automation.eventType === "github-workflow-run-completed")
             ? "max-w-2xl"
             : ""
         }
@@ -6022,6 +6343,13 @@ function EditWorkflowAutomationDialog({
         {automation.kind === "event" &&
         automation.eventType === "github-label-applied" ? (
           <UpdateGithubLabelAppliedAutomationForm
+            automation={automation}
+            onCancel={close}
+          />
+        ) : null}
+        {automation.kind === "event" &&
+        automation.eventType === "github-workflow-run-completed" ? (
+          <UpdateGithubWorkflowRunCompletedAutomationForm
             automation={automation}
             onCancel={close}
           />
@@ -6386,6 +6714,71 @@ function UpdateGithubLabelAppliedAutomationForm({
             <IconBrandGithub size={13} stroke={1.5} />
           )}
           <span>Save label</span>
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function UpdateGithubWorkflowRunCompletedAutomationForm({
+  automation,
+  onCancel,
+}: {
+  readonly automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { eventType: "github-workflow-run-completed" }
+  >;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateGithubWorkflowRunAutomation] = useLoadableSet(
+    updateWorkflowGithubWorkflowRunCompletedAutomation$,
+  );
+  const saving = updateLoadable.state === "loading";
+  return (
+    <form
+      aria-label="Update GitHub workflow automation"
+      className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const eventConfig = buildGithubWorkflowRunCompletedEventConfig(
+          new FormData(event.currentTarget),
+        );
+        detach(
+          (async () => {
+            await updateGithubWorkflowRunAutomation(
+              {
+                automationId: automation.id,
+                eventConfig,
+              },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <GithubWorkflowRunAutomationFields
+        disabled={saving}
+        defaultConfig={automation.eventConfig}
+      />
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconBrandGithub size={13} stroke={1.5} />
+          )}
+          <span>Save filters</span>
         </Button>
       </DialogFooter>
     </form>

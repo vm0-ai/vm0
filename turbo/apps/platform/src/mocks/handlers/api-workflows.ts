@@ -599,6 +599,16 @@ function createWorkflowAutomationSummaryForRequest(
       scheduleSummary: null,
     };
   }
+  if (body.eventType === "github-workflow-run-completed") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "github-workflow-run-completed",
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   if (
     body.eventType === "google-calendar-event-created" ||
     body.eventType === "google-calendar-event-updated" ||
