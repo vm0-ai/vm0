@@ -37,6 +37,7 @@ const GMAIL_MESSAGE_ID = "gmail-draft-message-id";
 const GMAIL_SENT_MESSAGE_ID = "gmail-sent-message-id";
 const GMAIL_IMAGE_ATTACHMENT_ID = "attachment-image";
 const GMAIL_IMAGE_BYTES = Buffer.from("mail draft image");
+const GMAIL_PDF_BYTES = Buffer.from("mail draft pdf");
 const GMAIL_HTML_BODY =
   '<div>Mail body <strong>before</strong></div><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a>';
 
@@ -46,6 +47,7 @@ function encodedBody(value: string): string {
 
 function gmailPayload(
   imageAttachmentId: string | null = GMAIL_IMAGE_ATTACHMENT_ID,
+  pdfAttachmentId: string | null = "attachment-1",
 ) {
   return {
     partId: "",
@@ -90,7 +92,13 @@ function gmailPayload(
         mimeType: "application/pdf",
         filename: "report.pdf",
         headers: [],
-        body: { attachmentId: "attachment-1", size: 248_192 },
+        body:
+          pdfAttachmentId === null
+            ? {
+                size: GMAIL_PDF_BYTES.byteLength,
+                data: GMAIL_PDF_BYTES.toString("base64url"),
+              }
+            : { attachmentId: pdfAttachmentId, size: 248_192 },
       },
       {
         partId: "2",
@@ -130,6 +138,7 @@ interface GmailDraftTestState {
 
 function mockGmailDraftApi(options?: {
   readonly inlineImageData?: boolean;
+  readonly regularAttachmentData?: boolean;
 }): GmailDraftTestState {
   const state: GmailDraftTestState = {
     exists: true,
@@ -158,6 +167,7 @@ function mockGmailDraftApi(options?: {
           threadId: GMAIL_THREAD_ID,
           payload: gmailPayload(
             options?.inlineImageData ? null : currentImageAttachmentId,
+            options?.regularAttachmentData ? null : "attachment-1",
           ),
         },
       });
@@ -387,6 +397,40 @@ describe("POST /api/zero/mail/drafts/link", () => {
       Buffer.from(await attachment.body.arrayBuffer()).equals(
         GMAIL_IMAGE_BYTES,
       ),
+    ).toBeTruthy();
+  });
+
+  it("serves a regular attachment stored directly in the Gmail MIME body", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    mockGmailDraftApi({ regularAttachmentData: true });
+
+    const linked = await linkDraft(fixture);
+    const loaded = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(loaded.body.mailDraft.attachments).toContainEqual({
+      filename: "report.pdf",
+      contentType: "application/pdf",
+      size: GMAIL_PDF_BYTES.byteLength,
+      partId: "1",
+    });
+
+    const attachment = await accept(
+      client().getAttachment({
+        headers: authHeaders(),
+        params: {
+          mailDraftId: linked.body.mailDraftId,
+          partId: "1",
+        },
+      }),
+      [200],
+    );
+    expect(
+      Buffer.from(await attachment.body.arrayBuffer()).equals(GMAIL_PDF_BYTES),
     ).toBeTruthy();
   });
 

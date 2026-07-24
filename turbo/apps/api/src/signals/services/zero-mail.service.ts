@@ -670,7 +670,9 @@ function attachmentMetadata(
         filename: decodeHeader(part.filename || "attachment"),
         contentType: part.mimeType,
         size: part.body.size,
-        ...(part.body.attachmentId ? { partId: part.partId } : {}),
+        ...(part.body.data !== undefined || part.body.attachmentId
+          ? { partId: part.partId }
+          : {}),
       },
     ];
   }
