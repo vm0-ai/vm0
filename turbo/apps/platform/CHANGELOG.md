@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.627.1](https://github.com/vm0-ai/vm0/compare/app-v0.627.0...app-v0.627.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **chat:** keep cancelled run work history visible and drop paused run group auto-expansion ([#22847](https://github.com/vm0-ai/vm0/issues/22847)) ([60c5544](https://github.com/vm0-ai/vm0/commit/60c5544281c20c5e289da7ec2a8520f01428254a))
+
 ## [0.627.0](https://github.com/vm0-ai/vm0/compare/app-v0.626.2...app-v0.627.0) (2026-07-24)
 
 

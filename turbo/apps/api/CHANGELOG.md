@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.312.1](https://github.com/vm0-ai/vm0/compare/api-v1.312.0...api-v1.312.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **api:** preserve preview override for queued chat runs ([#22843](https://github.com/vm0-ai/vm0/issues/22843)) ([691aadd](https://github.com/vm0-ai/vm0/commit/691aaddee11573d6f5053c5b7afe4456ba6b66f2))
+
+
+### Refactoring
+
+* **api:** use builders for unnest-backed bulk updates ([#22840](https://github.com/vm0-ai/vm0/issues/22840)) ([d0b13bd](https://github.com/vm0-ai/vm0/commit/d0b13bd29b4a7f4be9fcd314ec2880cf3196553b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.133.1
+
 ## [1.312.0](https://github.com/vm0-ai/vm0/compare/api-v1.311.0...api-v1.312.0) (2026-07-24)
 
 
