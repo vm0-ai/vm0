@@ -187,7 +187,11 @@ async function attemptWorkflowQueueAdmission(
         tx,
         args.chatThreadId,
       );
-      if (!busy && !(await pendingWorkflowEventExists(tx, args.chatThreadId))) {
+      if (
+        !busy &&
+        !(await hasUnclaimedQueuedUserMessage(tx, args.chatThreadId)) &&
+        !(await pendingWorkflowEventExists(tx, args.chatThreadId))
+      ) {
         return { kind: "proceed" };
       }
     }
