@@ -8,6 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
+  browserProfiles,
   browserSessionInstances,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
@@ -69,6 +70,7 @@ const TERMINAL_RUN_STATUSES = [
 
 type BrowserSessionRow = typeof browserSessions.$inferSelect;
 type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
+type BrowserProfileRow = typeof browserProfiles.$inferSelect;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface BrowserServiceError {
@@ -158,6 +160,13 @@ function notFound(): BrowserServiceError {
 
 function conflict(message: string, code = "BROWSER_CONFLICT") {
   return serviceError(409, code, message);
+}
+
+function profileBusy() {
+  return conflict(
+    "Another chat thread is using this browser profile; retry after that run finishes",
+    "BROWSER_PROFILE_BUSY",
+  );
 }
 
 function providerFailure(error: unknown): BrowserServiceError {
@@ -635,6 +644,15 @@ async function lockBrowserThread(
   );
 }
 
+async function lockBrowserProfile(
+  tx: DbTransaction,
+  browserProfileId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('zero_browser_profile:' || ${browserProfileId}))`,
+  );
+}
+
 async function resolveRunContext(
   db: Db,
   actor: BrowserActor,
@@ -759,6 +777,44 @@ async function loadActiveInstance(
   return row ?? null;
 }
 
+async function loadOwnedBrowserProfile(
+  db: Db,
+  owner: Pick<BrowserRunContext, "orgId" | "userId">,
+): Promise<BrowserProfileRow | null> {
+  const [row] = await db
+    .select()
+    .from(browserProfiles)
+    .where(
+      and(
+        eq(browserProfiles.orgId, owner.orgId),
+        eq(browserProfiles.userId, owner.userId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function loadBrowserProfileForBrowser(
+  db: Db,
+  browser: BrowserSessionRow,
+): Promise<BrowserProfileRow> {
+  const [row] = await db
+    .select()
+    .from(browserProfiles)
+    .where(
+      and(
+        eq(browserProfiles.id, browser.browserProfileId),
+        eq(browserProfiles.orgId, browser.orgId),
+        eq(browserProfiles.userId, browser.userId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new Error("Managed browser profile ownership is invalid");
+  }
+  return row;
+}
+
 async function deleteUnusedProfile(profileId: string): Promise<void> {
   await settle(
     deleteBrowserUseProfile(
@@ -766,6 +822,73 @@ async function deleteUnusedProfile(profileId: string): Promise<void> {
       AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
     ),
   );
+}
+
+async function claimBrowserProfile(
+  db: Db,
+  args: {
+    readonly id: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly providerProfileId: string;
+  },
+): Promise<{
+  readonly profile: BrowserProfileRow;
+  readonly created: boolean;
+}> {
+  const [created] = await db
+    .insert(browserProfiles)
+    .values(args)
+    .onConflictDoNothing({
+      target: [browserProfiles.orgId, browserProfiles.userId],
+    })
+    .returning();
+  if (created) {
+    return { profile: created, created: true };
+  }
+  const existing = await loadOwnedBrowserProfile(db, args);
+  if (!existing) {
+    throw new Error("Managed browser profile claim did not resolve an owner");
+  }
+  return { profile: existing, created: false };
+}
+
+async function getOrCreateBrowserProfile(
+  db: Db,
+  context: BrowserRunContext,
+): Promise<BrowserServiceResult<BrowserProfileRow>> {
+  const existing = await loadOwnedBrowserProfile(db, context);
+  if (existing) {
+    return { kind: "ok", value: existing };
+  }
+
+  const browserProfileId = randomUUID();
+  const provider = await providerCall(
+    createBrowserUseProfile(
+      browserProfileId,
+      AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
+    ),
+  );
+  if (provider.kind === "error") {
+    return provider;
+  }
+
+  const claimed = await settle(
+    claimBrowserProfile(db, {
+      id: browserProfileId,
+      orgId: context.orgId,
+      userId: context.userId,
+      providerProfileId: provider.value,
+    }),
+  );
+  if (!claimed.ok) {
+    await deleteUnusedProfile(provider.value);
+    throw claimed.error;
+  }
+  if (!claimed.value.created) {
+    await deleteUnusedProfile(provider.value);
+  }
+  return { kind: "ok", value: claimed.value.profile };
 }
 
 async function claimStartedProviderInstance(
@@ -836,6 +959,7 @@ async function createAndClaimProviderInstance(
   db: Db,
   args: {
     readonly browser: BrowserSessionRow;
+    readonly profile: BrowserProfileRow;
     readonly context: BrowserRunContext;
     readonly pricing: BrowserPricing;
   },
@@ -843,7 +967,7 @@ async function createAndClaimProviderInstance(
   const provider = await providerCall(
     createBrowserUseSession(
       {
-        profileId: args.browser.providerProfileId,
+        profileId: args.profile.providerProfileId,
         proxyCountryCode: args.browser.proxyCountryCode,
         timeoutMinutes: args.browser.timeoutMinutes,
       },
@@ -893,7 +1017,10 @@ const startProviderInstance$ = command(
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserConnection>> => {
     const db = set(writeDb$);
-    const pricing = await loadBrowserPricing(db);
+    const [pricing, profile] = await Promise.all([
+      loadBrowserPricing(db),
+      loadBrowserProfileForBrowser(db, args.browser),
+    ]);
     signal.throwIfAborted();
     if (!pricing) {
       return serviceError(
@@ -905,6 +1032,7 @@ const startProviderInstance$ = command(
 
     const started = await createAndClaimProviderInstance(db, {
       browser: args.browser,
+      profile,
       context: args.context,
       pricing,
     });
@@ -966,18 +1094,29 @@ async function claimFreshBrowser(
   context: BrowserRunContext,
   args: BrowserCreateInput & {
     readonly browserId: string;
-    readonly profileId: string;
+    readonly browserProfileId: string;
   },
 ): Promise<BrowserServiceResult<BrowserSessionRow>> {
   return await db.transaction(async (tx) => {
+    await lockBrowserProfile(tx, args.browserProfileId);
     await lockBrowserThread(tx, context.chatThreadId);
-    const [owned, activeCount, run] = await Promise.all([
+    const [owned, profileOwned, activeCount, run] = await Promise.all([
       tx
         .select({ id: browserSessions.id })
         .from(browserSessions)
         .where(
           and(
             eq(browserSessions.chatThreadId, context.chatThreadId),
+            inArray(browserSessions.status, [...OWNED_BROWSER_STATUSES]),
+          ),
+        )
+        .limit(1),
+      tx
+        .select({ id: browserSessions.id })
+        .from(browserSessions)
+        .where(
+          and(
+            eq(browserSessions.browserProfileId, args.browserProfileId),
             inArray(browserSessions.status, [...OWNED_BROWSER_STATUSES]),
           ),
         )
@@ -1006,6 +1145,9 @@ async function claimFreshBrowser(
         "BROWSER_THREAD_ACTIVE",
       );
     }
+    if (profileOwned[0]) {
+      return profileBusy();
+    }
     if ((activeCount[0]?.count ?? 0) >= MAX_ACTIVE_BROWSER_SESSIONS_PER_ORG) {
       return conflict(
         `This organization already has ${MAX_ACTIVE_BROWSER_SESSIONS_PER_ORG} active managed browsers`,
@@ -1021,7 +1163,7 @@ async function claimFreshBrowser(
         orgId: context.orgId,
         userId: context.userId,
         name: args.name,
-        providerProfileId: args.profileId,
+        browserProfileId: args.browserProfileId,
         status: "creating",
         proxyCountryCode: args.proxyCountryCode,
         timeoutMinutes: args.timeoutMinutes,
@@ -1033,38 +1175,6 @@ async function claimFreshBrowser(
     }
     return { kind: "ok", value: browser };
   });
-}
-
-async function createAndClaimFreshBrowser(
-  db: Db,
-  context: BrowserRunContext,
-  input: BrowserCreateInput,
-  browserId: string,
-): Promise<BrowserServiceResult<BrowserSessionRow>> {
-  const profile = await providerCall(
-    createBrowserUseProfile(
-      browserId,
-      AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
-    ),
-  );
-  if (profile.kind === "error") {
-    return profile;
-  }
-  const claimed = await settle(
-    claimFreshBrowser(db, context, {
-      ...input,
-      browserId,
-      profileId: profile.value,
-    }),
-  );
-  if (!claimed.ok) {
-    await deleteUnusedProfile(profile.value);
-    throw claimed.error;
-  }
-  if (claimed.value.kind === "error") {
-    await deleteUnusedProfile(profile.value);
-  }
-  return claimed.value;
 }
 
 export const createZeroBrowser$ = command(
@@ -1098,13 +1208,16 @@ export const createZeroBrowser$ = command(
       );
     }
 
-    const browserId = randomUUID();
-    const claimed = await createAndClaimFreshBrowser(
-      db,
-      context.value,
-      args.input,
-      browserId,
-    );
+    const profile = await getOrCreateBrowserProfile(db, context.value);
+    signal.throwIfAborted();
+    if (profile.kind === "error") {
+      return profile;
+    }
+    const claimed = await claimFreshBrowser(db, context.value, {
+      ...args.input,
+      browserId: randomUUID(),
+      browserProfileId: profile.value.id,
+    });
     signal.throwIfAborted();
     if (claimed.kind === "error") {
       return claimed;
@@ -1225,9 +1338,11 @@ type ResumeClaim =
 async function claimBrowserForResume(
   db: Db,
   context: BrowserRunContext,
-  expectedBrowserId: string | null,
+  expectedBrowserId: string,
+  browserProfileId: string,
 ): Promise<ResumeClaim> {
   return await db.transaction(async (tx) => {
+    await lockBrowserProfile(tx, browserProfileId);
     await lockBrowserThread(tx, context.chatThreadId);
     const [run] = await tx
       .select({ status: agentRuns.status })
@@ -1257,9 +1372,28 @@ async function claimBrowserForResume(
       );
     }
 
-    const current = await loadCurrentBrowser(tx, context);
-    if (!current || (expectedBrowserId && current.id !== expectedBrowserId)) {
+    const [current, profileOwned] = await Promise.all([
+      loadCurrentBrowser(tx, context),
+      tx
+        .select({ id: browserSessions.id })
+        .from(browserSessions)
+        .where(
+          and(
+            eq(browserSessions.browserProfileId, browserProfileId),
+            inArray(browserSessions.status, [...OWNED_BROWSER_STATUSES]),
+          ),
+        )
+        .limit(1),
+    ]);
+    if (
+      !current ||
+      current.id !== expectedBrowserId ||
+      current.browserProfileId !== browserProfileId
+    ) {
       return { kind: "missing" };
+    }
+    if (profileOwned[0] && profileOwned[0].id !== current.id) {
+      return profileBusy();
     }
     if (current.grossCredits >= current.maxCredits) {
       return conflict(
@@ -1355,7 +1489,12 @@ export const resumeZeroBrowser$ = command(
       );
     }
 
-    const claim = await claimBrowserForResume(db, context.value, current.id);
+    const claim = await claimBrowserForResume(
+      db,
+      context.value,
+      current.id,
+      current.browserProfileId,
+    );
     signal.throwIfAborted();
     if (claim.kind === "error") {
       return claim;

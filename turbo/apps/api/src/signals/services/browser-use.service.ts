@@ -174,7 +174,7 @@ async function browserUseRequest(
 }
 
 export async function createBrowserUseProfile(
-  browserSessionId: string,
+  browserProfileId: string,
   signal: AbortSignal,
 ): Promise<string> {
   const body = await browserUseRequest(
@@ -182,7 +182,7 @@ export async function createBrowserUseProfile(
     {
       method: "POST",
       body: JSON.stringify({
-        name: `vm0-browser-${browserSessionId}`,
+        name: `vm0-browser-profile-${browserProfileId}`,
       }),
     },
     signal,

@@ -155,7 +155,9 @@ const resumeCommand = new Command()
 
 const newCommand = new Command()
   .name("new")
-  .description("Create a fresh thread browser and attach it to agent-browser")
+  .description(
+    "Create a new thread browser with the shared user profile and attach it to agent-browser",
+  )
   .addOption(new Option("--name <name>", "Browser name").default("browser"))
   .addOption(
     new Option(
@@ -228,7 +230,7 @@ export const zeroBrowserCommand = new Command()
     `
 Examples:
   Resume this thread:    zero browser resume
-  Create fresh state:    zero browser new --name booking --country us
+  Create another browser: zero browser new --name booking --country us
   Use the browser:       agent-browser --session zero-browser open https://example.com
   Share live view:       zero browser view
 
@@ -236,5 +238,6 @@ Notes:
   - Zero stops and settles the provider instance automatically when the run ends
   - There are no manual stop or suspend commands
   - Browser Use credentials and connection URLs are never printed
-  - A thread can have only one active provider instance`,
+  - Threads for the same user and organization share one login profile
+  - A shared profile can have only one active provider instance`,
   );

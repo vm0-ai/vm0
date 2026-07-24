@@ -18,7 +18,7 @@ export async function createZeroBrowser(
   if (result.status === 201) {
     return result.body;
   }
-  handleError(result, "Failed to create a fresh managed browser");
+  handleError(result, "Failed to create a new managed browser");
 }
 
 export async function resumeZeroBrowser(): Promise<{
