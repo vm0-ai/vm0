@@ -77,7 +77,6 @@ function abortError(message: string): Error {
 function chatThreadRealtimeTopics(threadId: string): readonly string[] {
   return [
     `chatThreadDetailChanged:${threadId}`,
-    `chatThreadMessageCreated:${threadId}`,
     `chatThreadMessageUpdated:${threadId}`,
     `chatThreadRunCreated:${threadId}`,
     `chatThreadRunUpdated:${threadId}`,
@@ -92,12 +91,18 @@ function expectNoChatThreadSubscriptions(threadId: string): void {
   for (const topic of chatThreadRealtimeTopics(threadId)) {
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
   }
+  expect(
+    context.mocks.ably.hasSubscription(`chatThreadMessageCreated:${threadId}`),
+  ).toBeFalsy();
 }
 
 function expectChatThreadSubscriptions(threadId: string): void {
   for (const topic of chatThreadRealtimeTopics(threadId)) {
     expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
   }
+  expect(
+    context.mocks.ably.hasSubscription(`chatThreadMessageCreated:${threadId}`),
+  ).toBeFalsy();
 }
 
 function abortListenerCallCount(calls: readonly unknown[][]): number {
@@ -698,7 +703,6 @@ describe("realtime signals", () => {
           threadId,
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
-            onMessageCreated$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
@@ -731,7 +735,6 @@ describe("realtime signals", () => {
           threadId,
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
-            onMessageCreated$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
@@ -761,7 +764,6 @@ describe("realtime signals", () => {
         threadId,
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
-          onMessageCreated$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
@@ -784,7 +786,6 @@ describe("realtime signals", () => {
         threadId,
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
-          onMessageCreated$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,

@@ -1,9 +1,17 @@
 import { command } from "ccstate";
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import { currentChatThreadId$ } from "../agent-chat.ts";
+import { searchParams$ } from "../route.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
   loadIndexedDbChatMessageBounds$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+  SIDEBAR_PARAM,
+} from "./chat-thread-panes.ts";
 import { listMessagesAfter$ } from "./remote-chat-thread-data-source.ts";
 import { logger } from "../log.ts";
 
@@ -29,10 +37,15 @@ function createdMessageThreadId(message: unknown): string | null {
 }
 
 const syncChatThreadMessagesToIndexedDb$ = command(
-  async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<PagedChatMessage[]> => {
     const bounds = await set(loadIndexedDbChatMessageBounds$, threadId, signal);
     signal.throwIfAborted();
 
+    const syncedMessages: PagedChatMessage[] = [];
     let sinceSeqId = bounds.last?.seqId;
 
     async function syncMessagesAfter(): Promise<void> {
@@ -49,6 +62,7 @@ const syncChatThreadMessagesToIndexedDb$ = command(
 
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
+      syncedMessages.push(...result.messages);
       sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
       await syncMessagesAfter();
     }
@@ -56,6 +70,47 @@ const syncChatThreadMessagesToIndexedDb$ = command(
     await syncMessagesAfter();
     signal.throwIfAborted();
     L.debug("synced chat messages to IndexedDB", { threadId });
+    return syncedMessages;
+  },
+);
+
+const receiveSyncedMessagesInVisibleThreads$ = command(
+  async (
+    { get, set },
+    {
+      threadId,
+      messages,
+    }: {
+      threadId: string;
+      messages: PagedChatMessage[];
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const mainThreadId = get(currentChatThreadId$);
+    if (mainThreadId === null) {
+      return;
+    }
+
+    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
+    const leftThread = get(currentLeftThread$);
+    const rightThread = get(currentRightThread$);
+    const visibleThreads = [
+      mainThreadId === threadId && leftThread?.threadId === threadId
+        ? leftThread
+        : null,
+      sidebarThreadId === threadId && rightThread?.threadId === threadId
+        ? rightThread
+        : null,
+    ].filter((thread) => {
+      return thread !== null;
+    });
+
+    await Promise.all(
+      visibleThreads.map(async (thread) => {
+        await set(thread.receiveSyncedMessages$, messages, signal);
+      }),
+    );
+    signal.throwIfAborted();
   },
 );
 
@@ -66,7 +121,17 @@ const handleUserChannelMessage$ = command(
       return false;
     }
 
-    await set(syncChatThreadMessagesToIndexedDb$, threadId, signal);
+    const messages = await set(
+      syncChatThreadMessagesToIndexedDb$,
+      threadId,
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(
+      receiveSyncedMessagesInVisibleThreads$,
+      { threadId, messages },
+      signal,
+    );
     signal.throwIfAborted();
     return false;
   },
