@@ -219,6 +219,13 @@ export {
   getComputerUseCommand,
 } from "./domains/zero-computer-use";
 
+// Domain modules - Zero Browser
+export {
+  createZeroBrowser,
+  getCurrentZeroBrowser,
+  resumeZeroBrowser,
+} from "./domains/zero-browser";
+
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
 

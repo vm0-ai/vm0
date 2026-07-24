@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { command } from "ccstate";
+import { command, createStore } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -80,7 +80,7 @@ import {
 } from "./zero-chat-message-shared.service";
 import { insertChatMessage } from "./zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
-import { activeChatRunExists } from "./zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
@@ -107,6 +107,7 @@ import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
+import { finalizeThreadBrowsersForRun$ } from "./zero-browser.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -392,6 +393,13 @@ type CreateQueuedRun = (
 ) => Promise<CreatedQueuedRun | null>;
 
 interface ChatCallbackDependencies {
+  readonly finalizeBrowsersForRun: (
+    args: {
+      readonly chatThreadId: string;
+      readonly runId: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<{ readonly errors: number }>;
   readonly insertAssistantItems: (
     args: {
       readonly runId: string;
@@ -2349,7 +2357,7 @@ async function autoSendQueuedMessageForThread(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
     "nested",
     () => {
-      return activeChatRunExists(args.db, { threadId });
+      return chatThreadAdmissionBlocked(args.db, { threadId });
     },
   );
   if (activeRunExists) {
@@ -2755,19 +2763,42 @@ async function dispatchCanonicalDeliveryCallbacks(args: {
   }
 }
 
-async function processTerminalChatCallback(args: {
+interface TerminalChatCallbackArgs {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
-}): Promise<void> {
+}
+
+async function finalizeManagedBrowsersForTerminalCallback(
+  args: TerminalChatCallbackArgs,
+): Promise<void> {
+  // Browser resources outlive thread deletion, so finalize from the callback
+  // payload before loading the thread or draining its queued messages.
+  const result = await args.dependencies.finalizeBrowsersForRun(
+    {
+      chatThreadId: args.payload.threadId,
+      runId: args.callback.runId,
+    },
+    args.signal,
+  );
+  if (result.errors > 0) {
+    throw new Error("Failed to finalize managed browsers for terminal run");
+  }
+}
+
+async function processTerminalChatCallback(
+  args: TerminalChatCallbackArgs,
+): Promise<void> {
   const runId = args.callback.runId;
   const callbackStatus = args.callback.status;
   if (callbackStatus === "progress") {
     return;
   }
   const timing = new ChatCallbackPreCreateTimingCollector();
+
+  await finalizeManagedBrowsersForTerminalCallback(args);
 
   const loaded = await measureChatCallbackPreCreateTiming(
     timing,
@@ -2892,6 +2923,7 @@ function withoutQueuedRunDependency(
   dependencies: ChatCallbackDependencies,
 ): ChatCallbackDependencies {
   return {
+    finalizeBrowsersForRun: dependencies.finalizeBrowsersForRun,
     insertAssistantItems: dependencies.insertAssistantItems,
     saveRunSummary: dependencies.saveRunSummary,
     formatRunError: dependencies.formatRunError,
@@ -3016,6 +3048,13 @@ export async function handleChatInternalCallbackWithoutCcstate(
     callback,
     signal,
     dependencies: {
+      finalizeBrowsersForRun: (args, inputSignal) => {
+        return createStore().set(
+          finalizeThreadBrowsersForRun$,
+          args,
+          inputSignal,
+        );
+      },
       insertAssistantItems: async (args, inputSignal) => {
         await insertAssistantEventMessages(db, args, inputSignal);
       },
@@ -3063,6 +3102,9 @@ const buildChatCallbackDependencies$ = command(
   ): ChatCallbackDependencies => {
     const { db } = input;
     const baseDependencies: ChatCallbackDependencies = {
+      finalizeBrowsersForRun: (args, inputSignal) => {
+        return set(finalizeThreadBrowsersForRun$, args, inputSignal);
+      },
       insertAssistantItems: async (args, inputSignal) => {
         await set(insertAssistantEventMessages$, args, inputSignal);
       },

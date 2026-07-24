@@ -81,6 +81,10 @@
       "schedule": "30 2 * * *"
     },
     {
+      "path": "/api/cron/reconcile-browsers",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/aggregate-model-stats",
       "schedule": "12 * * * *"
     }

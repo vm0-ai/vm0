@@ -50,6 +50,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
+  browser: ["browser:read", "browser:write"],
   intro: null,
   generate: null,
   web: null,
@@ -68,6 +69,7 @@ const COMMAND_FEATURE_SWITCH_MAP: Readonly<
   Partial<Record<string, FeatureSwitchKey>>
 > = {
   upgrade: FeatureSwitchKey.PlanUpgradeGuidance,
+  browser: FeatureSwitchKey.ZeroBrowser,
 };
 
 type FeatureSwitchOverrides = Partial<Record<FeatureSwitchKey, boolean>>;
@@ -274,6 +276,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     load: async () => {
       return (await import("./commands/zero/computer-use"))
         .zeroComputerUseCommand;
+    },
+  },
+  {
+    name: "browser",
+    description: "Managed remote browser sessions for agent-browser",
+    load: async () => {
+      return (await import("./commands/zero/browser")).zeroBrowserCommand;
     },
   },
   {

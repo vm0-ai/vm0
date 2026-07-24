@@ -33,22 +33,14 @@ function applySwitches(
   overrides: Partial<Record<string, boolean>> | undefined,
   effectiveSwitches: Partial<Record<string, boolean>> | undefined,
 ) {
-  if (overrides) {
+  const resolvedSwitches = effectiveSwitches ?? overrides;
+  if (resolvedSwitches) {
     for (const key of Object.values(FeatureSwitchKey)) {
-      const value = overrides[key];
+      const value = resolvedSwitches[key];
       if (value !== undefined) {
         result[key] = Boolean(value);
       }
     }
-  }
-
-  const notionWorkflowAutomations =
-    overrides?.[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    effectiveSwitches?.[FeatureSwitchKey.NotionWorkflowAutomations];
-  if (notionWorkflowAutomations !== undefined) {
-    result[FeatureSwitchKey.NotionWorkflowAutomations] = Boolean(
-      notionWorkflowAutomations,
-    );
   }
 }
 

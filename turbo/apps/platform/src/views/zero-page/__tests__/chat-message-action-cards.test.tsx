@@ -5,6 +5,10 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroBrowserContract,
+  type ZeroBrowserSession,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -3457,5 +3461,116 @@ describe("chat message action cards", () => {
         within(permissionCard).getByText("Permission denied"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("renders trusted browser universal links as live iframes scoped to the chat thread", async () => {
+    const threadId = "c0000000-0000-4000-a000-000000000080";
+    const browserId = "c0000000-0000-4000-a000-000000000081";
+    const liveUrl =
+      "https://live.browser-use.com/?wss=test-browser-session-token";
+    const browser: ZeroBrowserSession = {
+      id: browserId,
+      name: "booking",
+      status: "active",
+      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      liveUrl,
+      proxyCountryCode: null,
+      timeoutMinutes: 30,
+      maxCredits: 500,
+      grossCredits: 12,
+      creditsCharged: 12,
+      suspendedAt: null,
+      suspensionReason: null,
+      createdAt: "2026-07-24T10:00:00.000Z",
+      updatedAt: "2026-07-24T10:00:00.000Z",
+    };
+    let browserRequests = 0;
+    context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
+      expect(params.browserId).toBe(browserId);
+      expect(query.chatThreadId).toBe(threadId);
+      browserRequests += 1;
+      return respond(200, { browser });
+    });
+
+    const untrustedUrl = `https://evil.example.test/browsers/${browserId}`;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Managed browser card",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000082",
+          role: "assistant",
+          content: [
+            `https://app.vm0.ai/browsers/${browserId}`,
+            `[Open browser](/browsers/${browserId})`,
+            `[Untrusted browser](${untrustedUrl})`,
+          ].join("\n"),
+          runId: "c0000000-0000-4000-a000-000000000085",
+          createdAt: "2026-07-24T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    await waitFor(() => {
+      expect(browserRequests).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      const frames = Array.from(
+        document.querySelectorAll<HTMLIFrameElement>(
+          'iframe[title="Live browser: booking"]',
+        ),
+      );
+      expect(frames).toHaveLength(2);
+      for (const frame of frames) {
+        expect(frame).toHaveAttribute("src", liveUrl);
+        expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+      }
+    });
+    expect(
+      queryAllByRoleFast("link").find((link) => {
+        return link.textContent === "Untrusted browser";
+      }),
+    ).toHaveAttribute("href", untrustedUrl);
+  });
+
+  it("keeps browser universal links as Markdown when managed browsers are disabled", async () => {
+    const threadId = "c0000000-0000-4000-a000-000000000086";
+    const browserId = "c0000000-0000-4000-a000-000000000087";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Managed browser fallback",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000088",
+          role: "assistant",
+          content: `[Open browser](/browsers/${browserId})`,
+          runId: "c0000000-0000-4000-a000-000000000089",
+          createdAt: "2026-07-24T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("link").find((link) => {
+          return link.textContent === "Open browser";
+        }),
+      ).toHaveAttribute("href", `/browsers/${browserId}`);
+    });
+    expect(
+      document.querySelector("[data-browser-session-card]"),
+    ).not.toBeInTheDocument();
   });
 });

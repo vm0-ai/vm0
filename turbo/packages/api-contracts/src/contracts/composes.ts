@@ -69,6 +69,8 @@ export const ZERO_CAPABILITIES = [
   "web-search:read",
   "finance:read",
   "computer-use:write",
+  "browser:read",
+  "browser:write",
   "file:read",
   "file:write",
   "host:read",
@@ -184,6 +186,14 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "computer-use:write": {
       group: "Computer Use",
       label: "Control desktop apps",
+    },
+    "browser:read": {
+      group: "Browser",
+      label: "View managed browser sessions",
+    },
+    "browser:write": {
+      group: "Browser",
+      label: "Create and control managed browser sessions",
     },
     "file:read": { group: "Files", label: "Download uploaded files" },
     "file:write": { group: "Files", label: "Upload files" },
