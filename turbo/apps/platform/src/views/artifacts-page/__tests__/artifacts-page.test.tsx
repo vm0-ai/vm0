@@ -1458,30 +1458,61 @@ describe("artifacts page", () => {
     });
   });
 
-  it("keeps loading without retaining cached artifacts while refresh is pending", async () => {
+  it("shows a complete IndexedDB cache while refreshing and updates it after sync", async () => {
     setupTeam();
     const scope = testAuthScope("pending-refresh");
-    await seedCachedArtifacts(scope, [
-      createArtifact({
-        artifactItemId: "cached-run:file-1",
-        runId: "cached-run",
-        filename: "cached-brief.html",
-        createdAt: "2026-01-02T00:00:00Z",
-      }),
-    ]);
-    context.mocks.api(artifactsContract.list, ({ never }) => {
-      return never();
+    const lastSyncedAt = "2026-01-02T00:00:00.000Z";
+    const cachedArtifact = createArtifact({
+      artifactItemId: "cached-run:file-1",
+      runId: "cached-run",
+      filename: "cached-brief.html",
+      createdAt: "2026-01-02T00:00:00Z",
+      updatedAt: lastSyncedAt,
+    });
+    const refreshedArtifact = createArtifact({
+      ...cachedArtifact,
+      filename: "refreshed-brief.html",
+      updatedAt: "2026-01-03T00:00:00.000Z",
+    });
+    await seedCachedArtifacts(scope, [cachedArtifact], lastSyncedAt);
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
+    context.mocks.api(artifactsContract.list, async ({ query, respond }) => {
+      expect(query.updatedAfter).toBe(lastSyncedAt);
+      requestStarted.resolve();
+      await releaseResponse.promise;
+      return respond(200, {
+        artifacts: [refreshedArtifact],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: "2026-01-03T00:00:00.000Z",
+      });
     });
 
     setupArtifactsPage({ scope });
 
+    await requestStarted.promise;
+    try {
+      await expect(
+        screen.findByText(cachedArtifact.filename),
+      ).resolves.toBeInTheDocument();
+      expect(
+        screen.queryByText(refreshedArtifact.filename),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Loading artifacts")).toBeNull();
+    } finally {
+      releaseResponse.resolve();
+    }
+
+    await expect(
+      screen.findByText(refreshedArtifact.filename),
+    ).resolves.toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
-      expect(screen.queryByText("cached-brief.html")).not.toBeInTheDocument();
+      expect(screen.queryByText(cachedArtifact.filename)).toBeNull();
     });
   });
 
-  it("shows an error when the post-sync IndexedDB window times out", async () => {
+  it("keeps loading while the post-sync IndexedDB window is pending", async () => {
     setupTeam();
     const scope = testAuthScope("incremental-cache-timeout");
     const lastSyncedAt = "2026-01-02T00:00:00.000Z";
@@ -1522,10 +1553,13 @@ describe("artifacts page", () => {
     setupArtifactsPage({ scope });
 
     await blockedRead.started;
+    const blockedAt = performance.now();
     try {
-      await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-        "Could not load artifacts",
-      );
+      await vi.waitFor(() => {
+        expect(performance.now() - blockedAt).toBeGreaterThanOrEqual(250);
+        expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      });
       expect(
         screen.queryByText(changedArtifact.filename),
       ).not.toBeInTheDocument();
@@ -1534,6 +1568,10 @@ describe("artifacts page", () => {
     } finally {
       blockedRead.release();
     }
+
+    await expect(
+      screen.findByText(changedArtifact.filename),
+    ).resolves.toBeInTheDocument();
   });
 
   it("writes remote artifacts to the IndexedDB cache", async () => {

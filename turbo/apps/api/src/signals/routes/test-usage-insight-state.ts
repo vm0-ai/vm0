@@ -13,7 +13,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -148,16 +147,6 @@ async function deleteUsageInsightFixture(
   await db
     .delete(usageEvent)
     .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.userId, userId)));
-  signal.throwIfAborted();
-
-  await db
-    .delete(modelUsageObservation)
-    .where(
-      and(
-        eq(modelUsageObservation.orgId, orgId),
-        eq(modelUsageObservation.userId, userId),
-      ),
-    );
   signal.throwIfAborted();
 
   await db

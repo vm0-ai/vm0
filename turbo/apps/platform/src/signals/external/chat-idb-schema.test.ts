@@ -234,6 +234,26 @@ describe("upgradeChatIdb local cache resets", () => {
     expectArtifactSyncStoreCreated(createObjectStore);
   });
 
+  it("rebuilds only artifact caches when upgrading from v18", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      ARTIFACT_ITEMS_STORE,
+      ARTIFACT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 18);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(2);
+    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_ITEMS_STORE);
+    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_SYNC_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(2);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
+    expectArtifactSyncStoreCreated(createObjectStore);
+  });
+
   it("does not rebuild local caches at the current schema version", () => {
     const { db, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,

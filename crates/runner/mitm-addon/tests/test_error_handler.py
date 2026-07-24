@@ -642,7 +642,7 @@ class TestErrorHandler:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/webhooks/agent/model-usage-observation-v2",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-002"
@@ -660,7 +660,7 @@ class TestErrorHandler:
         billing_key = body["events"][0]["idempotencyKey"]
         uuid.UUID(billing_key)
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
+            "/api/webhooks/agent/model-usage-observation-v2"
         ].json_body()
         assert observation_body["runId"] == "run-int-002"
         assert [
@@ -669,8 +669,10 @@ class TestErrorHandler:
         ] == [
             {
                 "model": "claude-sonnet-4-6",
-                "category": "tokens.input",
-                "quantity": 80,
+                "inputTokens": 80,
+                "outputTokens": 0,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0,
             }
         ]
         observation_key = observation_body["events"][0]["idempotencyKey"]

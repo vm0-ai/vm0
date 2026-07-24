@@ -20,11 +20,12 @@ import {
   ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX,
   ARTIFACT_SYNC_STORE,
 } from "./chat-idb-schema.ts";
-import { chatIdbReadOr, withChatIdbTimeout } from "./chat-idb-safe.ts";
+import { withChatIdbTimeout } from "./chat-idb-safe.ts";
 import { withCleanup } from "../utils.ts";
 
 const L = logger("ChatIdbCache");
 const DEFAULT_ARTIFACT_ITEM_LIMIT = 50;
+const ARTIFACT_IDB_OPERATION_TIMEOUT_MS = 10_000;
 const ARTIFACT_SYNC_STATE_ID = "artifacts";
 
 function storedLastSyncedAt(raw: unknown): string {
@@ -285,20 +286,22 @@ function createReadStore(
           );
         },
         signal,
+        ARTIFACT_IDB_OPERATION_TIMEOUT_MS,
       );
     },
 
     async readLastSyncedAt(signal) {
-      return await chatIdbReadOr(
+      return await withChatIdbTimeout(
         "artifacts:readLastSyncedAt",
-        async () => {
+        async (operationSignal) => {
           const db = await getDb();
-          signal?.throwIfAborted();
+          operationSignal.throwIfAborted();
           const raw = await db.get(ARTIFACT_SYNC_STORE, ARTIFACT_SYNC_STATE_ID);
+          operationSignal.throwIfAborted();
           return raw === undefined ? null : storedLastSyncedAt(raw);
         },
-        null,
         signal,
+        ARTIFACT_IDB_OPERATION_TIMEOUT_MS,
       );
     },
   };
@@ -329,6 +332,7 @@ function createWriteStore(
           );
         },
         signal,
+        ARTIFACT_IDB_OPERATION_TIMEOUT_MS,
       );
     },
 
@@ -346,16 +350,18 @@ function createWriteStore(
           await runAbortableTransaction(
             tx,
             async () => {
-              for (const item of items) {
+              const requests = items.map((item) => {
                 operationSignal.throwIfAborted();
-                await tx.store.put(storedArtifactItem(item));
-              }
+                return tx.store.put(storedArtifactItem(item));
+              });
+              await Promise.all(requests);
             },
             operationSignal,
           );
           L.debug("artifacts:upsertItems:done", { count: items.length });
         },
         signal,
+        ARTIFACT_IDB_OPERATION_TIMEOUT_MS,
       );
     },
 
@@ -378,6 +384,7 @@ function createWriteStore(
           );
         },
         signal,
+        ARTIFACT_IDB_OPERATION_TIMEOUT_MS,
       );
     },
   };
