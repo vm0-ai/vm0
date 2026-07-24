@@ -96,11 +96,6 @@ export const browserSessions = pgTable(
         .where(
           sql`${table.status} IN ('creating', 'active', 'resuming', 'stopping')`,
         ),
-      uniqueIndex("uq_browser_sessions_profile_owned")
-        .on(table.browserProfileId)
-        .where(
-          sql`${table.status} IN ('creating', 'active', 'resuming', 'stopping')`,
-        ),
     ];
   },
 );

@@ -162,13 +162,6 @@ function conflict(message: string, code = "BROWSER_CONFLICT") {
   return serviceError(409, code, message);
 }
 
-function profileBusy() {
-  return conflict(
-    "Another chat thread is using this browser profile; retry after that run finishes",
-    "BROWSER_PROFILE_BUSY",
-  );
-}
-
 function providerFailure(error: unknown): BrowserServiceError {
   if (error instanceof BrowserUseProviderError) {
     return serviceError(error.status, error.code, error.message);
@@ -644,13 +637,12 @@ async function lockBrowserThread(
   );
 }
 
-async function lockBrowserProfile(
+async function lockBrowserProfileCreation(
   tx: DbTransaction,
-  browserProfileId: string,
+  owner: Pick<BrowserRunContext, "orgId" | "userId">,
 ): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('zero_browser_profile:' || ${browserProfileId}))`,
-  );
+  const lockKey = `zero_browser_profile:${owner.orgId}:${owner.userId}`;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
 async function resolveRunContext(
@@ -862,33 +854,48 @@ async function getOrCreateBrowserProfile(
     return { kind: "ok", value: existing };
   }
 
-  const browserProfileId = randomUUID();
-  const provider = await providerCall(
-    createBrowserUseProfile(
-      browserProfileId,
-      AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
-    ),
-  );
-  if (provider.kind === "error") {
-    return provider;
-  }
+  let createdProviderProfileId: string | null = null;
+  let retainedCreatedProfile = false;
+  const transaction = await settle(
+    db.transaction(async (tx) => {
+      await lockBrowserProfileCreation(tx, context);
+      const lockedExisting = await loadOwnedBrowserProfile(tx, context);
+      if (lockedExisting) {
+        return { kind: "ok" as const, value: lockedExisting };
+      }
 
-  const claimed = await settle(
-    claimBrowserProfile(db, {
-      id: browserProfileId,
-      orgId: context.orgId,
-      userId: context.userId,
-      providerProfileId: provider.value,
+      const browserProfileId = randomUUID();
+      const provider = await providerCall(
+        createBrowserUseProfile(
+          browserProfileId,
+          AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
+        ),
+      );
+      if (provider.kind === "error") {
+        return provider;
+      }
+      createdProviderProfileId = provider.value;
+
+      const claimed = await claimBrowserProfile(tx, {
+        id: browserProfileId,
+        orgId: context.orgId,
+        userId: context.userId,
+        providerProfileId: provider.value,
+      });
+      retainedCreatedProfile = claimed.created;
+      return { kind: "ok" as const, value: claimed.profile };
     }),
   );
-  if (!claimed.ok) {
-    await deleteUnusedProfile(provider.value);
-    throw claimed.error;
+  if (
+    createdProviderProfileId &&
+    (!transaction.ok || !retainedCreatedProfile)
+  ) {
+    await deleteUnusedProfile(createdProviderProfileId);
   }
-  if (!claimed.value.created) {
-    await deleteUnusedProfile(provider.value);
+  if (!transaction.ok) {
+    throw transaction.error;
   }
-  return { kind: "ok", value: claimed.value.profile };
+  return transaction.value;
 }
 
 async function claimStartedProviderInstance(
@@ -1098,25 +1105,14 @@ async function claimFreshBrowser(
   },
 ): Promise<BrowserServiceResult<BrowserSessionRow>> {
   return await db.transaction(async (tx) => {
-    await lockBrowserProfile(tx, args.browserProfileId);
     await lockBrowserThread(tx, context.chatThreadId);
-    const [owned, profileOwned, activeCount, run] = await Promise.all([
+    const [owned, activeCount, run] = await Promise.all([
       tx
         .select({ id: browserSessions.id })
         .from(browserSessions)
         .where(
           and(
             eq(browserSessions.chatThreadId, context.chatThreadId),
-            inArray(browserSessions.status, [...OWNED_BROWSER_STATUSES]),
-          ),
-        )
-        .limit(1),
-      tx
-        .select({ id: browserSessions.id })
-        .from(browserSessions)
-        .where(
-          and(
-            eq(browserSessions.browserProfileId, args.browserProfileId),
             inArray(browserSessions.status, [...OWNED_BROWSER_STATUSES]),
           ),
         )
@@ -1144,9 +1140,6 @@ async function claimFreshBrowser(
         "This chat thread already has an active managed browser",
         "BROWSER_THREAD_ACTIVE",
       );
-    }
-    if (profileOwned[0]) {
-      return profileBusy();
     }
     if ((activeCount[0]?.count ?? 0) >= MAX_ACTIVE_BROWSER_SESSIONS_PER_ORG) {
       return conflict(
@@ -1342,7 +1335,6 @@ async function claimBrowserForResume(
   browserProfileId: string,
 ): Promise<ResumeClaim> {
   return await db.transaction(async (tx) => {
-    await lockBrowserProfile(tx, browserProfileId);
     await lockBrowserThread(tx, context.chatThreadId);
     const [run] = await tx
       .select({ status: agentRuns.status })
@@ -1372,28 +1364,13 @@ async function claimBrowserForResume(
       );
     }
 
-    const [current, profileOwned] = await Promise.all([
-      loadCurrentBrowser(tx, context),
-      tx
-        .select({ id: browserSessions.id })
-        .from(browserSessions)
-        .where(
-          and(
-            eq(browserSessions.browserProfileId, browserProfileId),
-            inArray(browserSessions.status, [...OWNED_BROWSER_STATUSES]),
-          ),
-        )
-        .limit(1),
-    ]);
+    const current = await loadCurrentBrowser(tx, context);
     if (
       !current ||
       current.id !== expectedBrowserId ||
       current.browserProfileId !== browserProfileId
     ) {
       return { kind: "missing" };
-    }
-    if (profileOwned[0] && profileOwned[0].id !== current.id) {
-      return profileBusy();
     }
     if (current.grossCredits >= current.maxCredits) {
       return conflict(

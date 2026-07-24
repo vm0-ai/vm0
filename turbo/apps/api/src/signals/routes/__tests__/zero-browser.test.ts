@@ -98,7 +98,7 @@ describe("zero browser route", () => {
     clearMockNow();
   });
 
-  it("shares one profile across threads while serializing provider sessions", async () => {
+  it("shares one profile across concurrent thread browser sessions", async () => {
     mockNow(STARTED_AT_MS);
     mockEnv("ZERO_BROWSER_USE_API_KEY", "test-browser-use-key");
     mockEnv("APP_URL", "https://app.vm0.ai");
@@ -146,14 +146,32 @@ describe("zero browser route", () => {
     }
     const firstRunId = sent.body.runId;
     const firstClaim = await claimChatRun(runs, actor, firstRunId);
+    const otherThread = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "Use the shared profile from another thread",
+      },
+      [201],
+    );
+    if (otherThread.status !== 201 || otherThread.body.runId === null) {
+      throw new Error("Expected a second chat thread run");
+    }
+    const otherThreadRunId = otherThread.body.runId;
+    const otherThreadClaim = await claimChatRun(runs, actor, otherThreadRunId);
 
     const profileId = randomUUID();
     const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
     const providerCreateBodies: unknown[] = [];
     const deletedProfiles: string[] = [];
+    const profileCreateStarted = createDeferredPromise<void>(context.signal);
+    const releaseProfileCreate = createDeferredPromise<void>(context.signal);
     const firstStopStarted = createDeferredPromise<void>(context.signal);
     const releaseFirstStop = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
+      if (!releaseProfileCreate.settled()) {
+        releaseProfileCreate.resolve(undefined);
+      }
       if (!releaseFirstStop.settled()) {
         releaseFirstStop.resolve(undefined);
       }
@@ -170,17 +188,18 @@ describe("zero browser route", () => {
         expect(body).toMatchObject({
           name: expect.stringMatching(/^vm0-browser-profile-[0-9a-f-]{36}$/u),
         });
-        const id = profileCreates === 0 ? profileId : undefined;
         profileCreates += 1;
-        if (!id) {
+        if (profileCreates > 1) {
           return HttpResponse.json(
             { error: "unexpected profile create" },
             { status: 500 },
           );
         }
+        profileCreateStarted.resolve(undefined);
+        await releaseProfileCreate.promise;
         return HttpResponse.json(
           {
-            id,
+            id: profileId,
             createdAt: "2026-07-24T10:00:00.000Z",
             updatedAt: "2026-07-24T10:00:00.000Z",
             userId: "test-user",
@@ -214,16 +233,17 @@ describe("zero browser route", () => {
           await expect(request.json()).resolves.toStrictEqual({
             action: "stop",
           });
+          const stopIndex = providerStops;
           providerStops += 1;
           const providerId = String(params.id);
-          if (providerId === providerIds[0]) {
+          if (stopIndex === 0) {
             if (!firstStopStarted.settled()) {
               firstStopStarted.resolve(undefined);
             }
             await releaseFirstStop.promise;
           }
           return HttpResponse.json(
-            providerId === providerIds[0]
+            stopIndex === 0
               ? providerBrowser(providerId, {
                   status: "stopped",
                   browserCost: "0.00333",
@@ -238,18 +258,30 @@ describe("zero browser route", () => {
       ),
     );
 
-    const created = await accept(
-      client().create({
-        headers: firstClaim.browserHeaders,
-        body: {
-          name: "booking",
-          proxyCountryCode: null,
-          timeoutMinutes: 30,
-          maxCredits: 150,
-        },
-      }),
-      [201],
-    );
+    const firstCreateRequest = client().create({
+      headers: firstClaim.browserHeaders,
+      body: {
+        name: "booking",
+        proxyCountryCode: null,
+        timeoutMinutes: 30,
+        maxCredits: 150,
+      },
+    });
+    const otherCreateRequest = client().create({
+      headers: otherThreadClaim.browserHeaders,
+      body: {
+        name: "research",
+        proxyCountryCode: null,
+        timeoutMinutes: 30,
+        maxCredits: 150,
+      },
+    });
+    await profileCreateStarted.promise;
+    releaseProfileCreate.resolve(undefined);
+    const [created, createdInOtherThread] = await Promise.all([
+      accept(firstCreateRequest, [201]),
+      accept(otherCreateRequest, [201]),
+    ]);
     expect(created.body.browser).toMatchObject({
       name: "booking",
       status: "active",
@@ -257,6 +289,16 @@ describe("zero browser route", () => {
       viewerUrl: `https://app.vm0.ai/browsers/${created.body.browser.id}`,
     });
     expect(created.body.cdpUrl).toContain("provider-cdp-token");
+    expect(createdInOtherThread.body.browser).toMatchObject({
+      name: "research",
+      status: "active",
+    });
+    expect(createdInOtherThread.body.browser.id).not.toBe(
+      created.body.browser.id,
+    );
+    expect(profileCreates).toBe(1);
+    expect(providerCreates).toBe(2);
+    expect(deletedProfiles).toStrictEqual([]);
 
     const copiedToAnotherThread = await createAppWithRoutes({
       signal: context.signal,
@@ -287,23 +329,9 @@ describe("zero browser route", () => {
     await expect(duplicateNew.json()).resolves.toMatchObject({
       error: { code: "BROWSER_THREAD_ACTIVE" },
     });
-    expect(providerCreates).toBe(1);
+    expect(providerCreates).toBe(2);
     expect(profileCreates).toBe(1);
     expect(deletedProfiles).toStrictEqual([]);
-
-    const otherThread = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "Use the shared profile from another thread",
-      },
-      [201],
-    );
-    if (otherThread.status !== 201 || otherThread.body.runId === null) {
-      throw new Error("Expected a second chat thread run");
-    }
-    const otherThreadRunId = otherThread.body.runId;
-    const otherThreadClaim = await claimChatRun(runs, actor, otherThreadRunId);
 
     await webhooks.requestAgentComplete(
       {
@@ -315,30 +343,6 @@ describe("zero browser route", () => {
       [200],
     );
     await firstStopStarted.promise;
-
-    const busyAcrossThreads = await createAppWithRoutes({
-      signal: context.signal,
-      routes: zeroBrowserRoutes,
-    }).request("/api/zero/browsers", {
-      method: "POST",
-      headers: {
-        ...otherThreadClaim.browserHeaders,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        name: "research",
-        proxyCountryCode: null,
-        timeoutMinutes: 30,
-        maxCredits: 150,
-      }),
-    });
-    expect(busyAcrossThreads.status).toBe(409);
-    await expect(busyAcrossThreads.json()).resolves.toMatchObject({
-      error: {
-        code: "BROWSER_PROFILE_BUSY",
-      },
-    });
-    expect(providerCreates).toBe(1);
 
     await runs.heartbeatRunner(runnerGroup);
     const queuedFollowup = await chat.requestSendMessage(
@@ -371,28 +375,6 @@ describe("zero browser route", () => {
     });
     expect(providerStops).toBe(1);
 
-    const createdInOtherThread = await accept(
-      client().create({
-        headers: otherThreadClaim.browserHeaders,
-        body: {
-          name: "research",
-          proxyCountryCode: null,
-          timeoutMinutes: 30,
-          maxCredits: 150,
-        },
-      }),
-      [201],
-    );
-    expect(createdInOtherThread.body.browser).toMatchObject({
-      name: "research",
-      status: "active",
-    });
-    expect(createdInOtherThread.body.browser.id).not.toBe(
-      created.body.browser.id,
-    );
-    expect(profileCreates).toBe(1);
-    expect(providerCreates).toBe(2);
-
     const runList = await runs.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
       limit: 100,
@@ -404,35 +386,6 @@ describe("zero browser route", () => {
       throw new Error("Expected the queued follow-up to be promoted");
     }
     const followupClaim = await claimChatRun(runs, actor, followup.id);
-    const blockedResume = await createAppWithRoutes({
-      signal: context.signal,
-      routes: zeroBrowserRoutes,
-    }).request("/api/zero/browsers/resume", {
-      method: "POST",
-      headers: {
-        ...followupClaim.browserHeaders,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({}),
-    });
-    expect(blockedResume.status).toBe(409);
-    await expect(blockedResume.json()).resolves.toMatchObject({
-      error: {
-        code: "BROWSER_PROFILE_BUSY",
-      },
-    });
-
-    await webhooks.requestAgentComplete(
-      {
-        runId: otherThreadRunId,
-        exitCode: 0,
-      },
-      otherThreadClaim.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
-    expect(providerStops).toBe(2);
-
     const resumed = await accept(
       client().resume({
         headers: followupClaim.browserHeaders,
@@ -446,6 +399,30 @@ describe("zero browser route", () => {
       grossCredits: 124,
     });
     expect(providerCreates).toBe(3);
+
+    const otherStillActive = await accept(
+      client().get({
+        headers: otherThreadClaim.browserHeaders,
+        params: { browserId: createdInOtherThread.body.browser.id },
+        query: { chatThreadId: otherThread.body.threadId },
+      }),
+      [200],
+    );
+    expect(otherStillActive.body.browser).toMatchObject({
+      id: createdInOtherThread.body.browser.id,
+      status: "active",
+    });
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: otherThreadRunId,
+        exitCode: 0,
+      },
+      otherThreadClaim.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(2);
 
     await chat.deleteThread(actor, sent.body.threadId);
     await flushWaitUntilForTest();
