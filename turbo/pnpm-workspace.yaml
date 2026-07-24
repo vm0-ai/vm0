@@ -76,7 +76,7 @@ overrides:
   "miniflare>undici": 7.28.0
   minimatch: ">=10.2.3"
   picomatch: ">=4.0.4"
-  postcss: ">=8.5.10"
+  postcss: ">=8.5.22"
   "protobufjs@>=7.5.0 <=7.6.4": 7.6.5
   "protobufjs@>=8.0.0 <=8.6.5": 8.6.6
   smol-toml: ">=1.6.1"
