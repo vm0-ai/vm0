@@ -82,7 +82,16 @@ interface PaginatedJoinedSelectMatch {
 }
 
 interface SimpleLockingSelectMatch {
+  readonly lockTableExpressionIndex: number | undefined;
   readonly sourceTableExpressionIndex: number | undefined;
+}
+
+interface SimpleLockingCteUpdateMatch {
+  readonly lockTableExpressionIndex: number;
+  readonly orderColumnExpressionIndex: number;
+  readonly selectedColumnExpressionIndex: number;
+  readonly sourceTableExpressionIndex: number;
+  readonly targetTableExpressionIndex: number;
 }
 
 interface SimpleDeleteMatch {
@@ -186,6 +195,14 @@ const UNSUPPORTED_DELETE_PREDICATE_KEYWORDS = new Set([
 ]);
 
 const UNSUPPORTED_UNNEST_UPDATE_PREDICATE_KEYWORDS = new Set([
+  "CURRENT",
+  "FETCH",
+  "LIMIT",
+  "ORDER",
+  "RETURNING",
+]);
+
+const UNSUPPORTED_LOCKING_CTE_UPDATE_PREDICATE_KEYWORDS = new Set([
   "CURRENT",
   "FETCH",
   "LIMIT",
@@ -752,6 +769,7 @@ function simpleLockingSelectMatch(
     return undefined;
   }
 
+  let lockTableExpressionIndex: number | undefined;
   let lockStart = end - 2;
   let lockTokens = tokens.slice(lockStart, end);
   if (
@@ -761,15 +779,25 @@ function simpleLockingSelectMatch(
   ) {
     lockStart = end - 4;
     lockTokens = tokens.slice(lockStart, end);
-    if (
-      lockTokens.length !== 4 ||
-      !isWord(lockTokens[0], "FOR") ||
-      !isWord(lockTokens[1], "UPDATE") ||
-      !isWord(lockTokens[2], "SKIP") ||
-      !isWord(lockTokens[3], "LOCKED")
-    ) {
+    const lockTargetExpressionIndex = expressionIndex(lockTokens[3]);
+    const skipsLockedRows =
+      lockTokens.length === 4 &&
+      isWord(lockTokens[0], "FOR") &&
+      isWord(lockTokens[1], "UPDATE") &&
+      isWord(lockTokens[2], "SKIP") &&
+      isWord(lockTokens[3], "LOCKED");
+    const locksSpecificTable =
+      lockTokens.length === 4 &&
+      isWord(lockTokens[0], "FOR") &&
+      isWord(lockTokens[1], "UPDATE") &&
+      isWord(lockTokens[2], "OF") &&
+      lockTargetExpressionIndex !== undefined;
+    if (!skipsLockedRows && !locksSpecificTable) {
       return undefined;
     }
+    lockTableExpressionIndex = locksSpecificTable
+      ? lockTargetExpressionIndex
+      : undefined;
   }
   if (
     lockStart <= 0 ||
@@ -908,10 +936,152 @@ function simpleLockingSelectMatch(
   }
 
   return {
+    lockTableExpressionIndex,
     sourceTableExpressionIndex:
       sourceTable.kind === "expression"
         ? sourceTable.expressionIndex
         : undefined,
+  };
+}
+
+function simpleLockingCteUpdateMatch(
+  source: string,
+  syntaxSource: string,
+  statement: CompleteSqlStatement,
+): SimpleLockingCteUpdateMatch | undefined {
+  const tokens = statement.tokens;
+  const trailingToken = tokens[tokens.length - 1];
+  if (
+    !statement.hasTrailingSemicolon &&
+    (trailingToken === undefined ||
+      syntaxSource.slice(trailingToken.end, statement.end).trim() !== "")
+  ) {
+    return undefined;
+  }
+
+  const withKeyword = tokens[0];
+  const cteName = tokens[1];
+  const asKeyword = tokens[2];
+  const cteOpen = tokens[3];
+  const cteClose = tokens[4];
+  const updateKeyword = tokens[5];
+  const targetTable = tokens[6];
+  const setKeyword = tokens[7];
+  if (
+    tokens.length <= 11 ||
+    !isWord(withKeyword, "WITH") ||
+    cteName?.kind !== "word" ||
+    !isWord(asKeyword, "AS") ||
+    !isPunctuation(cteOpen, "(") ||
+    !isPunctuation(cteClose, ")") ||
+    !isWord(updateKeyword, "UPDATE") ||
+    targetTable?.kind !== "expression" ||
+    !isWord(setKeyword, "SET") ||
+    withKeyword === undefined ||
+    asKeyword === undefined ||
+    cteOpen === undefined ||
+    cteClose === undefined ||
+    updateKeyword === undefined ||
+    setKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, withKeyword, cteName) ||
+    !onlyWhitespaceBetween(syntaxSource, cteName, asKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, asKeyword, cteOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, cteClose, updateKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, updateKeyword, targetTable) ||
+    !onlyWhitespaceBetween(syntaxSource, targetTable, setKeyword)
+  ) {
+    return undefined;
+  }
+
+  const fromIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "FROM") ? [index] : [];
+  });
+  const whereIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "WHERE") ? [index] : [];
+  });
+  if (fromIndexes.length !== 1 || whereIndexes.length !== 1) {
+    return undefined;
+  }
+  const fromIndex = fromIndexes[0];
+  const whereIndex = whereIndexes[0];
+  if (fromIndex === undefined || whereIndex === undefined) {
+    return undefined;
+  }
+  const fromKeyword = tokens[fromIndex];
+  const cteSource = tokens[fromIndex + 1];
+  const whereKeyword = tokens[whereIndex];
+  if (
+    fromIndex <= 8 ||
+    whereIndex !== fromIndex + 2 ||
+    !isWord(fromKeyword, "FROM") ||
+    cteSource?.kind !== "word" ||
+    cteSource.value !== cteName.value ||
+    !isWord(whereKeyword, "WHERE") ||
+    fromKeyword === undefined ||
+    whereKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, cteSource) ||
+    !onlyWhitespaceBetween(syntaxSource, cteSource, whereKeyword) ||
+    !hasSimpleAssignments(
+      source,
+      syntaxSource,
+      setKeyword.end,
+      fromKeyword.start,
+      SIMPLE_OR_QUOTED_IDENTIFIER_PATTERN,
+    ) ||
+    syntaxSource.slice(whereKeyword.end, statement.end).trim() === "" ||
+    tokens.slice(whereIndex + 1).some((token) => {
+      return (
+        token.kind === "word" &&
+        UNSUPPORTED_LOCKING_CTE_UPDATE_PREDICATE_KEYWORDS.has(token.value)
+      );
+    })
+  ) {
+    return undefined;
+  }
+
+  const innerSyntaxSource = syntaxSource.slice(cteOpen.end, cteClose.start);
+  const lockingMatch = simpleLockingSelectMatch(innerSyntaxSource);
+  if (
+    lockingMatch?.sourceTableExpressionIndex === undefined ||
+    lockingMatch.lockTableExpressionIndex === undefined
+  ) {
+    return undefined;
+  }
+  const innerTokens = topLevelTokens(innerSyntaxSource);
+  if (innerTokens === undefined) {
+    return undefined;
+  }
+  const innerFromIndex = innerTokens.findIndex((token) => {
+    return isWord(token, "FROM");
+  });
+  const innerOrderIndex = innerTokens.findIndex((token) => {
+    return isWord(token, "ORDER");
+  });
+  const innerForIndex = innerTokens.findIndex((token) => {
+    return isWord(token, "FOR");
+  });
+  const selectedColumn = innerTokens[1];
+  const orderByKeyword = innerTokens[innerOrderIndex + 1];
+  const orderColumn = innerTokens[innerOrderIndex + 2];
+  if (
+    innerFromIndex !== 2 ||
+    selectedColumn?.kind !== "expression" ||
+    innerOrderIndex <= innerFromIndex ||
+    !isWord(orderByKeyword, "BY") ||
+    orderColumn?.kind !== "expression" ||
+    innerOrderIndex + 3 !== innerForIndex
+  ) {
+    return undefined;
+  }
+
+  // The outer prefix contains no interpolations, so expression indexes from
+  // the nested SELECT address the full tagged template unchanged.
+  return {
+    lockTableExpressionIndex: lockingMatch.lockTableExpressionIndex,
+    orderColumnExpressionIndex: orderColumn.expressionIndex,
+    selectedColumnExpressionIndex: selectedColumn.expressionIndex,
+    sourceTableExpressionIndex: lockingMatch.sourceTableExpressionIndex,
+    targetTableExpressionIndex: targetTable.expressionIndex,
   };
 }
 
@@ -1421,7 +1591,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete schema-backed deletes, unnest-backed updates, upserts, selects, existence checks, locking selects, and scalar result queries",
+        "Prefer Drizzle query builders for complete schema-backed deletes, updates, upserts, selects, existence checks, locking selects, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -1439,6 +1609,8 @@ export const preferDrizzleQueryBuilder = createRule({
         "Use a Drizzle insert builder with .onConflictDoUpdate(...) for this complete single-row upsert.",
       unnestUpdateQueryBuilder:
         "Use a Drizzle update builder with .from(...) for this complete unnest-backed update.",
+      lockingCteUpdateQueryBuilder:
+        "Use Drizzle $with(...), select().for(...), and update().from(...) builders for this complete locking CTE update.",
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
@@ -2028,11 +2200,21 @@ export const preferDrizzleQueryBuilder = createRule({
         deleteMatch === undefined
           ? simpleUnnestUpdateMatch(source, syntaxSource, statement)
           : undefined;
-      const upsertMatch =
+      const lockingCteUpdateMatch =
         deleteMatch === undefined && unnestUpdateMatch === undefined
+          ? simpleLockingCteUpdateMatch(source, syntaxSource, statement)
+          : undefined;
+      const upsertMatch =
+        deleteMatch === undefined &&
+        unnestUpdateMatch === undefined &&
+        lockingCteUpdateMatch === undefined
           ? simpleUpsertMatch(source, syntaxSource, statement)
           : undefined;
-      const match = deleteMatch ?? unnestUpdateMatch ?? upsertMatch;
+      const match =
+        deleteMatch ??
+        unnestUpdateMatch ??
+        lockingCteUpdateMatch ??
+        upsertMatch;
       if (
         match === undefined ||
         !isDrizzleSqlTag(checker, services, query.tag) ||
@@ -2059,6 +2241,53 @@ export const preferDrizzleQueryBuilder = createRule({
         }
       }
 
+      if (lockingCteUpdateMatch !== undefined) {
+        const expressions = query.quasi.expressions;
+        const sourceTable =
+          expressions[lockingCteUpdateMatch.sourceTableExpressionIndex];
+        const lockTable =
+          expressions[lockingCteUpdateMatch.lockTableExpressionIndex];
+        const selectedColumn =
+          expressions[lockingCteUpdateMatch.selectedColumnExpressionIndex];
+        const orderColumn =
+          expressions[lockingCteUpdateMatch.orderColumnExpressionIndex];
+        const targetTable =
+          expressions[lockingCteUpdateMatch.targetTableExpressionIndex];
+        if (
+          sourceTable === undefined ||
+          lockTable === undefined ||
+          selectedColumn === undefined ||
+          orderColumn === undefined ||
+          targetTable === undefined
+        ) {
+          return;
+        }
+        const selectedColumnType = expressionType(selectedColumn);
+        const orderColumnType = expressionType(orderColumn);
+        if (
+          !isDrizzleTableExpression(sourceTable) ||
+          !isDrizzleTableExpression(lockTable) ||
+          !isDrizzleColumnType(
+            checker,
+            selectedColumnType.type,
+            selectedColumnType.location,
+          ) ||
+          !isDrizzleColumnType(
+            checker,
+            orderColumnType.type,
+            orderColumnType.location,
+          ) ||
+          context.sourceCode.getText(sourceTable) !==
+            context.sourceCode.getText(lockTable) ||
+          context.sourceCode.getText(sourceTable) !==
+            context.sourceCode.getText(targetTable) ||
+          context.sourceCode.getText(selectedColumn) !==
+            context.sourceCode.getText(orderColumn)
+        ) {
+          return;
+        }
+      }
+
       context.report({
         node: query,
         messageId:
@@ -2066,7 +2295,9 @@ export const preferDrizzleQueryBuilder = createRule({
             ? "deleteQueryBuilder"
             : unnestUpdateMatch !== undefined
               ? "unnestUpdateQueryBuilder"
-              : "upsertQueryBuilder",
+              : lockingCteUpdateMatch !== undefined
+                ? "lockingCteUpdateQueryBuilder"
+                : "upsertQueryBuilder",
       });
     }
 
@@ -2119,6 +2350,14 @@ export const preferDrizzleQueryBuilder = createRule({
                 sourceTableType.location,
               )
             ) {
+              return;
+            }
+          }
+          const lockTableExpressionIndex =
+            lockingMatch.lockTableExpressionIndex;
+          if (lockTableExpressionIndex !== undefined) {
+            const lockTable = query.quasi.expressions[lockTableExpressionIndex];
+            if (!isDrizzleTableExpression(lockTable)) {
               return;
             }
           }

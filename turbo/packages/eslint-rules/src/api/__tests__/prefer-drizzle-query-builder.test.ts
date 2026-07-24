@@ -116,6 +116,27 @@ const unnestUpdatePreamble = `
   declare const updatedAt: Date;
 `;
 
+const lockingCteUpdatePreamble = `
+  import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const cacheRows = pgTable("cache_rows", {
+    cacheKey: text("cache_key").primaryKey(),
+    lastRequestedAt: timestamp("last_requested_at").notNull(),
+  });
+  const cacheRowMetadata = pgTable("cache_row_metadata", {
+    cacheKey: text("cache_key").primaryKey(),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      cacheRows: typeof cacheRows;
+      cacheRowMetadata: typeof cacheRowMetadata;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const cacheKeys: readonly string[];
+  declare const cutoff: Date;
+  declare const issuedAt: Date;
+`;
+
 const upsertPreamble = `
   import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
@@ -219,6 +240,113 @@ const runnerLockingQuery = `
 
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH RECURSIVE locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { eq, inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            INNER JOIN \${cacheRowMetadata}
+              ON \${eq(cacheRowMetadata.cacheKey, cacheRows.cacheKey)}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        const dynamicTable = sql.identifier("cache_rows");
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${dynamicTable}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${dynamicTable}
+          )
+          UPDATE \${dynamicTable}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows} NOWAIT
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          DELETE FROM \${cacheRows}
+          USING locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+          RETURNING \${cacheRows.cacheKey}
+        \`);
+      `,
+    },
     {
       code: `${unnestUpdatePreamble}
         import { sql } from "drizzle-orm";
@@ -1238,6 +1366,66 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   ],
   invalid: [
     {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql as query } from "drizzle-orm";
+        await db["execute"](query\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key;
+        \`);
+      `,
+      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import * as drizzle from "drizzle-orm";
+        await db.execute(drizzle.sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${drizzle.inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${drizzle.lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+    },
+    {
       code: `${unnestUpdatePreamble}
         import { sql } from "drizzle-orm";
         await db.execute(sql\`
@@ -1439,6 +1627,23 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            WHERE \${eq(runs.id, threadId)}
+            ORDER BY \${runs.id}
+            FOR UPDATE OF \${runs}
+          \`,
+          rowSchema,
+        );
       `,
       errors: [{ messageId: "lockingQueryBuilder" }],
     },
