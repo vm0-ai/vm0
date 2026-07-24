@@ -26,6 +26,8 @@ CREATE TABLE "feishu_chat_thread_routes" (
 --> statement-breakpoint
 ALTER TABLE "chat_messages" ADD COLUMN "feishu_chat_open_url" text;--> statement-breakpoint
 ALTER TABLE "feishu_org_connections" ADD COLUMN "dm_welcome_sent" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+-- Connections created before welcome tracking already received the legacy welcome.
+UPDATE "feishu_org_connections" SET "dm_welcome_sent" = true;--> statement-breakpoint
 ALTER TABLE "feishu_chat_ingress" ADD CONSTRAINT "feishu_chat_ingress_installation_id_feishu_org_installations_id_fk" FOREIGN KEY ("installation_id") REFERENCES "public"."feishu_org_installations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "feishu_chat_thread_routes" ADD CONSTRAINT "feishu_chat_thread_routes_connection_id_feishu_org_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."feishu_org_connections"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "feishu_chat_thread_routes" ADD CONSTRAINT "feishu_chat_thread_routes_chat_thread_id_chat_threads_id_fk" FOREIGN KEY ("chat_thread_id") REFERENCES "public"."chat_threads"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
