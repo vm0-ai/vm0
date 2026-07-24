@@ -26,6 +26,8 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
 const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
 const queuedUserMessageTriggerSourceDecoder = zodDriverValueDecoder(
   z.enum(["web", "slack"]),
@@ -273,7 +275,7 @@ interface ClaimedUserMessage {
  * its queue item. Callers serialize dispatch decisions before invoking this.
  */
 async function appendClaimedUserMessage(
-  db: Db,
+  db: DbTransaction,
   args: {
     readonly threadId: string;
     readonly messageId: string;
@@ -340,7 +342,7 @@ async function appendClaimedUserMessage(
  * first; failed launches do not acquire that lock or create active state.
  */
 export async function claimQueueFirstRunAssociation(
-  db: Db,
+  db: DbTransaction,
   args: QueueFirstRunAssociation & {
     readonly runId: string;
     readonly timing: ApiDispatchTimingCollector;

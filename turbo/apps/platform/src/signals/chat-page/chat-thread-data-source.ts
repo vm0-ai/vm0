@@ -71,12 +71,12 @@ export interface InterruptRunArgs {
 
 export interface ListMessagesAfterArgs {
   threadId: string;
-  sinceId: string | undefined;
+  sinceSeqId: number | undefined;
 }
 
 export interface ListMessagesBeforeArgs {
   threadId: string;
-  beforeId: string;
+  beforeSeqId: number;
 }
 
 export interface GetMessageArgs {

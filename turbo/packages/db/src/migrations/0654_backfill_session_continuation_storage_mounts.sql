@@ -3,11 +3,118 @@
 -- checkpoint resume is a separate legacy path. Keep artifact version
 -- declarations unchanged: omitted and "latest" versions must continue to
 -- resolve HEAD at run time instead of freezing the HEAD visible here.
+-- Historical apiAutoMemory declarations may retain generatedBy provenance,
+-- which is not part of mount behavior. Legacy continuation also initializes an
+-- empty artifact Storage when a dynamic declaration has lost its Storage row;
+-- materialize the same canonical identity before validating the backfill.
 LOCK TABLE "agent_sessions" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
-LOCK TABLE "storages" IN SHARE MODE;
+LOCK TABLE "storages" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
-LOCK TABLE "storage_versions" IN SHARE MODE;
+LOCK TABLE "storage_versions" IN SHARE ROW EXCLUSIVE MODE;
+--> statement-breakpoint
+
+CREATE TEMP TABLE vm0_session_missing_latest_storage_plan ON COMMIT DROP AS
+WITH missing_storage_identities AS (
+  SELECT DISTINCT
+    session."org_id",
+    session."user_id",
+    artifact.value ->> 'name' AS name
+  FROM "agent_sessions" AS session
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof(session."artifacts") = 'array'
+        THEN session."artifacts"
+      ELSE '[]'::jsonb
+    END
+  ) AS artifact(value)
+  LEFT JOIN "storages" AS storage
+    ON storage."org_id" = session."org_id"
+    AND storage."user_id" = session."user_id"
+    AND storage."name" = artifact.value ->> 'name'
+  WHERE session."storage_mounts" IS NULL
+    AND jsonb_typeof(artifact.value) = 'object'
+    AND jsonb_typeof(artifact.value -> 'name') = 'string'
+    AND jsonb_typeof(artifact.value -> 'mountPath') = 'string'
+    AND (
+      NOT (artifact.value ? 'version')
+      OR (
+        jsonb_typeof(artifact.value -> 'version') = 'string'
+        AND artifact.value ->> 'version' = 'latest'
+      )
+    )
+    AND storage."id" IS NULL
+),
+new_storage_identities AS (
+  SELECT
+    gen_random_uuid() AS storage_id,
+    missing."org_id",
+    missing."user_id",
+    missing.name
+  FROM missing_storage_identities AS missing
+)
+SELECT
+  identity.storage_id,
+  identity."org_id",
+  identity."user_id",
+  identity.name,
+  identity."org_id" || '/' || identity.storage_id::text AS s3_prefix,
+  encode(
+    digest(
+      'storage:' || identity.storage_id::text || E'\n',
+      'sha256'
+    ),
+    'hex'
+  ) AS version_id
+FROM new_storage_identities AS identity;
+--> statement-breakpoint
+
+INSERT INTO "storages" (
+  "id",
+  "user_id",
+  "name",
+  "type",
+  "org_id",
+  "s3_prefix"
+)
+SELECT
+  plan.storage_id,
+  plan."user_id",
+  plan.name,
+  'artifact',
+  plan."org_id",
+  plan.s3_prefix
+FROM pg_temp.vm0_session_missing_latest_storage_plan AS plan;
+--> statement-breakpoint
+
+INSERT INTO "storage_versions" (
+  "id",
+  "storage_id",
+  "s3_key",
+  "size",
+  "archive_size",
+  "file_count",
+  "message",
+  "created_by"
+)
+SELECT
+  plan.version_id,
+  plan.storage_id,
+  plan.s3_prefix || '/' || plan.version_id,
+  0,
+  0,
+  0,
+  'Initial empty artifact',
+  plan."user_id"
+FROM pg_temp.vm0_session_missing_latest_storage_plan AS plan;
+--> statement-breakpoint
+
+UPDATE "storages" AS storage
+SET
+  "head_version_id" = plan.version_id,
+  "updated_at" = now()
+FROM pg_temp.vm0_session_missing_latest_storage_plan AS plan
+WHERE storage."id" = plan.storage_id;
 --> statement-breakpoint
 
 DO $$
@@ -50,8 +157,21 @@ BEGIN
               NOT IN ('fail', 'preserveParentVersion')
           )
         )
+        OR (
+          artifact.value ? 'generatedBy'
+          AND (
+            jsonb_typeof(artifact.value -> 'generatedBy') IS DISTINCT FROM 'string'
+            OR artifact.value ->> 'generatedBy' <> 'apiAutoMemory'
+          )
+        )
         OR artifact.value
-          - ARRAY['name', 'version', 'mountPath', 'missingRootPolicy']::text[]
+          - ARRAY[
+            'name',
+            'version',
+            'mountPath',
+            'missingRootPolicy',
+            'generatedBy'
+          ]::text[]
           <> '{}'::jsonb
     );
 
@@ -381,7 +501,27 @@ BEGIN
   FROM "agent_sessions" AS session
   WHERE session."storage_mounts" IS NOT NULL
     AND session."artifacts" <> '[]'::jsonb
-    AND session."artifacts" IS DISTINCT FROM COALESCE(
+    AND COALESCE(
+      (
+        SELECT jsonb_agg(
+          CASE
+            WHEN jsonb_typeof(artifact.value -> 'generatedBy') = 'string'
+              AND artifact.value ->> 'generatedBy' = 'apiAutoMemory'
+              THEN artifact.value - 'generatedBy'
+            ELSE artifact.value
+          END
+          ORDER BY artifact.ordinality
+        )
+        FROM jsonb_array_elements(
+          CASE
+            WHEN jsonb_typeof(session."artifacts") = 'array'
+              THEN session."artifacts"
+            ELSE '[]'::jsonb
+          END
+        ) WITH ORDINALITY AS artifact(value, ordinality)
+      ),
+      '[]'::jsonb
+    ) IS DISTINCT FROM COALESCE(
       (
         SELECT jsonb_agg(
           jsonb_strip_nulls(
@@ -512,7 +652,27 @@ BEGIN
   INTO lossy_sessions
   FROM "agent_sessions" AS session
   WHERE session."artifacts" <> '[]'::jsonb
-    AND session."artifacts" IS DISTINCT FROM COALESCE(
+    AND COALESCE(
+      (
+        SELECT jsonb_agg(
+          CASE
+            WHEN jsonb_typeof(artifact.value -> 'generatedBy') = 'string'
+              AND artifact.value ->> 'generatedBy' = 'apiAutoMemory'
+              THEN artifact.value - 'generatedBy'
+            ELSE artifact.value
+          END
+          ORDER BY artifact.ordinality
+        )
+        FROM jsonb_array_elements(
+          CASE
+            WHEN jsonb_typeof(session."artifacts") = 'array'
+              THEN session."artifacts"
+            ELSE '[]'::jsonb
+          END
+        ) WITH ORDINALITY AS artifact(value, ordinality)
+      ),
+      '[]'::jsonb
+    ) IS DISTINCT FROM COALESCE(
       (
         SELECT jsonb_agg(
           jsonb_strip_nulls(

@@ -244,6 +244,7 @@ function cachedChatMessages(): PagedChatMessage[] {
       role: "user",
       runId: RUN_ID,
       content: USER_MESSAGE,
+      seqId: 1,
       createdAt: "2026-03-10T00:00:01Z",
     },
     {
@@ -251,6 +252,7 @@ function cachedChatMessages(): PagedChatMessage[] {
       role: "assistant",
       runId: RUN_ID,
       content: ASSISTANT_MESSAGE,
+      seqId: 2,
       createdAt: "2026-03-10T00:00:02Z",
     },
     {
@@ -259,6 +261,7 @@ function cachedChatMessages(): PagedChatMessage[] {
       runId: RUN_ID,
       content: null,
       runLifecycleEvent: "completed",
+      seqId: 3,
       createdAt: "2026-03-10T00:00:03Z",
     },
   ];
@@ -318,7 +321,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     let messageListRequests = 0;
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       messageListRequests += 1;
-      if (query.sinceId) {
+      if (query.sinceSeqId) {
         return respond(200, { messages: [] });
       }
       return respond(200, {
@@ -327,12 +330,14 @@ describe("zero chat thread IndexedDB fallback", () => {
             id: "00000000-0000-4000-8000-000000000101",
             role: "user",
             content: USER_MESSAGE,
+            seqId: 1,
             createdAt: "2026-03-10T00:00:01Z",
           },
           {
             id: "00000000-0000-4000-8000-000000000102",
             role: "assistant",
             content: ASSISTANT_MESSAGE,
+            seqId: 2,
             createdAt: "2026-03-10T00:00:02Z",
           },
         ],

@@ -50,6 +50,7 @@ const downloadFileInner$ = computed(async (get) => {
   headers.set("X-File-Name", encodeURIComponent(result.filename));
   headers.set("X-File-Mimetype", result.contentType);
   headers.set("Content-Length", String(result.buffer.length));
+  headers.set("Cache-Control", "private, no-store");
 
   return new Response(new Uint8Array(result.buffer), {
     status: 200,

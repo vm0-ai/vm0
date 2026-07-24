@@ -3,7 +3,6 @@ import {
   pagedChatMessageSchema,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { logger } from "../log.ts";
 import {
   CHAT_MESSAGES_ORDER_INDEX,
@@ -19,7 +18,6 @@ const L = logger("ChatMessageIndexedDb");
 
 type StoredPagedChatMessage = PagedChatMessage & {
   readonly threadId: string;
-  readonly orderSequence: number;
 };
 
 interface ChatMessageReadStore {
@@ -62,9 +60,6 @@ function toApiMessage(raw: unknown): unknown {
     if (key === "threadId") {
       continue;
     }
-    if (key === "orderSequence") {
-      continue;
-    }
     if (key === "status" && row.role === "user") {
       continue;
     }
@@ -84,7 +79,6 @@ function storedMessage(
   return {
     ...message,
     threadId,
-    orderSequence: chatMessageOrderSequence(message),
   };
 }
 
@@ -96,10 +90,7 @@ function threadOrderRangeFrom(
   threadId: string,
   message: PagedChatMessage,
 ): IDBKeyRange {
-  // PostgreSQL timestamps may carry more precision than the API's ISO string.
-  // Re-read the entire visible millisecond so precision loss can only produce
-  // duplicates, which are removed by message ID, rather than skipped messages.
-  return IDBKeyRange.bound([threadId, message.createdAt], [threadId, []]);
+  return IDBKeyRange.bound([threadId, message.seqId], [threadId, []]);
 }
 
 type GetDb = () => Promise<IDBPDatabase>;
@@ -180,12 +171,14 @@ function createMessageWriteStore(
       const tx = db.transaction(storeName, "readwrite");
       const requests = messages.map((message) => {
         signal?.throwIfAborted();
-        // Stitch local ordering fields onto the stored value. PagedChatMessage
-        // from the API has no threadId and keeps sequenceNumber optional.
+        // Stitch the owning thread onto the server-sequenced cached value.
         return tx.store.put(storedMessage(threadId, message));
       });
       await Promise.all([...requests, tx.done]);
-      L.debug("upsertMessages:done", { threadId, count: messages.length });
+      L.debug("upsertMessages:done", {
+        threadId,
+        count: messages.length,
+      });
     },
   };
 }

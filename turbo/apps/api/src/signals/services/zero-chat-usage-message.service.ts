@@ -199,7 +199,6 @@ export const maybeEmitRunUsageMessage$ = command(
         chatThreadId: context.chatThreadId,
         userId: context.userId,
         totalCredits: payload.totalCredits,
-        messageId: inserted.id,
       };
     });
     signal.throwIfAborted();
@@ -211,7 +210,6 @@ export const maybeEmitRunUsageMessage$ = command(
     await publishUserSignal(
       [emitted.userId],
       `chatThreadMessageCreated:${emitted.chatThreadId}`,
-      { syncThroughMessageId: emitted.messageId },
     );
     signal.throwIfAborted();
 

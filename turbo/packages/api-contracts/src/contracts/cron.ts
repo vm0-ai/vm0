@@ -120,6 +120,7 @@ export const connectorCatalogSyncFailureCodeSchema = z.enum([
   "invalid-artifact",
   "public-leakage",
   "relationship-mismatch",
+  "invalid-compression",
 ]);
 
 export const connectorCatalogCompatibilityReasonSchema = z.enum([
@@ -159,7 +160,7 @@ const connectorCatalogSyncStatusSchema = z.object({
   active: z
     .object({
       catalogVersion: z.string(),
-      integrityDigest: z.string(),
+      catalogDigest: z.string(),
       activatedAt: z.string().datetime(),
     })
     .nullable(),

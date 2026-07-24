@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
+import { insertChatMessage } from "../signals/services/zero-chat-message.service";
 import { createDeferredPromise } from "../signals/utils";
 
 /**
@@ -323,4 +324,83 @@ export async function holdChatMessageFixture(args: {
       return await transitiveBlockedWaiterCount(holderPid);
     },
   };
+}
+
+/**
+ * Inserts one message through the production sequence writer, then holds its
+ * transaction open. No product endpoint can pause between INSERT and COMMIT,
+ * so this fixture is the narrow timing boundary for sequence serialization.
+ */
+export async function holdChatMessageInsertTransactionFixture(args: {
+  readonly threadId: string;
+  readonly content: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly message: { readonly id: string; readonly seqId: number };
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<{
+    readonly pid: number;
+    readonly message: { readonly id: string; readonly seqId: number };
+  }>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat-message insert holder pid");
+    }
+    const message = await insertChatMessage(tx, {
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: args.content,
+      runId: null,
+    });
+    if (!message) {
+      throw new Error("Expected the held chat-message insert");
+    }
+    started.resolve({ pid: holderPid, message });
+    await released.promise;
+  });
+  const { pid, message } = await started.promise;
+
+  return {
+    message,
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(pid);
+    },
+  };
+}
+
+/** Inserts one message with reservation and persistence in one transaction. */
+export async function insertChatMessageTransactionFixture(args: {
+  readonly threadId: string;
+  readonly content: string;
+}): Promise<{ readonly id: string; readonly seqId: number }> {
+  const message = await db().transaction(async (tx) => {
+    return await insertChatMessage(tx, {
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: args.content,
+      runId: null,
+    });
+  });
+  if (!message) {
+    throw new Error("Expected the chat-message insert");
+  }
+  return message;
 }

@@ -41,6 +41,7 @@ import {
   type OptimisticChatMessageEntry,
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
+import type { ChatMessage } from "./chat-message-types.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
@@ -60,7 +61,6 @@ import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
@@ -75,6 +75,7 @@ import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
+import { isCancelledAssistantMessage } from "./chat-run-lifecycle.ts";
 import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
@@ -166,7 +167,7 @@ function createChatThreadScrollSignals(threadId: string) {
   });
 }
 
-function isRecallControlMessage(msg: PagedChatMessage): boolean {
+function isRecallControlMessage(msg: ChatMessage): boolean {
   return (
     ((msg.role === "user" && msg.runId === undefined && msg.content === null) ||
       (msg.role === "assistant" && msg.content === null)) &&
@@ -174,7 +175,7 @@ function isRecallControlMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
+function isQueueMarkerMessage(msg: ChatMessage): boolean {
   return (
     msg.role === "assistant" &&
     msg.runEventId === QUEUED_RUN_MARKER_EVENT_ID &&
@@ -182,7 +183,7 @@ function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
+function isGoalMarkerMessage(msg: ChatMessage): boolean {
   return msg.role === "assistant" && msg.goalEvent !== undefined;
 }
 
@@ -191,7 +192,7 @@ function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
  * composer. Goal markers are chronological and last-write-wins: active shows
  * the cached objective brief; paused, blocked, complete, and cleared hide it.
  */
-function foldActiveGoal(messages: readonly PagedChatMessage[]): string | null {
+function foldActiveGoal(messages: readonly ChatMessage[]): string | null {
   let objective: string | null = null;
   for (const message of messages) {
     const goalEvent =
@@ -213,16 +214,16 @@ function foldActiveGoal(messages: readonly PagedChatMessage[]): string | null {
   return trimmed || null;
 }
 
-function isUsageMessage(msg: PagedChatMessage): msg is Extract<
-  PagedChatMessage,
+function isUsageMessage(msg: ChatMessage): msg is Extract<
+  ChatMessage,
   { role: "assistant" }
 > & {
-  usage: NonNullable<PagedChatMessage["usage"]>;
+  usage: NonNullable<ChatMessage["usage"]>;
 } {
   return msg.role === "assistant" && msg.usage !== undefined;
 }
 
-function isInterruptControlMessage(msg: PagedChatMessage): boolean {
+function isInterruptControlMessage(msg: ChatMessage): boolean {
   return (
     msg.role === "user" &&
     msg.runId === undefined &&
@@ -230,19 +231,10 @@ function isInterruptControlMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
-  return (
-    msg.role === "assistant" &&
-    msg.runId !== undefined &&
-    (msg.runLifecycleEvent === "cancelled" ||
-      msg.error?.trim().toLowerCase() === "run cancelled")
-  );
-}
-
 function createInterruptedAssistantProjection(
-  message: PagedChatMessage,
+  message: ChatMessage,
   runId: string,
-): PagedChatMessage {
+): ChatMessage {
   return {
     ...message,
     role: "assistant" as const,
@@ -271,7 +263,7 @@ function completedRunIdsFromMessages(
 }
 
 function isInterruptedAssistantCancellation(
-  message: PagedChatMessage,
+  message: ChatMessage,
   interruptedRunIds: Set<string>,
 ): boolean {
   const runId = message.runId;
@@ -346,7 +338,7 @@ const DONE_PHRASES = [
   },
 ] as const;
 
-function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
+function formatDonePhrase(lastMsg: ChatMessage | undefined): string {
   const time = lastMsg
     ? new Date(lastMsg.createdAt).toLocaleString("en-US", {
         month: "short",
@@ -404,10 +396,7 @@ function terminatedRunIdsFromRawMessages(
 
 type RunIndicatorState = "running" | "queued" | null;
 
-type AssistantPagedChatMessage = Extract<
-  PagedChatMessage,
-  { role: "assistant" }
->;
+type AssistantChatMessage = Extract<ChatMessage, { role: "assistant" }>;
 
 function runActivityIndicatorState(
   terminatedRunIds: ReadonlySet<string>,
@@ -421,7 +410,7 @@ function runActivityIndicatorState(
 
 function assistantRunIndicatorState(
   terminatedRunIds: ReadonlySet<string>,
-  message: AssistantPagedChatMessage,
+  message: AssistantChatMessage,
 ): RunIndicatorState | undefined {
   const runId = message.runId;
   if (isQueueMarkerMessage(message)) {
@@ -1321,27 +1310,6 @@ function compareCreatedAt(left: string, right: string): number {
   return leftTime - rightTime;
 }
 
-function compareServerMessageOrder(
-  left: PagedChatMessage,
-  right: PagedChatMessage,
-): number {
-  const createdAtOrder = compareCreatedAt(left.createdAt, right.createdAt);
-  if (createdAtOrder !== 0) {
-    return createdAtOrder;
-  }
-
-  const leftSequence = chatMessageOrderSequence(left);
-  const rightSequence = chatMessageOrderSequence(right);
-  if (leftSequence !== rightSequence) {
-    return leftSequence - rightSequence;
-  }
-
-  // The API exposes createdAt at millisecond precision, so messages that are
-  // distinct on the server can appear tied here. Preserve their stable source
-  // order instead of inventing an ID order that can reverse queued messages.
-  return 0;
-}
-
 function mergeRegisteredMessages(
   messageSets: readonly (readonly RegisteredChatMessage[])[],
 ): RegisteredChatMessage[] {
@@ -1352,7 +1320,7 @@ function mergeRegisteredMessages(
     }
   }
   return Array.from(byId.values()).sort((left, right) => {
-    return compareServerMessageOrder(left.message, right.message);
+    return left.message.seqId - right.message.seqId;
   });
 }
 
@@ -1429,12 +1397,23 @@ function createWritePersistentMessages(
   );
 }
 
-interface ChatMessageProjectionEntry {
+interface ServerChatMessageProjectionEntry {
   message: PagedChatMessage;
-  source: "server" | "optimistic";
+  source: "server";
+  blocks: BodyRenderBlock[];
+  optimisticUserMessageAssociation?: never;
+}
+
+interface OptimisticChatMessageProjectionEntry {
+  message: OptimisticChatMessageEntry["message"];
+  source: "optimistic";
   blocks: BodyRenderBlock[];
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
 }
+
+type ChatMessageProjectionEntry =
+  | ServerChatMessageProjectionEntry
+  | OptimisticChatMessageProjectionEntry;
 
 function projectRawMessages({
   persistentMessages,
@@ -1453,6 +1432,8 @@ function projectRawMessages({
   const optimistic = optimisticEntries.filter((entry) => {
     return !serverIds.has(entry.message.id);
   });
+  // Optimistic messages do not have a server sequence yet. Keep their array
+  // order and append them after every persistent message.
   return [
     ...persistentMessages.map((entry) => {
       return { ...entry, source: "server" as const };
@@ -1516,7 +1497,7 @@ function createTranscriptMessagesComputed(
 }
 
 interface SemanticChatMessage {
-  readonly message: PagedChatMessage;
+  readonly message: ChatMessage;
   readonly blocks: BodyRenderBlock[];
   readonly isQueued: boolean;
   readonly isOptimisticRun: boolean;
@@ -1698,7 +1679,7 @@ function groupSemanticChatMessages(
 
 function queuedMessagesFromSemanticMessages(
   semanticMessages: readonly SemanticChatMessage[],
-): PagedChatMessage[] {
+): ChatMessage[] {
   return semanticMessages.flatMap((entry) => {
     const { message } = entry;
     return message.role === "user" && entry.isQueued ? [message] : [];
@@ -1707,7 +1688,7 @@ function queuedMessagesFromSemanticMessages(
 
 function queuedMessagesFromRaw(
   raw: readonly ChatMessageProjectionEntry[],
-): PagedChatMessage[] {
+): ChatMessage[] {
   return queuedMessagesFromSemanticMessages(
     semanticTranscriptMessagesFromRaw(raw),
   );
@@ -1916,7 +1897,7 @@ function createMessageSemanticSignals(
   const semanticGroups$ = computed((get): SemanticChatGroups => {
     return groupSemanticChatMessages(get(semanticMessages$));
   });
-  const queuedMessages$ = computed((get): PagedChatMessage[] => {
+  const queuedMessages$ = computed((get): ChatMessage[] => {
     return queuedMessagesFromSemanticMessages(get(semanticMessages$));
   });
   const thinkingIndicatorProjection$ = computed(
@@ -2151,23 +2132,24 @@ function createSyncRemoteMessagesCommand({
   return command(async ({ get, set }, signal: AbortSignal) => {
     const persistentMessages = get(persistentMessages$);
     const accumulatedMessages: PagedChatMessage[] = [];
-    let sinceId = persistentMessages.at(-1)?.message.id;
-    const startedWithoutCursor = sinceId === undefined;
-    let initialPageOldestMessageId: string | undefined;
+    const latestPersistentMessage = persistentMessages.at(-1);
+    let sinceSeqId = latestPersistentMessage?.message.seqId;
+    const startedWithoutCursor = latestPersistentMessage === undefined;
+    let initialPageOldestMessage: PagedChatMessage | undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
-      const requestedSinceId = sinceId;
-      const isInitialPage = requestedSinceId === undefined;
+      const requestedSinceSeqId = sinceSeqId;
+      const isInitialPage = requestedSinceSeqId === undefined;
       const result = await set(
         dataSource.listMessagesAfter$,
-        { threadId, sinceId: requestedSinceId },
+        { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
       L.debug("syncRemoteMessages$ listMessagesAfter result", {
         threadId,
-        sinceId: requestedSinceId ?? null,
+        sinceSeqId: requestedSinceSeqId ?? null,
         gotCount: result.messages.length,
       });
 
@@ -2182,12 +2164,12 @@ function createSyncRemoteMessagesCommand({
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
       if (isInitialPage) {
-        initialPageOldestMessageId = result.messages[0]!.id;
+        initialPageOldestMessage = result.messages[0]!;
         set(mergePersistentMessages$, result.messages);
       } else {
         accumulatedMessages.push(...result.messages);
       }
-      sinceId = result.messages.at(-1)!.id;
+      sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
 
       return syncMessagesAfter();
     }
@@ -2195,27 +2177,29 @@ function createSyncRemoteMessagesCommand({
     signal.throwIfAborted();
 
     if (!get(hasReachedOldestMessage$)) {
-      const oldestMessageId =
-        persistentMessages[0]?.message.id ??
-        initialPageOldestMessageId ??
-        accumulatedMessages[0]?.id;
+      const oldestMessage =
+        persistentMessages[0]?.message ??
+        initialPageOldestMessage ??
+        accumulatedMessages[0];
       if (
         (startedWithoutCursor && initialHasHistoryBefore === false) ||
-        oldestMessageId === undefined
+        oldestMessage === undefined
       ) {
-        set(hasReachedOldestMessage$, true);
+        if (initialHasHistoryBefore === false) {
+          set(hasReachedOldestMessage$, true);
+        }
       } else {
-        let beforeId = oldestMessageId;
+        let beforeSeqId = oldestMessage.seqId;
         async function syncMessagesBefore(): Promise<void> {
           const result = await set(
             dataSource.listMessagesBefore$,
-            { threadId, beforeId },
+            { threadId, beforeSeqId },
             signal,
           );
           signal.throwIfAborted();
           L.debug("syncRemoteMessages$ listMessagesBefore result", {
             threadId,
-            beforeId,
+            beforeSeqId,
             gotCount: result.messages.length,
             hasHistoryBefore: result.hasHistoryBefore,
           });
@@ -2236,7 +2220,7 @@ function createSyncRemoteMessagesCommand({
             return;
           }
 
-          beforeId = result.messages[0]!.id;
+          beforeSeqId = result.messages[0]!.seqId;
 
           return syncMessagesBefore();
         }
@@ -2979,9 +2963,9 @@ function createOnSubscribedCommand({
     signal.throwIfAborted();
     if (latestMessageId) {
       // In-place message updates, such as completed marker followups, are not
-      // returned by a sinceId fetch. Refresh the latest loaded row after the
-      // realtime callbacks are registered so update events racing with this
-      // fetch are queued instead of missed.
+      // returned by a sequence-cursor fetch. Refresh the latest loaded row
+      // after the realtime callbacks are registered so update events racing
+      // with this fetch are queued instead of missed.
       await set(fetchUpdatedMessage$, { messageId: latestMessageId }, signal);
     }
     await set(markThreadReadIfNeeded$, signal);

@@ -276,49 +276,65 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
   });
 
-  it("keeps connector usage visible when completed work is folded", async () => {
+  it("keeps managed API usage visible when completed work is folded", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-folded-connector",
+      threadId: "thread-usage-chip-folded-managed-api",
       chatMessages: [
         {
           id: "msg-usage-folded-user",
           role: "user",
-          content: "Use the connector",
-          runId: "run-usage-folded-connector",
+          content: "Use the managed APIs",
+          runId: "run-usage-folded-managed-api",
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
           id: "msg-usage-folded-work",
           role: "assistant",
-          content: "Inspecting connector results.",
-          runId: "run-usage-folded-connector",
+          content: "Inspecting managed API results.",
+          runId: "run-usage-folded-managed-api",
           createdAt: "2026-06-09T10:00:01Z",
         },
         {
           id: "msg-usage-folded-final",
           role: "assistant",
-          content: "Connector usage is ready.",
-          runId: "run-usage-folded-connector",
+          content: "Managed API usage is ready.",
+          runId: "run-usage-folded-managed-api",
           createdAt: "2026-06-09T10:00:02Z",
         },
         {
           id: "msg-usage-folded-usage",
           role: "assistant",
           content: null,
-          runId: "run-usage-folded-connector",
+          runId: "run-usage-folded-managed-api",
           usage: {
             version: 1,
-            totalCredits: 108,
+            totalCredits: 180,
             settledAt: "2026-06-09T10:00:03Z",
             breakdown: [
               {
-                kind: "connector",
-                credits: 108,
-                providers: [
-                  { provider: "firecrawl", credits: 36 },
-                  { provider: "perplexity", credits: 36 },
-                  { provider: "google-map", credits: 36 },
-                ],
+                kind: "scrape",
+                credits: 36,
+                providers: [{ provider: "firecrawl", credits: 36 }],
+              },
+              {
+                kind: "maps",
+                credits: 36,
+                providers: [{ provider: "google-maps", credits: 36 }],
+              },
+              {
+                kind: "web-search",
+                credits: 36,
+                providers: [{ provider: "perplexity", credits: 36 }],
+              },
+              {
+                kind: "finance",
+                credits: 36,
+                providers: [{ provider: "apidojo", credits: 36 }],
+              },
+              {
+                kind: "weather",
+                credits: 36,
+                providers: [{ provider: "google-weather", credits: 36 }],
               },
             ],
           },
@@ -328,7 +344,7 @@ describe("chat lifecycle", () => {
           id: "msg-usage-folded-completed",
           role: "assistant",
           content: null,
-          runId: "run-usage-folded-connector",
+          runId: "run-usage-folded-managed-api",
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:04Z",
         },
@@ -337,24 +353,31 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-folded-connector",
+      path: "/chats/thread-usage-chip-folded-managed-api",
     });
 
     await expect(
-      screen.findByText("Connector usage is ready."),
+      screen.findByText("Managed API usage is ready."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText("Inspecting connector results."),
+      screen.queryByText("Inspecting managed API results."),
     ).not.toBeInTheDocument();
 
-    const connectorCredit = await screen.findByLabelText("Credit usage 108");
-    click(connectorCredit);
+    const managedApiCredit = await screen.findByLabelText("Credit usage 180");
+    click(managedApiCredit);
 
     await waitFor(() => {
       expect(screen.getByText("Web Fetch")).toBeInTheDocument();
+      expect(screen.getByText("Maps")).toBeInTheDocument();
       expect(screen.getByText("Web Search")).toBeInTheDocument();
-      expect(screen.getByText("Google Map")).toBeInTheDocument();
-      expect(screen.getAllByText("36")).toHaveLength(3);
+      expect(screen.getByText("Finance")).toBeInTheDocument();
+      expect(screen.getByText("Weather")).toBeInTheDocument();
+      expect(screen.getAllByText("36")).toHaveLength(5);
+      expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
+      expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
+      expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
+      expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
+      expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
     });
   });
 
@@ -1218,16 +1241,22 @@ describe("chat lifecycle", () => {
   it("catches up after realtime bursts and keeps the latest burst message visible", async () => {
     const threadId = "catchup-thread";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
-      return makeMessage(`base-${index}`, `Baseline ${index}`);
+      return {
+        ...makeMessage(`base-${index}`, `Baseline ${index}`),
+        seqId: index + 1,
+      };
     });
     const burstMessages = Array.from({ length: 120 }, (_, index) => {
-      return makeMessage(`burst-${index}`, `Burst ${index}`);
+      return {
+        ...makeMessage(`burst-${index}`, `Burst ${index}`),
+        seqId: baselineMessages.length + index + 1,
+      };
     });
     const terminalPageGate = context.mocks.deferred<void>();
     let burstEnabled = false;
     let page = 0;
     let terminalForwardPageRequested = false;
-    const sinceIds: string[] = [];
+    const sinceSeqIds: number[] = [];
 
     mockSubagentThread(context, threadId);
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -1240,13 +1269,13 @@ describe("chat lifecycle", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       async ({ query, respond }) => {
-        if (!query.sinceId) {
+        if (!query.sinceSeqId) {
           return respond(200, {
             messages: baselineMessages,
             hasHistoryBefore: false,
           });
         }
-        sinceIds.push(query.sinceId);
+        sinceSeqIds.push(query.sinceSeqId);
         if (!burstEnabled) {
           return respond(200, { messages: [] });
         }
@@ -1278,7 +1307,7 @@ describe("chat lifecycle", () => {
           ),
         ).toBeTruthy();
       });
-      sinceIds.length = 0;
+      sinceSeqIds.length = 0;
       burstEnabled = true;
       context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
 
@@ -1296,11 +1325,11 @@ describe("chat lifecycle", () => {
         terminalPageGate.resolve();
       }
     }
-    expect(sinceIds).toStrictEqual([
-      baselineMessages.at(-1)!.id,
-      burstMessages[49]!.id,
-      burstMessages[99]!.id,
-      burstMessages.at(-1)!.id,
+    expect(sinceSeqIds).toStrictEqual([
+      baselineMessages.at(-1)!.seqId,
+      burstMessages[49]!.seqId,
+      burstMessages[99]!.seqId,
+      burstMessages.at(-1)!.seqId,
     ]);
   });
 });

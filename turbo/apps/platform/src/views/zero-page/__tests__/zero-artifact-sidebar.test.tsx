@@ -96,6 +96,7 @@ function setupChatThread({
       role: "user",
       content: "Show me the artifact",
       runId: "run-artifact",
+      seqId: 1,
       createdAt: "2026-03-10T00:00:00Z",
       ...(attachFiles ? { attachFiles } : {}),
     },
@@ -104,6 +105,7 @@ function setupChatThread({
       role: "assistant",
       content,
       runId: "run-artifact",
+      seqId: 2,
       createdAt: "2026-03-10T00:00:01Z",
     },
     {
@@ -112,6 +114,7 @@ function setupChatThread({
       content: null,
       runId: "run-artifact",
       runLifecycleEvent: "completed",
+      seqId: 3,
       createdAt: "2026-03-10T00:00:02Z",
     },
   ];
@@ -142,7 +145,7 @@ function setupChatThread({
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceId || query.beforeId) {
+    if (query.sinceSeqId || query.beforeSeqId) {
       return respond(200, { messages: [] });
     }
     return respond(200, { messages, hasHistoryBefore: false });

@@ -89,7 +89,7 @@ export const zeroEmailInboundContract = c.router({
       200: z.object({ received: z.literal(true) }),
       401: z.object({ error: z.string() }),
     },
-    summary: "Handle Resend inbound email webhooks",
+    summary: "Handle signed Resend email delivery events",
   },
 });
 

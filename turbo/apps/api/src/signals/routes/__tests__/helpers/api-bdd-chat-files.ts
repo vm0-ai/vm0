@@ -935,6 +935,8 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       query: {
+        readonly sinceSeqId?: number;
+        readonly beforeSeqId?: number;
         readonly sinceId?: string;
         readonly beforeId?: string;
         readonly limit?: number;
@@ -958,6 +960,8 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       query: {
+        readonly sinceSeqId?: number;
+        readonly beforeSeqId?: number;
         readonly sinceId?: string;
         readonly beforeId?: string;
         readonly limit?: number;

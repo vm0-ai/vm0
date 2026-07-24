@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.147.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.12...runner-rs-v0.147.13) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** preserve reused codex rollout paths ([#22783](https://github.com/vm0-ai/vm0/issues/22783)) ([0413bda](https://github.com/vm0-ai/vm0/commit/0413bdaba888f5c5432dfbdf2b889f2d4a219e5c))
+
+## [0.147.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.11...runner-rs-v0.147.12) (2026-07-23)
+
 ## [0.147.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.10...runner-rs-v0.147.11) (2026-07-23)
 
 
