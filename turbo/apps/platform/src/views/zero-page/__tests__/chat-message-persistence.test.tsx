@@ -99,7 +99,7 @@ describe("chat message persistence", () => {
           if (blockFirstThreadRemote) {
             await blockedRemote.promise;
           }
-          if (query.sinceId) {
+          if (query.sinceSeqId) {
             if (!firstThreadCaughtUp.settled()) {
               firstThreadCaughtUp.resolve();
             }
@@ -114,6 +114,7 @@ describe("chat message persistence", () => {
                 runId: "d0000000-0000-4000-a000-000000000731",
                 structuredPrompt,
                 createdAt: "2026-06-09T10:00:00Z",
+                seqId: 1,
               },
               {
                 id: FIRST_MESSAGE_ID,
@@ -121,12 +122,13 @@ describe("chat message persistence", () => {
                 content: FIRST_MESSAGE,
                 runId: "d0000000-0000-4000-a000-000000000731",
                 createdAt: "2026-06-09T10:01:00Z",
+                seqId: 2,
               },
             ],
             hasHistoryBefore: false,
           });
         }
-        if (query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { messages: [] });
         }
         return respond(200, {
@@ -136,6 +138,7 @@ describe("chat message persistence", () => {
               role: "assistant",
               content: "Other thread response",
               createdAt: "2026-06-09T10:00:00Z",
+              seqId: 1,
             },
           ],
           hasHistoryBefore: false,
@@ -216,20 +219,21 @@ describe("chat message persistence", () => {
     }
   });
 
-  it("merges same-millisecond cached messages before refreshing from the server", async () => {
+  it("merges newly sequenced cached messages before refreshing from the server", async () => {
     const userId = "idb-event-user";
     const orgId = "idb-event-org";
     const threadId = "b0000000-0000-4000-a000-000000000735";
     const initialMessageId = "00000000-0000-4000-8000-000000000736";
     const olderCachedMessageId = "00000000-0000-4000-8000-000000000734";
-    const lowerIdCachedMessageId = "00000000-0000-4000-8000-000000000735";
-    const higherIdCachedMessageId = "00000000-0000-4000-8000-000000000737";
+    const firstSameTimeCachedMessageId = "00000000-0000-4000-8000-000000000735";
+    const secondSameTimeCachedMessageId =
+      "00000000-0000-4000-8000-000000000737";
     const initialMessage = "Initial remote response";
     const olderCachedMessage = "Older cached response";
-    const lowerIdCachedMessage = "Same-millisecond lower-ID cached response";
-    const higherIdCachedMessage = "Same-millisecond higher-ID cached response";
+    const firstSameTimeCachedMessage = "First same-time cached response";
+    const secondSameTimeCachedMessage = "Second same-time cached response";
     const initialMessagesCaughtUp = context.mocks.deferred<void>();
-    const eventRefreshStarted = context.mocks.deferred<string | undefined>();
+    const eventRefreshStarted = context.mocks.deferred<number | undefined>();
     const releaseEventRefresh = context.mocks.deferred<void>();
 
     mockUser(
@@ -248,17 +252,17 @@ describe("chat message persistence", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       async ({ query, respond }) => {
-        if (query.sinceId === higherIdCachedMessageId) {
-          eventRefreshStarted.resolve(query.sinceId);
+        if (query.sinceSeqId === 4) {
+          eventRefreshStarted.resolve(query.sinceSeqId);
           await releaseEventRefresh.promise;
           return respond(200, { messages: [] });
         }
-        if (query.sinceId === initialMessageId) {
+        if (query.sinceSeqId === 2) {
           initialMessagesCaughtUp.resolve();
           return respond(200, { messages: [] });
         }
-        if (query.sinceId !== undefined) {
-          throw new Error(`Unexpected message cursor: ${query.sinceId}`);
+        if (query.sinceSeqId !== undefined) {
+          throw new Error(`Unexpected message cursor: ${query.sinceSeqId}`);
         }
         return respond(200, {
           messages: [
@@ -267,6 +271,7 @@ describe("chat message persistence", () => {
               role: "assistant",
               content: initialMessage,
               createdAt: "2026-06-09T10:00:00.000Z",
+              seqId: 2,
             },
           ],
           hasHistoryBefore: false,
@@ -298,18 +303,21 @@ describe("chat message persistence", () => {
             role: "assistant",
             content: olderCachedMessage,
             createdAt: "2026-06-09T09:59:59.999Z",
+            seqId: 1,
           },
           {
-            id: lowerIdCachedMessageId,
+            id: firstSameTimeCachedMessageId,
             role: "assistant",
-            content: lowerIdCachedMessage,
+            content: firstSameTimeCachedMessage,
             createdAt: "2026-06-09T10:00:00.000Z",
+            seqId: 3,
           },
           {
-            id: higherIdCachedMessageId,
+            id: secondSameTimeCachedMessageId,
             role: "assistant",
-            content: higherIdCachedMessage,
+            content: secondSameTimeCachedMessage,
             createdAt: "2026-06-09T10:00:00.000Z",
+            seqId: 4,
           },
         ],
         context.signal,
@@ -317,14 +325,12 @@ describe("chat message persistence", () => {
 
       createChatMessage(threadId);
 
-      await expect(eventRefreshStarted.promise).resolves.toBe(
-        higherIdCachedMessageId,
-      );
+      await expect(eventRefreshStarted.promise).resolves.toBe(4);
       await expect(
-        screen.findByText(lowerIdCachedMessage),
+        screen.findByText(firstSameTimeCachedMessage),
       ).resolves.toBeInTheDocument();
       await expect(
-        screen.findByText(higherIdCachedMessage),
+        screen.findByText(secondSameTimeCachedMessage),
       ).resolves.toBeInTheDocument();
       expect(screen.queryByText(olderCachedMessage)).not.toBeInTheDocument();
     } finally {
@@ -369,7 +375,7 @@ describe("chat message persistence", () => {
       threadTitle: "Invalid IndexedDB cache",
     });
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-      if (query.sinceId) {
+      if (query.sinceSeqId) {
         if (!remoteMessagesCaughtUp.settled()) {
           remoteMessagesCaughtUp.resolve();
         }
@@ -382,6 +388,7 @@ describe("chat message persistence", () => {
             role: "user",
             content: remoteMessage,
             createdAt: "2026-06-09T10:01:00Z",
+            seqId: 1,
           },
         ],
         hasHistoryBefore: false,

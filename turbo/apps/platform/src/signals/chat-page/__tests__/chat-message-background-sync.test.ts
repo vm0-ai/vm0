@@ -36,12 +36,14 @@ function assistantMessage(
   id: string,
   content: string,
   createdAt: string,
+  seqId: number,
 ): PagedChatMessage {
   return {
     id,
     role: "assistant",
     content,
     createdAt,
+    seqId,
   };
 }
 
@@ -49,16 +51,19 @@ const firstCachedMessage = assistantMessage(
   FIRST_CACHED_MESSAGE_ID,
   "First cached message",
   "2026-07-23T10:01:00.000Z",
+  1,
 );
 const lastCachedMessage = assistantMessage(
   LAST_CACHED_MESSAGE_ID,
   "Last cached message",
   "2026-07-23T10:02:00.000Z",
+  2,
 );
 const newMessage = assistantMessage(
   NEW_MESSAGE_ID,
   "New remote message",
   "2026-07-23T10:03:00.000Z",
+  3,
 );
 
 function mockSignedInUser(): void {
@@ -98,21 +103,21 @@ describe("chat message background sync", () => {
     );
 
     const requests: {
-      readonly sinceId: string | undefined;
-      readonly beforeId: string | undefined;
+      readonly sinceSeqId: number | undefined;
+      readonly beforeSeqId: number | undefined;
     }[] = [];
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       requests.push({
-        sinceId: query.sinceId,
-        beforeId: query.beforeId,
+        sinceSeqId: query.sinceSeqId,
+        beforeSeqId: query.beforeSeqId,
       });
-      if (query.sinceId === LAST_CACHED_MESSAGE_ID) {
+      if (query.sinceSeqId === lastCachedMessage.seqId) {
         return respond(200, {
           messages: [newMessage],
           hasHistoryBefore: true,
         });
       }
-      if (query.sinceId === NEW_MESSAGE_ID) {
+      if (query.sinceSeqId === newMessage.seqId) {
         return respond(200, {
           messages: [],
           hasHistoryBefore: false,
@@ -149,8 +154,8 @@ describe("chat message background sync", () => {
       });
 
       expect(requests).toStrictEqual([
-        { sinceId: LAST_CACHED_MESSAGE_ID, beforeId: undefined },
-        { sinceId: NEW_MESSAGE_ID, beforeId: undefined },
+        { sinceSeqId: 2, beforeSeqId: undefined },
+        { sinceSeqId: 3, beforeSeqId: undefined },
       ]);
     } finally {
       subscriber.abort(abortError("test done"));

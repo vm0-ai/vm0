@@ -5,6 +5,7 @@ import {
   timestamp,
   index,
   jsonb,
+  bigint,
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -117,6 +118,12 @@ export const chatThreads = pgTable(
      * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
+    /** Last seq_id allocated to a message in this thread. */
+    lastChatMessageSeqId: bigint("last_chat_message_seq_id", {
+      mode: "number",
+    })
+      .default(0)
+      .notNull(),
     /**
      * Chat-message-queue pause state: while set, workflow events keep
      * enqueueing but are not consumed. Never blocks user messages.

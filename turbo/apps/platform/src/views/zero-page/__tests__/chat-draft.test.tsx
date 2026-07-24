@@ -362,6 +362,49 @@ describe("chat drafts", () => {
     }
   });
 
+  it("persists and clears typed thread drafts when structured prompts are enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b1000000-0000-4000-a000-000000000107";
+    const draftPatches: Record<string, unknown>[] = [];
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    const editor = await findComposerEditor();
+    await fill(editor, "thread-level draft");
+
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "thread-level draft",
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [{ type: "text", text: "thread-level draft" }],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    await user.click(editor);
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
+
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: null,
+        draftStructuredPrompt: null,
+        draftAttachments: null,
+      });
+    });
+    expect(editor.textContent ?? "").toBe("");
+  });
+
   it("preserves per-thread text drafts while navigating", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",

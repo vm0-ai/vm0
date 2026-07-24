@@ -766,7 +766,7 @@ describe("zero sidebar", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceId || query.beforeId) {
+        if (query.sinceSeqId || query.beforeSeqId) {
           return respond(200, { messages: [] });
         }
         return respond(200, {
@@ -778,6 +778,7 @@ describe("zero sidebar", () => {
                     role: "assistant",
                     content: "Incident update",
                     runLifecycleEvent: "completed",
+                    seqId: 1,
                     createdAt: "2026-03-10T00:05:00Z",
                   },
                 ]

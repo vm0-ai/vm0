@@ -97,9 +97,7 @@ async function selectIncompleteRoundFrontier(
             )
           )
         ORDER BY
-          ${desc(chatMessages.createdAt)},
-          ${desc(chatMessages.sequenceNumber)} NULLS FIRST,
-          ${desc(chatMessages.id)}
+          ${desc(chatMessages.seqId)}
         LIMIT 1
       ) AS candidate
       WHERE incomplete_frontier.depth < ${INCOMPLETE_ROUND_LIMIT + 1}
@@ -135,9 +133,9 @@ async function selectIncompleteRoundFrontier(
 }
 
 function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
-  return sql`${chatMessages.createdAt} > COALESCE(
+  return sql`${chatMessages.seqId} > COALESCE(
     (
-      SELECT MAX(boundary_message.created_at)
+      SELECT MAX(boundary_message.seq_id)
       FROM chat_messages boundary_message
       WHERE boundary_message.chat_thread_id = ${threadId}
         AND boundary_message.run_id = ${successfulRunId}
@@ -147,7 +145,7 @@ function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
           WHERE boundary_revoker.revokes_message_id = boundary_message.id
         )
     ),
-    '-infinity'::timestamptz
+    0::bigint
   )`;
 }
 
@@ -186,7 +184,7 @@ async function loadSelectedIncompleteRounds(
           : [afterSuccessfulRunBoundary(threadId, selection.successfulRunId)]),
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+    .orderBy(asc(chatMessages.seqId));
 
   const statusByRunId = new Map(
     selection.rounds.map((round) => {

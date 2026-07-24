@@ -11,8 +11,8 @@ import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import {
-  reloadArtifacts$,
   resetArtifactsFilters$,
+  setupArtifactsPageData$,
 } from "./artifacts-signals.ts";
 
 export const setupArtifactsPage$ = command(
@@ -25,8 +25,8 @@ export const setupArtifactsPage$ = command(
       return;
     }
 
+    set(setupArtifactsPageData$, signal);
     set(resetArtifactsFilters$);
-    set(reloadArtifacts$);
     set(updatePage$, createElement(ArtifactsPage), "sidebar");
     set(updateDocumentTitle$, "Artifacts");
     await set(hideAppSkeleton$, signal);

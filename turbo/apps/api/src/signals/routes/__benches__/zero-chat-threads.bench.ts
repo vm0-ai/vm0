@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
 import {
   agentComposes,
@@ -389,6 +389,7 @@ async function seedTargetThreadRuns(
     role: string;
     content: string;
     sequenceNumber: number;
+    seqId: number;
     attachFiles?: string[];
     createdAt: Date;
   }[] = [];
@@ -417,6 +418,7 @@ async function seedTargetThreadRuns(
         role: m === 0 ? "user" : "assistant",
         content: markdownLorem(i, m),
         sequenceNumber: m,
+        seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
         ...(m === 0 && i >= latestAttachmentStart
           ? { attachFiles: [targetAttachmentId(i - latestAttachmentStart)] }
           : {}),
@@ -433,6 +435,10 @@ async function seedTargetThreadRuns(
   await chunkedInsert(messageRows, (chunk) => {
     return db.insert(chatMessages).values(chunk);
   });
+  await db
+    .update(chatThreads)
+    .set({ lastChatMessageSeqId: messageRows.length })
+    .where(eq(chatThreads.id, fixture.threadId));
 }
 
 async function seedSideEffectFreeGetData(

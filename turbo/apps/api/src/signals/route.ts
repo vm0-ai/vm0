@@ -97,7 +97,6 @@ import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
 import { zeroDefaultAgentRoutes } from "./routes/zero-default-agent";
 import { zeroDeveloperSupportRoutes } from "./routes/zero-developer-support";
-import { zeroEmailCallbackRoutes } from "./routes/zero-email-callbacks";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroFinanceRoutes } from "./routes/zero-finance";
@@ -153,6 +152,7 @@ import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-s
 import { zeroIntegrationsFeishuMessageRoutes } from "./routes/zero-integrations-feishu-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
+import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-integrations-slack-upload-materialize";
 import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
 import { zeroIntegrationsTeamsMessageRoutes } from "./routes/zero-integrations-teams-message";
 import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
@@ -296,7 +296,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroCustomConnectorsRoutes,
   ...zeroDefaultAgentRoutes,
   ...zeroDeveloperSupportRoutes,
-  ...zeroEmailCallbackRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroFinanceRoutes,
@@ -374,6 +373,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsFeishuMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
+  ...zeroIntegrationsSlackUploadMaterializeRoutes,
   ...zeroIntegrationsTeamsDownloadFileRoutes,
   ...zeroIntegrationsTeamsMessageRoutes,
   ...zeroIntegrationsTeamsUploadCompleteRoutes,

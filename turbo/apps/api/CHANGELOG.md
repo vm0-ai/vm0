@@ -1,5 +1,65 @@
 # Changelog
 
+## [1.310.0](https://github.com/vm0-ai/vm0/compare/api-v1.309.0...api-v1.310.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** add strict per-thread message sequence ids ([#22766](https://github.com/vm0-ai/vm0/issues/22766)) ([32fca1f](https://github.com/vm0-ai/vm0/commit/32fca1f3dd20f43d23dc217c290bae496cb6b78c))
+
+
+### Bug Fixes
+
+* **workflows:** create template drafts before setup ([#22786](https://github.com/vm0-ai/vm0/issues/22786)) ([cad5b07](https://github.com/vm0-ai/vm0/commit/cad5b07ab35c916a0ef8d6caebfab410208246bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.0
+    * @vm0/core bumped to 8.458.1
+    * @vm0/db bumped to 1.132.0
+
+## [1.309.0](https://github.com/vm0-ai/vm0/compare/api-v1.308.3...api-v1.309.0) (2026-07-23)
+
+
+### Features
+
+* canonicalize slack attachments and agent-published files ([#22801](https://github.com/vm0-ai/vm0/issues/22801)) ([22f947f](https://github.com/vm0-ai/vm0/commit/22f947f5c533b06efc321ffda43d100fe610edec))
+
+
+### Refactoring
+
+* **email:** stop inbound agent runs ([#22807](https://github.com/vm0-ai/vm0/issues/22807)) ([bb79fc4](https://github.com/vm0-ai/vm0/commit/bb79fc415971bfb8845b10ca5795d53f72107b79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.219.0
+    * @vm0/connectors bumped to 1.187.0
+    * @vm0/core bumped to 8.458.0
+    * @vm0/db bumped to 1.131.0
+
+## [1.308.3](https://github.com/vm0-ai/vm0/compare/api-v1.308.2...api-v1.308.3) (2026-07-23)
+
+
+### Refactoring
+
+* **api:** consume canonical connector catalog snapshot ([#22721](https://github.com/vm0-ai/vm0/issues/22721)) ([4c92cfa](https://github.com/vm0-ai/vm0/commit/4c92cfa5e96b61351cd42ba7ca55a252b88d37cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.218.1
+    * @vm0/connectors bumped to 1.186.1
+    * @vm0/core bumped to 8.457.3
+    * @vm0/db bumped to 1.130.3
+
 ## [1.308.2](https://github.com/vm0-ai/vm0/compare/api-v1.308.1...api-v1.308.2) (2026-07-23)
 
 

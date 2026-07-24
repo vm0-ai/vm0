@@ -16,6 +16,10 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import {
+  holdChatMessageInsertTransactionFixture,
+  insertChatMessageTransactionFixture,
+} from "../../../test-fixtures/chat-messages";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -1403,27 +1407,42 @@ describe("CHAT-01 chat thread read state", () => {
       ["user", "cursor round two"],
       ["assistant", expect.stringContaining("Insufficient credits")],
     ]);
-    const ids = full.messages.map((message) => {
-      return message.id;
+    const seqIds = full.messages.map((message) => {
+      return message.seqId;
     });
+    expect(seqIds).toStrictEqual(
+      [...seqIds].sort((left, right) => {
+        return left - right;
+      }),
+    );
+    expect(new Set(seqIds).size).toBe(seqIds.length);
     const [
-      firstQueuedUser,
-      firstReplacement,
-      firstAssistant,
-      secondQueuedUser,
-      secondReplacement,
-      secondAssistant,
-    ] = ids;
+      firstQueuedUserMessage,
+      firstReplacementMessage,
+      firstAssistantMessage,
+      secondQueuedUserMessage,
+      secondReplacementMessage,
+      secondAssistantMessage,
+    ] = full.messages;
     if (
-      !firstQueuedUser ||
-      !firstReplacement ||
-      !firstAssistant ||
-      !secondQueuedUser ||
-      !secondReplacement ||
-      !secondAssistant
+      !firstQueuedUserMessage ||
+      !firstReplacementMessage ||
+      !firstAssistantMessage ||
+      !secondQueuedUserMessage ||
+      !secondReplacementMessage ||
+      !secondAssistantMessage
     ) {
       throw new Error("Expected six messages across the two sends");
     }
+    const firstQueuedUser = firstQueuedUserMessage.id;
+    const firstReplacement = firstReplacementMessage.id;
+    const firstAssistant = firstAssistantMessage.id;
+    const secondQueuedUser = secondQueuedUserMessage.id;
+    const secondReplacement = secondReplacementMessage.id;
+    const secondAssistant = secondAssistantMessage.id;
+    const firstAssistantSeqId = firstAssistantMessage.seqId;
+    const secondQueuedUserSeqId = secondQueuedUserMessage.seqId;
+    const secondAssistantSeqId = secondAssistantMessage.seqId;
     expect(full.messages[0]?.error).toBeUndefined();
     expect(full.messages[1]).toMatchObject({
       error: "insufficient_credits",
@@ -1448,17 +1467,25 @@ describe("CHAT-01 chat thread read state", () => {
 
     // Forward pagination strictly after the cursor.
     const since = await chat.listThreadMessages(owner, threadId, {
-      sinceId: firstAssistant,
+      sinceSeqId: firstAssistantSeqId,
     });
     expect(
       since.messages.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
+    const legacySince = await chat.listThreadMessages(owner, threadId, {
+      sinceId: firstAssistant,
+    });
+    expect(
+      legacySince.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
 
     // Backward pagination strictly before the cursor.
     const before = await chat.listThreadMessages(owner, threadId, {
-      beforeId: secondQueuedUser,
+      beforeSeqId: secondQueuedUserSeqId,
       limit: 3,
     });
     expect(
@@ -1467,9 +1494,19 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(before.hasHistoryBefore).toBeFalsy();
+    const legacyBefore = await chat.listThreadMessages(owner, threadId, {
+      beforeId: secondQueuedUser,
+      limit: 3,
+    });
+    expect(
+      legacyBefore.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
+    expect(legacyBefore.hasHistoryBefore).toBeFalsy();
 
     const beforeOverflow = await chat.listThreadMessages(owner, threadId, {
-      beforeId: secondAssistant,
+      beforeSeqId: secondAssistantSeqId,
       limit: 2,
     });
     expect(
@@ -1478,6 +1515,58 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
     expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
+  }, 30_000);
+
+  it("serializes concurrent message sequence writes through commit", async () => {
+    const owner = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Concurrent message sequence agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "sequence serialization anchor",
+    });
+
+    const firstContent = `held sequence message ${randomUUID()}`;
+    const secondContent = `blocked sequence message ${randomUUID()}`;
+    const held = await holdChatMessageInsertTransactionFixture({
+      threadId,
+      content: firstContent,
+      signal: context.signal,
+    });
+    const secondInsert = insertChatMessageTransactionFixture({
+      threadId,
+      content: secondContent,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await Promise.allSettled([held.done, secondInsert]);
+    });
+
+    await expect.poll(held.blockedWaiterCount).toBe(1);
+    const beforeCommit = await chat.listThreadMessages(owner, threadId);
+    expect(
+      beforeCommit.messages.some((message) => {
+        return (
+          message.content === firstContent || message.content === secondContent
+        );
+      }),
+    ).toBeFalsy();
+
+    held.release();
+    await held.done;
+    const second = await secondInsert;
+    const committed = await chat.listThreadMessages(owner, threadId);
+    const concurrentRows = committed.messages.filter((message) => {
+      return message.id === held.message.id || message.id === second.id;
+    });
+    expect(
+      concurrentRows.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([held.message.id, second.id]);
+    expect(held.message.seqId).toBeLessThan(second.seqId);
   }, 30_000);
 });
 

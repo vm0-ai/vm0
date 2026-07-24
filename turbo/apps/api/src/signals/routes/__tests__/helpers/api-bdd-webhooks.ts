@@ -1,9 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import {
-  zeroEmailInboundContract,
-  zeroEmailTriggerCallbackContract,
-} from "@vm0/api-contracts/contracts/zero-email";
+import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
@@ -70,10 +67,6 @@ type AgentStoragePrepareBody = z.infer<
 type AgentStorageCommitBody = z.infer<
   (typeof webhookStoragesCommitContract.commit)["body"]
 >;
-type EmailTriggerCallbackBody = z.infer<
-  (typeof zeroEmailTriggerCallbackContract.post)["body"]
->;
-
 interface Vm0SignatureHeaders {
   readonly "x-vm0-signature": string;
   readonly "x-vm0-timestamp": string;
@@ -392,19 +385,6 @@ export function createWebhookCallbackApi(context: TestContext) {
       return await accept(
         setupApp({ context })(zeroEmailInboundContract).post({
           headers,
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestEmailTriggerCallback(
-      body: EmailTriggerCallbackBody,
-      statuses: readonly (200 | 400 | 401 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(zeroEmailTriggerCallbackContract).post({
-          headers: {},
           body,
         }),
         statuses,

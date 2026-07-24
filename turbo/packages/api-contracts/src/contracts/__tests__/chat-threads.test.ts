@@ -6,6 +6,7 @@ import {
   artifactsContract,
   artifactsListResponseSchema,
   chatMessagesContract,
+  chatThreadMessagesContract,
   chatThreadModelSelectionContract,
   chatThreadsContract,
   generationTemplateRequestSchema,
@@ -36,6 +37,7 @@ describe("chat message response contract", () => {
       id: "message-1",
       role: "user",
       content: "Run the workflow",
+      seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       automationId: "legacy-automation-id",
       automationTitle: "Legacy automation",
@@ -49,11 +51,23 @@ describe("chat message response contract", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("rejects API messages without a sequence ID", () => {
+    const parsed = pagedChatMessageSchema.safeParse({
+      id: "message-1",
+      role: "user",
+      content: "Run the workflow",
+      createdAt: "2026-07-13T00:00:00.000Z",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts a canonical-only workflow Automation identifier", () => {
     const parsed = pagedChatMessageSchema.safeParse({
       id: "message-1",
       role: "user",
       content: "Run the workflow",
+      seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       workflowSnapshot: { ...workflowSnapshot, automationId },
     });
@@ -65,6 +79,33 @@ describe("chat message response contract", () => {
     expect(parsed.data.workflowSnapshot).toStrictEqual({
       ...workflowSnapshot,
       automationId,
+    });
+  });
+});
+
+describe("chat message pagination request compatibility", () => {
+  it("accepts current sequence cursors", () => {
+    expect(
+      chatThreadMessagesContract.list.query.safeParse({
+        sinceSeqId: "42",
+        limit: "20",
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { sinceSeqId: 42, limit: 20 },
+    });
+  });
+
+  it("accepts previous frontend UUID cursors during rollout", () => {
+    const beforeId = "11111111-1111-4111-8111-111111111111";
+    expect(
+      chatThreadMessagesContract.list.query.safeParse({
+        beforeId,
+        limit: "20",
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { beforeId, limit: 20 },
     });
   });
 });

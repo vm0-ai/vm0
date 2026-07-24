@@ -265,7 +265,7 @@ async function getLatestTitleContextMessages(
     .from(chatMessages)
     .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
     .where(and(...filters))
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .orderBy(desc(chatMessages.seqId))
     .limit(TITLE_PRIOR_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
@@ -475,7 +475,7 @@ async function getLatestFollowupContextMessages(
         completedConversationContextMessageCondition(db),
       ),
     )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .orderBy(desc(chatMessages.seqId))
     .limit(FOLLOWUP_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {

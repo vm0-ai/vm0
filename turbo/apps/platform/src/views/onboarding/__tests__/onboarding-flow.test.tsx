@@ -102,7 +102,7 @@ async function openGithubWorkflowRun(): Promise<void> {
   });
   await expect(
     screen.findByRole("heading", {
-      name: "Connect your tools and customize your workflow",
+      name: "Review your workflow draft",
     }),
   ).resolves.toBeInTheDocument();
 }
@@ -262,7 +262,7 @@ describe("onboarding flow", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "Connect your tools and customize your workflow",
+        name: "Review your workflow draft",
       }),
     ).resolves.toBeInTheDocument();
     expect(
@@ -277,7 +277,7 @@ describe("onboarding flow", () => {
     );
   });
 
-  it("disables Run now with a hint until required connectors are connected", async () => {
+  it("allows draft creation before required connectors are connected", async () => {
     mockOnboardingNeeded();
     context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
       return respond(200, { connectors: [] });
@@ -289,15 +289,15 @@ describe("onboarding flow", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "Connect your tools and customize your workflow",
+        name: "Review your workflow draft",
       }),
     ).resolves.toBeInTheDocument();
 
-    expect(buttonByText("Run now")).toBeDisabled();
-    expect(screen.getByText(/to run this workflow/u)).toBeInTheDocument();
+    expect(buttonByText("Create draft")).not.toBeDisabled();
+    expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });
 
-  it("does not gate Run now once the required connectors are connected", async () => {
+  it("keeps draft creation available when connectors are connected", async () => {
     mockOnboardingNeeded();
     context.mocks.data.connectors([
       {
@@ -322,12 +322,12 @@ describe("onboarding flow", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "Connect your tools and customize your workflow",
+        name: "Review your workflow draft",
       }),
     ).resolves.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(buttonByText("Run now")).not.toBeDisabled();
+      expect(buttonByText("Create draft")).not.toBeDisabled();
     });
     expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });

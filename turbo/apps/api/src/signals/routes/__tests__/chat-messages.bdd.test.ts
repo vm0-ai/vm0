@@ -1624,7 +1624,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(guidance.error).toBe("insufficient_credits");
 
     const appended = await chat.listThreadMessages(actor, sent.body.threadId, {
-      sinceId: clientMessageId,
+      sinceSeqId: queuedUser.seqId,
     });
     expect(appended.messages).toStrictEqual([
       expect.objectContaining({
@@ -3675,6 +3675,10 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Auto-inbox label (${workflowTemplate.id})`,
     );
     expect(workflowPrompt).toContain("Use the workflow-setup skill");
+    expect(workflowPrompt).toContain(
+      "Save the reusable workflow draft as soon as the template behavior is clear.",
+    );
+    expect(workflowPrompt).not.toContain("Before creating anything");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
     expect(workflowPrompt).not.toContain("# Artifact Template Context");
     // The illustration run was cancelled, so only its message text is replayed
@@ -5188,7 +5192,7 @@ describe("CHAT-02: shared user message queue", () => {
       Date.parse(original.createdAt),
     );
     const appended = await chat.listThreadMessages(actor, anchor.threadId, {
-      sinceId: queuedId,
+      sinceSeqId: original.seqId,
     });
     expect(appended.messages).toContainEqual(
       expect.objectContaining({

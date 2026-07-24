@@ -1,5 +1,44 @@
 # Changelog
 
+## [8.458.1](https://github.com/vm0-ai/vm0/compare/core-v8.458.0...core-v8.458.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **workflows:** create template drafts before setup ([#22786](https://github.com/vm0-ai/vm0/issues/22786)) ([cad5b07](https://github.com/vm0-ai/vm0/commit/cad5b07ab35c916a0ef8d6caebfab410208246bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.0
+
+## [8.458.0](https://github.com/vm0-ai/vm0/compare/core-v8.457.3...core-v8.458.0) (2026-07-23)
+
+
+### Features
+
+* canonicalize slack attachments and agent-published files ([#22801](https://github.com/vm0-ai/vm0/issues/22801)) ([22f947f](https://github.com/vm0-ai/vm0/commit/22f947f5c533b06efc321ffda43d100fe610edec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.219.0
+    * @vm0/connectors bumped to 1.187.0
+
+## [8.457.3](https://github.com/vm0-ai/vm0/compare/core-v8.457.2...core-v8.457.3) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.218.1
+    * @vm0/connectors bumped to 1.186.1
+
 ## [8.457.2](https://github.com/vm0-ai/vm0/compare/core-v8.457.1...core-v8.457.2) (2026-07-23)
 
 

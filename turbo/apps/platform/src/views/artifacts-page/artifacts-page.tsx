@@ -22,12 +22,7 @@ import {
   IconWorld,
 } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLoadable, useLastResolved, useSet } from "ccstate-react";
 import {
   Button,
   DropdownMenu,
@@ -46,19 +41,17 @@ import {
 import { agents$ } from "../../signals/agent.ts";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import {
+  artifacts$,
   artifactsGridElement$,
   artifactsGridWidth$,
   artifactsSearch$,
   artifactsScrollMetrics$,
   artifactsScrollViewport$,
   artifactsWindow$,
-  cachedArtifacts$,
-  filterArtifacts,
   getArtifactFocusTarget,
   growArtifactsWindow$,
   navigateToArtifactThread$,
   reloadArtifacts$,
-  remoteArtifacts$,
   requestArtifactsKeyboardFocus$,
   selectedArtifactsAgentId$,
   selectedArtifactsCategory$,
@@ -113,6 +106,7 @@ const ARTIFACT_CARD_IMAGE_HEIGHT = 400;
 const ARTIFACT_CARD_PREVIEW_ASPECT_RATIO = 16 / 10;
 const ARTIFACT_CARD_DETAILS_HEIGHT_PX = 64;
 const ARTIFACT_CARD_BORDER_WIDTH_PX = 1;
+
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
   readonly ariaLabel: string;
   readonly label: string;
@@ -1210,30 +1204,14 @@ export function ArtifactsPage() {
   const syncScrollMetrics = useSet(syncArtifactsScrollMetrics$);
   const openArtifactPreview = useOpenArtifactPreview();
   const lightboxUrl = useGet(lightboxUrl$);
-  const remoteLoadable = useLastLoadable(remoteArtifacts$);
-  const cachedLoadable = useLastLoadable(cachedArtifacts$);
+  const artifactsLoadable = useLoadable(artifacts$);
   const agents = useLastResolved(agents$) ?? [];
-  const remoteData =
-    remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
-  const cachedData =
-    cachedLoadable.state === "hasData" ? cachedLoadable.data : null;
-  // Cache-first paint, then let the successful remote bulk response become the
-  // authoritative set. Cached fallback is only used before remote data loads or
-  // when the refresh errors.
-  const sourceData = remoteData ?? cachedData;
-  const sourceArtifacts = sourceData?.artifacts ?? [];
-  const artifacts = filterArtifacts(sourceArtifacts, {
-    search,
-    agentId: selectedAgentId,
-    category: selectedCategory,
-  });
-  // Drive first-paint loading / error off the source set (not the filtered
-  // view, which is legitimately empty when a filter matches nothing).
-  const nothingCached = sourceArtifacts.length === 0;
-  const loading =
-    nothingCached &&
-    (remoteLoadable.state === "loading" || cachedLoadable.state === "loading");
-  const error = nothingCached && remoteLoadable.state === "hasError";
+  const artifacts =
+    artifactsLoadable.state === "hasData"
+      ? artifactsLoadable.data.artifacts
+      : [];
+  const loading = artifactsLoadable.state === "loading";
+  const error = artifactsLoadable.state === "hasError";
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     const viewport = event.currentTarget;
     syncScrollMetrics(viewport);

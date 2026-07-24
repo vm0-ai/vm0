@@ -252,16 +252,14 @@ interface MockLifecycleControl {
 }
 
 type MockPagedMessage =
-  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id"> & {
+  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id" | "seqId"> & {
       id?: string;
     })
-  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id"> & {
+  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id" | "seqId"> & {
       id?: string;
     });
 
-function cloneMockPagedMessage<T extends MockPagedMessage & { id: string }>(
-  message: T,
-): T {
+function cloneMockPagedMessage<T extends PagedChatMessage>(message: T): T {
   return structuredClone(message);
 }
 
@@ -428,7 +426,7 @@ export function mockChatLifecycle(
      */
     sendGate?: Promise<void>;
     /**
-     * Promise the paged history handler awaits before responding to beforeId.
+     * Promise the paged history handler awaits before responding to beforeSeqId.
      * Lets tests prove the latest-message view renders before silent backfill.
      */
     beforeHistoryGate?: Promise<void>;
@@ -597,7 +595,7 @@ export function mockChatLifecycle(
     ];
   };
 
-  const buildPagedMessages = () => {
+  const buildPagedMessages = (): PagedChatMessage[] => {
     const assistantId = `msg-assistant-run-v${assistantVersion}`;
     const historicalMessages = historyMessages.map((message, i) => {
       return {
@@ -667,7 +665,9 @@ export function mockChatLifecycle(
       }
     }
 
-    return pagedMessages;
+    return pagedMessages.map((message, index) => {
+      return { ...message, seqId: index + 1 };
+    });
   };
 
   const appendQueuedUserMessage = async (body: {
@@ -763,16 +763,16 @@ export function mockChatLifecycle(
 
   // Paged messages endpoint — cursor-aware, version-aware mock.
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    const sinceId = query.sinceId;
-    const beforeId = query.beforeId;
+    const sinceSeqId = query.sinceSeqId;
+    const beforeSeqId = query.beforeSeqId;
     const limit = query.limit ?? 50;
     const beforeHistoryGate = options?.beforeHistoryGate ?? Promise.resolve();
     const pagedMessages = buildPagedMessages();
 
-    if (beforeId) {
+    if (beforeSeqId) {
       return beforeHistoryGate.then(() => {
         const beforeIndex = pagedMessages.findIndex((message) => {
-          return message.id === beforeId;
+          return message.seqId === beforeSeqId;
         });
         if (beforeIndex <= 0) {
           return respond(200, { messages: [], hasHistoryBefore: false });
@@ -788,7 +788,7 @@ export function mockChatLifecycle(
       });
     }
 
-    if (sinceId) {
+    if (sinceSeqId) {
       // If the assistant version bumped since the client's cursor, return
       // the updated assistant message as a "new" row. Otherwise return
       // empty to avoid duplicate keys.

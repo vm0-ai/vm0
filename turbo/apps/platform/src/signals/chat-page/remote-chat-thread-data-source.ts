@@ -162,7 +162,7 @@ const appendQueuedMessage$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
+    await accept(
       client.send({
         body: {
           agentId,
@@ -183,15 +183,16 @@ const appendQueuedMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    return {
-      id: clientMessageId,
-      role: "user" as const,
-      content,
-      attachFiles: attachments ?? undefined,
-      generationTemplate,
-      ...(structuredPrompt ? { structuredPrompt } : {}),
-      createdAt: result.body.createdAt ?? nowDate().toISOString(),
-    };
+    const messageClient = get(zeroClient$)(chatThreadMessagesContract);
+    const messageResult = await accept(
+      messageClient.get({
+        params: { threadId, messageId: clientMessageId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return messageResult.body;
   },
 );
 
@@ -202,7 +203,7 @@ const recallMessage$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
+    await accept(
       client.send({
         body: {
           agentId,
@@ -215,27 +216,30 @@ const recallMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    return {
-      id: clientMessageId,
-      role: "user" as const,
-      content: null,
-      revokesMessageId,
-      createdAt: result.body.createdAt ?? nowDate().toISOString(),
-    };
+    const messageClient = get(zeroClient$)(chatThreadMessagesContract);
+    const messageResult = await accept(
+      messageClient.get({
+        params: { threadId, messageId: clientMessageId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return messageResult.body;
   },
 );
 
 export const listMessagesAfter$ = command(
   async (
     { get },
-    { threadId, sinceId }: ListMessagesAfterArgs,
+    { threadId, sinceSeqId }: ListMessagesAfterArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({
         params: { threadId },
-        query: { sinceId, limit: 50 },
+        query: { sinceSeqId, limit: 50 },
         fetchOptions: { signal },
       }),
       [200],
@@ -243,7 +247,7 @@ export const listMessagesAfter$ = command(
     signal.throwIfAborted();
     L.debug("listMessagesAfter$", {
       threadId,
-      sinceId,
+      sinceSeqId,
       count: result.body.messages.length,
       runMessages: result.body.messages.flatMap((m) => {
         if (m.role !== "assistant" || !m.runId) {
@@ -267,14 +271,14 @@ export const listMessagesAfter$ = command(
 export const listMessagesBefore$ = command(
   async (
     { get },
-    { threadId, beforeId }: ListMessagesBeforeArgs,
+    { threadId, beforeSeqId }: ListMessagesBeforeArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({
         params: { threadId },
-        query: { beforeId, limit: 50 },
+        query: { beforeSeqId, limit: 50 },
         fetchOptions: { signal },
       }),
       [200],

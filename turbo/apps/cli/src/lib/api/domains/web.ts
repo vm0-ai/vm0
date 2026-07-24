@@ -114,7 +114,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".ai": "application/postscript",
 };
 
-function inferContentType(localPath: string): string {
+export function inferWebUploadContentType(localPath: string): string {
   const ext = extname(localPath).toLowerCase();
   return MIME_BY_EXTENSION[ext] ?? "application/octet-stream";
 }
@@ -719,7 +719,8 @@ export async function uploadWebFile(
   }
 
   const filename = basename(localPath);
-  const contentType = options?.contentType ?? inferContentType(localPath);
+  const contentType =
+    options?.contentType ?? inferWebUploadContentType(localPath);
 
   const prepareHeaders: Record<string, string> = {
     Authorization: `Bearer ${token}`,
