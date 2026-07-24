@@ -42,18 +42,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     session_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("remove-checkpoint-canonical-storage-state"),
-    checkpoint_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("read-storage-persistence-state"),
     run_id: z.uuid(),
     session_id: z.uuid(),
     checkpoint_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("delete-storage-row"),
-    storage_id: z.uuid(),
   }),
   z.object({
     action: z.literal("replace-custom-connector-prefixes"),

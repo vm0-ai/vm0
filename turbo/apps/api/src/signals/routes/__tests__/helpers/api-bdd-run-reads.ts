@@ -8,10 +8,7 @@ import {
   runsQueueContract,
   runSystemLogContract,
 } from "@vm0/api-contracts/contracts/runs";
-import {
-  checkpointsByIdContract,
-  sessionsByIdContract,
-} from "@vm0/api-contracts/contracts/sessions";
+import { sessionsByIdContract } from "@vm0/api-contracts/contracts/sessions";
 import {
   logsByIdContract,
   logsListContract,
@@ -201,20 +198,6 @@ export function createRunReadsApi(context: TestContext) {
         setupApp({ context })(sessionsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: sessionId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestReadCheckpoint<TStatus extends 200 | 401 | 403 | 404>(
-      actor: ApiTestUser | null,
-      checkpointId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(checkpointsByIdContract).getById({
-          headers: authenticate(context, actor),
-          params: { id: checkpointId },
         }),
         statuses,
       );

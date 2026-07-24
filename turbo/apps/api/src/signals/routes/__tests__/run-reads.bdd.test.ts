@@ -30,9 +30,9 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
- * sessions, checkpoints, telemetry families, zero run detail reads, queue
+ * sessions, telemetry families, zero run detail reads, queue
  * position, and zero logs) plus the RUN-01/02 direct-run create arms that
- * end in those reads (checkpoint resume, memory root policies, volume
+ * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
  *
  * All state is constructed through public APIs: direct runs via compose
@@ -117,16 +117,6 @@ function s3ObjectNotFoundError(): S3NotFoundError {
   return error;
 }
 
-function countSessionHistoryBlobReads(hash: string): number {
-  const blobKey = `blobs/${hash}.blob`;
-  return context.mocks.s3.send.mock.calls.filter(([command]) => {
-    return (
-      s3CommandName(command) === "GetObjectCommand" &&
-      s3CommandKey(command) === blobKey
-    );
-  }).length;
-}
-
 function presignedUrlKeysSince(
   startIndex: number,
 ): readonly (string | undefined)[] {
@@ -199,7 +189,6 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await reads.requestReadAgentRunQueue(null, [401])).body,
       (await reads.requestCancelAgentRun(null, missingId, [401])).body,
       (await reads.requestReadSession(null, missingId, [401])).body,
-      (await reads.requestReadCheckpoint(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
       (await reads.requestRunEvents(null, missingId, {}, [401])).body,
       (await reads.requestRunSystemLog(null, missingId, {}, [401])).body,
@@ -218,7 +207,6 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await reads.requestListAgentRuns(orgless, {}, [401])).body,
       (await reads.requestReadAgentRunQueue(orgless, [401])).body,
       (await reads.requestCancelAgentRun(orgless, missingId, [401])).body,
-      (await reads.requestReadCheckpoint(orgless, missingId, [401])).body,
       (await reads.requestListLogs(orgless, {}, [401])).body,
       (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
         .body,
@@ -732,8 +720,8 @@ describe("RUN-03: queue position", () => {
   });
 });
 
-describe("RUN-04: session and checkpoint reads", () => {
-  it("exposes sessions and checkpoints created through run and webhook flows", async () => {
+describe("RUN-04: session reads", () => {
+  it("exposes sessions created through run and webhook flows", async () => {
     const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = await entitledActor();
     await authOrg.setSecret(actor, {
@@ -853,33 +841,6 @@ describe("RUN-04: session and checkpoint reads", () => {
     }
     expect(plainSession.body.secretNames).toBeNull();
     expect(plainSession.body.artifactNames).toContain("memory");
-    const claim2 = await api.claimRunnerJob(r2.runId);
-    const plainMemory = expectLegacyStorageManifest(
-      claim2.storageManifest,
-    )?.artifacts.find((artifact) => {
-      return artifact.vasStorageName === "memory";
-    });
-    if (!plainMemory) {
-      throw new Error("Expected the plain run to mount memory");
-    }
-
-    // Checkpoints upsert one row per run, so the no-snapshot request needs its
-    // own run. Its canonical checkpoint still retains the mounted Memory.
-    const withoutArtifacts = await webhooks.requestAgentCheckpoint(
-      {
-        runId: r2.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${r2.runId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`bdd empty checkpoint ${r2.runId}`)
-          .digest("hex"),
-      },
-      sandboxHeaders(claim2.sandboxToken),
-      [200],
-    );
-    if (withoutArtifacts.status !== 200) {
-      throw new Error("Expected the bare checkpoint webhook to succeed");
-    }
     await api.requestCancelRun(actor, r2.runId, [200]);
 
     const missingSession = await reads.requestReadSession(
@@ -911,71 +872,11 @@ describe("RUN-04: session and checkpoint reads", () => {
     );
     expectApiError(crossOrgSession.body);
     expect(crossOrgSession.body.error.message).toBe("Session not found");
-
-    const checkpoint = await reads.requestReadCheckpoint(
-      actor,
-      withArtifacts.body.checkpointId,
-      [200],
-    );
-    expect(checkpoint.body).toMatchObject({
-      id: withArtifacts.body.checkpointId,
-      runId: r1.runId,
-      volumeVersionsSnapshot: null,
-    });
-    expect(checkpoint.body.artifactSnapshots).toMatchObject({
-      "bdd-out": outArtifact.vasVersionId,
-    });
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected the checkpoint read to succeed");
-    }
-    expect(checkpoint.body.agentComposeSnapshot.agentComposeVersionId).toMatch(
-      /[0-9a-f-]{36}/,
-    );
-    expect(checkpoint.body.agentComposeSnapshot.secretNames).toContain(
-      "BDD_RUN_READS_TOKEN",
-    );
-    expect(checkpoint.body.conversationId).not.toBeNull();
-
-    const bareCheckpoint = await reads.requestReadCheckpoint(
-      actor,
-      withoutArtifacts.body.checkpointId,
-      [200],
-    );
-    if (bareCheckpoint.status !== 200) {
-      throw new Error("Expected the bare checkpoint read to succeed");
-    }
-    expect(bareCheckpoint.body.artifactSnapshots).toStrictEqual({
-      memory: plainMemory.vasVersionId,
-    });
-
-    const missingCheckpoint = await reads.requestReadCheckpoint(
-      actor,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingCheckpoint.body);
-    expect(missingCheckpoint.body.error.message).toBe("Checkpoint not found");
-
-    const memberCheckpoint = await reads.requestReadCheckpoint(
-      member,
-      withArtifacts.body.checkpointId,
-      [404],
-    );
-    expectApiError(memberCheckpoint.body);
-    expect(memberCheckpoint.body.error.code).toBe("NOT_FOUND");
-
-    const crossOrgCheckpoint = await reads.requestReadCheckpoint(
-      sameUserOtherOrg,
-      withArtifacts.body.checkpointId,
-      [404],
-    );
-    expectApiError(crossOrgCheckpoint.body);
-    expect(crossOrgCheckpoint.body.error.code).toBe("NOT_FOUND");
   });
 });
 
-describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning", () => {
-  it("returns compressed resume history refs", async () => {
+describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinning", () => {
+  it("returns compressed session continuation history refs", async () => {
     mockEnv("S3_ENDPOINT", undefined);
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.example.test");
     const actor = await entitledActor();
@@ -1057,11 +958,13 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       [200],
     );
 
-    const compressedResume = await api.createDirectRun(actor, {
-      checkpointId: checkpointed.body.checkpointId,
-      prompt: "resume with compressed ref",
+    const compressedContinuation = await api.createDirectRun(actor, {
+      sessionId: run.sessionId,
+      prompt: "continue with compressed ref",
     });
-    const compressedClaim = await api.claimRunnerJob(compressedResume.runId);
+    const compressedClaim = await api.claimRunnerJob(
+      compressedContinuation.runId,
+    );
     expect(compressedClaim.resumeSession).toMatchObject({
       sessionId: `bdd-cli-${run.runId}`,
       historyRef: {
@@ -1075,10 +978,10 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
           SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
       },
     });
-    await api.requestCancelRun(actor, compressedResume.runId, [200]);
+    await api.requestCancelRun(actor, compressedContinuation.runId, [200]);
   });
 
-  it("returns zstd-compressed resume history refs", async () => {
+  it("returns zstd-compressed session continuation history refs", async () => {
     mockEnv("S3_ENDPOINT", undefined);
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const actor = await entitledActor();
@@ -1164,11 +1067,13 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       [200],
     );
 
-    const compressedResume = await api.createDirectRun(actor, {
-      checkpointId: checkpointed.body.checkpointId,
-      prompt: "resume with zstd compressed ref",
+    const compressedContinuation = await api.createDirectRun(actor, {
+      sessionId: run.sessionId,
+      prompt: "continue with zstd compressed ref",
     });
-    const compressedClaim = await api.claimRunnerJob(compressedResume.runId);
+    const compressedClaim = await api.claimRunnerJob(
+      compressedContinuation.runId,
+    );
     expect(compressedClaim.resumeSession).toMatchObject({
       sessionId: `bdd-cli-${run.runId}`,
       historyRef: {
@@ -1181,7 +1086,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
-    await api.requestCancelRun(actor, compressedResume.runId, [200]);
+    await api.requestCancelRun(actor, compressedContinuation.runId, [200]);
   });
 
   it("rejects identity repair for a missing compressed session history blob", async () => {
@@ -1362,7 +1267,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     );
   });
 
-  it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
+  it("restores volumes, memory, and conversation state when continuing sessions", async () => {
     mockEnv("S3_ENDPOINT", undefined);
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const storages = createStoragesBddApi(context);
@@ -1510,113 +1415,10 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     if (checkpointed.status !== 200) {
       throw new Error("Expected the resume checkpoint webhook to succeed");
     }
-    const checkpointId = checkpointed.body.checkpointId;
     await webhooks.requestAgentComplete(
       { runId: r1.runId, exitCode: 0 },
       headers1,
       [200],
-    );
-
-    const readsBeforeRefResumeCreate =
-      countSessionHistoryBlobReads(historyHash);
-    const refResumed = await api.createDirectRun(actor, {
-      checkpointId,
-      prompt: "resume from the checkpoint with history ref",
-    });
-    expect(countSessionHistoryBlobReads(historyHash)).toBe(
-      readsBeforeRefResumeCreate,
-    );
-    const refClaim = await api.claimRunnerJob(refResumed.runId);
-    expect(countSessionHistoryBlobReads(historyHash)).toBe(
-      readsBeforeRefResumeCreate,
-    );
-    expect(refClaim.resumeSession).toStrictEqual({
-      sessionId: cliAgentSessionId,
-      historyRef: {
-        kind: "blob",
-        hash: historyHash,
-        url: "https://r2.example.com/storages/presigned?sig=bdd",
-        encoding: "identity",
-        rawSize: Buffer.byteLength(history, "utf8"),
-        encodedSize: Buffer.byteLength(history, "utf8"),
-        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
-      },
-    });
-    await api.requestCancelRun(actor, refResumed.runId, [200]);
-
-    const readsBeforeStorageResumeCreate =
-      countSessionHistoryBlobReads(historyHash);
-    const resumed = await api.createDirectRun(actor, {
-      checkpointId,
-      prompt: "resume from the checkpoint",
-    });
-    expect(countSessionHistoryBlobReads(historyHash)).toBe(
-      readsBeforeStorageResumeCreate,
-    );
-    const claim2 = await api.claimRunnerJob(resumed.runId);
-    expect(countSessionHistoryBlobReads(historyHash)).toBe(
-      readsBeforeStorageResumeCreate,
-    );
-    expect(claim2.checkpointId).toBe(checkpointId);
-    expect(claim2.vars).toStrictEqual({ VOL_VERSION: versionPrefix });
-    expect(claim2.resumeSession).toStrictEqual({
-      sessionId: `bdd-cli-${r1.runId}`,
-      historyRef: {
-        kind: "blob",
-        hash: historyHash,
-        url: "https://r2.example.com/storages/presigned?sig=bdd",
-        encoding: "identity",
-        rawSize: Buffer.byteLength(history, "utf8"),
-        encodedSize: Buffer.byteLength(history, "utf8"),
-        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
-      },
-    });
-    expect(
-      expectLegacyStorageManifest(claim2.storageManifest)?.storages,
-    ).toMatchObject([{ name: "data", vasVersionId: volumeVersion }]);
-    const memory2 = expectLegacyStorageManifest(
-      claim2.storageManifest,
-    )?.artifacts.find((artifact) => {
-      return artifact.vasStorageName === "memory";
-    });
-    expect(memory2).toMatchObject({
-      mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-      missingRootPolicy: "preserveParentVersion",
-    });
-    // A checkpoint without volume or artifact snapshots still resumes.
-    const bareCheckpoint = await webhooks.requestAgentCheckpoint(
-      {
-        runId: resumed.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${resumed.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-      sandboxHeaders(claim2.sandboxToken),
-      [200],
-    );
-    if (bareCheckpoint.status !== 200) {
-      throw new Error("Expected the bare resume checkpoint to succeed");
-    }
-    await api.requestCancelRun(actor, resumed.runId, [200]);
-
-    const bareResume = await api.createDirectRun(actor, {
-      checkpointId: bareCheckpoint.body.checkpointId,
-      prompt: "resume without snapshots",
-    });
-    await api.requestCancelRun(actor, bareResume.runId, [200]);
-
-    const bothIds = await reads.requestCreateDirectRun(
-      actor,
-      {
-        checkpointId,
-        sessionId: r1.sessionId,
-        prompt: "ambiguous resume",
-      },
-      [400],
-    );
-    expectApiError(bothIds.body);
-    expect(bothIds.body.error.message).toContain(
-      "both checkpointId and sessionId",
     );
 
     if (!claim1.agentComposeVersionId) {

@@ -590,7 +590,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       appendSystemPrompt: agentRuns.appendSystemPrompt,
       agentComposeVersionId: agentRuns.agentComposeVersionId,
       vars: agentRuns.vars,
-      resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
       historyGenerationRunId:
@@ -662,7 +661,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         appendSystemPrompt: pendingJob.appendSystemPrompt,
         agentComposeVersionId: pendingJob.agentComposeVersionId,
         vars: (pendingJob.vars as Record<string, string>) ?? null,
-        checkpointId: pendingJob.resumedFromCheckpointId ?? null,
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
@@ -700,7 +698,6 @@ interface ClaimedRun {
   readonly appendSystemPrompt: string | null;
   readonly agentComposeVersionId: string | null;
   readonly vars: unknown;
-  readonly resumedFromCheckpointId: string | null;
 }
 
 interface ActiveRunNetworkPolicyScope {
@@ -770,7 +767,6 @@ async function getClaimableJob(
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
-        resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       },
     })
     .from(runnerJobQueue)
@@ -1566,7 +1562,6 @@ async function buildClaimResponseBody(args: {
           runVars: (args.run.vars as Record<string, string> | null) ?? null,
           connectorVars: args.storedContext.vars,
         }),
-        checkpointId: args.run.resumedFromCheckpointId ?? null,
         storageManifest: storageManifestForRunner(
           args.storedContext,
           args.capabilities,

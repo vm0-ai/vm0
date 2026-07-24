@@ -128,16 +128,6 @@ export async function removeSessionCanonicalStorageState(
   });
 }
 
-export async function removeCheckpointCanonicalStorageState(
-  context: TestContext,
-  checkpointId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "remove-checkpoint-canonical-storage-state",
-    checkpoint_id: checkpointId,
-  });
-}
-
 export async function readStoragePersistenceState(
   context: TestContext,
   ids: {
@@ -156,16 +146,6 @@ export async function readStoragePersistenceState(
     throw new Error("readStoragePersistenceState missing storage_persistence");
   }
   return response.storage_persistence;
-}
-
-export async function deleteStorageRow(
-  context: TestContext,
-  storageId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "delete-storage-row",
-    storage_id: storageId,
-  });
 }
 
 export async function replaceCustomConnectorPrefixes(

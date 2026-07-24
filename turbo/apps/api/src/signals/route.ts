@@ -1,7 +1,6 @@
 import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
-import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
@@ -231,7 +230,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentEventsRoutes,
   ...webhooksAgentFirewallAuthRoutes,
   ...webhooksAgentStorageRoutes,
-  ...agentCheckpointsRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
   ...agentComposesRoutes,

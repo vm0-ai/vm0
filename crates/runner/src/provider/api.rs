@@ -1270,7 +1270,6 @@ fn is_static_json_field(field: &str) -> bool {
             | "catalogDigest"
             | "catalogVersion"
             | "captureNetworkBodies"
-            | "checkpointId"
             | "cliAgentType"
             | "cliAgentSessionId"
             | "clientId"
