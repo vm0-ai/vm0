@@ -48,6 +48,13 @@ describe("chat lifecycle", () => {
   it("sends a recommended follow-up from the latest assistant reply", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
+    const completedAt = "2026-06-09T10:01:01Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
     const sendGate = context.mocks.deferred<void>();
     const sentMessages: {
       prompt?: string;
@@ -110,7 +117,7 @@ describe("chat lifecycle", () => {
               kind: "talk",
             },
           ],
-          createdAt: "2026-06-09T10:01:01Z",
+          createdAt: completedAt,
         },
       ],
       onRunCreate: (body) => {
@@ -126,7 +133,9 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText(assistantReply)).toBeInTheDocument();
-      expect(screen.getByText("Keep going")).toBeInTheDocument();
+      expect(
+        screen.getByText(`Keep going · ${completedAtLabel}`),
+      ).toBeInTheDocument();
       expect(buttonByText(followupPrompt)).toBeInTheDocument();
       expect(buttonByText("Generate hero image")).toBeInTheDocument();
       expect(buttonByText("Generate launch video")).toBeInTheDocument();
