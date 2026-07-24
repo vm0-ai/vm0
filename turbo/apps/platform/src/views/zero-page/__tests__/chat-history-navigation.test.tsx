@@ -12,6 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
+import { chatIdb$ } from "../../../signals/external/chat-idb-store.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { click, fill } from "../../../__tests__/page-helper.ts";
@@ -28,6 +29,7 @@ import {
   EVENT_SOURCED_RENAME_THREAD_ID,
   KEYBOARD_PREV_THREAD_ID,
   KEYBOARD_CURRENT_THREAD_ID,
+  KEYBOARD_NEXT_THREAD_ID,
   AGENT_CHAT_PATH,
   makeRunGroupMessages,
   makeMessage,
@@ -147,16 +149,16 @@ describe("chat lifecycle", () => {
     const forwardRequestCount = sinceSeqIds.length;
     const latestMessageSeqId = messages.at(-1)!.seqId;
     await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription(
-          `chatThreadMessageCreated:${threadId}`,
-        ),
-      ).toBeTruthy();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageCreated:${threadId}`,
+      ),
+    ).toBeFalsy();
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
     await waitFor(() => {
       expect(sinceSeqIds.slice(forwardRequestCount)).toStrictEqual([
-        latestMessageSeqId,
         latestMessageSeqId,
       ]);
     });
@@ -228,12 +230,13 @@ describe("chat lifecycle", () => {
       expect(screen.getByText(initialMessage.content)).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription(
-          `chatThreadMessageCreated:${threadId}`,
-        ),
-      ).toBeTruthy();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageCreated:${threadId}`,
+      ),
+    ).toBeFalsy();
 
     const requestsBeforePayloadlessEvent = emptyForwardRequests;
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
@@ -248,6 +251,201 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText(newMessage.content)).toBeInTheDocument();
+    });
+  });
+
+  it("renders synced messages when IndexedDB is unavailable", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000732";
+    const initialMessage = {
+      id: "00000000-0000-4000-8000-000000000743",
+      role: "assistant" as const,
+      content: "Reply visible before IndexedDB closes",
+      createdAt: "2026-06-09T10:00:00.000Z",
+      seqId: 1,
+    } satisfies PagedChatMessage;
+    const newMessage = {
+      id: "00000000-0000-4000-8000-000000000744",
+      role: "assistant" as const,
+      content: "Reply delivered without IndexedDB",
+      createdAt: "2026-06-09T10:01:00.000Z",
+      seqId: 2,
+    } satisfies PagedChatMessage;
+    const initialMessagesCaughtUp = context.mocks.deferred<void>();
+    let exposeNewMessage = false;
+    let uncursoredRequests = 0;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "IndexedDB failure delivery",
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
+      });
+    });
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (query.sinceSeqId === undefined) {
+        uncursoredRequests += 1;
+        return respond(200, {
+          messages: exposeNewMessage
+            ? [initialMessage, newMessage]
+            : [initialMessage],
+          hasHistoryBefore: false,
+        });
+      }
+      if (query.sinceSeqId === initialMessage.seqId) {
+        if (!exposeNewMessage) {
+          initialMessagesCaughtUp.resolve();
+          return respond(200, { messages: [], hasHistoryBefore: false });
+        }
+        return respond(200, {
+          messages: [newMessage],
+          hasHistoryBefore: false,
+        });
+      }
+      if (query.sinceSeqId === newMessage.seqId) {
+        return respond(200, { messages: [], hasHistoryBefore: false });
+      }
+      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+    });
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      return respond(200, { lastReadAt: null, unreads: [] });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await initialMessagesCaughtUp.promise;
+    await expect(
+      screen.findByText(initialMessage.content),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageCreated:${threadId}`,
+      ),
+    ).toBeFalsy();
+
+    const uncursoredRequestsBeforeEvent = uncursoredRequests;
+    const appDb = await context.store.get(chatIdb$);
+    appDb.close();
+    exposeNewMessage = true;
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+    await expect(
+      screen.findByText(newMessage.content),
+    ).resolves.toBeInTheDocument();
+    expect(uncursoredRequests).toBeGreaterThan(uncursoredRequestsBeforeEvent);
+  });
+
+  it("delivers globally synced messages to the open sidebar thread", async () => {
+    const mainInitialMessage = {
+      id: "00000000-0000-4000-8000-000000000745",
+      role: "assistant" as const,
+      content: "Main pane baseline",
+      createdAt: "2026-06-09T10:00:00.000Z",
+      seqId: 1,
+    } satisfies PagedChatMessage;
+    const sidebarInitialMessage = {
+      id: "00000000-0000-4000-8000-000000000746",
+      role: "assistant" as const,
+      content: "Sidebar pane baseline",
+      createdAt: "2026-06-09T10:00:00.000Z",
+      seqId: 1,
+    } satisfies PagedChatMessage;
+    const sidebarNewMessage = {
+      id: "00000000-0000-4000-8000-000000000747",
+      role: "assistant" as const,
+      content: "Sidebar pane live reply",
+      createdAt: "2026-06-09T10:01:00.000Z",
+      seqId: 2,
+    } satisfies PagedChatMessage;
+    const sidebarMessagesCaughtUp = context.mocks.deferred<void>();
+    let exposeSidebarMessage = false;
+
+    mockKeyboardNavigationThreads();
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, query, respond }) => {
+        const initialMessage =
+          params.threadId === KEYBOARD_CURRENT_THREAD_ID
+            ? mainInitialMessage
+            : sidebarInitialMessage;
+        if (query.sinceSeqId === undefined) {
+          return respond(200, {
+            messages: [initialMessage],
+            hasHistoryBefore: false,
+          });
+        }
+        if (query.sinceSeqId === initialMessage.seqId) {
+          if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
+            return respond(200, { messages: [], hasHistoryBefore: false });
+          }
+          if (!exposeSidebarMessage) {
+            sidebarMessagesCaughtUp.resolve();
+            return respond(200, { messages: [], hasHistoryBefore: false });
+          }
+          return respond(200, {
+            messages: [sidebarNewMessage],
+            hasHistoryBefore: false,
+          });
+        }
+        if (
+          params.threadId === KEYBOARD_NEXT_THREAD_ID &&
+          query.sinceSeqId === sidebarNewMessage.seqId
+        ) {
+          return respond(200, { messages: [], hasHistoryBefore: false });
+        }
+        throw new Error(
+          `Unexpected message cursor: ${JSON.stringify({
+            threadId: params.threadId,
+            query,
+          })}`,
+        );
+      },
+    );
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      return respond(200, { lastReadAt: null, unreads: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}?sidebar=${KEYBOARD_NEXT_THREAD_ID}`,
+    });
+
+    await sidebarMessagesCaughtUp.promise;
+    await waitFor(() => {
+      expect(screen.getByText(mainInitialMessage.content)).toBeInTheDocument();
+      expect(
+        screen.getByText(sidebarInitialMessage.content),
+      ).toBeInTheDocument();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageCreated:${KEYBOARD_CURRENT_THREAD_ID}`,
+      ),
+    ).toBeFalsy();
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageCreated:${KEYBOARD_NEXT_THREAD_ID}`,
+      ),
+    ).toBeFalsy();
+
+    exposeSidebarMessage = true;
+    context.mocks.ably.trigger(
+      `chatThreadMessageCreated:${KEYBOARD_NEXT_THREAD_ID}`,
+    );
+
+    await waitFor(() => {
+      const threadRegions = screen.getAllByLabelText("Chat thread");
+      expect(threadRegions).toHaveLength(2);
+      expect(
+        within(threadRegions[1]!).getByText(sidebarNewMessage.content),
+      ).toBeInTheDocument();
     });
   });
 

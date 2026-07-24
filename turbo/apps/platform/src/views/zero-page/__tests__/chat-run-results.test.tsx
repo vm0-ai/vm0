@@ -1239,7 +1239,7 @@ describe("chat lifecycle", () => {
   });
 
   it("catches up after realtime bursts and keeps the latest burst message visible", async () => {
-    const threadId = "catchup-thread";
+    const threadId = "b0000000-0000-4000-a000-000000000748";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
       return {
         ...makeMessage(`base-${index}`, `Baseline ${index}`),
@@ -1301,12 +1301,13 @@ describe("chat lifecycle", () => {
 
       await waitFor(() => {
         expect(screen.getByText("Baseline 0")).toBeInTheDocument();
-        expect(
-          context.mocks.ably.hasSubscription(
-            `chatThreadMessageCreated:${threadId}`,
-          ),
-        ).toBeTruthy();
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
       });
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadMessageCreated:${threadId}`,
+        ),
+      ).toBeFalsy();
       sinceSeqIds.length = 0;
       burstEnabled = true;
       context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});

@@ -389,11 +389,6 @@ function createSubscribeRealtime() {
               loopCommand$: handlers.onThreadDetailChanged$,
             },
             {
-              kind: "loop",
-              topic: `chatThreadMessageCreated:${threadId}`,
-              loopCommand$: handlers.onMessageCreated$,
-            },
-            {
               kind: "payload",
               topic: `chatThreadMessageUpdated:${threadId}`,
               loopCommand$: handlers.onMessageUpdated$,

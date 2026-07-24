@@ -25,11 +25,6 @@ interface ChatMessageReadStore {
     threadId: string,
     signal?: AbortSignal,
   ): Promise<ChatMessageBounds>;
-  readFrom(
-    threadId: string,
-    message: PagedChatMessage,
-    signal?: AbortSignal,
-  ): Promise<PagedChatMessage[]>;
   readLatest(
     threadId: string,
     signal?: AbortSignal,
@@ -86,13 +81,6 @@ function threadOrderRange(threadId: string): IDBKeyRange {
   return IDBKeyRange.bound([threadId], [threadId, []]);
 }
 
-function threadOrderRangeFrom(
-  threadId: string,
-  message: PagedChatMessage,
-): IDBKeyRange {
-  return IDBKeyRange.bound([threadId, message.seqId], [threadId, []]);
-}
-
 type GetDb = () => Promise<IDBPDatabase>;
 
 function createMessageReadStore(
@@ -122,23 +110,6 @@ function createMessageReadStore(
         lastId: bounds.last?.id ?? null,
       });
       return bounds;
-    },
-    async readFrom(threadId, message, signal) {
-      L.debug("readFrom:start", { threadId, messageId: message.id });
-      const db = await getDb();
-      signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readonly");
-      const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
-      const range = threadOrderRangeFrom(threadId, message);
-      const storedMessages = await index.getAll(range);
-      signal?.throwIfAborted();
-      const messages = storedMessages.map(validateMessage);
-      L.debug("readFrom:done", {
-        threadId,
-        messageId: message.id,
-        count: messages.length,
-      });
-      return messages;
     },
     async readLatest(threadId, signal) {
       L.debug("readLatest:start", { threadId });
