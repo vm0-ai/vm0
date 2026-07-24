@@ -3088,9 +3088,7 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
-    (Boolean(message.content) ||
-      Boolean(message.error) ||
-      Boolean(message.attachFiles?.length))
+    (Boolean(message.content) || Boolean(message.error))
   );
 }
 
@@ -6003,26 +6001,15 @@ function workflowMessageBody(
   );
 }
 
-interface ResolvedMessageAttachment {
-  readonly id: string | null;
-  readonly filename: string;
-  readonly url: string;
-  readonly contentType: string | undefined;
-  readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
-  readonly isImage: boolean;
-  readonly kind: ReturnType<typeof classifyChatAttachment>;
-}
-
 function resolveAttachments(
   message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
-): ResolvedMessageAttachment[] {
+) {
   const source =
     message.attachFiles && message.attachFiles.length > 0
       ? message.attachFiles
       : parsed;
   return source.map((f) => {
-    const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
         ? f.contentType
@@ -6037,7 +6024,6 @@ function resolveAttachments(
       filename: f.filename,
       url: f.url,
       contentType,
-      ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
     };
@@ -6102,55 +6088,12 @@ function clipboardAttachmentsFromStructuredPrompt(
   });
 }
 
-function AttachmentMaterializationState({
-  attachment,
-}: {
-  attachment: ReturnType<typeof resolveAttachments>[number];
-}) {
-  const materialization = attachment.assetRef?.materialization;
-  if (!materialization || materialization.status === "ready") {
-    return null;
-  }
-  const pending = materialization.status === "pending";
-  const error =
-    materialization.status === "failed" ? materialization.error : undefined;
-  return (
-    <div
-      className="flex max-w-72 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-      role={pending ? "status" : "alert"}
-      title={error?.message}
-    >
-      {pending ? (
-        <IconLoader2
-          aria-hidden="true"
-          className="size-4 shrink-0 animate-spin text-muted-foreground"
-        />
-      ) : (
-        <IconAlertCircle
-          aria-hidden="true"
-          className="size-4 shrink-0 text-destructive"
-        />
-      )}
-      <span className="min-w-0">
-        <span className="block truncate font-medium">
-          {attachment.filename}
-        </span>
-        <span className="block text-xs text-muted-foreground">
-          {pending ? "Importing attachment" : "Attachment unavailable"}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 function UserMessageAttachments({
   attachments,
   onImageClick,
-  align = "end",
 }: {
   attachments: ReturnType<typeof resolveAttachments>;
   onImageClick: (url: string) => void;
-  align?: "start" | "end";
 }) {
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
@@ -6159,21 +6102,8 @@ function UserMessageAttachments({
   }
 
   return (
-    <div
-      className={cn(
-        "flex max-w-[85%] flex-wrap gap-2",
-        align === "start" ? "mt-2 justify-start" : "mb-2 justify-end self-end",
-      )}
-    >
+    <div className="mb-2 flex max-w-[85%] flex-wrap justify-end gap-2">
       {attachments.map((a) => {
-        if (a.assetRef && a.assetRef.materialization.status !== "ready") {
-          return (
-            <AttachmentMaterializationState
-              key={a.id ?? a.url}
-              attachment={a}
-            />
-          );
-        }
         if (a.isImage) {
           return (
             <ChatImagePreviewLink
@@ -6971,7 +6901,6 @@ function PagedAssistantMessageItem({
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
-  const attachments = resolveAttachments(message, []);
 
   if (message.error) {
     return (
@@ -6986,7 +6915,7 @@ function PagedAssistantMessageItem({
     );
   }
 
-  if (message.content || message.blocks.length > 0 || attachments.length > 0) {
+  if (message.content || message.blocks.length > 0) {
     const { blocks } = message;
     return (
       <div
@@ -7002,11 +6931,6 @@ function PagedAssistantMessageItem({
             hardBreaks={false}
           />
         ) : null}
-        <UserMessageAttachments
-          attachments={attachments}
-          onImageClick={openLightbox}
-          align="start"
-        />
       </div>
     );
   }

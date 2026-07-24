@@ -422,38 +422,14 @@ export type IntegrationsTelegramBotListContract =
 const slackUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required"),
   length: z.number().int().positive("File length must be a positive integer"),
-  canonical: z
-    .object({
-      operationId: z.string().uuid(),
-      contentType: z.string().min(1).max(200),
-      checksumSha256: z.string().regex(/^[a-f0-9]{64}$/),
-      channel: z.string().min(1, "Channel ID is required"),
-      threadTs: z.string().optional(),
-      title: z.string().optional(),
-      initialComment: z.string().optional(),
-    })
-    .optional(),
 });
 
 export type SlackUploadInitBody = z.infer<typeof slackUploadInitBodySchema>;
 
-const directSlackUploadInitResponseSchema = z.object({
+const slackUploadInitResponseSchema = z.object({
   uploadUrl: z.string(),
   fileId: z.string(),
 });
-
-const canonicalSlackUploadInitResponseSchema = z.object({
-  kind: z.literal("canonical"),
-  assetId: z.string().uuid(),
-  operationId: z.string().uuid(),
-  uploadUrl: z.string().url().optional(),
-  url: z.string().url(),
-});
-
-const slackUploadInitResponseSchema = z.union([
-  directSlackUploadInitResponseSchema,
-  canonicalSlackUploadInitResponseSchema,
-]);
 
 export type SlackUploadInitResponse = z.infer<
   typeof slackUploadInitResponseSchema
@@ -473,57 +449,6 @@ export const integrationsSlackUploadInitContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get a pre-signed Slack upload URL via org bot token",
-  },
-});
-
-const slackUploadMaterializeBodySchema = z.object({
-  assetId: z.string().uuid(),
-  operationId: z.string().uuid(),
-});
-
-const slackUploadMaterializeResponseSchema = z.object({
-  assetId: z.string().uuid(),
-  url: z.string().url(),
-  delivery: z.discriminatedUnion("status", [
-    z.object({
-      status: z.literal("pending"),
-      uploadUrl: z.string(),
-      fileId: z.string(),
-    }),
-    z.object({
-      status: z.literal("delivered"),
-      fileId: z.string(),
-      permalink: z.string(),
-    }),
-    z.object({
-      status: z.literal("failed"),
-      message: z.string(),
-      retryable: z.boolean(),
-    }),
-  ]),
-});
-
-export type SlackUploadMaterializeBody = z.infer<
-  typeof slackUploadMaterializeBodySchema
->;
-export type SlackUploadMaterializeResponse = z.infer<
-  typeof slackUploadMaterializeResponseSchema
->;
-
-export const integrationsSlackUploadMaterializeContract = c.router({
-  materialize: {
-    method: "POST",
-    path: "/api/zero/integrations/slack/upload-file/materialize",
-    headers: authHeadersSchema,
-    body: slackUploadMaterializeBodySchema,
-    responses: {
-      200: slackUploadMaterializeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Materialize a canonical Slack publication before delivery",
   },
 });
 
@@ -947,9 +872,6 @@ const slackUploadCompleteBodySchema = z.object({
   threadTs: z.string().optional(),
   title: z.string().optional(),
   initialComment: z.string().optional(),
-  canonicalAssetId: z.string().uuid().optional(),
-  operationId: z.string().uuid().optional(),
-  uploadError: z.string().max(2000).optional(),
 });
 
 export type SlackUploadCompleteBody = z.infer<
@@ -959,10 +881,6 @@ export type SlackUploadCompleteBody = z.infer<
 const slackUploadCompleteResponseSchema = z.object({
   fileId: z.string(),
   permalink: z.string(),
-  assetId: z.string().uuid().optional(),
-  assetUrl: z.string().url().optional(),
-  deliveryStatus: z.enum(["delivered", "failed"]).optional(),
-  deliveryError: z.string().optional(),
 });
 
 export type SlackUploadCompleteResponse = z.infer<

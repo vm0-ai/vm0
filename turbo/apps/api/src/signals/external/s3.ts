@@ -547,39 +547,32 @@ export function putS3Object(
   key: string,
   body: string | Buffer,
   contentType: string,
-  signal?: AbortSignal,
 ): Computed<Promise<void>> {
-  return putS3ObjectWithClient(s3ClientForBucket(bucket), {
+  return putS3ObjectWithClient(
+    s3ClientForBucket(bucket),
     bucket,
     key,
     body,
     contentType,
-    signal,
-  });
-}
-
-interface PutS3ObjectArgs {
-  readonly bucket: string;
-  readonly key: string;
-  readonly body: string | Buffer;
-  readonly contentType: string;
-  readonly signal?: AbortSignal;
+  );
 }
 
 function putS3ObjectWithClient(
   client$: Computed<S3Client>,
-  args: PutS3ObjectArgs,
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(client$);
     await client.send(
       new PutObjectCommand({
-        Bucket: args.bucket,
-        Key: args.key,
-        Body: args.body,
-        ContentType: args.contentType,
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
       }),
-      args.signal ? { abortSignal: args.signal } : undefined,
     );
   });
 }
@@ -590,12 +583,13 @@ export function putHostedSitesS3Object(
   body: string | Buffer,
   contentType: string,
 ): Computed<Promise<void>> {
-  return putS3ObjectWithClient(hostedSitesS3Client$, {
+  return putS3ObjectWithClient(
+    hostedSitesS3Client$,
     bucket,
     key,
     body,
     contentType,
-  });
+  );
 }
 
 function s3CopySource(bucket: string, key: string): string {

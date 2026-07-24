@@ -153,7 +153,6 @@ import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-s
 import { zeroIntegrationsFeishuMessageRoutes } from "./routes/zero-integrations-feishu-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
-import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-integrations-slack-upload-materialize";
 import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
 import { zeroIntegrationsTeamsMessageRoutes } from "./routes/zero-integrations-teams-message";
 import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
@@ -375,7 +374,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsFeishuMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
-  ...zeroIntegrationsSlackUploadMaterializeRoutes,
   ...zeroIntegrationsTeamsDownloadFileRoutes,
   ...zeroIntegrationsTeamsMessageRoutes,
   ...zeroIntegrationsTeamsUploadCompleteRoutes,

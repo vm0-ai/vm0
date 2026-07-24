@@ -602,10 +602,7 @@ async function loadArtifactFile(
       ),
     )
     .limit(1);
-  if (!row?.runId) {
-    return null;
-  }
-  return { ...row, runId: row.runId };
+  return row ?? null;
 }
 
 function resolveArtifactS3ObjectFromKey(
