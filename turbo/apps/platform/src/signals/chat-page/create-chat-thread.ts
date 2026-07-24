@@ -2103,6 +2103,8 @@ function createLatestMessageSignals(
   };
 }
 
+const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
+
 function createSyncRemoteMessagesCommand({
   threadId,
   persistentMessages$,
@@ -2119,6 +2121,7 @@ function createSyncRemoteMessagesCommand({
   return command(async ({ get, set }, signal: AbortSignal) => {
     const persistentMessages = get(persistentMessages$);
     const accumulatedMessages: PagedChatMessage[] = [];
+    let mergedMessageCount = 0;
     const latestPersistentMessage = persistentMessages.at(-1);
     let sinceSeqId = latestPersistentMessage?.message.seqId;
     const startedWithoutCursor = latestPersistentMessage === undefined;
@@ -2200,6 +2203,19 @@ function createSyncRemoteMessagesCommand({
               signal,
             );
             signal.throwIfAborted();
+            // Flush periodically so long backfills surface incrementally
+            // (e.g. the history backfill progress bar) instead of appearing
+            // only after every page has been fetched.
+            if (
+              accumulatedMessages.length - mergedMessageCount >=
+              HISTORY_BACKFILL_MERGE_BATCH_SIZE
+            ) {
+              set(
+                mergePersistentMessages$,
+                accumulatedMessages.slice(mergedMessageCount),
+              );
+              mergedMessageCount = accumulatedMessages.length;
+            }
           }
 
           if (!result.hasHistoryBefore) {
@@ -2215,7 +2231,10 @@ function createSyncRemoteMessagesCommand({
       }
     }
     signal.throwIfAborted();
-    set(mergePersistentMessages$, accumulatedMessages);
+    set(
+      mergePersistentMessages$,
+      accumulatedMessages.slice(mergedMessageCount),
+    );
   });
 }
 
@@ -2485,6 +2504,24 @@ function createPagedMessages(
     optimisticMessages$,
     resolveBodyBlocks,
   });
+  // Approximate backfill progress from the loaded seqId range. The thread's
+  // true max seqId is not exposed to the client, so the newest loaded message
+  // stands in for it. seqIds are allocated from 1, so a first seqId <= 1 means
+  // the full history is already loaded. Null hides the progress bar.
+  const historyBackfillProgress$ = computed((get): Promise<number | null> => {
+    if (get(hasReachedOldestMessage$)) {
+      return Promise.resolve(null);
+    }
+    const messages = get(persistentChatMessages$);
+    const first = messages[0];
+    const last = messages.at(-1);
+    if (first === undefined || last === undefined || first.message.seqId <= 1) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(
+      (last.message.seqId - first.message.seqId) / last.message.seqId,
+    );
+  });
   const semanticMessages$ = computed((get): SemanticChatMessage[] => {
     return semanticTranscriptMessagesFromRaw(get(rawMessages$));
   });
@@ -2553,6 +2590,7 @@ function createPagedMessages(
     ...messageSync,
     ...renderedMessages,
     rawMessages$,
+    historyBackfillProgress$,
     messageRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
@@ -4305,6 +4343,7 @@ function publicChatThreadMessageSignals(
     thinkingMessageId$: messages.thinkingMessageId$,
     thinkingText$: messages.thinkingText$,
     recommendedFollowupSource$: messages.recommendedFollowupSource$,
+    historyBackfillProgress$: messages.historyBackfillProgress$,
     activeGoalObjective$: messages.activeGoalObjective$,
     donePhrase$: messages.donePhrase$,
     loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
