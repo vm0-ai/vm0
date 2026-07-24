@@ -31,7 +31,10 @@ uv sync --locked
 ```
 
 `uv sync --locked` installs the development and test dependency groups into
-`.venv` without changing `uv.lock`.
+`.venv` without changing `uv.lock`. It also selects the exact interpreter from
+`.python-version`, which matches the Python patch embedded in the pinned
+mitmproxy standalone runtime. The package and static-analysis settings retain
+mitmproxy's older supported source-compatibility floor.
 
 ## Running Tests
 

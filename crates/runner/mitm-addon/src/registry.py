@@ -6,7 +6,6 @@ import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeAlias
 
 from mitmproxy import ctx
 
@@ -19,7 +18,7 @@ VmContext = tuple[
     matching.CompiledFirewallSet | None,
     matching.CompiledNetworkPolicies,
 ]
-_RegistryFileKey: TypeAlias = tuple[
+type _RegistryFileKey = tuple[
     str,
     int,
     int,
