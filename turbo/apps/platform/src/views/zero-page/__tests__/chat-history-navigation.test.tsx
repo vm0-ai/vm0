@@ -7,6 +7,7 @@ import {
   chatThreadMessagesContract,
   chatThreadRenameContract,
   chatThreadsContract,
+  chatMessagesContract,
   type ChatThreadEvent,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -252,6 +253,105 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText(newMessage.content)).toBeInTheDocument();
     });
+  });
+
+  it("reconciles optimistic messages through global created events", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000733";
+    const runId = "d0000000-0000-4000-a000-000000000750";
+    const prompt = "Optimistic message awaiting server persistence";
+    const initialMessage = {
+      id: "00000000-0000-4000-8000-000000000750",
+      role: "assistant" as const,
+      content: "Reply visible before optimistic reconciliation",
+      createdAt: "2026-06-09T10:00:00.000Z",
+      seqId: 1,
+    } satisfies PagedChatMessage;
+    const acknowledgement = {
+      id: "00000000-0000-4000-8000-000000000751",
+      role: "assistant" as const,
+      content: "Server acknowledged the optimistic message",
+      createdAt: "2026-06-09T10:02:00.000Z",
+      seqId: 3,
+      runId,
+    } satisfies PagedChatMessage;
+    const initialMessagesCaughtUp = context.mocks.deferred<void>();
+    let persistedMessage: PagedChatMessage | null = null;
+    let exposePersistedMessage = false;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Optimistic realtime reconciliation",
+    });
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (query.sinceSeqId === undefined) {
+        return respond(200, {
+          messages: [initialMessage],
+          hasHistoryBefore: false,
+        });
+      }
+      if (query.sinceSeqId === initialMessage.seqId) {
+        if (!exposePersistedMessage || persistedMessage === null) {
+          initialMessagesCaughtUp.resolve();
+          return respond(200, { messages: [], hasHistoryBefore: false });
+        }
+        return respond(200, {
+          messages: [persistedMessage, acknowledgement],
+          hasHistoryBefore: false,
+        });
+      }
+      if (query.sinceSeqId === acknowledgement.seqId) {
+        return respond(200, { messages: [], hasHistoryBefore: false });
+      }
+      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+    });
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      const clientMessageId = body.clientMessageId;
+      if (clientMessageId === undefined) {
+        throw new Error("Expected send request to include clientMessageId");
+      }
+      if (body.prompt !== prompt) {
+        throw new Error("Expected send request to include the typed prompt");
+      }
+      persistedMessage = {
+        id: clientMessageId,
+        role: "user",
+        content: body.prompt,
+        createdAt: "2026-06-09T10:01:00.000Z",
+        seqId: 2,
+        runId,
+      };
+      return respond(201, {
+        runId,
+        threadId,
+        status: "pending",
+        createdAt: "2026-06-09T10:01:00.000Z",
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await initialMessagesCaughtUp.promise;
+    await expect(
+      screen.findByText(initialMessage.content),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+
+    await sendMessageInUI(user, chatComposerTextarea(), prompt);
+    await waitFor(() => {
+      expect(screen.getAllByText(prompt)).toHaveLength(1);
+      expect(persistedMessage).not.toBeNull();
+    });
+
+    exposePersistedMessage = true;
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+    await expect(
+      screen.findByText(acknowledgement.content),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByText(prompt)).toHaveLength(1);
   });
 
   it("renders synced messages when IndexedDB is unavailable", async () => {
