@@ -59,6 +59,8 @@ import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
 import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
 import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
 import * as feishuOrgEventSchema from "./schema/feishu-org-event";
+import * as feishuChatThreadRouteSchema from "./schema/feishu-chat-thread-route";
+import * as feishuChatIngressSchema from "./schema/feishu-chat-ingress";
 import * as feishuUserAgentPreferenceSchema from "./schema/feishu-user-agent-preference";
 import * as e2eTeamsMockCallLogSchema from "./schema/e2e-teams-mock-call-log";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
@@ -149,6 +151,8 @@ export const schema = {
   ...feishuOrgConnectionSchema,
   ...feishuOrgThreadSessionSchema,
   ...feishuOrgEventSchema,
+  ...feishuChatThreadRouteSchema,
+  ...feishuChatIngressSchema,
   ...feishuUserAgentPreferenceSchema,
   ...e2eTeamsMockCallLogSchema,
   ...e2eTelegramMockCallLogSchema,

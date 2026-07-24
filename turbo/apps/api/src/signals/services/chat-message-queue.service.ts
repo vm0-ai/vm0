@@ -429,6 +429,7 @@ export async function pendingChatThreadQueueThreadIds(
           inArray(chatMessageQueue.itemType, [
             "user_message",
             "slack_user_message",
+            "feishu_user_message",
           ]),
           and(
             eq(chatMessageQueue.itemType, "workflow_event"),

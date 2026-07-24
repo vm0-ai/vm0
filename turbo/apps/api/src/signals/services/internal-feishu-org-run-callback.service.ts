@@ -13,6 +13,7 @@ import { logger } from "../../lib/log";
 import {
   removeFeishuMessageReaction,
   replyWithFeishuMessage,
+  sendFeishuMessage,
 } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -180,6 +181,56 @@ async function clearThinkingReaction(args: {
   );
 }
 
+async function sendFeishuCallbackResponse(args: {
+  readonly db: Db;
+  readonly payload: FeishuOrgCallbackPayload;
+  readonly runId: string;
+  readonly message: ReturnType<typeof buildFeishuAgentResponseMessage>;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.payload.replyInThread) {
+    await replyWithFeishuMessage({
+      db: args.db,
+      installationId: args.payload.installationId,
+      messageId: args.payload.messageId,
+      message: args.message,
+      replyInThread: true,
+      signal: args.signal,
+    });
+  } else {
+    await sendFeishuMessage({
+      db: args.db,
+      installationId: args.payload.installationId,
+      receiveIdType: "chat_id",
+      receiveId: args.payload.chatId,
+      message: args.message,
+      idempotencyKey: args.runId,
+      signal: args.signal,
+    });
+  }
+  args.signal.throwIfAborted();
+}
+
+async function loadFeishuCallbackConnection(
+  db: Db,
+  payload: FeishuOrgCallbackPayload,
+) {
+  const [connection] = await db
+    .select({
+      id: feishuOrgConnections.id,
+      feishuOpenId: feishuOrgConnections.feishuOpenId,
+    })
+    .from(feishuOrgConnections)
+    .where(
+      and(
+        eq(feishuOrgConnections.id, payload.connectionId),
+        eq(feishuOrgConnections.installationId, payload.installationId),
+      ),
+    )
+    .limit(1);
+  return connection;
+}
+
 async function handleFeishuCallback(
   args: HandleFeishuCallbackInput,
 ): Promise<InternalRunCallbackDispatchResult> {
@@ -191,6 +242,9 @@ async function handleFeishuCallback(
     return { success: false, error: "Invalid Feishu callback payload" };
   }
   const payload = parsed.data;
+  if (payload.canonicalChatDelivery) {
+    return { success: true, skipped: true };
+  }
   const run = await loadRun(args.db, args.callback.runId);
   args.signal.throwIfAborted();
   if (!run) {
@@ -218,19 +272,7 @@ async function handleFeishuCallback(
   if (!installation) {
     return { success: false, error: "Feishu installation not found" };
   }
-  const [connection] = await args.db
-    .select({
-      id: feishuOrgConnections.id,
-      feishuOpenId: feishuOrgConnections.feishuOpenId,
-    })
-    .from(feishuOrgConnections)
-    .where(
-      and(
-        eq(feishuOrgConnections.id, payload.connectionId),
-        eq(feishuOrgConnections.installationId, payload.installationId),
-      ),
-    )
-    .limit(1);
+  const connection = await loadFeishuCallbackConnection(args.db, payload);
   args.signal.throwIfAborted();
   if (!connection) {
     await clearThinkingReaction({
@@ -281,23 +323,23 @@ async function handleFeishuCallback(
     getFeatureOverrides: args.getFeatureOverrides,
     signal: args.signal,
   });
+  args.signal.throwIfAborted();
   const responseText =
     args.callback.status === "failed"
       ? (errorText ?? "Agent execution failed.")
       : (output ?? "Task completed successfully.");
-  await replyWithFeishuMessage({
+  const responseMessage = buildFeishuAgentResponseMessage({
+    text: responseText,
+    auditUrl: presentation.logsUrl,
+    footerText: presentation.footerText,
+  });
+  await sendFeishuCallbackResponse({
     db: args.db,
-    installationId: payload.installationId,
-    messageId: payload.messageId,
-    message: buildFeishuAgentResponseMessage({
-      text: responseText,
-      auditUrl: presentation.logsUrl,
-      footerText: presentation.footerText,
-    }),
-    replyInThread: payload.replyInThread,
+    payload,
+    runId: args.callback.runId,
+    message: responseMessage,
     signal: args.signal,
   });
-  args.signal.throwIfAborted();
   await clearThinkingReaction({
     db: args.db,
     payload,
@@ -305,6 +347,7 @@ async function handleFeishuCallback(
   });
   args.signal.throwIfAborted();
   await args.saveRunSummary(args.callback.runId, run.prompt, output ?? "");
+  args.signal.throwIfAborted();
   return { success: true };
 }
 

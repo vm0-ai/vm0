@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   pgTable,
   text,
@@ -25,6 +26,7 @@ export const feishuOrgConnections = pgTable(
     feishuOpenId: varchar("feishu_open_id", { length: 255 }).notNull(),
     vm0UserId: text("vm0_user_id").notNull(),
     feishuUserName: varchar("feishu_user_name", { length: 255 }),
+    dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

@@ -64,11 +64,14 @@ export function buildFeishuConnectUrl(args: {
 }): string {
   const timestamp = Math.floor(now() / 1000);
   const params = new URLSearchParams({
+    connect: "account",
     installationId: args.installationId,
     openId: args.openId,
     chatId: args.chatId,
     ts: String(timestamp),
     sig: signFeishuConnectToken({ ...args, timestamp }),
   });
-  return `${env("VM0_WEB_URL")}/api/zero/feishu/connect?${params.toString()}`;
+  const url = new URL("/settings/feishu", env("APP_URL"));
+  url.search = params.toString();
+  return url.toString();
 }
