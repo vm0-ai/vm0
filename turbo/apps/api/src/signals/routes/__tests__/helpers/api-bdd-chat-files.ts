@@ -979,6 +979,21 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async getThreadMessage(
+      actor: ApiTestUser,
+      threadId: string,
+      messageId: string,
+    ): Promise<PagedChatMessage> {
+      const response = await accept(
+        threadMessagesClient().get({
+          headers: authenticate(context, actor),
+          params: { threadId, messageId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async listThreadArtifacts(
       actor: ApiTestUser,
       threadId: string,

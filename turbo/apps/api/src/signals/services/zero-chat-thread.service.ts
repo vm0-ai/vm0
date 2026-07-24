@@ -1817,6 +1817,34 @@ export function zeroChatThreadMessagesPage(args: {
   });
 }
 
+export function zeroChatThreadMessageById(args: {
+  readonly threadId: string;
+  readonly userId: string;
+  readonly messageId: string;
+}): Computed<Promise<PagedChatMessage | null>> {
+  return computed(async (get) => {
+    const owned = await get(ownedChatThread(args.threadId, args.userId));
+    if (!owned) {
+      return null;
+    }
+
+    const db = get(db$);
+    const [row] = await selectChatMessagesWithMetadata(db)
+      .where(
+        and(
+          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      return null;
+    }
+
+    return await get(toPagedMessage(args.userId, row));
+  });
+}
+
 export const createChatThread$ = command(
   async (
     { set },

@@ -914,12 +914,13 @@ describe("CHAT-02: completed chat callback", () => {
     expect(claimed.id).not.toBe(queued.id);
     expect(claimed.revokesMessageId).toBe(queued.id);
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
-    const original = userMessages(afterAutoSend.messages).find((message) => {
-      return message.id === queued.id;
-    });
-    if (!original) {
-      throw new Error("Expected the original queued message");
-    }
+    // Exercise the temporary compatibility route used by already-open
+    // app-v0.627.3 browser clients.
+    const original = await chat.getThreadMessage(
+      actor,
+      first.threadId,
+      queued.id,
+    );
     expect(original.runId).toBeUndefined();
     // The raw message page contains both immutable rows; the client folds the
     // original into its run-associated replacement.
