@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
@@ -47,9 +48,11 @@ function buildCommands(): Command[] {
   ];
 }
 
-function buildProgram(): Command {
+function buildProgram(
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Command {
   const prog = new Command();
-  registerZeroCommands(prog, buildCommands());
+  registerZeroCommands(prog, buildCommands(), featureSwitchOverrides);
   return prog;
 }
 
@@ -73,6 +76,12 @@ function hiddenCommandNames(prog: Command): string[] {
     .filter((name) => {
       return !visible.has(name);
     });
+}
+
+function registeredCommandNames(prog: Command): string[] {
+  return prog.commands.map((command) => {
+    return command.name();
+  });
 }
 
 describe("decodeZeroTokenPayload", () => {
@@ -134,11 +143,12 @@ describe("registerZeroCommands", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should not hide any commands when ZERO_TOKEN is absent", () => {
+  it("should not register default-disabled feature commands when ZERO_TOKEN is absent", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
     expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(registeredCommandNames(prog)).not.toContain("upgrade");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -154,7 +164,6 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
-      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -187,15 +196,16 @@ describe("registerZeroCommands", () => {
     ]);
   });
 
-  it("should not hide any commands with malformed token (graceful fallback)", () => {
+  it("should keep default-disabled feature commands unregistered with malformed token", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(registeredCommandNames(prog)).not.toContain("upgrade");
   });
 
-  it("should not hide any commands when scope is not zero", () => {
+  it("should keep default-disabled feature commands unregistered outside zero scope", () => {
     const token = buildZeroToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -205,6 +215,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(registeredCommandNames(prog)).not.toContain("upgrade");
   });
 
   it("should only show whoami when capabilities array is empty", () => {
@@ -219,7 +230,6 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
-      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -614,7 +624,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide credit when billing capabilities are missing", () => {
+  it("should hide credit and not register default-disabled upgrade guidance when billing capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent:read"],
@@ -624,7 +634,22 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("credit");
+    expect(registeredCommandNames(prog)).not.toContain("upgrade");
+  });
+
+  it("should show upgrade guidance when its feature switch is enabled", () => {
+    vi.stubEnv("ZERO_TOKEN", undefined);
+
+    const prog = buildProgram({
+      [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+    });
+
     expect(visibleCommandNames(prog)).toContain("upgrade");
+    expect(
+      buildZeroHelpText(undefined, {
+        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+      }),
+    ).toContain("Upgrade plan?");
   });
 
   it("should show billing help examples only for billing capabilities", () => {
@@ -643,12 +668,22 @@ describe("registerZeroCommands", () => {
       scope: "zero",
       capabilities: ["billing:read"],
     });
-    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token), {
+      [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+    });
 
     expect(help).toContain("Check credits?");
     expect(help).toContain("zero credit");
     expect(help).not.toContain("Buy credits?");
     expect(help).toContain("Upgrade plan?");
+  });
+
+  it("should hide upgrade help when its feature switch is disabled", () => {
+    const help = buildZeroHelpText(undefined, {
+      [FeatureSwitchKey.PlanUpgradeGuidance]: false,
+    });
+
+    expect(help).not.toContain("Upgrade plan?");
   });
 
   it("should show only credit purchase help for billing write capability", () => {
@@ -929,7 +964,6 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "connector",
-      "upgrade",
       "resource",
       "whoami",
       "generate",

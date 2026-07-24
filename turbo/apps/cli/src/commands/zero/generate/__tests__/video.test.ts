@@ -50,19 +50,27 @@ function imageResponse(width: number, height: number) {
   });
 }
 
-function stubBillingStatus(videoGenerationAllowed: boolean) {
+function stubBillingStatus(
+  videoGenerationAllowed: boolean | undefined,
+  tier = videoGenerationAllowed ? "pro" : "limited-free-1",
+) {
   return http.get("http://localhost:3000/api/zero/billing/status", () => {
     return HttpResponse.json({
-      tier: videoGenerationAllowed ? "pro" : "limited-free-1",
-      canBuyCredits: videoGenerationAllowed,
-      videoGenerationAllowed,
+      tier,
+      ...(videoGenerationAllowed === undefined
+        ? {}
+        : {
+            canBuyCredits: videoGenerationAllowed,
+            videoGenerationAllowed,
+          }),
       credits: 0,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
       scheduledChange: null,
-      hasSubscription: videoGenerationAllowed,
+      hasSubscription:
+        tier !== "free" && tier !== "limited-free-1" && tier !== "pro-suspend",
       autoRecharge: {
         enabled: false,
         threshold: null,
@@ -103,6 +111,7 @@ describe("zero generate video command", () => {
 
   it("should generate a video and print the /f file URL", async () => {
     server.use(
+      stubBillingStatus(undefined, "free"),
       http.get(FIRST_FRAME_URL, () => {
         return imageResponse(900, 1600);
       }),
@@ -317,7 +326,7 @@ describe("zero generate video command", () => {
   it("should stop before generation when the workspace plan blocks video", async () => {
     let generationRequests = 0;
     server.use(
-      stubBillingStatus(false),
+      stubBillingStatus(undefined, "limited-free-1"),
       http.post(VIDEO_URL, () => {
         generationRequests += 1;
         return HttpResponse.json(VIDEO_RESULT);

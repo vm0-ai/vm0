@@ -130,19 +130,27 @@ function stubAvailableConnectors(types: string[]) {
   );
 }
 
-function stubBillingStatus(videoGenerationAllowed: boolean) {
+function stubBillingStatus(
+  videoGenerationAllowed: boolean | undefined,
+  tier = videoGenerationAllowed ? "pro" : "limited-free-1",
+) {
   return http.get("http://localhost:3000/api/zero/billing/status", () => {
     return HttpResponse.json({
-      tier: videoGenerationAllowed ? "pro" : "limited-free-1",
-      canBuyCredits: videoGenerationAllowed,
-      videoGenerationAllowed,
+      tier,
+      ...(videoGenerationAllowed === undefined
+        ? {}
+        : {
+            canBuyCredits: videoGenerationAllowed,
+            videoGenerationAllowed,
+          }),
       credits: 0,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
       scheduledChange: null,
-      hasSubscription: videoGenerationAllowed,
+      hasSubscription:
+        tier !== "free" && tier !== "limited-free-1" && tier !== "pro-suspend",
       autoRecharge: {
         enabled: false,
         threshold: null,
@@ -384,6 +392,34 @@ describe("zero generate lister", () => {
     );
     expect(text).toContain(
       "[Compare plans](http://localhost:3000/?settings=billing&billingView=plans)",
+    );
+  });
+
+  it("uses a restricted legacy tier when billing capability fields are omitted", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubUserConnectors([]),
+      stubBillingStatus(undefined, "limited-free-1"),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "video"]);
+
+    expect(output()).toContain(
+      "Availability: Requires a Pro, Team, or Custom workspace plan.",
+    );
+  });
+
+  it("uses an allowed legacy tier when billing capability fields are omitted", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubUserConnectors([]),
+      stubBillingStatus(undefined, "free"),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "video"]);
+
+    expect(output()).toContain(
+      "Availability: Available on the current plan without connector setup.",
     );
   });
 

@@ -4902,6 +4902,15 @@ function ComputerUseAuthorizationCard({
 }
 
 function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
+  const featureSwitches = useGet(featureSwitch$);
+  if (!featureSwitches[FeatureSwitchKey.PlanUpgradeGuidance]) {
+    return (
+      <a href={signals.href} target="_blank" rel="noreferrer">
+        {signals.originalUrl}
+      </a>
+    );
+  }
+
   return (
     <div
       data-testid="plan-upgrade-card"

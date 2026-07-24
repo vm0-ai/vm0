@@ -52,6 +52,10 @@ Current link-backed card patterns include:
 - platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
   site URLs that support an inline preview
 
+The rich billing-plan card is guarded by
+`FeatureSwitchKey.PlanUpgradeGuidance`. When the switch is disabled, the
+recognized URL remains a standard link instead of rendering the upgrade card.
+
 A path such as `/chats/:threadId` can use the same design when a chat-thread
 card is introduced: add an exact parser for the path, derive a canonical
 resource key, define the card's signals and registry, and add its render case.

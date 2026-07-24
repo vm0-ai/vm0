@@ -2,6 +2,8 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeZeroTokenPayload,
@@ -60,6 +62,14 @@ const COMMAND_CAPABILITY_MAP: Record<
   finance: "finance:read",
   banking: "banking:read",
 };
+
+const COMMAND_FEATURE_SWITCH_MAP: Readonly<
+  Partial<Record<string, FeatureSwitchKey>>
+> = {
+  upgrade: FeatureSwitchKey.PlanUpgradeGuidance,
+};
+
+type FeatureSwitchOverrides = Partial<Record<FeatureSwitchKey, boolean>>;
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
@@ -355,7 +365,11 @@ function buildDefaultCommands(): Command[] {
 function shouldHideCommand(
   name: string,
   payload: ZeroTokenPayload | undefined,
+  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): boolean {
+  if (!isCommandFeatureEnabled(name, payload, featureSwitchOverrides)) {
+    return true;
+  }
   if (!payload) return false;
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;
@@ -368,12 +382,29 @@ function shouldHideCommand(
   return !payload.capabilities.includes(requiredCap);
 }
 
+function isCommandFeatureEnabled(
+  name: string,
+  payload: ZeroTokenPayload | undefined,
+  featureSwitchOverrides?: FeatureSwitchOverrides,
+): boolean {
+  const featureSwitch = COMMAND_FEATURE_SWITCH_MAP[name];
+  return (
+    !featureSwitch ||
+    isFeatureEnabled(featureSwitch, {
+      userId: payload?.userId,
+      orgId: payload?.orgId,
+      overrides: featureSwitchOverrides,
+    })
+  );
+}
+
 function addZeroCommand(
   prog: Command,
   cmd: Command,
   payload: ZeroTokenPayload | undefined,
+  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): void {
-  const hidden = shouldHideCommand(cmd.name(), payload);
+  const hidden = shouldHideCommand(cmd.name(), payload, featureSwitchOverrides);
   prog.addCommand(cmd, hidden ? { hidden: true } : {});
 }
 
@@ -419,6 +450,7 @@ async function loadZeroCommand(
 
 export function buildZeroHelpText(
   payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
+  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): string {
   const canReadHost = !payload || payload.capabilities.includes("host:read");
   const canWriteHost = !payload || payload.capabilities.includes("host:write");
@@ -430,12 +462,14 @@ export function buildZeroHelpText(
     ...(payload && !payload.capabilities.includes("billing:write")
       ? []
       : ["  Buy credits?           zero credit 20000"]),
-    "  Upgrade plan?         zero upgrade pro",
+    ...(shouldHideCommand("upgrade", payload, featureSwitchOverrides)
+      ? []
+      : ["  Upgrade plan?         zero upgrade pro"]),
     "  Send a Slack message?  zero slack message send --help",
-    ...(shouldHideCommand("feishu", payload)
+    ...(shouldHideCommand("feishu", payload, featureSwitchOverrides)
       ? []
       : ["  Send Feishu?          zero feishu message send --help"]),
-    ...(shouldHideCommand("mail", payload)
+    ...(shouldHideCommand("mail", payload, featureSwitchOverrides)
       ? []
       : ["  Link Gmail draft?     zero mail link --help"]),
     "  Send Teams?           zero teams message send --help",
@@ -454,7 +488,7 @@ export function buildZeroHelpText(
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
     "  Manage workflows?     zero workflow --help",
-    ...(shouldHideCommand("chat", payload)
+    ...(shouldHideCommand("chat", payload, featureSwitchOverrides)
       ? []
       : ['  Rename this chat?     zero chat rename "New title"']),
     "  Introduce Zero?       zero intro",
@@ -468,26 +502,26 @@ export function buildZeroHelpText(
     ...(canReadHost
       ? ["  Clone hosted site?     zero host clone <public-slug>"]
       : []),
-    ...(shouldHideCommand("maps", payload)
+    ...(shouldHideCommand("maps", payload, featureSwitchOverrides)
       ? []
       : [
           '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
         ]),
-    ...(shouldHideCommand("weather", payload)
+    ...(shouldHideCommand("weather", payload, featureSwitchOverrides)
       ? []
       : [
           "  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json",
         ]),
-    ...(shouldHideCommand("scrape", payload)
+    ...(shouldHideCommand("scrape", payload, featureSwitchOverrides)
       ? []
       : ["  Scrape a web page?    zero scrape https://example.com --json"]),
-    ...(shouldHideCommand("web-search", payload)
+    ...(shouldHideCommand("web-search", payload, featureSwitchOverrides)
       ? []
       : ['  Search the public web? zero web-search "latest news" --json']),
-    ...(shouldHideCommand("finance", payload)
+    ...(shouldHideCommand("finance", payload, featureSwitchOverrides)
       ? []
       : ["  Get a market quote?   zero finance quote AAPL --json"]),
-    ...(shouldHideCommand("banking", payload)
+    ...(shouldHideCommand("banking", payload, featureSwitchOverrides)
       ? []
       : ["  Read bank data?       zero banking accounts --json"]),
     "  Check your identity?   zero whoami",
@@ -507,12 +541,16 @@ export function buildZeroHelpText(
 export function registerZeroCommands(
   prog: Command,
   commands?: Command[],
+  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): void {
   const token = process.env.ZERO_TOKEN;
   const payload = token ? decodeZeroTokenPayload(token) : undefined;
 
   for (const cmd of commands ?? buildDefaultCommands()) {
-    addZeroCommand(prog, cmd, payload);
+    if (!isCommandFeatureEnabled(cmd.name(), payload, featureSwitchOverrides)) {
+      continue;
+    }
+    addZeroCommand(prog, cmd, payload, featureSwitchOverrides);
   }
 }
 
