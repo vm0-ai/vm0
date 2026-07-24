@@ -77,7 +77,10 @@ import type {
 } from "./chat-message.ts";
 import { isCancelledAssistantMessage } from "./chat-run-lifecycle.ts";
 import { logger } from "../log.ts";
-import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+import {
+  CHAT_MESSAGES_PAGE_LIMIT,
+  createRemoteChatThreadDataSource,
+} from "./remote-chat-thread-data-source.ts";
 import {
   loadIndexedDbChatMessages$,
   writeIndexedDbChatMessages$,
@@ -2121,6 +2124,12 @@ function createSyncRemoteMessagesCommand({
       }
       sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
 
+      if (
+        requestedSinceSeqId !== undefined &&
+        result.messages.length < CHAT_MESSAGES_PAGE_LIMIT
+      ) {
+        return;
+      }
       return syncMessagesAfter();
     }
     await syncMessagesAfter();
@@ -2952,19 +2961,6 @@ function createRunTracking({
     await set(initializeIndexedDbMessages$, signal);
     signal.throwIfAborted();
 
-    const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
-      L.debug("onRunChanged$ fired", { threadId });
-      await set(syncRemoteMessages$, sig);
-      sig.throwIfAborted();
-      animationFrame(
-        () => {
-          set(autoScroll$);
-        },
-        { signal: sig },
-      );
-      return false;
-    });
-
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
       return false;
@@ -2994,7 +2990,6 @@ function createRunTracking({
           {
             threadId,
             handlers: {
-              onRunChanged$,
               onAutomationsChanged$,
               onArtifactsChanged$,
               onWorkflowsChanged$,

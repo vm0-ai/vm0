@@ -139,18 +139,28 @@ export async function publishChatThreadDetailChangedSafely(
 }
 
 /**
- * Notify a chat thread's UI that a new message row was appended. The thread's
- * message data source subscribes to this topic and refetches, so derived state
- * (e.g. the composer's folded goal state) updates live.
+ * Notify the chat message background sync that a new row was appended. It
+ * refreshes IndexedDB and forwards newly fetched rows into visible threads, so
+ * derived UI state (e.g. the composer's folded goal state) updates live.
+ *
+ * `syncThroughSeqId` is an optional watermark for the last row appended by the
+ * publishing mutation. Clients that have already cached that sequence can
+ * skip a delayed duplicate notification. Omit it when the batch boundary is
+ * not known; payload-less events retain the unconditional catch-up behavior.
  *
  * Best-effort: a failed publish must not fail the mutation that triggered it.
  */
 export async function publishChatThreadMessageCreatedSafely(
   userId: string,
   threadId: string,
+  syncThroughSeqId?: number,
 ): Promise<void> {
   await tapError(
-    publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`),
+    publishUserSignal(
+      [userId],
+      `chatThreadMessageCreated:${threadId}`,
+      syncThroughSeqId === undefined ? null : { syncThroughSeqId },
+    ),
     (error) => {
       L.warn("Failed to publish chat thread message created signal", {
         threadId,

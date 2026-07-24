@@ -77,6 +77,18 @@ function workflowAutomationSummary(
     if (automation.eventType === "github-label-applied") {
       return "GitHub label applied";
     }
+    if (automation.eventType === "github-workflow-job-completed") {
+      return "GitHub workflow job completed";
+    }
+    if (automation.eventType === "github-pull-request-review-submitted") {
+      return "GitHub pull request review submitted";
+    }
+    if (automation.eventType === "github-deployment-status-created") {
+      return "GitHub deployment status created";
+    }
+    if (automation.eventType === "github-issue-comment-created") {
+      return "GitHub issue comment created";
+    }
     if (automation.eventType === "github-workflow-run-completed") {
       return "GitHub workflow completed";
     }

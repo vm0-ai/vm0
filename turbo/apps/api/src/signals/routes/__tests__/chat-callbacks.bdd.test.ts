@@ -1384,10 +1384,17 @@ describe("CHAT-02: completed chat callback", () => {
       afterFollowups.messages,
       first.runId,
     )[0];
-    expect(followupMessage?.recommendedFollowups).toStrictEqual([
+    if (!followupMessage) {
+      throw new Error("Expected a recommended follow-up message");
+    }
+    expect(followupMessage.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
     await waitForChatThreadMessageCreatedPublish(first.threadId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${first.threadId}`,
+      { syncThroughSeqId: followupMessage.seqId },
+    );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");
     expect(titlePrompts[0]).not.toContain("queued while side effects wait");
