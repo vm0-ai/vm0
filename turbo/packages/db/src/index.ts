@@ -31,8 +31,6 @@ import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
-import * as emailThreadSessionSchema from "./schema/email-thread-session";
-import * as emailReplyRequestSchema from "./schema/email-reply-request";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubIssueSessionSchema from "./schema/github-issue-session";
@@ -164,8 +162,6 @@ export const schema = {
   ...usageEventSchema,
   ...runBuiltInAdmissionSchema,
   ...usageDailySchema,
-  ...emailThreadSessionSchema,
-  ...emailReplyRequestSchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
   ...githubIssueSessionSchema,

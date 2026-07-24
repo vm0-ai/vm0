@@ -4660,8 +4660,15 @@
     {
       "idx": 665,
       "version": "7",
-      "when": 1784877106126,
-      "tag": "0665_chat_event_type",
+      "when": 1784877104375,
+      "tag": "0665_curly_mikhail_rasputin",
+      "breakpoints": true
+    },
+    {
+      "idx": 666,
+      "version": "7",
+      "when": 1784879772072,
+      "tag": "0666_chat_event_type",
       "breakpoints": true
     }
   ]

@@ -1286,8 +1286,8 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
-const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 664;
-const CHAT_EVENT_TYPE_MIGRATION = 665;
+const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 665;
+const CHAT_EVENT_TYPE_MIGRATION = 666;
 
 async function validateChatEventTypeBackfill(): Promise<void> {
   console.log("=== Validate populated ChatEvent type backfill ===\n");

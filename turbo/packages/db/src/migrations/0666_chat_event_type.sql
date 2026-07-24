@@ -26,7 +26,7 @@ DECLARE
   unmatched_sample text;
   ambiguous_sample text;
 BEGIN
-  CREATE TEMP TABLE "chat_event_classification_0665"
+  CREATE TEMP TABLE "chat_event_classification_0666"
   ON COMMIT DROP
   AS
   SELECT
@@ -309,7 +309,7 @@ BEGIN
     ambiguous_count,
     unmatched_sample,
     ambiguous_sample
-  FROM "chat_event_classification_0665";
+  FROM "chat_event_classification_0666";
 
   IF unmatched_count > 0 OR ambiguous_count > 0 THEN
     RAISE EXCEPTION
@@ -322,7 +322,7 @@ BEGIN
 
   UPDATE "chat_messages" AS message
   SET "event_type" = classified.matches[1]
-  FROM "chat_event_classification_0665" AS classified
+  FROM "chat_event_classification_0666" AS classified
   WHERE message."id" = classified."id";
 END $$;
 --> statement-breakpoint
