@@ -131,6 +131,8 @@ function gmailPayload(
 
 interface GmailDraftTestState {
   exists: boolean;
+  unauthorized: boolean;
+  draftReadCount: number;
   sendCount: number;
   deleteCount: number;
   sentBody: unknown;
@@ -142,11 +144,12 @@ function mockGmailDraftApi(options?: {
 }): GmailDraftTestState {
   const state: GmailDraftTestState = {
     exists: true,
+    unauthorized: false,
+    draftReadCount: 0,
     sendCount: 0,
     deleteCount: 0,
     sentBody: null,
   };
-  let draftReadCount = 0;
   let currentImageAttachmentId = GMAIL_IMAGE_ATTACHMENT_ID;
   server.use(
     http.get(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params, request }) => {
@@ -155,11 +158,17 @@ function mockGmailDraftApi(options?: {
         "Bearer gmail-mail-card-token",
       );
       expect(new URL(request.url).searchParams.get("format")).toBe("full");
+      state.draftReadCount += 1;
+      if (state.unauthorized) {
+        return HttpResponse.json(
+          { error: { message: "Invalid Credentials" } },
+          { status: 401 },
+        );
+      }
       if (!state.exists) {
         return new HttpResponse(null, { status: 404 });
       }
-      draftReadCount += 1;
-      currentImageAttachmentId = `${GMAIL_IMAGE_ATTACHMENT_ID}-${draftReadCount}`;
+      currentImageAttachmentId = `${GMAIL_IMAGE_ATTACHMENT_ID}-${state.draftReadCount}`;
       return HttpResponse.json({
         id: GMAIL_DRAFT_ID,
         message: {
@@ -432,6 +441,71 @@ describe("POST /api/zero/mail/drafts/link", () => {
     expect(
       Buffer.from(await attachment.body.arrayBuffer()).equals(GMAIL_PDF_BYTES),
     ).toBeTruthy();
+  });
+
+  it("returns cached mail details and requires reconnect after Gmail rejects access", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+    gmail.unauthorized = true;
+
+    const unavailable = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(unavailable.body.mailDraft).toMatchObject({
+      accessStatus: "reconnect",
+      detailAvailable: false,
+      status: "draft",
+      subject: "Attachment review",
+    });
+
+    const gmailReadsAfterUnauthorized = gmail.draftReadCount;
+    const cached = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(cached.body.mailDraft.accessStatus).toBe("reconnect");
+    expect(gmail.draftReadCount).toBe(gmailReadsAfterUnauthorized);
+  });
+
+  it("restores a draft after its Gmail connector is reconnected", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+
+    await connectors.deleteConnectorByType(fixture.actor, "gmail");
+    const start = await connectors.startOauth(fixture.actor, "gmail", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Gmail OAuth state");
+    }
+    await connectors.completeOauthCallback("gmail", {
+      code: "zero-mail-reconnect-code",
+      state,
+    });
+
+    const restored = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(restored.body.mailDraft).toMatchObject({
+      accessStatus: "ready",
+      detailAvailable: true,
+      from: "sender@example.com",
+      status: "draft",
+      subject: "Attachment review",
+    });
+    expect(gmail.draftReadCount).toBe(2);
   });
 
   it("rejects a missing Gmail draft and cross-chat relinking", async () => {

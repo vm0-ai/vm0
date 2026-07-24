@@ -1264,6 +1264,176 @@ describe("chat message action cards", () => {
     });
   });
 
+  it("shows a Gmail reconnect action when mail access is no longer authorized", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-00000000001b";
+    const mailDraftId = "c0000000-0000-4000-a000-00000000001c";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    const openAuthWindow = context.mocks.browser.open(authWindow);
+    let reconnectRequired = true;
+    let catalogRequests = 0;
+    let oauthStartRequests = 0;
+
+    context.mocks.data.connectors([
+      connectedConnector({
+        type: "gmail",
+        authMethod: "oauth",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    ]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      catalogRequests += 1;
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "gmail",
+            label: "Gmail",
+            connected: true,
+            connectionStatus: reconnectRequired
+              ? "reconnect-required"
+              : "connected",
+            connection: {
+              authMethod: "oauth",
+              externalUsername: null,
+              externalEmail: "sender@example.com",
+              reconnectReason: reconnectRequired
+                ? "authorization_expired_or_revoked"
+                : null,
+            },
+            authMethods: [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description: null,
+                grantKind: "auth-code",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            singleAuthCodeAuthMethodId: "oauth",
+          }),
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        oauthStartRequests += 1;
+        expect(params.type).toBe("gmail");
+        return respond(200, {
+          authorizationUrl: "https://accounts.google.test/oauth",
+        });
+      },
+    );
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: [],
+          cc: [],
+          bcc: [],
+          subject: "Reconnect required",
+          body: "",
+          accessStatus: reconnectRequired ? "reconnect" : "ready",
+          status: "draft",
+          detailAvailable: !reconnectRequired,
+          gmailDraftId: "r-reconnect",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Reconnect Gmail",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-00000000001d",
+          role: "assistant",
+          content: mailDraftUrl,
+          createdAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const card = await screen.findByLabelText(
+      "Reconnect Gmail to access email: Reconnect required",
+    );
+    expect(within(card).getByText("Need reconnect")).toBeInTheDocument();
+    expect(card).toBeEnabled();
+
+    const message = await screen.findByText(
+      "You no longer have permission to access this email. Reconnect Gmail to continue.",
+    );
+    const sidebar = message.closest("aside");
+    if (!sidebar) {
+      throw new Error("Expected Gmail reconnect sidebar");
+    }
+    const reconnect = buttonByText("Reconnect Gmail", sidebar);
+    await waitFor(() => {
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+      expect(catalogRequests).toBeGreaterThanOrEqual(2);
+    });
+
+    await user.click(reconnect);
+    await waitFor(() => {
+      expect(oauthStartRequests).toBe(1);
+      expect(openAuthWindow.calls).toHaveLength(1);
+      expect(authWindow.location.href).toBe(
+        "https://accounts.google.test/oauth",
+      );
+      expect(within(card).getByText("Reconnecting…")).toBeInTheDocument();
+    });
+
+    reconnectRequired = false;
+    context.mocks.data.connectors([
+      connectedConnector({
+        type: "gmail",
+        authMethod: "oauth",
+        updatedAt: "2026-01-01T00:00:01Z",
+      }),
+    ]);
+    triggerAblyEvent("connector:changed");
+
+    const refreshedCard = await screen.findByLabelText(
+      "Open draft email: Reconnect required",
+    );
+    expect(within(refreshedCard).getByText("Draft")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByText(
+          "You no longer have permission to access this email. Reconnect Gmail to continue.",
+        ),
+      ).toBeNull();
+      expect(
+        within(screen.getByTestId("mail-draft-sidebar")).getByRole("heading", {
+          name: "Reconnect required",
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("renders a deleted email card without an interactive sidebar trigger", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000014";

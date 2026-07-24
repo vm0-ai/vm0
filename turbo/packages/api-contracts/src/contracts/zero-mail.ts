@@ -33,6 +33,7 @@ const zeroMailDraftBaseSchema = z.object({
   body: z.string(),
   bodyHtml: z.string().optional(),
   inlineImages: z.array(zeroMailInlineImageSchema).optional(),
+  accessStatus: z.enum(["ready", "reconnect"]).optional(),
   replyTo: z.string().optional(),
   inReplyTo: z.string().optional(),
   references: z.array(z.string()),

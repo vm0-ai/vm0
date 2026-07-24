@@ -16,6 +16,7 @@ import {
   registeredCardSignals,
 } from "./card-signal-map.ts";
 import { onRef } from "../utils.ts";
+import { connectorChangedVersion$ } from "../connector-reload.ts";
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
@@ -240,6 +241,7 @@ function createMailDraftSignals(
     undefined,
   );
   const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
+    get(connectorChangedVersion$);
     const override = get(draftOverride$);
     if (override !== undefined) {
       return override;
@@ -255,6 +257,7 @@ function createMailDraftSignals(
   });
   const sidebarReloadVersion$ = state(0);
   const sidebarDraft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
+    get(connectorChangedVersion$);
     get(sidebarReloadVersion$);
     const override = get(sidebarDraftOverride$);
     if (override !== undefined) {

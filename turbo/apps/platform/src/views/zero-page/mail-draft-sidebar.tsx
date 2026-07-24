@@ -34,6 +34,7 @@ import {
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
 } from "./zero-attachment-chips.tsx";
+import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
 interface MailDraftSidebarProps {
   readonly signals: MailDraftSignals;
@@ -91,9 +92,11 @@ function MailDraftSidebarSkeleton({ close }: { readonly close: () => void }) {
 }
 
 function UnavailableMailDraftSidebar({
+  action,
   close,
   message,
 }: {
+  readonly action?: ReactNode;
   readonly close: () => void;
   readonly message: string;
 }) {
@@ -106,10 +109,28 @@ function UnavailableMailDraftSidebar({
         <span className="min-w-0 flex-1 text-sm font-medium">Email</span>
         <SidebarCloseButton close={close} />
       </div>
-      <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        {message}
+      <div className="flex flex-1 items-center justify-center px-6 text-center">
+        <div className="grid max-w-sm justify-items-center gap-4">
+          <p className="text-sm text-muted-foreground">{message}</p>
+          {action}
+        </div>
       </div>
     </aside>
+  );
+}
+
+function GmailReconnectButton() {
+  const { reconnect, reconnectDisabled, reconnecting } = useGmailReconnect();
+  return (
+    <Button
+      type="button"
+      size="sm"
+      disabled={reconnectDisabled}
+      onClick={reconnect}
+    >
+      {reconnecting ? <IconLoader2 size={15} className="animate-spin" /> : null}
+      {reconnecting ? "Reconnecting…" : "Reconnect Gmail"}
+    </Button>
   );
 }
 
@@ -1023,6 +1044,15 @@ export function MailDraftSidebar({ signals }: MailDraftSidebarProps) {
       <UnavailableMailDraftSidebar
         close={close}
         message="This email is no longer available."
+      />
+    );
+  }
+  if (draftLoadable.data.accessStatus === "reconnect") {
+    return (
+      <UnavailableMailDraftSidebar
+        close={close}
+        message="You no longer have permission to access this email. Reconnect Gmail to continue."
+        action={<GmailReconnectButton />}
       />
     );
   }
