@@ -1761,6 +1761,10 @@ function headerWorkflowAutomationRows(
 ): readonly WorkflowAutomationCardRow[] {
   const rows: WorkflowAutomationCardRow[] = [
     {
+      label: "Status",
+      value: automation.enabled ? "Active" : "Disabled",
+    },
+    {
       label:
         automation.automation.kind === "schedule" ? "Schedule" : "Automation",
       value: headerWorkflowAutomationRule(automation),
