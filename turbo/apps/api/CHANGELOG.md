@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.311.0](https://github.com/vm0-ai/vm0/compare/api-v1.310.0...api-v1.311.0) (2026-07-24)
+
+
+### Features
+
+* **api:** force app.vm0.ai clients to upgrade to v0.626.0 ([#22824](https://github.com/vm0-ai/vm0/issues/22824)) ([f16abaf](https://github.com/vm0-ai/vm0/commit/f16abaf433802169e5c19812eadfb55a528725bd))
+
+
+### Bug Fixes
+
+* **billing:** guide video-restricted workspaces to plan upgrade ([#22794](https://github.com/vm0-ai/vm0/issues/22794)) ([ec7c924](https://github.com/vm0-ai/vm0/commit/ec7c924358ea0fa63ec71e9c6be85317a6ebaa1c))
+
+
+### Refactoring
+
+* **api:** remove checkpoint resume and read api ([#22815](https://github.com/vm0-ai/vm0/issues/22815)) ([ad0d0b3](https://github.com/vm0-ai/vm0/commit/ad0d0b39655d1dd4bafeabe0e8a8bbb32247db47))
+* **api:** use builders for artifact history and visibility ([#22781](https://github.com/vm0-ai/vm0/issues/22781)) ([02f11a5](https://github.com/vm0-ai/vm0/commit/02f11a5cd541d7dff9a461e49c6f8550796239ba))
+* **email:** remove retired agent email runtime ([#22818](https://github.com/vm0-ai/vm0/issues/22818)) ([4d20d9f](https://github.com/vm0-ai/vm0/commit/4d20d9f67edf960051d6ad4fab185aee5ea96c4d))
+
+
+### Performance Improvements
+
+* **api:** measure first assistant message latency ([#22750](https://github.com/vm0-ai/vm0/issues/22750)) ([be099fa](https://github.com/vm0-ai/vm0/commit/be099fa84679b4d142af24c110622e1e2bb5dd58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.1
+    * @vm0/connectors bumped to 1.187.1
+    * @vm0/core bumped to 8.458.2
+    * @vm0/db bumped to 1.132.1
+
 ## [1.310.0](https://github.com/vm0-ai/vm0/compare/api-v1.309.0...api-v1.310.0) (2026-07-24)
 
 
