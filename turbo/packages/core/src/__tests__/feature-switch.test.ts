@@ -225,7 +225,7 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.PlanUpgradeGuidance,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
@@ -254,6 +254,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
+      [FeatureSwitchKey.ZeroBrowser]: true,
       [FeatureSwitchKey.ZeroPeopleSearch]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,

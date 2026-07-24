@@ -94,6 +94,9 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
       iat: 1000,
       exp: 2000,
     });
@@ -104,6 +107,9 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
       iat: 1000,
       exp: 2000,
     });
@@ -675,22 +681,31 @@ describe("registerZeroCommands", () => {
   });
 
   it("should register browser only when its feature switch and capability are enabled", () => {
-    const token = buildZeroToken({
+    const disabledToken = buildZeroToken({
       scope: "zero",
       userId: "user-1",
       orgId: "org-1",
       capabilities: ["browser:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: false,
+      },
     });
-    vi.stubEnv("ZERO_TOKEN", token);
+    vi.stubEnv("ZERO_TOKEN", disabledToken);
 
     expect(registeredCommandNames(buildProgram())).not.toContain("browser");
-    expect(
-      visibleCommandNames(
-        buildProgram({
-          [FeatureSwitchKey.ZeroBrowser]: true,
-        }),
-      ),
-    ).toContain("browser");
+
+    const enabledToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["browser:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
+    });
+    vi.stubEnv("ZERO_TOKEN", enabledToken);
+
+    expect(visibleCommandNames(buildProgram())).toContain("browser");
   });
 
   it("should show billing help examples only for billing capabilities", () => {

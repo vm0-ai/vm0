@@ -13,9 +13,18 @@ import {
   verifyZeroToken,
 } from "../tokens";
 import { now } from "../../external/time";
+import { safeJsonParse } from "../../utils";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function decodeZeroTokenPayloadForTest(token: string): unknown {
+  const payload = token.slice("vm0_sandbox_".length).split(".")[1];
+  if (!payload) {
+    throw new Error("Expected a signed Zero token payload");
+  }
+  return safeJsonParse(Buffer.from(payload, "base64url").toString());
 }
 
 describe("auth tokens", () => {
@@ -215,27 +224,28 @@ describe("auth tokens", () => {
     );
   });
 
-  it("keeps browser capabilities disabled without an internal rollout audience", () => {
+  it("grants browser capabilities independently of its CLI feature switch", () => {
     const defaultToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     );
-    const overrideToken = generateZeroToken(
+    const disabledToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      { [FeatureSwitchKey.ZeroBrowser]: true },
+      { [FeatureSwitchKey.ZeroBrowser]: false },
     );
 
-    for (const token of [defaultToken, overrideToken]) {
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:read",
-      );
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:write",
-      );
+    for (const token of [defaultToken, disabledToken]) {
+      expect(verifyZeroToken(token)?.capabilities).toContain("browser:read");
+      expect(verifyZeroToken(token)?.capabilities).toContain("browser:write");
     }
+    expect(decodeZeroTokenPayloadForTest(disabledToken)).toMatchObject({
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: false,
+      },
+    });
   });
 
   it("grants goal capabilities by default", () => {

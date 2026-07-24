@@ -3,7 +3,6 @@ import {
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -40,7 +39,6 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: `/browsers/${browserId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const frame = await screen.findByTitle("Live browser: booking");

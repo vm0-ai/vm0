@@ -21,6 +21,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
@@ -114,6 +115,7 @@ describe("zero browser route", () => {
     ]);
 
     const bdd = createBddApi(context);
+    const routeMocks = createZeroRouteMocks(context);
     const runs = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const callbacks = createChatCallbacksApi(context);
@@ -359,9 +361,10 @@ describe("zero browser route", () => {
     releaseFirstStop.resolve(undefined);
     await flushWaitUntilForTest();
 
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const suspended = await accept(
       client().get({
-        headers: firstClaim.browserHeaders,
+        headers: { authorization: "Bearer clerk-session" },
         params: { browserId: created.body.browser.id },
         query: { chatThreadId: sent.body.threadId },
       }),

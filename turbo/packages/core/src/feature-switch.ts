@@ -520,10 +520,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable managed Browser Use sessions, Zero Browser CLI capabilities, and live browser chat cards.",
+    description: "Show the Zero Browser command in the Zero CLI.",
     enabled: false,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
