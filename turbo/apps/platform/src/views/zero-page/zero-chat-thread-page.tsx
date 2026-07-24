@@ -3550,10 +3550,42 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+function ChatHistoryBackfillProgress({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const featureSwitches = useGet(featureSwitch$);
+  const enabled =
+    featureSwitches[FeatureSwitchKey.ChatHistoryBackfillProgress] ?? false;
+  const progress = useLastResolved(thread.historyBackfillProgress$);
+  if (!enabled || progress === null || progress === undefined) {
+    return null;
+  }
+  const percent = Math.min(100, Math.max(0, progress * 100));
+  return (
+    <div
+      data-history-backfill-progress
+      role="progressbar"
+      aria-label="Loading message history"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+      className="h-0.5 w-full shrink-0 overflow-hidden"
+    >
+      <div
+        className="h-full bg-primary/60 transition-[width] duration-500 ease-out"
+        style={{ width: `${percent}%` }}
+      />
+    </div>
+  );
+}
+
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   return (
     <>
       <ChatThreadHeader thread={thread} />
+      <ChatHistoryBackfillProgress thread={thread} />
 
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">

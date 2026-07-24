@@ -159,6 +159,9 @@ export interface ChatThreadSignals {
   recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
   >;
+  // Approximate history backfill progress in [0, 1]; null when there is no
+  // backfill to show (no messages loaded yet or history fully loaded).
+  historyBackfillProgress$: Computed<Promise<number | null>>;
   activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
