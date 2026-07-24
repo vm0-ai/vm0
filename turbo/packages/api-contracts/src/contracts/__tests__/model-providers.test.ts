@@ -105,14 +105,22 @@ describe("model-first canonical catalog", () => {
       "glm-5.1",
       "mimo-v2.5",
       "hy3-preview",
-      "gpt-5.4",
-      "gpt-5.4-mini",
     ]);
   });
 
   it("validates canonical models and credential scopes", () => {
     expect(supportedRunModelSchema.safeParse("vm0-model").success).toBe(false);
     expect(requestedRunModelSchema.parse("vm0-model")).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(supportedRunModelSchema.safeParse("gpt-5.4").success).toBe(false);
+    expect(supportedRunModelSchema.safeParse("gpt-5.4-mini").success).toBe(
+      false,
+    );
+    expect(requestedRunModelSchema.parse("gpt-5.4")).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(requestedRunModelSchema.parse("gpt-5.4-mini")).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );
     expect(supportedRunModelSchema.safeParse("gpt-5.6-sol").success).toBe(true);
@@ -184,6 +192,53 @@ describe("model-first canonical catalog", () => {
     });
   });
 
+  it("deduplicates retired GPT policy requests onto Luna", () => {
+    expect(
+      updateOrgModelPoliciesRequestSchema.parse({
+        policies: [
+          {
+            model: "gpt-5.4",
+            isDefault: true,
+            defaultProviderType: "openrouter-codex",
+            credentialScope: "org",
+            modelProviderId: null,
+          },
+          {
+            model: "gpt-5.4-mini",
+            isDefault: false,
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+          },
+          {
+            model: "gpt-5.5",
+            isDefault: false,
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+          },
+        ],
+      }),
+    ).toEqual({
+      policies: [
+        {
+          model: "gpt-5.5",
+          isDefault: false,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+        {
+          model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          isDefault: true,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ],
+    });
+  });
+
   it("identifies models blocked on limited-free-1", () => {
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-sol")).toBe(true);
@@ -242,6 +297,8 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("glm-5.2")).toBe("GLM-5.2");
     expect(getCanonicalModelDisplayName("mimo-v2.5")).toBe("MiMo-V2.5");
     expect(getCanonicalModelDisplayName("hy3-preview")).toBe("Hy3 Preview");
+    expect(getCanonicalModelDisplayName("gpt-5.4")).toBe("gpt-5.4");
+    expect(getCanonicalModelDisplayName("gpt-5.4-mini")).toBe("gpt-5.4-mini");
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
 
@@ -264,6 +321,8 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("hy3-preview")).toBe(true);
     expect(isSupportedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isSupportedRunModel("kimi-k3")).toBe(true);
+    expect(isSupportedRunModel("gpt-5.4")).toBe(false);
+    expect(isSupportedRunModel("gpt-5.4-mini")).toBe(false);
     expect(isSupportedRunModel("openai/gpt-5.6-sol")).toBe(false);
     expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
       "deepseek/deepseek-v4-flash",
@@ -279,6 +338,8 @@ describe("model-first canonical catalog", () => {
 
   it("returns compatible provider types for canonical models", () => {
     expect(getProvidersForModel("vm0-model")).toEqual([]);
+    expect(getProvidersForModel("gpt-5.4")).toEqual([]);
+    expect(getProvidersForModel("gpt-5.4-mini")).toEqual([]);
     expect(getProvidersForModel("claude-fable-5")).toEqual([
       "vm0",
       "claude-code-oauth-token",
@@ -555,6 +616,8 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("glm-5.2")).toBe("$");
     expect(getVm0ModelPriceTier("mimo-v2.5")).toBe("$");
     expect(getVm0ModelPriceTier("hy3-preview")).toBe("$");
+    expect(getVm0ModelPriceTier("gpt-5.4")).toBeUndefined();
+    expect(getVm0ModelPriceTier("gpt-5.4-mini")).toBeUndefined();
     expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
     expect(getVm0ModelPriceTierLabel("$")).toBe(
       "Economy tier for everyday simple tasks",
@@ -770,7 +833,8 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("gpt-5.6-terra");
     expect(models).toContain("gpt-5.6-luna");
     expect(models).toContain("gpt-5.5");
-    expect(models).toContain("gpt-5.4-mini");
+    expect(models).not.toContain("gpt-5.4");
+    expect(models).not.toContain("gpt-5.4-mini");
     expect(models).not.toContain("claude-haiku-4-5");
     expect(models).not.toContain("kimi-k2.6");
     expect(models).not.toContain("kimi-k2.5");
@@ -913,8 +977,6 @@ describe("openai-api-key codex provider", () => {
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
     ]);
     expect(getDefaultModel("openai-api-key")).toBe("gpt-5.5");
   });
@@ -1137,8 +1199,6 @@ describe("codex-oauth-token codex provider", () => {
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
     ]);
     expect(getDefaultModel("codex-oauth-token")).toBe("gpt-5.5");
   });
@@ -1311,11 +1371,7 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
   it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
     "%s offers GPT models with gpt-5.5 default",
     (type) => {
-      expect(getModels(type)).toEqual([
-        "openai/gpt-5.5",
-        "openai/gpt-5.4",
-        "openai/gpt-5.4-mini",
-      ]);
+      expect(getModels(type)).toEqual(["openai/gpt-5.5"]);
       expect(getModels(type)).not.toContain("openai/gpt-5.6-sol");
       expect(getDefaultModel(type)).toBe("openai/gpt-5.5");
     },
@@ -1332,11 +1388,11 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
       "openai/gpt-5.5",
     );
     expect(getProviderRuntimeModel("vercel-ai-gateway-codex", "gpt-5.4")).toBe(
-      "openai/gpt-5.4",
+      "gpt-5.4",
     );
     expect(
       getProviderRuntimeModel("vercel-ai-gateway-codex", "gpt-5.4-mini"),
-    ).toBe("openai/gpt-5.4-mini");
+    ).toBe("gpt-5.4-mini");
   });
 
   it("share the secretName with their claude-code twin gateway", () => {
