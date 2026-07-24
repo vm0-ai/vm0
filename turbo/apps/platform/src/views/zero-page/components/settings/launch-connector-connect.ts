@@ -4,15 +4,10 @@ import type {
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
-import {
-  getConnectorStatusConnectLaunchMode,
-  getOnlyAvailableStatusBrowserAuthMethodDetail,
-  getOnlyAvailableStatusNoAuthMethod,
-} from "../../../../signals/zero-page/settings/connectors.ts";
+import { getConnectorStatusDirectConnectMethod } from "../../../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
-interface LaunchConnectorConnectOptions {
-  readonly connector: PublicConnectorCatalogStatusItem;
+export interface ConnectorConnectHandlers {
   readonly openModal: () => void;
   readonly connectBrowserAuth: (
     authMethod: PublicConnectorCatalogAuthMethodDetail,
@@ -22,31 +17,28 @@ interface LaunchConnectorConnectOptions {
   ) => Promise<unknown>;
 }
 
+interface LaunchConnectorConnectOptions extends ConnectorConnectHandlers {
+  readonly connector: PublicConnectorCatalogStatusItem;
+}
+
 export function launchConnectorConnect({
   connector,
   openModal,
   connectBrowserAuth,
   connectNoAuth,
 }: LaunchConnectorConnectOptions): void {
-  const launchMode = getConnectorStatusConnectLaunchMode(connector);
-  if (launchMode === "modal") {
+  const directConnectMethod = getConnectorStatusDirectConnectMethod(connector);
+  if (!directConnectMethod) {
     openModal();
     return;
   }
-  if (launchMode === "browser-auth") {
-    const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(connector);
-    if (!authMethod) {
-      openModal();
-      return;
-    }
-    detach(connectBrowserAuth(authMethod), Reason.DomCallback);
+  if (directConnectMethod.kind === "browser-auth") {
+    detach(
+      connectBrowserAuth(directConnectMethod.authMethod),
+      Reason.DomCallback,
+    );
     return;
   }
 
-  const authMethod = getOnlyAvailableStatusNoAuthMethod(connector);
-  if (!authMethod) {
-    openModal();
-    return;
-  }
-  detach(connectNoAuth(authMethod), Reason.DomCallback);
+  detach(connectNoAuth(directConnectMethod.authMethod), Reason.DomCallback);
 }

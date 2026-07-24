@@ -11,8 +11,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
   IconPlus,
-  IconLoader2,
-  IconDotsVertical,
   IconFilter,
   IconChevronDown,
   IconCheck,
@@ -30,7 +28,6 @@ import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
@@ -49,11 +46,8 @@ import {
   justConnectedRefs$,
   scopeReviewConnectorRef$,
   setScopeReviewConnectorRef$,
-  isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
   getConnectorStatusAuthMethod,
-  connectorCurrentConnectionStatus,
-  connectorExpiryCountdownText,
   type ConnectorsConnectionFilter,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
@@ -67,7 +61,8 @@ import {
 } from "../../signals/zero-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
-import { launchConnectorConnect } from "./components/settings/launch-connector-connect.ts";
+import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import {
@@ -77,7 +72,6 @@ import {
   setManagedConnectorAccessRef$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -599,217 +593,6 @@ function ConnectorAccessButton({
   );
 }
 
-function GlobalConnectorCard({
-  connector,
-  isConnected,
-  isPolling,
-  onConnect,
-  onDisconnect,
-  onManageAccess,
-  onReviewScopes,
-  isDisconnecting,
-  showManageAccess,
-}: {
-  connector: PublicConnectorCatalogStatusItem;
-  isConnected: boolean;
-  isPolling: boolean;
-  onConnect: () => void;
-  onDisconnect: () => void;
-  onManageAccess: () => void;
-  onReviewScopes?: () => void;
-  isDisconnecting: boolean;
-  showManageAccess: boolean;
-}) {
-  const connectionStatus = connectorCurrentConnectionStatus(connector);
-  const status = (() => {
-    if (isPolling) {
-      const standaloneHint = isStandaloneMode()
-        ? " Switch back here after completing sign-in."
-        : "";
-      return (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
-          {`Connecting…${standaloneHint}`}
-        </span>
-      );
-    }
-    if (isConnected && connectionStatus === "reconnect-required") {
-      return (
-        <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-          <span className="text-amber-600 dark:text-amber-400">
-            Connection expired
-          </span>
-        </span>
-      );
-    }
-    if (isConnected && connectionStatus === "scope-mismatch") {
-      return (
-        <span className="flex min-w-0 items-center gap-2 text-[11px]">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-          <span className="min-w-0 truncate text-amber-600 dark:text-amber-400">
-            Update permissions
-          </span>
-        </span>
-      );
-    }
-    if (isConnected) {
-      const expiryText = connectorExpiryCountdownText(connector);
-      const connectedText =
-        expiryText ??
-        (connector.connection?.externalUsername
-          ? `@${connector.connection.externalUsername}`
-          : "Connected");
-      return (
-        <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-          <span className="truncate">{connectedText}</span>
-        </span>
-      );
-    }
-    return (
-      <button
-        type="button"
-        onClick={onConnect}
-        className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-      >
-        Connect
-      </button>
-    );
-  })();
-
-  return (
-    <div className="zero-card flex flex-col">
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon icon={connector.icon} size={20} />
-        </span>
-        <span
-          data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
-        >
-          {connector.label}
-        </span>
-      </div>
-      <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex shrink-0 items-center gap-2 overflow-hidden">
-          {status}
-        </div>
-        {isConnected && (
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-0">
-            {showManageAccess && (
-              <ConnectorAccessButton
-                connectorRef={connector.connectorRef}
-                connectorLabel={connector.label}
-                onClick={onManageAccess}
-              />
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                  aria-label="More options"
-                >
-                  <IconDotsVertical size={14} stroke={1.5} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                {connectionStatus === "reconnect-required" ? (
-                  <DropdownMenuModalItem onModalSelect={onConnect}>
-                    Reconnect
-                  </DropdownMenuModalItem>
-                ) : null}
-                {connectionStatus === "scope-mismatch" && onReviewScopes ? (
-                  <DropdownMenuModalItem onModalSelect={onReviewScopes}>
-                    Review permissions
-                  </DropdownMenuModalItem>
-                ) : null}
-                <DropdownMenuItem
-                  onClick={onDisconnect}
-                  disabled={isDisconnecting}
-                >
-                  Disconnect
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AvailableConnectorCard({
-  connector,
-  isPolling,
-  onConnect,
-}: {
-  connector: PublicConnectorCatalogStatusItem;
-  isPolling: boolean;
-  onConnect: () => void;
-}) {
-  const handleConnect = () => {
-    if (isPolling) {
-      return;
-    }
-    onConnect();
-  };
-
-  return (
-    <div
-      role="button"
-      tabIndex={isPolling ? -1 : 0}
-      aria-label={`Connect ${connector.label}`}
-      aria-disabled={isPolling}
-      className={`zero-card overflow-hidden ${isPolling ? "cursor-default" : "cursor-pointer"}`}
-      onClick={handleConnect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleConnect();
-        }
-      }}
-    >
-      <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon icon={connector.icon} size={20} />
-        </span>
-        <span
-          data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
-        >
-          {connector.label}
-        </span>
-        {isPolling ? (
-          <span
-            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground"
-            aria-hidden="true"
-          >
-            <IconLoader2 size={16} stroke={1.5} className="animate-spin" />
-          </span>
-        ) : (
-          <span
-            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
-            aria-hidden="true"
-          >
-            <IconPlus size={14} stroke={1.5} />
-          </span>
-        )}
-      </div>
-      <div className="px-5 pb-4 pt-1">
-        <div
-          data-testid="connector-help-text"
-          className="text-xs text-muted-foreground line-clamp-2"
-        >
-          {connector.description}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function renderBuiltinList({
   loadingState,
   grouped,
@@ -967,26 +750,21 @@ export function ZeroConnectorsPage() {
   );
   const disconnecting = disconnectLoadable.state === "loading";
 
-  const connectHandler = (connectorRef: ConnectorRef) => {
-    const ct = filteredConnectors.find((c) => {
-      return c.connectorRef === connectorRef;
-    });
-    if (!ct) {
-      return;
-    }
-    launchConnectorConnect({
-      connector: ct,
+  const connectHandlers = (
+    connector: PublicConnectorCatalogStatusItem,
+  ): ConnectorConnectHandlers => {
+    return {
       openModal: () => {
-        setSelected(connectorRef);
+        setSelected(connector.connectorRef);
       },
       connectBrowserAuth: (authMethod) => {
         return connect(
-          connectorRef,
+          connector.connectorRef,
           authMethod,
           {
             authorizeVisibleAgents: true,
-            connectorLabel: ct.label,
-            connectorIcon: ct.icon,
+            connectorLabel: connector.label,
+            connectorIcon: connector.icon,
           },
           signal,
         );
@@ -994,17 +772,17 @@ export function ZeroConnectorsPage() {
       connectNoAuth: (authMethod) => {
         return connectNoAuth(
           {
-            connectorRef,
+            connectorRef: connector.connectorRef,
             authMethod,
             options: {
               authorizeVisibleAgents: true,
-              connectorLabel: ct.label,
+              connectorLabel: connector.label,
             },
           },
           signal,
         );
       },
-    });
+    };
   };
 
   const disconnectHandler = async (
@@ -1025,36 +803,39 @@ export function ZeroConnectorsPage() {
       connectFlowRef === c.connectorRef;
     if (!isConnected) {
       return (
-        <AvailableConnectorCard
+        <ConnectorCard
           key={c.connectorRef}
+          variant="catalog"
           connector={c}
-          isPolling={isPolling}
-          onConnect={() => {
-            return connectHandler(c.connectorRef);
-          }}
+          busy={isPolling}
+          connect={connectHandlers(c)}
         />
       );
     }
     return (
-      <GlobalConnectorCard
+      <ConnectorCard
         key={c.connectorRef}
+        variant="connection"
         connector={c}
-        isConnected={isConnected}
-        isPolling={isPolling}
-        isDisconnecting={disconnecting}
-        showManageAccess
-        onConnect={() => {
-          return connectHandler(c.connectorRef);
-        }}
+        connected={isConnected}
+        busy={isPolling}
+        disconnecting={disconnecting}
+        connect={connectHandlers(c)}
         onDisconnect={() => {
           detach(
             disconnectHandler(c.connectorRef, c.label),
             Reason.DomCallback,
           );
         }}
-        onManageAccess={() => {
-          setManagedConnectorRef(c.connectorRef);
-        }}
+        manageAccess={
+          <ConnectorAccessButton
+            connectorRef={c.connectorRef}
+            connectorLabel={c.label}
+            onClick={() => {
+              setManagedConnectorRef(c.connectorRef);
+            }}
+          />
+        }
         onReviewScopes={() => {
           return setScopeReviewConnectorRef(c.connectorRef);
         }}
