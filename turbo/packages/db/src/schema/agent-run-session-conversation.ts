@@ -39,9 +39,6 @@ export const agentRuns = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Compatibility column retained until the API version that wrote it is no
-    // longer rollback-eligible. Application code must not read or write it.
-    resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     continuedFromSessionId: uuid("continued_from_session_id"),
     sessionId: uuid("session_id")
       .notNull()
