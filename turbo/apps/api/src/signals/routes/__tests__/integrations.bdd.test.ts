@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   agentPhoneBddWebhookSecret,
@@ -235,6 +235,53 @@ async function pollSlackRun(runnerGroup: string): Promise<string> {
     runnerGroup,
     "Expected a Slack-triggered run in the runner queue",
   );
+}
+
+async function pollQueuedWebAndSlackRuns(args: {
+  readonly actor: ApiTestUser;
+  readonly runnerGroup: string;
+  readonly expectedSlackSessionId: string;
+}): Promise<{
+  readonly webRunId: string;
+  readonly run2Id?: string;
+  readonly claim2?: Awaited<ReturnType<typeof runs.claimRunnerJob>>;
+}> {
+  const firstQueuedRunId = await pollRunnerRun(
+    args.runnerGroup,
+    "Expected the queued Web run in the shared thread queue",
+  );
+  const firstQueuedRun = await runs.readRun(args.actor, firstQueuedRunId);
+  if (
+    !firstQueuedRun.prompt.includes("stay canonical after the switch changes")
+  ) {
+    return { webRunId: firstQueuedRunId };
+  }
+
+  const claim2 = await runs.claimRunnerJob(firstQueuedRunId);
+  expect(claim2.resumeSession?.sessionId).toBe(args.expectedSlackSessionId);
+  return {
+    webRunId: await pollRunnerRun(
+      args.runnerGroup,
+      "Expected the queued Web run in the shared thread queue",
+    ),
+    run2Id: firstQueuedRunId,
+    claim2,
+  };
+}
+
+async function ensureSlackRunClaimed(args: {
+  readonly runnerGroup: string;
+  readonly run2Id: string | undefined;
+  readonly claim2: Awaited<ReturnType<typeof runs.claimRunnerJob>> | undefined;
+}): Promise<{
+  readonly run2Id: string;
+  readonly claim2: Awaited<ReturnType<typeof runs.claimRunnerJob>>;
+}> {
+  if (args.run2Id !== undefined && args.claim2 !== undefined) {
+    return { run2Id: args.run2Id, claim2: args.claim2 };
+  }
+  const run2Id = await pollSlackRun(args.runnerGroup);
+  return { run2Id, claim2: await runs.claimRunnerJob(run2Id) };
 }
 
 async function completeSlackTriggeredRun(args: {
@@ -1689,10 +1736,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
       );
     }
 
-    const webRunId = await pollRunnerRun(
+    const queuedRuns = await pollQueuedWebAndSlackRuns({
+      actor,
       runnerGroup,
-      "Expected the queued Web run in the shared thread queue",
-    );
+      expectedSlackSessionId: `bdd-slack-cli-${run1Id}`,
+    });
+    const webRunId = queuedRuns.webRunId;
+    let claim2 = queuedRuns.claim2;
+    let run2Id = queuedRuns.run2Id;
+
     const webClaim = await runs.claimRunnerJob(webRunId);
     expect(webClaim.resumeSession).toBeNull();
     context.mocks.slack.chat.postMessage.mockClear();
@@ -1710,8 +1762,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected the Web run to save its independent session");
     }
 
-    const run2Id = await pollSlackRun(runnerGroup);
-    const claim2 = await runs.claimRunnerJob(run2Id);
+    ({ run2Id, claim2 } = await ensureSlackRunClaimed({
+      runnerGroup,
+      run2Id,
+      claim2,
+    }));
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     expect(claim2.resumeSession?.sessionId).not.toBe(
       `bdd-slack-cli-${webRunId}`,
