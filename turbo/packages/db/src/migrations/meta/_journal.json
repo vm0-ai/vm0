@@ -4691,6 +4691,13 @@
       "when": 1784887941033,
       "tag": "0669_retire_gpt_5_4_models",
       "breakpoints": true
+    },
+    {
+      "idx": 670,
+      "version": "7",
+      "when": 1784889382187,
+      "tag": "0670_chubby_bulldozer",
+      "breakpoints": true
     }
   ]
 }
