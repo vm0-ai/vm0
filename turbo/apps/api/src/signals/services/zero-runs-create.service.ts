@@ -283,7 +283,7 @@ function buildIntegrationToolsPrompt(
     }
     case "slack": {
       return [
-        "- Slack messaging and files: normal replies are automatically sent to the originating thread, so do not duplicate them. Use Slack commands for different channels/threads or explicit extra messages. Use `zero slack download-file -h` for `[Slack file]` blocks and `zero web download-file -h` for canonical `[Web file]` blocks. `zero slack upload-file -h` can attach a local file to Slack when file delivery is needed. Never use SLACK_TOKEN directly — it's a user OAuth token.",
+        "- Slack messaging and files: normal replies are automatically sent to the originating thread, so do not duplicate them. Use Slack commands for different channels/threads or explicit extra messages. Use `zero slack download-file -h` for `[Slack file]` blocks. `zero slack upload-file -h` can attach a local file to Slack when file delivery is needed. Never use SLACK_TOKEN directly — it's a user OAuth token.",
         ...localFileContextLines,
       ];
     }

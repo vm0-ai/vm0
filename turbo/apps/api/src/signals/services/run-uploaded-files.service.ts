@@ -57,7 +57,7 @@ function isRunUploadedFileSource(
   });
 }
 
-export async function sourceForRun(
+async function sourceForRun(
   writeDb: Db,
   runId: string,
   fallback: RunUploadedFileSource,

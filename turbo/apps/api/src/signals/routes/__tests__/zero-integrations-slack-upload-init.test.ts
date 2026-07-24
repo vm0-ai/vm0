@@ -16,7 +16,6 @@ import {
 
 const context = testContext();
 const store = createStore();
-const LARGE_DIRECT_UPLOAD_BYTES = 100 * 1024 * 1024 + 1;
 
 function zeroToken(args: {
   readonly userId: string;
@@ -191,40 +190,6 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     expect(
       context.mocks.slack.files.getUploadURLExternal,
     ).toHaveBeenLastCalledWith({ filename: "quarterly.csv", length: 4096 });
-  });
-
-  it("preserves large direct uploads when canonical assets are disabled", async () => {
-    const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
-
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
-    const response = await accept(
-      client.init({
-        body: {
-          filename: "legacy-archive.zip",
-          length: LARGE_DIRECT_UPLOAD_BYTES,
-          canonical: {
-            operationId: randomUUID(),
-            contentType: "application/zip",
-            checksumSha256: "a".repeat(64),
-            channel: "C_LEGACY_DIRECT",
-          },
-        },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      uploadUrl: "https://files.slack.com/upload/v1/abc",
-      fileId: "F-mock-file",
-    });
-    expect(
-      context.mocks.slack.files.getUploadURLExternal,
-    ).toHaveBeenLastCalledWith({
-      filename: "legacy-archive.zip",
-      length: LARGE_DIRECT_UPLOAD_BYTES,
-    });
   });
 
   it("forwards Slack non-ok upload URL responses as 400 SLACK_ERROR", async () => {

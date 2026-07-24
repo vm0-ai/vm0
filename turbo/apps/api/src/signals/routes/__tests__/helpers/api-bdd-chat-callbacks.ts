@@ -322,9 +322,6 @@ export function createChatCallbacksApi(context: TestContext) {
               typeof input.ContentType === "string" ? input.ContentType : null,
           });
         }
-        if (name === "HeadObjectCommand") {
-          return Promise.resolve(storedS3ObjectResponse(objects, bucket, key));
-        }
         if (name === "GetObjectCommand") {
           return Promise.resolve(storedS3ObjectResponse(objects, bucket, key));
         }
