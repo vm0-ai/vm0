@@ -239,5 +239,5 @@ Notes:
   - There are no manual stop or suspend commands
   - Browser Use credentials and connection URLs are never printed
   - Threads for the same user and organization share one login profile
-  - A shared profile can have only one active provider instance`,
+  - Threads can use the shared profile in parallel`,
   );
