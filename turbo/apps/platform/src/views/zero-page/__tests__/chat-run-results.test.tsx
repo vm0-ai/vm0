@@ -763,6 +763,13 @@ describe("chat lifecycle", () => {
   it("keeps the established completed-run layout across container sizes", async () => {
     const finalReply = "The launch plan is ready.";
     const followupPrompt = "Turn it into a presentation";
+    const completedAt = "2026-06-09T10:00:21Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
 
     mockChatLifecycle(context, {
       threadId: "thread-completed-run-layout",
@@ -790,6 +797,12 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-completed-run-layout",
           runLifecycleEvent: "completed",
+          createdAt: completedAt,
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-completed-run-layout",
           recommendedFollowups: [
             {
               prompt: followupPrompt,
@@ -797,7 +810,7 @@ describe("chat lifecycle", () => {
               generationType: "presentation",
             },
           ],
-          createdAt: "2026-06-09T10:00:21Z",
+          createdAt: "2026-06-09T10:00:30Z",
         },
       ],
     });
@@ -853,7 +866,7 @@ describe("chat lifecycle", () => {
     expect(followupList).not.toHaveClass("flex", "gap-1");
     expect(followupButton).not.toHaveClass("border", "bg-background");
 
-    const finishedLabel = screen.getByText("Keep going");
+    const finishedLabel = screen.getByText(`Keep going · ${completedAtLabel}`);
     const finishedLabelRow = finishedLabel.parentElement;
     const finishedDivider = finishedLabelRow!.parentElement;
     const finishedRunRow = finishedDivider!.parentElement;
