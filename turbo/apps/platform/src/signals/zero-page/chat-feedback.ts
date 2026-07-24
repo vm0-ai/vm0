@@ -33,6 +33,8 @@ export interface FeedbackSelectionRect {
 export interface FeedbackSource {
   readonly type: "mail";
   readonly id: string;
+  readonly status: "draft" | "sent";
+  readonly sentId?: string;
 }
 
 export interface FeedbackSelection {
@@ -131,10 +133,12 @@ function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
   }
   const type = source.dataset.feedbackSourceType;
   const id = source.dataset.feedbackSourceId;
-  if (type !== "mail" || !id) {
+  const status = source.dataset.feedbackSourceStatus;
+  const sentId = source.dataset.feedbackSourceSentId;
+  if (type !== "mail" || !id || (status !== "draft" && status !== "sent")) {
     return undefined;
   }
-  return { type, id };
+  return { type, id, status, ...(sentId ? { sentId } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -278,19 +282,27 @@ function readFeedbackSelection(): FeedbackSelection | null {
 // Compose every noted fragment into a single follow-up turn, each passage
 // quoted above the note that belongs to it.
 export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
-  const firstMailDraftId = items[0]?.source?.id;
-  const commonMailDraftId =
-    firstMailDraftId !== undefined &&
+  const firstMailSource = items[0]?.source;
+  const commonMailSource =
+    firstMailSource !== undefined &&
     items.every((item) => {
       return (
-        item.source?.type === "mail" && item.source.id === firstMailDraftId
+        item.source?.type === "mail" &&
+        item.source.id === firstMailSource.id &&
+        item.source.status === firstMailSource.status &&
+        item.source.sentId === firstMailSource.sentId
       );
     })
-      ? firstMailDraftId
+      ? firstMailSource
       : null;
   const hasSourceContext = items.some((item) => {
     return item.source !== undefined;
   });
+  const mailSourceLabel = (source: FeedbackSource) => {
+    return source.status === "draft"
+      ? `an email draft (mail draft ID: ${source.id})`
+      : `a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""})`;
+  };
   const blocks = items.map((item) => {
     const quoted = item.quote
       .split("\n")
@@ -299,15 +311,15 @@ export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
       })
       .join("\n");
     const source =
-      commonMailDraftId === null && item.source?.type === "mail"
-        ? `Source: email draft (mail draft ID: ${item.source.id})\n\n`
+      commonMailSource === null && item.source?.type === "mail"
+        ? `Source: ${mailSourceLabel(item.source)}\n\n`
         : "";
     return `${source}${quoted}\n\n${item.note.trim()}`;
   });
-  const intro = commonMailDraftId
+  const intro = commonMailSource
     ? items.length === 1
-      ? `Feedback on this part of an email draft (mail draft ID: ${commonMailDraftId}):`
-      : `Feedback on ${items.length} parts of an email draft (mail draft ID: ${commonMailDraftId}):`
+      ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+      : `Feedback on ${items.length} parts of ${mailSourceLabel(commonMailSource)}:`
     : hasSourceContext
       ? `Feedback on ${items.length} selected ${items.length === 1 ? "passage" : "passages"}:`
       : items.length === 1

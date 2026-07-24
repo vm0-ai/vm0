@@ -317,61 +317,82 @@ describe("chat inline feedback", () => {
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
   });
 
-  it("includes email draft context when submitting mail feedback", async () => {
-    const user = userEvent.setup({ delay: null });
-    const assistantReply = "Mail body after";
-    const mailDraftId = "c0000000-0000-4000-a000-000000000012";
-    const sentPrompts: string[] = [];
+  it.each([
+    {
+      status: "draft" as const,
+      sourceDescription: "an email draft",
+      idLabel: "mail draft ID",
+      sentId: null,
+    },
+    {
+      status: "sent" as const,
+      sourceDescription: "a sent email",
+      idLabel: "mail ID",
+      sentId: "gmail-sent-message-id",
+    },
+  ])(
+    "includes $status email context when submitting mail feedback",
+    async ({ status, sourceDescription, idLabel, sentId }) => {
+      const user = userEvent.setup({ delay: null });
+      const assistantReply = "Mail body after";
+      const mailDraftId = "c0000000-0000-4000-a000-000000000012";
+      const sentPrompts: string[] = [];
 
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Mail feedback",
-      chatMessages: [
-        {
-          id: "msg-mail-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-mail-feedback",
-          createdAt: "2026-07-24T02:00:00Z",
+      mockChatLifecycle(context, {
+        threadId: FEEDBACK_THREAD_ID,
+        threadTitle: "Mail feedback",
+        chatMessages: [
+          {
+            id: "msg-mail-feedback-assistant",
+            role: "assistant",
+            content: assistantReply,
+            runId: "run-mail-feedback",
+            createdAt: "2026-07-24T02:00:00Z",
+          },
+        ],
+        onRunCreate: (body) => {
+          if (body.prompt !== undefined) {
+            sentPrompts.push(body.prompt);
+          }
         },
-      ],
-      onRunCreate: (body) => {
-        if (body.prompt !== undefined) {
-          sentPrompts.push(body.prompt);
-        }
-      },
-    });
+      });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-    });
+      detachedSetupPage({
+        context,
+        path: `/chats/${FEEDBACK_THREAD_ID}`,
+      });
 
-    const assistantReplyElement = await screen.findByText(assistantReply);
-    const feedbackSource = assistantReplyElement.closest(
-      ".zero-chat-bubble-assistant",
-    );
-    if (!(feedbackSource instanceof HTMLElement)) {
-      throw new Error("Feedback source not found");
-    }
-    feedbackSource.dataset.feedbackSourceType = "mail";
-    feedbackSource.dataset.feedbackSourceId = mailDraftId;
+      const assistantReplyElement = await screen.findByText(assistantReply);
+      const feedbackSource = assistantReplyElement.closest(
+        ".zero-chat-bubble-assistant",
+      );
+      if (!(feedbackSource instanceof HTMLElement)) {
+        throw new Error("Feedback source not found");
+      }
+      feedbackSource.dataset.feedbackSourceType = "mail";
+      feedbackSource.dataset.feedbackSourceId = mailDraftId;
+      feedbackSource.dataset.feedbackSourceStatus = status;
+      if (sentId) {
+        feedbackSource.dataset.feedbackSourceSentId = sentId;
+      }
 
-    selectTextForInlineFeedback(assistantReplyElement);
-    await user.click(await screen.findByText("Provide feedback"));
-    const feedbackNote = await findFeedbackNote();
-    pastePlainText(feedbackNote, "Rewrite this paragraph.");
-    await user.click(screen.getByLabelText("Send"));
+      selectTextForInlineFeedback(assistantReplyElement);
+      await user.click(await screen.findByText("Provide feedback"));
+      const feedbackNote = await findFeedbackNote();
+      pastePlainText(feedbackNote, "Rewrite this paragraph.");
+      await user.click(screen.getByLabelText("Send"));
 
-    await waitFor(() => {
-      expect(sentPrompts).toHaveLength(1);
-    });
-    expect(sentPrompts[0]).toContain(
-      `Feedback on this part of an email draft (mail draft ID: ${mailDraftId}):`,
-    );
-    expect(sentPrompts[0]).toContain("> Mail body after");
-    expect(sentPrompts[0]).toContain("Rewrite this paragraph.");
-  });
+      await waitFor(() => {
+        expect(sentPrompts).toHaveLength(1);
+      });
+      const sentIdSuffix = sentId ? `, sent ID: ${sentId}` : "";
+      expect(sentPrompts[0]).toContain(
+        `Feedback on this part of ${sourceDescription} (${idLabel}: ${mailDraftId}${sentIdSuffix}):`,
+      );
+      expect(sentPrompts[0]).toContain("> Mail body after");
+      expect(sentPrompts[0]).toContain("Rewrite this paragraph.");
+    },
+  );
 
   it("uses slash workflow suggestions inside an inline feedback note", async () => {
     const user = userEvent.setup({ delay: null });

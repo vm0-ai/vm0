@@ -270,6 +270,8 @@ interface FeedbackItemNodeAttributes {
   readonly fill: boolean;
   readonly sourceType: "mail" | null;
   readonly sourceId: string | null;
+  readonly sourceStatus: "draft" | "sent" | null;
+  readonly sourceSentId: string | null;
 }
 
 function feedbackItemNodeAttributes(
@@ -281,6 +283,8 @@ function feedbackItemNodeAttributes(
   const fill: unknown = node.attrs.fill;
   const sourceType: unknown = node.attrs.sourceType;
   const sourceId: unknown = node.attrs.sourceId;
+  const sourceStatus: unknown = node.attrs.sourceStatus;
+  const sourceSentId: unknown = node.attrs.sourceSentId;
   if (
     typeof feedbackId !== "number" ||
     typeof quote !== "string" ||
@@ -288,7 +292,13 @@ function feedbackItemNodeAttributes(
     typeof fill !== "boolean" ||
     (sourceType !== null && sourceType !== "mail") ||
     (sourceId !== null && typeof sourceId !== "string") ||
-    (sourceType === null) !== (sourceId === null)
+    (sourceStatus !== null &&
+      sourceStatus !== "draft" &&
+      sourceStatus !== "sent") ||
+    (sourceSentId !== null && typeof sourceSentId !== "string") ||
+    (sourceType === null) !== (sourceId === null) ||
+    (sourceType === null) !== (sourceStatus === null) ||
+    (sourceType === null && sourceSentId !== null)
   ) {
     throw new Error("Feedback item node attributes are invalid");
   }
@@ -299,6 +309,8 @@ function feedbackItemNodeAttributes(
     fill,
     sourceType,
     sourceId,
+    sourceStatus,
+    sourceSentId,
   };
 }
 
@@ -625,6 +637,8 @@ function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
       fill: false,
       sourceType: item.source?.type ?? null,
       sourceId: item.source?.id ?? null,
+      sourceStatus: item.source?.status ?? null,
+      sourceSentId: item.source?.sentId ?? null,
     },
     content: feedbackNoteContent(item.note),
   });
@@ -720,11 +734,17 @@ function feedbackItemsFromWorkflowComposer(
       id: attributes.feedbackId,
       quote: attributes.quote,
       note: feedbackNoteFromNode(node),
-      ...(attributes.sourceType === "mail" && attributes.sourceId !== null
+      ...(attributes.sourceType === "mail" &&
+      attributes.sourceId !== null &&
+      attributes.sourceStatus !== null
         ? {
             source: {
               type: attributes.sourceType,
               id: attributes.sourceId,
+              status: attributes.sourceStatus,
+              ...(attributes.sourceSentId !== null
+                ? { sentId: attributes.sourceSentId }
+                : {}),
             },
           }
         : {}),
@@ -919,11 +939,17 @@ function workflowComposerDocToString(editor: Editor): string {
         id: attributes.feedbackId,
         quote: attributes.quote,
         note: feedbackNoteFromNode(node),
-        ...(attributes.sourceType === "mail" && attributes.sourceId !== null
+        ...(attributes.sourceType === "mail" &&
+        attributes.sourceId !== null &&
+        attributes.sourceStatus !== null
           ? {
               source: {
                 type: attributes.sourceType,
                 id: attributes.sourceId,
+                status: attributes.sourceStatus,
+                ...(attributes.sourceSentId !== null
+                  ? { sentId: attributes.sourceSentId }
+                  : {}),
               },
             }
           : {}),
@@ -1143,6 +1169,8 @@ function createFeedbackItemNode(
         fill: { default: false },
         sourceType: { default: null },
         sourceId: { default: null },
+        sourceStatus: { default: null },
+        sourceSentId: { default: null },
       };
     },
     parseHTML() {

@@ -520,6 +520,12 @@ describe("chat message action cards", () => {
     expect(
       messageSection.querySelector("[data-feedback-source]"),
     ).toHaveAttribute("data-feedback-source-id", mailDraftId);
+    expect(
+      messageSection.querySelector("[data-feedback-source]"),
+    ).toHaveAttribute("data-feedback-source-status", "draft");
+    expect(
+      messageSection.querySelector("[data-feedback-source]"),
+    ).not.toHaveAttribute("data-feedback-source-sent-id");
 
     selectMailText(boldText);
     await user.click(await waitForSelectionToolbarButton("Copy"));
@@ -543,6 +549,17 @@ describe("chat message action cards", () => {
     });
     sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(queryButtonByText("Send", sidebar)).toBeNull();
+    const sentMessageSection =
+      within(sidebar).getByText("Message").parentElement;
+    if (!sentMessageSection) {
+      throw new Error("Expected sent mail message section");
+    }
+    expect(
+      sentMessageSection.querySelector("[data-feedback-source]"),
+    ).toHaveAttribute("data-feedback-source-status", "sent");
+    expect(
+      sentMessageSection.querySelector("[data-feedback-source]"),
+    ).toHaveAttribute("data-feedback-source-sent-id", "gmail-sent-message-id");
     expect(draftRequests).toBe(2);
   });
 
