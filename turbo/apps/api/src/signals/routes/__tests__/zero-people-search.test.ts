@@ -100,12 +100,19 @@ async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
   });
 }
 
-async function fundActor(actor: ApiTestUser): Promise<void> {
+async function setActorCredits(
+  actor: ApiTestUser,
+  credits: number,
+): Promise<void> {
   if (!actor.orgId) {
     throw new Error("People Search test actor must have an organization");
   }
+  await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits });
+}
+
+async function fundActor(actor: ApiTestUser): Promise<void> {
   await bootstrapOnboarding(actor);
-  await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1000 });
+  await setActorCredits(actor, 1000);
 }
 
 async function seedPeopleSearchPricing(): Promise<void> {
@@ -423,6 +430,30 @@ describe("zero people-search route", () => {
     expect(beforeCredits - afterCredits).toBe(20);
   });
 
+  it("accepts a CLI token for an enrolled user", async () => {
+    const actor = staffActor();
+    configureProvider();
+    await seedPeopleSearchPricing();
+    await fundActor(actor);
+    const { token } = await createRunsApi(context).createCliToken(actor);
+    server.use(
+      http.post(PERPLEXITY_AGENT_URL, () => {
+        return HttpResponse.json(providerResponse());
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroPeopleSearchContract).search({
+        headers: { authorization: `Bearer ${token}` },
+        body: defaultRequest(),
+      }),
+      [200],
+    );
+
+    expect(response.body.profiles[0]?.name).toBe("Jordan Lee");
+    expect(response.body.creditsCharged).toBe(20);
+  });
+
   it("deduplicates by validated source identity before enforcing the response budget", async () => {
     const actor = staffActor();
     const sourceIds = [1, 2, 3, 4, 5];
@@ -613,6 +644,33 @@ describe("zero people-search route", () => {
     );
     expectApiError(noPrice.body);
     expect(noPrice.body.error.code).toBe("PRICING_NOT_CONFIGURED");
+    expect(providerRequests).toBe(0);
+  });
+
+  it("rejects insufficient credits before provider work", async () => {
+    const actor = staffActor();
+    let providerRequests = 0;
+    configureProvider();
+    await seedPeopleSearchPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, 0);
+    server.use(
+      http.post(PERPLEXITY_AGENT_URL, () => {
+        providerRequests += 1;
+        return HttpResponse.json(providerResponse());
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroPeopleSearchContract).search({
+        headers: authenticate(actor),
+        body: defaultRequest(),
+      }),
+      [402],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
     expect(providerRequests).toBe(0);
   });
 
