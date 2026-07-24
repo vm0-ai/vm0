@@ -1011,9 +1011,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const host = await cu.startComputerUseHost(actor);
     await chat.updateThreadComputerUseHost(actor, thread.id, host.hostId);
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      computerUseHostId: host.hostId,
-    });
 
     const missingHost = await chat.requestUpdateThreadComputerUseHost(
       actor,
@@ -1035,9 +1032,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerUpdate.body.error.message).toBe("Chat thread not found");
 
     await chat.updateThreadComputerUseHost(actor, thread.id, null);
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      computerUseHostId: null,
-    });
 
     const hostEvents = (await allThreadEvents(actor)).filter((event) => {
       return (
@@ -1132,8 +1126,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
     await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
 
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);

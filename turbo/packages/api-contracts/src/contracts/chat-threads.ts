@@ -454,8 +454,6 @@ const chatThreadDetailSchema = z.object({
    * is newer than this timestamp.
    */
   lastReadAt: z.string().nullable(),
-  computerUseHostId: z.string().uuid().nullable(),
-  codexServiceTier: codexServiceTierSchema.nullable(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -721,7 +719,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread detail",
+    summary: "Get chat thread read state",
   },
   patch: {
     method: "PATCH",

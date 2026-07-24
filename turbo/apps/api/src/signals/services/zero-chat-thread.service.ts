@@ -270,8 +270,6 @@ type ChatThreadRow = {
 
 type ChatThreadDetailRow = {
   readonly lastReadAt: Date | null;
-  readonly computerUseHostId: string | null;
-  readonly codexServiceTier: CodexServiceTier | null;
 };
 
 function effectiveChatMessageRunId() {
@@ -875,8 +873,6 @@ function ownedChatThreadDetail(
     const [thread] = await get(db$)
       .select({
         lastReadAt: chatThreads.lastReadAt,
-        computerUseHostId: chatThreads.computerUseHostId,
-        codexServiceTier: chatThreads.codexServiceTier,
       })
       .from(chatThreads)
       .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
@@ -888,8 +884,6 @@ function ownedChatThreadDetail(
 
     return {
       lastReadAt: thread.lastReadAt,
-      computerUseHostId: thread.computerUseHostId,
-      codexServiceTier: thread.codexServiceTier ?? null,
     };
   });
 }
@@ -906,8 +900,6 @@ export function zeroChatThreadDetail(args: {
 
     return {
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
-      computerUseHostId: thread.computerUseHostId,
-      codexServiceTier: thread.codexServiceTier,
     };
   });
 }
