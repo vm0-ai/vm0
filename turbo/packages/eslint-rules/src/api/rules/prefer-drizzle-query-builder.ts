@@ -2017,6 +2017,27 @@ export const preferDrizzleQueryBuilder = createRule({
       return (type.flags & (TypeFlags.Number | TypeFlags.NumberLiteral)) !== 0;
     }
 
+    function isBoundScalarParameterType(type: Type): boolean {
+      if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+        const constraint = checker.getBaseConstraintOfType(type);
+        return (
+          constraint !== undefined && isBoundScalarParameterType(constraint)
+        );
+      }
+      if (type.isUnion()) {
+        return type.types.every(isBoundScalarParameterType);
+      }
+      return (
+        (type.flags &
+          (TypeFlags.BigIntLike |
+            TypeFlags.BooleanLike |
+            TypeFlags.Null |
+            TypeFlags.NumberLike |
+            TypeFlags.StringLike)) !==
+        0
+      );
+    }
+
     function isDrizzleWrapperExpression(
       node: TSESTree.Expression | undefined,
     ): boolean {
@@ -2628,7 +2649,12 @@ export const preferDrizzleQueryBuilder = createRule({
           .map(quasiText)
           .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
         const syntaxSource = sqlCodeMask(source);
-        if (completeScalarCteProjectionMatch(syntaxSource)) {
+        if (
+          completeScalarCteProjectionMatch(syntaxSource) &&
+          query.quasi.expressions.every((expression) => {
+            return isBoundScalarParameterType(expressionType(expression).type);
+          })
+        ) {
           context.report({ node: query, messageId: "scalarCteQueryBuilder" });
           return;
         }

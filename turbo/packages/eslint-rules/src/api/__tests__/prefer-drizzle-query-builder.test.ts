@@ -903,6 +903,7 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       code: `${rawRowsImport}${schemaPreamble}
         import { sql } from "drizzle-orm";
         const dynamicOrgTable = sql.identifier("org_metadata");
+        const groupedAggregate = sql\`GROUP BY org_id\`;
         await executeRawRows(
           db,
           sql\`
@@ -1023,6 +1024,27 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
             SELECT
               (SELECT credits FROM org) AS value,
               (SELECT total FROM expired) AS value
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+              \${groupedAggregate}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
           \`,
           rowSchema,
         );
