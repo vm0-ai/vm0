@@ -123,6 +123,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.FeishuIntegration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
@@ -156,6 +157,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.FeishuIntegration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
