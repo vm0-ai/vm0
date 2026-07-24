@@ -95,6 +95,24 @@ def test_tweet_create_plain_text_downgrades_to_content_create(x_usage, tmp_path,
     assert p["quantity"] == 1
 
 
+def test_lowercase_post_tweet_create_plain_text_downgrades(x_usage, tmp_path, real_flow):
+    """Lowercase POST methods still refine plain-text tweet creation."""
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "post"
+    flow.request.content = json.dumps({"text": "hello world"}).encode()
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
 @pytest.mark.parametrize(
     ("request_encoding", "request_body"),
     [
