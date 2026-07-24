@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.627.4](https://github.com/vm0-ai/vm0/compare/app-v0.627.3...app-v0.627.4) (2026-07-24)
+
+
+### Performance Improvements
+
+* **platform:** skip history fetch before seq one ([#22875](https://github.com/vm0-ai/vm0/issues/22875)) ([9862d50](https://github.com/vm0-ai/vm0/commit/9862d50a3b024aa14394bb8d94432de227200a8d))
+
 ## [0.627.3](https://github.com/vm0-ai/vm0/compare/app-v0.627.2...app-v0.627.3) (2026-07-24)
 
 
