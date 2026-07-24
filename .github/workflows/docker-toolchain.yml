@@ -3,11 +3,13 @@ name: Docker Toolchain Build
 on:
   pull_request:
     paths:
-      - 'docker/toolchain/**'
-      - '.devcontainer/link-agent-skills.sh'
-      - '.devcontainer/setup.sh'
-      - '.devcontainer/test.sh'
-      - '.github/workflows/docker-toolchain.yml'
+      - "docker/toolchain/**"
+      - ".devcontainer/devcontainer.json"
+      - ".devcontainer/devcontainer-lock.json"
+      - ".devcontainer/link-agent-skills.sh"
+      - ".devcontainer/setup.sh"
+      - ".devcontainer/test.sh"
+      - ".github/workflows/docker-toolchain.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

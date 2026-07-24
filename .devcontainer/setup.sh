@@ -31,11 +31,14 @@ else
   echo "✓ Turbo workspace not found, skipping cache cleanup"
 fi
 
-# PostgreSQL is initialized by the postgresql feature, while pgvector is
-# provided by the vm0-dev image.
-echo "🐘 Checking PostgreSQL pgvector extension..."
-sudo chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
-sudo service postgresql start 2>/dev/null || true
+# PostgreSQL and pgvector are provided by the vm0-dev image.
+echo "🐘 Configuring PostgreSQL..."
+sudo service postgresql start
+sudo -u postgres psql -h /var/run/postgresql -d postgres -v ON_ERROR_STOP=1 \
+  -c "ALTER ROLE postgres PASSWORD 'postgres';"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT 1" | grep -qx 1
+echo "✓ PostgreSQL password authentication ready"
+
 if sudo -u postgres psql -h /var/run/postgresql -d postgres -Atqc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" | grep -qx 1; then
   echo "✓ pgvector extension available to PostgreSQL"
 else
