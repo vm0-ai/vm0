@@ -148,6 +148,7 @@ import {
   type ConnectorSignals,
   type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
+import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
 import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
@@ -4825,6 +4826,7 @@ function BodyRenderBlockView({
 function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const pageSignal = useGet(pageSignal$);
   const available = useLastResolved(signals.available$) ?? false;
+  const connected = useLastResolved(signals.connected$) ?? false;
   const completeLoadable = useLoadable(signals.complete$);
   const complete =
     completeLoadable.state === "hasData" && completeLoadable.data;
@@ -4836,6 +4838,15 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   if (!available || !catalogItem) {
     return null;
   }
+  const reconnectRequired =
+    connectorCurrentConnectionStatus(catalogItem) === "reconnect-required";
+  const actionLabel = complete
+    ? "Authorized"
+    : reconnectRequired
+      ? "Reconnect"
+      : connected
+        ? "Authorize"
+        : "Connect";
 
   return (
     <div
@@ -4864,7 +4875,7 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {loading && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Authorize" : "Connect"}
+        {actionLabel}
       </button>
     </div>
   );
