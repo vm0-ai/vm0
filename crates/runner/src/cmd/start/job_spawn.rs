@@ -958,7 +958,7 @@ pub(super) async fn cleanup_panicked_job(
     }
 }
 
-/// Handle a completed job from the JoinSet, cleaning up cancel tokens.
+/// Handle a completed job from the JoinSet, removing its cancellation registration.
 pub(super) async fn handle_job_result(
     result: Option<Result<RunCancellationRegistration, tokio::task::JoinError>>,
 ) {

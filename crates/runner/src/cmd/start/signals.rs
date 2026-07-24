@@ -262,10 +262,10 @@ impl SignalController {
     /// ## Race handling
     ///
     /// `handle_stopping_signal` closes parking and sends Stopping **before**
-    /// locking `cancel_tokens`. This ordering lets the main loop close the
-    /// TOCTOU window where a new job is claimed between the handler's
-    /// iteration and its own token insert: the main loop re-reads `mode_rx`
-    /// after insert and sees Stopping via watch's write/read fence.
+    /// entering the cancellation registry's hard-stop barrier. Registrations
+    /// before the barrier are included in its snapshot; registrations after
+    /// the barrier are returned already cancelled. The main loop also re-reads
+    /// `mode_rx` after registration so Stopping cancellation precedes claim.
     ///
     /// ## Lifetime
     ///

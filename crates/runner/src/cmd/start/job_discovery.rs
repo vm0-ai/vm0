@@ -359,7 +359,7 @@ async fn claim_with_local_admission(
             .await?
         }
     };
-    // Insert cancel token before claiming so provider-side cancel channels
+    // Register cancellation before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
     // find the active job. Skip duplicate discoveries; overwriting would break
     // cancel delivery for the executor.
