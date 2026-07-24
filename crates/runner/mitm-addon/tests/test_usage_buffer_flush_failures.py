@@ -11,7 +11,12 @@ import usage
 import usage.buffer as usage_buffer
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.pending_helpers import assert_current_pending, assert_pending
-from tests.usage_buffer_helpers import DeliveryOutcomeCallback, RecordingEnqueue, event
+from tests.usage_buffer_helpers import (
+    DeliveryOutcomeCallback,
+    RecordingEnqueue,
+    event,
+    observation,
+)
 
 
 def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
@@ -376,10 +381,10 @@ def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/webhooks/agent/model-usage-observation-v2",
         "token-a",
         "run-1",
-        [event(source_key="observation-source")],
+        [observation(source_key="observation-source", input_tokens=1)],
         proxy_log_path,
     )
     usage.buffer_usage_events(
@@ -408,10 +413,10 @@ def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/webhooks/agent/model-usage-observation-v2",
         "token-a",
         "run-1",
-        [event(source_key="observation-source")],
+        [observation(source_key="observation-source", input_tokens=1)],
         proxy_log_path,
     )
 

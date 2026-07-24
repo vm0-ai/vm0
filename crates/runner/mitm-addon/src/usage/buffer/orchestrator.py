@@ -15,6 +15,7 @@ from .models import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
     DEFAULT_FLUSH_JITTER_RATIO,
     MAX_RETAINED_USAGE_BATCH_RETRIES,
+    ModelUsageObservation,
     ResourceFieldName,
     UsageEvent,
     UsageFlushTrigger,
@@ -133,6 +134,42 @@ class UsageEventBuffer:
                 log_type=log_type,
                 preserve_source_idempotency=preserve_source_idempotency,
                 atomic_source_key=atomic_source_key,
+            )
+            if accepted_count == 0:
+                timer_to_start = self._schedule_timer_if_buffered_locked()
+            elif self._state.should_flush():
+                flush_now = True
+            else:
+                timer_to_start = self._schedule_timer_locked()
+            self._sync_buffered_counter_locked()
+
+        if timer_to_start is not None:
+            self._start_timer(timer_to_start)
+        if flush_now:
+            self._flush_usage_events(trigger="threshold")
+        return accepted_count
+
+    def buffer_model_usage_observations(
+        self,
+        url: str,
+        sandbox_token: str,
+        run_id: str,
+        observations: Iterable[ModelUsageObservation],
+        proxy_log_path: str,
+        *,
+        preserve_source_idempotency: bool = False,
+    ) -> int:
+        """Add compact model observations and flush if a bound is exceeded."""
+        flush_now = False
+        timer_to_start: _TimerHandle | None = None
+        with self._lock:
+            accepted_count = self._state.add_model_usage_observations(
+                url,
+                sandbox_token,
+                run_id,
+                observations,
+                proxy_log_path,
+                preserve_source_idempotency=preserve_source_idempotency,
             )
             if accepted_count == 0:
                 timer_to_start = self._schedule_timer_if_buffered_locked()

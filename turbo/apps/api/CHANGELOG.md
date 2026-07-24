@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.313.0](https://github.com/vm0-ai/vm0/compare/api-v1.312.2...api-v1.313.0) (2026-07-24)
+
+
+### Features
+
+* **api:** prefer zero scrape for public pages ([#22861](https://github.com/vm0-ai/vm0/issues/22861)) ([96c52aa](https://github.com/vm0-ai/vm0/commit/96c52aace5242dc934232730bd5aee9e523badb3))
+
 ## [1.312.2](https://github.com/vm0-ai/vm0/compare/api-v1.312.1...api-v1.312.2) (2026-07-24)
 
 
