@@ -20,6 +20,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import make_model_provider_sse_flow
+from tests.usage_helpers import compact_observation_quantities
 
 
 def _model_provider_sse_flow(
@@ -523,8 +524,6 @@ class TestModelProviderSseUsage:
             == 100
         )
         observation_events = webhook.model_usage_observation_events()
-        observations_by_category = {
-            event["category"]: event["quantity"] for event in observation_events
-        }
-        assert len(observation_events) == len(observations_by_category) == 4
+        observations_by_category = compact_observation_quantities(observation_events)
+        assert len(observation_events) == 1
         assert observations_by_category == by_category

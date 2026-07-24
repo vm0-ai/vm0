@@ -7990,6 +7990,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Prefer the workspace directory (`/home/user/workspace`) for file operations and project work",
       "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
       "`agent-browser` provides rendered-page inspection and interaction",
+      "For one known public URL when you only need page content, prefer `zero scrape <url> --format markdown`",
+      "use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction",
       "Local dev servers are useful for agent-side verification",
       "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
@@ -10395,15 +10397,17 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       "session_history_ref_hash",
     );
 
-    const observed = await webhooks.requestAgentModelUsageObservation(
+    const observed = await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 120,
+            inputTokens: 120,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
@@ -10642,7 +10646,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("checkpoints direct compose runs without vars and canonicalizes usage by event model", async () => {
+  it("checkpoints direct compose runs without vars and accepts compact usage by event model", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -10675,21 +10679,25 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
 
     // With no pinned model the event model drives canonicalization: the
     // unsupported event is skipped while the supported one is recorded.
-    const observed = await webhooks.requestAgentModelUsageObservation(
+    const observed = await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: run.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 50,
+            inputTokens: 50,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
           {
             idempotencyKey: randomUUID(),
             model: "custom-bdd-model",
-            category: "tokens.output",
-            quantity: 7,
+            inputTokens: 0,
+            outputTokens: 7,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },

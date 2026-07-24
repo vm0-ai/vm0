@@ -20,6 +20,7 @@ import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as modelUsageObservationSchema from "./schema/model-usage-observation";
+import * as compactModelUsageObservationSchema from "./schema/compact-model-usage-observation";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
@@ -135,6 +136,7 @@ export const schema = {
   ...orgModelPolicySchema,
   ...modelStatSchema,
   ...modelUsageObservationSchema,
+  ...compactModelUsageObservationSchema,
   ...slackOrgInstallationSchema,
   ...slackOrgConnectionSchema,
   ...slackOrgThreadSessionSchema,

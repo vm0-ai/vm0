@@ -4646,8 +4646,15 @@
     {
       "idx": 663,
       "version": "7",
-      "when": 1784873582724,
-      "tag": "0663_daily_viper",
+      "when": 1784873621014,
+      "tag": "0663_parched_lionheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 664,
+      "version": "7",
+      "when": 1784875444046,
+      "tag": "0664_daily_viper",
       "breakpoints": true
     }
   ]

@@ -29,6 +29,25 @@ def event(
     }
 
 
+def observation(
+    *,
+    source_key: str,
+    model: str = "claude-sonnet-4-6",
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_input_tokens: int = 0,
+    cache_creation_input_tokens: int = 0,
+) -> usage_buffer.ModelUsageObservation:
+    return {
+        "idempotencyKey": source_key,
+        "model": model,
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "cacheReadInputTokens": cache_read_input_tokens,
+        "cacheCreationInputTokens": cache_creation_input_tokens,
+    }
+
+
 @dataclass(frozen=True)
 class RecordedEnqueueCall:
     url: str

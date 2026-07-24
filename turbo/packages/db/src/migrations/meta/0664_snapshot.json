@@ -1,6 +1,6 @@
 {
-  "id": "4555ddcf-2e74-4456-a239-29946d0edd5b",
-  "prevId": "5da8b13b-3595-43c4-8b5f-1ef8fefe40d2",
+  "id": "49498812-9102-428a-ae60-29f1bd718a95",
+  "prevId": "4555ddcf-2e74-4456-a239-29946d0edd5b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -551,12 +551,6 @@
         "agent_compose_version_id": {
           "name": "agent_compose_version_id",
           "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resumed_from_checkpoint_id": {
-          "name": "resumed_from_checkpoint_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },

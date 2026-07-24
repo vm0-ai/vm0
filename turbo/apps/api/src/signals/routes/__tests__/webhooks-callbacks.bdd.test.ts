@@ -1210,6 +1210,46 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
+    const mismatchedLegacyModelUsage =
+      await api.requestAgentModelUsageObservation(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              category: "tokens.input",
+              quantity: 1,
+            },
+          ],
+        },
+        mismatchedHeaders,
+        [401],
+      );
+    expectApiError(mismatchedLegacyModelUsage.body);
+    expect(mismatchedLegacyModelUsage.body.error.code).toBe("UNAUTHORIZED");
+
+    const mismatchedCompactModelUsage =
+      await api.requestAgentModelUsageObservationV2(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              inputTokens: 1,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+        mismatchedHeaders,
+        [401],
+      );
+    expectApiError(mismatchedCompactModelUsage.body);
+    expect(mismatchedCompactModelUsage.body.error.code).toBe("UNAUTHORIZED");
+
     const malformedTelemetryBody = await api.requestAgentTelemetryUnchecked(
       {},
       headers,
@@ -1267,7 +1307,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(malformedModelUsage.body);
     expect(malformedModelUsage.body.error.code).toBe("BAD_REQUEST");
 
-    const missingModelUsageRun = await api.requestAgentModelUsageObservation(
+    const legacyModelUsageNoOp = await api.requestAgentModelUsageObservation(
       {
         runId,
         events: [
@@ -1280,10 +1320,51 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         ],
       },
       headers,
-      [404],
+      [200],
     );
-    expectApiError(missingModelUsageRun.body);
-    expect(missingModelUsageRun.body.error.code).toBe("NOT_FOUND");
+    expect(legacyModelUsageNoOp.body).toStrictEqual({ success: true });
+
+    const malformedCompactModelUsage =
+      await api.requestAgentModelUsageObservationV2Unchecked(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              inputTokens: 0,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+        headers,
+        [400],
+      );
+    expectApiError(malformedCompactModelUsage.body);
+    expect(malformedCompactModelUsage.body.error.code).toBe("BAD_REQUEST");
+
+    const missingCompactModelUsageRun =
+      await api.requestAgentModelUsageObservationV2(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              inputTokens: 1,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+        headers,
+        [404],
+      );
+    expectApiError(missingCompactModelUsageRun.body);
+    expect(missingCompactModelUsageRun.body.error.code).toBe("NOT_FOUND");
 
     const malformedTelemetryBucket = await api.requestAgentTelemetryUnchecked(
       {

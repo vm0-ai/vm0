@@ -17,6 +17,7 @@ from tests.model_provider_flow_helpers import (
 from tests.model_provider_websocket_helpers import feed_websocket_server_message
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.usage_helpers import compact_observation_quantities
 
 
 def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
@@ -125,8 +126,8 @@ class TestModelProviderWebSocketLifecycle:
             "tokens.cache_read": 10,
         }
         observation_events = usage_webhook_server.model_usage_observation_events()
-        assert len(observation_events) == len(events)
-        assert {event["category"]: event["quantity"] for event in observation_events} == by_category
+        assert len(observation_events) == 2
+        assert compact_observation_quantities(observation_events) == by_category
         assert {event["model"] for event in observation_events} == {"gpt-5.5"}
         usage.write_pending_snapshot(flush_request_id="after-websocket-end")
         assert_pending(
@@ -311,7 +312,7 @@ class TestModelProviderWebSocketLifecycle:
         }
         observation_events = usage_webhook_server.model_usage_observation_events()
         assert len(observation_events) == len(events)
-        assert {event["category"]: event["quantity"] for event in observation_events} == by_category
+        assert compact_observation_quantities(observation_events) == by_category
         assert {event["model"] for event in observation_events} == {"gpt-5.5"}
         usage.write_pending_snapshot(flush_request_id="after-error")
         assert_pending(
