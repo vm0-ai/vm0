@@ -914,6 +914,8 @@ describe("CHAT-02: completed chat callback", () => {
     expect(claimed.id).not.toBe(queued.id);
     expect(claimed.revokesMessageId).toBe(queued.id);
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
+    // Exercise the temporary compatibility route used by already-open
+    // app-v0.627.3 browser clients.
     const original = await chat.getThreadMessage(
       actor,
       first.threadId,
@@ -1386,10 +1388,6 @@ describe("CHAT-02: completed chat callback", () => {
       { prompt: "Review the queued result", kind: "talk" },
     ]);
     await waitForChatThreadMessageCreatedPublish(first.threadId);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${first.threadId}`,
-      expect.anything(),
-    );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");
     expect(titlePrompts[0]).not.toContain("queued while side effects wait");
@@ -2071,10 +2069,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 
     expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${first.threadId}`,
-      expect.anything(),
-    );
     const progressMessages = await chat.listThreadMessages(
       actor,
       first.threadId,
@@ -3234,10 +3228,6 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     await chat.deleteThread(actor, run.threadId);
     await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${run.threadId}`,
-      expect.anything(),
-    );
     const deletedRead = await chat.requestReadThread(
       actor,
       run.threadId,

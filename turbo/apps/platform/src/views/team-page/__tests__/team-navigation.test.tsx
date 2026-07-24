@@ -817,24 +817,6 @@ describe("team page navigation", () => {
         });
       },
     );
-    context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
-      if (
-        params.threadId === firstThreadId &&
-        params.messageId === firstMessageId
-      ) {
-        return respond(200, {
-          id: firstMessageId,
-          role: "user",
-          content: "First shortcut thread message",
-          seqId: 1,
-          createdAt: "2026-06-01T00:02:00Z",
-        });
-      }
-      return respond(404, {
-        error: { message: "Message not found", code: "NOT_FOUND" },
-      });
-    });
-
     detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });
 
     await waitFor(() => {
