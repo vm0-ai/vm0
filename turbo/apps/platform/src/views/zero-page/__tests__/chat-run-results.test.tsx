@@ -276,49 +276,65 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
   });
 
-  it("keeps connector usage visible when completed work is folded", async () => {
+  it("keeps managed API usage visible when completed work is folded", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-folded-connector",
+      threadId: "thread-usage-chip-folded-managed-api",
       chatMessages: [
         {
           id: "msg-usage-folded-user",
           role: "user",
-          content: "Use the connector",
-          runId: "run-usage-folded-connector",
+          content: "Use the managed APIs",
+          runId: "run-usage-folded-managed-api",
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
           id: "msg-usage-folded-work",
           role: "assistant",
-          content: "Inspecting connector results.",
-          runId: "run-usage-folded-connector",
+          content: "Inspecting managed API results.",
+          runId: "run-usage-folded-managed-api",
           createdAt: "2026-06-09T10:00:01Z",
         },
         {
           id: "msg-usage-folded-final",
           role: "assistant",
-          content: "Connector usage is ready.",
-          runId: "run-usage-folded-connector",
+          content: "Managed API usage is ready.",
+          runId: "run-usage-folded-managed-api",
           createdAt: "2026-06-09T10:00:02Z",
         },
         {
           id: "msg-usage-folded-usage",
           role: "assistant",
           content: null,
-          runId: "run-usage-folded-connector",
+          runId: "run-usage-folded-managed-api",
           usage: {
             version: 1,
-            totalCredits: 108,
+            totalCredits: 180,
             settledAt: "2026-06-09T10:00:03Z",
             breakdown: [
               {
-                kind: "connector",
-                credits: 108,
-                providers: [
-                  { provider: "firecrawl", credits: 36 },
-                  { provider: "perplexity", credits: 36 },
-                  { provider: "google-map", credits: 36 },
-                ],
+                kind: "scrape",
+                credits: 36,
+                providers: [{ provider: "firecrawl", credits: 36 }],
+              },
+              {
+                kind: "maps",
+                credits: 36,
+                providers: [{ provider: "google-maps", credits: 36 }],
+              },
+              {
+                kind: "web-search",
+                credits: 36,
+                providers: [{ provider: "perplexity", credits: 36 }],
+              },
+              {
+                kind: "finance",
+                credits: 36,
+                providers: [{ provider: "apidojo", credits: 36 }],
+              },
+              {
+                kind: "weather",
+                credits: 36,
+                providers: [{ provider: "google-weather", credits: 36 }],
               },
             ],
           },
@@ -328,7 +344,7 @@ describe("chat lifecycle", () => {
           id: "msg-usage-folded-completed",
           role: "assistant",
           content: null,
-          runId: "run-usage-folded-connector",
+          runId: "run-usage-folded-managed-api",
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:04Z",
         },
@@ -337,24 +353,31 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-folded-connector",
+      path: "/chats/thread-usage-chip-folded-managed-api",
     });
 
     await expect(
-      screen.findByText("Connector usage is ready."),
+      screen.findByText("Managed API usage is ready."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText("Inspecting connector results."),
+      screen.queryByText("Inspecting managed API results."),
     ).not.toBeInTheDocument();
 
-    const connectorCredit = await screen.findByLabelText("Credit usage 108");
-    click(connectorCredit);
+    const managedApiCredit = await screen.findByLabelText("Credit usage 180");
+    click(managedApiCredit);
 
     await waitFor(() => {
       expect(screen.getByText("Web Fetch")).toBeInTheDocument();
+      expect(screen.getByText("Maps")).toBeInTheDocument();
       expect(screen.getByText("Web Search")).toBeInTheDocument();
-      expect(screen.getByText("Google Map")).toBeInTheDocument();
-      expect(screen.getAllByText("36")).toHaveLength(3);
+      expect(screen.getByText("Finance")).toBeInTheDocument();
+      expect(screen.getByText("Weather")).toBeInTheDocument();
+      expect(screen.getAllByText("36")).toHaveLength(5);
+      expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
+      expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
+      expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
+      expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
+      expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
     });
   });
 
