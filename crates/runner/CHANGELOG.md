@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.147.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.13...runner-rs-v0.147.14) (2026-07-24)
+
+
+### Bug Fixes
+
+* **mitm-addon:** remove stale ruff suppression ([#22817](https://github.com/vm0-ai/vm0/issues/22817)) ([6817ce8](https://github.com/vm0-ai/vm0/commit/6817ce8a4e233d8600abffb5b9436a6775d4d5f5))
+
+
+### Refactoring
+
+* **api:** remove checkpoint resume and read api ([#22815](https://github.com/vm0-ai/vm0/issues/22815)) ([ad0d0b3](https://github.com/vm0-ai/vm0/commit/ad0d0b39655d1dd4bafeabe0e8a8bbb32247db47))
+
 ## [0.147.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.12...runner-rs-v0.147.13) (2026-07-23)
 
 
