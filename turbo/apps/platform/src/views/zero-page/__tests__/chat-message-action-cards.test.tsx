@@ -287,7 +287,7 @@ describe("chat message action cards", () => {
     const imageBytes = new TextEncoder().encode("mail draft image");
     const pdfBytes = new TextEncoder().encode("mail draft pdf");
     const mailDraftHtml =
-      '<div>Mail body <strong>before</strong></div><p><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><br>After image</p><hr><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a>';
+      '<div>Mail body <strong>before</strong></div><p><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><br>After image</p><hr><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a><div><img src="https://images.example.test/signature.png" alt="Sender signature logo" width="96" height="32"><img src="data:image/png;base64,dW5zYWZl" alt="Unsafe signature image"></div>';
 
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
@@ -549,6 +549,22 @@ describe("chat message action cards", () => {
       "src",
       expect.stringMatching(/^blob:/u),
     );
+    const signatureImage = within(messageSection).getByRole("img", {
+      name: "Sender signature logo",
+    });
+    expect(signatureImage).toHaveAttribute(
+      "src",
+      "https://images.example.test/signature.png",
+    );
+    expect(signatureImage).toHaveAttribute("width", "96");
+    expect(signatureImage).toHaveAttribute("height", "32");
+    expect(signatureImage).toHaveAttribute("loading", "lazy");
+    expect(signatureImage).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(
+      within(messageSection).queryByRole("img", {
+        name: "Unsafe signature image",
+      }),
+    ).toBeNull();
     const attachmentsLabel = within(sidebar).getByText("Attachments");
     const attachmentsSection = attachmentsLabel.parentElement;
     if (!attachmentsSection) {

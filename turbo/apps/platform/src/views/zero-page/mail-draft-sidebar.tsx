@@ -459,6 +459,13 @@ function safeMailHref(value: string | null): string | undefined {
     : undefined;
 }
 
+function safeMailImageSrc(value: string | null): string | undefined {
+  if (!value || !URL.canParse(value)) {
+    return undefined;
+  }
+  return new URL(value).protocol === "https:" ? value : undefined;
+}
+
 function supportedFontSize(value: string): string | undefined {
   const keywordSizes = new Set([
     "xx-small",
@@ -620,7 +627,7 @@ function isElementNode(node: ChildNode): node is Element {
   return node.nodeType === 1;
 }
 
-function renderInlineMailImage(args: {
+function renderMailImage(args: {
   readonly element: Element;
   readonly key: string;
   readonly inlineImages: ReadonlyMap<string, ZeroMailInlineImage>;
@@ -631,12 +638,32 @@ function renderInlineMailImage(args: {
   const image = source?.toLowerCase().startsWith("cid:")
     ? args.inlineImages.get(normalizedContentId(source))
     : undefined;
-  const imageUrl = args.inlineImageUrlsLoading
-    ? undefined
-    : (args.inlineImageUrls?.get(image?.partId ?? "") ?? null);
-  return image ? (
-    <MailDraftInlineImage key={args.key} image={image} imageUrl={imageUrl} />
-  ) : null;
+  if (image) {
+    const imageUrl = args.inlineImageUrlsLoading
+      ? undefined
+      : (args.inlineImageUrls?.get(image.partId) ?? null);
+    return (
+      <MailDraftInlineImage key={args.key} image={image} imageUrl={imageUrl} />
+    );
+  }
+  const remoteSource = safeMailImageSrc(source);
+  if (!remoteSource) {
+    return null;
+  }
+  return (
+    <img
+      key={args.key}
+      src={remoteSource}
+      alt={args.element.getAttribute("alt") ?? ""}
+      title={args.element.getAttribute("title") ?? undefined}
+      width={positiveIntegerAttribute(args.element, "width")}
+      height={positiveIntegerAttribute(args.element, "height")}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      className="my-2 inline-block max-h-80 max-w-full object-contain align-middle"
+    />
+  );
 }
 
 function mailHtmlElementProps(args: {
@@ -724,7 +751,7 @@ function renderMailHtmlNode(args: {
     return null;
   }
   if (tag === "img") {
-    return renderInlineMailImage({
+    return renderMailImage({
       element,
       key: args.key,
       inlineImages: args.inlineImages,
