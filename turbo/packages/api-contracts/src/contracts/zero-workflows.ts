@@ -104,6 +104,10 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "gmail-new-message",
   "gmail-label-applied",
   "github-label-applied",
+  "github-deployment-status-created",
+  "github-issue-comment-created",
+  "github-pull-request-review-submitted",
+  "github-workflow-job-completed",
   "github-workflow-run-completed",
   "google-calendar-event-created",
   "google-calendar-event-updated",
@@ -242,7 +246,7 @@ export type GithubWorkflowRunConclusion = z.infer<
   typeof githubWorkflowRunConclusionSchema
 >;
 
-const githubWorkflowRunFilterValuesSchema = z
+const githubFilterValuesSchema = z
   .array(z.string().trim().min(1).max(255))
   .min(1)
   .max(100);
@@ -253,16 +257,16 @@ export const githubWorkflowRunCompletedEventConfigSchema = z
     event: z.literal("workflow_run_completed"),
     filters: z
       .object({
-        repositories: githubWorkflowRunFilterValuesSchema.optional(),
-        workflows: githubWorkflowRunFilterValuesSchema.optional(),
+        repositories: githubFilterValuesSchema.optional(),
+        workflows: githubFilterValuesSchema.optional(),
         conclusions: z
           .array(githubWorkflowRunConclusionSchema)
           .min(1)
           .max(githubWorkflowRunConclusionSchema.options.length)
           .optional(),
-        branches: githubWorkflowRunFilterValuesSchema.optional(),
-        events: githubWorkflowRunFilterValuesSchema.optional(),
-        actors: githubWorkflowRunFilterValuesSchema.optional(),
+        branches: githubFilterValuesSchema.optional(),
+        events: githubFilterValuesSchema.optional(),
+        actors: githubFilterValuesSchema.optional(),
       })
       .strict()
       .default({}),
@@ -272,8 +276,141 @@ export type GithubWorkflowRunCompletedEventConfig = z.infer<
   typeof githubWorkflowRunCompletedEventConfigSchema
 >;
 
+export const githubWorkflowJobCompletedEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("workflow_job_completed"),
+    filters: z
+      .object({
+        repositories: githubFilterValuesSchema.optional(),
+        workflows: githubFilterValuesSchema.optional(),
+        jobs: githubFilterValuesSchema.optional(),
+        conclusions: z
+          .array(githubWorkflowRunConclusionSchema)
+          .min(1)
+          .max(githubWorkflowRunConclusionSchema.options.length)
+          .optional(),
+        branches: githubFilterValuesSchema.optional(),
+        runnerLabels: githubFilterValuesSchema.optional(),
+        runnerGroups: githubFilterValuesSchema.optional(),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict();
+export type GithubWorkflowJobCompletedEventConfig = z.infer<
+  typeof githubWorkflowJobCompletedEventConfigSchema
+>;
+
+export const githubPullRequestReviewStateSchema = z.enum([
+  "approved",
+  "changes_requested",
+  "commented",
+]);
+export type GithubPullRequestReviewState = z.infer<
+  typeof githubPullRequestReviewStateSchema
+>;
+
+export const githubPullRequestReviewSubmittedEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("pull_request_review_submitted"),
+    filters: z
+      .object({
+        repositories: githubFilterValuesSchema.optional(),
+        reviewStates: z
+          .array(githubPullRequestReviewStateSchema)
+          .min(1)
+          .max(githubPullRequestReviewStateSchema.options.length)
+          .optional(),
+        baseBranches: githubFilterValuesSchema.optional(),
+        headBranches: githubFilterValuesSchema.optional(),
+        trustedAuthors: githubFilterValuesSchema.optional(),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict();
+export type GithubPullRequestReviewSubmittedEventConfig = z.infer<
+  typeof githubPullRequestReviewSubmittedEventConfigSchema
+>;
+
+export const githubDeploymentStateSchema = z.enum([
+  "error",
+  "failure",
+  "inactive",
+  "in_progress",
+  "pending",
+  "queued",
+  "success",
+  "waiting",
+]);
+export type GithubDeploymentState = z.infer<typeof githubDeploymentStateSchema>;
+
+export const githubDeploymentStatusCreatedEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("deployment_status_created"),
+    filters: z
+      .object({
+        repositories: githubFilterValuesSchema.optional(),
+        environments: githubFilterValuesSchema.optional(),
+        states: z
+          .array(githubDeploymentStateSchema)
+          .min(1)
+          .max(githubDeploymentStateSchema.options.length)
+          .optional(),
+        refs: githubFilterValuesSchema.optional(),
+        productionEnvironment: z.boolean().optional(),
+        creators: githubFilterValuesSchema.optional(),
+        apps: githubFilterValuesSchema.optional(),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict();
+export type GithubDeploymentStatusCreatedEventConfig = z.infer<
+  typeof githubDeploymentStatusCreatedEventConfigSchema
+>;
+
+export const githubIssueCommentSubjectFilterSchema = z.enum([
+  "both",
+  "issues",
+  "pull_requests",
+]);
+export type GithubIssueCommentSubjectFilter = z.infer<
+  typeof githubIssueCommentSubjectFilterSchema
+>;
+
+export const githubIssueCommentCreatedEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("issue_comment_created"),
+    filters: z
+      .object({
+        repositories: githubFilterValuesSchema.optional(),
+        subject: githubIssueCommentSubjectFilterSchema.default("both"),
+        trustedAuthors: githubFilterValuesSchema.optional(),
+        commentPrefixes: z
+          .array(z.string().trim().min(1).max(1024))
+          .min(1)
+          .max(100)
+          .optional(),
+      })
+      .strict()
+      .default({ subject: "both" }),
+  })
+  .strict();
+export type GithubIssueCommentCreatedEventConfig = z.infer<
+  typeof githubIssueCommentCreatedEventConfigSchema
+>;
+
 export const githubWorkflowEventConfigSchema = z.discriminatedUnion("event", [
   githubLabelAppliedEventConfigSchema,
+  githubDeploymentStatusCreatedEventConfigSchema,
+  githubIssueCommentCreatedEventConfigSchema,
+  githubPullRequestReviewSubmittedEventConfigSchema,
+  githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
 ]);
 export type GithubWorkflowEventConfig = z.infer<
@@ -544,6 +681,42 @@ export const zeroWorkflowGithubWorkflowRunCompletedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGithubWorkflowJobCompletedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-workflow-job-completed"),
+    eventConfig: githubWorkflowJobCompletedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const zeroWorkflowGithubPullRequestReviewSubmittedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-pull-request-review-submitted"),
+    eventConfig: githubPullRequestReviewSubmittedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const zeroWorkflowGithubDeploymentStatusCreatedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-deployment-status-created"),
+    eventConfig: githubDeploymentStatusCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const zeroWorkflowGithubIssueCommentCreatedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-issue-comment-created"),
+    eventConfig: githubIssueCommentCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -627,6 +800,10 @@ export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
     zeroWorkflowGmailNewMessageAutomationSummarySchema,
     zeroWorkflowGmailLabelAppliedAutomationSummarySchema,
     zeroWorkflowGithubLabelAppliedAutomationSummarySchema,
+    zeroWorkflowGithubDeploymentStatusCreatedAutomationSummarySchema,
+    zeroWorkflowGithubIssueCommentCreatedAutomationSummarySchema,
+    zeroWorkflowGithubPullRequestReviewSubmittedAutomationSummarySchema,
+    zeroWorkflowGithubWorkflowJobCompletedAutomationSummarySchema,
     zeroWorkflowGithubWorkflowRunCompletedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventUpdatedAutomationSummarySchema,
@@ -701,6 +878,42 @@ export const chatThreadWorkflowGithubWorkflowRunCompletedAutomationSchema =
     kind: z.literal("event"),
     eventType: z.literal("github-workflow-run-completed"),
     eventConfig: githubWorkflowRunCompletedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGithubWorkflowJobCompletedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-workflow-job-completed"),
+    eventConfig: githubWorkflowJobCompletedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGithubPullRequestReviewSubmittedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-pull-request-review-submitted"),
+    eventConfig: githubPullRequestReviewSubmittedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGithubDeploymentStatusCreatedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-deployment-status-created"),
+    eventConfig: githubDeploymentStatusCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGithubIssueCommentCreatedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-issue-comment-created"),
+    eventConfig: githubIssueCommentCreatedEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
   });
@@ -780,6 +993,10 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowGmailNewMessageAutomationSchema,
   chatThreadWorkflowGmailLabelAppliedAutomationSchema,
   chatThreadWorkflowGithubLabelAppliedAutomationSchema,
+  chatThreadWorkflowGithubDeploymentStatusCreatedAutomationSchema,
+  chatThreadWorkflowGithubIssueCommentCreatedAutomationSchema,
+  chatThreadWorkflowGithubPullRequestReviewSubmittedAutomationSchema,
+  chatThreadWorkflowGithubWorkflowJobCompletedAutomationSchema,
   chatThreadWorkflowGithubWorkflowRunCompletedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventCreatedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventUpdatedAutomationSchema,
@@ -829,6 +1046,38 @@ export const zeroWorkflowGithubWorkflowRunCompletedAutomationCreateRequestSchema
     kind: z.literal("event"),
     eventType: z.literal("github-workflow-run-completed"),
     eventConfig: githubWorkflowRunCompletedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
+export const zeroWorkflowGithubWorkflowJobCompletedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("github-workflow-job-completed"),
+    eventConfig: githubWorkflowJobCompletedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
+export const zeroWorkflowGithubPullRequestReviewSubmittedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("github-pull-request-review-submitted"),
+    eventConfig: githubPullRequestReviewSubmittedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
+export const zeroWorkflowGithubDeploymentStatusCreatedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("github-deployment-status-created"),
+    eventConfig: githubDeploymentStatusCreatedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
+export const zeroWorkflowGithubIssueCommentCreatedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("github-issue-comment-created"),
+    eventConfig: githubIssueCommentCreatedEventConfigSchema,
     enabled: z.boolean().optional(),
   });
 
@@ -925,6 +1174,10 @@ export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowGmailNewMessageAutomationCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema,
   zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema,
+  zeroWorkflowGithubDeploymentStatusCreatedAutomationCreateRequestSchema,
+  zeroWorkflowGithubIssueCommentCreatedAutomationCreateRequestSchema,
+  zeroWorkflowGithubPullRequestReviewSubmittedAutomationCreateRequestSchema,
+  zeroWorkflowGithubWorkflowJobCompletedAutomationCreateRequestSchema,
   zeroWorkflowGithubWorkflowRunCompletedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCreatedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventUpdatedAutomationCreateRequestSchema,

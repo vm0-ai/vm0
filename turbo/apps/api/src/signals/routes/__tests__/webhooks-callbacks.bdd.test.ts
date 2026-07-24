@@ -643,7 +643,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const ignoredBody = JSON.stringify({ action: "ignored" });
     const ignored = await api.requestGithubWebhook(
       ignoredBody,
-      api.signedGithubWebhookHeaders(ignoredBody, "workflow_job"),
+      api.signedGithubWebhookHeaders(ignoredBody, "fork"),
       [200],
     );
     expect(ignored.body).toBe("OK");
