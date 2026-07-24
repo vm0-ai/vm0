@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.315.0](https://github.com/vm0-ai/vm0/compare/api-v1.314.0...api-v1.315.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** source service tier and computer use host from thread events ([#22890](https://github.com/vm0-ai/vm0/issues/22890)) ([173e9c9](https://github.com/vm0-ai/vm0/commit/173e9c99c5e56f2a9cba55b0fd31a93d4e52c60e))
+
+
+### Refactoring
+
+* **api:** detach legacy storage persistence columns ([#22899](https://github.com/vm0-ai/vm0/issues/22899)) ([522c3de](https://github.com/vm0-ai/vm0/commit/522c3dee4efff435fa8235445208d81ccc92926e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.224.0
+    * @vm0/core bumped to 8.461.2
+    * @vm0/db bumped to 1.135.0
+
 ## [1.314.0](https://github.com/vm0-ai/vm0/compare/api-v1.313.2...api-v1.314.0) (2026-07-24)
 
 
