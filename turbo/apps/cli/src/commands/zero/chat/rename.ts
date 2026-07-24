@@ -3,9 +3,11 @@ import { Command } from "commander";
 
 import { renameZeroChatThread } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { isUuid } from "../../../lib/utils/uuid";
 
 interface RenameOptions {
   readonly json?: boolean;
+  readonly thread?: string;
 }
 
 function getCurrentChatThreadId(): string | undefined {
@@ -20,17 +22,19 @@ function printUsageError(message: string, hint: string): never {
 
 export const renameCommand = new Command()
   .name("rename")
-  .description("Rename the current web chat thread")
+  .description("Rename a web chat thread")
   .argument("<title...>", "New chat title")
+  .option("--thread <id>", "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)")
   .option("--json", "Print machine-readable JSON")
   .addHelpText(
     "after",
     `
 Examples:
   Rename this chat:  zero chat rename "Launch plan"
+  Rename another:    zero chat rename --thread <thread-id> "Launch plan"
 
 Notes:
-  - Uses ZERO_CHAT_THREAD_ID from the current web chat thread
+  - Defaults --thread to ZERO_CHAT_THREAD_ID
   - Authenticates via ZERO_TOKEN (requires chat-thread:write capability)`,
   )
   .action(
@@ -43,11 +47,17 @@ Notes:
         );
       }
 
-      const threadId = getCurrentChatThreadId();
+      const threadId = options.thread?.trim() || getCurrentChatThreadId();
       if (!threadId) {
         printUsageError(
           "ZERO_CHAT_THREAD_ID is not set",
-          "Run this command from a Zero web chat thread.",
+          "Pass --thread <thread-id> or run inside a Zero web chat thread.",
+        );
+      }
+      if (!isUuid(threadId)) {
+        printUsageError(
+          `Invalid thread ID "${threadId}" — expected a UUID`,
+          "Pass a valid UUID with --thread <thread-id>.",
         );
       }
 

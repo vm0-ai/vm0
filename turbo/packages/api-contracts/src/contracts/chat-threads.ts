@@ -592,6 +592,7 @@ export const chatThreadsContract = c.router({
         latestEventId: chatThreadEventIdSchema.nullable(),
       }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary:
       "Get the compacted chat thread snapshot for the caller's current organization.",
@@ -609,6 +610,7 @@ export const chatThreadsContract = c.router({
         hasMore: z.boolean(),
       }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       410: apiErrorSchema,
     },
     summary:
