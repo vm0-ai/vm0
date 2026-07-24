@@ -199,15 +199,7 @@ export {
   type TestTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeResponse,
 } from "./test-teams-dispatch-probe";
-export {
-  zeroEmailInboundContract,
-  zeroEmailReplyCallbackContract,
-  zeroEmailReplyCallbackPayloadSchema,
-  zeroEmailTriggerCallbackContract,
-  zeroEmailTriggerCallbackPayloadSchema,
-  type ZeroEmailReplyCallbackPayload,
-  type ZeroEmailTriggerCallbackPayload,
-} from "./zero-email";
+export { zeroEmailInboundContract } from "./zero-email";
 export {
   sandboxReuseResultSchema,
   webhookClerkContract,
