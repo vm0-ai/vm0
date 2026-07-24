@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.463.0](https://github.com/vm0-ai/vm0/compare/core-v8.462.0...core-v8.463.0) (2026-07-24)
+
+
+### Features
+
+* **cli:** add cached chat thread listing and targeted rename ([#22927](https://github.com/vm0-ai/vm0/issues/22927)) ([1f11e99](https://github.com/vm0-ai/vm0/commit/1f11e99eda61c426b5e5782529a9aa5eb9366b50))
+* enable hosted artifact versions for staff ([#22932](https://github.com/vm0-ai/vm0/issues/22932)) ([2ae63dd](https://github.com/vm0-ai/vm0/commit/2ae63ddb5172d2fc3f227a3ce513b81e643d0311))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.226.0
+
 ## [8.462.0](https://github.com/vm0-ai/vm0/compare/core-v8.461.2...core-v8.462.0) (2026-07-24)
 
 
