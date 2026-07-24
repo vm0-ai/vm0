@@ -31,18 +31,31 @@ const artifactIdbMock = vi.hoisted(() => {
     readonly value: Record<string, unknown>;
   }
 
+  let artifactReadGate: {
+    readonly afterItems: number;
+    readonly started: PromiseWithResolvers<void>;
+    readonly released: PromiseWithResolvers<void>;
+  } | null = null;
+
   class MemoryCursor {
     private position = 0;
 
-    constructor(private readonly values: readonly Record<string, unknown>[]) {}
+    constructor(
+      private readonly values: readonly Record<string, unknown>[],
+      private readonly readGate: typeof artifactReadGate,
+    ) {}
 
     get value(): unknown {
       return this.values[this.position];
     }
 
-    continue(): Promise<MemoryCursor | null> {
+    async continue(): Promise<MemoryCursor | null> {
+      if (this.readGate && this.position === this.readGate.afterItems - 1) {
+        this.readGate.started.resolve();
+        await this.readGate.released.promise;
+      }
       this.position += 1;
-      return Promise.resolve(this.position < this.values.length ? this : null);
+      return this.position < this.values.length ? this : null;
     }
   }
 
@@ -93,37 +106,37 @@ const artifactIdbMock = vi.hoisted(() => {
     item: Record<string, unknown>,
   ): IDBValidKey | null {
     switch (indexName) {
-      case "byCreatedAt": {
-        return [item.createdAt as string, item.artifactItemId as string];
-      }
-      case "byAgentCreatedAt": {
+      case "byUpdatedAt": {
         return [
-          item.agentId as string,
+          item.updatedAt as string,
           item.createdAt as string,
           item.artifactItemId as string,
         ];
       }
-      case "byArtifactKindCreatedAt": {
-        return typeof item.artifactKind === "string"
-          ? [
-              item.artifactKind,
-              item.createdAt as string,
-              item.artifactItemId as string,
-            ]
-          : null;
+      case "byAgentUpdatedAt": {
+        return [
+          item.agentId as string,
+          item.updatedAt as string,
+          item.createdAt as string,
+          item.artifactItemId as string,
+        ];
       }
-      case "byAgentKindCreatedAt": {
-        return typeof item.artifactKind === "string"
-          ? [
-              item.agentId as string,
-              item.artifactKind,
-              item.createdAt as string,
-              item.artifactItemId as string,
-            ]
-          : null;
+      case "byRunHosted": {
+        return [
+          item.runId as string,
+          item.artifactKind === "hosted-site" ||
+          item.artifactKind === "presentation-html"
+            ? 1
+            : 0,
+        ];
       }
-      case "byRunFile": {
-        return [item.runId as string, item.fileId as string];
+      case "byUrlUpdatedAt": {
+        return [
+          item.url as string,
+          item.updatedAt as string,
+          item.createdAt as string,
+          item.artifactItemId as string,
+        ];
       }
       default: {
         return null;
@@ -132,9 +145,15 @@ const artifactIdbMock = vi.hoisted(() => {
   }
 
   class MemoryObjectStore {
-    constructor(private readonly store: StoredObjectStore) {}
+    constructor(
+      private readonly store: StoredObjectStore,
+      private readonly transactionAborted: () => boolean = () => {
+        return false;
+      },
+    ) {}
 
     put(value: Record<string, unknown>): Promise<void> {
+      this.throwIfTransactionAborted();
       const key = value[this.store.keyPath];
       if (typeof key === "string") {
         this.store.rows.set(key, value);
@@ -143,6 +162,7 @@ const artifactIdbMock = vi.hoisted(() => {
     }
 
     delete(key: IDBValidKey): Promise<void> {
+      this.throwIfTransactionAborted();
       if (typeof key === "string") {
         this.store.rows.delete(key);
       }
@@ -150,6 +170,7 @@ const artifactIdbMock = vi.hoisted(() => {
     }
 
     clear(): Promise<void> {
+      this.throwIfTransactionAborted();
       for (const key of this.store.rows.keys()) {
         this.store.rows.delete(key);
       }
@@ -199,6 +220,7 @@ const artifactIdbMock = vi.hoisted(() => {
               rows.map((row) => {
                 return row.value;
               }),
+              this.store.keyPath === "artifactItemId" ? artifactReadGate : null,
             ),
           );
         },
@@ -213,6 +235,12 @@ const artifactIdbMock = vi.hoisted(() => {
         const key = artifactIndexKey(indexName, item);
         return key === null ? [] : [{ key, value: item }];
       });
+    }
+
+    private throwIfTransactionAborted(): void {
+      if (this.transactionAborted()) {
+        throw new DOMException("Transaction aborted", "AbortError");
+      }
     }
   }
 
@@ -236,20 +264,34 @@ const artifactIdbMock = vi.hoisted(() => {
       this.stores.delete(storeName);
     }
 
-    transaction(storeName: string): {
+    transaction(storeNames: string | string[]): {
+      abort: () => void;
       readonly store: MemoryObjectStore;
       readonly done: Promise<void>;
-      objectStore: () => MemoryObjectStore;
+      objectStore: (storeName: string) => MemoryObjectStore;
     } {
-      const store = this.ensureStore(
+      const storeName = Array.isArray(storeNames)
+        ? (storeNames[0] ?? "")
+        : storeNames;
+      const stored = this.ensureStoredObjectStore(
         storeName,
         storeName === "artifact_items" ? "artifactItemId" : "id",
       );
+      let aborted = false;
+      const store = new MemoryObjectStore(stored, () => {
+        return aborted;
+      });
       return {
+        abort: () => {
+          aborted = true;
+        },
         store,
         done: Promise.resolve(),
-        objectStore: () => {
-          return store;
+        objectStore: (name) => {
+          return this.ensureStore(
+            name,
+            name === "artifact_items" ? "artifactItemId" : "id",
+          );
         },
       };
     }
@@ -277,22 +319,50 @@ const artifactIdbMock = vi.hoisted(() => {
     }
 
     private ensureStore(storeName: string, keyPath: string): MemoryObjectStore {
+      return new MemoryObjectStore(
+        this.ensureStoredObjectStore(storeName, keyPath),
+      );
+    }
+
+    private ensureStoredObjectStore(
+      storeName: string,
+      keyPath: string,
+    ): StoredObjectStore {
       const existing = this.stores.get(storeName);
       if (existing !== undefined) {
-        return new MemoryObjectStore(existing);
+        return existing;
       }
       const store = {
         keyPath,
         rows: new Map<string, Record<string, unknown>>(),
       };
       this.stores.set(storeName, store);
-      return new MemoryObjectStore(store);
+      return store;
     }
   }
 
   const dbs = new Map<string, MemoryDb>();
 
   return {
+    blockArtifactCursorContinuation(afterItems = 1): {
+      readonly started: Promise<void>;
+      release(): void;
+    } {
+      const started = Promise.withResolvers<void>();
+      const released = Promise.withResolvers<void>();
+      const gate = { afterItems, started, released };
+      artifactReadGate = gate;
+      return {
+        started: started.promise,
+        release: () => {
+          if (artifactReadGate === gate) {
+            artifactReadGate = null;
+          }
+          released.resolve();
+        },
+      };
+    },
+
     async openDB(
       name: string,
       _version?: number,
@@ -435,10 +505,12 @@ function setupArtifactsPage({
   scope,
   enabled = true,
   htmlArtifactCommentEditingEnabled = false,
+  zeroDebugEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
   readonly htmlArtifactCommentEditingEnabled?: boolean;
+  readonly zeroDebugEnabled?: boolean;
 }): void {
   detachedSetupPage({
     context,
@@ -455,6 +527,7 @@ function setupArtifactsPage({
       [FeatureSwitchKey.Artifacts]: enabled,
       [FeatureSwitchKey.HtmlArtifactCommentEditing]:
         htmlArtifactCommentEditingEnabled,
+      [FeatureSwitchKey.ZeroDebug]: zeroDebugEnabled,
     },
   });
 }
@@ -481,10 +554,15 @@ async function withChatIdb<T>(
 async function seedCachedArtifacts(
   scope: TestAuthScope,
   artifacts: readonly ArtifactItem[],
+  lastSyncedAt?: string,
 ): Promise<void> {
   await withChatIdb(scope, async (db) => {
     const stores = createArtifactItemCacheStores(resolvedChatIdb(db));
-    await stores.writeStore.replaceItems(artifacts);
+    await stores.writeStore.beginFullSync();
+    await stores.writeStore.upsertItems(artifacts);
+    if (lastSyncedAt) {
+      await stores.writeStore.finishSync(lastSyncedAt);
+    }
     const seeded = await stores.readStore.readRecent({ limit: 10_000 });
     if (seeded.length !== artifacts.length) {
       throw new Error("Expected artifact cache seed to be readable");
@@ -500,6 +578,16 @@ async function cachedArtifactIds(scope: TestAuthScope): Promise<string[]> {
     return artifacts.map((artifact) => {
       return artifact.artifactItemId;
     });
+  });
+}
+
+async function cachedArtifactsLastSyncedAt(
+  scope: TestAuthScope,
+): Promise<string | null> {
+  return await withChatIdb(scope, async (db) => {
+    return await createArtifactItemCacheStores(
+      resolvedChatIdb(db),
+    ).readStore.readLastSyncedAt();
   });
 }
 
@@ -1115,7 +1203,7 @@ describe("artifacts page", () => {
     ).toBeTruthy();
   });
 
-  it("filters category, search, and agent locally over the bulk-synced set", async () => {
+  it("filters category, search, and agent from the synced IndexedDB cache", async () => {
     setupTeam();
     const scope = testAuthScope("filters");
     let listCalls = 0;
@@ -1370,7 +1458,7 @@ describe("artifacts page", () => {
     });
   });
 
-  it("renders cached artifacts while the remote refresh is pending", async () => {
+  it("keeps loading without retaining cached artifacts while refresh is pending", async () => {
     setupTeam();
     const scope = testAuthScope("pending-refresh");
     await seedCachedArtifacts(scope, [
@@ -1387,9 +1475,65 @@ describe("artifacts page", () => {
 
     setupArtifactsPage({ scope });
 
-    await expect(
-      screen.findByText("cached-brief.html"),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+      expect(screen.queryByText("cached-brief.html")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows an error when the post-sync IndexedDB window times out", async () => {
+    setupTeam();
+    const scope = testAuthScope("incremental-cache-timeout");
+    const lastSyncedAt = "2026-01-02T00:00:00.000Z";
+    const changedArtifact = createArtifact({
+      artifactItemId: "changed-timeout-run:file-1",
+      runId: "changed-timeout-run",
+      filename: "changed-timeout.html",
+      createdAt: "2026-01-03T00:00:00Z",
+      updatedAt: "2026-01-03T00:00:00Z",
+    });
+    await seedCachedArtifacts(
+      scope,
+      [
+        createArtifact({
+          artifactItemId: "cached-timeout-run:file-1",
+          runId: "cached-timeout-run",
+          filename: "cached-timeout.html",
+          createdAt: lastSyncedAt,
+        }),
+      ],
+      lastSyncedAt,
+    );
+    const blockedRead = artifactIdbMock.blockArtifactCursorContinuation();
+    let requestedUpdatedAfter: string | undefined;
+    context.mocks.api(artifactsContract.list, ({ query, respond, never }) => {
+      if (!query.updatedAfter) {
+        return never();
+      }
+      requestedUpdatedAfter = query.updatedAfter;
+      return respond(200, {
+        artifacts: [changedArtifact],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: "2026-01-03T00:00:00.000Z",
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await blockedRead.started;
+    try {
+      await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+        "Could not load artifacts",
+      );
+      expect(
+        screen.queryByText(changedArtifact.filename),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("No artifacts found")).not.toBeInTheDocument();
+      expect(requestedUpdatedAfter).toBe(lastSyncedAt);
+    } finally {
+      blockedRead.release();
+    }
   });
 
   it("writes remote artifacts to the IndexedDB cache", async () => {
@@ -1418,35 +1562,81 @@ describe("artifacts page", () => {
     expect(cached).toStrictEqual([artifact]);
   });
 
-  it("renders the cache immediately when returning while the remote refresh is pending", async () => {
+  it("loads IndexedDB again when returning from activity logs", async () => {
     setupTeam();
-    const scope = testAuthScope("return-to-cache");
-    const artifact = createArtifact({
-      artifactItemId: "return-cache-run:file-1",
-      runId: "return-cache-run",
-      filename: "return-cache-summary.html",
+    const scope = testAuthScope("return-from-activity");
+    const initialSyncUntil = "2026-01-02T00:00:00.000Z";
+    const nextSyncUntil = "2026-01-03T00:00:00.000Z";
+    const cachedArtifact = createArtifact({
+      artifactItemId: "activity-cached-run:file-1",
+      runId: "activity-cached-run",
+      filename: "activity-cached.html",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
     });
-    mockArtifacts([artifact]);
+    const changedArtifact = createArtifact({
+      artifactItemId: "activity-changed-run:file-1",
+      runId: "activity-changed-run",
+      filename: "activity-changed.html",
+      createdAt: "2026-01-03T00:00:00Z",
+      updatedAt: "2026-01-03T00:00:00Z",
+    });
+    context.mocks.api(artifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [cachedArtifact],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: initialSyncUntil,
+      });
+    });
 
-    setupArtifactsPage({ scope });
+    setupArtifactsPage({ scope, zeroDebugEnabled: true });
 
-    await screen.findByText("return-cache-summary.html");
+    await screen.findByText(cachedArtifact.filename);
     await waitFor(async () => {
-      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
-        artifact.artifactItemId,
-      ]);
+      await expect(cachedArtifactsLastSyncedAt(scope)).resolves.toBe(
+        initialSyncUntil,
+      );
     });
 
-    context.mocks.api(artifactsContract.list, ({ never }) => {
-      return never();
+    let fullSnapshotRequests = 0;
+    context.mocks.api(artifactsContract.list, ({ query, respond }) => {
+      if (!query.updatedAfter) {
+        fullSnapshotRequests += 1;
+      }
+      return respond(200, {
+        artifacts: query.updatedAfter
+          ? [changedArtifact]
+          : [changedArtifact, cachedArtifact],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: nextSyncUntil,
+      });
     });
-    click(linkByText("Agents"));
-    await screen.findByRole("heading", { level: 1, name: /agents/i });
+    click(linkByText("Activity logs"));
+    await screen.findByRole("heading", { name: "Activity" });
+    const blockedRead = artifactIdbMock.blockArtifactCursorContinuation();
+
     click(linkByText("Artifacts"));
 
+    await blockedRead.started;
+    try {
+      expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+      expect(
+        screen.queryByText(cachedArtifact.filename),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(changedArtifact.filename),
+      ).not.toBeInTheDocument();
+    } finally {
+      blockedRead.release();
+    }
+
     await expect(
-      screen.findByText("return-cache-summary.html"),
+      screen.findByText(changedArtifact.filename),
     ).resolves.toBeInTheDocument();
+    expect(screen.getByText(cachedArtifact.filename)).toBeInTheDocument();
+    expect(fullSnapshotRequests).toBe(0);
   });
 
   it("normalizes older remote artifacts without a size", async () => {
@@ -1480,7 +1670,7 @@ describe("artifacts page", () => {
     });
   });
 
-  it("merges remote changes into the cached artifact set", async () => {
+  it("upserts incremental pages into the IndexedDB cache", async () => {
     setupTeam();
     const scope = testAuthScope("remote-cache-replace");
     const staleArtifact = createArtifact({
@@ -1489,6 +1679,7 @@ describe("artifacts page", () => {
       filename: "stale-summary.html",
       url: "https://artifacts.example.com/stale-summary.html",
       createdAt: "2026-01-02T00:00:00Z",
+      updatedAt: "2026-01-02T12:00:00Z",
     });
     const remoteArtifact = createArtifact({
       artifactItemId: "fresh-run:file-1",
@@ -1496,8 +1687,9 @@ describe("artifacts page", () => {
       filename: "fresh-summary.html",
       url: "https://artifacts.example.com/fresh-summary.html",
       createdAt: "2026-01-03T00:00:00Z",
+      updatedAt: "2026-01-03T00:00:00Z",
     });
-    await seedCachedArtifacts(scope, [staleArtifact]);
+    await seedCachedArtifacts(scope, [staleArtifact], staleArtifact.updatedAt);
     let requestedUpdatedAfter: string | undefined;
     context.mocks.api(artifactsContract.list, ({ query, respond }) => {
       requestedUpdatedAfter = query.updatedAfter;
@@ -1513,7 +1705,7 @@ describe("artifacts page", () => {
 
     await screen.findByText("fresh-summary.html");
     expect(screen.getByText("stale-summary.html")).toBeInTheDocument();
-    expect(requestedUpdatedAfter).toBe(staleArtifact.createdAt);
+    expect(requestedUpdatedAfter).toBe(staleArtifact.updatedAt);
     await waitFor(async () => {
       await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
         remoteArtifact.artifactItemId,
@@ -1598,13 +1790,17 @@ describe("artifacts page", () => {
   it("falls back to cached artifacts when the remote refresh fails", async () => {
     setupTeam();
     const scope = testAuthScope("remote-error");
-    await seedCachedArtifacts(scope, [
-      createArtifact({
-        artifactItemId: "cached-error-run:file-1",
-        runId: "cached-error-run",
-        filename: "cached-after-error.html",
-      }),
-    ]);
+    await seedCachedArtifacts(
+      scope,
+      [
+        createArtifact({
+          artifactItemId: "cached-error-run:file-1",
+          runId: "cached-error-run",
+          filename: "cached-after-error.html",
+        }),
+      ],
+      "2026-01-02T00:00:00.000Z",
+    );
     context.mocks.api(artifactsContract.list, ({ respond }) => {
       return respond(403, {
         error: {
@@ -1660,16 +1856,52 @@ describe("artifacts page", () => {
     await screen.findByText("page-two.html");
   });
 
+  it("writes each remote page to IndexedDB while loading until pagination completes", async () => {
+    setupTeam();
+    const scope = testAuthScope("paged-progressive");
+    context.mocks.api(artifactsContract.list, ({ query, respond, never }) => {
+      if (query.cursor) {
+        return never();
+      }
+      return respond(200, {
+        artifacts: [
+          createArtifact({
+            artifactItemId: "progressive-page-one:file-1",
+            runId: "progressive-page-one",
+            filename: "progressive-page-one.html",
+          }),
+        ],
+        truncated: false,
+        nextCursor: "cursor-page-2",
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+      expect(
+        screen.queryByText("progressive-page-one.html"),
+      ).not.toBeInTheDocument();
+    });
+    await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+      "progressive-page-one:file-1",
+    ]);
+    await expect(cachedArtifactsLastSyncedAt(scope)).resolves.toBeNull();
+  });
+
   it("virtualizes a large set and loads more near the scroll boundary", async () => {
     setupTeam();
     const scope = testAuthScope("windowed");
     const many = Array.from({ length: 180 }, (_, index) => {
       const label = String(index).padStart(3, "0");
+      const updatedAt = new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString();
       return createArtifact({
         artifactItemId: `windowed-${label}:file`,
         runId: `windowed-${label}`,
         filename: `windowed-${label}.html`,
-        createdAt: new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString(),
+        createdAt: updatedAt,
+        updatedAt,
       });
     });
     mockArtifacts(many);
@@ -1712,11 +1944,13 @@ describe("artifacts page", () => {
     const scope = testAuthScope("keyboard-windowed");
     const many = Array.from({ length: 120 }, (_, index) => {
       const label = String(index).padStart(3, "0");
+      const updatedAt = new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString();
       return createArtifact({
         artifactItemId: `keyboard-windowed-${label}:file`,
         runId: `keyboard-windowed-${label}`,
         filename: `keyboard-windowed-${label}.html`,
-        createdAt: new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString(),
+        createdAt: updatedAt,
+        updatedAt,
       });
     });
     mockArtifacts(many);
