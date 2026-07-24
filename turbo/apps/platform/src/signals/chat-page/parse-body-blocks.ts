@@ -968,7 +968,7 @@ export function parseBodyBlocks(
       continue;
     }
 
-    const actionBlock = createActionBlockFromLine(line);
+    const actionBlock = previews ? createActionBlockFromLine(line) : null;
     if (actionBlock) {
       flushMarkdownBuffer();
       blocks.push(actionBlock);
