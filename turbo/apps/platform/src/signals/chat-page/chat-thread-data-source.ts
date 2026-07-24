@@ -13,7 +13,6 @@ export interface ChatThreadRealtimeHandlers {
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
-  onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
   onAutomationsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   onArtifactsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   onWorkflowsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;

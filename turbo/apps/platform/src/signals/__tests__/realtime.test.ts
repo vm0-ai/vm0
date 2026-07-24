@@ -78,8 +78,6 @@ function chatThreadRealtimeTopics(threadId: string): readonly string[] {
   return [
     `chatThreadDetailChanged:${threadId}`,
     `chatThreadMessageUpdated:${threadId}`,
-    `chatThreadRunCreated:${threadId}`,
-    `chatThreadRunUpdated:${threadId}`,
     `chatThreadAutomationsChanged:${threadId}`,
     `chatThreadArtifactsChanged:${threadId}`,
     `chatThreadWorkflowsChanged:${threadId}`,
@@ -704,7 +702,6 @@ describe("realtime signals", () => {
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
-            onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
@@ -736,7 +733,6 @@ describe("realtime signals", () => {
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
-            onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
@@ -765,7 +761,6 @@ describe("realtime signals", () => {
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
-          onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
           onWorkflowsChanged$: keepAliveLoop$,
@@ -787,7 +782,6 @@ describe("realtime signals", () => {
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
-          onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
           onWorkflowsChanged$: keepAliveLoop$,

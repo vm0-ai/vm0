@@ -12,7 +12,10 @@ import {
   currentRightThread$,
   SIDEBAR_PARAM,
 } from "./chat-thread-panes.ts";
-import { listMessagesAfter$ } from "./remote-chat-thread-data-source.ts";
+import {
+  CHAT_MESSAGES_PAGE_LIMIT,
+  listMessagesAfter$,
+} from "./remote-chat-thread-data-source.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatMessageBackgroundSync");
@@ -36,22 +39,58 @@ function createdMessageThreadId(message: unknown): string | null {
   return UUID_PATTERN.test(threadId) ? threadId : null;
 }
 
+function createdMessageSyncThroughSeqId(message: unknown): number | null {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    !("data" in message) ||
+    typeof message.data !== "object" ||
+    message.data === null ||
+    !("syncThroughSeqId" in message.data) ||
+    typeof message.data.syncThroughSeqId !== "number" ||
+    !Number.isSafeInteger(message.data.syncThroughSeqId) ||
+    message.data.syncThroughSeqId <= 0
+  ) {
+    return null;
+  }
+  return message.data.syncThroughSeqId;
+}
+
 const syncChatThreadMessagesToIndexedDb$ = command(
   async (
     { set },
-    threadId: string,
+    {
+      threadId,
+      syncThroughSeqId,
+    }: {
+      readonly threadId: string;
+      readonly syncThroughSeqId: number | null;
+    },
     signal: AbortSignal,
   ): Promise<PagedChatMessage[]> => {
     const bounds = await set(loadIndexedDbChatMessageBounds$, threadId, signal);
     signal.throwIfAborted();
 
+    if (
+      syncThroughSeqId !== null &&
+      bounds.last !== null &&
+      bounds.last.seqId >= syncThroughSeqId
+    ) {
+      L.debug("skipped background sync: seq watermark already cached", {
+        threadId,
+        syncThroughSeqId,
+      });
+      return [];
+    }
+
     const syncedMessages: PagedChatMessage[] = [];
     let sinceSeqId = bounds.last?.seqId;
 
     async function syncMessagesAfter(): Promise<void> {
+      const requestedSinceSeqId = sinceSeqId;
       const result = await set(
         listMessagesAfter$,
-        { threadId, sinceSeqId },
+        { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
@@ -64,6 +103,12 @@ const syncChatThreadMessagesToIndexedDb$ = command(
       signal.throwIfAborted();
       syncedMessages.push(...result.messages);
       sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
+      if (
+        requestedSinceSeqId !== undefined &&
+        result.messages.length < CHAT_MESSAGES_PAGE_LIMIT
+      ) {
+        return;
+      }
       await syncMessagesAfter();
     }
 
@@ -121,9 +166,10 @@ const handleUserChannelMessage$ = command(
       return false;
     }
 
+    const syncThroughSeqId = createdMessageSyncThroughSeqId(message);
     const messages = await set(
       syncChatThreadMessagesToIndexedDb$,
-      threadId,
+      { threadId, syncThroughSeqId },
       signal,
     );
     signal.throwIfAborted();

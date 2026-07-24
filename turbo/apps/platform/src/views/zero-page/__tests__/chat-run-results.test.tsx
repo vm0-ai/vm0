@@ -1293,10 +1293,10 @@ describe("chat lifecycle", () => {
         seqId: baselineMessages.length + index + 1,
       };
     });
-    const terminalPageGate = context.mocks.deferred<void>();
+    const finalPageGate = context.mocks.deferred<void>();
     let burstEnabled = false;
     let page = 0;
-    let terminalForwardPageRequested = false;
+    let finalForwardPageRequested = false;
     const sinceSeqIds: number[] = [];
 
     mockSubagentThread(context, threadId);
@@ -1323,9 +1323,9 @@ describe("chat lifecycle", () => {
         const startIndex = page * 50;
         page += 1;
         const messages = burstMessages.slice(startIndex, startIndex + 50);
-        if (messages.length === 0) {
-          terminalForwardPageRequested = true;
-          await terminalPageGate.promise;
+        if (messages.length < 50) {
+          finalForwardPageRequested = true;
+          await finalPageGate.promise;
         }
         return respond(200, { messages });
       },
@@ -1349,29 +1349,31 @@ describe("chat lifecycle", () => {
           `chatThreadMessageCreated:${threadId}`,
         ),
       ).toBeFalsy();
+      expect(
+        context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
+      ).toBeFalsy();
       sinceSeqIds.length = 0;
       burstEnabled = true;
       context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
 
       await waitFor(() => {
-        expect(terminalForwardPageRequested).toBeTruthy();
+        expect(finalForwardPageRequested).toBeTruthy();
       });
       expect(screen.queryByText("Burst 119")).not.toBeInTheDocument();
 
-      terminalPageGate.resolve();
+      finalPageGate.resolve();
       await waitFor(() => {
         expect(screen.getByText("Burst 119")).toBeInTheDocument();
       });
     } finally {
-      if (!terminalPageGate.settled()) {
-        terminalPageGate.resolve();
+      if (!finalPageGate.settled()) {
+        finalPageGate.resolve();
       }
     }
     expect(sinceSeqIds).toStrictEqual([
       baselineMessages.at(-1)!.seqId,
       burstMessages[49]!.seqId,
       burstMessages[99]!.seqId,
-      burstMessages.at(-1)!.seqId,
     ]);
   });
 });
