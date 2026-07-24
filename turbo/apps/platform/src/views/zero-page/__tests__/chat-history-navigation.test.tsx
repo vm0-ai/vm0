@@ -57,16 +57,10 @@ describe("chat lifecycle", () => {
       seqId: 1,
     } satisfies PagedChatMessage;
     const beforeSeqIds: number[] = [];
-    const messageRefreshCompleted = context.mocks.deferred<void>();
 
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Complete history",
-      onMessageGet: (messageId) => {
-        if (messageId === initialMessage.id) {
-          messageRefreshCompleted.resolve();
-        }
-      },
     });
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       if (query.beforeSeqId !== undefined) {
@@ -87,7 +81,6 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await messageRefreshCompleted.promise;
     await expect(
       screen.findByText(initialMessage.content),
     ).resolves.toBeInTheDocument();
@@ -1320,6 +1313,8 @@ describe("chat lifecycle", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
         latestEventId: null,
@@ -1345,6 +1340,8 @@ describe("chat lifecycle", () => {
           agentId: AGENT_ID,
           title: body.title,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
           createdAt: "2026-06-01T00:00:01.000Z",
         };
         return respond(204);

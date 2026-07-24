@@ -272,6 +272,14 @@ function workflowAutomationKindLabel(
       return "Gmail label applied";
     case "github-label-applied":
       return "GitHub label applied";
+    case "github-deployment-status-created":
+      return "GitHub deployment status created";
+    case "github-issue-comment-created":
+      return "GitHub issue comment created";
+    case "github-pull-request-review-submitted":
+      return "GitHub pull request review submitted";
+    case "github-workflow-job-completed":
+      return "GitHub workflow job completed";
     case "github-workflow-run-completed":
       return "GitHub workflow completed";
     case "google-calendar-event-created":
@@ -352,13 +360,8 @@ export function printWorkflowAutomationsTable(
   }
 }
 
-function printGithubWorkflowRunFilters(
-  automation: ZeroWorkflowAutomationSummary,
-): void {
-  if (
-    automation.kind !== "event" ||
-    automation.eventType !== "github-workflow-run-completed"
-  ) {
+function printGithubFilters(automation: ZeroWorkflowAutomationSummary): void {
+  if (automation.kind !== "event") {
     return;
   }
   const printFilter = (
@@ -367,13 +370,68 @@ function printGithubWorkflowRunFilters(
   ) => {
     console.log(`${`${label}:`.padEnd(14)}${values?.join(", ") ?? "any"}`);
   };
-  const { filters } = automation.eventConfig;
-  printFilter("Repositories", filters.repositories);
-  printFilter("Workflows", filters.workflows);
-  printFilter("Conclusions", filters.conclusions);
-  printFilter("Branches", filters.branches);
-  printFilter("Events", filters.events);
-  printFilter("Actors", filters.actors);
+  switch (automation.eventType) {
+    case "github-workflow-run-completed": {
+      const { filters } = automation.eventConfig;
+      printFilter("Repositories", filters.repositories);
+      printFilter("Workflows", filters.workflows);
+      printFilter("Conclusions", filters.conclusions);
+      printFilter("Branches", filters.branches);
+      printFilter("Events", filters.events);
+      printFilter("Actors", filters.actors);
+      return;
+    }
+    case "github-workflow-job-completed": {
+      const { filters } = automation.eventConfig;
+      printFilter("Repositories", filters.repositories);
+      printFilter("Workflows", filters.workflows);
+      printFilter("Jobs", filters.jobs);
+      printFilter("Conclusions", filters.conclusions);
+      printFilter("Branches", filters.branches);
+      printFilter("Runner labels", filters.runnerLabels);
+      printFilter("Runner groups", filters.runnerGroups);
+      return;
+    }
+    case "github-pull-request-review-submitted": {
+      const { filters } = automation.eventConfig;
+      printFilter("Repositories", filters.repositories);
+      printFilter("Review states", filters.reviewStates);
+      printFilter("Base branches", filters.baseBranches);
+      printFilter("Head branches", filters.headBranches);
+      printFilter("Authors", filters.trustedAuthors);
+      return;
+    }
+    case "github-deployment-status-created": {
+      const { filters } = automation.eventConfig;
+      printFilter("Repositories", filters.repositories);
+      printFilter("Environments", filters.environments);
+      printFilter("States", filters.states);
+      printFilter("Refs", filters.refs);
+      console.log(
+        `${"Production:".padEnd(14)}${
+          filters.productionEnvironment === undefined
+            ? "any"
+            : String(filters.productionEnvironment)
+        }`,
+      );
+      printFilter("Creators", filters.creators);
+      printFilter("Apps", filters.apps);
+      return;
+    }
+    case "github-issue-comment-created": {
+      const { filters } = automation.eventConfig;
+      printFilter("Repositories", filters.repositories);
+      console.log(
+        `${"Subject:".padEnd(14)}${formatGithubSubject(filters.subject)}`,
+      );
+      printFilter("Authors", filters.trustedAuthors);
+      printFilter("Prefixes", filters.commentPrefixes);
+      return;
+    }
+    default: {
+      return;
+    }
+  }
 }
 
 export function printWorkflowAutomationDetails(
@@ -421,7 +479,7 @@ export function printWorkflowAutomationDetails(
       `${"Actor:".padEnd(14)}${automation.eventConfig.filters.actor.type}`,
     );
   }
-  printGithubWorkflowRunFilters(automation);
+  printGithubFilters(automation);
   if (isGoogleCalendarAutomation(automation)) {
     console.log(
       `${"Calendar:".padEnd(14)}${automation.eventConfig.calendarId}`,

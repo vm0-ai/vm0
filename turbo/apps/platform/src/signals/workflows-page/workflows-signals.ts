@@ -10,7 +10,11 @@ import {
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
   type GoogleMeetTranscriptGeneratedEventConfig,
+  type GithubDeploymentStatusCreatedEventConfig,
+  type GithubIssueCommentCreatedEventConfig,
   type GithubLabelAppliedEventConfig,
+  type GithubPullRequestReviewSubmittedEventConfig,
+  type GithubWorkflowJobCompletedEventConfig,
   type GithubWorkflowRunCompletedEventConfig,
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
@@ -87,6 +91,10 @@ export type WorkflowAutomationCreateDialog =
   | "gmail"
   | "gmail-label"
   | "github-label"
+  | "github-workflow-job"
+  | "github-pull-request-review"
+  | "github-deployment-status"
+  | "github-issue-comment"
   | "github-workflow-run"
   | "google-calendar-created"
   | "google-calendar-updated"
@@ -864,7 +872,7 @@ export const runWorkflow$ = command(
     { get },
     workflowId: string,
     signal: AbortSignal,
-  ): Promise<{ chatThreadId: string; runId: string }> => {
+  ): Promise<{ chatThreadId: string; runId: string | null }> => {
     const client = get(zeroClient$)(zeroWorkflowsDetailContract);
     const result = await accept(
       client.run({
@@ -1038,6 +1046,72 @@ export const createWorkflowGithubWorkflowRunCompletedAutomation$ = command(
           eventType: "github-workflow-run-completed",
           eventConfig: input.eventConfig,
         },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+type GithubWebhookAutomationCreateInput =
+  | {
+      readonly workflowId: string;
+      readonly eventType: "github-workflow-job-completed";
+      readonly eventConfig: GithubWorkflowJobCompletedEventConfig;
+    }
+  | {
+      readonly workflowId: string;
+      readonly eventType: "github-pull-request-review-submitted";
+      readonly eventConfig: GithubPullRequestReviewSubmittedEventConfig;
+    }
+  | {
+      readonly workflowId: string;
+      readonly eventType: "github-deployment-status-created";
+      readonly eventConfig: GithubDeploymentStatusCreatedEventConfig;
+    }
+  | {
+      readonly workflowId: string;
+      readonly eventType: "github-issue-comment-created";
+      readonly eventConfig: GithubIssueCommentCreatedEventConfig;
+    };
+
+export const createWorkflowGithubWebhookAutomation$ = command(
+  async (
+    { get, set },
+    input: GithubWebhookAutomationCreateInput,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const body: ZeroWorkflowAutomationCreateRequest =
+      input.eventType === "github-workflow-job-completed"
+        ? {
+            kind: "event",
+            eventType: input.eventType,
+            eventConfig: input.eventConfig,
+          }
+        : input.eventType === "github-pull-request-review-submitted"
+          ? {
+              kind: "event",
+              eventType: input.eventType,
+              eventConfig: input.eventConfig,
+            }
+          : input.eventType === "github-deployment-status-created"
+            ? {
+                kind: "event",
+                eventType: input.eventType,
+                eventConfig: input.eventConfig,
+              }
+            : {
+                kind: "event",
+                eventType: input.eventType,
+                eventConfig: input.eventConfig,
+              };
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body,
         fetchOptions: { signal },
       }),
       [201],
@@ -1365,6 +1439,33 @@ export const updateWorkflowGithubWorkflowRunCompletedAutomation$ = command(
   },
 );
 
+export const updateWorkflowGithubWebhookAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly automationId: string;
+      readonly eventConfig:
+        | GithubWorkflowJobCompletedEventConfig
+        | GithubPullRequestReviewSubmittedEventConfig
+        | GithubDeploymentStatusCreatedEventConfig
+        | GithubIssueCommentCreatedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.update({
+        params: { id: input.automationId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const updateWorkflowScheduleAutomation$ = command(
   async (
     { get, set },
@@ -1450,7 +1551,7 @@ export const runWorkflowAutomationNow$ = command(
     { get },
     automationId: string,
     signal: AbortSignal,
-  ): Promise<{ chatThreadId: string; runId: string }> => {
+  ): Promise<{ chatThreadId: string; runId: string | null }> => {
     const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const result = await accept(
       client.run({

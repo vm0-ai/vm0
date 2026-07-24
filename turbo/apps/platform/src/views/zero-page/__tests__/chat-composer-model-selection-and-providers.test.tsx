@@ -775,7 +775,7 @@ describe("chat composer models", () => {
 
     lifecycle.setCodexServiceTier(null);
     act(() => {
-      triggerAblyEvent(`chatThreadDetailChanged:${THREAD_ID}`);
+      triggerAblyEvent("threadListChanged");
     });
     await user.click(screen.getByRole("combobox", { name: /GPT 5\.5/ }));
     const runSpeed = await screen.findByRole("group", { name: "Run speed" });
@@ -837,10 +837,10 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000917",
-        model: "gpt-5.4",
-        modelLabel: "GPT-5.4",
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        model: "claude-sonnet-5",
+        modelLabel: "Claude Sonnet 5",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
       }),
     ]);
     context.mocks.data.personalModelProviders([codexProvider]);
@@ -863,10 +863,12 @@ describe("chat composer models", () => {
     });
 
     await user.click(await screen.findByRole("combobox", { name: /GPT 5\.5/ }));
-    await user.click(await screen.findByRole("option", { name: /GPT-5\.4/ }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 5/ }),
+    );
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: /GPT-5\.4/ }),
+        screen.getByRole("combobox", { name: /Claude Sonnet 5/ }),
       ).toBeInTheDocument();
     });
 
@@ -879,7 +881,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(updatedModelSelection?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.4",
+        selectedModel: "claude-sonnet-5",
       });
       expect(updatedModelSelection?.codexServiceTier).toBeNull();
       expect(sentBody?.modelSelection).toBeUndefined();
@@ -926,7 +928,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("hides Codex fast mode for unsupported subscription models", async () => {
+  it("hides Codex fast mode for non-Codex models", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000932",
       type: "codex-oauth-token",
@@ -939,11 +941,11 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000931",
-        model: "gpt-5.4",
-        modelLabel: "GPT-5.4",
+        model: "claude-sonnet-5",
+        modelLabel: "Claude Sonnet 5",
         isDefault: true,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
       }),
     ]);
     context.mocks.data.personalModelProviders([codexProvider]);
@@ -955,7 +957,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT-5.4"));
+    click(await findComposerModel("Claude Sonnet 5"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
@@ -2169,6 +2171,8 @@ describe("chat composer models", () => {
       agentId: OTHER_AGENT_ID,
       title: "Renamed other agent thread",
       selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: "2026-07-22T09:00:00.000Z",
     };
     triggerAblyEvent("threadListChanged");

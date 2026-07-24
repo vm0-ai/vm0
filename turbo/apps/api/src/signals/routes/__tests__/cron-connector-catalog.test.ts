@@ -24,10 +24,6 @@ import {
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
-  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
-} from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { HttpResponse, http } from "msw";
 import {
@@ -42,6 +38,10 @@ import {
 import { createApp } from "../../../app-factory";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import {
+  clearMockedExternalConnectorCatalogEnabled,
+  mockExternalConnectorCatalogEnabled,
+} from "../../../lib/connector-catalog-source-selection";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -50,7 +50,6 @@ import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
-import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
@@ -1364,6 +1363,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearMockedExternalConnectorCatalogEnabled();
   clearMockNow();
 });
 
@@ -1517,6 +1517,51 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
+  it("does not let a user select the external catalog source", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.user-source-override",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const headers = { authorization: "Bearer clerk-session" };
+    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
+    const update = await accept(
+      featureClient.update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.ExternalConnectorCatalog]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(
+      update.body.switches[FeatureSwitchKey.ExternalConnectorCatalog],
+    ).toBeUndefined();
+    expect(
+      update.body.effectiveSwitches[FeatureSwitchKey.ExternalConnectorCatalog],
+    ).toBeFalsy();
+
+    const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
+    const publicCatalog = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({ headers }),
+      [200],
+    );
+    expect(
+      publicCatalog.body.connectors.some((connector) => {
+        return connector.connectorRef === release.connectorRef;
+      }),
+    ).toBeFalsy();
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(
+      callsBeforePublicCatalog,
+    );
+    await accept(featureClient.delete({ headers }), [200]);
+  });
+
   it("serves every public catalog surface from accepted database state", async () => {
     configureSource();
     const release = buildRelease({
@@ -1531,7 +1576,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
@@ -1691,7 +1736,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).permissions({
@@ -1714,7 +1759,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
@@ -1787,7 +1832,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     zeroMocks.clerk.session(userId, orgId);
@@ -1880,7 +1925,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
@@ -1950,7 +1995,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     const firewall = createFirewallApi(context);
@@ -2027,7 +2072,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial], initial));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
@@ -2172,7 +2217,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial], initial));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
@@ -2255,7 +2300,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial], initial));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
@@ -2331,7 +2376,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const runs = createRunsApi(context);
     const firewall = createFirewallApi(context);
@@ -2502,7 +2547,7 @@ describe("connector catalog valid lifecycle", () => {
     if (!acceptedCatalogDigest) {
       throw new Error("Expected an accepted connector catalog digest");
     }
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const headers = { authorization: OFFICIAL_RUNNER_AUTHORIZATION };
     const providerName = "model-provider:openai-api-key";
@@ -2590,36 +2635,6 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSecondRead);
   });
 
-  it("keeps runner firewall resolution static in shadow mode", async () => {
-    configureSource();
-    const release = buildRelease({
-      version: "2026-07-15.shadow-runner-firewall",
-      connectorRef: "external-shadow-runner-firewall",
-      generatedFirewall: true,
-    });
-    serveObjects(catalogObjects([release], release));
-    await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
-
-    const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
-    const response = await accept(
-      runnerFirewallClient().resolve({
-        headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
-        body: { names: ["github"] },
-      }),
-      [200],
-    );
-    expect(response.body.catalogDigest).toBe(
-      RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
-    );
-    expect(response.body.catalogVersion).toBe(
-      RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
-    );
-    expect(response.body.firewalls.github?.name).toBe("github");
-    await flushWaitUntilForTest();
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRead);
-  });
-
   it("mounts an external connector skill from its exact system version", async () => {
     const connectorRef = `external-skill-${randomUUID().slice(0, 8)}`;
     const selectedVersionId = createHash("sha256")
@@ -2648,7 +2663,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const runs = createRunsApi(context);
     const actor = bdd.user();
@@ -2836,7 +2851,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
@@ -2915,7 +2930,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
@@ -2987,7 +3002,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
@@ -3058,7 +3073,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const response = await connectorsApi.requestOauthStart(
       bdd.user(),
@@ -3101,7 +3116,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
@@ -3139,7 +3154,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([firstRelease], firstRelease));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const providerEntered = deferredGate();
     const providerResume = deferredGate();
@@ -3259,64 +3274,6 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
-  it("does not duplicate provider side effects in shadow mode", async () => {
-    mockSlackConnectorOAuth();
-    configureSource();
-    const release = buildRelease({
-      version: "2026-07-15.shadow-provider-side-effect",
-      connectorRef: "slack",
-      label: "Catalog Slack",
-      mutateCatalog: (artifact) => {
-        setArtifactAuthMethods(artifact, [
-          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
-        ]);
-      },
-      mutateRuntime: (artifact) => {
-        setArtifactAuthMethods(artifact, [slackPrivateAuthMethod()]);
-      },
-    });
-    serveObjects(catalogObjects([release], release));
-    await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
-
-    let tokenExchangeCount = 0;
-    server.use(
-      http.post(SLACK_OAUTH_TOKEN_URL, () => {
-        tokenExchangeCount += 1;
-        return HttpResponse.json({
-          ok: true,
-          authed_user: {
-            id: "U012AB3CD",
-            access_token: "xoxp-shadow-token",
-            scope: "channels:read,chat:write",
-          },
-        });
-      }),
-      http.post(SLACK_REVOKE_URL, () => {
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-
-    const actor = bdd.user();
-    onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(actor, "slack", [204, 404]);
-    });
-    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
-    const start = await connectorsApi.startOauth(actor, "slack", "oauth");
-    const state = new URL(start.authorizationUrl).searchParams.get("state");
-    if (!state) {
-      throw new Error("Expected Slack authorization state");
-    }
-    await connectorsApi.completeOauthCallback("slack", {
-      code: "shadow-side-effect",
-      state,
-    });
-    await flushWaitUntilForTest();
-
-    expect(tokenExchangeCount).toBe(1);
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
-  });
-
   it("uses one external release for readiness status and connector metadata", async () => {
     mockGmailConnectorOAuth({ email: "readiness@example.test" });
     configureSource();
@@ -3338,7 +3295,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([connectedRelease], connectedRelease));
     await syncCatalog();
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     mockOptionalEnv(
       "GMAIL_PUBSUB_TOPIC_NAME",
@@ -3562,7 +3519,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     mockOptionalEnv(
       "GMAIL_PUBSUB_TOPIC_NAME",
@@ -3758,7 +3715,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([matching], matching));
     await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.DatadogConnector]: false,
@@ -3858,9 +3815,9 @@ describe("connector catalog valid lifecycle", () => {
     });
   });
 
-  it("fails closed in external mode when no accepted state is available", async () => {
+  it("fails closed when the external catalog is enabled without accepted state", async () => {
     configureSource();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
 
@@ -3886,106 +3843,6 @@ describe("connector catalog valid lifecycle", () => {
     expect(catalogResponse.body).toStrictEqual(expectedError);
     expect(searchResponse.body).toStrictEqual(expectedError);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRead);
-  });
-
-  it("keeps shadow reads static when no external state is available", async () => {
-    configureSource();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    zeroMocks.clerk.session(userId, orgId);
-    const response = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(response.body.connectors.length).toBeGreaterThan(0);
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
-
-    await flushWaitUntilForTest();
-    const [message, data] =
-      context.mocks.axiomLogging.warn.mock.calls.at(-1) ?? [];
-    expect(message).toBe("Connector catalog shadow comparison unavailable");
-    expect(data).toMatchObject({
-      type: "connector_catalog_shadow_comparison",
-      operation: "list",
-      outcome: "unavailable",
-      context: "connector-catalog:shadow",
-    });
-    expect(JSON.stringify([message, data])).not.toContain(userId);
-    expect(JSON.stringify([message, data])).not.toContain(orgId);
-  });
-
-  it("reports only sanitized global diagnostics for shadow differences", async () => {
-    configureSource();
-    const release = buildRelease({
-      version: "2026-07-15.shadow-difference",
-    });
-    serveObjects(catalogObjects([release], release));
-    await syncCatalog();
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    zeroMocks.clerk.session(userId, orgId);
-    const callsBeforePublicRead = context.mocks.s3.send.mock.calls.length;
-    const response = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).status({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(
-      response.body.connectors.some((connector) => {
-        return connector.connectorRef === release.connectorRef;
-      }),
-    ).toBeFalsy();
-
-    await flushWaitUntilForTest();
-    const catalogComparison = [...context.mocks.axiomLogging.debug.mock.calls]
-      .reverse()
-      .find(([message]) => {
-        return message === "Connector catalog shadow comparison completed";
-      });
-    const [message, data] = catalogComparison ?? [];
-    expect(message).toBe("Connector catalog shadow comparison completed");
-    expect(data).toMatchObject({
-      type: "connector_catalog_shadow_comparison",
-      operation: "status",
-      outcome: "difference",
-      schemaVersion: 1,
-      catalogVersion: release.version,
-      rawConnectorCount: 1,
-      rawAuthMethodCount: 1,
-      compatibilityFilteredMethodCount: 0,
-      externalConnectorCount: 1,
-      context: "connector-catalog:shadow",
-    });
-    const runtimeComparison = [...context.mocks.axiomLogging.debug.mock.calls]
-      .reverse()
-      .find(([runtimeMessage]) => {
-        return (
-          runtimeMessage ===
-          "Connector runtime catalog shadow comparison completed"
-        );
-      });
-    expect(runtimeComparison?.[1]).toMatchObject({
-      type: "connector_runtime_catalog_shadow_comparison",
-      outcome: "difference",
-      schemaVersion: 1,
-      catalogVersion: release.version,
-      externalConnectorCount: 1,
-      staticServerFirewallCount: expect.any(Number),
-      externalServerFirewallCount: 0,
-      staticServerFirewallDigest: expect.stringMatching(/^sha256:/),
-      externalServerFirewallDigest: expect.stringMatching(/^sha256:/),
-    });
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforePublicRead);
-    const logged = JSON.stringify(context.mocks.axiomLogging.debug.mock.calls);
-    expect(logged).not.toContain(userId);
-    expect(logged).not.toContain(orgId);
-    expect(logged).not.toContain(PRIVATE_VALUE);
-    expect(logged).not.toContain("placeholder-token");
   });
 
   it("accepts a complete generated firewall projection", async () => {
@@ -4020,7 +3877,7 @@ describe("connector catalog valid lifecycle", () => {
       state: "current",
       active: { catalogVersion: release.version },
     });
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const diagnostic = await accept(
@@ -4560,7 +4417,7 @@ describe("connector catalog valid lifecycle", () => {
       state: "current",
       active: { catalogVersion: release.version },
     });
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     const response = await accept(
       runnerFirewallClient().resolve({
         headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
@@ -4775,7 +4632,7 @@ describe("connector catalog executable compatibility", () => {
       ],
     });
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
       setupApp({ context })(zeroConnectorCheckContract).check({
@@ -4842,7 +4699,7 @@ describe("connector catalog executable compatibility", () => {
         reasons: ["missing-grant-provider", "provider-contract-mismatch"],
       },
     ]);
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
 
     const response = await requestOauthCallbackRaw(context, {
       origin: "https://api.vm0.ai",
@@ -4954,7 +4811,7 @@ describe("connector catalog executable compatibility", () => {
     });
     const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
 
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
@@ -5246,7 +5103,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       outcome: "accepted",
       active: { catalogVersion: release.version },
     });
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
       setupApp({ context })(zeroConnectorCheckContract).check({

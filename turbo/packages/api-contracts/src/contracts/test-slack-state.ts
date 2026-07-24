@@ -100,6 +100,7 @@ export const testSlackStateResponseSchema = z.object({
       itemType: z.enum([
         "user_message",
         "slack_user_message",
+        "feishu_user_message",
         "workflow_event",
       ]),
       triggerSource: z.string().nullable(),

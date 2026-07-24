@@ -75,6 +75,57 @@ describe("chat lifecycle", () => {
     expect(originLinks).toHaveLength(1);
   });
 
+  it("links Feishu-origin user messages back to the original chat", async () => {
+    const threadId = "thread-feishu-message-origin";
+    const chatOpenUrl =
+      "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_chat";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-feishu-origin",
+          role: "user",
+          content: "Check the Feishu conversation",
+          runId: "run-feishu-origin",
+          triggerSource: "feishu",
+          feishuChatOpenUrl: chatOpenUrl,
+          createdAt: "2026-07-23T01:00:00Z",
+        },
+        {
+          id: "msg-feishu-origin-assistant",
+          role: "assistant",
+          content: "The conversation is available.",
+          runId: "run-feishu-origin",
+          createdAt: "2026-07-23T01:01:00Z",
+        },
+        {
+          id: "msg-feishu-origin-without-link",
+          role: "user",
+          content: "This source link was unavailable",
+          runId: "run-feishu-origin-without-link",
+          triggerSource: "feishu",
+          createdAt: "2026-07-23T01:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Open chat")).toBeInTheDocument();
+    });
+    const originLinks = queryAllByRoleFast("link").filter((link) => {
+      return link.getAttribute("aria-label") === "Open original chat in Feishu";
+    });
+    const originLink = originLinks[0];
+    expect(originLink).toBeDefined();
+    expect(originLink).toHaveAttribute("href", chatOpenUrl);
+    expect(originLink).toHaveAttribute("target", "_blank");
+    expect(originLink).toHaveTextContent("Feishu");
+    expect(originLink).toHaveTextContent("Open chat");
+    expect(originLinks).toHaveLength(1);
+  });
+
   it("keeps an existing thread composer in its footer while idle and working", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000990";

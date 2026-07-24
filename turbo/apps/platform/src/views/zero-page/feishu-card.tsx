@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui/components/ui/select";
+import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Tooltip,
@@ -93,23 +94,6 @@ const feishuIconImg = settingsIconAssetUrl("lark");
 const FEISHU_DEVELOPER_CONSOLE_URL =
   "https://open.feishu.cn/page/launcher?from=backend_oneclick";
 const FEISHU_APP_CONSOLE_URL = "https://open.feishu.cn/app";
-const FEISHU_PERMISSION_CONFIG = JSON.stringify(
-  {
-    scopes: {
-      tenant: [
-        "im:message.p2p_msg:readonly",
-        "im:message.group_at_msg:readonly",
-        "im:message.group_msg",
-        "im:message:readonly",
-        "im:message.reactions:write_only",
-        "im:message:send_as_bot",
-      ],
-      user: [],
-    },
-  },
-  null,
-  2,
-);
 
 type FeishuDialogData = FeishuBotInstallation;
 
@@ -227,7 +211,6 @@ const FEISHU_SETUP_STEPS = [
   { key: "create", label: "Create" },
   { key: "credentials", label: "Credentials" },
   { key: "tokens", label: "Tokens" },
-  { key: "permissions", label: "Permissions" },
   { key: "redirect", label: "Redirect" },
   { key: "events", label: "Events" },
   { key: "publish", label: "Publish" },
@@ -256,7 +239,7 @@ function FeishuSetupProgress({ step }: { step: FeishuSetupStep }) {
           );
         })}
       </div>
-      <div className="grid grid-cols-7 gap-2 text-xs">
+      <div className="grid grid-cols-6 gap-2 text-xs">
         {FEISHU_SETUP_STEPS.map((item, index) => {
           return (
             <div
@@ -607,38 +590,6 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
   );
 }
 
-function FeishuPermissionsStep() {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <div className="mb-2 font-medium text-foreground">
-          Import the required permissions
-        </div>
-        <p className="leading-relaxed">
-          Open Permission Management in the Feishu developer console, choose
-          batch import, and paste the JSON below. These permissions enable
-          direct messages, group mentions, conversation history, replies, and
-          the thinking indicator.
-        </p>
-      </div>
-      <div className="space-y-2 rounded-lg border border-border p-4">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium text-foreground">
-            Permission JSON
-          </span>
-          <CopyButton
-            value={FEISHU_PERMISSION_CONFIG}
-            label="Permission JSON"
-          />
-        </div>
-        <pre className="max-h-56 overflow-auto rounded-md bg-muted p-3 text-xs text-foreground">
-          {FEISHU_PERMISSION_CONFIG}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
 function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
   return (
     <div className="space-y-4">
@@ -777,9 +728,6 @@ function FeishuSetupStepContent({
     case "tokens": {
       return <FeishuTokensStep form={form} saving={saving} />;
     }
-    case "permissions": {
-      return <FeishuPermissionsStep />;
-    }
     case "redirect": {
       return <FeishuRedirectStep data={data} />;
     }
@@ -838,9 +786,6 @@ function canContinueFeishuSetup(args: {
     }
     case "tokens": {
       return canSubmitFeishuSetup(args.form, args.saving);
-    }
-    case "permissions": {
-      return true;
     }
     case "redirect": {
       return Boolean(args.data?.oauthRedirectUrl);
@@ -1155,20 +1100,22 @@ function FeishuBotMenu({
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
         {bot.canManage ? (
           <>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-              onClick={() => {
-                open({
-                  appId: bot.appId,
-                  defaultAgentId: bot.defaultAgentId,
-                  step: "permissions",
-                  installationId: bot.id,
-                });
-              }}
-            >
-              {bot.setupCompleted ? "Setup guide" : "Manage"}
-            </button>
+            {!bot.setupCompleted ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                onClick={() => {
+                  open({
+                    appId: bot.appId,
+                    defaultAgentId: bot.defaultAgentId,
+                    step: "redirect",
+                    installationId: bot.id,
+                  });
+                }}
+              >
+                Manage
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={!bot.id}
@@ -1343,9 +1290,37 @@ function FeishuBotsCard({
 
 function FeishuSettingsSkeleton() {
   return (
-    <div className="zero-card px-6 py-12 text-center text-sm text-muted-foreground">
-      Loading Feishu bots…
-    </div>
+    <section
+      className="zero-card overflow-hidden"
+      data-testid="feishu-settings-loading"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-8 w-[88px] rounded-md" />
+      </div>
+      {[0, 1, 2].map((index) => {
+        return (
+          <div key={index}>
+            <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-6 w-20 rounded-lg" />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-1.5 sm:w-[420px]">
+                <Skeleton className="h-9 min-w-0 flex-1 rounded-md" />
+                <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
+              </div>
+            </div>
+            {index < 2 ? (
+              <div className="mx-5 border-b border-border/50" />
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -1381,30 +1356,6 @@ function FeishuDialogBody({
       orgDefaultAgentName={orgDefaultAgentName}
       onClose={onClose}
     />
-  );
-}
-
-function FeishuDialogFooter({ data }: { data: FeishuDialogData | null }) {
-  const [disconnectLoadable, disconnect] = useLoadableSet(disconnectFeishuOrg$);
-  const signal = useGet(pageSignal$);
-  if (!data?.isConnected) {
-    return null;
-  }
-  return (
-    <DialogFooter className="border-t border-border pt-4">
-      <Button
-        type="button"
-        variant="outline"
-        disabled={disconnectLoadable.state === "loading"}
-        onClick={() => {
-          detach(disconnect(data.id, signal), Reason.DomCallback);
-        }}
-      >
-        {disconnectLoadable.state === "loading"
-          ? "Disconnecting…"
-          : "Disconnect"}
-      </Button>
-    </DialogFooter>
   );
 }
 
@@ -1456,7 +1407,6 @@ function FeishuSetupDialog({
           orgDefaultAgentName={orgDefaultAgentName}
           onClose={close}
         />
-        <FeishuDialogFooter data={data} />
       </DialogContent>
     </Dialog>
   );
@@ -1511,7 +1461,6 @@ function FeishuUninstallDialog({ bot }: { bot: FeishuBotInstallation | null }) {
                 (async () => {
                   await uninstallInstallation(installationId, signal);
                   setUninstallInstallationId(null);
-                  toast.success("Feishu bot uninstalled");
                 })(),
                 Reason.DomCallback,
               );

@@ -1713,6 +1713,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
               id: "gmail-agent-reply-message",
               threadId: "gmail-agent-reply-thread",
               payload: {
+                partId: "",
                 mimeType: "text/plain",
                 filename: "",
                 headers: [
@@ -1802,7 +1803,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.4",
+        model: "gpt-5.6-luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1814,7 +1815,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       prompt:
         "generate an image in web chat using the aurora-21210 color palette",
-      model: "gpt-5.4",
+      model: "gpt-5.6-luna",
     });
     const { claim } = await claimChatRun(runnerGroup, run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
@@ -1824,6 +1825,10 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
     expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
+    expect(appendSystemPrompt).toContain(
+      "GET /gmail/v1/users/me/settings/sendAs",
+    );
+    expect(appendSystemPrompt).toContain("append that signature exactly once");
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
     );
@@ -2160,10 +2165,10 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
       {
-        model: "gpt-5.4",
+        model: "claude-sonnet-5",
         isDefault: false,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
         modelProviderId: null,
       },
     ]);
@@ -2218,7 +2223,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
       actor,
       fast.threadId,
-      "gpt-5.4",
+      "claude-sonnet-5",
       [400],
       { codexServiceTier: "fast" },
     );
@@ -2230,9 +2235,14 @@ describe("CHAT-02: model-first provider policies", () => {
       "fast",
     );
 
-    await chat.updateThreadModelSelection(actor, fast.threadId, "gpt-5.4", {
-      codexServiceTier: null,
-    });
+    await chat.updateThreadModelSelection(
+      actor,
+      fast.threadId,
+      "claude-sonnet-5",
+      {
+        codexServiceTier: null,
+      },
+    );
     const updatedFastThread = await chat.readThread(actor, fast.threadId);
     expect(updatedFastThread).not.toHaveProperty("selectedModel");
     expect(updatedFastThread.codexServiceTier).toBeNull();
@@ -2249,7 +2259,21 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: fast.threadId,
-        selectedModel: "gpt-5.4",
+        selectedModel: "claude-sonnet-5",
+      }),
+    );
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "created",
+        chatThreadId: fast.threadId,
+        serviceTier: "priority",
+      }),
+    );
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "service_tier_updated",
+        chatThreadId: fast.threadId,
+        serviceTier: null,
       }),
     );
 
@@ -2276,9 +2300,9 @@ describe("CHAT-02: model-first provider policies", () => {
       actor,
       {
         agentId,
-        prompt: "5.4 cannot fast",
+        prompt: "Claude cannot use Codex fast mode",
         clientThreadId: rejectedThreadId,
-        model: "gpt-5.4",
+        model: "claude-sonnet-5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -3996,11 +4020,12 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       size: 12,
       url: expect.stringContaining(`${fileId}/notes.txt`),
     });
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      queuedId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original).toMatchObject({
       id: queuedId,
       content: "queued with attachment",
@@ -4343,11 +4368,12 @@ describe("CHAT-02: shared user message queue", () => {
       revokesMessageId: messageId,
     });
     expect(claimed?.id).not.toBe(messageId);
-    const queued = await chat.getThreadMessage(
-      actor,
-      sent.body.threadId,
-      messageId,
-    );
+    const queued = rows.find((message) => {
+      return message.id === messageId;
+    });
+    if (!queued) {
+      throw new Error("Expected the queued message");
+    }
     expect(queued).toMatchObject({
       id: messageId,
       content: "queue-first direct dispatch",
@@ -4828,11 +4854,12 @@ describe("CHAT-02: shared user message queue", () => {
     });
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.runId).toBe(sent.body.runId);
-    const queued = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      messageId,
-    );
+    const queued = userMessages(messages.messages).find((message) => {
+      return message.id === messageId;
+    });
+    if (!queued) {
+      throw new Error("Expected the queued message");
+    }
     expect(queued.runId).toBeUndefined();
 
     const runList = await api.listAgentRuns(actor, {
@@ -4971,11 +4998,12 @@ describe("CHAT-02: shared user message queue", () => {
     if (!claimed?.runId) {
       throw new Error("Expected the queue drain to append a claimed message");
     }
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      messageId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === messageId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original.runId).toBeUndefined();
     expect(claimed.content).toBe("recall races the appended claim");
 
@@ -5284,11 +5312,12 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the queued message to append a replacement");
     }
     expect(promoted.content).toBe("queue-first waits for the anchor");
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      queuedId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original.runId).toBeUndefined();
     expect(Date.parse(promoted.createdAt)).toBeGreaterThan(
       Date.parse(original.createdAt),
@@ -5366,11 +5395,12 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the queued message to fire after cancel");
     }
     expect(fired.content).toBe("queue-first fires after cancel");
-    const original = await chat.getThreadMessage(
-      actor,
-      anchor.threadId,
-      queuedId,
-    );
+    const original = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!original) {
+      throw new Error("Expected the original queued message");
+    }
     expect(original.runId).toBeUndefined();
 
     const followUp = await api.readRun(actor, fired.runId);

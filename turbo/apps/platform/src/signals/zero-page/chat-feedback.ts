@@ -12,9 +12,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { writeToClipboard } from "./clipboard.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 
-// Assistant message bubbles carry this class in the chat thread. Text selected
-// inside one of them is what we offer feedback on.
-const ASSISTANT_BUBBLE_SELECTOR = ".zero-chat-bubble-assistant";
+// Assistant messages and other agent-produced content, such as linked email
+// drafts, opt into the shared Copy / Provide feedback interaction.
+const FEEDBACK_SOURCE_SELECTOR =
+  ".zero-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 
 // Each chat thread renders inside a container tagged with its thread id. We
@@ -29,6 +30,13 @@ export interface FeedbackSelectionRect {
   readonly height: number;
 }
 
+export interface FeedbackSource {
+  readonly type: "mail";
+  readonly id: string;
+  readonly status: "draft" | "sent";
+  readonly sentId?: string;
+}
+
 export interface FeedbackSelection {
   readonly text: string;
   readonly rect: FeedbackSelectionRect;
@@ -38,6 +46,7 @@ export interface FeedbackSelection {
   // A snapshot of the selected range. Kept so the passage can stay highlighted
   // once the comment is drafted and the native selection clears.
   readonly range: Range | null;
+  readonly source?: FeedbackSource;
 }
 
 // A quoted passage together with the note the user is writing about it. Every
@@ -47,6 +56,7 @@ export interface FeedbackItem {
   readonly id: number;
   readonly quote: string;
   readonly note: string;
+  readonly source?: FeedbackSource;
 }
 
 export interface FeedbackEditorAdapter {
@@ -73,35 +83,35 @@ export interface FeedbackSignals {
   >;
 }
 
-function closestAssistantBubble(node: Node | null): Element | null {
+function closestFeedbackSource(node: Node | null): Element | null {
   if (!node) {
     return null;
   }
   const element = node instanceof Element ? node : node.parentElement;
-  return element?.closest(ASSISTANT_BUBBLE_SELECTOR) ?? null;
+  return element?.closest(FEEDBACK_SOURCE_SELECTOR) ?? null;
 }
 
-function resolveSelectionBubble(range: Range): Element | null {
-  const commonBubble = closestAssistantBubble(range.commonAncestorContainer);
-  if (commonBubble) {
-    return commonBubble;
+function resolveSelectionSource(range: Range): Element | null {
+  const commonSource = closestFeedbackSource(range.commonAncestorContainer);
+  if (commonSource) {
+    return commonSource;
   }
 
   // Multi-line selections can report an outer message group as the range's
   // common ancestor even when both endpoints are inside assistant bubbles.
-  const startBubble = closestAssistantBubble(range.startContainer);
-  const endBubble = closestAssistantBubble(range.endContainer);
-  if (!startBubble || !endBubble) {
+  const startSource = closestFeedbackSource(range.startContainer);
+  const endSource = closestFeedbackSource(range.endContainer);
+  if (!startSource || !endSource) {
     return null;
   }
-  if (startBubble === endBubble) {
-    return startBubble;
+  if (startSource === endSource) {
+    return startSource;
   }
 
-  const startGroup = startBubble.closest(ASSISTANT_GROUP_SELECTOR);
-  const endGroup = endBubble.closest(ASSISTANT_GROUP_SELECTOR);
+  const startGroup = startSource.closest(ASSISTANT_GROUP_SELECTOR);
+  const endGroup = endSource.closest(ASSISTANT_GROUP_SELECTOR);
   if (startGroup !== null && startGroup === endGroup) {
-    return startBubble;
+    return startSource;
   }
 
   return null;
@@ -109,12 +119,26 @@ function resolveSelectionBubble(range: Range): Element | null {
 
 // The id of the thread that owns the selected passage, or null when it sits
 // outside any thread container.
-function resolveSelectionThreadId(bubble: Element): string | null {
-  const container = bubble.closest(THREAD_CONTAINER_SELECTOR);
+function resolveSelectionThreadId(source: Element): string | null {
+  const container = source.closest(THREAD_CONTAINER_SELECTOR);
   if (!(container instanceof HTMLElement)) {
     return null;
   }
   return container.dataset.chatThreadContainerId ?? null;
+}
+
+function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
+  if (!(source instanceof HTMLElement)) {
+    return undefined;
+  }
+  const type = source.dataset.feedbackSourceType;
+  const id = source.dataset.feedbackSourceId;
+  const status = source.dataset.feedbackSourceStatus;
+  const sentId = source.dataset.feedbackSourceSentId;
+  if (type !== "mail" || !id || (status !== "draft" && status !== "sent")) {
+    return undefined;
+  }
+  return { type, id, status, ...(sentId ? { sentId } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -173,11 +197,11 @@ const setFeedbackHighlight$ = command(
   },
 );
 
-// Read the live document selection when it sits inside an assistant message.
-function readAssistantSelection(): {
+// Read the live document selection when it sits inside supported content.
+function readFeedbackSourceSelection(): {
   text: string;
   range: Range;
-  bubble: Element;
+  source: Element;
 } | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
@@ -188,11 +212,11 @@ function readAssistantSelection(): {
     return null;
   }
   const range = selection.getRangeAt(0);
-  const bubble = resolveSelectionBubble(range);
-  if (!bubble) {
+  const source = resolveSelectionSource(range);
+  if (!source) {
     return null;
   }
-  return { text, range, bubble };
+  return { text, range, source };
 }
 
 function hasVisibleArea(rect: DOMRectReadOnly): boolean {
@@ -240,22 +264,45 @@ function rectFromRange(range: Range): FeedbackSelectionRect {
 }
 
 function readFeedbackSelection(): FeedbackSelection | null {
-  const found = readAssistantSelection();
+  const found = readFeedbackSourceSelection();
   if (!found) {
     return null;
   }
   const rect = rectFromRange(found.range);
+  const source = resolveFeedbackSource(found.source);
   return {
     text: found.text,
-    threadId: resolveSelectionThreadId(found.bubble),
+    threadId: resolveSelectionThreadId(found.source),
     range: found.range.cloneRange(),
     rect,
+    ...(source ? { source } : {}),
   };
 }
 
 // Compose every noted fragment into a single follow-up turn, each passage
 // quoted above the note that belongs to it.
 export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
+  const firstMailSource = items[0]?.source;
+  const commonMailSource =
+    firstMailSource !== undefined &&
+    items.every((item) => {
+      return (
+        item.source?.type === "mail" &&
+        item.source.id === firstMailSource.id &&
+        item.source.status === firstMailSource.status &&
+        item.source.sentId === firstMailSource.sentId
+      );
+    })
+      ? firstMailSource
+      : null;
+  const hasSourceContext = items.some((item) => {
+    return item.source !== undefined;
+  });
+  const mailSourceLabel = (source: FeedbackSource) => {
+    return source.status === "draft"
+      ? `an email draft (mail draft ID: ${source.id})`
+      : `a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""})`;
+  };
   const blocks = items.map((item) => {
     const quoted = item.quote
       .split("\n")
@@ -263,12 +310,21 @@ export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
         return `> ${line}`;
       })
       .join("\n");
-    return `${quoted}\n\n${item.note.trim()}`;
+    const source =
+      commonMailSource === null && item.source?.type === "mail"
+        ? `Source: ${mailSourceLabel(item.source)}\n\n`
+        : "";
+    return `${source}${quoted}\n\n${item.note.trim()}`;
   });
-  const intro =
-    items.length === 1
-      ? "Feedback on this part of your reply:"
-      : `Feedback on ${items.length} parts of your reply:`;
+  const intro = commonMailSource
+    ? items.length === 1
+      ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+      : `Feedback on ${items.length} parts of ${mailSourceLabel(commonMailSource)}:`
+    : hasSourceContext
+      ? `Feedback on ${items.length} selected ${items.length === 1 ? "passage" : "passages"}:`
+      : items.length === 1
+        ? "Feedback on this part of your reply:"
+        : `Feedback on ${items.length} parts of your reply:`;
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
@@ -377,7 +433,12 @@ function createFeedbackItemSignals({
       return;
     }
     const id = get(nextIdState$);
-    const item = { id, quote: selection.text, note: "" };
+    const item = {
+      id,
+      quote: selection.text,
+      note: "",
+      ...(selection.source ? { source: selection.source } : {}),
+    };
     const items = [...get(itemsState$), item];
     set(nextIdState$, id + 1);
     set(itemsState$, items);
@@ -512,7 +573,7 @@ function createDocumentSelectionListeners({
         mouseSelectionInProgress =
           event.button === 0 &&
           event.target instanceof Node &&
-          closestAssistantBubble(event.target) !== null;
+          closestFeedbackSource(event.target) !== null;
       },
       { capture: true, signal },
     );

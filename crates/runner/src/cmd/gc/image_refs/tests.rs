@@ -4,7 +4,10 @@ use super::*;
 use crate::cmd::gc::GC_MIN_AGE;
 use crate::cmd::gc::images::gc_nested_images_with_protected_refs;
 use crate::cmd::gc::test_support::{old_gc_time, set_mtime, test_home};
-use crate::cmd::gc::versions::{analyze_version_gc, analyze_version_gc_with_injected_scan_error};
+use crate::cmd::gc::versions::{
+    analyze_version_gc, analyze_version_gc_with_injected_config_scan_error,
+    analyze_version_gc_with_injected_scan_error,
+};
 
 fn age_version_past_gc_min_age(home: &HomePaths, name: &str) {
     let old_time = SystemTime::now() - Duration::from_secs(GC_MIN_AGE.as_secs() + 60);
@@ -137,6 +140,28 @@ async fn protected_version_config_ref_keeps_image_snapshot() {
         "protect-version config refs must keep the referenced snapshot"
     );
     assert!(home.images_dir().join(&rootfs_hash).exists());
+}
+
+#[tokio::test]
+async fn protected_config_only_version_ref_keeps_image_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let rootfs_hash = test_hash('a');
+    let snapshot_hash = test_hash('b');
+    let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
+    write_test_runner_config(&home, version, &rootfs_hash, &snapshot_hash);
+    let refs = protected_refs_from_versions(&home, Some(version), None).await;
+
+    let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
+        .await
+        .unwrap();
+
+    assert_eq!(freed.freed_bytes, 0);
+    assert!(
+        snapshot_dir.exists(),
+        "retained config-only version must protect its referenced snapshot"
+    );
 }
 
 #[tokio::test]
@@ -340,6 +365,21 @@ async fn incomplete_version_scan_makes_protection_inventory_incomplete() {
 
     let refs = protected_image_refs_for_gc(&home, &analysis).await;
 
+    assert!(!refs.is_complete());
+}
+
+#[tokio::test]
+async fn incomplete_config_scan_makes_protection_inventory_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.runners_dir()).unwrap();
+    let analysis = analyze_version_gc_with_injected_config_scan_error(&home, None, None, 0)
+        .await
+        .unwrap();
+
+    let refs = protected_image_refs_for_gc(&home, &analysis).await;
+
+    assert!(!analysis.directory_scan_complete());
     assert!(!refs.is_complete());
 }
 

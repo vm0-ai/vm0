@@ -180,12 +180,25 @@ function githubAutomationRuleLabel(
   if (automation.eventType === "github-label-applied") {
     return `When GitHub label ${quote(automation.eventConfig.labelName)} is applied`;
   }
-  if (automation.eventType !== "github-workflow-run-completed") {
-    return null;
+  if (automation.eventType === "github-workflow-run-completed") {
+    const workflows = automation.eventConfig.filters.workflows;
+    const conclusions = automation.eventConfig.filters.conclusions;
+    return `When ${workflows ? workflows.join(", ") : "a GitHub workflow"} completes${conclusions ? ` with ${conclusions.join(", ")}` : ""}`;
   }
-  const workflows = automation.eventConfig.filters.workflows;
-  const conclusions = automation.eventConfig.filters.conclusions;
-  return `When ${workflows ? workflows.join(", ") : "a GitHub workflow"} completes${conclusions ? ` with ${conclusions.join(", ")}` : ""}`;
+  if (automation.eventType === "github-workflow-job-completed") {
+    const jobs = automation.eventConfig.filters.jobs;
+    return `When ${jobs ? jobs.join(", ") : "a GitHub workflow job"} completes`;
+  }
+  if (automation.eventType === "github-pull-request-review-submitted") {
+    return "When a matching GitHub pull request review is submitted";
+  }
+  if (automation.eventType === "github-deployment-status-created") {
+    return "When a matching GitHub deployment status is created";
+  }
+  if (automation.eventType === "github-issue-comment-created") {
+    return "When a matching GitHub issue or pull request comment is created";
+  }
+  return null;
 }
 
 export function humanReadableAutomationRuleLabel(
@@ -267,6 +280,10 @@ export function automationTypeLabel(
   }
   if (
     automation.eventType === "github-label-applied" ||
+    automation.eventType === "github-deployment-status-created" ||
+    automation.eventType === "github-issue-comment-created" ||
+    automation.eventType === "github-pull-request-review-submitted" ||
+    automation.eventType === "github-workflow-job-completed" ||
     automation.eventType === "github-workflow-run-completed"
   ) {
     return "GitHub";
@@ -350,6 +367,10 @@ export function AutomationListIcon({
     }
     if (
       automation.eventType === "github-label-applied" ||
+      automation.eventType === "github-deployment-status-created" ||
+      automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request-review-submitted" ||
+      automation.eventType === "github-workflow-job-completed" ||
       automation.eventType === "github-workflow-run-completed"
     ) {
       return IconBrandGithub;

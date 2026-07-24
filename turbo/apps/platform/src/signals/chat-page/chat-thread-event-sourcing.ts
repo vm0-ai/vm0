@@ -5,6 +5,7 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -19,7 +20,6 @@ import { logger } from "../log.ts";
 import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { pathParams$ } from "../route.ts";
-import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
 const L = logger("ChatThreadEventSourcing");
 
@@ -53,6 +53,8 @@ export interface ThreadMeta {
   readonly title: string | null;
   readonly pinnedAt: string | null;
   readonly selectedModel: string | null;
+  readonly serviceTier: "priority" | null;
+  readonly computerUseHostId: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
@@ -343,6 +345,8 @@ export const chatThreadMetaMap$ = computed((get) => {
           title: thread.title,
           pinnedAt: thread.pinnedAt,
           selectedModel: thread.selectedModel,
+          serviceTier: thread.serviceTier,
+          computerUseHostId: thread.computerUseHostId,
         },
       ];
     }),
@@ -405,6 +409,8 @@ export const touchOptimisticChatThreadSort$ = command(
       agentId: args.agentId,
       title: null,
       selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: args.createdAt,
     } satisfies ChatThreadEvent);
   },

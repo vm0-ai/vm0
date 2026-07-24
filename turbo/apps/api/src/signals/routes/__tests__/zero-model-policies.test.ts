@@ -379,6 +379,51 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
+  it("normalizes retired GPT policy writes to Luna", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+
+    const response = await accept(
+      apiClient().update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            {
+              model: "gpt-5.4",
+              isDefault: true,
+              defaultProviderType: "openrouter-codex",
+              credentialScope: "org",
+              modelProviderId: null,
+            },
+            {
+              model: "gpt-5.4-mini",
+              isDefault: false,
+              defaultProviderType: "vm0",
+              credentialScope: "org",
+              modelProviderId: null,
+            },
+            makeVm0Policy("gpt-5.5"),
+          ],
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(response.body.policies).toHaveLength(2);
+    expect(response.body.policies).toContainEqual(
+      expect.objectContaining({
+        model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      }),
+    );
+  });
+
   it("removes supported models omitted from an update", async () => {
     const fixture = await seedFixture();
     useSession(fixture);

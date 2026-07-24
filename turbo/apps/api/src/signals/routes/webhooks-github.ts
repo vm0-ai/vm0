@@ -11,15 +11,21 @@ import { waitUntil } from "../context/wait-until";
 import { now } from "../external/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import {
+  gitHubDeploymentStatusEventSchema,
   gitHubInstallationEventSchema,
   gitHubIssueCommentEventSchema,
   gitHubIssuesEventSchema,
+  gitHubPullRequestReviewEventSchema,
   gitHubPullRequestEventSchema,
+  gitHubWorkflowJobEventSchema,
   gitHubWorkflowRunEventSchema,
+  handleGithubDeploymentStatusEvent$,
   handleGithubInstallationEvent$,
   handleGithubIssueCommentEvent$,
   handleGithubIssuesEvent$,
+  handleGithubPullRequestReviewEvent$,
   handleGithubPullRequestEvent$,
+  handleGithubWorkflowJobEvent$,
   handleGithubWorkflowRunEvent$,
 } from "../services/webhooks-github.service";
 
@@ -119,6 +125,208 @@ const postGithubInstallationWebhook$ = command(
   },
 );
 
+interface GithubBackgroundWebhookArgs {
+  readonly payload: unknown;
+  readonly deliveryId: string;
+  readonly apiStartTime: number;
+}
+
+const postGithubIssuesWebhook$ = command(
+  (
+    { set },
+    args: GithubBackgroundWebhookArgs,
+    signal: AbortSignal,
+  ): Response => {
+    const parsed = gitHubIssuesEventSchema.safeParse(args.payload);
+    if (!parsed.success) {
+      L.error("Invalid issues event payload", { error: parsed.error });
+      return jsonError("Invalid payload structure", 400);
+    }
+    waitUntil(
+      tapError(
+        set(
+          handleGithubIssuesEvent$,
+          {
+            payload: parsed.data,
+            deliveryId: args.deliveryId,
+            apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: now(),
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling issues event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
+
+const postGithubPullRequestWebhook$ = command(
+  (
+    { set },
+    args: GithubBackgroundWebhookArgs,
+    signal: AbortSignal,
+  ): Response => {
+    const parsed = gitHubPullRequestEventSchema.safeParse(args.payload);
+    if (!parsed.success) {
+      L.error("Invalid pull_request event payload", { error: parsed.error });
+      return jsonError("Invalid payload structure", 400);
+    }
+    waitUntil(
+      tapError(
+        set(
+          handleGithubPullRequestEvent$,
+          {
+            payload: parsed.data,
+            deliveryId: args.deliveryId,
+            apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: now(),
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling pull_request event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
+
+const postGithubIssueCommentWebhook$ = command(
+  (
+    { set },
+    args: GithubBackgroundWebhookArgs,
+    signal: AbortSignal,
+  ): Response => {
+    const parsed = gitHubIssueCommentEventSchema.safeParse(args.payload);
+    if (!parsed.success) {
+      L.error("Invalid issue_comment event payload", { error: parsed.error });
+      return jsonError("Invalid payload structure", 400);
+    }
+    waitUntil(
+      tapError(
+        set(
+          handleGithubIssueCommentEvent$,
+          {
+            payload: parsed.data,
+            deliveryId: args.deliveryId,
+            apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: now(),
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling issue_comment event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
+
+const postGithubWorkflowJobWebhook$ = command(
+  (
+    { set },
+    args: GithubBackgroundWebhookArgs,
+    signal: AbortSignal,
+  ): Response => {
+    const parsed = gitHubWorkflowJobEventSchema.safeParse(args.payload);
+    if (!parsed.success) {
+      L.error("Invalid workflow_job event payload", { error: parsed.error });
+      return jsonError("Invalid payload structure", 400);
+    }
+    waitUntil(
+      tapError(
+        set(
+          handleGithubWorkflowJobEvent$,
+          {
+            payload: parsed.data,
+            deliveryId: args.deliveryId,
+            apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: now(),
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling workflow_job event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
+
+const postGithubPullRequestReviewWebhook$ = command(
+  (
+    { set },
+    args: GithubBackgroundWebhookArgs,
+    signal: AbortSignal,
+  ): Response => {
+    const parsed = gitHubPullRequestReviewEventSchema.safeParse(args.payload);
+    if (!parsed.success) {
+      L.error("Invalid pull_request_review event payload", {
+        error: parsed.error,
+      });
+      return jsonError("Invalid payload structure", 400);
+    }
+    waitUntil(
+      tapError(
+        set(
+          handleGithubPullRequestReviewEvent$,
+          {
+            payload: parsed.data,
+            deliveryId: args.deliveryId,
+            apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: now(),
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling pull_request_review event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
+
+const postGithubDeploymentStatusWebhook$ = command(
+  (
+    { set },
+    args: GithubBackgroundWebhookArgs,
+    signal: AbortSignal,
+  ): Response => {
+    const parsed = gitHubDeploymentStatusEventSchema.safeParse(args.payload);
+    if (!parsed.success) {
+      L.error("Invalid deployment_status event payload", {
+        error: parsed.error,
+      });
+      return jsonError("Invalid payload structure", 400);
+    }
+    waitUntil(
+      tapError(
+        set(
+          handleGithubDeploymentStatusEvent$,
+          {
+            payload: parsed.data,
+            deliveryId: args.deliveryId,
+            apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: now(),
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling deployment_status event", { error });
+        },
+      ),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
+
 const postGithubWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const apiStartTime = now();
@@ -161,86 +369,42 @@ const postGithubWebhook$ = command(
       return Response.json({ message: "pong" });
     }
 
-    if (headers.event === "issues") {
-      const parsed = gitHubIssuesEventSchema.safeParse(payload);
-      if (!parsed.success) {
-        L.error("Invalid issues event payload", { error: parsed.error });
-        return jsonError("Invalid payload structure", 400);
-      }
+    const backgroundArgs = {
+      payload,
+      deliveryId: headers.deliveryId,
+      apiStartTime,
+    };
 
-      const backgroundScheduledAt = now();
-      waitUntil(
-        tapError(
-          set(
-            handleGithubIssuesEvent$,
-            {
-              payload: parsed.data,
-              deliveryId: headers.deliveryId,
-              apiStartTime,
-              backgroundScheduledAt,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Error handling issues event", { error });
-          },
-        ),
-      );
-      return new Response("OK", { status: 200 });
+    if (headers.event === "issues") {
+      return await set(postGithubIssuesWebhook$, backgroundArgs, signal);
     }
 
     if (headers.event === "pull_request") {
-      const parsed = gitHubPullRequestEventSchema.safeParse(payload);
-      if (!parsed.success) {
-        L.error("Invalid pull_request event payload", {
-          error: parsed.error,
-        });
-        return jsonError("Invalid payload structure", 400);
-      }
-
-      const backgroundScheduledAt = now();
-      waitUntil(
-        tapError(
-          set(
-            handleGithubPullRequestEvent$,
-            {
-              payload: parsed.data,
-              deliveryId: headers.deliveryId,
-              apiStartTime,
-              backgroundScheduledAt,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Error handling pull_request event", { error });
-          },
-        ),
-      );
-      return new Response("OK", { status: 200 });
+      return await set(postGithubPullRequestWebhook$, backgroundArgs, signal);
     }
 
     if (headers.event === "issue_comment") {
-      const parsed = gitHubIssueCommentEventSchema.safeParse(payload);
-      if (!parsed.success) {
-        L.error("Invalid issue_comment event payload", {
-          error: parsed.error,
-        });
-        return jsonError("Invalid payload structure", 400);
-      }
+      return await set(postGithubIssueCommentWebhook$, backgroundArgs, signal);
+    }
 
-      waitUntil(
-        tapError(
-          set(
-            handleGithubIssueCommentEvent$,
-            { payload: parsed.data, apiStartTime },
-            signal,
-          ),
-          (error) => {
-            L.error("Error handling issue_comment event", { error });
-          },
-        ),
+    if (headers.event === "workflow_job") {
+      return await set(postGithubWorkflowJobWebhook$, backgroundArgs, signal);
+    }
+
+    if (headers.event === "pull_request_review") {
+      return await set(
+        postGithubPullRequestReviewWebhook$,
+        backgroundArgs,
+        signal,
       );
-      return new Response("OK", { status: 200 });
+    }
+
+    if (headers.event === "deployment_status") {
+      return await set(
+        postGithubDeploymentStatusWebhook$,
+        backgroundArgs,
+        signal,
+      );
     }
 
     if (headers.event === "workflow_run") {

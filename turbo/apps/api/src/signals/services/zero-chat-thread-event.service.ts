@@ -2,7 +2,9 @@ import { and, asc, eq, gt, gte, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type {
   ChatThreadEvent,
+  ChatThreadServiceTier,
   ChatThreadSnapshotProjection,
+  CodexServiceTier,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
@@ -36,6 +38,8 @@ export async function appendChatThreadEvent(
     readonly eventId?: string;
     readonly title?: string | null;
     readonly selectedModel?: string | null;
+    readonly serviceTier?: ChatThreadServiceTier | null;
+    readonly computerUseHostId?: string | null;
     readonly createdAt?: Date;
   },
 ): Promise<void> {
@@ -64,6 +68,8 @@ export async function appendChatThreadEvent(
       agentComposeId: args.agentComposeId,
       title: args.title ?? null,
       selectedModel: args.selectedModel ?? null,
+      serviceTier: args.serviceTier ?? null,
+      computerUseHostId: args.computerUseHostId ?? null,
       ...(args.createdAt !== undefined ? { createdAt: args.createdAt } : {}),
     })
     .onConflictDoNothing({ target: chatThreadEvents.id });
@@ -106,6 +112,8 @@ export async function getChatThreadSnapshot(
         return {
           ...thread,
           selectedModel: thread.selectedModel ?? null,
+          serviceTier: thread.serviceTier ?? null,
+          computerUseHostId: thread.computerUseHostId ?? null,
         };
       }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
@@ -119,8 +127,16 @@ type ChatThreadEventRow = {
   readonly agentComposeId: string;
   readonly title: string | null;
   readonly selectedModel: string | null;
+  readonly serviceTier: ChatThreadServiceTier | null;
+  readonly computerUseHostId: string | null;
   readonly createdAt: Date;
 };
+
+export function chatThreadServiceTierFromCodex(
+  codexServiceTier: CodexServiceTier | null,
+): ChatThreadServiceTier | null {
+  return codexServiceTier === "fast" ? "priority" : null;
+}
 
 function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
   return {
@@ -130,6 +146,8 @@ function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
     agentId: row.agentComposeId,
     title: row.title,
     selectedModel: row.selectedModel,
+    serviceTier: row.serviceTier,
+    computerUseHostId: row.computerUseHostId,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -163,6 +181,8 @@ export async function getChatThreadEventsSince(
           agentComposeId: pageChatThreadEvent.agentComposeId,
           title: pageChatThreadEvent.title,
           selectedModel: pageChatThreadEvent.selectedModel,
+          serviceTier: pageChatThreadEvent.serviceTier,
+          computerUseHostId: pageChatThreadEvent.computerUseHostId,
           createdAt: pageChatThreadEvent.createdAt,
         },
       })
@@ -215,6 +235,8 @@ export async function getChatThreadEventsSince(
         agentComposeId: chatThreadEvents.agentComposeId,
         title: chatThreadEvents.title,
         selectedModel: chatThreadEvents.selectedModel,
+        serviceTier: chatThreadEvents.serviceTier,
+        computerUseHostId: chatThreadEvents.computerUseHostId,
         createdAt: chatThreadEvents.createdAt,
       })
       .from(chatThreadEvents)

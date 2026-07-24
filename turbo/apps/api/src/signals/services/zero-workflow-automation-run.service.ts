@@ -87,9 +87,12 @@ export interface RunWorkflowAutomationNowArgs {
   readonly appendSystemPrompt?: string;
   readonly callbacks?: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
-  // Set by the queue drain (and manual "Run now"): skip workflow-queue
-  // admission and always create the run.
+  // Set only by the queue drain after it claims an event: skip a second
+  // workflow-queue admission and create the claimed run.
   readonly bypassWorkflowQueue?: boolean;
+  // Automated schedule ticks coalesce while pending. Explicit manual runs set
+  // this false so every user action remains a distinct queue item.
+  readonly coalescePendingScheduleRun?: boolean;
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -419,6 +422,7 @@ async function enqueueWorkflowAutomationEventIfBusy(input: {
         chatThreadId,
         triggerSource: args.triggerSource ?? "workflow-schedule",
         triggerBrief: args.triggerBrief,
+        coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
         params: {
           version: 1,
           prompt: args.prompt,

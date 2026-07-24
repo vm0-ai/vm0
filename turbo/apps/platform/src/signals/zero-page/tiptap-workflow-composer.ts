@@ -258,6 +258,10 @@ interface FeedbackItemNodeAttributes {
   readonly quote: string;
   readonly showDivider: boolean;
   readonly fill: boolean;
+  readonly sourceType: "mail" | null;
+  readonly sourceId: string | null;
+  readonly sourceStatus: "draft" | "sent" | null;
+  readonly sourceSentId: string | null;
 }
 
 function feedbackItemNodeAttributes(
@@ -267,15 +271,37 @@ function feedbackItemNodeAttributes(
   const quote: unknown = node.attrs.quote;
   const showDivider: unknown = node.attrs.showDivider;
   const fill: unknown = node.attrs.fill;
+  const sourceType: unknown = node.attrs.sourceType;
+  const sourceId: unknown = node.attrs.sourceId;
+  const sourceStatus: unknown = node.attrs.sourceStatus;
+  const sourceSentId: unknown = node.attrs.sourceSentId;
   if (
     typeof feedbackId !== "number" ||
     typeof quote !== "string" ||
     typeof showDivider !== "boolean" ||
-    typeof fill !== "boolean"
+    typeof fill !== "boolean" ||
+    (sourceType !== null && sourceType !== "mail") ||
+    (sourceId !== null && typeof sourceId !== "string") ||
+    (sourceStatus !== null &&
+      sourceStatus !== "draft" &&
+      sourceStatus !== "sent") ||
+    (sourceSentId !== null && typeof sourceSentId !== "string") ||
+    (sourceType === null) !== (sourceId === null) ||
+    (sourceType === null) !== (sourceStatus === null) ||
+    (sourceType === null && sourceSentId !== null)
   ) {
     throw new Error("Feedback item node attributes are invalid");
   }
-  return { feedbackId, quote, showDivider, fill };
+  return {
+    feedbackId,
+    quote,
+    showDivider,
+    fill,
+    sourceType,
+    sourceId,
+    sourceStatus,
+    sourceSentId,
+  };
 }
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -599,6 +625,10 @@ function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
       quote: item.quote,
       showDivider: false,
       fill: false,
+      sourceType: item.source?.type ?? null,
+      sourceId: item.source?.id ?? null,
+      sourceStatus: item.source?.status ?? null,
+      sourceSentId: item.source?.sentId ?? null,
     },
     content: feedbackNoteContent(item.note),
   });
@@ -694,6 +724,20 @@ function feedbackItemsFromWorkflowComposer(
       id: attributes.feedbackId,
       quote: attributes.quote,
       note: feedbackNoteFromNode(node),
+      ...(attributes.sourceType === "mail" &&
+      attributes.sourceId !== null &&
+      attributes.sourceStatus !== null
+        ? {
+            source: {
+              type: attributes.sourceType,
+              id: attributes.sourceId,
+              status: attributes.sourceStatus,
+              ...(attributes.sourceSentId !== null
+                ? { sentId: attributes.sourceSentId }
+                : {}),
+            },
+          }
+        : {}),
     });
   }
   return items;
@@ -885,6 +929,20 @@ function workflowComposerDocToString(editor: Editor): string {
         id: attributes.feedbackId,
         quote: attributes.quote,
         note: feedbackNoteFromNode(node),
+        ...(attributes.sourceType === "mail" &&
+        attributes.sourceId !== null &&
+        attributes.sourceStatus !== null
+          ? {
+              source: {
+                type: attributes.sourceType,
+                id: attributes.sourceId,
+                status: attributes.sourceStatus,
+                ...(attributes.sourceSentId !== null
+                  ? { sentId: attributes.sourceSentId }
+                  : {}),
+              },
+            }
+          : {}),
       });
       continue;
     }
@@ -1096,6 +1154,10 @@ function createFeedbackItemNode(
         quote: { default: "" },
         showDivider: { default: false },
         fill: { default: false },
+        sourceType: { default: null },
+        sourceId: { default: null },
+        sourceStatus: { default: null },
+        sourceSentId: { default: null },
       };
     },
     parseHTML() {

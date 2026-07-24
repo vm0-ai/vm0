@@ -109,6 +109,8 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
           pinnedAt: thread.pinnedAt ?? null,
           renamedAt: thread.renamedAt ?? null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         };
       }),
       latestEventId: null,

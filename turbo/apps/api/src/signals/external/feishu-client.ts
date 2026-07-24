@@ -64,6 +64,10 @@ const feishuMessageResponseSchema = feishuResponseSchema.extend({
     .optional(),
 });
 
+const feishuFileResponseSchema = feishuResponseSchema.extend({
+  data: z.object({ file_key: z.string().optional() }).optional(),
+});
+
 const feishuReactionResponseSchema = feishuResponseSchema.extend({
   data: z.object({ reaction_id: z.string().optional() }).optional(),
 });
@@ -119,7 +123,7 @@ interface FeishuBotInfo {
 }
 
 export interface FeishuOutboundMessage {
-  readonly msgType: "interactive" | "text";
+  readonly msgType: "file" | "interactive" | "text";
   readonly content: Readonly<Record<string, unknown>>;
 }
 
@@ -348,6 +352,65 @@ export async function getFeishuTenantAccessToken(args: {
     .where(eq(feishuOrgInstallations.id, args.installationId));
   args.signal.throwIfAborted();
   return token.token;
+}
+
+export async function downloadFeishuMessageResource(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly messageId: string;
+  readonly fileKey: string;
+  readonly resourceType: "file" | "image";
+  readonly signal: AbortSignal;
+}): Promise<Response> {
+  const token = await getFeishuTenantAccessToken(args);
+  const url = new URL(
+    `${FEISHU_API_ORIGIN}/open-apis/im/v1/messages/${encodeURIComponent(args.messageId)}/resources/${encodeURIComponent(args.fileKey)}`,
+  );
+  url.searchParams.set("type", args.resourceType);
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: args.signal,
+  });
+  if (!response.ok) {
+    throw new FeishuApiError(
+      `Feishu file download returned HTTP ${response.status}`,
+      response.status >= 500 ? 502 : 400,
+    );
+  }
+  return response;
+}
+
+export async function uploadFeishuFile(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly content: Buffer;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const token = await getFeishuTenantAccessToken(args);
+  const form = new FormData();
+  form.set("file_type", "stream");
+  form.set("file_name", args.filename);
+  form.set(
+    "file",
+    new Blob([Uint8Array.from(args.content)], { type: args.contentType }),
+    args.filename,
+  );
+  const response = await fetch(`${FEISHU_API_ORIGIN}/open-apis/im/v1/files`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+    signal: args.signal,
+  });
+  const parsed = feishuFileResponseSchema.parse(await readJson(response));
+  if (parsed.code !== 0) {
+    throw new FeishuApiError(parsed.msg ?? "Feishu file upload failed", 400);
+  }
+  if (!parsed.data?.file_key) {
+    throw new FeishuApiError("Feishu file upload response is incomplete", 502);
+  }
+  return parsed.data.file_key;
 }
 
 function messagePayload(message: FeishuOutboundMessage): {

@@ -9,7 +9,10 @@ import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments } from "@vm0/db/schema/hosted-site";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import {
+  CANONICAL_ASSET_VERSION,
+  runUploadedFiles,
+} from "@vm0/db/schema/run-uploaded-file";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, exists, or } from "drizzle-orm";
@@ -570,7 +573,7 @@ async function loadArtifactFile(
 
   const [row] = await db
     .select({
-      runId: zeroRuns.id,
+      runId: runUploadedFiles.runId,
       source: runUploadedFiles.source,
       externalId: runUploadedFiles.externalId,
       filename: runUploadedFiles.filename,
@@ -584,7 +587,15 @@ async function loadArtifactFile(
       and(
         eq(runUploadedFiles.userId, args.userId),
         eq(runUploadedFiles.runId, args.runId),
-        eq(runUploadedFiles.externalId, args.fileId),
+        or(
+          eq(runUploadedFiles.externalId, args.fileId),
+          and(
+            eq(runUploadedFiles.id, args.fileId),
+            eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
+            eq(runUploadedFiles.classification, "published-output"),
+            eq(runUploadedFiles.accessLevel, "published"),
+          ),
+        ),
         or(
           eq(zeroRuns.chatThreadId, args.threadId),
           exists(
@@ -602,7 +613,10 @@ async function loadArtifactFile(
       ),
     )
     .limit(1);
-  return row ?? null;
+  if (!row?.runId) {
+    return null;
+  }
+  return { ...row, runId: row.runId };
 }
 
 function resolveArtifactS3ObjectFromKey(

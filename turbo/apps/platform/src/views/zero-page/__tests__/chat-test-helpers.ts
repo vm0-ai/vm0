@@ -219,6 +219,8 @@ interface ThreadListItem {
   pinnedAt?: string | null;
   renamedAt?: string | null;
   selectedModel?: string | null;
+  serviceTier?: "priority" | null;
+  computerUseHostId?: string | null;
 }
 
 const UUID_PATTERN =
@@ -236,6 +238,8 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
       selectedModel: thread.selectedModel ?? null,
+      serviceTier: thread.serviceTier ?? null,
+      computerUseHostId: thread.computerUseHostId ?? null,
     };
   });
 }
@@ -473,7 +477,6 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       codexServiceTier?: CodexServiceTier | null;
     }) => void;
-    onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
@@ -495,6 +498,7 @@ export function mockChatLifecycle(
   let codexServiceTier: CodexServiceTier | null =
     options?.codexServiceTier ?? null;
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
+  let latestThreadEventId: string | null = null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
   // Version counter: bumped whenever the run reaches a terminal state so
@@ -591,6 +595,8 @@ export function mockChatLifecycle(
         updatedAt: "2026-03-10T00:00:00Z",
         pinnedAt: null,
         selectedModel,
+        serviceTier: codexServiceTier === "fast" ? ("priority" as const) : null,
+        computerUseHostId,
       },
     ];
   };
@@ -817,23 +823,6 @@ export function mockChatLifecycle(
     options?.afterInitialMessagesList?.();
     return respond(200, body);
   });
-  context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
-    options?.onMessageGet?.(params.messageId);
-    if (params.threadId !== threadId) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    const message = buildPagedMessages().find((item) => {
-      return item.id === params.messageId;
-    });
-    if (!message) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, cloneMockPagedMessage(message));
-  });
   context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
     if (options?.threadGate) {
       await options.threadGate;
@@ -856,6 +845,8 @@ export function mockChatLifecycle(
       const modelSelection = modelSelectionFromBody(body);
       selectedModel = modelSelection?.selectedModel ?? null;
       codexServiceTier = body.codexServiceTier ?? null;
+      latestThreadEventId =
+        body.serviceTierEventId ?? body.eventId ?? crypto.randomUUID();
       options?.onModelSelectionUpdate?.({
         model: body.model,
         modelSelection,
@@ -868,6 +859,7 @@ export function mockChatLifecycle(
     chatThreadComputerUseHostContract.update,
     ({ body, respond }) => {
       computerUseHostId = body.computerUseHostId;
+      latestThreadEventId = body.eventId ?? crypto.randomUUID();
       options?.onComputerUseHostUpdate?.({
         computerUseHostId: body.computerUseHostId,
       });
@@ -877,7 +869,7 @@ export function mockChatLifecycle(
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: threadListSnapshot(effectiveThreadList()),
-      latestEventId: null,
+      latestEventId: latestThreadEventId,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -1010,6 +1002,7 @@ export function mockChatLifecycle(
     },
     setCodexServiceTier: (tier) => {
       codexServiceTier = tier;
+      latestThreadEventId = crypto.randomUUID();
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

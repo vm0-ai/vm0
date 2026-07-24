@@ -5,6 +5,7 @@
  */
 export enum FeatureSwitchKey {
   Dummy = "dummy",
+  ExternalConnectorCatalog = "externalConnectorCatalog",
   AhrefsConnector = "ahrefsConnector",
   BillConnector = "billConnector",
   BentomlConnector = "bentomlConnector",
@@ -42,12 +43,14 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   CanonicalSlackIngress = "canonicalSlackIngress",
   CanonicalSlackWebVisibility = "canonicalSlackWebVisibility",
+  CanonicalSlackAssets = "canonicalSlackAssets",
   ZeroWeather = "zeroWeather",
   ZeroFinance = "zeroFinance",
   ZeroPeopleSearch = "zeroPeopleSearch",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
+  GithubWebhookAutomations = "githubWebhookAutomations",
   GithubWorkflowRunAutomations = "githubWorkflowRunAutomations",
   MorningBrief = "morningBrief",
   ManualMorningBrief = "manualMorningBrief",

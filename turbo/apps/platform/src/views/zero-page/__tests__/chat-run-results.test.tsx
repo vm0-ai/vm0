@@ -891,7 +891,7 @@ describe("chat lifecycle", () => {
     expect(finishedLabelRow!.lastElementChild).not.toHaveClass("hidden");
   });
 
-  it("folds completed chat work without hiding the answer before the lifecycle marker", async () => {
+  it("does not let an attached lifecycle marker hide the final answer", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completion-marker",
       chatMessages: [
@@ -918,6 +918,15 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-work-folding-completion-marker",
           runLifecycleEvent: "completed",
+          attachFiles: [
+            {
+              id: "legacy-completion-attachment",
+              filename: "launch-status.pdf",
+              contentType: "application/pdf",
+              size: 4096,
+              url: "https://example.com/launch-status.pdf",
+            },
+          ],
           createdAt: "2026-06-09T10:00:56Z",
         },
       ],
@@ -1292,7 +1301,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("catches up after realtime bursts and keeps the latest burst message visible", async () => {
+  it("catches up after a missed realtime burst on reconnect", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000748";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
       return {
@@ -1306,10 +1315,10 @@ describe("chat lifecycle", () => {
         seqId: baselineMessages.length + index + 1,
       };
     });
-    const terminalPageGate = context.mocks.deferred<void>();
+    const finalPageGate = context.mocks.deferred<void>();
     let burstEnabled = false;
     let page = 0;
-    let terminalForwardPageRequested = false;
+    let finalForwardPageRequested = false;
     const sinceSeqIds: number[] = [];
 
     mockSubagentThread(context, threadId);
@@ -1336,9 +1345,9 @@ describe("chat lifecycle", () => {
         const startIndex = page * 50;
         page += 1;
         const messages = burstMessages.slice(startIndex, startIndex + 50);
-        if (messages.length === 0) {
-          terminalForwardPageRequested = true;
-          await terminalPageGate.promise;
+        if (messages.length < 50) {
+          finalForwardPageRequested = true;
+          await finalPageGate.promise;
         }
         return respond(200, { messages });
       },
@@ -1362,29 +1371,31 @@ describe("chat lifecycle", () => {
           `chatThreadMessageCreated:${threadId}`,
         ),
       ).toBeFalsy();
+      expect(
+        context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
+      ).toBeFalsy();
       sinceSeqIds.length = 0;
       burstEnabled = true;
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
+      context.mocks.ably.triggerReconnect();
 
       await waitFor(() => {
-        expect(terminalForwardPageRequested).toBeTruthy();
+        expect(finalForwardPageRequested).toBeTruthy();
       });
       expect(screen.queryByText("Burst 119")).not.toBeInTheDocument();
 
-      terminalPageGate.resolve();
+      finalPageGate.resolve();
       await waitFor(() => {
         expect(screen.getByText("Burst 119")).toBeInTheDocument();
       });
     } finally {
-      if (!terminalPageGate.settled()) {
-        terminalPageGate.resolve();
+      if (!finalPageGate.settled()) {
+        finalPageGate.resolve();
       }
     }
     expect(sinceSeqIds).toStrictEqual([
       baselineMessages.at(-1)!.seqId,
       burstMessages[49]!.seqId,
       burstMessages[99]!.seqId,
-      burstMessages.at(-1)!.seqId,
     ]);
   });
 });

@@ -313,6 +313,12 @@ describe("organization model providers settings", () => {
       screen.queryByRole("option", { name: "Auto" }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("option", { name: "GPT-5.4" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "GPT-5.4 Mini" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
     ).not.toBeInTheDocument();
     expect(

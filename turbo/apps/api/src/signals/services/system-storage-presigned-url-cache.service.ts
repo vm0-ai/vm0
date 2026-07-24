@@ -297,23 +297,28 @@ async function touchRecentlyUsedCacheRows(
   const orderedCacheKeys = [...cacheKeys].sort((left, right) => {
     return left.localeCompare(right);
   });
-  const issuedAtTimestamp = timestampWithoutTimeZone(issuedAt);
-  const touchCutoffTimestamp = timestampWithoutTimeZone(touchCutoff(issuedAt));
-  await db.execute(sql`
-    WITH locked AS (
-      SELECT ${systemStoragePresignedUrlCache.cacheKey}
-      FROM ${systemStoragePresignedUrlCache}
-      WHERE
-        ${inArray(systemStoragePresignedUrlCache.cacheKey, orderedCacheKeys)}
-        AND ${lte(systemStoragePresignedUrlCache.lastRequestedAt, sql`${touchCutoffTimestamp}::timestamp`)}
-      ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
-      FOR UPDATE OF ${systemStoragePresignedUrlCache}
-    )
-    UPDATE ${systemStoragePresignedUrlCache}
-    SET last_requested_at = ${issuedAtTimestamp}::timestamp
-    FROM locked
-    WHERE ${systemStoragePresignedUrlCache.cacheKey} = locked.cache_key
-  `);
+  const locked = db.$with("locked").as(
+    db
+      .select({ cacheKey: systemStoragePresignedUrlCache.cacheKey })
+      .from(systemStoragePresignedUrlCache)
+      .where(
+        and(
+          inArray(systemStoragePresignedUrlCache.cacheKey, orderedCacheKeys),
+          lte(
+            systemStoragePresignedUrlCache.lastRequestedAt,
+            touchCutoff(issuedAt),
+          ),
+        ),
+      )
+      .orderBy(asc(systemStoragePresignedUrlCache.cacheKey))
+      .for("update", { of: systemStoragePresignedUrlCache }),
+  );
+  await db
+    .with(locked)
+    .update(systemStoragePresignedUrlCache)
+    .set({ lastRequestedAt: issuedAt })
+    .from(locked)
+    .where(eq(systemStoragePresignedUrlCache.cacheKey, locked.cacheKey));
 }
 
 async function pruneInactiveExpiredCacheRows(

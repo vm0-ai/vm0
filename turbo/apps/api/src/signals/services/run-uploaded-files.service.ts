@@ -57,7 +57,7 @@ function isRunUploadedFileSource(
   });
 }
 
-async function sourceForRun(
+export async function sourceForRun(
   writeDb: Db,
   runId: string,
   fallback: RunUploadedFileSource,
@@ -378,6 +378,18 @@ interface RecordSlackUploadedFileArgs {
   readonly metadata: Record<string, unknown>;
 }
 
+interface RecordFeishuUploadedFileArgs {
+  readonly runId: string | undefined;
+  readonly externalId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly url: string;
+  readonly metadata: Record<string, unknown>;
+}
+
 interface RecordTeamsUploadedFileArgs {
   readonly runId: string | undefined;
   readonly externalId: string;
@@ -425,6 +437,72 @@ export const recordGithubUploadedFile$ = command(
     }
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "github", signal);
+
+    const [row] = await writeDb
+      .insert(runUploadedFiles)
+      .values({
+        runId: args.runId,
+        source,
+        externalId: args.externalId,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: args.filename,
+        contentType: args.contentType,
+        sizeBytes: args.sizeBytes,
+        url: args.url,
+        metadata: args.metadata,
+      })
+      .onConflictDoUpdate({
+        target: [
+          runUploadedFiles.runId,
+          runUploadedFiles.source,
+          runUploadedFiles.externalId,
+        ],
+        set: {
+          userId: args.userId,
+          orgId: args.orgId,
+          filename: args.filename,
+          contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          url: args.url,
+          metadata: args.metadata,
+          updatedAt: sql`now()`,
+        },
+      })
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
+      });
+    signal.throwIfAborted();
+
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    set(
+      scheduleVideoArtifactPreviewRender$,
+      videoArtifactPreviewArgs(
+        {
+          runId: args.runId,
+          userId: args.userId,
+          orgId: args.orgId,
+          url: args.url,
+          contentType: args.contentType,
+        },
+        row,
+      ),
+    );
+  },
+);
+
+export const recordFeishuUploadedFile$ = command(
+  async (
+    { set },
+    args: RecordFeishuUploadedFileArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!args.runId) {
+      return;
+    }
+    const writeDb = set(writeDb$);
+    const source = await sourceForRun(writeDb, args.runId, "feishu", signal);
 
     const [row] = await writeDb
       .insert(runUploadedFiles)

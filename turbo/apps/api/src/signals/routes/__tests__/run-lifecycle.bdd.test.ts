@@ -1933,12 +1933,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     ).resolves.toStrictEqual({
       run_canonical: true,
-      run_legacy: false,
       session_canonical: true,
-      session_legacy: false,
       checkpoint_canonical: true,
-      checkpoint_legacy_artifacts: false,
-      checkpoint_legacy_volumes: false,
     });
 
     const sessionRun = await api.createDirectRun(actor, {
@@ -4990,7 +4986,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       [200, 201],
     );
 
-    // A member-scoped policy routes the gpt-5.4-mini model through the
+    // A member-scoped policy routes the gpt-5.6-luna model through the
     // personal provider; the org default stays on the anthropic provider.
     const orgProvider = await api.ensureOrgModelProvider(actor);
     await api.updateOrgModelPolicies(actor, [
@@ -5004,7 +5000,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         // Member-scope routes resolve the provider per caller at run time,
         // so they must not pin a provider id.
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-luna",
         isDefault: false,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -5036,7 +5032,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         agentId: agent.agentId,
         threadId: thread.id,
         prompt: "run on the pinned member provider",
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-luna",
       },
       [201],
     );
@@ -5081,7 +5077,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(sent.body.runId);
     expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment?.OPENAI_MODEL).toBe("gpt-5.4-mini");
+    expect(claim.environment?.OPENAI_MODEL).toBe("gpt-5.6-luna");
     expect(claim.environment?.CHATGPT_ACCESS_TOKEN).toBe(
       modelProviderPlaceholder("codex-oauth-token", "CHATGPT_ACCESS_TOKEN"),
     );

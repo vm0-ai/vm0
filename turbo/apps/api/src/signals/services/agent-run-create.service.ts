@@ -4601,7 +4601,6 @@ async function insertLaunchRunRows(
       userId: args.userId,
       orgId: args.orgId,
       agentComposeId: args.resolved.composeId,
-      artifacts: [],
       storageMounts: args.sessionStorageMounts
         ? [...args.sessionStorageMounts]
         : null,
@@ -4622,7 +4621,6 @@ async function insertLaunchRunRows(
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
     secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
-    additionalVolumes: null,
     storageMounts: args.runStorageMounts ? [...args.runStorageMounts] : null,
     continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
     sessionId: args.identity.sessionId,

@@ -6,8 +6,6 @@ import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { requiredAuthContext$ } from "../auth/auth-context";
-import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$, type Db } from "../external/db";
@@ -57,45 +55,6 @@ function settingsRedirect(params: Readonly<Record<string, string>>): Response {
   }
   return redirectResponse(url.toString());
 }
-
-function signInRedirect(requestUrl: string): Response {
-  const url = new URL("/sign-in", env("APP_URL"));
-  url.searchParams.set("redirect_url", requestUrl);
-  return redirectResponse(url.toString());
-}
-
-type AuthenticatedStateResult =
-  | { readonly kind: "ok"; readonly state: FeishuOAuthState }
-  | { readonly kind: "unauthenticated" }
-  | { readonly kind: "invalid" };
-
-const resolveAuthenticatedState$ = command(
-  async (
-    { set },
-    encodedState: string | undefined,
-    signal: AbortSignal,
-  ): Promise<AuthenticatedStateResult> => {
-    const state = encodedState ? verifyFeishuOAuthState(encodedState) : null;
-    if (!state) {
-      return { kind: "invalid" };
-    }
-    const auth = await set(
-      requiredAuthContext$,
-      { requireOrganization: true },
-      signal,
-    );
-    signal.throwIfAborted();
-    if ("status" in auth) {
-      return auth.status === 401
-        ? { kind: "unauthenticated" }
-        : { kind: "invalid" };
-    }
-    if (auth.userId !== state.userId || auth.orgId !== state.orgId) {
-      return { kind: "invalid" };
-    }
-    return { kind: "ok", state };
-  },
-);
 
 async function exchangeOAuthUserInfo(args: {
   readonly appId: string;
@@ -209,16 +168,12 @@ async function upsertFeishuConnection(args: {
   return { connected: true };
 }
 
-const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
+const connect$ = command(async ({ get }, signal: AbortSignal) => {
   const query = get(queryOf(zeroFeishuOauthContract.connect));
-  const resolved = await set(resolveAuthenticatedState$, query.state, signal);
-  if (resolved.kind === "unauthenticated") {
-    return signInRedirect(get(request$).url);
-  }
-  if (resolved.kind === "invalid" || !query.state) {
+  const state = query.state ? verifyFeishuOAuthState(query.state) : null;
+  if (!state || !query.state) {
     return jsonErrorResponse("Invalid or expired connect state");
   }
-  const { state } = resolved;
   const [installation] = await get(db$)
     .select({
       appId: feishuOrgInstallations.appId,
@@ -252,14 +207,10 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(zeroFeishuOauthContract.callback));
-  const resolved = await set(resolveAuthenticatedState$, query.state, signal);
-  if (resolved.kind === "unauthenticated") {
-    return signInRedirect(get(request$).url);
-  }
-  if (resolved.kind === "invalid") {
+  const state = query.state ? verifyFeishuOAuthState(query.state) : null;
+  if (!state) {
     return jsonErrorResponse("Invalid or expired connect state");
   }
-  const { state } = resolved;
   if (query.error) {
     return settingsRedirect({
       error: query.error_description ?? query.error,
@@ -340,6 +291,7 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
   ]);
   signal.throwIfAborted();
   if (connectionResult.newConnectionId) {
+    const backgroundSignal = new AbortController().signal;
     waitUntil(
       tapError(
         notifyFeishuConnect({
@@ -347,7 +299,7 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
           installationId: state.installationId,
           connectionId: connectionResult.newConnectionId,
           openId: userInfo.openId,
-          signal,
+          signal: backgroundSignal,
         }),
         (error) => {
           L.warn("Failed to send Feishu connect welcome", {

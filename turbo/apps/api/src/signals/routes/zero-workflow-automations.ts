@@ -157,94 +157,11 @@ const createAutomationInner$ = command(
       workflowId: params.workflowId,
       enabled: bodyResult.data.enabled ?? true,
     };
-    const result =
-      "schedule" in bodyResult.data
-        ? await set(
-            createWorkflowAutomation$,
-            {
-              ...automationInputBase,
-              schedule: bodyResult.data.schedule,
-            },
-            signal,
-          )
-        : bodyResult.data.eventType === "webhook-received"
-          ? await set(
-              createWorkflowAutomation$,
-              {
-                ...automationInputBase,
-                eventType: bodyResult.data.eventType,
-                eventConfig: bodyResult.data.eventConfig,
-              },
-              signal,
-            )
-          : bodyResult.data.eventType === "github-label-applied"
-            ? await set(
-                createWorkflowAutomation$,
-                {
-                  ...automationInputBase,
-                  eventType: bodyResult.data.eventType,
-                  eventConfig: bodyResult.data.eventConfig,
-                },
-                signal,
-              )
-            : bodyResult.data.eventType === "github-workflow-run-completed"
-              ? await set(
-                  createWorkflowAutomation$,
-                  {
-                    ...automationInputBase,
-                    eventType: bodyResult.data.eventType,
-                    eventConfig: bodyResult.data.eventConfig,
-                  },
-                  signal,
-                )
-              : bodyResult.data.eventType === "google-calendar-event-created" ||
-                  bodyResult.data.eventType ===
-                    "google-calendar-event-updated" ||
-                  bodyResult.data.eventType ===
-                    "google-calendar-event-cancelled"
-                ? await set(
-                    createWorkflowAutomation$,
-                    {
-                      ...automationInputBase,
-                      eventType: bodyResult.data.eventType,
-                      eventConfig: bodyResult.data.eventConfig,
-                    },
-                    signal,
-                  )
-                : bodyResult.data.eventType ===
-                    "google-meet-transcript-generated"
-                  ? await set(
-                      createWorkflowAutomation$,
-                      {
-                        ...automationInputBase,
-                        eventType: bodyResult.data.eventType,
-                        eventConfig: bodyResult.data.eventConfig,
-                      },
-                      signal,
-                    )
-                  : bodyResult.data.eventType === "notion-child-page-created" ||
-                      bodyResult.data.eventType ===
-                        "notion-database-item-created" ||
-                      bodyResult.data.eventType ===
-                        "notion-page-content-updated"
-                    ? await set(
-                        createWorkflowAutomation$,
-                        {
-                          ...automationInputBase,
-                          eventType: bodyResult.data.eventType,
-                          eventConfig: bodyResult.data.eventConfig,
-                        },
-                        signal,
-                      )
-                    : await set(
-                        createWorkflowAutomation$,
-                        {
-                          ...automationInputBase,
-                          eventType: bodyResult.data.eventType,
-                          eventConfig: bodyResult.data.eventConfig,
-                        },
-                        signal,
-                      );
+    const result = await set(
+      createWorkflowAutomation$,
+      { ...bodyResult.data, ...automationInputBase },
+      signal,
+    );
     signal.throwIfAborted();
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };
@@ -400,11 +317,11 @@ const runAutomationInner$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (result.kind === "ok") {
+    if (result.kind === "ok" || result.kind === "enqueued") {
       return {
         status: 201 as const,
         body: {
-          runId: result.runId,
+          runId: result.kind === "ok" ? result.runId : null,
           chatThreadId: result.chatThreadId,
         },
       };

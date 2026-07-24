@@ -15,7 +15,6 @@ import {
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import { createChatThreadSignals } from "../chat-page/create-chat-thread.ts";
 import type { SubscribeRealtimeArgs } from "../chat-page/chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "../chat-page/remote-chat-thread-data-source.ts";
@@ -76,10 +75,6 @@ function abortError(message: string): Error {
 
 function chatThreadRealtimeTopics(threadId: string): readonly string[] {
   return [
-    `chatThreadDetailChanged:${threadId}`,
-    `chatThreadMessageUpdated:${threadId}`,
-    `chatThreadRunCreated:${threadId}`,
-    `chatThreadRunUpdated:${threadId}`,
     `chatThreadAutomationsChanged:${threadId}`,
     `chatThreadArtifactsChanged:${threadId}`,
     `chatThreadWorkflowsChanged:${threadId}`,
@@ -116,23 +111,13 @@ function unexpectedDataSourceCall(name: string): never {
 }
 
 function createFailingSubscribeDataSource(): ChatThreadRemote {
-  const thread: ChatThread = {
-    lastReadAt: null,
-    codexServiceTier: null,
-    computerUseHostId: null,
-  };
-
   return {
-    remoteThreadDetail$: computed(() => {
-      return Promise.resolve(thread);
-    }),
     threadDraft$: computed(() => {
       return Promise.resolve({
         draftContent: null,
         draftAttachments: null,
       });
     }),
-    reloadThread$: command(() => {}),
     patchDraft$: command(() => {
       return unexpectedDataSourceCall("patchDraft$");
     }),
@@ -156,9 +141,6 @@ function createFailingSubscribeDataSource(): ChatThreadRemote {
     }),
     listMessagesBefore$: command(() => {
       return unexpectedDataSourceCall("listMessagesBefore$");
-    }),
-    getMessage$: command(() => {
-      return unexpectedDataSourceCall("getMessage$");
     }),
     cancelRuns$: command(() => {
       return unexpectedDataSourceCall("cancelRuns$");
@@ -572,6 +554,46 @@ describe("realtime signals", () => {
     expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
   });
 
+  it("runs user-channel catch-up on reconnect without a queued message", async () => {
+    mockSignedInUser();
+    const subscriber = new AbortController();
+    const handledMessages: unknown[] = [];
+    let catchUps = 0;
+    const loop$ = command(
+      (_ctx, message: unknown, _signal: AbortSignal): boolean => {
+        handledMessages.push(message);
+        return false;
+      },
+    );
+    const catchUp$ = command((_ctx, _signal: AbortSignal): boolean => {
+      catchUps += 1;
+      return false;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyMessageLoop$,
+      {
+        loopCommand$: loop$,
+        catchUpCommand$: catchUp$,
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    context.mocks.ably.triggerReconnect();
+
+    await waitFor(() => {
+      expect(catchUps).toBe(1);
+    });
+    expect(handledMessages).toStrictEqual([]);
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("retries a payload notification after a transient handler error", async () => {
     mockSignedInUser();
     const topic = "test:transient-payload-error";
@@ -702,9 +724,6 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
-            onThreadDetailChanged$: keepAliveLoop$,
-            onMessageUpdated$: keepAlivePayloadLoop$,
-            onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
@@ -715,7 +734,7 @@ describe("realtime signals", () => {
         context.signal,
       ),
     ).rejects.toThrow(
-      `Realtime subscription ended before ready: chatThreadDetailChanged:${threadId}`,
+      `Realtime subscription ended before ready: chatThreadAutomationsChanged:${threadId}`,
     );
 
     expectNoChatThreadSubscriptions(threadId);
@@ -734,9 +753,6 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
-            onThreadDetailChanged$: keepAliveLoop$,
-            onMessageUpdated$: keepAlivePayloadLoop$,
-            onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
@@ -763,9 +779,6 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
-          onThreadDetailChanged$: keepAliveLoop$,
-          onMessageUpdated$: keepAlivePayloadLoop$,
-          onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
           onWorkflowsChanged$: keepAliveLoop$,
@@ -785,9 +798,6 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
-          onThreadDetailChanged$: keepAliveLoop$,
-          onMessageUpdated$: keepAlivePayloadLoop$,
-          onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
           onWorkflowsChanged$: keepAliveLoop$,

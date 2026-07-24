@@ -22,13 +22,40 @@ const attachFileSchema = z.object({
   size: z.number(),
 });
 
+const assetMaterializationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("ready") }),
+  z.object({ status: z.literal("pending") }),
+  z.object({
+    status: z.literal("failed"),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      retryable: z.boolean(),
+    }),
+  }),
+]);
+
+const assetRefSchema = z.object({
+  id: z.string().uuid(),
+  classification: z.enum(["input", "published-output"]),
+  access: z.enum(["private", "published"]),
+  materialization: assetMaterializationSchema,
+  provenance: z
+    .object({
+      provider: z.string(),
+    })
+    .optional(),
+});
+
 /**
  * Attach file returned to the frontend with a resolved URL.
- * `url` is the public artifact CDN URL; consumers may render, cache, or share
- * it freely.
+ * Legacy attachments expose a public artifact URL. Canonical input assets use
+ * an authenticated same-origin URL and identify their durable asset through
+ * `assetRef`.
  */
 const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
+  assetRef: assetRefSchema.optional(),
 });
 
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
@@ -67,6 +94,7 @@ const artifactItemSchema = z.object({
   contentType: z.string(),
   size: z.number().default(0),
   url: z.string(),
+  assetRef: assetRefSchema.optional(),
   previewImageUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -188,6 +216,7 @@ const chatThreadUnreadAgentsSchema = z.object({
 
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
+const chatThreadServiceTierSchema = z.enum(["priority"]);
 
 const chatThreadSnapshotProjectionSchema = z.object({
   id: z.string().uuid(),
@@ -199,6 +228,8 @@ const chatThreadSnapshotProjectionSchema = z.object({
   pinnedAt: z.string().nullable(),
   renamedAt: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
+  serviceTier: chatThreadServiceTierSchema.nullable().default(null),
+  computerUseHostId: z.string().uuid().nullable().default(null),
 });
 
 const chatThreadEventSchema = z.object({
@@ -210,12 +241,16 @@ const chatThreadEventSchema = z.object({
     "pinned",
     "unpinned",
     "model_selection_updated",
+    "service_tier_updated",
+    "computer_use_host_updated",
     "sort_touched",
   ]),
   chatThreadId: z.string().uuid(),
   agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
+  serviceTier: chatThreadServiceTierSchema.nullable().default(null),
+  computerUseHostId: z.string().uuid().nullable().default(null),
   createdAt: z.string(),
 });
 
@@ -358,6 +393,7 @@ const pagedChatMessageBaseSchema = z.object({
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
   slackMessagePermalink: z.string().url().optional(),
+  feishuChatOpenUrl: z.string().url().optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   goalEvent: zeroGoalEventSchema.optional(),
@@ -496,6 +532,7 @@ const chatThreadModelSelectionUpdateBodySchema = z.preprocess(
     model: selectedModelRequestSchema.nullable(),
     codexServiceTier: codexServiceTierSchema.nullable().optional(),
     eventId: chatThreadEventIdSchema.optional(),
+    serviceTierEventId: chatThreadEventIdSchema.optional(),
   }),
 );
 
@@ -556,6 +593,7 @@ export const chatThreadsContract = c.router({
         latestEventId: chatThreadEventIdSchema.nullable(),
       }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary:
       "Get the compacted chat thread snapshot for the caller's current organization.",
@@ -573,6 +611,7 @@ export const chatThreadsContract = c.router({
         hasMore: z.boolean(),
       }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       410: apiErrorSchema,
     },
     summary:
@@ -925,6 +964,7 @@ export const chatThreadComputerUseHostContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       computerUseHostId: z.string().uuid().nullable(),
+      eventId: chatThreadEventIdSchema.optional(),
     }),
     responses: {
       204: c.noBody(),
@@ -1111,6 +1151,9 @@ export const chatThreadMessagesContract = c.router({
     },
     summary: "Get paginated chat messages for a thread",
   },
+  // Compatibility for already-open app-v0.627.3 browser clients. The next app
+  // no longer calls this route; remove it only after those clients can no
+  // longer reasonably remain active against the current backend.
   get: {
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/messages/:messageId",
@@ -1387,6 +1430,7 @@ export {
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
+export type ChatThreadServiceTier = z.infer<typeof chatThreadServiceTierSchema>;
 export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
@@ -1442,6 +1486,7 @@ export type ChatMessageUsagePayload = z.infer<
 >;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
+export type AssetRef = z.infer<typeof assetRefSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<
   typeof chatThreadArtifactFileSchema

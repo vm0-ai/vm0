@@ -30,6 +30,8 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainStaleChatThreadQueues$ } from "./chat-thread-queue-drain.service";
 import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.service";
 import { drainStaleCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
+import { drainStaleCanonicalFeishuIngress$ } from "./canonical-feishu-ingress-processor.service";
+import { retryPendingFeishuConnectWelcomes$ } from "./zero-feishu-welcome.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -472,6 +474,24 @@ async function cleanupExpiredCustomConnectorAuthRefsSafely(
   return deleted ?? 0;
 }
 
+function logQueueMaintenance(args: {
+  readonly expired: number;
+  readonly expiredTimedOut: number;
+  readonly launchOrphansTimedOut: number;
+  readonly expiredRunnerJobs: number;
+  readonly expiredCustomConnectorAuthRefs: number;
+  readonly drained: number;
+}): void {
+  if (
+    Object.values(args).every((count) => {
+      return count === 0;
+    })
+  ) {
+    return;
+  }
+  L.debug("Queue maintenance completed", args);
+}
+
 export const cleanupSandboxes$ = command(
   async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
     const db = set(writeDb$);
@@ -542,26 +562,26 @@ export const cleanupSandboxes$ = command(
       L.error("Failed to drain stale canonical Slack ingress", { error });
     });
     signal.throwIfAborted();
+    await tapError(set(drainStaleCanonicalFeishuIngress$, signal), (error) => {
+      L.error("Failed to drain stale canonical Feishu ingress", { error });
+    });
+    signal.throwIfAborted();
+    await tapError(set(retryPendingFeishuConnectWelcomes$, signal), (error) => {
+      L.error("Failed to retry Feishu connect welcomes", { error });
+    });
+    signal.throwIfAborted();
     const queuedTerminalRuns = [
       ...expiredQueueResult.timedOutRuns,
       ...queuedOrphanResult.timedOutRuns,
     ];
-    if (
-      expiredQueueResult.deletedCount > 0 ||
-      queuedTerminalRuns.length > 0 ||
-      expiredRunnerJobCount > 0 ||
-      expiredCustomConnectorAuthRefCount > 0 ||
-      drainedCount > 0
-    ) {
-      L.debug("Queue maintenance completed", {
-        expired: expiredQueueResult.deletedCount,
-        expiredTimedOut: expiredQueueResult.timedOutRuns.length,
-        launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
-        expiredRunnerJobs: expiredRunnerJobCount,
-        expiredCustomConnectorAuthRefs: expiredCustomConnectorAuthRefCount,
-        drained: drainedCount,
-      });
-    }
+    logQueueMaintenance({
+      expired: expiredQueueResult.deletedCount,
+      expiredTimedOut: expiredQueueResult.timedOutRuns.length,
+      launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
+      expiredRunnerJobs: expiredRunnerJobCount,
+      expiredCustomConnectorAuthRefs: expiredCustomConnectorAuthRefCount,
+      drained: drainedCount,
+    });
 
     if (expiredRuns.length === 0) {
       L.debug("No expired sandboxes found");

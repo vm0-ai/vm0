@@ -7,7 +7,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
@@ -68,10 +67,8 @@ export interface QueueMessageOptions {
 export interface ChatThreadSignals {
   threadId: string;
   // -- Data signals ----------------------------------------------------------
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   threadMeta$: Computed<ThreadMeta | null>;
-  reloadThread$: Command<void, []>;
   threadTitle$: Computed<string | null>;
   threadTitleEmoji$: Computed<string | null>;
   threadTitleText$: Computed<string>;
@@ -87,7 +84,7 @@ export interface ChatThreadSignals {
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
   >;
-  computerUseHostId$: Computed<Promise<string | null>>;
+  computerUseHostId$: Computed<string | null>;
   computerUseHostIdExplicit$: Computed<boolean>;
   setComputerUseHostId$: Command<Promise<void>, [string | null, AbortSignal]>;
   clearComputerUseHostIdOverride$: Command<void, []>;
@@ -141,7 +138,6 @@ export interface ChatThreadSignals {
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // -- Paged messages (sole rendering path) --------------------------------
-  latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;

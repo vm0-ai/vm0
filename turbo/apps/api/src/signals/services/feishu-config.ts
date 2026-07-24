@@ -79,7 +79,7 @@ export function feishuOAuthCallbackUrl(): string {
 export function feishuOAuthConnectUrl(state: string): string {
   const url = new URL(
     "/api/zero/feishu/oauth/connect",
-    env("FEISHU_CALLBACK_BASE_URL"),
+    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
   );
   url.searchParams.set("state", state);
   return url.toString();
@@ -88,5 +88,11 @@ export function feishuOAuthConnectUrl(state: string): string {
 export function feishuBotOpenUrl(appId: string): string {
   const url = new URL("https://applink.feishu.cn/client/bot/open");
   url.searchParams.set("appId", appId);
+  return url.toString();
+}
+
+export function feishuChatOpenUrl(chatId: string): string {
+  const url = new URL("https://applink.feishu.cn/client/chat/open");
+  url.searchParams.set("openChatId", chatId);
   return url.toString();
 }
