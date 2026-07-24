@@ -13,6 +13,7 @@ export interface OrgPlanCapabilities {
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
+  readonly videoGenerationAllowed: boolean;
   readonly workflowWebhookAutomationAllowed: boolean;
 }
 
@@ -25,6 +26,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     autoRechargeAllowed: false,
     supportByok: true,
     restrictedVm0Models: false,
+    videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: false,
   },
   "limited-free-1": {
@@ -33,6 +35,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedVm0Models: true,
+    videoGenerationAllowed: false,
     workflowWebhookAutomationAllowed: false,
   },
   "pro-suspend": {
@@ -43,6 +46,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     // New APIs always return these two capabilities explicitly.
     supportByok: true,
     restrictedVm0Models: false,
+    videoGenerationAllowed: false,
     workflowWebhookAutomationAllowed: false,
   },
   pro: {
@@ -51,6 +55,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
+    videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: false,
   },
   team: {
@@ -59,6 +64,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
+    videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: true,
   },
   custom: {
@@ -67,6 +73,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
+    videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: true,
   },
 };
@@ -83,6 +90,8 @@ export function orgPlanCapabilitiesFromBilling(
     supportByok: billing.supportByok ?? fallback.supportByok,
     restrictedVm0Models:
       billing.restrictedVm0Models ?? fallback.restrictedVm0Models,
+    videoGenerationAllowed:
+      billing.videoGenerationAllowed ?? fallback.videoGenerationAllowed,
     workflowWebhookAutomationAllowed:
       billing.workflowWebhookAutomationAllowed ??
       fallback.workflowWebhookAutomationAllowed,

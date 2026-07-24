@@ -47,9 +47,14 @@ Current link-backed card patterns include:
 - `/connectors/custom/proposal?p=...`
 - `/agents/:agentId/permissions?...`
 - `/computer-use/authorize/:requestToken`
+- `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
 - platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
   site URLs that support an inline preview
+
+The rich billing-plan card is guarded by
+`FeatureSwitchKey.PlanUpgradeGuidance`. When the switch is disabled, the
+recognized URL remains a standard link instead of rendering the upgrade card.
 
 A path such as `/chats/:threadId` can use the same design when a chat-thread
 card is introduced: add an exact parser for the path, derive a canonical
@@ -293,5 +298,7 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/mail-draft.ts`
+- `turbo/apps/platform/src/signals/chat-page/platform-action-url.ts`
 - `turbo/apps/platform/src/signals/chat-page/computer-use-authorization-block.ts`
+- `turbo/apps/platform/src/signals/chat-page/plan-upgrade-block.ts`
 - `turbo/apps/platform/src/views/zero-page/zero-chat-thread-page.tsx`

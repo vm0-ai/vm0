@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { program, registerZeroCommands } from "../zero";
 
 describe("zero CLI program", () => {
-  registerZeroCommands(program);
+  registerZeroCommands(program, undefined, {
+    [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+  });
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
   });
@@ -20,6 +23,7 @@ describe("zero CLI program", () => {
       "connector",
       "mail",
       "credit",
+      "upgrade",
       "doctor",
       "logs",
       "search",
@@ -63,7 +67,6 @@ describe("zero CLI program", () => {
       "run",
 
       "init",
-      "upgrade",
       "info",
     ];
     for (const name of excludedCommands) {
@@ -71,7 +74,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 37 commands", () => {
-    expect(commandNames).toHaveLength(37);
+  it("should have exactly 38 commands", () => {
+    expect(commandNames).toHaveLength(38);
   });
 });

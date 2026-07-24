@@ -16,6 +16,11 @@ import {
   type ComputerUseAuthorizationDescriptor,
   type ComputerUseAuthorizationSignals,
 } from "./computer-use-authorization-block.ts";
+import {
+  parsePlanUpgradeUrl,
+  type PlanUpgradeDescriptor,
+  type PlanUpgradeSignals,
+} from "./plan-upgrade-block.ts";
 import type {
   ArtifactDescriptor,
   ArtifactKind,
@@ -70,6 +75,11 @@ export type BodyRenderBlock =
       signals: ComputerUseAuthorizationSignals;
     }
   | {
+      type: "plan-upgrade";
+      resourceKey: string;
+      signals: PlanUpgradeSignals;
+    }
+  | {
       type: "mail-draft";
       resourceKey: string;
       signals: MailDraftSignals;
@@ -101,6 +111,11 @@ export type ParsedBodyBlock =
       type: "computer-use-authorization";
       resourceKey: string;
       descriptor: ComputerUseAuthorizationDescriptor;
+    }
+  | {
+      type: "plan-upgrade";
+      resourceKey: string;
+      descriptor: PlanUpgradeDescriptor;
     }
   | {
       type: "mail-draft";
@@ -136,7 +151,7 @@ const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
-const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/|\/mail\/drafts\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -730,6 +745,7 @@ function createActionBlockFromLine(line: string): Extract<
       | "custom-connector-action"
       | "permission-action"
       | "computer-use-authorization"
+      | "plan-upgrade"
       | "mail-draft";
   }
 > | null {
@@ -771,6 +787,15 @@ function createActionBlockFromLine(line: string): Extract<
       type: "computer-use-authorization",
       resourceKey: computerUseAuthorization.href,
       descriptor: computerUseAuthorization,
+    };
+  }
+
+  const planUpgrade = parsePlanUpgradeUrl(url, line);
+  if (planUpgrade) {
+    return {
+      type: "plan-upgrade",
+      resourceKey: planUpgrade.fallbackMarkdown,
+      descriptor: planUpgrade,
     };
   }
 

@@ -1,6 +1,7 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 
 import {
   createZeroCreditCheckout,
@@ -10,6 +11,12 @@ import {
 import { withErrorHandler } from "../../lib/command";
 import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
 import { getPlatformOrigin } from "./doctor/platform-url";
+import {
+  currentPlanAllowsVideo,
+  currentPlanCanBuyCredits,
+  currentTokenCanReadBilling,
+} from "./shared/billing-capabilities";
+import { planUpgradeUrl } from "./shared/billing-links";
 
 function parseCredits(value: string): number {
   const credits = Number(value.replaceAll(",", ""));
@@ -27,6 +34,141 @@ function requireZeroCapabilityForCreditAction(
   if (payload && !payload.capabilities.includes(capability)) {
     throw new Error(message);
   }
+}
+
+interface CreditOptions {
+  readonly autoRecharge?: boolean;
+  readonly autoRechargeThreshold?: number;
+  readonly autoRechargeAmount?: number;
+}
+
+function autoRechargeConfiguration(options: CreditOptions):
+  | {
+      readonly enabled: true;
+      readonly threshold: number;
+      readonly amount: number;
+    }
+  | undefined {
+  if (
+    options.autoRecharge !== true &&
+    (options.autoRechargeThreshold !== undefined ||
+      options.autoRechargeAmount !== undefined)
+  ) {
+    throw new Error(
+      "--auto-recharge-threshold and --auto-recharge-amount require --auto-recharge",
+    );
+  }
+
+  if (options.autoRecharge !== true) {
+    return undefined;
+  }
+  if (
+    options.autoRechargeThreshold === undefined ||
+    options.autoRechargeAmount === undefined
+  ) {
+    throw new Error(
+      "--auto-recharge requires --auto-recharge-threshold and --auto-recharge-amount",
+    );
+  }
+  return {
+    enabled: true,
+    threshold: options.autoRechargeThreshold,
+    amount: options.autoRechargeAmount,
+  };
+}
+
+function printCreditStatus(billing: BillingStatusResponse): void {
+  console.log(chalk.bold("Credit status:"));
+  console.log(`  Tier: ${chalk.cyan(billing.tier)}`);
+  console.log(
+    `  Available credits: ${chalk.cyan(billing.credits.toLocaleString())}`,
+  );
+  console.log(
+    `  Can purchase credits: ${
+      currentPlanCanBuyCredits(billing)
+        ? chalk.green("yes")
+        : chalk.yellow("no")
+    }`,
+  );
+  console.log(
+    `  Built-in video generation: ${
+      currentPlanAllowsVideo(billing)
+        ? chalk.green("available")
+        : chalk.yellow("unavailable")
+    }`,
+  );
+  console.log(
+    `  Auto-recharge: ${
+      billing.autoRecharge.enabled ? chalk.green("enabled") : "disabled"
+    }`,
+  );
+  if (billing.autoRecharge.enabled) {
+    console.log(
+      `    Threshold: ${billing.autoRecharge.threshold?.toLocaleString() ?? "not set"}`,
+    );
+    console.log(
+      `    Amount: ${billing.autoRecharge.amount?.toLocaleString() ?? "not set"}`,
+    );
+  }
+}
+
+async function showCreditStatus(options: CreditOptions): Promise<void> {
+  requireZeroCapabilityForCreditAction(
+    "billing:read",
+    "checking credit status requires billing:read capability",
+  );
+  if (
+    options.autoRecharge === true ||
+    options.autoRechargeThreshold !== undefined ||
+    options.autoRechargeAmount !== undefined
+  ) {
+    throw new Error("auto-recharge options require a credit amount");
+  }
+  printCreditStatus(await getZeroBillingStatus());
+}
+
+async function buyCredits(
+  credits: number,
+  options: CreditOptions,
+): Promise<void> {
+  requireZeroCapabilityForCreditAction(
+    "billing:write",
+    "buying credits requires billing:write capability",
+  );
+  const autoRecharge = autoRechargeConfiguration(options);
+  const members = await getZeroOrgMembers();
+  if (members.role !== "admin") {
+    console.log(
+      chalk.yellow(
+        "Only organization admins can buy credits. Run `zero doctor credit` to see the current credit status and org admins.",
+      ),
+    );
+    return;
+  }
+
+  const billing = currentTokenCanReadBilling()
+    ? await getZeroBillingStatus()
+    : null;
+  const origin = await getPlatformOrigin();
+  if (billing && !currentPlanCanBuyCredits(billing)) {
+    console.log(
+      chalk.yellow(
+        "Credit purchases are not available for this workspace plan.",
+      ),
+    );
+    console.log(chalk.bold("Plan upgrade link:"));
+    console.log(planUpgradeUrl(origin));
+    return;
+  }
+
+  const result = await createZeroCreditCheckout({
+    credits,
+    successUrl: `${origin}/?settings=usage&credit=success`,
+    cancelUrl: `${origin}/?settings=usage&credit=canceled`,
+    ...(autoRecharge ? { autoRecharge } : {}),
+  });
+  console.log(chalk.bold("Credit checkout link:"));
+  console.log(result.url);
 }
 
 export const zeroCreditCommand = new Command()
@@ -48,103 +190,12 @@ export const zeroCreditCommand = new Command()
   )
   .action(
     withErrorHandler(
-      async (
-        credits: number | undefined,
-        options: {
-          readonly autoRecharge?: boolean;
-          readonly autoRechargeThreshold?: number;
-          readonly autoRechargeAmount?: number;
-        },
-      ) => {
+      async (credits: number | undefined, options: CreditOptions) => {
         if (credits === undefined) {
-          requireZeroCapabilityForCreditAction(
-            "billing:read",
-            "checking credit status requires billing:read capability",
-          );
-          if (
-            options.autoRecharge === true ||
-            options.autoRechargeThreshold !== undefined ||
-            options.autoRechargeAmount !== undefined
-          ) {
-            throw new Error("auto-recharge options require a credit amount");
-          }
-
-          const billing = await getZeroBillingStatus();
-          console.log(chalk.bold("Credit status:"));
-          console.log(`  Tier: ${chalk.cyan(billing.tier)}`);
-          console.log(
-            `  Available credits: ${chalk.cyan(billing.credits.toLocaleString())}`,
-          );
-          console.log(
-            `  Auto-recharge: ${
-              billing.autoRecharge.enabled ? chalk.green("enabled") : "disabled"
-            }`,
-          );
-          if (billing.autoRecharge.enabled) {
-            console.log(
-              `    Threshold: ${billing.autoRecharge.threshold?.toLocaleString() ?? "not set"}`,
-            );
-            console.log(
-              `    Amount: ${billing.autoRecharge.amount?.toLocaleString() ?? "not set"}`,
-            );
-          }
+          await showCreditStatus(options);
           return;
         }
-
-        requireZeroCapabilityForCreditAction(
-          "billing:write",
-          "buying credits requires billing:write capability",
-        );
-        const members = await getZeroOrgMembers();
-        if (members.role !== "admin") {
-          console.log(
-            chalk.yellow(
-              "Only organization admins can buy credits. Run `zero doctor credit` to see the current credit status and org admins.",
-            ),
-          );
-          return;
-        }
-
-        const origin = await getPlatformOrigin();
-        const successUrl = `${origin}/?settings=usage&credit=success`;
-        const cancelUrl = `${origin}/?settings=usage&credit=canceled`;
-        if (
-          options.autoRecharge !== true &&
-          (options.autoRechargeThreshold !== undefined ||
-            options.autoRechargeAmount !== undefined)
-        ) {
-          throw new Error(
-            "--auto-recharge-threshold and --auto-recharge-amount require --auto-recharge",
-          );
-        }
-
-        if (
-          options.autoRecharge === true &&
-          (options.autoRechargeThreshold === undefined ||
-            options.autoRechargeAmount === undefined)
-        ) {
-          throw new Error(
-            "--auto-recharge requires --auto-recharge-threshold and --auto-recharge-amount",
-          );
-        }
-
-        const autoRecharge =
-          options.autoRecharge === true
-            ? {
-                enabled: true,
-                threshold: options.autoRechargeThreshold,
-                amount: options.autoRechargeAmount,
-              }
-            : undefined;
-
-        const result = await createZeroCreditCheckout({
-          credits,
-          successUrl,
-          cancelUrl,
-          ...(autoRecharge ? { autoRecharge } : {}),
-        });
-        console.log(chalk.bold("Credit checkout link:"));
-        console.log(result.url);
+        await buyCredits(credits, options);
       },
     ),
   );

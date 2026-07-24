@@ -125,6 +125,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
@@ -155,6 +156,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
@@ -204,6 +206,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.PlanUpgradeGuidance,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroFinance,
     );
@@ -216,6 +221,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
+        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),

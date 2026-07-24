@@ -104,6 +104,10 @@ import {
   createComputerUseAuthorizationCardSignalsRegistry,
   type ComputerUseAuthorizationCardSignalsRegistry,
 } from "./computer-use-authorization-block.ts";
+import {
+  createPlanUpgradeCardSignalsRegistry,
+  type PlanUpgradeCardSignalsRegistry,
+} from "./plan-upgrade-block.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
@@ -2296,6 +2300,7 @@ interface BodyBlockRegistries {
   readonly customConnectorCardSignals: CustomConnectorCardSignalsRegistry;
   readonly permissionCardSignals: PermissionCardSignalsRegistry;
   readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
+  readonly planUpgradeCardSignals: PlanUpgradeCardSignalsRegistry;
   readonly mailDraftCardSignals: ReturnType<
     typeof createMailDraftCardSignalsRegistry
   >;
@@ -2307,6 +2312,7 @@ function createBodyBlocksRenderer({
   customConnectorCardSignals,
   permissionCardSignals,
   computerUseAuthorizationCardSignals,
+  planUpgradeCardSignals,
   mailDraftCardSignals,
 }: BodyBlockRegistries): (
   resolution: "register" | "resolve",
@@ -2370,6 +2376,16 @@ function createBodyBlocksRenderer({
                   : computerUseAuthorizationCardSignals.resolve(
                       block.resourceKey,
                     ),
+            };
+          }
+          case "plan-upgrade": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? planUpgradeCardSignals.register(block.descriptor)
+                  : planUpgradeCardSignals.resolve(block.resourceKey),
             };
           }
           case "mail-draft": {
@@ -2455,12 +2471,14 @@ function createPagedMessages(
   const permissionCardSignals = createPermissionCardSignalsRegistry();
   const computerUseAuthorizationCardSignals =
     createComputerUseAuthorizationCardSignalsRegistry();
+  const planUpgradeCardSignals = createPlanUpgradeCardSignalsRegistry();
   const bodyBlocksRenderer = createBodyBlocksRenderer({
     artifactCardSignals,
     connectorCardSignals,
     customConnectorCardSignals,
     permissionCardSignals,
     computerUseAuthorizationCardSignals,
+    planUpgradeCardSignals,
     mailDraftCardSignals,
   });
   const registerBodyBlocks = bodyBlocksRenderer("register");
