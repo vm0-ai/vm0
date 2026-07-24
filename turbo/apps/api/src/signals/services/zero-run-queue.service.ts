@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
   count,
@@ -177,6 +178,11 @@ async function insertPromotedRunnerJob(
       queue_depth_at_dequeue: Number(remainingRow?.depth ?? 0),
     },
   });
+
+  await tx
+    .update(zeroRuns)
+    .set({ apiStartedAt: new Date(promotedAt) })
+    .where(eq(zeroRuns.id, args.runId));
 
   const timestamps = runnerJobQueueTimestamps();
   const [runnerJob] = await tx

@@ -204,3 +204,27 @@ export async function readRunUploadedFileSources(
   });
   return response.uploaded_file_sources ?? [];
 }
+
+export async function clearRunApiStart(
+  context: TestContext,
+  runId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-run-api-start",
+    run_id: runId,
+  });
+}
+
+export async function readRunApiStart(
+  context: TestContext,
+  runId: string,
+): Promise<string | null> {
+  const response = await postAction(context, {
+    action: "read-run-api-start",
+    run_id: runId,
+  });
+  if (!("api_started_at" in response)) {
+    throw new Error("readRunApiStart missing api_started_at");
+  }
+  return response.api_started_at ?? null;
+}

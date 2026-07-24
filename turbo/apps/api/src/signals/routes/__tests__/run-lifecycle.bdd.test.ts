@@ -75,6 +75,7 @@ import {
 } from "./helpers/agent-run-callback";
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
+  clearRunApiStart,
   deleteVm0ManagedDefaultModelKey,
   enableFakeKms,
   holdOrgAdmissionLock,
@@ -84,6 +85,7 @@ import {
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
+  readRunApiStart,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
@@ -9260,6 +9262,13 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         }).length;
       })
       .toBe(1);
+    await flushWaitUntilForTest();
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toHaveLength(1);
 
     const late = await webhooks.requestAgentEvents(
       {
@@ -9290,6 +9299,13 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     });
     expect(assistantTexts).toContain("cleanup-first assistant text");
     expect(assistantTexts).not.toContain("late streamed text");
+    await flushWaitUntilForTest();
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toHaveLength(1);
   }, 90_000);
 
   it("persists assistant events into the linked thread and swallows optional consumer failures", async () => {
@@ -9298,6 +9314,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     failIfChatCallbackRouteIsFetched();
+    const apiStartedAt = Date.parse("2026-07-23T08:00:00.000Z");
+    const acknowledgedAt = apiStartedAt + 4321;
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
 
     const { runId, threadId } = await sendChatRunMessage(actor, {
       agentId,
@@ -9312,6 +9334,11 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const sandboxHeaders = {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("first chat assistant publish failed"),
+    );
 
     await webhooks.requestAgentEvents(
       {
@@ -9330,6 +9357,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
 
     const afterFirst = await chat.listThreadMessages(actor, threadId);
     const firstAssistant = afterFirst.messages.find((message) => {
@@ -9339,10 +9367,14 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
     );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toStrictEqual([]);
 
-    context.mocks.ably.publish.mockRejectedValueOnce(
-      new Error("chat assistant publish failed"),
-    );
+    mockNow(acknowledgedAt);
     const swallowed = await webhooks.requestAgentEvents(
       {
         runId,
@@ -9361,6 +9393,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       [200],
     );
     expect(swallowed.status).toBe(200);
+    await flushWaitUntilForTest();
 
     const afterSecond = await chat.listThreadMessages(actor, threadId);
     const persisted = afterSecond.messages.filter((message) => {
@@ -9377,6 +9410,26 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         "Survives optional failure",
       ]),
     );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${threadId}`,
+      null,
+    );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toStrictEqual([
+      {
+        _time: new Date(acknowledgedAt).toISOString(),
+        source: "api",
+        op_type: "api_to_first_assistant_message",
+        sandbox_type: "runner",
+        duration_ms: acknowledgedAt - apiStartedAt,
+        success: true,
+        run_id: runId,
+      },
+    ]);
 
     // Codex item.completed batches persist only non-blank agent_message text.
     await webhooks.requestAgentEvents(
@@ -9527,6 +9580,355 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     await api.requestCancelRun(actor, runId, [200]);
     const cancelled = await api.readRun(actor, runId);
     expect(cancelled.status).toBe("cancelled");
+    await flushWaitUntilForTest();
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("records one metric when assistant publications acknowledge concurrently", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    failIfChatCallbackRouteIsFetched();
+    const apiStartedAt = Date.parse("2026-07-23T08:30:00.000Z");
+    const acknowledgedAt = apiStartedAt + 5000;
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd concurrent assistant acknowledgements",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+
+    const bothAssistantPublishesStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseAssistantPublishes = createDeferredPromise<void>(
+      context.signal,
+    );
+    let assistantPublishCount = 0;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === `chatThreadMessageCreated:${threadId}`) {
+        assistantPublishCount++;
+        if (assistantPublishCount === 2) {
+          bothAssistantPublishesStarted.resolve(undefined);
+        }
+        return releaseAssistantPublishes.promise;
+      }
+      return Promise.resolve(undefined);
+    });
+    mockNow(acknowledgedAt);
+
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    const publications = [
+      webhooks.requestAgentEvents(
+        {
+          runId,
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: 0,
+              message: {
+                id: "msg_bdd_concurrent_first",
+                content: [{ type: "text", text: "Concurrent answer one" }],
+              },
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      ),
+      webhooks.requestAgentEvents(
+        {
+          runId,
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: 1,
+              message: {
+                id: "msg_bdd_concurrent_second",
+                content: [{ type: "text", text: "Concurrent answer two" }],
+              },
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      ),
+    ];
+    await bothAssistantPublishesStarted.promise;
+    releaseAssistantPublishes.resolve(undefined);
+    await Promise.all(publications);
+    await flushWaitUntilForTest();
+
+    const messages = await chat.listThreadMessages(actor, threadId);
+    const assistantContents = messages.messages.flatMap((message) => {
+      return message.role === "assistant" &&
+        message.runId === runId &&
+        message.content !== null
+        ? [message.content]
+        : [];
+    });
+    expect(assistantContents).toStrictEqual(
+      expect.arrayContaining([
+        "Concurrent answer one",
+        "Concurrent answer two",
+      ]),
+    );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        _time: new Date(acknowledgedAt).toISOString(),
+        duration_ms: acknowledgedAt - apiStartedAt,
+        run_id: runId,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, runId, [200]);
+  });
+
+  it("records a Codex agent message as the first real assistant output", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    failIfChatCallbackRouteIsFetched();
+    const apiStartedAt = Date.parse("2026-07-23T09:00:00.000Z");
+    const acknowledgedAt = apiStartedAt + 2468;
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd Codex first assistant output",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+    mockNow(acknowledgedAt);
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "item.completed",
+            sequenceNumber: 0,
+            item: {
+              id: "cmd_bdd_codex_first",
+              type: "command_execution",
+              command: "pwd",
+              exit_code: 0,
+              output: "/workspace",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 1,
+            item: {
+              id: "item_bdd_codex_first",
+              type: "agent_message",
+              text: "First real Codex output",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 2,
+            item: {
+              id: "item_bdd_codex_blank",
+              type: "agent_message",
+              text: "   ",
+            },
+          },
+        ],
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const messages = await chat.listThreadMessages(actor, threadId);
+    const assistantContent = messages.messages.filter((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === runId &&
+        message.content !== null
+      );
+    });
+    expect(assistantContent).toHaveLength(1);
+    expect(assistantContent[0]?.content).toBe("First real Codex output");
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${threadId}`,
+      null,
+    );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        _time: new Date(acknowledgedAt).toISOString(),
+        duration_ms: acknowledgedAt - apiStartedAt,
+        sandbox_type: "runner",
+        success: true,
+        run_id: runId,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, runId, [200]);
+  });
+
+  it("uses the promoted api start for both runner and assistant timing", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    failIfChatCallbackRouteIsFetched();
+    const requestedAt = Date.parse("2026-07-23T10:00:00.000Z");
+    const promotedAt = requestedAt + 120_000;
+    const acknowledgedAt = promotedAt + 3456;
+    mockNow(requestedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const first = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "occupy the first concurrency slot",
+    });
+    const second = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "occupy the second concurrency slot",
+    });
+    const queued = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "promote this chat run",
+    });
+    expect((await api.readRun(actor, queued.runId)).status).toBe("queued");
+    await expect(readRunApiStart(context, queued.runId)).resolves.toBeNull();
+
+    mockNow(promotedAt);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await waitForRunStatus(api, actor, queued.runId, "pending");
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(queued.runId);
+    expect(claim.apiStartTime).toBe(promotedAt);
+
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+    mockNow(acknowledgedAt);
+    await webhooks.requestAgentEvents(
+      {
+        runId: queued.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_promoted_first_output",
+              content: [{ type: "text", text: "Promoted run real output" }],
+            },
+          },
+        ],
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(
+      sandboxOperationEventsForRunByAction(
+        queued.runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        _time: new Date(acknowledgedAt).toISOString(),
+        duration_ms: acknowledgedAt - promotedAt,
+        run_id: queued.runId,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("publishes assistant content without timing a mixed-version run", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    failIfChatCallbackRouteIsFetched();
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd mixed-version assistant event",
+    });
+    await flushWaitUntilForTest();
+    await clearRunApiStart(context, runId);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    context.mocks.ably.publish.mockClear();
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_mixed_version",
+              content: [{ type: "text", text: "Mixed-version visible text" }],
+            },
+          },
+        ],
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const messages = await chat.listThreadMessages(actor, threadId);
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        runId,
+        content: "Mixed-version visible text",
+      }),
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${threadId}`,
+      null,
+    );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toStrictEqual([]);
+
+    await api.requestCancelRun(actor, runId, [200]);
   });
 });
 
