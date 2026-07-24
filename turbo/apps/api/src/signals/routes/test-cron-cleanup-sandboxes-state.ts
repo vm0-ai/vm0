@@ -133,7 +133,7 @@ async function seedRunForAction(
 
   const [session] = await db
     .insert(agentSessions)
-    .values({ userId, orgId, agentComposeId: compose.id, artifacts: [] })
+    .values({ userId, orgId, agentComposeId: compose.id })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
   if (!session) {

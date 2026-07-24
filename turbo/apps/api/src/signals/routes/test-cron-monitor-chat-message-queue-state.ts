@@ -58,7 +58,6 @@ async function seedActiveRun(
       userId: fixture.userId,
       orgId: fixture.orgId,
       agentComposeId: fixture.composeId,
-      artifacts: [],
     })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
