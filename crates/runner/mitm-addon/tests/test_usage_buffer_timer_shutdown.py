@@ -9,7 +9,12 @@ import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_current_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
-from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
+from tests.usage_buffer_helpers import (
+    RecordingEnqueue,
+    event,
+    flush_log_entries,
+    observation,
+)
 from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 
 
@@ -668,10 +673,10 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.set_pending_path(str(pending_path))
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/webhooks/agent/model-usage-observation-v2",
         "token-a",
         "run-1",
-        [event(source_key="observation-source")],
+        [observation(source_key="observation-source", input_tokens=1)],
         proxy_log_path,
     )
     assert len(timers) == 1

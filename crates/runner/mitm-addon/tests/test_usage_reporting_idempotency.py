@@ -138,14 +138,14 @@ class TestUsageReportingIdempotency:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/webhooks/agent/model-usage-observation-v2",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
+            "/api/webhooks/agent/model-usage-observation-v2"
         ].json_body()
         assert body["events"][0]["quantity"] == 10
-        assert observation_body["events"][0]["quantity"] == 10
+        assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
         assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
         billing_key = body["events"][0]["idempotencyKey"]
@@ -187,14 +187,14 @@ class TestUsageReportingIdempotency:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/webhooks/agent/model-usage-observation-v2",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
+            "/api/webhooks/agent/model-usage-observation-v2"
         ].json_body()
         assert body["events"][0]["quantity"] == 10
-        assert observation_body["events"][0]["quantity"] == 10
+        assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
         assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
         billing_key = body["events"][0]["idempotencyKey"]
