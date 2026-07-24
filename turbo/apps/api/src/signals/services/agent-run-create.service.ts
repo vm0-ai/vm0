@@ -4186,11 +4186,13 @@ function resumeSessionFromSnapshot(
 }
 
 function resolvedSessionStorage(session: {
-  readonly artifacts: readonly ContextArtifact[] | null;
+  readonly id: string;
   readonly storageMounts: readonly PersistedStorageMount[] | null;
 }): Pick<ResolvedCompose, "artifacts" | "persistedStorageMounts"> {
-  if (!session.storageMounts) {
-    return { artifacts: session.artifacts ?? [] };
+  if (session.storageMounts === null) {
+    throw new Error(
+      `Agent session "${session.id}" is missing canonical Storage mounts`,
+    );
   }
   return {
     artifacts: projectLegacyWritebackArtifacts(session.storageMounts),
@@ -4215,7 +4217,6 @@ function resolveBySessionId(
           .select({
             session: {
               id: agentSessions.id,
-              artifacts: agentSessions.artifacts,
               storageMounts: agentSessions.storageMounts,
             },
             compose: {

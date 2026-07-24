@@ -35,6 +35,7 @@ from .models import (
     MAX_RETAINED_USAGE_BATCH_RETRIES,
     MAX_SOURCE_IDEMPOTENCY_KEYS,
     USAGE_EVENT_BATCH_SIZE,
+    ModelUsageObservation,
     ResourceFieldName,
     UsageEvent,
     UsageFlushTrigger,
@@ -50,6 +51,7 @@ __all__ = [
     "MAX_RETAINED_USAGE_BATCH_RETRIES",
     "MAX_SOURCE_IDEMPOTENCY_KEYS",
     "USAGE_EVENT_BATCH_SIZE",
+    "ModelUsageObservation",
     "ResourceFieldName",
     "UsageEvent",
     "UsageEventBuffer",
@@ -101,19 +103,16 @@ def buffer_model_usage_observations(
     url: str,
     sandbox_token: str,
     run_id: str,
-    events: Iterable[UsageEvent],
+    observations: Iterable[ModelUsageObservation],
     proxy_log_path: str,
 ) -> int:
     """Buffer model usage observations with the observation webhook shape."""
-    return _usage_event_buffer.buffer_usage_events(
+    return _usage_event_buffer.buffer_model_usage_observations(
         url,
         sandbox_token,
         run_id,
-        events,
+        observations,
         proxy_log_path,
-        resource_field_name="model",
-        include_kind=False,
-        log_type="model_usage_observation",
     )
 
 
@@ -147,23 +146,17 @@ def buffer_source_model_usage_observations(
     url: str,
     sandbox_token: str,
     run_id: str,
-    events: Iterable[UsageEvent],
+    observations: Iterable[ModelUsageObservation],
     proxy_log_path: str,
-    *,
-    atomic_source_key: str | None = None,
 ) -> int:
-    """Buffer source observations, optionally admitting the batch atomically."""
-    return _usage_event_buffer.buffer_usage_events(
+    """Buffer compact source observations without replacing their identities."""
+    return _usage_event_buffer.buffer_model_usage_observations(
         url,
         sandbox_token,
         run_id,
-        events,
+        observations,
         proxy_log_path,
-        resource_field_name="model",
-        include_kind=False,
-        log_type="model_usage_observation",
         preserve_source_idempotency=True,
-        atomic_source_key=atomic_source_key,
     )
 
 

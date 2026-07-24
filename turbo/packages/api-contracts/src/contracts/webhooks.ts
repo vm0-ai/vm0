@@ -991,6 +991,79 @@ export const webhookModelUsageObservationContract = c.router({
   },
 });
 
+const webhookModelUsageObservationV2ItemSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    model: z.string().min(1).max(255),
+    inputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    outputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    cacheReadInputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    cacheCreationInputTokens: z
+      .number()
+      .int()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict()
+  .refine(
+    (event) => {
+      return (
+        event.inputTokens > 0 ||
+        event.outputTokens > 0 ||
+        event.cacheReadInputTokens > 0 ||
+        event.cacheCreationInputTokens > 0
+      );
+    },
+    { message: "At least one token counter must be positive" },
+  );
+
+const webhookModelUsageObservationV2BodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    events: z.array(webhookModelUsageObservationV2ItemSchema).min(1).max(100),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    const idempotencyKeys = new Set<string>();
+    body.events.forEach((event, index) => {
+      if (idempotencyKeys.has(event.idempotencyKey)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["events", index, "idempotencyKey"],
+          message: "Idempotency keys must be unique within a request",
+        });
+      }
+      idempotencyKeys.add(event.idempotencyKey);
+    });
+  });
+
+/**
+ * Compact model usage observation contract for
+ * /api/webhooks/agent/model-usage-observation-v2
+ *
+ * Each immutable event carries the four counters consumed by model rankings.
+ */
+export const webhookModelUsageObservationV2Contract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/model-usage-observation-v2",
+    headers: authHeadersSchema,
+    body: webhookModelUsageObservationV2BodySchema,
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive compact model usage observation data from sandbox",
+  },
+});
+
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
 export type WebhookModelUsageObservationContract =
   typeof webhookModelUsageObservationContract;
+export type WebhookModelUsageObservationV2Contract =
+  typeof webhookModelUsageObservationV2Contract;

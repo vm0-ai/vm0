@@ -80,7 +80,7 @@ const UPGRADE_PATHS = {
   },
 } as const satisfies Record<string, UpgradePath>;
 
-const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 10;
+const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 100;
 
 function slotCountLabel(count: number): string {
   return `${count} slot${count === 1 ? "" : "s"}`;

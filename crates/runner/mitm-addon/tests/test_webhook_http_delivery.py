@@ -435,6 +435,58 @@ def test_http_400_is_permanent(tmp_path, real_flow, sync_usage_executor, usage_w
     assert "permanent HTTP error" in entries[0]["message"]
 
 
+def test_model_observation_v2_404_is_an_expected_transition_drop(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    usage_webhook_server.queue_response(404)
+
+    assert usage.webhook.enqueue_webhook_delivery(
+        usage_webhook_server.url("/api/webhooks/agent/model-usage-observation-v2"),
+        "tok",
+        {"runId": "run-1", "events": []},
+        str(proxy_log),
+        "model_usage_observation",
+    )
+    sync_usage_executor.shutdown(wait=True)
+
+    assert [request.path for request in usage_webhook_server.requests] == [
+        "/api/webhooks/agent/model-usage-observation-v2"
+    ]
+    entries = [entry for entry in read_jsonl_entries_after_flush(proxy_log) if "attempt" in entry]
+    assert len(entries) == 1
+    assert entries[0]["level"] == "warn"
+    assert entries[0]["delivery_outcome"] == "permanent_failure"
+    assert entries[0]["transition_drop"] is True
+    assert "v2 rollout" in entries[0]["message"]
+
+
+def test_other_webhook_404_remains_an_error(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    usage_webhook_server.queue_response(404)
+
+    assert usage.webhook.enqueue_webhook_delivery(
+        usage_webhook_server.url("/api/webhooks/agent/usage-event"),
+        "tok",
+        {"runId": "run-1", "events": []},
+        str(proxy_log),
+        "usage_event",
+    )
+    sync_usage_executor.shutdown(wait=True)
+
+    entries = [entry for entry in read_jsonl_entries_after_flush(proxy_log) if "attempt" in entry]
+    assert len(entries) == 1
+    assert entries[0]["level"] == "error"
+    assert "permanent HTTP error" in entries[0]["message"]
+    assert "transition_drop" not in entries[0]
+
+
 def test_payload_serialization_error_logs_body_free_summary(tmp_path, sync_usage_executor):
     proxy_log = tmp_path / "proxy.jsonl"
 
