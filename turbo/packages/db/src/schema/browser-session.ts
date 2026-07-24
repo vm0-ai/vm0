@@ -18,6 +18,26 @@ import type {
 import { agentRuns } from "./agent-run";
 import { usageEvent } from "./usage-event";
 
+export const browserProfiles = pgTable(
+  "browser_profiles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    providerProfileId: uuid("provider_profile_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_browser_profiles_owner").on(table.orgId, table.userId),
+      uniqueIndex("uq_browser_profiles_provider_profile").on(
+        table.providerProfileId,
+      ),
+    ];
+  },
+);
+
 export const browserSessions = pgTable(
   "browser_sessions",
   {
@@ -35,7 +55,11 @@ export const browserSessions = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
-    providerProfileId: uuid("provider_profile_id").notNull(),
+    browserProfileId: uuid("browser_profile_id")
+      .notNull()
+      .references(() => {
+        return browserProfiles.id;
+      }),
     status: varchar("status", { length: 20 })
       .$type<ZeroBrowserStatus>()
       .notNull(),
@@ -67,11 +91,13 @@ export const browserSessions = pgTable(
         table.createdAt.desc(),
       ),
       index("idx_browser_sessions_reconcile").on(table.status, table.updatedAt),
-      uniqueIndex("uq_browser_sessions_provider_profile").on(
-        table.providerProfileId,
-      ),
       uniqueIndex("uq_browser_sessions_thread_owned")
         .on(table.chatThreadId)
+        .where(
+          sql`${table.status} IN ('creating', 'active', 'resuming', 'stopping')`,
+        ),
+      uniqueIndex("uq_browser_sessions_profile_owned")
+        .on(table.browserProfileId)
         .where(
           sql`${table.status} IN ('creating', 'active', 'resuming', 'stopping')`,
         ),

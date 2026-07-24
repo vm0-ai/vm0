@@ -116,7 +116,8 @@ export const zeroBrowserContract = c.router({
       201: browserConnectionResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Create a fresh managed browser for the current chat thread",
+    summary:
+      "Create a new managed browser for the current chat thread using the user's shared profile",
   },
   resume: {
     method: "POST",

@@ -285,7 +285,11 @@ policy. At every terminal run callback, the API stops and settles all eligible
 provider instances for the thread before another run can resume the logical
 browser. The card then shows the suspended state and keeps the stable
 `/browsers/:browserId` link; a later run can use `zero browser resume` to start
-a new provider instance with the saved profile.
+a new provider instance with the saved profile. Logical browsers remain scoped
+to their chat threads, while every thread for the same user in the same
+organization uses one shared login profile. Only one logical browser may own a
+provider instance for that profile at a time; another thread retries after the
+owning run finishes its stop and settlement.
 
 The same universal link also has an authenticated full-page route. The browser
 provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
