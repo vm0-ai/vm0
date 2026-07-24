@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.627.2](https://github.com/vm0-ai/vm0/compare/app-v0.627.1...app-v0.627.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **platform:** preserve run finish time with follow-ups ([#22852](https://github.com/vm0-ai/vm0/issues/22852)) ([a11f2fd](https://github.com/vm0-ai/vm0/commit/a11f2fdc3a167e54b2a288805cde3399a9e8912e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.0
+    * @vm0/connectors bumped to 1.189.0
+    * @vm0/core bumped to 8.460.0
+
 ## [0.627.1](https://github.com/vm0-ai/vm0/compare/app-v0.627.0...app-v0.627.1) (2026-07-24)
 
 
