@@ -14,6 +14,8 @@ const {
 export function isExternalConnectorCatalogEnabled(): boolean {
   return (
     getExternalConnectorCatalogOverride() ??
+    // Catalog source is infrastructure-global. Never evaluate request identity
+    // or persisted user/organization overrides here.
     isFeatureEnabled(FeatureSwitchKey.ExternalConnectorCatalog, {})
   );
 }
