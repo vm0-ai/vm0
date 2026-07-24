@@ -457,6 +457,17 @@ async function loadZeroCommand(
   return ZERO_COMMAND_DEFINITION_BY_NAME.get(name)?.load();
 }
 
+function commandExampleIfVisible(
+  name: string,
+  example: string,
+  payload: ZeroTokenPayload | undefined,
+  featureSwitchOverrides?: FeatureSwitchOverrides,
+): string[] {
+  return shouldHideCommand(name, payload, featureSwitchOverrides)
+    ? []
+    : [example];
+}
+
 export function buildZeroHelpText(
   payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
   featureSwitchOverrides?: FeatureSwitchOverrides,
@@ -471,16 +482,25 @@ export function buildZeroHelpText(
     ...(payload && !payload.capabilities.includes("billing:write")
       ? []
       : ["  Buy credits?           zero credit 20000"]),
-    ...(shouldHideCommand("upgrade", payload, featureSwitchOverrides)
-      ? []
-      : ["  Upgrade plan?         zero upgrade pro"]),
+    ...commandExampleIfVisible(
+      "upgrade",
+      "  Upgrade plan?         zero upgrade pro",
+      payload,
+      featureSwitchOverrides,
+    ),
     "  Send a Slack message?  zero slack message send --help",
-    ...(shouldHideCommand("feishu", payload, featureSwitchOverrides)
-      ? []
-      : ["  Send Feishu?          zero feishu message send --help"]),
-    ...(shouldHideCommand("mail", payload, featureSwitchOverrides)
-      ? []
-      : ["  Link Gmail draft?     zero mail link --help"]),
+    ...commandExampleIfVisible(
+      "feishu",
+      "  Send Feishu?          zero feishu message send --help",
+      payload,
+      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "mail",
+      "  Link Gmail draft?     zero mail link --help",
+      payload,
+      featureSwitchOverrides,
+    ),
     "  Send Teams?           zero teams message send --help",
     "  Upload Teams?         zero teams upload-file --help",
     "  Download Teams?       zero teams download-file --help",
@@ -497,9 +517,12 @@ export function buildZeroHelpText(
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
     "  Manage workflows?     zero workflow --help",
-    ...(shouldHideCommand("chat", payload, featureSwitchOverrides)
-      ? []
-      : ['  Rename this chat?     zero chat rename "New title"']),
+    ...commandExampleIfVisible(
+      "chat",
+      '  Rename this chat?     zero chat rename "New title"',
+      payload,
+      featureSwitchOverrides,
+    ),
     "  Introduce Zero?       zero intro",
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --raw-prompt "..."',
@@ -511,37 +534,48 @@ export function buildZeroHelpText(
     ...(canReadHost
       ? ["  Clone hosted site?     zero host clone <public-slug>"]
       : []),
-    ...(shouldHideCommand("maps", payload, featureSwitchOverrides)
-      ? []
-      : [
-          '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
-        ]),
-    ...(shouldHideCommand("weather", payload, featureSwitchOverrides)
-      ? []
-      : [
-          "  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json",
-        ]),
-    ...(shouldHideCommand("scrape", payload, featureSwitchOverrides)
-      ? []
-      : ["  Scrape a web page?    zero scrape https://example.com --json"]),
-    ...(shouldHideCommand("web-search", payload, featureSwitchOverrides)
-      ? []
-      : ['  Search the public web? zero web-search "latest news" --json']),
-    ...(shouldHideCommand("finance", payload, featureSwitchOverrides)
-      ? []
-      : ["  Get a market quote?   zero finance quote AAPL --json"]),
-    ...(shouldHideCommand(
-      "people-search",
+    ...commandExampleIfVisible(
+      "maps",
+      '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
       payload,
       featureSwitchOverrides,
-    )
-      ? []
-      : [
-          '  Find a professional?   zero people-search "platform engineering leaders" --json',
-        ]),
-    ...(shouldHideCommand("banking", payload, featureSwitchOverrides)
-      ? []
-      : ["  Read bank data?       zero banking accounts --json"]),
+    ),
+    ...commandExampleIfVisible(
+      "weather",
+      "  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json",
+      payload,
+      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "scrape",
+      "  Scrape a web page?    zero scrape https://example.com --json",
+      payload,
+      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "web-search",
+      '  Search the public web? zero web-search "latest news" --json',
+      payload,
+      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "finance",
+      "  Get a market quote?   zero finance quote AAPL --json",
+      payload,
+      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "people-search",
+      '  Find a professional?   zero people-search "platform engineering leaders" --json',
+      payload,
+      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "banking",
+      "  Read bank data?       zero banking accounts --json",
+      payload,
+      featureSwitchOverrides,
+    ),
     "  Check your identity?   zero whoami",
   ];
 

@@ -75,7 +75,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 38 commands", () => {
-    expect(commandNames).toHaveLength(38);
+  it("should have exactly 39 commands", () => {
+    expect(commandNames).toHaveLength(39);
   });
 });
