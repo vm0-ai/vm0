@@ -43,6 +43,9 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import {
+  CANONICAL_ASSET_ACCESS_LEVELS,
+  CANONICAL_ASSET_CLASSIFICATIONS,
+  CANONICAL_ASSET_MATERIALIZATION_STATUSES,
   CANONICAL_ASSET_VERSION,
   chatMessageAssetRefs,
   runUploadedFiles,
@@ -86,6 +89,7 @@ import {
   pgInt8ToSafeIntegerDecoder,
   pgIntegerDecoder,
   pgTextDecoder,
+  zodDriverValueDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
@@ -158,6 +162,22 @@ type ChatMessageRow = {
   readonly workflowAutomationUserTimezone: string | null;
 };
 
+const canonicalAssetClassificationSchema = z.enum(
+  CANONICAL_ASSET_CLASSIFICATIONS,
+);
+const canonicalAssetAccessLevelSchema = z.enum(CANONICAL_ASSET_ACCESS_LEVELS);
+const canonicalAssetMaterializationStatusSchema = z.enum(
+  CANONICAL_ASSET_MATERIALIZATION_STATUSES,
+);
+const canonicalAssetMaterializationErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  retryable: z.boolean(),
+});
+const canonicalAssetProvenanceSchema = z.object({
+  provider: z.string(),
+});
+
 const artifactListSqlRowSchema = z.object({
   row_id: z.string(),
   asset_version: z.number().nullable(),
@@ -169,21 +189,11 @@ const artifactListSqlRowSchema = z.object({
   url: z.string(),
   preview_image_url: z.string().nullable(),
   metadata: z.unknown(),
-  classification: z.enum(["input", "published-output"]).nullable(),
-  access_level: z.enum(["private", "published"]).nullable(),
-  materialization_status: z.enum(["pending", "ready", "failed"]).nullable(),
-  materialization_error: z
-    .object({
-      code: z.string(),
-      message: z.string(),
-      retryable: z.boolean(),
-    })
-    .nullable(),
-  provenance: z
-    .object({
-      provider: z.string(),
-    })
-    .nullable(),
+  classification: canonicalAssetClassificationSchema.nullable(),
+  access_level: canonicalAssetAccessLevelSchema.nullable(),
+  materialization_status: canonicalAssetMaterializationStatusSchema.nullable(),
+  materialization_error: canonicalAssetMaterializationErrorSchema.nullable(),
+  provenance: canonicalAssetProvenanceSchema.nullable(),
   created_at: pgTimestampWithoutTimezoneToDateSchema,
   updated_at: pgTimestampWithoutTimezoneToDateSchema,
   cursor_created_at: z.string(),
@@ -199,6 +209,24 @@ type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
 type ArtifactListRow = Omit<ArtifactListSqlRow, "url"> & {
   readonly url: string | null;
 };
+
+const nullableCanonicalAssetClassificationDecoder = nullableDriverValueDecoder(
+  zodEnumDriverValueDecoder(canonicalAssetClassificationSchema),
+);
+const nullableCanonicalAssetAccessLevelDecoder = nullableDriverValueDecoder(
+  zodEnumDriverValueDecoder(canonicalAssetAccessLevelSchema),
+);
+const nullableCanonicalAssetMaterializationStatusDecoder =
+  nullableDriverValueDecoder(
+    zodEnumDriverValueDecoder(canonicalAssetMaterializationStatusSchema),
+  );
+const nullableCanonicalAssetMaterializationErrorDecoder =
+  nullableDriverValueDecoder(
+    zodDriverValueDecoder(canonicalAssetMaterializationErrorSchema),
+  );
+const nullableCanonicalAssetProvenanceDecoder = nullableDriverValueDecoder(
+  zodDriverValueDecoder(canonicalAssetProvenanceSchema),
+);
 
 const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 
@@ -1542,11 +1570,21 @@ async function listArtifactHistory(args: {
       url: runUploadedFiles.url,
       preview_image_url: runUploadedFiles.previewImageUrl,
       metadata: runUploadedFiles.metadata,
-      classification: runUploadedFiles.classification,
-      access_level: runUploadedFiles.accessLevel,
-      materialization_status: runUploadedFiles.materializationStatus,
-      materialization_error: runUploadedFiles.materializationError,
-      provenance: runUploadedFiles.provenance,
+      classification: sql`${runUploadedFiles.classification}`
+        .mapWith(nullableCanonicalAssetClassificationDecoder)
+        .as("classification"),
+      access_level: sql`${runUploadedFiles.accessLevel}`
+        .mapWith(nullableCanonicalAssetAccessLevelDecoder)
+        .as("access_level"),
+      materialization_status: sql`${runUploadedFiles.materializationStatus}`
+        .mapWith(nullableCanonicalAssetMaterializationStatusDecoder)
+        .as("materialization_status"),
+      materialization_error: sql`${runUploadedFiles.materializationError}`
+        .mapWith(nullableCanonicalAssetMaterializationErrorDecoder)
+        .as("materialization_error"),
+      provenance: sql`${runUploadedFiles.provenance}`
+        .mapWith(nullableCanonicalAssetProvenanceDecoder)
+        .as("provenance"),
       created_at: runUploadedFiles.createdAt,
       updated_at: runUploadedFiles.updatedAt,
       thread_id: chatThreads.id,
