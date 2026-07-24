@@ -4,7 +4,7 @@ import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-inte
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   agentPhoneBddWebhookSecret,
@@ -57,31 +57,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-interface SlackInputAssetMessage {
-  readonly attachFiles?:
-    | readonly {
-        readonly filename?: string | null;
-        readonly assetRef?: { readonly id?: string | null } | null;
-      }[]
-    | null;
-}
-
-function requireCanonicalSlackInputAssetId(
-  messages: readonly SlackInputAssetMessage[],
-): string {
-  const assetId = messages
-    .flatMap((message) => {
-      return message.attachFiles ?? [];
-    })
-    .find((file) => {
-      return file.filename === "source-notes.txt";
-    })?.assetRef?.id;
-  if (!assetId) {
-    throw new Error("Expected a canonical Slack input asset");
-  }
-  return assetId;
-}
-
 function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -94,6 +69,14 @@ function sandboxOperationEventsForRun(
     return events.filter((event): event is Record<string, unknown> => {
       return isRecord(event) && event.run_id === runId;
     });
+  });
+}
+
+function firstAssistantMessageEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === "api_to_first_assistant_message";
   });
 }
 
@@ -235,6 +218,53 @@ async function pollSlackRun(runnerGroup: string): Promise<string> {
     runnerGroup,
     "Expected a Slack-triggered run in the runner queue",
   );
+}
+
+async function pollQueuedWebAndSlackRuns(args: {
+  readonly actor: ApiTestUser;
+  readonly runnerGroup: string;
+  readonly expectedSlackSessionId: string;
+}): Promise<{
+  readonly webRunId: string;
+  readonly run2Id?: string;
+  readonly claim2?: Awaited<ReturnType<typeof runs.claimRunnerJob>>;
+}> {
+  const firstQueuedRunId = await pollRunnerRun(
+    args.runnerGroup,
+    "Expected the queued Web run in the shared thread queue",
+  );
+  const firstQueuedRun = await runs.readRun(args.actor, firstQueuedRunId);
+  if (
+    !firstQueuedRun.prompt.includes("stay canonical after the switch changes")
+  ) {
+    return { webRunId: firstQueuedRunId };
+  }
+
+  const claim2 = await runs.claimRunnerJob(firstQueuedRunId);
+  expect(claim2.resumeSession?.sessionId).toBe(args.expectedSlackSessionId);
+  return {
+    webRunId: await pollRunnerRun(
+      args.runnerGroup,
+      "Expected the queued Web run in the shared thread queue",
+    ),
+    run2Id: firstQueuedRunId,
+    claim2,
+  };
+}
+
+async function ensureSlackRunClaimed(args: {
+  readonly runnerGroup: string;
+  readonly run2Id: string | undefined;
+  readonly claim2: Awaited<ReturnType<typeof runs.claimRunnerJob>> | undefined;
+}): Promise<{
+  readonly run2Id: string;
+  readonly claim2: Awaited<ReturnType<typeof runs.claimRunnerJob>>;
+}> {
+  if (args.run2Id !== undefined && args.claim2 !== undefined) {
+    return { run2Id: args.run2Id, claim2: args.claim2 };
+  }
+  const run2Id = await pollSlackRun(args.runnerGroup);
+  return { run2Id, claim2: await runs.claimRunnerJob(run2Id) };
 }
 
 async function completeSlackTriggeredRun(args: {
@@ -1173,150 +1203,6 @@ describe("INT-01: Slack integration and Slack app routes", () => {
 });
 
 describe("INT-01: Slack app deep webhook flows", () => {
-  it("keeps ready canonical inputs terminal across concurrent historical reads", async () => {
-    const actor = bdd.user();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-    runs.configureRunnerGroup();
-    integrations.configureSlackAppMocks();
-    await runs.grantProEntitlement(actor);
-    await runs.ensureOrgModelProvider(actor);
-    if (!actor.orgId) {
-      throw new Error("Expected historical Slack actor to belong to an org");
-    }
-    const featureSwitchActor = {
-      userId: actor.userId,
-      orgId: actor.orgId,
-      orgRole: "org:admin",
-    } satisfies Parameters<typeof updateFeatureSwitchesForUser>[1];
-    const slackUserId = uniqueSlackUserId();
-    const { teamId, botUserId } = await integrations.installSlackWorkspace(
-      actor,
-      {
-        installerSlackUserId: slackUserId,
-      },
-    );
-    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.CanonicalSlackIngress]: true,
-      [FeatureSwitchKey.CanonicalSlackAssets]: false,
-    });
-
-    const channelId = "C_BDD_HISTORICAL_ASSET";
-    const threadTs = "2899.000100";
-    const eventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
-    const fileBody = "historical canonical Slack attachment";
-    const eventBody = JSON.stringify({
-      type: "event_callback",
-      team_id: teamId,
-      event_id: eventId,
-      event: {
-        type: "app_mention",
-        user: slackUserId,
-        text: `<@${botUserId}> materialize this historical file`,
-        ts: threadTs,
-        channel: channelId,
-        channel_type: "channel",
-        files: [
-          {
-            id: `F_HISTORICAL_${randomUUID().replace(/-/g, "")}`,
-            name: "source-notes.txt",
-            mimetype: "text/plain",
-            size: fileBody.length,
-            url_private_download:
-              "https://files.slack.com/F_HISTORICAL_CANONICAL_INPUT",
-          },
-        ],
-      },
-    });
-    await integrations.requestSlackEvent(
-      eventBody,
-      integrations.signedSlackIngressHeaders(eventBody),
-      [200],
-    );
-    await flushWaitUntilForTest();
-
-    const state = await integrations.readSlackTestState(teamId);
-    const chatThreadId = state.chat_thread_routes[0]?.chatThreadId;
-    if (!chatThreadId) {
-      throw new Error("Expected historical Slack route to own a chat thread");
-    }
-
-    const firstFetchStarted = createDeferredPromise<void>(context.signal);
-    const secondFetchStarted = createDeferredPromise<void>(context.signal);
-    const releaseFirstFetch = createDeferredPromise<void>(context.signal);
-    const releaseStaleFailure = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      for (const deferred of [releaseFirstFetch, releaseStaleFailure]) {
-        if (!deferred.settled()) {
-          deferred.resolve(undefined);
-        }
-      }
-    });
-    let fetchAttempt = 0;
-    context.mocks.slack.fetchFile.mockImplementation(async () => {
-      fetchAttempt += 1;
-      if (fetchAttempt === 1) {
-        firstFetchStarted.resolve(undefined);
-        await releaseFirstFetch.promise;
-        return new Response(fileBody, {
-          headers: { "Content-Type": "text/plain" },
-        });
-      }
-      if (fetchAttempt === 2) {
-        secondFetchStarted.resolve(undefined);
-        await releaseStaleFailure.promise;
-        throw new Error("stale concurrent Slack fetch failed");
-      }
-      throw new Error("Unexpected additional Slack file fetch");
-    });
-    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.CanonicalSlackAssets]: true,
-      [FeatureSwitchKey.CanonicalSlackWebVisibility]: true,
-    });
-
-    const firstRead = chat.listThreadMessages(actor, chatThreadId);
-    await firstFetchStarted.promise;
-    const secondRead = chat.listThreadMessages(actor, chatThreadId);
-    await secondFetchStarted.promise;
-
-    releaseFirstFetch.resolve(undefined);
-    const firstMessages = (await firstRead).messages;
-    const assetId = requireCanonicalSlackInputAssetId(firstMessages);
-    expect(firstMessages).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          attachFiles: [
-            expect.objectContaining({
-              assetRef: expect.objectContaining({
-                id: assetId,
-                materialization: { status: "ready" },
-              }),
-            }),
-          ],
-        }),
-      ]),
-    );
-
-    releaseStaleFailure.resolve(undefined);
-    const secondMessages = (await secondRead).messages;
-    expect(requireCanonicalSlackInputAssetId(secondMessages)).toBe(assetId);
-    expect(secondMessages).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          attachFiles: [
-            expect.objectContaining({
-              assetRef: expect.objectContaining({
-                id: assetId,
-                materialization: { status: "ready" },
-              }),
-            }),
-          ],
-        }),
-      ]),
-    );
-    expect(context.mocks.slack.fetchFile).toHaveBeenCalledTimes(2);
-  });
-
   it("keeps canonical ingress sticky and deduplicates Slack retries per event", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
@@ -1342,19 +1228,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.CanonicalSlackIngress]: true,
-      [FeatureSwitchKey.CanonicalSlackAssets]: true,
     });
 
     const channelId = "C_BDD_CANONICAL_INGRESS";
     const threadTs = "2900.000100";
     const eventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
-    const fileUrl = "https://files.slack.com/F_CANONICAL_INPUT";
-    const fileBody = "canonical Slack attachment";
-    context.mocks.slack.fetchFile.mockResolvedValue(
-      new Response(fileBody, {
-        headers: { "Content-Type": "text/plain" },
-      }),
-    );
     const event = {
       type: "app_mention",
       user: slackUserId,
@@ -1362,15 +1240,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: threadTs,
       channel: channelId,
       channel_type: "channel",
-      files: [
-        {
-          id: "F_CANONICAL_INPUT",
-          name: "source-notes.txt",
-          mimetype: "text/plain",
-          size: fileBody.length,
-          url_private_download: fileUrl,
-        },
-      ],
     };
     const eventBody = JSON.stringify({
       type: "event_callback",
@@ -1445,7 +1314,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         expect.objectContaining({
           triggerSource: "slack",
           userId: actor.userId,
-          promptPreview: expect.stringContaining("admit this event once"),
+          promptPreview: "admit this event once",
         }),
       ]),
     );
@@ -1483,49 +1352,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
       (await chat.requestReadThread(actor, canonicalChatThreadId, [200]))
         .status,
     ).toBe(200);
-    const visibleMessages = (
-      await chat.listThreadMessages(actor, canonicalChatThreadId)
-    ).messages;
-    expect(visibleMessages).toStrictEqual(
+    expect(
+      (await chat.listThreadMessages(actor, canonicalChatThreadId)).messages,
+    ).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           role: "user",
           content: "admit this event once",
           slackMessagePermalink:
             "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
-          attachFiles: [
-            expect.objectContaining({
-              filename: "source-notes.txt",
-              contentType: "text/plain",
-              size: fileBody.length,
-              url: expect.stringContaining(
-                "/api/zero/web/download-file?file_id=",
-              ),
-              assetRef: expect.objectContaining({
-                classification: "input",
-                access: "private",
-                materialization: { status: "ready" },
-                provenance: { provider: "slack" },
-              }),
-            }),
-          ],
         }),
       ]),
-    );
-    expect(
-      visibleMessages.some((message) => {
-        return message.content?.includes("[Slack file]") ?? false;
-      }),
-    ).toBeFalsy();
-    const canonicalInputAssetId =
-      requireCanonicalSlackInputAssetId(visibleMessages);
-    const canonicalInputRun = await runs.readRun(actor, run1Id);
-    expect(canonicalInputRun.prompt).toContain(
-      `[Web file] source-notes.txt (text/plain)`,
-    );
-    expect(canonicalInputRun.prompt).toContain(`[ID] ${canonicalInputAssetId}`);
-    expect(canonicalInputRun.appendSystemPrompt).toContain(
-      "zero web download-file -h",
     );
     expect(context.mocks.slack.chat.getPermalink).toHaveBeenCalledWith({
       channel: channelId,
@@ -1624,7 +1461,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
-
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
@@ -1642,6 +1478,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
+    expect(firstAssistantMessageEventsForRun(run1Id)).toHaveLength(1);
     await expect
       .poll(async () => {
         const callbacks = await callbackStore.set(
@@ -1649,7 +1486,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
           {
             orgId: featureSwitchActor.orgId,
             userId: actor.userId,
-            runId: run1Id,
+            prompt: "admit this event once",
           },
           context.signal,
         );
@@ -1665,7 +1502,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         {
           orgId: featureSwitchActor.orgId,
           userId: actor.userId,
-          runId: run1Id,
+          prompt: "admit this event once",
         },
         context.signal,
       )
@@ -1689,10 +1526,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
       );
     }
 
-    const webRunId = await pollRunnerRun(
+    const queuedRuns = await pollQueuedWebAndSlackRuns({
+      actor,
       runnerGroup,
-      "Expected the queued Web run in the shared thread queue",
-    );
+      expectedSlackSessionId: `bdd-slack-cli-${run1Id}`,
+    });
+    const webRunId = queuedRuns.webRunId;
+    let claim2 = queuedRuns.claim2;
+    let run2Id = queuedRuns.run2Id;
+
     const webClaim = await runs.claimRunnerJob(webRunId);
     expect(webClaim.resumeSession).toBeNull();
     context.mocks.slack.chat.postMessage.mockClear();
@@ -1710,8 +1552,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected the Web run to save its independent session");
     }
 
-    const run2Id = await pollSlackRun(runnerGroup);
-    const claim2 = await runs.claimRunnerJob(run2Id);
+    ({ run2Id, claim2 } = await ensureSlackRunClaimed({
+      runnerGroup,
+      run2Id,
+      claim2,
+    }));
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     expect(claim2.resumeSession?.sessionId).not.toBe(
       `bdd-slack-cli-${webRunId}`,
@@ -1721,9 +1566,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.objectContaining({
         id: run2Id,
         triggerSource: "slack",
-        promptPreview: expect.stringContaining(
-          "stay canonical after the switch changes",
-        ),
+        promptPreview: "stay canonical after the switch changes",
       }),
     );
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
@@ -1762,7 +1605,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
           {
             orgId: featureSwitchActor.orgId,
             userId: actor.userId,
-            runId: run2Id,
+            prompt: "stay canonical after the switch changes",
           },
           context.signal,
         );
@@ -1778,7 +1621,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         {
           orgId: featureSwitchActor.orgId,
           userId: actor.userId,
-          runId: run2Id,
+          prompt: "stay canonical after the switch changes",
         },
         context.signal,
       )
@@ -1820,6 +1663,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     ).toStrictEqual(["is thinking...", "is thinking...", "", "is thinking..."]);
     releaseTerminalStatusClear.resolve(undefined);
     await flushWaitUntilForTest();
+    expect(firstAssistantMessageEventsForRun(run2Id)).toHaveLength(1);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenCalledTimes(5);
@@ -3066,7 +2910,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         expect.objectContaining({
           channel: "D_BDD_FAIL",
           thread_ts: "5000.000100",
-          text: expect.stringContaining("Add credits"),
+          text: expect.stringContaining("Compare plans"),
         }),
       );
     });

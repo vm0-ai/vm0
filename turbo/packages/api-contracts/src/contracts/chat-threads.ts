@@ -22,40 +22,13 @@ const attachFileSchema = z.object({
   size: z.number(),
 });
 
-const assetMaterializationSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("ready") }),
-  z.object({ status: z.literal("pending") }),
-  z.object({
-    status: z.literal("failed"),
-    error: z.object({
-      code: z.string(),
-      message: z.string(),
-      retryable: z.boolean(),
-    }),
-  }),
-]);
-
-const assetRefSchema = z.object({
-  id: z.string().uuid(),
-  classification: z.enum(["input", "published-output"]),
-  access: z.enum(["private", "published"]),
-  materialization: assetMaterializationSchema,
-  provenance: z
-    .object({
-      provider: z.string(),
-    })
-    .optional(),
-});
-
 /**
  * Attach file returned to the frontend with a resolved URL.
- * Legacy attachments expose a public artifact URL. Canonical input assets use
- * an authenticated same-origin URL and identify their durable asset through
- * `assetRef`.
+ * `url` is the public artifact CDN URL; consumers may render, cache, or share
+ * it freely.
  */
 const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
-  assetRef: assetRefSchema.optional(),
 });
 
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
@@ -94,7 +67,6 @@ const artifactItemSchema = z.object({
   contentType: z.string(),
   size: z.number().default(0),
   url: z.string(),
-  assetRef: assetRefSchema.optional(),
   previewImageUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -1470,7 +1442,6 @@ export type ChatMessageUsagePayload = z.infer<
 >;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
-export type AssetRef = z.infer<typeof assetRefSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<
   typeof chatThreadArtifactFileSchema

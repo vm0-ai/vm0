@@ -223,39 +223,6 @@ describe("GET /api/zero/web/download-file", () => {
     expect(receivedBytes.equals(fileContent)).toBeTruthy();
   });
 
-  it("downloads a canonical Slack input only for its owning user", async () => {
-    const assetId = randomUUID();
-    const fileContent = Buffer.from("private Slack attachment");
-    const owner = await mintFileReadToken();
-    const storageKey = artifactKey(owner.userId, assetId, "private_notes.md");
-    mockS3Objects([
-      {
-        key: storageKey,
-        size: fileContent.length,
-        body: fileContent,
-      },
-    ]);
-
-    const response = await requestDownload({
-      fileId: assetId,
-      token: owner.token,
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("text/markdown");
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(Buffer.from(await response.arrayBuffer())).toStrictEqual(
-      fileContent,
-    );
-
-    const otherUser = await mintFileReadToken();
-    const forbiddenResponse = await requestDownload({
-      fileId: assetId,
-      token: otherUser.token,
-    });
-    await expectErrorResponse(forbiddenResponse, 404, "NOT_FOUND");
-  });
-
   it("encodes the file name header while preserving the binary body", async () => {
     const fileId = "encoded-name-uuid";
     const fileContent = Buffer.from([0, 1, 2, 3, 255]);

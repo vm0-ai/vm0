@@ -1,10 +1,18 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
-import { generateWebVideo } from "../../../lib/api";
+import {
+  ApiRequestError,
+  generateWebVideo,
+  getZeroBillingStatus,
+} from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { findVideoTemplate, listVideoTemplates } from "./resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { createVideoTemplateAuthoringPacket } from "./video-template-authoring";
+import {
+  currentPlanAllowsVideo,
+  currentTokenCanReadBilling,
+} from "./billing-capabilities";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
@@ -472,6 +480,17 @@ Models:
 
           console.log(packet.instructions);
           return;
+        }
+
+        if (currentTokenCanReadBilling()) {
+          const billing = await getZeroBillingStatus();
+          if (!currentPlanAllowsVideo(billing)) {
+            throw new ApiRequestError(
+              "Built-in video generation requires Pro, Team, or Custom workspace access.",
+              "PRO_REQUIRED",
+              402,
+            );
+          }
         }
 
         await validateVideoOptions(options);

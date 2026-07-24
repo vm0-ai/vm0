@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.626.2](https://github.com/vm0-ai/vm0/compare/app-v0.626.1...app-v0.626.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **chat:** serialize inline feedback prompts ([#22838](https://github.com/vm0-ai/vm0/issues/22838)) ([88f051c](https://github.com/vm0-ai/vm0/commit/88f051cdfcdc16cbef67456a55beb16b5885ed11))
+
+## [0.626.1](https://github.com/vm0-ai/vm0/compare/app-v0.626.0...app-v0.626.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **billing:** guide video-restricted workspaces to plan upgrade ([#22794](https://github.com/vm0-ai/vm0/issues/22794)) ([ec7c924](https://github.com/vm0-ai/vm0/commit/ec7c924358ea0fa63ec71e9c6be85317a6ebaa1c))
+* drop poisoned ably payloads after limited retries instead of blocking the queue ([#22822](https://github.com/vm0-ai/vm0/issues/22822)) ([5a31e87](https://github.com/vm0-ai/vm0/commit/5a31e87174cd826ef3814737b6e8666c76f748e2))
+
+
+### Performance Improvements
+
+* **platform:** use one realtime subscriber for new chat messages ([#22820](https://github.com/vm0-ai/vm0/issues/22820)) ([e492795](https://github.com/vm0-ai/vm0/commit/e49279575e939cf737da9e17664353093127b4c9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.1
+    * @vm0/connectors bumped to 1.187.1
+    * @vm0/core bumped to 8.458.2
+
 ## [0.626.0](https://github.com/vm0-ai/vm0/compare/app-v0.625.0...app-v0.626.0) (2026-07-24)
 
 

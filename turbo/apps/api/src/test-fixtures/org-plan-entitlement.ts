@@ -46,6 +46,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   readonly autoRechargeAllowed?: boolean;
   readonly supportByok?: boolean;
   readonly restrictedVm0Models?: boolean;
+  readonly videoGenerationAllowed?: boolean;
   readonly workflowWebhookAutomationAllowed?: boolean;
 }): Promise<void> {
   const row = {
@@ -60,6 +61,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     autoRechargeAllowed: values.autoRechargeAllowed,
     supportByok: values.supportByok,
     restrictedVm0Models: values.restrictedVm0Models,
+    videoGenerationAllowed: values.videoGenerationAllowed,
     workflowWebhookTriggerAllowed: values.workflowWebhookAutomationAllowed,
   };
   await createStore()
@@ -89,6 +91,9 @@ export async function upsertOrgPlanEntitlementFixture(values: {
         ...(row.restrictedVm0Models === undefined
           ? {}
           : { restrictedVm0Models: row.restrictedVm0Models }),
+        ...(row.videoGenerationAllowed === undefined
+          ? {}
+          : { videoGenerationAllowed: row.videoGenerationAllowed }),
         ...(row.workflowWebhookTriggerAllowed === undefined
           ? {}
           : {

@@ -237,13 +237,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CanonicalSlackAssets]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Canonicalize direct Slack inputs and run-scoped Slack file publications.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroWeather]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -458,6 +451,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PlanUpgradeGuidance]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show plan-upgrade guidance in Zero CLI help and render billing plan links as rich chat cards.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",

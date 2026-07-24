@@ -161,6 +161,7 @@ import {
 } from "../../signals/chat-page/run-group-folding.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
+import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
 import {
   emptyMailDraftSignalsById$,
   type MailDraftSignals,
@@ -3088,9 +3089,7 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
-    (Boolean(message.content) ||
-      Boolean(message.error) ||
-      Boolean(message.attachFiles?.length))
+    (Boolean(message.content) || Boolean(message.error))
   );
 }
 
@@ -4755,6 +4754,9 @@ function BodyRenderBlockView({
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={block.signals} />;
     }
+    case "plan-upgrade": {
+      return <PlanUpgradeCard signals={block.signals} />;
+    }
     case "mail-draft": {
       return <MailDraftCard signals={block.signals} />;
     }
@@ -4923,6 +4925,49 @@ function ComputerUseAuthorizationCard({
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
       >
         Authorize
+        <IconArrowUpRight size={15} />
+      </a>
+    </div>
+  );
+}
+
+function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
+  const featureSwitches = useGet(featureSwitch$);
+  if (!featureSwitches[FeatureSwitchKey.PlanUpgradeGuidance]) {
+    return (
+      <Markdown
+        source={signals.fallbackMarkdown}
+        style={{ fontSize: "inherit", lineHeight: "inherit" }}
+      />
+    );
+  }
+
+  return (
+    <div
+      data-testid="plan-upgrade-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <IconCoins size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
+            Upgrade your workspace
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            Compare plans to unlock paid workspace features and additional
+            credits.
+          </div>
+        </div>
+      </div>
+      <a
+        href={signals.href}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      >
+        Compare plans
         <IconArrowUpRight size={15} />
       </a>
     </div>
@@ -6035,26 +6080,15 @@ function workflowMessageBody(
   );
 }
 
-interface ResolvedMessageAttachment {
-  readonly id: string | null;
-  readonly filename: string;
-  readonly url: string;
-  readonly contentType: string | undefined;
-  readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
-  readonly isImage: boolean;
-  readonly kind: ReturnType<typeof classifyChatAttachment>;
-}
-
 function resolveAttachments(
   message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
-): ResolvedMessageAttachment[] {
+) {
   const source =
     message.attachFiles && message.attachFiles.length > 0
       ? message.attachFiles
       : parsed;
   return source.map((f) => {
-    const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
         ? f.contentType
@@ -6069,7 +6103,6 @@ function resolveAttachments(
       filename: f.filename,
       url: f.url,
       contentType,
-      ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
     };
@@ -6134,55 +6167,12 @@ function clipboardAttachmentsFromStructuredPrompt(
   });
 }
 
-function AttachmentMaterializationState({
-  attachment,
-}: {
-  attachment: ReturnType<typeof resolveAttachments>[number];
-}) {
-  const materialization = attachment.assetRef?.materialization;
-  if (!materialization || materialization.status === "ready") {
-    return null;
-  }
-  const pending = materialization.status === "pending";
-  const error =
-    materialization.status === "failed" ? materialization.error : undefined;
-  return (
-    <div
-      className="flex max-w-72 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-      role={pending ? "status" : "alert"}
-      title={error?.message}
-    >
-      {pending ? (
-        <IconLoader2
-          aria-hidden="true"
-          className="size-4 shrink-0 animate-spin text-muted-foreground"
-        />
-      ) : (
-        <IconAlertCircle
-          aria-hidden="true"
-          className="size-4 shrink-0 text-destructive"
-        />
-      )}
-      <span className="min-w-0">
-        <span className="block truncate font-medium">
-          {attachment.filename}
-        </span>
-        <span className="block text-xs text-muted-foreground">
-          {pending ? "Importing attachment" : "Attachment unavailable"}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 function UserMessageAttachments({
   attachments,
   onImageClick,
-  align = "end",
 }: {
   attachments: ReturnType<typeof resolveAttachments>;
   onImageClick: (url: string) => void;
-  align?: "start" | "end";
 }) {
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
@@ -6191,21 +6181,8 @@ function UserMessageAttachments({
   }
 
   return (
-    <div
-      className={cn(
-        "flex max-w-[85%] flex-wrap gap-2",
-        align === "start" ? "mt-2 justify-start" : "mb-2 justify-end self-end",
-      )}
-    >
+    <div className="mb-2 flex max-w-[85%] flex-wrap justify-end gap-2">
       {attachments.map((a) => {
-        if (a.assetRef && a.assetRef.materialization.status !== "ready") {
-          return (
-            <AttachmentMaterializationState
-              key={a.id ?? a.url}
-              attachment={a}
-            />
-          );
-        }
         if (a.isImage) {
           return (
             <ChatImagePreviewLink
@@ -7003,7 +6980,6 @@ function PagedAssistantMessageItem({
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
-  const attachments = resolveAttachments(message, []);
 
   if (message.error) {
     return (
@@ -7018,7 +6994,7 @@ function PagedAssistantMessageItem({
     );
   }
 
-  if (message.content || message.blocks.length > 0 || attachments.length > 0) {
+  if (message.content || message.blocks.length > 0) {
     const { blocks } = message;
     return (
       <div
@@ -7034,11 +7010,6 @@ function PagedAssistantMessageItem({
             hardBreaks={false}
           />
         ) : null}
-        <UserMessageAttachments
-          attachments={attachments}
-          onImageClick={openLightbox}
-          align="start"
-        />
       </div>
     );
   }

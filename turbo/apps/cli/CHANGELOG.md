@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.249.2](https://github.com/vm0-ai/vm0/compare/cli-v9.249.1...cli-v9.249.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **billing:** guide video-restricted workspaces to plan upgrade ([#22794](https://github.com/vm0-ai/vm0/issues/22794)) ([ec7c924](https://github.com/vm0-ai/vm0/commit/ec7c924358ea0fa63ec71e9c6be85317a6ebaa1c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.220.1
+    * @vm0/connectors bumped to 1.187.1
+    * @vm0/core bumped to 8.458.2
+
 ## [9.249.1](https://github.com/vm0-ai/vm0/compare/cli-v9.249.0...cli-v9.249.1) (2026-07-24)
 
 

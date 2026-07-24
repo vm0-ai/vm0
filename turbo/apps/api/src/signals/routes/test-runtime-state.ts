@@ -21,6 +21,7 @@ import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -234,6 +235,39 @@ async function deleteVm0ManagedDefaultModelKey(
   signal.throwIfAborted();
 }
 
+async function clearRunApiStart(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [cleared] = await db
+    .update(zeroRuns)
+    .set({ apiStartedAt: null })
+    .where(eq(zeroRuns.id, runId))
+    .returning({ id: zeroRuns.id });
+  signal.throwIfAborted();
+  if (!cleared) {
+    throw new Error("Expected a Zero run timing row");
+  }
+}
+
+async function readRunApiStart(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const [run] = await db
+    .select({ apiStartedAt: zeroRuns.apiStartedAt })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new Error("Expected a Zero run timing row");
+  }
+  return run.apiStartedAt?.toISOString() ?? null;
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -431,6 +465,42 @@ async function storageStateActionResponse(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+type TimingStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "clear-run-api-start" | "read-run-api-start" }
+>;
+
+function isTimingStateAction(
+  body: TestRuntimeStateActionBody,
+): body is TimingStateAction {
+  return (
+    body.action === "clear-run-api-start" ||
+    body.action === "read-run-api-start"
+  );
+}
+
+async function timingStateActionResponse(
+  db: Db,
+  body: TimingStateAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "clear-run-api-start": {
+      await clearRunApiStart(db, body.run_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-run-api-start": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          api_started_at: await readRunApiStart(db, body.run_id, signal),
+        },
+      };
+    }
+  }
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -447,6 +517,9 @@ const postRuntimeStateAction$ = command(
     const db = set(writeDb$);
     if (isStorageStateAction(body)) {
       return await storageStateActionResponse(db, body, signal);
+    }
+    if (isTimingStateAction(body)) {
+      return await timingStateActionResponse(db, body, signal);
     }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {

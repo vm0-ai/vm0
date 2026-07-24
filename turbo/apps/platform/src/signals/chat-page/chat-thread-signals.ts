@@ -165,6 +165,10 @@ export interface ChatThreadSignals {
   activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  receiveSyncedMessages$: Command<
+    Promise<void>,
+    [PagedChatMessage[], AbortSignal]
+  >;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;

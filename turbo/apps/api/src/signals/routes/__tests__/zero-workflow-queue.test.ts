@@ -246,10 +246,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   });
 }
 
-async function completeRunThroughSandbox(
-  scenario: Scenario,
-  runId: string,
-): Promise<void> {
+async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
@@ -271,6 +268,7 @@ async function completeRunThroughSandbox(
     [200],
   );
   await flushWaitUntilForTest();
+  return claim;
 }
 
 async function executeDueWorkflowAutomations(): Promise<void> {
@@ -295,8 +293,11 @@ describe("workflow queue", () => {
 
     // The workflow is busy: the next two events are accepted into the queue
     // without creating runs.
+    const secondApiStartTime = now() + 60_000;
+    mockNow(secondApiStartTime);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
     expect(kms.generateDataKeyCalls).toBe(2);
+    mockNow(secondApiStartTime + 1000);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "third"));
     expect(kms.generateDataKeyCalls).toBe(3);
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
@@ -304,9 +305,16 @@ describe("workflow queue", () => {
     ]);
 
     // Completing the run drains exactly one event into the next run.
+    const dequeuedAt = secondApiStartTime + 10_000;
+    mockNow(dequeuedAt);
     await completeRunThroughSandbox(scenario, firstRunId);
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
+    const secondClaim = await completeRunThroughSandbox(
+      scenario,
+      afterFirst[1]!,
+    );
+    expect(secondClaim.apiStartTime).toBe(dequeuedAt);
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {
