@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.312.0](https://github.com/vm0-ai/vm0/compare/api-v1.311.0...api-v1.312.0) (2026-07-24)
+
+
+### Features
+
+* trigger automations from completed github workflow runs ([#22831](https://github.com/vm0-ai/vm0/issues/22831)) ([407a3e8](https://github.com/vm0-ai/vm0/commit/407a3e874fded0deef147d260cb5e06f0f0746b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.221.0
+    * @vm0/connectors bumped to 1.188.0
+    * @vm0/core bumped to 8.459.0
+    * @vm0/db bumped to 1.133.0
+
 ## [1.311.0](https://github.com/vm0-ai/vm0/compare/api-v1.310.0...api-v1.311.0) (2026-07-24)
 
 

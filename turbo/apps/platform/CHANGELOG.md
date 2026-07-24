@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.627.0](https://github.com/vm0-ai/vm0/compare/app-v0.626.2...app-v0.627.0) (2026-07-24)
+
+
+### Features
+
+* show chat history backfill progress bar under thread header ([#22830](https://github.com/vm0-ai/vm0/issues/22830)) ([e0e14d2](https://github.com/vm0-ai/vm0/commit/e0e14d2518211349d219ef5b9c576cf7d549476a))
+* trigger automations from completed github workflow runs ([#22831](https://github.com/vm0-ai/vm0/issues/22831)) ([407a3e8](https://github.com/vm0-ai/vm0/commit/407a3e874fded0deef147d260cb5e06f0f0746b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.221.0
+    * @vm0/connectors bumped to 1.188.0
+    * @vm0/core bumped to 8.459.0
+
 ## [0.626.2](https://github.com/vm0-ai/vm0/compare/app-v0.626.1...app-v0.626.2) (2026-07-24)
 
 
