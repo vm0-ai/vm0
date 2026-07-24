@@ -11,7 +11,8 @@ import {
   chatThreadsContract,
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-  pagedChatMessageSchema,
+  chatEventResponseSchema,
+  chatEventSchema,
 } from "../chat-threads";
 
 const legacyModelSelection = {
@@ -33,9 +34,10 @@ describe("chat message response contract", () => {
   };
 
   it("rejects legacy automation metadata", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
+    const parsed = chatEventSchema.safeParse({
       id: "message-1",
-      role: "user",
+      threadId: "thread-1",
+      eventType: "input.prompt",
       content: "Run the workflow",
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
@@ -52,8 +54,10 @@ describe("chat message response contract", () => {
   });
 
   it("rejects API messages without a sequence ID", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
+    const parsed = chatEventResponseSchema.safeParse({
       id: "message-1",
+      threadId: "thread-1",
+      eventType: "input.prompt",
       role: "user",
       content: "Run the workflow",
       createdAt: "2026-07-13T00:00:00.000Z",
@@ -63,9 +67,10 @@ describe("chat message response contract", () => {
   });
 
   it("accepts a canonical-only workflow Automation identifier", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
+    const parsed = chatEventSchema.safeParse({
       id: "message-1",
-      role: "user",
+      threadId: "thread-1",
+      eventType: "input.prompt",
       content: "Run the workflow",
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",

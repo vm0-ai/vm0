@@ -11,6 +11,7 @@ import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   createSlackClient,
@@ -122,7 +123,12 @@ async function loadSlackChatDeliveryContext(args: {
         eq(chatMessages.id, payload.chatMessageId),
         eq(chatMessages.runId, args.callback.runId),
         eq(chatMessages.chatThreadId, run.chatThreadId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn([
+          "output.message",
+          "output.error",
+          "run.failed",
+          "run.cancelled",
+        ]),
         isNotNull(chatMessages.content),
       ),
     )

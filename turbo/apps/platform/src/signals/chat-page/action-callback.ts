@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -37,7 +37,7 @@ export const runChatActionCallback$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const client = get(zeroClient$)(chatMessagesContract);
+    const client = get(zeroClient$)(chatEventsContract);
     const features = get(featureSwitch$);
     const structuredPromptEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
@@ -55,7 +55,7 @@ export const runChatActionCallback$ = command(
           prompt: args.callbackPrompt,
           hasTextContent: true,
           ...(structuredPrompt ? { structuredPrompt } : {}),
-          clientMessageId: crypto.randomUUID(),
+          clientEventId: crypto.randomUUID(),
           chatThreadSortEventId: crypto.randomUUID(),
         },
         fetchOptions: { signal },

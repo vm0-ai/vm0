@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { chatEventCompatibilityRole, chatEventTypeSchema } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
@@ -351,8 +352,9 @@ const workflowSnapshotSchema = z.object({
   triggerBrief: z.string().nullable().optional(),
 });
 
-const pagedChatMessageBaseSchema = z.object({
+const chatEventBaseSchema = z.object({
   id: z.string(),
+  threadId: z.string(),
   content: z.string().nullable(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
@@ -360,18 +362,12 @@ const pagedChatMessageBaseSchema = z.object({
   slackMessagePermalink: z.string().url().optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
-  goalEvent: zeroGoalEventSchema.optional(),
   goalSnapshot: z
     .object({
       objectiveBrief: z.string().min(1),
     })
     .optional(),
-  usage: chatMessageUsagePayloadSchema.optional(),
-  revokesMessageId: z.string().optional(),
-  interruptsRunId: z.string().optional(),
-  error: z.string().optional(),
-  attachFiles: z.array(resolvedAttachFileSchema).optional(),
-  generationTemplate: generationTemplateRequestSchema.optional(),
+  revokesEventId: z.string().optional(),
   /** Server-assigned strict position within the chat thread. */
   seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
@@ -397,20 +393,237 @@ const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
   });
 }, z.array(chatMessageRecommendedFollowupSchema));
 
-const pagedChatMessageSchema = z.discriminatedUnion("role", [
-  pagedChatMessageBaseSchema
+const inputPromptEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.prompt"),
+    structuredPrompt: userMessageDocumentSchema.optional(),
+    attachFiles: z.array(resolvedAttachFileSchema).optional(),
+    generationTemplate: generationTemplateRequestSchema.optional(),
+  })
+  .strict();
+
+const inputRejectedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.rejected"),
+    structuredPrompt: userMessageDocumentSchema.optional(),
+    error: z.string(),
+    attachFiles: z.array(resolvedAttachFileSchema).optional(),
+    generationTemplate: generationTemplateRequestSchema.optional(),
+  })
+  .strict();
+
+const outputMessageEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.message"),
+    content: z.string(),
+  })
+  .strict();
+
+const outputErrorEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.error"),
+    error: z.string(),
+  })
+  .strict();
+
+const outputThinkingEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.thinking"),
+    content: z.null(),
+    thinking: z.string(),
+  })
+  .strict();
+
+const outputFollowupsEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.followups"),
+    content: z.null(),
+    recommendedFollowups: chatMessageRecommendedFollowupsSchema,
+  })
+  .strict();
+
+const runQueuedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.queued"),
+    runId: z.string(),
+    content: z.string(),
+  })
+  .strict();
+
+const runDequeuedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.dequeued"),
+    runId: z.string(),
+    content: z.null(),
+    revokesEventId: z.string(),
+  })
+  .strict();
+
+const runCompletedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.completed"),
+    runId: z.string(),
+    attachFiles: z.array(resolvedAttachFileSchema).optional(),
+    runLifecycleEvent: z.literal("completed"),
+  })
+  .strict();
+
+const runFailedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.failed"),
+    runId: z.string(),
+    error: z.string().optional(),
+    runLifecycleEvent: z.literal("failed"),
+  })
+  .strict();
+
+const runCancelledEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.cancelled"),
+    runId: z.string(),
+    error: z.string().optional(),
+    runLifecycleEvent: z.literal("cancelled"),
+  })
+  .strict();
+
+const controlInterruptEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("control.interrupt"),
+    content: z.null(),
+    interruptsRunId: z.string(),
+  })
+  .strict();
+
+const controlRevokeEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("control.revoke"),
+    content: z.null(),
+    revokesEventId: z.string(),
+  })
+  .strict();
+
+const goalChangedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("goal.changed"),
+    content: z.null(),
+    goalEvent: zeroGoalEventSchema,
+  })
+  .strict();
+
+const usageRecordedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("usage.recorded"),
+    runId: z.string(),
+    content: z.null(),
+    usage: chatMessageUsagePayloadSchema,
+  })
+  .strict();
+
+const chatEventSchema = z.discriminatedUnion("eventType", [
+  inputPromptEventSchema,
+  inputRejectedEventSchema,
+  outputMessageEventSchema,
+  outputErrorEventSchema,
+  outputThinkingEventSchema,
+  outputFollowupsEventSchema,
+  runQueuedEventSchema,
+  runDequeuedEventSchema,
+  runCompletedEventSchema,
+  runFailedEventSchema,
+  runCancelledEventSchema,
+  controlInterruptEventSchema,
+  controlRevokeEventSchema,
+  goalChangedEventSchema,
+  usageRecordedEventSchema,
+]);
+
+const userEventCompatibilityResponseShape = {
+  /**
+   * @deprecated Derived compatibility field for the preceding App release.
+   * Canonical ChatEvent consumers derive presentation role from eventType.
+   */
+  role: z.literal("user"),
+  /**
+   * @deprecated Use revokesEventId.
+   */
+  revokesMessageId: z.string().optional(),
+} as const;
+
+const assistantEventCompatibilityResponseShape = {
+  /**
+   * @deprecated Derived compatibility field for the preceding App release.
+   * Canonical ChatEvent consumers derive presentation role from eventType.
+   */
+  role: z.literal("assistant"),
+  /**
+   * @deprecated Use revokesEventId.
+   */
+  revokesMessageId: z.string().optional(),
+} as const;
+
+/**
+ * One-release wire compatibility shape. The canonical ChatEvent domain type
+ * intentionally excludes role and message-named relationship fields.
+ */
+const chatEventResponseSchema = z.discriminatedUnion("eventType", [
+  inputPromptEventSchema.extend(userEventCompatibilityResponseShape).strict(),
+  inputRejectedEventSchema.extend(userEventCompatibilityResponseShape).strict(),
+  outputMessageEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  outputErrorEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  outputThinkingEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  outputFollowupsEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runQueuedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runDequeuedEventSchema
     .extend({
-      role: z.literal("user"),
-      structuredPrompt: userMessageDocumentSchema.optional(),
+      ...assistantEventCompatibilityResponseShape,
+      revokesMessageId: z.string(),
     })
     .strict(),
-  pagedChatMessageBaseSchema.extend({
-    role: z.literal("assistant"),
-    thinking: z.string().optional(),
-    runLifecycleEvent: z.enum(["completed", "failed", "cancelled"]).optional(),
-    recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
-  }),
+  runCompletedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runFailedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runCancelledEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  controlInterruptEventSchema
+    .extend(userEventCompatibilityResponseShape)
+    .strict(),
+  controlRevokeEventSchema
+    .extend({
+      ...userEventCompatibilityResponseShape,
+      revokesMessageId: z.string(),
+    })
+    .strict(),
+  goalChangedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  usageRecordedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
 ]);
+
+if (
+  chatEventTypeSchema.options.length !== chatEventSchema.options.length ||
+  chatEventTypeSchema.options.length !== chatEventResponseSchema.options.length
+) {
+  throw new Error("ChatEvent schema must cover the complete event catalog");
+}
+
+/** @deprecated Use chatEventResponseSchema. */
+const pagedChatMessageSchema = chatEventResponseSchema;
 
 const chatThreadDetailSchema = z.object({
   /**
@@ -503,41 +716,56 @@ const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
 });
 
+const chatNormalSendBodyShape = {
+  agentId: z.string().min(1),
+  prompt: z.string().min(1),
+  threadId: z.string().optional(),
+  clientThreadId: z.string().uuid().optional(),
+  chatThreadEventId: chatThreadEventIdSchema.optional(),
+  // Client-generated UUID for the sort touch created by direct user sends.
+  // Lets event-sourced clients reconcile optimistic sidebar recency by id.
+  chatThreadSortEventId: chatThreadEventIdSchema.optional(),
+  /**
+   * Selected model id. The API resolves the effective provider from org
+   * policy and available credentials. Existing threads may omit it to
+   * reuse the thread's persisted model.
+   */
+  model: selectedModelRequestSchema.optional(),
+  runOptions: chatRunOptionsRequestSchema.optional(),
+  structuredPrompt: userMessageDocumentSchema.optional(),
+  generationTemplate: generationTemplateRequestSchema.optional(),
+  computerUseHostId: z.string().uuid().nullable().optional(),
+  // Optional for backward compatibility: older clients that omit this field
+  // still trigger title generation (server guards with !== false, not === true).
+  hasTextContent: z.boolean().optional(),
+  attachFiles: z.array(attachFileSchema).optional(),
+  // Preview evaluation escape hatch: when enabled, the request asks the
+  // runner to bypass preview mock CLIs and use the real agent runtime.
+  realAgentInPreview: z.boolean().optional(),
+} as const;
+
 const chatMessageNormalSendBodySchema = z.preprocess(
   (value) => {
     return normalizeLegacyModelSelectionInput(value, { allowNull: false });
   },
   z.object({
-    agentId: z.string().min(1),
-    prompt: z.string().min(1),
-    threadId: z.string().optional(),
-    clientThreadId: z.string().uuid().optional(),
-    chatThreadEventId: chatThreadEventIdSchema.optional(),
-    // Client-generated UUID for the sort touch created by direct user sends.
-    // Lets event-sourced clients reconcile optimistic sidebar recency by id.
-    chatThreadSortEventId: chatThreadEventIdSchema.optional(),
-    /**
-     * Selected model id. The API resolves the effective provider from org
-     * policy and available credentials. Existing threads may omit it to
-     * reuse the thread's persisted model.
-     */
-    model: selectedModelRequestSchema.optional(),
-    runOptions: chatRunOptionsRequestSchema.optional(),
-    structuredPrompt: userMessageDocumentSchema.optional(),
-    generationTemplate: generationTemplateRequestSchema.optional(),
-    computerUseHostId: z.string().uuid().nullable().optional(),
-    // Optional for backward compatibility: older clients that omit this field
-    // still trigger title generation (server guards with !== false, not === true).
-    hasTextContent: z.boolean().optional(),
-    attachFiles: z.array(attachFileSchema).optional(),
+    ...chatNormalSendBodyShape,
     // Client-generated UUID used as the user message's primary key.
-    // Lets the client render an optimistic row and reconcile with the
-    // server row by id — no temp-id swap, no React remount.
     clientMessageId: z.string().uuid().optional(),
-    // Preview evaluation escape hatch: when enabled, the request asks the
-    // runner to bypass preview mock CLIs and use the real agent runtime.
-    realAgentInPreview: z.boolean().optional(),
     revokesMessageId: z.string().min(1).optional(),
+    interruptsRunId: z.undefined().optional(),
+  }),
+);
+
+const chatEventNormalSendBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
+  },
+  z.object({
+    ...chatNormalSendBodyShape,
+    // Client-generated UUID used as the user event's primary key.
+    clientEventId: z.string().uuid().optional(),
+    revokesEventId: z.string().min(1).optional(),
     interruptsRunId: z.undefined().optional(),
   }),
 );
@@ -668,6 +896,10 @@ const chatThreadThreadIdPathParamsSchema = z.object({
 const chatThreadMessagePathParamsSchema =
   chatThreadThreadIdPathParamsSchema.extend({
     messageId: z.string().uuid(),
+  });
+const chatThreadEventPathParamsSchema =
+  chatThreadThreadIdPathParamsSchema.extend({
+    eventId: z.string().uuid(),
   });
 
 export const chatThreadByIdContract = c.router({
@@ -1007,6 +1239,75 @@ export const chatMessagesContract = c.router({
 });
 
 /**
+ * Canonical ChatEvent write contract. The message-named route above remains a
+ * compatibility alias for the preceding App release.
+ */
+export const chatEventsContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/zero/chat/events",
+    headers: authHeadersSchema,
+    body: z.union([
+      chatEventNormalSendBodySchema,
+      z.object({
+        agentId: z.string().min(1),
+        threadId: z.string().min(1),
+        revokesEventId: z.string().min(1),
+        clientEventId: z.string().uuid().optional(),
+        prompt: z.undefined().optional(),
+        clientThreadId: z.undefined().optional(),
+        chatThreadEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
+        model: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
+        structuredPrompt: z.undefined().optional(),
+        generationTemplate: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
+        hasTextContent: z.undefined().optional(),
+        attachFiles: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
+        interruptsRunId: z.undefined().optional(),
+      }),
+      z.object({
+        agentId: z.string().min(1),
+        threadId: z.string().min(1),
+        interruptsRunId: z.string().uuid(),
+        clientEventId: z.string().uuid().optional(),
+        prompt: z.undefined().optional(),
+        clientThreadId: z.undefined().optional(),
+        chatThreadEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
+        model: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
+        structuredPrompt: z.undefined().optional(),
+        generationTemplate: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
+        hasTextContent: z.undefined().optional(),
+        attachFiles: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
+        revokesEventId: z.undefined().optional(),
+      }),
+    ]),
+    responses: {
+      201: z.object({
+        runId: z.string().nullable(),
+        threadId: z.string(),
+        status: runStatusSchema.optional(),
+        createdAt: z.string().optional(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      422: apiErrorSchema,
+    },
+    summary: "Append a chat event and dispatch input when applicable",
+  },
+});
+
+/**
  * Single chat message in a search result.
  * `content` is guaranteed non-null because the search route filters out
  * placeholder rows where content is NULL.
@@ -1122,6 +1423,48 @@ export const chatThreadMessagesContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get a chat message by id for a thread",
+  },
+});
+
+/**
+ * Canonical ChatEvent read contract. The message-named routes above remain
+ * compatibility aliases for the preceding App and CLI releases.
+ */
+export const chatThreadEventsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/events",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      beforeSeqId: z.coerce.number().int().positive().optional(),
+      sinceId: z.string().uuid().optional(),
+      beforeId: z.string().uuid().optional(),
+      limit: z.coerce.number().min(1).max(50).default(50),
+    }),
+    responses: {
+      200: z.object({
+        events: z.array(chatEventResponseSchema),
+        hasHistoryBefore: z.boolean().optional(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get paginated chat events for a thread",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/events/:eventId",
+    headers: authHeadersSchema,
+    pathParams: chatThreadEventPathParamsSchema,
+    responses: {
+      200: chatEventResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a chat event by id for a thread",
   },
 });
 
@@ -1345,7 +1688,11 @@ export type ChatThreadModelSelectionContract =
   typeof chatThreadModelSelectionContract;
 export type ChatThreadComputerUseHostContract =
   typeof chatThreadComputerUseHostContract;
+export type ChatEventsContract = typeof chatEventsContract;
+export type ChatThreadEventsContract = typeof chatThreadEventsContract;
+/** @deprecated Use ChatEventsContract. */
 export type ChatMessagesContract = typeof chatMessagesContract;
+/** @deprecated Use ChatThreadEventsContract. */
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
 export type ArtifactsContract = typeof artifactsContract;
@@ -1368,6 +1715,8 @@ export {
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
+  chatEventSchema,
+  /** @deprecated Use chatEventSchema. */
   pagedChatMessageSchema,
   chatMessageUsagePayloadSchema,
   summaryEntrySchema,
@@ -1384,6 +1733,7 @@ export {
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
   htmlArtifactEditSnapshotSchema,
+  chatEventResponseSchema,
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
@@ -1436,7 +1786,66 @@ export type ChatThreadEvent = z.infer<typeof chatThreadEventSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
-export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
+export type ChatEvent = z.infer<typeof chatEventSchema>;
+export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
+
+export function canonicalChatEvent(response: ChatEventResponse): ChatEvent {
+  if (response.role !== chatEventCompatibilityRole(response.eventType)) {
+    throw new Error(
+      `Invalid compatibility role for chat event ${response.eventType}`,
+    );
+  }
+  if (
+    response.revokesMessageId !== undefined &&
+    response.revokesMessageId !== response.revokesEventId
+  ) {
+    throw new Error("Chat event revoke compatibility fields disagree");
+  }
+  const { role, revokesMessageId, ...event } = response;
+  void role;
+  void revokesMessageId;
+  return event;
+}
+
+export function chatEventResponse(event: ChatEvent): ChatEventResponse {
+  const revokesMessageId = event.revokesEventId;
+  return chatEventResponseSchema.parse({
+    ...event,
+    role: chatEventCompatibilityRole(event.eventType),
+    ...(revokesMessageId === undefined ? {} : { revokesMessageId }),
+  });
+}
+export type ChatInputEvent = Extract<
+  ChatEvent,
+  { eventType: "input.prompt" | "input.rejected" }
+>;
+export type ChatPromptEvent = Extract<ChatEvent, { eventType: "input.prompt" }>;
+export type ChatFollowupsEvent = Extract<
+  ChatEvent,
+  { eventType: "output.followups" }
+>;
+export type ChatUsageEvent = Extract<
+  ChatEvent,
+  { eventType: "usage.recorded" }
+>;
+/**
+ * @deprecated Use the eventType-discriminated ChatEvent union.
+ *
+ * This one-release compatibility view keeps the former optional-field access
+ * pattern available to legacy `/messages` consumers while canonical event
+ * consumers narrow on `eventType`.
+ */
+export type PagedChatMessage = ChatEventResponse & {
+  readonly structuredPrompt?: UserMessageDocument;
+  readonly attachFiles?: ResolvedAttachFile[];
+  readonly generationTemplate?: GenerationTemplateRequest;
+  readonly error?: string;
+  readonly thinking?: string;
+  readonly recommendedFollowups?: ChatFollowupsEvent["recommendedFollowups"];
+  readonly runLifecycleEvent?: "completed" | "failed" | "cancelled";
+  readonly interruptsRunId?: string;
+  readonly usage?: ChatMessageUsagePayload;
+};
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema
 >;

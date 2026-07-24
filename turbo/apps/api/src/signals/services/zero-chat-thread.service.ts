@@ -1,5 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  chatEventCompatibilityRole,
+  type ChatEventType,
+} from "@vm0/api-contracts/contracts/chat-events";
+import {
+  chatEventResponse,
   type ArtifactItem,
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -7,7 +12,8 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type CodexServiceTier,
-  type PagedChatMessage,
+  type ChatEvent,
+  type ChatEventResponse,
   type PersistedAttachment,
   type ResolvedAttachFile,
   type UserMessageDocument,
@@ -90,7 +96,7 @@ import {
   insertAssistantEventMessages$,
   resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
-  visibleChatMessageCondition,
+  visibleChatEventCondition,
 } from "./zero-chat-message-shared.service";
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { latestRunFinishMessageSubquery } from "./zero-chat-thread-read-state-query";
@@ -99,10 +105,10 @@ import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import { excludeCanonicalSlackChatThreads } from "./canonical-slack-web-visibility.service";
+import { chatEventTypeSql } from "./zero-chat-event-type.service";
 
 export { insertAssistantEventMessages$ };
 
-const messageRoleSchema = z.enum(["user", "assistant"]);
 const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
 );
@@ -112,9 +118,10 @@ const revokedChatMessage = alias(chatMessages, "revoked_chat_message");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
-type ChatMessageRow = {
+type ChatEventRow = {
   readonly id: string;
-  readonly role: string;
+  readonly chatThreadId: string;
+  readonly eventType: ChatEventType;
   readonly content: string | null;
   readonly structuredPrompt: ChatMessageStructuredPrompt | null;
   readonly thinking: string | null;
@@ -136,7 +143,7 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
-  readonly revokesMessageId: string | null;
+  readonly revokesEventId: string | null;
   readonly interruptsRunId: string | null;
   readonly workflowName: string | null;
   readonly workflowDisplayName: string | null;
@@ -185,7 +192,7 @@ const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 type ChatSearchMessageRow = {
   readonly messageId: string;
   readonly chatThreadId: string;
-  readonly role: string;
+  readonly eventType: ChatEventType;
   readonly content: string | null;
   readonly createdAt: Date;
   readonly seqId: number;
@@ -229,9 +236,10 @@ function effectiveChatMessageRunId() {
   return chatMessages.runId;
 }
 
-const messageColumns = {
+const eventColumns = {
   id: chatMessages.id,
-  role: chatMessages.role,
+  chatThreadId: chatMessages.chatThreadId,
+  eventType: chatEventTypeSql().as("event_type"),
   content: chatMessages.content,
   structuredPrompt: chatMessages.structuredPrompt,
   thinking: chatMessages.thinking,
@@ -250,7 +258,7 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
-  revokesMessageId: chatMessages.revokesMessageId,
+  revokesEventId: chatMessages.revokesEventId,
   interruptsRunId: chatMessages.interruptsRunId,
 } as const;
 
@@ -341,11 +349,11 @@ function chatMessageMetadataSubquery(db: Pick<Db, "select">) {
     .as("chat_message_metadata");
 }
 
-function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
+function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
   const metadata = chatMessageMetadataSubquery(db);
   return db
     .select({
-      ...messageColumns,
+      ...eventColumns,
       triggerSource: metadata.triggerSource,
       slackMessagePermalink: sql`COALESCE(
         ${chatMessages.slackMessagePermalink},
@@ -375,19 +383,24 @@ function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
     .leftJoinLateral(metadata, sql`true`)
     .leftJoin(
       revokedChatMessage,
-      eq(revokedChatMessage.id, chatMessages.revokesMessageId),
+      eq(revokedChatMessage.id, chatMessages.revokesEventId),
     );
 }
 
 const searchMessageColumns = {
   messageId: chatMessages.id,
   chatThreadId: chatMessages.chatThreadId,
-  role: chatMessages.role,
+  eventType: chatEventTypeSql().as("event_type"),
   content: chatMessages.content,
   createdAt: chatMessages.createdAt,
   seqId: chatMessages.seqId,
   sequenceNumber: chatMessages.sequenceNumber,
   runId: effectiveChatMessageRunId(),
+} as const;
+
+const searchContextMessageColumns = {
+  ...searchMessageColumns,
+  eventType: chatEventTypeSql().as("context_event_type"),
 } as const;
 
 function escapeLikePattern(value: string): string {
@@ -501,7 +514,7 @@ export function zeroChatThreadDraft(args: {
 
 function chatMessageAttachFiles(
   userId: string,
-  row: ChatMessageRow,
+  row: ChatEventRow,
 ): Computed<Promise<readonly ResolvedAttachFile[] | undefined>> {
   return computed(async (get) => {
     if (row.attachFileMetadata && row.attachFileMetadata.length > 0) {
@@ -514,22 +527,13 @@ function chatMessageAttachFiles(
   });
 }
 
-function lifecycleEventOrUndefined(
-  value: string | null,
-): "completed" | "failed" | "cancelled" | undefined {
-  if (value === "completed" || value === "failed" || value === "cancelled") {
-    return value;
-  }
-  return undefined;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeUsagePayload(
   value: ChatMessageUsagePayload | null,
-): PagedChatMessage["usage"] {
+): Extract<ChatEvent, { eventType: "usage.recorded" }>["usage"] | undefined {
   if (value === null) {
     return undefined;
   }
@@ -553,7 +557,18 @@ function normalizeUsagePayload(
   };
 }
 
-function workflowScheduleAutomationBrief(row: ChatMessageRow): string | null {
+function requiredChatEventField<T>(
+  value: T | null,
+  eventType: ChatEventType,
+  field: string,
+): T {
+  if (value === null) {
+    throw new Error(`${eventType} chat event is missing ${field}`);
+  }
+  return value;
+}
+
+function workflowScheduleAutomationBrief(row: ChatEventRow): string | null {
   if (row.workflowAutomationKind !== "schedule") {
     return null;
   }
@@ -569,8 +584,8 @@ function workflowScheduleAutomationBrief(row: ChatMessageRow): string | null {
 }
 
 function workflowSnapshotFromRow(
-  row: ChatMessageRow,
-): NonNullable<PagedChatMessage["workflowSnapshot"]> | undefined {
+  row: ChatEventRow,
+): NonNullable<ChatEvent["workflowSnapshot"]> | undefined {
   if (row.workflowName === null) {
     return undefined;
   }
@@ -586,56 +601,202 @@ function workflowSnapshotFromRow(
   };
 }
 
-function toPagedMessage(
-  userId: string,
-  row: ChatMessageRow,
-): Computed<Promise<PagedChatMessage>> {
-  return computed(async (get): Promise<PagedChatMessage> => {
-    const attachFiles = await get(chatMessageAttachFiles(userId, row));
-    const workflowSnapshot = workflowSnapshotFromRow(row);
+function baseChatEventFromRow(
+  row: ChatEventRow,
+  workflowSnapshot: NonNullable<ChatEvent["workflowSnapshot"]> | undefined,
+) {
+  return {
+    id: row.id,
+    threadId: row.chatThreadId,
+    content: row.content,
+    runId: row.runId ?? undefined,
+    runGroupId: row.runGroupId ?? undefined,
+    triggerSource: row.triggerSource ?? undefined,
+    slackMessagePermalink: row.slackMessagePermalink ?? undefined,
+    isGoalRun: row.isGoalRun || undefined,
+    runEventId: row.runEventId ?? undefined,
+    goalSnapshot: row.goalSnapshot ?? undefined,
+    revokesEventId: row.revokesEventId ?? undefined,
+    seqId: row.seqId,
+    sequenceNumber: row.sequenceNumber,
+    workflowSnapshot,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
-    const role = messageRoleSchema.parse(row.role);
-    const message = {
-      id: row.id,
-      role,
-      content: row.content,
-      runId: row.runId ?? undefined,
-      runGroupId: row.runGroupId ?? undefined,
-      triggerSource: row.triggerSource ?? undefined,
-      slackMessagePermalink: row.slackMessagePermalink ?? undefined,
-      isGoalRun: row.isGoalRun || undefined,
-      usage: normalizeUsagePayload(row.usagePayload),
-      runEventId: row.runEventId ?? undefined,
-      goalEvent: row.goalEvent ?? undefined,
-      goalSnapshot: row.goalSnapshot ?? undefined,
-      revokesMessageId: row.revokesMessageId ?? undefined,
-      interruptsRunId: row.interruptsRunId ?? undefined,
-      error: row.error ?? undefined,
+type ChatEventBase = ReturnType<typeof baseChatEventFromRow>;
+type ChatEventBuilder = (
+  row: ChatEventRow,
+  event: ChatEventBase,
+  attachFiles: readonly ResolvedAttachFile[] | undefined,
+) => ChatEvent;
+
+const chatEventBuilders = {
+  "input.prompt": (row, event, attachFiles) => {
+    return {
+      ...event,
+      eventType: "input.prompt",
+      structuredPrompt: row.structuredPrompt ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
-      seqId: row.seqId,
-      sequenceNumber: row.sequenceNumber,
-      workflowSnapshot,
-      createdAt: row.createdAt.toISOString(),
     };
-    if (role !== "assistant") {
-      return {
-        ...message,
-        role: "user" as const,
-        structuredPrompt: row.structuredPrompt ?? undefined,
-      };
-    }
-    const recommendedFollowups = normalizeRecommendedFollowups(
+  },
+  "input.rejected": (row, event, attachFiles) => {
+    return {
+      ...event,
+      eventType: "input.rejected",
+      structuredPrompt: row.structuredPrompt ?? undefined,
+      error: requiredChatEventField(row.error, row.eventType, "error"),
+      attachFiles: attachFiles ? [...attachFiles] : undefined,
+      generationTemplate: row.generationTemplate ?? undefined,
+    };
+  },
+  "output.message": (row, event) => {
+    return {
+      ...event,
+      eventType: "output.message",
+      content: requiredChatEventField(row.content, row.eventType, "content"),
+    };
+  },
+  "output.error": (row, event) => {
+    return {
+      ...event,
+      eventType: "output.error",
+      error: requiredChatEventField(row.error, row.eventType, "error"),
+    };
+  },
+  "output.thinking": (row, event) => {
+    return {
+      ...event,
+      eventType: "output.thinking",
+      content: null,
+      thinking: requiredChatEventField(row.thinking, row.eventType, "thinking"),
+    };
+  },
+  "output.followups": (row, event) => {
+    const recommendedFollowups = requiredChatEventField(
       row.recommendedFollowups,
+      row.eventType,
+      "recommendedFollowups",
     );
     return {
-      ...message,
-      role: "assistant" as const,
-      thinking: row.thinking ?? undefined,
-      runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
-      recommendedFollowups:
-        recommendedFollowups.length > 0 ? recommendedFollowups : undefined,
+      ...event,
+      eventType: "output.followups",
+      content: null,
+      recommendedFollowups: normalizeRecommendedFollowups(recommendedFollowups),
     };
+  },
+  "run.queued": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.queued",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      content: requiredChatEventField(row.content, row.eventType, "content"),
+    };
+  },
+  "run.dequeued": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.dequeued",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      content: null,
+      revokesEventId: requiredChatEventField(
+        row.revokesEventId,
+        row.eventType,
+        "revokesEventId",
+      ),
+    };
+  },
+  "run.completed": (row, event, attachFiles) => {
+    return {
+      ...event,
+      eventType: "run.completed",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      attachFiles: attachFiles ? [...attachFiles] : undefined,
+      runLifecycleEvent: "completed",
+    };
+  },
+  "run.failed": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.failed",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      error: row.error ?? undefined,
+      runLifecycleEvent: "failed",
+    };
+  },
+  "run.cancelled": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.cancelled",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      error: row.error ?? undefined,
+      runLifecycleEvent: "cancelled",
+    };
+  },
+  "control.interrupt": (row, event) => {
+    return {
+      ...event,
+      eventType: "control.interrupt",
+      content: null,
+      interruptsRunId: requiredChatEventField(
+        row.interruptsRunId,
+        row.eventType,
+        "interruptsRunId",
+      ),
+    };
+  },
+  "control.revoke": (row, event) => {
+    return {
+      ...event,
+      eventType: "control.revoke",
+      content: null,
+      revokesEventId: requiredChatEventField(
+        row.revokesEventId,
+        row.eventType,
+        "revokesEventId",
+      ),
+    };
+  },
+  "goal.changed": (row, event) => {
+    return {
+      ...event,
+      eventType: "goal.changed",
+      content: null,
+      goalEvent: requiredChatEventField(
+        row.goalEvent,
+        row.eventType,
+        "goalEvent",
+      ),
+    };
+  },
+  "usage.recorded": (row, event) => {
+    return {
+      ...event,
+      eventType: "usage.recorded",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      content: null,
+      usage: requiredChatEventField(
+        normalizeUsagePayload(row.usagePayload) ?? null,
+        row.eventType,
+        "usage",
+      ),
+    };
+  },
+} satisfies Record<ChatEventType, ChatEventBuilder>;
+
+function toChatEvent(
+  userId: string,
+  row: ChatEventRow,
+): Computed<Promise<ChatEventResponse>> {
+  return computed(async (get): Promise<ChatEventResponse> => {
+    const attachFiles = await get(chatMessageAttachFiles(userId, row));
+    const event = chatEventBuilders[row.eventType](
+      row,
+      baseChatEventFromRow(row, workflowSnapshotFromRow(row)),
+      attachFiles,
+    );
+    return chatEventResponse(event);
   });
 }
 
@@ -1502,7 +1663,7 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   return {
     messageId: row.messageId,
     chatThreadId: row.chatThreadId,
-    role: messageRoleSchema.parse(row.role),
+    role: chatEventCompatibilityRole(row.eventType),
     content: row.content,
     createdAt: row.createdAt.toISOString(),
     seqId: row.seqId,
@@ -1528,7 +1689,7 @@ function chatSearchContextSideQuery(
       isBefore: sql`${args.isBefore}::boolean`
         .mapWith(pgBooleanDecoder)
         .as("is_before"),
-      ...searchMessageColumns,
+      ...searchContextMessageColumns,
     })
     .from(chatMessages)
     .where(
@@ -1538,7 +1699,7 @@ function chatSearchContextSideQuery(
           ? lt(chatMessages.seqId, matchedChatMessage.seqId)
           : gt(chatMessages.seqId, matchedChatMessage.seqId),
         isNotNull(chatMessages.content),
-        visibleChatMessageCondition(db),
+        visibleChatEventCondition(db),
         excludeGoalMarkerCondition(),
       ),
     )
@@ -1595,7 +1756,7 @@ async function loadChatSearchContexts(
       isBefore: context.isBefore,
       messageId: context.messageId,
       chatThreadId: context.chatThreadId,
-      role: context.role,
+      eventType: context.eventType,
       content: context.content,
       createdAt: context.createdAt,
       seqId: context.seqId,
@@ -1659,7 +1820,7 @@ export function zeroChatSearch(args: {
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
       isNotNull(chatMessages.content),
-      visibleChatMessageCondition(db),
+      visibleChatEventCondition(db),
       excludeGoalMarkerCondition(),
       ilike(chatMessages.content, pattern),
       ...(args.includeCanonicalSlackThreads
@@ -1715,7 +1876,7 @@ export function zeroChatSearch(args: {
   });
 }
 
-export function zeroChatThreadMessagesPage(args: {
+export function zeroChatThreadEventsPage(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly sinceSeqId: number | undefined;
@@ -1725,7 +1886,7 @@ export function zeroChatThreadMessagesPage(args: {
   readonly limit: number;
 }): Computed<
   Promise<{
-    readonly messages: readonly PagedChatMessage[];
+    readonly events: readonly ChatEventResponse[];
     readonly hasHistoryBefore: boolean;
   } | null>
 > {
@@ -1774,7 +1935,7 @@ export function zeroChatThreadMessagesPage(args: {
             )
             .limit(1);
     if (legacyCursorId !== undefined && !legacyCursor) {
-      return { messages: [], hasHistoryBefore: false };
+      return { events: [], hasHistoryBefore: false };
     }
 
     const sinceSeqId =
@@ -1782,23 +1943,23 @@ export function zeroChatThreadMessagesPage(args: {
     const beforeSeqId =
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
-    let rows: ChatMessageRow[];
+    let rows: ChatEventRow[];
     let hasHistoryBefore = false;
 
     if (sinceSeqId !== undefined) {
-      rows = await selectChatMessagesWithMetadata(db)
+      rows = await selectChatEventsWithMetadata(db)
         .where(and(threadFilter, gt(chatMessages.seqId, sinceSeqId)))
         .orderBy(asc(chatMessages.seqId))
         .limit(args.limit);
     } else if (beforeSeqId !== undefined) {
-      const previousRows = await selectChatMessagesWithMetadata(db)
+      const previousRows = await selectChatEventsWithMetadata(db)
         .where(and(threadFilter, lt(chatMessages.seqId, beforeSeqId)))
         .orderBy(desc(chatMessages.seqId))
         .limit(args.limit + 1);
       hasHistoryBefore = previousRows.length > args.limit;
       rows = previousRows.slice(0, args.limit).reverse();
     } else {
-      const latestRows = await selectChatMessagesWithMetadata(db)
+      const latestRows = await selectChatEventsWithMetadata(db)
         .where(threadFilter)
         .orderBy(desc(chatMessages.seqId))
         .limit(args.limit + 1);
@@ -1807,9 +1968,9 @@ export function zeroChatThreadMessagesPage(args: {
     }
 
     return {
-      messages: await Promise.all(
+      events: await Promise.all(
         rows.map((row) => {
-          return get(toPagedMessage(args.userId, row));
+          return get(toChatEvent(args.userId, row));
         }),
       ),
       hasHistoryBefore,
@@ -1817,11 +1978,11 @@ export function zeroChatThreadMessagesPage(args: {
   });
 }
 
-export function zeroChatThreadMessageById(args: {
+export function zeroChatThreadEventById(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly messageId: string;
-}): Computed<Promise<PagedChatMessage | null>> {
+  readonly eventId: string;
+}): Computed<Promise<ChatEventResponse | null>> {
   return computed(async (get) => {
     const owned = await get(ownedChatThread(args.threadId, args.userId));
     if (!owned) {
@@ -1829,10 +1990,10 @@ export function zeroChatThreadMessageById(args: {
     }
 
     const db = get(db$);
-    const [row] = await selectChatMessagesWithMetadata(db)
+    const [row] = await selectChatEventsWithMetadata(db)
       .where(
         and(
-          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.id, args.eventId),
           eq(chatMessages.chatThreadId, args.threadId),
         ),
       )
@@ -1841,7 +2002,7 @@ export function zeroChatThreadMessageById(args: {
       return null;
     }
 
-    return await get(toPagedMessage(args.userId, row));
+    return await get(toChatEvent(args.userId, row));
   });
 }
 

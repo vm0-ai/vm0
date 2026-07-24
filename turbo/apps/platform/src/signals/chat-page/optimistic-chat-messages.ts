@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
 import type { OptimisticChatMessage } from "./chat-message-types.ts";
 import type { ParsedBodyBlock } from "./parse-body-blocks.ts";
@@ -43,10 +43,8 @@ export function createQueuedOptimisticUserMessagesForThread(threadId: string) {
     const recalledIds = new Set(
       entries.flatMap((entry) => {
         const { message } = entry;
-        return message.role === "user" &&
-          message.runId === undefined &&
-          message.revokesMessageId !== undefined
-          ? [message.revokesMessageId]
+        return message.eventType === "control.revoke"
+          ? [message.revokesEventId]
           : [];
       }),
     );
@@ -54,11 +52,8 @@ export function createQueuedOptimisticUserMessagesForThread(threadId: string) {
       const { message } = entry;
       return (
         entry.optimisticUserMessageAssociation === "queue" &&
-        message.role === "user" &&
+        message.eventType === "input.prompt" &&
         message.runId === undefined &&
-        message.revokesMessageId === undefined &&
-        message.interruptsRunId === undefined &&
-        message.error === undefined &&
         !recalledIds.has(message.id)
       );
     });
@@ -82,7 +77,7 @@ export const reconcileOptimisticChatMessages$ = command(
     {
       threadId,
       messages,
-    }: { threadId: string; messages: readonly PagedChatMessage[] },
+    }: { threadId: string; messages: readonly ChatEvent[] },
   ) => {
     if (messages.length === 0) {
       return;

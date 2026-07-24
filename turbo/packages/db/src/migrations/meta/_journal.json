@@ -4656,6 +4656,13 @@
       "when": 1784875444046,
       "tag": "0664_daily_viper",
       "breakpoints": true
+    },
+    {
+      "idx": 665,
+      "version": "7",
+      "when": 1784877106126,
+      "tag": "0665_chat_event_type",
+      "breakpoints": true
     }
   ]
 }

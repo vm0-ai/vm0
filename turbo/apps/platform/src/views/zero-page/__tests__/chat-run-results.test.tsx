@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
+  chatEventResponse,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { click } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
@@ -1296,13 +1297,13 @@ describe("chat lifecycle", () => {
     const threadId = "b0000000-0000-4000-a000-000000000748";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
       return {
-        ...makeMessage(`base-${index}`, `Baseline ${index}`),
+        ...makeMessage(`base-${index}`, `Baseline ${index}`, threadId),
         seqId: index + 1,
       };
     });
     const burstMessages = Array.from({ length: 120 }, (_, index) => {
       return {
-        ...makeMessage(`burst-${index}`, `Burst ${index}`),
+        ...makeMessage(`burst-${index}`, `Burst ${index}`, threadId),
         seqId: baselineMessages.length + index + 1,
       };
     });
@@ -1321,17 +1322,17 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       async ({ query, respond }) => {
         if (!query.sinceSeqId) {
           return respond(200, {
-            messages: baselineMessages,
+            events: baselineMessages.map(chatEventResponse),
             hasHistoryBefore: false,
           });
         }
         sinceSeqIds.push(query.sinceSeqId);
         if (!burstEnabled) {
-          return respond(200, { messages: [] });
+          return respond(200, { events: [] });
         }
         const startIndex = page * 50;
         page += 1;
@@ -1340,7 +1341,7 @@ describe("chat lifecycle", () => {
           terminalForwardPageRequested = true;
           await terminalPageGate.promise;
         }
-        return respond(200, { messages });
+        return respond(200, { events: messages.map(chatEventResponse) });
       },
     );
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {

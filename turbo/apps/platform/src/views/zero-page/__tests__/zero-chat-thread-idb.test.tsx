@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-  type PagedChatMessage,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import {
@@ -23,13 +23,9 @@ const idbMessageStoreMock = vi.hoisted(() => {
   const readLatestImpl = (_threadId: string, _signal?: AbortSignal) => {
     return Promise.resolve(cachedMessages);
   };
-  const upsertMessagesImpl = (_threadId: string, messages: unknown[]) => {
-    for (const message of messages) {
-      if (
-        typeof message !== "object" ||
-        message === null ||
-        !("id" in message)
-      ) {
+  const upsertEventsImpl = (_threadId: string, events: unknown[]) => {
+    for (const event of events) {
+      if (typeof event !== "object" || event === null || !("id" in event)) {
         continue;
       }
       const index = cachedMessages.findIndex((cached) => {
@@ -37,23 +33,23 @@ const idbMessageStoreMock = vi.hoisted(() => {
           typeof cached === "object" &&
           cached !== null &&
           "id" in cached &&
-          cached.id === message.id
+          cached.id === event.id
         );
       });
       if (index === -1) {
-        cachedMessages.push(message);
+        cachedMessages.push(event);
       } else {
-        cachedMessages[index] = message;
+        cachedMessages[index] = event;
       }
     }
     return Promise.resolve();
   };
   const readLatest = vi.fn(readLatestImpl);
-  const upsertMessages = vi.fn(upsertMessagesImpl);
+  const upsertEvents = vi.fn(upsertEventsImpl);
 
   return {
     readLatest,
-    upsertMessages,
+    upsertEvents,
     setMessages(messages: unknown[]) {
       cachedMessages = messages;
     },
@@ -61,8 +57,8 @@ const idbMessageStoreMock = vi.hoisted(() => {
       cachedMessages = [];
       readLatest.mockReset();
       readLatest.mockImplementation(readLatestImpl);
-      upsertMessages.mockReset();
-      upsertMessages.mockImplementation(upsertMessagesImpl);
+      upsertEvents.mockReset();
+      upsertEvents.mockImplementation(upsertEventsImpl);
     },
   };
 });
@@ -129,15 +125,15 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../../signals/external/idb-message-store.ts", () => {
+vi.mock("../../../signals/external/idb-event-store.ts", () => {
   return {
-    createIdbMessageStores: () => {
+    createIdbEventStores: () => {
       return {
         readStore: {
           readLatest: idbMessageStoreMock.readLatest,
         },
         writeStore: {
-          upsertMessages: idbMessageStoreMock.upsertMessages,
+          upsertEvents: idbMessageStoreMock.upsertEvents,
         },
       };
     },
@@ -237,11 +233,12 @@ function mockSidebarThread(): void {
   });
 }
 
-function cachedChatMessages(): PagedChatMessage[] {
+function cachedChatMessages(): ChatEvent[] {
   return [
     {
       id: "00000000-0000-4000-8000-000000000101",
-      role: "user",
+      threadId: THREAD_ID,
+      eventType: "input.prompt" as const,
       runId: RUN_ID,
       content: USER_MESSAGE,
       seqId: 1,
@@ -249,7 +246,8 @@ function cachedChatMessages(): PagedChatMessage[] {
     },
     {
       id: "00000000-0000-4000-8000-000000000102",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "output.message" as const,
       runId: RUN_ID,
       content: ASSISTANT_MESSAGE,
       seqId: 2,
@@ -257,7 +255,8 @@ function cachedChatMessages(): PagedChatMessage[] {
     },
     {
       id: "00000000-0000-4000-8000-000000000103",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "run.completed" as const,
       runId: RUN_ID,
       content: null,
       runLifecycleEvent: "completed",
@@ -319,15 +318,17 @@ describe("zero chat thread IndexedDB fallback", () => {
     mockSidebarThread();
 
     let messageListRequests = 0;
-    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       messageListRequests += 1;
-      if (query.sinceSeqId) {
-        return respond(200, { messages: [] });
+      if (query.sinceSeqId || query.sinceId) {
+        return respond(200, { events: [] });
       }
       return respond(200, {
-        messages: [
+        events: [
           {
             id: "00000000-0000-4000-8000-000000000101",
+            threadId: THREAD_ID,
+            eventType: "input.prompt" as const,
             role: "user",
             content: USER_MESSAGE,
             seqId: 1,
@@ -335,6 +336,8 @@ describe("zero chat thread IndexedDB fallback", () => {
           },
           {
             id: "00000000-0000-4000-8000-000000000102",
+            threadId: THREAD_ID,
+            eventType: "output.message" as const,
             role: "assistant",
             content: ASSISTANT_MESSAGE,
             seqId: 2,
@@ -370,10 +373,10 @@ describe("zero chat thread IndexedDB fallback", () => {
 
     const initialMessageList = context.mocks.deferred<void>();
     let messageListRequests = 0;
-    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       messageListRequests += 1;
       await initialMessageList.promise;
-      return respond(200, { messages: [], hasHistoryBefore: false });
+      return respond(200, { events: [], hasHistoryBefore: false });
     });
 
     try {
@@ -412,10 +415,10 @@ describe("zero chat thread IndexedDB fallback", () => {
 
     const initialMessageList = context.mocks.deferred<void>();
     let messageListRequests = 0;
-    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       messageListRequests += 1;
       await initialMessageList.promise;
-      return respond(200, { messages: [], hasHistoryBefore: false });
+      return respond(200, { events: [], hasHistoryBefore: false });
     });
     context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
       return never();
@@ -461,10 +464,10 @@ describe("zero chat thread IndexedDB fallback", () => {
 
     const initialMessageList = context.mocks.deferred<void>();
     let messageListRequests = 0;
-    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       messageListRequests += 1;
       await initialMessageList.promise;
-      return respond(200, { messages: [], hasHistoryBefore: false });
+      return respond(200, { events: [], hasHistoryBefore: false });
     });
     context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
       return never();
@@ -500,11 +503,11 @@ describe("zero chat thread IndexedDB fallback", () => {
       threadDetailRequests += 1;
       return never();
     });
-    context.mocks.api(chatThreadMessagesContract.list, ({ never }) => {
+    context.mocks.api(chatThreadEventsContract.list, ({ never }) => {
       messageListRequests += 1;
       return never();
     });
-    context.mocks.api(chatThreadMessagesContract.get, ({ never }) => {
+    context.mocks.api(chatThreadEventsContract.get, ({ never }) => {
       return never();
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ never }) => {

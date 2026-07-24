@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
@@ -31,7 +31,7 @@ import {
   threadMeta,
   touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
-import { loadIndexedDbChatMessages$ } from "../chat-message-indexed-db.ts";
+import { loadIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { createRemoteChatThreadDataSource } from "../remote-chat-thread-data-source.ts";
 
 const idbThreadEventStoreMock = vi.hoisted(() => {
@@ -685,14 +685,11 @@ describe("chat thread event sourcing local-first list", () => {
         draftAttachments: null,
       });
     });
-    context.mocks.api(
-      chatThreadMessagesContract.list,
-      ({ params, respond }) => {
-        initialMessagesRequests += 1;
-        expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
-        return respond(200, { messages: [], hasHistoryBefore: false });
-      },
-    );
+    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+      initialMessagesRequests += 1;
+      expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
+      return respond(200, { events: [], hasHistoryBefore: false });
+    });
 
     const dataSource = createRemoteChatThreadDataSource(OPTIMISTIC_THREAD_ID);
     await expect(
@@ -703,7 +700,7 @@ describe("chat thread event sourcing local-first list", () => {
     ).resolves.toBeNull();
     await expect(
       context.store.set(
-        loadIndexedDbChatMessages$,
+        loadIndexedDbChatEvents$,
         OPTIMISTIC_THREAD_ID,
         context.signal,
       ),
@@ -732,12 +729,12 @@ describe("chat thread event sourcing local-first list", () => {
     });
     await expect(
       context.store.set(
-        dataSource.listMessagesAfter$,
+        dataSource.listEventsAfter$,
         { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
         context.signal,
       ),
     ).resolves.toStrictEqual({
-      messages: [],
+      events: [],
       hasHistoryBefore: false,
     });
     expect(threadDetailRequests).toBe(1);

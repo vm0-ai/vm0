@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -271,9 +271,9 @@ describe("chat lifecycle", () => {
     const prompt = "Show this while the initial list is blocked";
     const initialMessageList = context.mocks.deferred<void>();
     mockChatLifecycle(context);
-    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       await initialMessageList.promise;
-      return respond(200, { messages: [], hasHistoryBefore: false });
+      return respond(200, { events: [], hasHistoryBefore: false });
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });

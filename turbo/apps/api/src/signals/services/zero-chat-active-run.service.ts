@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
@@ -58,7 +59,7 @@ export async function activeChatRunExists(
               .where(
                 and(
                   eq(chatMessages.runId, zeroRuns.id),
-                  eq(chatMessages.role, "user"),
+                  chatEventTypeIn(["input.prompt"]),
                 ),
               ),
           ),

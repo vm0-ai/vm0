@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { StoreProvider } from "ccstate-react";
 import { describe, expect, it } from "vitest";
@@ -17,15 +17,22 @@ import { Markdown } from "../markdown.tsx";
 const context = testContext();
 
 function mockThread(content: string): void {
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId) {
-      return respond(200, { messages: [] });
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+    if (
+      query.sinceSeqId !== undefined ||
+      query.beforeSeqId !== undefined ||
+      query.sinceId !== undefined ||
+      query.beforeId !== undefined
+    ) {
+      return respond(200, { events: [] });
     }
 
     return respond(200, {
-      messages: [
+      events: [
         {
           id: "msg-1",
+          threadId: "thread-markdown",
+          eventType: "output.message" as const,
           role: "assistant",
           content,
           seqId: 1,

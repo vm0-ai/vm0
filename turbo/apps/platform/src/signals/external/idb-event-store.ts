@@ -1,7 +1,7 @@
 import type { IDBPDatabase } from "idb";
 import {
-  pagedChatMessageSchema,
-  type PagedChatMessage,
+  chatEventSchema,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
 import {
@@ -15,37 +15,29 @@ import {
   withChatIdbTimeout,
 } from "./chat-idb-safe.ts";
 
-const L = logger("ChatMessageIndexedDb");
+const L = logger("ChatEventIndexedDb");
 
-type StoredPagedChatMessage = PagedChatMessage & {
-  readonly threadId: string;
-};
+type StoredChatEvent = ChatEvent;
 
-interface ChatMessageReadStore {
-  readBounds(
-    threadId: string,
-    signal?: AbortSignal,
-  ): Promise<ChatMessageBounds>;
-  readLatest(
-    threadId: string,
-    signal?: AbortSignal,
-  ): Promise<PagedChatMessage[]>;
+interface ChatEventReadStore {
+  readBounds(threadId: string, signal?: AbortSignal): Promise<ChatEventBounds>;
+  readLatest(threadId: string, signal?: AbortSignal): Promise<ChatEvent[]>;
 }
 
-export interface ChatMessageBounds {
-  readonly first: PagedChatMessage | null;
-  readonly last: PagedChatMessage | null;
+export interface ChatEventBounds {
+  readonly first: ChatEvent | null;
+  readonly last: ChatEvent | null;
 }
 
-interface ChatMessageWriteStore {
-  upsertMessages(
+interface ChatEventWriteStore {
+  upsertEvents(
     threadId: string,
-    messages: PagedChatMessage[],
+    events: ChatEvent[],
     signal?: AbortSignal,
   ): Promise<void>;
 }
 
-function toApiMessage(raw: unknown): unknown {
+function toCanonicalEvent(raw: unknown): unknown {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return raw;
   }
@@ -53,7 +45,7 @@ function toApiMessage(raw: unknown): unknown {
   const row = raw as Record<string, unknown>;
   const normalized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
-    if (key === "threadId") {
+    if (key === "role" || key === "revokesMessageId") {
       continue;
     }
     if (key === "status" && row.role === "user") {
@@ -64,16 +56,13 @@ function toApiMessage(raw: unknown): unknown {
   return normalized;
 }
 
-function validateMessage(raw: unknown): PagedChatMessage {
-  return pagedChatMessageSchema.parse(toApiMessage(raw));
+function validateEvent(raw: unknown): ChatEvent {
+  return chatEventSchema.parse(toCanonicalEvent(raw));
 }
 
-function storedMessage(
-  threadId: string,
-  message: PagedChatMessage,
-): StoredPagedChatMessage {
+function storedEvent(threadId: string, event: ChatEvent): StoredChatEvent {
   return {
-    ...message,
+    ...event,
     threadId,
   };
 }
@@ -84,10 +73,10 @@ function threadOrderRange(threadId: string): IDBKeyRange {
 
 type GetDb = () => Promise<IDBPDatabase>;
 
-function createMessageReadStore(
+function createEventReadStore(
   storeName: string,
   getDb: GetDb,
-): ChatMessageReadStore {
+): ChatEventReadStore {
   return {
     async readBounds(threadId, signal) {
       L.debug("readBounds:start", { threadId });
@@ -102,8 +91,8 @@ function createMessageReadStore(
       ]);
       signal?.throwIfAborted();
       const bounds = {
-        first: firstCursor ? validateMessage(firstCursor.value) : null,
-        last: lastCursor ? validateMessage(lastCursor.value) : null,
+        first: firstCursor ? validateEvent(firstCursor.value) : null,
+        last: lastCursor ? validateEvent(lastCursor.value) : null,
       };
       L.debug("readBounds:done", {
         threadId,
@@ -119,43 +108,40 @@ function createMessageReadStore(
       const tx = db.transaction(storeName, "readonly");
       const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
       const range = threadOrderRange(threadId);
-      const storedMessages = await index.getAll(range);
+      const storedEvents = await index.getAll(range);
       signal?.throwIfAborted();
-      const messages = storedMessages.map(validateMessage);
-      L.debug("readLatest:done", { threadId, count: messages.length });
-      return messages;
+      const events = storedEvents.map(validateEvent);
+      L.debug("readLatest:done", { threadId, count: events.length });
+      return events;
     },
   };
 }
 
-function createMessageWriteStore(
+function createEventWriteStore(
   storeName: string,
   getDb: GetDb,
-): ChatMessageWriteStore {
+): ChatEventWriteStore {
   return {
-    async upsertMessages(threadId, messages, signal) {
-      L.debug("upsertMessages:start", {
+    async upsertEvents(threadId, events, signal) {
+      L.debug("upsertEvents:start", {
         threadId,
-        count: messages.length,
+        count: events.length,
       });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readwrite");
-      const requests = messages.map((message) => {
+      const requests = events.map((event) => {
         signal?.throwIfAborted();
-        // Stitch the owning thread onto the server-sequenced cached value.
-        return tx.store.put(storedMessage(threadId, message));
+        // Stitch the local order key onto the canonical ChatEvent.
+        return tx.store.put(storedEvent(threadId, event));
       });
       await Promise.all([...requests, tx.done]);
-      L.debug("upsertMessages:done", {
-        threadId,
-        count: messages.length,
-      });
+      L.debug("upsertEvents:done", { threadId, count: events.length });
     },
   };
 }
 
-function createIdbMessageStores(getChatIdb: GetDb) {
+function createIdbEventStores(getChatIdb: GetDb) {
   const dbName = "current chat IndexedDB";
   const storeName = CHAT_MESSAGES_STORE;
 
@@ -189,9 +175,9 @@ function createIdbMessageStores(getChatIdb: GetDb) {
   }
 
   return Object.freeze({
-    readStore: createMessageReadStore(storeName, getDb),
-    writeStore: createMessageWriteStore(storeName, getDb),
+    readStore: createEventReadStore(storeName, getDb),
+    writeStore: createEventWriteStore(storeName, getDb),
   });
 }
 
-export { createIdbMessageStores };
+export { createIdbEventStores };

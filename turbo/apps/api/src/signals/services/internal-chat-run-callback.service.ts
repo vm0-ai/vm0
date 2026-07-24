@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
+import {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+} from "@vm0/api-contracts/contracts/chat-events";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -68,9 +72,9 @@ import {
   resolveAttachFileUrls,
   runGroupIdForRun,
   touchChatThreadLastMessageAt,
-  visibleChatMessageCondition,
+  visibleChatEventCondition,
 } from "./zero-chat-message-shared.service";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { activeChatRunExists } from "./zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
@@ -98,6 +102,10 @@ import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -682,7 +690,7 @@ async function latestEventBackedAssistantMessage(
     .where(
       and(
         eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn(["output.message"]),
         isNotNull(chatMessages.sequenceNumber),
         isNotNull(chatMessages.content),
         sql`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
@@ -829,7 +837,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
     .where(
       and(
         eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn(["output.message"]),
         isNotNull(chatMessages.sequenceNumber),
       ),
     );
@@ -912,16 +920,16 @@ async function insertAssistantErrorMessage(args: {
   const displayErrorMessage = await args.getFormattedError();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    const message = await insertChatMessage(
+    const message = await insertChatEvent(
       tx,
       {
         chatThreadId: args.threadId,
-        role: "assistant",
+        eventType:
+          args.lifecycleEvent === "failed" ? "run.failed" : "run.cancelled",
         content: displayErrorMessage,
         runId: args.runId,
         runGroupId,
         error: displayErrorMessage,
-        runLifecycleEvent: args.lifecycleEvent,
       },
       "run-lifecycle",
     );
@@ -971,15 +979,15 @@ async function insertRunLifecycleMarker(args: {
   const markerCreatedAt = nowDate();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    const marker = await insertChatMessage(
+    const marker = await insertChatEvent(
       tx,
       {
         chatThreadId: args.threadId,
-        role: "assistant",
+        eventType:
+          args.event === "completed" ? "run.completed" : "run.cancelled",
         content: null,
         runId: args.runId,
         runGroupId,
-        runLifecycleEvent: args.event,
         createdAt: markerCreatedAt,
       },
       "run-lifecycle",
@@ -994,7 +1002,7 @@ async function insertRunLifecycleMarker(args: {
           .where(
             and(
               eq(chatMessages.runId, args.runId),
-              eq(chatMessages.role, "assistant"),
+              chatEventTypeIn(["output.message"]),
               isNotNull(chatMessages.content),
               isNotNull(chatMessages.sequenceNumber),
             ),
@@ -1038,12 +1046,12 @@ async function insertRecommendedFollowupsMessage(args: {
 }): Promise<boolean> {
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    return await insertChatMessage(
+    return await insertChatEvent(
       tx,
       {
         id: recommendedFollowupsMessageIdForRun(args.runId),
         chatThreadId: args.threadId,
-        role: "assistant",
+        eventType: "output.followups",
         content: null,
         runId: args.runId,
         runGroupId,
@@ -1549,7 +1557,7 @@ async function getLatestRunsByThreadId(
   const messageRows = await db
     .select({
       runId: chatMessages.runId,
-      role: chatMessages.role,
+      eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
       structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
@@ -1563,24 +1571,20 @@ async function getLatestRunsByThreadId(
         eq(chatMessages.chatThreadId, threadId),
         isNotNull(chatMessages.content),
         inArray(chatMessages.runId, runIds),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(db),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
+        visibleChatEventCondition(db),
       ),
     )
     .orderBy(asc(chatMessages.seqId));
 
   const messagesByRunId = new Map<string, PriorRunMessage[]>();
   for (const row of messageRows) {
-    if (
-      row.runId === null ||
-      row.content === null ||
-      (row.role !== "user" && row.role !== "assistant")
-    ) {
+    if (row.runId === null || row.content === null) {
       continue;
     }
     const existing = messagesByRunId.get(row.runId) ?? [];
     existing.push({
-      role: row.role,
+      role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       structuredPrompt: row.structuredPrompt,
       attachFiles: row.attachFiles,
@@ -2684,8 +2688,8 @@ async function claimedUserMessageExistsForRun(
     .where(
       and(
         eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "user"),
-        isNotNull(chatMessages.revokesMessageId),
+        chatEventTypeIn(["input.prompt"]),
+        isNotNull(chatMessages.revokesEventId),
       ),
     )
     .limit(1);

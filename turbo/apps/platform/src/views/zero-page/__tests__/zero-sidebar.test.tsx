@@ -6,7 +6,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadPinContract,
   chatThreadRenameContract,
   chatThreadUnpinContract,
@@ -764,17 +764,25 @@ describe("zero sidebar", () => {
       });
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.beforeSeqId) {
-          return respond(200, { messages: [] });
+        if (
+          query.sinceSeqId ||
+          query.beforeSeqId ||
+          query.sinceId ||
+          query.beforeId
+        ) {
+          return respond(200, { events: [] });
         }
         return respond(200, {
-          messages:
+          events:
             params.threadId === INCIDENT_THREAD_ID
               ? [
                   {
                     id: "incident-message-1",
+                    threadId: INCIDENT_THREAD_ID,
+                    eventType: "run.completed" as const,
+                    runId: "mock-run",
                     role: "assistant",
                     content: "Incident update",
                     runLifecycleEvent: "completed",

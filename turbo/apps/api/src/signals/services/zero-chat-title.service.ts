@@ -1,5 +1,10 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+  type ChatEventType,
+} from "@vm0/api-contracts/contracts/chat-events";
+import {
   chatMessages,
   type ChatMessageRecommendedFollowups,
   type ChatMessageStructuredPrompt,
@@ -25,7 +30,11 @@ import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { safeJsonParse, tapError } from "../utils";
-import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
+import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
   normalizeRecommendedFollowups,
@@ -75,7 +84,7 @@ interface ChatMessageForGeneration {
 }
 
 interface ChatCompletionContextRow {
-  readonly role: string;
+  readonly eventType: ChatEventType;
   readonly content: string | null;
   readonly structuredPrompt: ChatMessageStructuredPrompt | null;
 }
@@ -113,7 +122,7 @@ function contextMessageContentCondition(structuredPromptEnabled: boolean): SQL {
     ? (or(
         isNotNull(chatMessages.content),
         and(
-          eq(chatMessages.role, "user"),
+          chatEventTypeIn(["input.prompt", "input.rejected"]),
           isNotNull(chatMessages.structuredPrompt),
         ),
       ) as SQL)
@@ -124,18 +133,16 @@ function chatCompletionContextMessage(
   row: ChatCompletionContextRow,
   structuredPromptEnabled: boolean,
 ): ChatCompletionContextMessage[] {
-  if (row.role !== "user" && row.role !== "assistant") {
-    return [];
-  }
-  if (structuredPromptEnabled && row.role === "user" && row.structuredPrompt) {
+  const role = chatEventCompatibilityRole(row.eventType);
+  if (structuredPromptEnabled && role === "user" && row.structuredPrompt) {
     return [
       {
-        role: row.role,
+        role,
         content: projectStructuredUserMessage(row.structuredPrompt).agentPrompt,
       },
     ];
   }
-  return row.content === null ? [] : [{ role: row.role, content: row.content }];
+  return row.content === null ? [] : [{ role, content: row.content }];
 }
 
 function stripMarkdown(text: string): string {
@@ -239,8 +246,8 @@ async function getLatestTitleContextMessages(
   const filters = [
     eq(chatMessages.chatThreadId, threadId),
     contextMessageContentCondition(structuredPromptEnabled),
-    inArray(chatMessages.role, ["user", "assistant"]),
-    visibleChatMessageCondition(db),
+    chatEventTypeIn(CHAT_EVENT_TYPES),
+    visibleChatEventCondition(db),
     completedConversationContextMessageCondition(db),
   ];
   if (options?.excludeRunId !== undefined) {
@@ -256,7 +263,7 @@ async function getLatestTitleContextMessages(
 
   const rows = await db
     .select({
-      role: chatMessages.role,
+      eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
       structuredPrompt: chatMessages.structuredPrompt,
       createdAt: chatMessages.createdAt,
@@ -459,7 +466,7 @@ async function getLatestFollowupContextMessages(
 ): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
-      role: chatMessages.role,
+      eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
       structuredPrompt: chatMessages.structuredPrompt,
       createdAt: chatMessages.createdAt,
@@ -470,8 +477,8 @@ async function getLatestFollowupContextMessages(
       and(
         eq(chatMessages.chatThreadId, threadId),
         contextMessageContentCondition(structuredPromptEnabled),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(db),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
+        visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),
     )

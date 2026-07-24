@@ -34,7 +34,7 @@ import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.servic
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { insertChatEvent } from "./zero-chat-event.service";
 import {
   encryptQueuedUserMessageRunParams,
   enqueueUserMessageQueueItem,
@@ -360,12 +360,12 @@ async function persistClaimedCanonicalSlackIngress(
   signal.throwIfAborted();
 
   await db.transaction(async (tx) => {
-    const inserted = await insertChatMessage(
+    const inserted = await insertChatEvent(
       tx,
       {
         id: ingress.ingressId,
         chatThreadId,
-        role: "user",
+        eventType: "input.prompt",
         content: enriched.displayContent,
         runId: null,
         slackMessagePermalink: messagePermalink,

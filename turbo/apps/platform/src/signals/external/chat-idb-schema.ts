@@ -2,7 +2,8 @@ import type { IDBPDatabase } from "idb";
 
 const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
 const ARTIFACT_INDEX_RESET_VERSION = 19;
-const CHAT_IDB_SCHEMA_VERSION = ARTIFACT_INDEX_RESET_VERSION;
+const CHAT_IDB_CHAT_EVENT_RESET_VERSION = 20;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CHAT_EVENT_RESET_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
@@ -94,6 +95,10 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
     deleteLocalCacheStores(db);
   } else if (oldVersion < ARTIFACT_INDEX_RESET_VERSION) {
     deleteArtifactCacheStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_CHAT_EVENT_RESET_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
   }
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {

@@ -9,7 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -795,17 +795,24 @@ describe("team page navigation", () => {
       });
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId) {
-          return respond(200, { messages: [] });
+        if (
+          query.sinceSeqId !== undefined ||
+          query.beforeSeqId !== undefined ||
+          query.sinceId !== undefined ||
+          query.beforeId !== undefined
+        ) {
+          return respond(200, { events: [] });
         }
         return respond(200, {
-          messages:
+          events:
             params.threadId === firstThreadId
               ? [
                   {
                     id: firstMessageId,
+                    threadId: firstThreadId,
+                    eventType: "input.prompt" as const,
                     role: "user",
                     content: "First shortcut thread message",
                     seqId: 1,
@@ -817,13 +824,15 @@ describe("team page navigation", () => {
         });
       },
     );
-    context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadEventsContract.get, ({ params, respond }) => {
       if (
         params.threadId === firstThreadId &&
-        params.messageId === firstMessageId
+        params.eventId === firstMessageId
       ) {
         return respond(200, {
           id: firstMessageId,
+          threadId: firstThreadId,
+          eventType: "input.prompt" as const,
           role: "user",
           content: "First shortcut thread message",
           seqId: 1,
@@ -831,7 +840,7 @@ describe("team page navigation", () => {
         });
       }
       return respond(404, {
-        error: { message: "Message not found", code: "NOT_FOUND" },
+        error: { message: "Event not found", code: "NOT_FOUND" },
       });
     });
 

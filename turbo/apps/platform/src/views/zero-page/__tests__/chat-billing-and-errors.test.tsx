@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -489,16 +489,18 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId) {
-          return respond(200, { messages: [] });
+        if (query.sinceSeqId || query.sinceId) {
+          return respond(200, { events: [] });
         }
         if (params.threadId === RUNNING_THREAD_ID) {
           return respond(200, {
-            messages: [
+            events: [
               {
                 id: "msg-running-user",
+                threadId: RUNNING_THREAD_ID,
+                eventType: "input.prompt" as const,
                 role: "user",
                 content: "Active task prompt",
                 runId: "run-active",
@@ -507,6 +509,9 @@ describe("chat lifecycle", () => {
               },
               {
                 id: "msg-running-assistant",
+                threadId: RUNNING_THREAD_ID,
+                eventType: "output.thinking" as const,
+                thinking: "",
                 role: "assistant",
                 content: null,
                 runId: "run-active",
@@ -517,9 +522,11 @@ describe("chat lifecycle", () => {
           });
         }
         return respond(200, {
-          messages: [
+          events: [
             {
               id: "msg-completed-user",
+              threadId: COMPLETED_THREAD_ID,
+              eventType: "input.prompt" as const,
               role: "user",
               content: "Done task",
               seqId: 1,
@@ -527,6 +534,8 @@ describe("chat lifecycle", () => {
             },
             {
               id: "msg-completed-assistant",
+              threadId: COMPLETED_THREAD_ID,
+              eventType: "output.message" as const,
               role: "assistant",
               content: "All done!",
               seqId: 2,
@@ -620,6 +629,7 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
@@ -627,6 +637,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-marker",
+          eventType: "output.thinking" as const,
           role: "assistant",
           content: null,
           thinking: "Reviewing your request",
@@ -658,6 +669,7 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-detail-gated-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
@@ -665,6 +677,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-detail-gated-marker",
+          eventType: "output.thinking" as const,
           role: "assistant",
           content: null,
           thinking: "Reading the prompt",
@@ -726,6 +739,7 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-rollover-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
@@ -733,6 +747,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-rollover-marker",
+          eventType: "output.thinking" as const,
           role: "assistant",
           content: null,
           thinking,
@@ -775,6 +790,7 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-queued-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
@@ -782,6 +798,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-queued-marker",
+          eventType: "output.thinking" as const,
           role: "assistant",
           content: null,
           thinking: "Reviewing your request",
@@ -790,6 +807,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-queued-followup",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Also include owners",
           runId: undefined,
@@ -820,6 +838,7 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-answer-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
@@ -827,6 +846,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-answer-marker",
+          eventType: "output.thinking" as const,
           role: "assistant",
           content: null,
           thinking: "Reviewing your request",
@@ -835,6 +855,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-answer",
+          eventType: "output.message" as const,
           role: "assistant",
           content: "Here is the checklist.",
           runId: "run-active",

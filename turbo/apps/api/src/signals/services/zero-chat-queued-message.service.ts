@@ -15,10 +15,8 @@ import {
   zodDriverValueDecoder,
 } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
-import {
-  deleteChatMessage,
-  updateChatMessage,
-} from "./zero-chat-message.service";
+import { revokeChatEvent, replaceChatEvent } from "./zero-chat-event.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { activeChatRunExists } from "./zero-chat-active-run.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
@@ -302,7 +300,7 @@ async function appendClaimedUserMessage(
         eq(chatMessageQueue.chatMessageId, args.messageId),
         eq(chatMessageQueue.chatThreadId, args.threadId),
         eq(chatMessages.chatThreadId, args.threadId),
-        eq(chatMessages.role, "user"),
+        chatEventTypeIn(["input.prompt"]),
       ),
     )
     .for("update")
@@ -311,9 +309,9 @@ async function appendClaimedUserMessage(
     return null;
   }
 
-  const claimed = await updateChatMessage(db, args.messageId, {
+  const claimed = await replaceChatEvent(db, args.messageId, {
     chatThreadId: args.threadId,
-    role: "user",
+    eventType: "input.prompt",
     content: queued.content,
     structuredPrompt: queued.structuredPrompt,
     runId: args.runId,
@@ -422,9 +420,9 @@ export async function discardUnclaimedUserMessage(
     if (!queueItemDeleted) {
       return;
     }
-    const tombstone = await deleteChatMessage(tx, args.messageId, {
+    const tombstone = await revokeChatEvent(tx, args.messageId, {
       chatThreadId: args.threadId,
-      role: "user",
+      eventType: "control.revoke",
       runId: null,
     });
     if (!tombstone) {

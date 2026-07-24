@@ -1,7 +1,8 @@
 import { waitFor } from "@testing-library/react";
 import {
-  chatThreadMessagesContract,
-  type PagedChatMessage,
+  chatEventResponse,
+  chatThreadEventsContract,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,8 +16,8 @@ import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignalScope } from "../../utils.ts";
-import { writeIndexedDbChatMessages$ } from "../chat-message-indexed-db.ts";
-import { setupChatMessageBackgroundSync$ } from "../chat-message-background-sync.ts";
+import { writeIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
+import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -33,14 +34,16 @@ const LAST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_MESSAGE_ID = "00000000-0000-4000-8000-000000000804";
 
 function assistantMessage(
+  threadId: string,
   id: string,
   content: string,
   createdAt: string,
   seqId: number,
-): PagedChatMessage {
+): ChatEvent {
   return {
     id,
-    role: "assistant",
+    threadId,
+    eventType: "output.message" as const,
     content,
     createdAt,
     seqId,
@@ -48,18 +51,21 @@ function assistantMessage(
 }
 
 const firstCachedMessage = assistantMessage(
+  THREAD_ID,
   FIRST_CACHED_MESSAGE_ID,
   "First cached message",
   "2026-07-23T10:01:00.000Z",
   1,
 );
 const lastCachedMessage = assistantMessage(
+  THREAD_ID,
   LAST_CACHED_MESSAGE_ID,
   "Last cached message",
   "2026-07-23T10:02:00.000Z",
   2,
 );
 const newMessage = assistantMessage(
+  THREAD_ID,
   NEW_MESSAGE_ID,
   "New remote message",
   "2026-07-23T10:03:00.000Z",
@@ -96,7 +102,7 @@ describe("chat message background sync", () => {
     mockSignedInUser();
     const appDb = await context.store.get(chatIdb$);
     await context.store.set(
-      writeIndexedDbChatMessages$,
+      writeIndexedDbChatEvents$,
       THREAD_ID,
       [firstCachedMessage, lastCachedMessage],
       context.signal,
@@ -106,20 +112,20 @@ describe("chat message background sync", () => {
       readonly sinceSeqId: number | undefined;
       readonly beforeSeqId: number | undefined;
     }[] = [];
-    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       requests.push({
         sinceSeqId: query.sinceSeqId,
         beforeSeqId: query.beforeSeqId,
       });
       if (query.sinceSeqId === lastCachedMessage.seqId) {
         return respond(200, {
-          messages: [newMessage],
+          events: [chatEventResponse(newMessage)],
           hasHistoryBefore: true,
         });
       }
       if (query.sinceSeqId === newMessage.seqId) {
         return respond(200, {
-          messages: [],
+          events: [],
           hasHistoryBefore: false,
         });
       }
@@ -132,7 +138,7 @@ describe("chat message background sync", () => {
       context.signal,
     );
     const subscription = context.store.set(
-      setupChatMessageBackgroundSync$,
+      setupChatEventBackgroundSync$,
       subscriber.signal,
     );
 

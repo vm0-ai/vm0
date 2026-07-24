@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
+import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
+  check,
   pgTable,
   uuid,
   text,
@@ -45,8 +47,9 @@ export type {
 } from "@vm0/db/jsonb-contracts/chat-message";
 
 /**
- * Chat Messages table
- * Each row is a single message belonging to a chat_thread.
+ * Physical storage for the immutable ChatEvent stream.
+ * Each row is one typed event belonging to a chat_thread. The table and
+ * selected physical column names stay message-named during the rollout.
  *
  * User messages are persisted immediately on send. Queued user messages are
  * represented by chat_message_queue rows; when the queue is drained, a new
@@ -85,7 +88,7 @@ export const chatMessages = pgTable(
     // Queued state is represented exclusively by chat_message_queue.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
-    revokesMessageId: uuid("revokes_message_id").references(
+    revokesEventId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
         return chatMessages.id;
       },
@@ -95,6 +98,7 @@ export const chatMessages = pgTable(
     // Stable grouping key for repeated automation/workflow/goal-triggered
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
+    eventType: text("event_type").$type<ChatEventType>(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     /** Stable business representation of rich user-message content. */
@@ -143,7 +147,7 @@ export const chatMessages = pgTable(
         .on(table.runId)
         .where(sql`${table.usagePayload} IS NOT NULL`),
       uniqueIndex("chat_messages_revokes_message_id_unique").on(
-        table.revokesMessageId,
+        table.revokesEventId,
       ),
       uniqueIndex("chat_messages_interrupts_run_id_unique").on(
         table.interruptsRunId,
@@ -165,6 +169,26 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),
+      check(
+        "chat_messages_event_type_check",
+        sql`${table.eventType} IS NULL OR ${table.eventType} IN (
+          'input.prompt',
+          'input.rejected',
+          'output.message',
+          'output.error',
+          'output.thinking',
+          'output.followups',
+          'run.queued',
+          'run.dequeued',
+          'run.completed',
+          'run.failed',
+          'run.cancelled',
+          'control.interrupt',
+          'control.revoke',
+          'goal.changed',
+          'usage.recorded'
+        )`,
+      ),
     ];
   },
 );
