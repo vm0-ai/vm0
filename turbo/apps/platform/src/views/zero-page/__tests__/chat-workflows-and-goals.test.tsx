@@ -1390,6 +1390,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           contentType: firstAttachment.contentType,
         },
         { type: "text" as const, text: " now" },
+        {
+          type: "feedback" as const,
+          quote: "The roadmap lacks dates",
+          note: "Add the launch milestones",
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1422,7 +1427,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const item = await readSingleRichClipboardWrite(clipboard);
     const html = await readClipboardItemText(item, "text/html");
     expect(parseChatClipboardPayload(html)).toStrictEqual({
-      text: `Review [Roadmap](/chats/${referencedThreadId}) now`,
+      text:
+        `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` +
+        "Feedback on this part of your reply:\n\n" +
+        "> The roadmap lacks dates\n\nAdd the launch milestones",
       attachments: [secondAttachment, firstAttachment],
       structuredPrompt,
     });
@@ -1439,6 +1447,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       },
     };
     const messageText = "Create a matching illustration";
+    const feedbackQuote = "The illustration lacks contrast";
+    const feedbackNote = "Increase the foreground contrast";
     const structuredPrompt = {
       version: 1 as const,
       parts: [
@@ -1448,6 +1458,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           template: generationTemplate,
         },
         { type: "text" as const, text: messageText },
+        {
+          type: "feedback" as const,
+          quote: feedbackQuote,
+          note: feedbackNote,
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1496,6 +1511,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByLabelText(`Remove template ${style.title}`),
       ).toBeInTheDocument();
+      const feedbackItem = composer.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(feedbackQuote);
+      expect(feedbackItem).toHaveTextContent(feedbackNote);
     });
   });
 

@@ -367,6 +367,22 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
       contentType: z.string().min(1),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("feedback"),
+      quote: z.string().min(1),
+      note: z.string().min(1),
+      source: z
+        .object({
+          type: z.literal("mail"),
+          id: z.string().min(1),
+          status: z.enum(["draft", "sent"]),
+          sentId: z.string().min(1).optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
 ]);
 
 const userMessageDocumentSchema = z

@@ -1,14 +1,12 @@
 import type {
   GenerationTemplateRequest,
   UserMessageDocument,
+  UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
-
-const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
 
 interface StructuredUserMessageProjection {
   readonly agentPrompt: string;
   readonly displayText: string;
-  readonly legacyContent: string;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly hasTextContent: boolean;
 }
@@ -33,6 +31,59 @@ function generationTemplatePrompt(part: {
   return `Select ${part.titleSnapshot} ${part.template.type} template`;
 }
 
+function formatFeedbackParts(
+  parts: readonly Extract<UserMessagePart, { type: "feedback" }>[],
+): string {
+  const firstMailSource = parts[0]?.source;
+  const commonMailSource =
+    firstMailSource !== undefined &&
+    parts.every((part) => {
+      return (
+        part.source?.type === "mail" &&
+        part.source.id === firstMailSource.id &&
+        part.source.status === firstMailSource.status &&
+        part.source.sentId === firstMailSource.sentId
+      );
+    })
+      ? firstMailSource
+      : null;
+  const hasSourceContext = parts.some((part) => {
+    return part.source !== undefined;
+  });
+  const mailSourceLabel = (
+    source: NonNullable<
+      Extract<UserMessagePart, { type: "feedback" }>["source"]
+    >,
+  ) => {
+    return source.status === "draft"
+      ? `an email draft (mail draft ID: ${source.id})`
+      : `a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""})`;
+  };
+  const blocks = parts.map((part) => {
+    const quoted = part.quote
+      .split("\n")
+      .map((line) => {
+        return `> ${line}`;
+      })
+      .join("\n");
+    const source =
+      commonMailSource === null && part.source?.type === "mail"
+        ? `Source: ${mailSourceLabel(part.source)}\n\n`
+        : "";
+    return `${source}${quoted}\n\n${part.note.trim()}`;
+  });
+  const intro = commonMailSource
+    ? parts.length === 1
+      ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+      : `Feedback on ${parts.length} parts of ${mailSourceLabel(commonMailSource)}:`
+    : hasSourceContext
+      ? `Feedback on ${parts.length} selected ${parts.length === 1 ? "passage" : "passages"}:`
+      : parts.length === 1
+        ? "Feedback on this part of your reply:"
+        : `Feedback on ${parts.length} parts of your reply:`;
+  return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
+}
+
 /**
  * Projects one validated business document into the server-owned runtime
  * representations. File blocks remain in authoritative `parts` order while
@@ -45,9 +96,9 @@ export function projectStructuredUserMessage(
   const displayBlocks: string[] = [];
   let inlinePrompt = "";
   let inlineDisplayText = "";
-  let legacyContent = "";
+  let feedbackParts: Extract<UserMessagePart, { type: "feedback" }>[] = [];
   let generationTemplate: GenerationTemplateRequest | undefined;
-  let hasFile = false;
+  let hasTextContent = false;
 
   const flushInlinePrompt = () => {
     if (inlinePrompt.length > 0) {
@@ -59,12 +110,28 @@ export function projectStructuredUserMessage(
       inlineDisplayText = "";
     }
   };
+  const flushFeedback = () => {
+    if (feedbackParts.length === 0) {
+      return;
+    }
+    const formatted = formatFeedbackParts(feedbackParts);
+    promptBlocks.push(formatted);
+    displayBlocks.push(formatted);
+    feedbackParts = [];
+  };
 
   for (const part of document.parts) {
+    if (part.type === "feedback") {
+      flushInlinePrompt();
+      feedbackParts.push(part);
+      hasTextContent = true;
+      continue;
+    }
+    flushFeedback();
     if (part.type === "text") {
       inlinePrompt += part.text;
       inlineDisplayText += part.text;
-      legacyContent += part.text;
+      hasTextContent ||= part.text.trim().length > 0;
       continue;
     }
     if (part.type === "chat_thread") {
@@ -74,14 +141,13 @@ export function projectStructuredUserMessage(
       );
       inlinePrompt += serialized;
       inlineDisplayText += `[Chat thread: ${part.titleSnapshot}]`;
-      legacyContent += serialized;
+      hasTextContent = true;
       continue;
     }
     if (part.type === "file") {
       flushInlinePrompt();
       promptBlocks.push(webFilePrompt(part));
       displayBlocks.push(`[File: ${part.filenameSnapshot}]`);
-      hasFile = true;
       continue;
     }
     flushInlinePrompt();
@@ -89,16 +155,13 @@ export function projectStructuredUserMessage(
     displayBlocks.push(`[Template: ${part.titleSnapshot}]`);
     generationTemplate ??= part.template;
   }
+  flushFeedback();
   flushInlinePrompt();
 
   return {
     agentPrompt: promptBlocks.join("\n\n"),
     displayText: displayBlocks.join("\n\n"),
-    legacyContent:
-      legacyContent.length > 0 || !hasFile
-        ? legacyContent
-        : ATTACH_ONLY_PLACEHOLDER,
     generationTemplate,
-    hasTextContent: legacyContent.trim().length > 0,
+    hasTextContent,
   };
 }

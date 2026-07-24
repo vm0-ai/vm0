@@ -178,4 +178,54 @@ describe("structured user messages", () => {
     ).not.toBeInTheDocument();
     expect(document.querySelector("[data-structured-user-message]")).toBeNull();
   });
+
+  it("renders structured feedback quotes as blockquotes without the structured prompt rollout", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000745";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Structured feedback rendering",
+      chatMessages: [
+        {
+          id: "00000000-0000-4000-8000-000000000745",
+          role: "user",
+          content: "Flattened feedback stays hidden",
+          runId: "d0000000-0000-4000-a000-000000000745",
+          structuredPrompt: {
+            version: 1,
+            parts: [
+              {
+                type: "feedback",
+                quote: "Quoted reply passage",
+                note: "Explain the complete result.",
+              },
+            ],
+          },
+          createdAt: "2026-07-26T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+    });
+
+    const quote = await screen.findByText("Quoted reply passage");
+    expect(quote.tagName).toBe("BLOCKQUOTE");
+    expect(quote).toHaveAttribute("data-structured-feedback-quote");
+    expect(quote).toHaveClass(
+      "border-l-2",
+      "border-border",
+      "pl-3",
+      "text-muted-foreground",
+    );
+    expect(
+      screen.getByText("Explain the complete result."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("> Quoted reply passage"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Flattened feedback stays hidden")).toBeNull();
+  });
 });

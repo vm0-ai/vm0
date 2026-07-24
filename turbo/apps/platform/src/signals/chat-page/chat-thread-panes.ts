@@ -20,6 +20,7 @@ import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
+  shouldUseStructuredPrompt,
 } from "../zero-page/user-message-document-codec.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
@@ -153,9 +154,14 @@ const loadDraft$ = command(
     }
 
     const features = get(featureSwitch$);
+    const structuredDraft = structuredDraftState(threadDraft);
     const restoredDraft =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-        ? (structuredDraftState(threadDraft) ?? legacyDraftState(threadDraft))
+      structuredDraft &&
+      shouldUseStructuredPrompt(
+        features[FeatureSwitchKey.StructuredPrompt] ?? false,
+        structuredDraft.structuredPrompt,
+      )
+        ? structuredDraft
         : legacyDraftState(threadDraft);
     const hasDraft =
       restoredDraft.content.length > 0 ||

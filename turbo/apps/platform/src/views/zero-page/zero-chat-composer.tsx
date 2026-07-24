@@ -113,6 +113,7 @@ import {
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
@@ -226,6 +227,7 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
+import { shouldUseStructuredPrompt } from "../../signals/zero-page/user-message-document-codec.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 
@@ -6449,6 +6451,7 @@ function restoreChatClipboardPayload({
   structuredPromptEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
+  insertStructuredPrompt,
   restoreAttachments,
   onTemplateChange,
   onDraftChange,
@@ -6457,6 +6460,7 @@ function restoreChatClipboardPayload({
   structuredPromptEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
+  insertStructuredPrompt: (value: UserMessageDocument) => void;
   restoreAttachments: (attachments: PersistedAttachment[]) => void;
   onTemplateChange:
     | ((value: GenerationTemplateRequest | undefined) => void)
@@ -6470,7 +6474,10 @@ function restoreChatClipboardPayload({
   if (!payload) {
     return false;
   }
-  const structuredPrompt = structuredPromptEnabled
+  const structuredPrompt = shouldUseStructuredPrompt(
+    structuredPromptEnabled,
+    payload.structuredPrompt,
+  )
     ? payload.structuredPrompt
     : undefined;
   const persistedAttachments = toPersistedAttachments(payload.attachments);
@@ -6493,7 +6500,16 @@ function restoreChatClipboardPayload({
   }
 
   event.preventDefault();
-  if (payload.text) {
+  const hasInsertableStructuredPart = structuredPrompt?.parts.some((part) => {
+    return (
+      part.type === "text" ||
+      part.type === "chat_thread" ||
+      part.type === "feedback"
+    );
+  });
+  if (structuredPrompt && hasInsertableStructuredPart) {
+    insertStructuredPrompt(structuredPrompt);
+  } else if (payload.text) {
     insertPromptMarkdown(payload.text);
   }
   const templatePart = structuredPrompt?.parts.find((part) => {
@@ -6823,6 +6839,7 @@ export function useZeroChatComposer({
     setDragOver,
   } = resolved;
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
+  const insertStructuredPrompt = useSet(composer.insertStructuredPrompt$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
@@ -6849,6 +6866,7 @@ export function useZeroChatComposer({
         structuredPromptEnabled,
         visualAttachmentUnsupported,
         insertPromptMarkdown,
+        insertStructuredPrompt,
         restoreAttachments,
         onTemplateChange: templatePicker?.onChange,
         onDraftChange,

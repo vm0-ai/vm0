@@ -671,7 +671,7 @@ function resolveRuntimeNormalSendBody(
   const projection = projectStructuredUserMessage(body.structuredPrompt);
   return {
     ...body,
-    prompt: projection.legacyContent,
+    prompt: projection.displayText,
     structuredPrompt: body.structuredPrompt,
     generationTemplate: projection.generationTemplate,
     agentPrompt: projection.agentPrompt,

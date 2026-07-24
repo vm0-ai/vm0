@@ -17,6 +17,7 @@ import {
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal } from "../utils.ts";
@@ -187,6 +188,7 @@ export interface WorkflowComposerSignals {
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertPromptMarkdown$: Command<void, [string]>;
+  readonly insertStructuredPrompt$: Command<void, [UserMessageDocument]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
@@ -1309,18 +1311,31 @@ function workflowComposerDocumentForStructuredPrompt(
 
 function workflowComposerDocumentForDraft(
   editor: Editor,
-  input: string,
-  structuredPrompt:
-    | Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0]
-    | null,
+  draft: {
+    readonly input: string;
+    readonly structuredPrompt:
+      | Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0]
+      | null;
+    readonly editorDocument: EditorDocumentSnapshot | null;
+  },
 ): ProseMirrorNode {
   if (feedbackItemsFromWorkflowComposer(editor).length > 0) {
     return editor.state.doc;
   }
-  const structuredDocument = structuredPrompt
-    ? workflowComposerDocumentForStructuredPrompt(editor, structuredPrompt)
+  const structuredDocument = draft.structuredPrompt
+    ? workflowComposerDocumentForStructuredPrompt(
+        editor,
+        draft.structuredPrompt,
+      )
     : null;
-  return structuredDocument ?? workflowComposerDocumentForValue(editor, input);
+  const restoredEditorDocument = draft.editorDocument
+    ? editor.schema.nodeFromJSON(draft.editorDocument.toEditorDocument())
+    : null;
+  return (
+    structuredDocument ??
+    restoredEditorDocument ??
+    workflowComposerDocumentForValue(editor, draft.input)
+  );
 }
 
 function configureMountedWorkflowEditor(
@@ -1467,11 +1482,13 @@ function createMountEditorCommand({
         set(feedback.removeFeedback$, id);
       };
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
-      const input = get(draft.input$);
-      const structuredPrompt = set(draft.takeRestoredStructuredPrompt$);
       setWorkflowComposerDocument(
         editor,
-        workflowComposerDocumentForDraft(editor, input, structuredPrompt),
+        workflowComposerDocumentForDraft(editor, {
+          input: get(draft.input$),
+          structuredPrompt: set(draft.takeRestoredStructuredPrompt$),
+          editorDocument: set(draft.readEditorDocument$),
+        }),
       );
       set(
         draft.setEditorDocument$,
@@ -1646,6 +1663,60 @@ function createInsertTextCommands(editor: Editor) {
   return { insertText$, insertPromptMarkdown$, appendText$ };
 }
 
+function createInsertStructuredPromptCommand(editor: Editor) {
+  return command((_context, value: UserMessageDocument) => {
+    const insertableParts = value.parts.filter((part) => {
+      return (
+        part.type === "text" ||
+        part.type === "chat_thread" ||
+        part.type === "feedback"
+      );
+    });
+    if (insertableParts.length === 0) {
+      return;
+    }
+    const restored = messageDocumentToEditorDoc({
+      version: 1,
+      parts: insertableParts,
+    });
+    if (!restored?.content) {
+      return;
+    }
+
+    let nextFeedbackId = feedbackItemsFromWorkflowComposer(editor).reduce(
+      (nextId, item) => {
+        return Math.max(nextId, item.id + 1);
+      },
+      1,
+    );
+    const content = restored.content.map((node) => {
+      if (node.type !== FEEDBACK_ITEM_NODE_NAME) {
+        return node;
+      }
+      const feedbackId = nextFeedbackId;
+      nextFeedbackId += 1;
+      return {
+        ...node,
+        attrs: {
+          ...node.attrs,
+          feedbackId,
+        },
+      };
+    });
+
+    editor
+      .chain()
+      .focus()
+      .insertContent(content)
+      .command(({ tr }) => {
+        withFeedbackItemLayout(tr);
+        return true;
+      })
+      .scrollIntoView()
+      .run();
+  });
+}
+
 function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
   return {
     update(_editor: Editor): void {},
@@ -1791,6 +1862,7 @@ export function createWorkflowComposerSignals<
     activeChatThreadSuggestionRange$,
   );
   const textCommands = createInsertTextCommands(editor);
+  const insertStructuredPrompt$ = createInsertStructuredPromptCommand(editor);
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
     compositionGate,
@@ -1820,6 +1892,7 @@ export function createWorkflowComposerSignals<
     insertWorkflow$,
     insertChatThread$,
     ...textCommands,
+    insertStructuredPrompt$,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
     feedback,

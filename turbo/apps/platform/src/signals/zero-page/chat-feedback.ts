@@ -281,7 +281,9 @@ function readFeedbackSelection(): FeedbackSelection | null {
 
 // Compose every noted fragment into a single follow-up turn, each passage
 // quoted above the note that belongs to it.
-export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
+export function formatFeedbackPrompt(
+  items: readonly Pick<FeedbackItem, "quote" | "note" | "source">[],
+): string {
   const firstMailSource = items[0]?.source;
   const commonMailSource =
     firstMailSource !== undefined &&
@@ -425,6 +427,12 @@ function createFeedbackItemSignals({
       set(rangesState$, ranges);
       set(setFeedbackHighlight$, threadId, ranges);
       set(itemsState$, items);
+      set(
+        nextIdState$,
+        items.reduce((nextId, item) => {
+          return Math.max(nextId, item.id + 1);
+        }, get(nextIdState$)),
+      );
     },
   );
   const startFeedback$ = command(({ get, set }) => {

@@ -96,6 +96,7 @@ import type {
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
+  shouldUseStructuredPrompt,
   type EditorDocumentSnapshot,
 } from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
@@ -3386,10 +3387,12 @@ function runGroupFoldSourceLabel(
     if (message.role !== "user") {
       continue;
     }
-    const content =
-      structuredPromptEnabled && message.structuredPrompt
-        ? messageDocumentToDisplayText(message.structuredPrompt)
-        : message.content;
+    const content = shouldUseStructuredPrompt(
+      structuredPromptEnabled,
+      message.structuredPrompt,
+    )
+      ? messageDocumentToDisplayText(message.structuredPrompt)
+      : message.content;
     if (content?.trim()) {
       return normalizedInlineLabel(content);
     }
@@ -6714,6 +6717,27 @@ function StructuredUserMessagePart({
   if (part.type === "template") {
     return <StructuredTemplateReference part={part} />;
   }
+  if (part.type === "feedback") {
+    const source = part.source;
+    const heading =
+      source === undefined
+        ? "Feedback on this part of your reply:"
+        : source.status === "draft"
+          ? `Feedback on this part of an email draft (mail draft ID: ${source.id}):`
+          : `Feedback on this part of a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""}):`;
+    return (
+      <div className="space-y-3">
+        <div>{heading}</div>
+        <blockquote
+          data-structured-feedback-quote=""
+          className="border-l-2 border-border pl-3 text-muted-foreground"
+        >
+          {part.quote}
+        </blockquote>
+        <div>{part.note}</div>
+      </div>
+    );
+  }
   const attachment = attachments.find((candidate) => {
     return candidate.id === part.fileId;
   });
@@ -6939,7 +6963,8 @@ function PagedUserMessage({
   const structuredPromptEnabled =
     featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
   const structuredPrompt =
-    structuredPromptEnabled && message.role === "user"
+    message.role === "user" &&
+    shouldUseStructuredPrompt(structuredPromptEnabled, message.structuredPrompt)
       ? message.structuredPrompt
       : undefined;
   const content = message.content ?? "";
