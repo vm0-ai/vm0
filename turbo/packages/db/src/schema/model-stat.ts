@@ -61,6 +61,7 @@ export const modelStat = pgTable(
         table.model,
         table.modelProvider,
       ),
+      uniqueIndex("uq_model_stat_hour_model").on(table.hourStart, table.model),
       index("idx_model_stat_hour_start").on(table.hourStart.desc()),
       index("idx_model_stat_model_hour").on(
         table.model,

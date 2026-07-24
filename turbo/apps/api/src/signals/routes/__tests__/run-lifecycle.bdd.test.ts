@@ -10397,15 +10397,17 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       "session_history_ref_hash",
     );
 
-    const observed = await webhooks.requestAgentModelUsageObservation(
+    const observed = await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 120,
+            inputTokens: 120,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
@@ -10644,7 +10646,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("checkpoints direct compose runs without vars and canonicalizes usage by event model", async () => {
+  it("checkpoints direct compose runs without vars and accepts compact usage by event model", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -10677,21 +10679,25 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
 
     // With no pinned model the event model drives canonicalization: the
     // unsupported event is skipped while the supported one is recorded.
-    const observed = await webhooks.requestAgentModelUsageObservation(
+    const observed = await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: run.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 50,
+            inputTokens: 50,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
           {
             idempotencyKey: randomUUID(),
             model: "custom-bdd-model",
-            category: "tokens.output",
-            quantity: 7,
+            inputTokens: 0,
+            outputTokens: 7,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
