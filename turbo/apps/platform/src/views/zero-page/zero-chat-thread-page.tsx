@@ -152,6 +152,7 @@ import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
+import { isCancelledAssistantMessage } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
   runGroupExpansionOverrides$,
@@ -3147,7 +3148,10 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
-    if (!terminatedRunIds.has(runId)) {
+    if (
+      !terminatedRunIds.has(runId) ||
+      runMessages.some(isCancelledAssistantMessage)
+    ) {
       visibleMessages.push(...runMessages);
       index = endIndex;
       continue;

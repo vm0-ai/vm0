@@ -3,7 +3,6 @@ import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
-import { isCancelledAssistantMessage } from "./chat-run-lifecycle.ts";
 import type { ChatMessageUsagePayload } from "@vm0/api-contracts/contracts/chat-threads";
 
 interface RunSegment {
@@ -521,9 +520,6 @@ function buildFoldSection(
   }
 
   const key = `${latestSegment.runGroupId}:${firstHiddenRunId}:${latestSegment.runId}`;
-  const defaultExpanded = latestSegment.messages.some(
-    isCancelledAssistantMessage,
-  );
 
   return {
     fold: {
@@ -532,7 +528,7 @@ function buildFoldSection(
       hiddenRunCount: hiddenSegments.length,
       hiddenGroups,
       labelGroups: expandedGroups,
-      expanded: expansionOverrides?.get(key) ?? defaultExpanded,
+      expanded: expansionOverrides?.get(key) ?? false,
     },
     expandedNextGroupId,
     collapsedNextGroupId,
