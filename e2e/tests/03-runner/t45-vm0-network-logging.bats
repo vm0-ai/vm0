@@ -47,8 +47,35 @@ EOF
     # 1. github.com:22 — SSH on standard port, non-HTTP protocol
     # 2. ssh.github.com:443 — SSH on port 443 (previously intercepted as HTTPS)
     # Both must pass through mitmproxy as raw TCP without corruption.
+    #
+    # After reading each banner, half-close the client write side and wait for
+    # the SSH server to close its direction. Mitmproxy emits the TCP log row
+    # from its terminal hook, so the peer EOF is the protocol-level boundary
+    # that makes the persisted-log assertion deterministic.
+    local tcp_probe='import socket
+
+def probe(label, host, port):
+    with socket.create_connection((host, port), timeout=5) as connection:
+        connection.settimeout(5)
+        banner = bytearray()
+        while b"\n" not in banner:
+            chunk = connection.recv(4096)
+            if not chunk:
+                raise RuntimeError(f"{host}:{port} closed before the SSH banner")
+            banner.extend(chunk)
+        first_line = bytes(banner).splitlines()[0].decode("utf-8", errors="replace")
+        print(f"{label}={first_line}", flush=True)
+        connection.shutdown(socket.SHUT_WR)
+        try:
+            while connection.recv(4096):
+                pass
+        except ConnectionResetError:
+            pass
+
+probe("PORT22", "github.com", 22)
+probe("PORT443", "ssh.github.com", 443)'
     run run_compose_fixture "$AGENT_NAME" \
-        "echo PORT22=\$(timeout 5 bash -c 'head -1 < /dev/tcp/github.com/22') && echo PORT443=\$(timeout 5 bash -c 'head -1 < /dev/tcp/ssh.github.com/443')" \
+        "python3 -c '$tcp_probe'" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
