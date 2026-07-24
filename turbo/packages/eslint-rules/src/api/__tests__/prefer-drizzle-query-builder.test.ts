@@ -95,13 +95,24 @@ const unnestUpdatePreamble = `
     consumedUnits: integer("consumed_units").notNull(),
     updatedAt: timestamp("updated_at").notNull(),
   });
+  const usageEvents = pgTable("usage_events", {
+    id: text("id").primaryKey(),
+    creditsCharged: integer("credits_charged"),
+    status: text("status").notNull(),
+    processedAt: timestamp("processed_at"),
+    billingError: text("billing_error"),
+  });
   type DrizzleDatabase =
     import("drizzle-orm/node-postgres").NodePgDatabase<{
       allowanceWindows: typeof allowanceWindows;
+      usageEvents: typeof usageEvents;
     }>;
   declare const db: DrizzleDatabase;
   declare const windowIds: readonly string[];
   declare const unitDeltas: readonly number[];
+  declare const eventIds: readonly string[];
+  declare const creditsCharged: readonly number[];
+  declare const billingErrors: readonly (string | null)[];
   declare const updatedAt: Date;
 `;
 
@@ -1239,6 +1250,26 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
             \${sql.param(unitDeltas)}::bigint[]
           ) AS consumption(window_id, units_applied)
           WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${usageEvents}
+          SET
+            "credits_charged" = settlement.credits_charged,
+            "status" = 'processed',
+            "processed_at" = \${updatedAt},
+            "billing_error" = settlement.billing_error
+          FROM unnest(
+            \${sql.param(eventIds)}::uuid[],
+            \${sql.param(creditsCharged)}::bigint[],
+            \${sql.param(billingErrors)}::varchar(50)[]
+          ) AS settlement(usage_event_id, credits_charged, billing_error)
+          WHERE \${usageEvents.id} = settlement.usage_event_id
         \`);
       `,
       errors: [{ messageId: "unnestUpdateQueryBuilder" }],
