@@ -966,7 +966,7 @@ function cancellationNoticeText(tier: BillingTier, changeDate: string): string {
   )} plan has been cancelled and will end on ${formattedDate}.`;
 }
 
-const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 10;
+const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 100;
 
 function slotCountLabel(count: number): string {
   return `${count} slot${count === 1 ? "" : "s"}`;
