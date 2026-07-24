@@ -1210,6 +1210,46 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
+    const mismatchedLegacyModelUsage =
+      await api.requestAgentModelUsageObservation(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              category: "tokens.input",
+              quantity: 1,
+            },
+          ],
+        },
+        mismatchedHeaders,
+        [401],
+      );
+    expectApiError(mismatchedLegacyModelUsage.body);
+    expect(mismatchedLegacyModelUsage.body.error.code).toBe("UNAUTHORIZED");
+
+    const mismatchedCompactModelUsage =
+      await api.requestAgentModelUsageObservationV2(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              inputTokens: 1,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+        mismatchedHeaders,
+        [401],
+      );
+    expectApiError(mismatchedCompactModelUsage.body);
+    expect(mismatchedCompactModelUsage.body.error.code).toBe("UNAUTHORIZED");
+
     const malformedTelemetryBody = await api.requestAgentTelemetryUnchecked(
       {},
       headers,
