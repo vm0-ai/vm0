@@ -473,7 +473,6 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       codexServiceTier?: CodexServiceTier | null;
     }) => void;
-    onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
@@ -816,23 +815,6 @@ export function mockChatLifecycle(
     };
     options?.afterInitialMessagesList?.();
     return respond(200, body);
-  });
-  context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
-    options?.onMessageGet?.(params.messageId);
-    if (params.threadId !== threadId) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    const message = buildPagedMessages().find((item) => {
-      return item.id === params.messageId;
-    });
-    if (!message) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, cloneMockPagedMessage(message));
   });
   context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
     if (options?.threadGate) {

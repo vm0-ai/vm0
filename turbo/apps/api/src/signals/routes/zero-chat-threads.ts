@@ -24,7 +24,6 @@ import {
   zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
-  zeroChatThreadMessageById,
   zeroChatThreadDraftIds,
   zeroChatThreadMessagesPage,
   zeroChatThreadUnreadAgentIds,
@@ -224,39 +223,6 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
   };
 });
 
-const getChatThreadMessageInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadMessagesContract.get));
-
-  const db = get(db$);
-  const canonicalSlackVisible = await canonicalSlackWebVisibilityEnabled(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-  });
-  if (
-    !(await isChatThreadVisibleInWeb(db, {
-      threadId: params.threadId,
-      userId: auth.userId,
-      canonicalSlackVisible,
-    }))
-  ) {
-    return chatThreadNotFound();
-  }
-
-  const message = await get(
-    zeroChatThreadMessageById({
-      threadId: params.threadId,
-      userId: auth.userId,
-      messageId: params.messageId,
-    }),
-  );
-  if (!message) {
-    return chatThreadNotFound();
-  }
-
-  return { status: 200 as const, body: message };
-});
-
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
 
@@ -451,10 +417,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadMessagesContract.list,
     handler: authRoute({}, listChatThreadMessagesInner$),
-  },
-  {
-    route: chatThreadMessagesContract.get,
-    handler: authRoute({}, getChatThreadMessageInner$),
   },
   {
     route: chatSearchContract.search,
