@@ -232,6 +232,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
+      [FeatureSwitchKey.ZeroPeopleSearch]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
     });
