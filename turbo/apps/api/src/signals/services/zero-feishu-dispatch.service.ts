@@ -107,6 +107,7 @@ export interface FeishuDispatchInstallation {
 export interface FeishuDispatchConnection {
   readonly id: string;
   readonly vm0UserId: string;
+  readonly feishuUserName: string | null;
 }
 
 interface FeishuModelOption {
@@ -1084,6 +1085,10 @@ const runFeishuAgent$ = command(
           message: args.message,
           history: args.history.text,
         }),
+        userInfoExtras: {
+          feishuDisplayName: args.connection.feishuUserName ?? undefined,
+          feishuOpenId: args.message.openId,
+        },
         modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
         modelProviderCredentialScope:
           args.modelRoute?.modelProviderCredentialScope ?? undefined,
@@ -1382,6 +1387,7 @@ export const dispatchFeishuMessage$ = command(
       .select({
         id: feishuOrgConnections.id,
         vm0UserId: feishuOrgConnections.vm0UserId,
+        feishuUserName: feishuOrgConnections.feishuUserName,
       })
       .from(feishuOrgConnections)
       .where(

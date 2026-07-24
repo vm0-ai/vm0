@@ -474,6 +474,24 @@ async function cleanupExpiredCustomConnectorAuthRefsSafely(
   return deleted ?? 0;
 }
 
+function logQueueMaintenance(args: {
+  readonly expired: number;
+  readonly expiredTimedOut: number;
+  readonly launchOrphansTimedOut: number;
+  readonly expiredRunnerJobs: number;
+  readonly expiredCustomConnectorAuthRefs: number;
+  readonly drained: number;
+}): void {
+  if (
+    Object.values(args).every((count) => {
+      return count === 0;
+    })
+  ) {
+    return;
+  }
+  L.debug("Queue maintenance completed", args);
+}
+
 export const cleanupSandboxes$ = command(
   async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
     const db = set(writeDb$);
@@ -556,22 +574,14 @@ export const cleanupSandboxes$ = command(
       ...expiredQueueResult.timedOutRuns,
       ...queuedOrphanResult.timedOutRuns,
     ];
-    if (
-      expiredQueueResult.deletedCount > 0 ||
-      queuedTerminalRuns.length > 0 ||
-      expiredRunnerJobCount > 0 ||
-      expiredCustomConnectorAuthRefCount > 0 ||
-      drainedCount > 0
-    ) {
-      L.debug("Queue maintenance completed", {
-        expired: expiredQueueResult.deletedCount,
-        expiredTimedOut: expiredQueueResult.timedOutRuns.length,
-        launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
-        expiredRunnerJobs: expiredRunnerJobCount,
-        expiredCustomConnectorAuthRefs: expiredCustomConnectorAuthRefCount,
-        drained: drainedCount,
-      });
-    }
+    logQueueMaintenance({
+      expired: expiredQueueResult.deletedCount,
+      expiredTimedOut: expiredQueueResult.timedOutRuns.length,
+      launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
+      expiredRunnerJobs: expiredRunnerJobCount,
+      expiredCustomConnectorAuthRefs: expiredCustomConnectorAuthRefCount,
+      drained: drainedCount,
+    });
 
     if (expiredRuns.length === 0) {
       L.debug("No expired sandboxes found");

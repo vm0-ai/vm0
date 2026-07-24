@@ -137,6 +137,7 @@ import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -6519,6 +6520,37 @@ function SlackUserMessageOrigin({
   );
 }
 
+const feishuIconImg = settingsIconAssetUrl("lark");
+
+function FeishuUserMessageOrigin({
+  chatOpenUrl,
+}: {
+  chatOpenUrl: string | undefined;
+}) {
+  if (!chatOpenUrl) {
+    return null;
+  }
+  return (
+    <a
+      href={chatOpenUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open original chat in Feishu"
+      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+    >
+      <img
+        src={feishuIconImg}
+        alt=""
+        className="size-[15px] shrink-0 object-contain"
+      />
+      <span className="shrink-0">Feishu</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">Open chat</span>
+      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+    </a>
+  );
+}
+
 const STRUCTURED_REFERENCE_CHIP_CLASS =
   "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
@@ -6933,6 +6965,7 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
+          <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
           {structuredPrompt ? (
             <StructuredUserMessageContent
               document={structuredPrompt}

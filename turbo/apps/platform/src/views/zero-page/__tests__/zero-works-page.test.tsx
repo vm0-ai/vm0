@@ -116,6 +116,45 @@ function setupWorksPage(
 }
 
 describe("works page", () => {
+  it("shows skeleton rows while Feishu settings load", async () => {
+    const responseReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroFeishuConnectContract.getStatus,
+      async ({ respond }) => {
+        await responseReady.promise;
+        return respond(200, {
+          isConnected: false,
+          isInstalled: false,
+          isAdmin: true,
+          appId: null,
+          callbackUrl: null,
+          callbackVerified: false,
+          messageReceived: false,
+          tenantKey: null,
+          tenantName: null,
+          defaultAgentId: null,
+          defaultAgentName: "Okou",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings/feishu",
+      featureSwitches: {
+        [FeatureSwitchKey.FeishuIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByTestId("feishu-settings-loading"),
+    ).resolves.toBeInTheDocument();
+
+    responseReady.resolve();
+    await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("feishu-settings-loading")).toBeNull();
+  });
+
   it("shows integration cards with current connection status and realtime refreshes", async () => {
     mockSlackAPI({
       isConnected: true,

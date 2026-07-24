@@ -90,6 +90,79 @@ async function loadFeishuUserName(args: {
   return name?.trim() || null;
 }
 
+async function findOrCreateFeishuConnection(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly openId: string;
+  readonly userId: string;
+  readonly userName: string | null;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly connectionId: string;
+  readonly shouldNotify: boolean;
+} | null> {
+  const [inserted] = await args.db
+    .insert(feishuOrgConnections)
+    .values({
+      feishuOpenId: args.openId,
+      feishuUserName: args.userName,
+      installationId: args.installationId,
+      vm0UserId: args.userId,
+    })
+    .onConflictDoNothing({
+      target: [
+        feishuOrgConnections.feishuOpenId,
+        feishuOrgConnections.installationId,
+      ],
+    })
+    .returning({
+      id: feishuOrgConnections.id,
+      dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
+    });
+  args.signal.throwIfAborted();
+  if (inserted) {
+    return {
+      connectionId: inserted.id,
+      shouldNotify: !inserted.dmWelcomeSent,
+    };
+  }
+
+  const [existing] = await args.db
+    .select({
+      id: feishuOrgConnections.id,
+      vm0UserId: feishuOrgConnections.vm0UserId,
+      dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
+    })
+    .from(feishuOrgConnections)
+    .where(
+      and(
+        eq(feishuOrgConnections.installationId, args.installationId),
+        eq(feishuOrgConnections.feishuOpenId, args.openId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!existing || existing.vm0UserId !== args.userId) {
+    return null;
+  }
+  if (args.userName) {
+    await args.db
+      .update(feishuOrgConnections)
+      .set({ feishuUserName: args.userName, updatedAt: nowDate() })
+      .where(
+        and(
+          eq(feishuOrgConnections.installationId, args.installationId),
+          eq(feishuOrgConnections.feishuOpenId, args.openId),
+        ),
+      );
+    args.signal.throwIfAborted();
+  }
+  return {
+    connectionId: existing.id,
+    shouldNotify: !existing.dmWelcomeSent,
+  };
+}
+
 const connectFeishuAccount$ = command(
   async (
     { set },
@@ -130,61 +203,17 @@ const connectFeishuAccount$ = command(
       openId,
       signal,
     });
-    const [inserted] = await db
-      .insert(feishuOrgConnections)
-      .values({
-        feishuOpenId: openId,
-        feishuUserName: userName,
-        installationId,
-        vm0UserId: args.userId,
-      })
-      .onConflictDoNothing({
-        target: [
-          feishuOrgConnections.feishuOpenId,
-          feishuOrgConnections.installationId,
-        ],
-      })
-      .returning({
-        id: feishuOrgConnections.id,
-        vm0UserId: feishuOrgConnections.vm0UserId,
-        dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
-      });
+    const connection = await findOrCreateFeishuConnection({
+      db,
+      installationId,
+      openId,
+      userId: args.userId,
+      userName,
+      signal,
+    });
     signal.throwIfAborted();
-    let connectionId = inserted?.id;
-    let shouldNotify = inserted ? !inserted.dmWelcomeSent : false;
-    if (!inserted) {
-      const [existing] = await db
-        .select({
-          id: feishuOrgConnections.id,
-          vm0UserId: feishuOrgConnections.vm0UserId,
-          dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
-        })
-        .from(feishuOrgConnections)
-        .where(
-          and(
-            eq(feishuOrgConnections.installationId, installationId),
-            eq(feishuOrgConnections.feishuOpenId, openId),
-          ),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-      if (!existing || existing.vm0UserId !== args.userId) {
-        return { kind: "account_in_use" };
-      }
-      connectionId = existing.id;
-      shouldNotify = !existing.dmWelcomeSent;
-      if (userName) {
-        await db
-          .update(feishuOrgConnections)
-          .set({ feishuUserName: userName, updatedAt: nowDate() })
-          .where(
-            and(
-              eq(feishuOrgConnections.installationId, installationId),
-              eq(feishuOrgConnections.feishuOpenId, openId),
-            ),
-          );
-        signal.throwIfAborted();
-      }
+    if (!connection) {
+      return { kind: "account_in_use" };
     }
     await db
       .delete(feishuOrgConnections)
@@ -203,14 +232,14 @@ const connectFeishuAccount$ = command(
       [args.userId],
     );
     signal.throwIfAborted();
-    if (connectionId && shouldNotify) {
+    if (connection.shouldNotify) {
       const backgroundSignal = new AbortController().signal;
       waitUntil(
         tapError(
           notifyFeishuConnect({
             db,
             installationId,
-            connectionId,
+            connectionId: connection.connectionId,
             openId,
             signal: backgroundSignal,
           }),
@@ -234,21 +263,26 @@ const connectFeishuAccount$ = command(
 
 function legacyConnectResult(result: FeishuConnectResult): Response {
   switch (result.kind) {
-    case "invalid":
+    case "invalid": {
       return worksRedirect({ feishuError: "Invalid or expired connect link" });
-    case "installation_not_found":
+    }
+    case "installation_not_found": {
       return worksRedirect({ feishuError: "Feishu installation not found" });
-    case "wrong_organization":
+    }
+    case "wrong_organization": {
       return worksRedirect({
         feishuError:
           "Switch to the organization connected to this Feishu tenant",
       });
-    case "account_in_use":
+    }
+    case "account_in_use": {
       return worksRedirect({
         feishuError: "This Feishu account is already connected",
       });
-    case "success":
+    }
+    case "success": {
       return worksRedirect({ feishu: "connected" });
+    }
   }
 }
 
@@ -307,11 +341,13 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   switch (result.kind) {
-    case "invalid":
+    case "invalid": {
       return badRequestMessage("Invalid or expired Feishu connect link");
-    case "installation_not_found":
+    }
+    case "installation_not_found": {
       return notFound("Feishu installation not found");
-    case "wrong_organization":
+    }
+    case "wrong_organization": {
       return {
         status: 403 as const,
         body: {
@@ -322,9 +358,11 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
           },
         },
       };
-    case "account_in_use":
+    }
+    case "account_in_use": {
       return conflict("This Feishu account is already connected");
-    case "success":
+    }
+    case "success": {
       return {
         status: 200 as const,
         body: {
@@ -333,6 +371,7 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
           openUrl: feishuBotOpenUrl(result.appId),
         },
       };
+    }
   }
 });
 

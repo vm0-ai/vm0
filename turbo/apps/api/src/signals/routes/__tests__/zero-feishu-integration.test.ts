@@ -8,6 +8,10 @@ import { Buffer } from "node:buffer";
 
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
+import {
+  chatThreadMessagesContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -183,6 +187,7 @@ function directMessage(
   text: string,
   openId = "ou_feishu_user",
   options: {
+    readonly chatId?: string;
     readonly messageId?: string;
     readonly rootId?: string;
     readonly threadId?: string;
@@ -197,7 +202,7 @@ function directMessage(
       message_id: options.messageId ?? `om_${randomUUID()}`,
       root_id: options.rootId,
       thread_id: options.threadId,
-      chat_id: "oc_feishu_dm",
+      chat_id: options.chatId ?? "oc_feishu_dm",
       chat_type: "p2p",
       message_type: "text",
       content: JSON.stringify({ text }),
@@ -388,7 +393,7 @@ describe("Feishu integration", () => {
           const failedTargetIndex = failedSendTargets.indexOf(
             body.receive_id ?? "",
           );
-          if (failedTargetIndex >= 0) {
+          if (failedTargetIndex !== -1) {
             failedSendTargets.splice(failedTargetIndex, 1);
             return HttpResponse.json({
               code: 1,
@@ -1057,6 +1062,7 @@ describe("Feishu integration", () => {
     );
     await flushWaitUntilForTest();
 
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const connected = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -1324,7 +1330,7 @@ describe("Feishu integration", () => {
       },
     );
     expect(connectResponse.status).toBe(200);
-    expect(await connectResponse.json()).toMatchObject({
+    await expect(connectResponse.json()).resolves.toMatchObject({
       success: true,
       botName: "Okou Feishu",
       openUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
@@ -1395,7 +1401,7 @@ describe("Feishu integration", () => {
       },
     );
     expect(rebindResponse.status).toBe(409);
-    expect(await rebindResponse.json()).toMatchObject({
+    await expect(rebindResponse.json()).resolves.toMatchObject({
       error: {
         message: "This Feishu account is already connected",
         code: "CONFLICT",
@@ -1742,11 +1748,47 @@ describe("Feishu integration", () => {
       null,
     );
     const run = await findRun(actor, "do the Feishu task");
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const threadEvents = await accept(
+      setupApp({ context })(chatThreadsContract).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const chatThreadCreated = requireValue(
+      threadEvents.body.events.find((event) => {
+        return event.kind === "created" && event.agentId === alternateAgentId;
+      }),
+      "Expected the canonical Feishu chat thread",
+    );
+    const threadMessages = await accept(
+      setupApp({ context })(chatThreadMessagesContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: chatThreadCreated.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(threadMessages.body.messages).toContainEqual(
+      expect.objectContaining({
+        content: "do the Feishu task",
+        feishuChatOpenUrl:
+          "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+      }),
+    );
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
     expect(claim.environment?.ZERO_AGENT_ID).toBe(alternateAgentId);
     expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Feishu",
+    );
+    expect(claim.appendSystemPrompt).toContain("# Current User Info");
+    expect(claim.appendSystemPrompt).toContain(
+      "Feishu display name: Feishu User",
+    );
+    expect(claim.appendSystemPrompt).toContain(
+      "Feishu open ID: ou_feishu_user",
     );
     expect(claim.appendSystemPrompt).toContain("Scope: Direct message");
     expect(claim.appendSystemPrompt).toContain(
@@ -1931,10 +1973,16 @@ describe("Feishu integration", () => {
       "second concurrent Feishu task",
       "queued Feishu task",
     ] as const;
-    for (const prompt of prompts) {
-      await postEvent(callbackUrl, directMessage(appId, prompt), {
-        encrypted: true,
-      });
+    for (const [index, prompt] of prompts.entries()) {
+      await postEvent(
+        callbackUrl,
+        directMessage(appId, prompt, "ou_feishu_user", {
+          chatId: `oc_feishu_concurrent_${index}`,
+        }),
+        {
+          encrypted: true,
+        },
+      );
       await flushWaitUntilForTest();
     }
 

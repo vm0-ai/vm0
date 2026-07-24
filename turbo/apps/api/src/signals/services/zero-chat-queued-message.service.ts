@@ -62,6 +62,8 @@ const queuedUserMessageRunParamsSchema = z.object({
     .object({
       slackDisplayName: z.string().optional(),
       slackUserId: z.string().optional(),
+      feishuDisplayName: z.string().optional(),
+      feishuOpenId: z.string().optional(),
     })
     .optional(),
 });

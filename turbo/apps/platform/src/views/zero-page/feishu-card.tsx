@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui/components/ui/select";
+import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Tooltip,
@@ -1289,9 +1290,37 @@ function FeishuBotsCard({
 
 function FeishuSettingsSkeleton() {
   return (
-    <div className="zero-card px-6 py-12 text-center text-sm text-muted-foreground">
-      Loading Feishu bots…
-    </div>
+    <section
+      className="zero-card overflow-hidden"
+      data-testid="feishu-settings-loading"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-8 w-[88px] rounded-md" />
+      </div>
+      {[0, 1, 2].map((index) => {
+        return (
+          <div key={index}>
+            <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-6 w-20 rounded-lg" />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-1.5 sm:w-[420px]">
+                <Skeleton className="h-9 min-w-0 flex-1 rounded-md" />
+                <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
+              </div>
+            </div>
+            {index < 2 ? (
+              <div className="mx-5 border-b border-border/50" />
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 

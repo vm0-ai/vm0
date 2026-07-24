@@ -293,6 +293,45 @@ async function ensureInboundBotIdentity(args: {
   return { ...args.config, botOpenId: bot.openId };
 }
 
+async function admitInboundFeishuMessage(args: {
+  readonly db: Db;
+  readonly message: FeishuInboundMessage;
+  readonly processIngress: (
+    ingressId: string,
+    signal: AbortSignal,
+  ) => Promise<boolean>;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const admittedAt = nowDate();
+  const ingress = await admitFeishuChatEvent(args.db, {
+    installationId: args.message.installationId,
+    eventId: args.message.eventId,
+    payload: JSON.stringify(args.message),
+    currentTime: admittedAt,
+  });
+  args.signal.throwIfAborted();
+  L.debug("Canonical Feishu ingress admitted", {
+    type: "canonical_feishu_ingress_admission",
+    eventId: args.message.eventId,
+    outcome: ingress?.inserted ? "accepted" : "deduplicated",
+    status: ingress?.status ?? "legacy_deduplicated",
+    retryCount: ingress?.retryCount ?? 0,
+  });
+  if (!ingress || ingress.status === "processed") {
+    return;
+  }
+  const backgroundSignal = new AbortController().signal;
+  waitUntil(
+    tapError(args.processIngress(ingress.id, backgroundSignal), (error) => {
+      L.error("Canonical Feishu ingress processing failed", {
+        ingressId: ingress.id,
+        eventId: args.message.eventId,
+        error,
+      });
+    }),
+  );
+}
+
 export const handleZeroFeishuEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
@@ -395,40 +434,19 @@ export const handleZeroFeishuEvents$ = command(
     });
     const message = inboundMessage(dispatchConfig, v2.data);
     if (message) {
-      const admittedAt = nowDate();
-      const ingress = await admitFeishuChatEvent(db, {
-        installationId: message.installationId,
-        eventId: message.eventId,
-        payload: JSON.stringify(message),
-        currentTime: admittedAt,
+      await admitInboundFeishuMessage({
+        db,
+        message,
+        processIngress: (ingressId, inputSignal) => {
+          return set(
+            processCanonicalFeishuIngress$,
+            { ingressId },
+            inputSignal,
+          );
+        },
+        signal,
       });
       signal.throwIfAborted();
-      L.debug("Canonical Feishu ingress admitted", {
-        type: "canonical_feishu_ingress_admission",
-        eventId: message.eventId,
-        outcome: ingress?.inserted ? "accepted" : "deduplicated",
-        status: ingress?.status ?? "legacy_deduplicated",
-        retryCount: ingress?.retryCount ?? 0,
-      });
-      if (ingress && ingress.status !== "processed") {
-        const backgroundSignal = new AbortController().signal;
-        waitUntil(
-          tapError(
-            set(
-              processCanonicalFeishuIngress$,
-              { ingressId: ingress.id },
-              backgroundSignal,
-            ),
-            (error) => {
-              L.error("Canonical Feishu ingress processing failed", {
-                ingressId: ingress.id,
-                eventId: message.eventId,
-                error,
-              });
-            },
-          ),
-        );
-      }
     }
     return textResponse("OK");
   },

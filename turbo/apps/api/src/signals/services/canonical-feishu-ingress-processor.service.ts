@@ -23,6 +23,7 @@ import {
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
+import { feishuChatOpenUrl } from "./feishu-config";
 import { ensureFeishuChatThreadRoute } from "./feishu-chat-ingress.service";
 import {
   resolveIntegrationModelRouteForUser$,
@@ -166,6 +167,7 @@ async function loadConnection(
     .select({
       id: feishuOrgConnections.id,
       vm0UserId: feishuOrgConnections.vm0UserId,
+      feishuUserName: feishuOrgConnections.feishuUserName,
     })
     .from(feishuOrgConnections)
     .where(
@@ -281,6 +283,10 @@ async function persistCanonicalFeishuIngress(args: {
           };
         }),
       },
+      userInfoExtras: {
+        feishuDisplayName: args.connection.feishuUserName ?? undefined,
+        feishuOpenId: args.message.openId,
+      },
     },
     {
       orgId: args.installation.orgId,
@@ -298,6 +304,7 @@ async function persistCanonicalFeishuIngress(args: {
         role: "user",
         content: args.message.text,
         runId: null,
+        feishuChatOpenUrl: feishuChatOpenUrl(args.message.chatId),
         createdAt: args.ingress.createdAt,
       },
       "id",
@@ -351,7 +358,12 @@ async function notifyQueuedFeishuRun(args: {
     .select({ status: agentRuns.status })
     .from(chatMessages)
     .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-    .where(eq(chatMessages.id, args.ingressId))
+    .where(
+      or(
+        eq(chatMessages.id, args.ingressId),
+        eq(chatMessages.revokesMessageId, args.ingressId),
+      ),
+    )
     .limit(1);
   args.signal.throwIfAborted();
   if (run?.status !== "queued") {
@@ -527,6 +539,7 @@ export const processCanonicalFeishuIngress$ = command(
     signal.throwIfAborted();
     if (!result.ok) {
       await markIngressFailed(db, args.ingressId, result.error);
+      signal.throwIfAborted();
       L.error("Failed to process canonical Feishu ingress", {
         ingressId: args.ingressId,
         error: result.error,

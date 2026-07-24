@@ -479,6 +479,8 @@ interface CreateQueuedChatRunInput {
   readonly userInfoExtras?: {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
+    readonly feishuDisplayName?: string;
+    readonly feishuOpenId?: string;
   };
 }
 
@@ -2712,6 +2714,47 @@ async function handleTerminalChatCallbackPreparationFailure(args: {
   throw args.error;
 }
 
+async function dispatchCanonicalDeliveryCallbacks(args: {
+  readonly runId: string;
+  readonly slackDeliveryCallbackId: string | undefined;
+  readonly feishuDeliveryCallbackId: string | undefined;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.slackDeliveryCallbackId) {
+    const delivery = await settle(
+      args.dependencies.dispatchSlackDelivery(
+        args.slackDeliveryCallbackId,
+        args.signal,
+      ),
+      args.signal,
+    );
+    if (!delivery.ok) {
+      log.error("Failed to finalize canonical Slack delivery callback", {
+        runId: args.runId,
+        callbackId: args.slackDeliveryCallbackId,
+        error: delivery.error,
+      });
+    }
+  }
+  if (args.feishuDeliveryCallbackId) {
+    const delivery = await settle(
+      args.dependencies.dispatchFeishuDelivery(
+        args.feishuDeliveryCallbackId,
+        args.signal,
+      ),
+      args.signal,
+    );
+    if (!delivery.ok) {
+      log.error("Failed to finalize canonical Feishu delivery callback", {
+        runId: args.runId,
+        callbackId: args.feishuDeliveryCallbackId,
+        error: delivery.error,
+      });
+    }
+  }
+}
+
 async function processTerminalChatCallback(args: {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
@@ -2805,38 +2848,13 @@ async function processTerminalChatCallback(args: {
   }
   const work = prepared.value;
 
-  if (work.slackDeliveryCallbackId) {
-    const delivery = await settle(
-      args.dependencies.dispatchSlackDelivery(
-        work.slackDeliveryCallbackId,
-        args.signal,
-      ),
-      args.signal,
-    );
-    if (!delivery.ok) {
-      log.error("Failed to finalize canonical Slack delivery callback", {
-        runId,
-        callbackId: work.slackDeliveryCallbackId,
-        error: delivery.error,
-      });
-    }
-  }
-  if (work.feishuDeliveryCallbackId) {
-    const delivery = await settle(
-      args.dependencies.dispatchFeishuDelivery(
-        work.feishuDeliveryCallbackId,
-        args.signal,
-      ),
-      args.signal,
-    );
-    if (!delivery.ok) {
-      log.error("Failed to finalize canonical Feishu delivery callback", {
-        runId,
-        callbackId: work.feishuDeliveryCallbackId,
-        error: delivery.error,
-      });
-    }
-  }
+  await dispatchCanonicalDeliveryCallbacks({
+    runId,
+    slackDeliveryCallbackId: work.slackDeliveryCallbackId,
+    feishuDeliveryCallbackId: work.feishuDeliveryCallbackId,
+    dependencies: args.dependencies,
+    signal: args.signal,
+  });
 
   const drainResult = await maybeDrainThreadQueueForTerminalCallback({
     enabled: work.shouldDrainThreadQueue,

@@ -90,3 +90,9 @@ export function feishuBotOpenUrl(appId: string): string {
   url.searchParams.set("appId", appId);
   return url.toString();
 }
+
+export function feishuChatOpenUrl(chatId: string): string {
+  const url = new URL("https://applink.feishu.cn/client/chat/open");
+  url.searchParams.set("openChatId", chatId);
+  return url.toString();
+}

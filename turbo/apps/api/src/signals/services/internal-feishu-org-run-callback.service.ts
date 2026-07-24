@@ -181,6 +181,56 @@ async function clearThinkingReaction(args: {
   );
 }
 
+async function sendFeishuCallbackResponse(args: {
+  readonly db: Db;
+  readonly payload: FeishuOrgCallbackPayload;
+  readonly runId: string;
+  readonly message: ReturnType<typeof buildFeishuAgentResponseMessage>;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.payload.replyInThread) {
+    await replyWithFeishuMessage({
+      db: args.db,
+      installationId: args.payload.installationId,
+      messageId: args.payload.messageId,
+      message: args.message,
+      replyInThread: true,
+      signal: args.signal,
+    });
+  } else {
+    await sendFeishuMessage({
+      db: args.db,
+      installationId: args.payload.installationId,
+      receiveIdType: "chat_id",
+      receiveId: args.payload.chatId,
+      message: args.message,
+      idempotencyKey: args.runId,
+      signal: args.signal,
+    });
+  }
+  args.signal.throwIfAborted();
+}
+
+async function loadFeishuCallbackConnection(
+  db: Db,
+  payload: FeishuOrgCallbackPayload,
+) {
+  const [connection] = await db
+    .select({
+      id: feishuOrgConnections.id,
+      feishuOpenId: feishuOrgConnections.feishuOpenId,
+    })
+    .from(feishuOrgConnections)
+    .where(
+      and(
+        eq(feishuOrgConnections.id, payload.connectionId),
+        eq(feishuOrgConnections.installationId, payload.installationId),
+      ),
+    )
+    .limit(1);
+  return connection;
+}
+
 async function handleFeishuCallback(
   args: HandleFeishuCallbackInput,
 ): Promise<InternalRunCallbackDispatchResult> {
@@ -222,19 +272,7 @@ async function handleFeishuCallback(
   if (!installation) {
     return { success: false, error: "Feishu installation not found" };
   }
-  const [connection] = await args.db
-    .select({
-      id: feishuOrgConnections.id,
-      feishuOpenId: feishuOrgConnections.feishuOpenId,
-    })
-    .from(feishuOrgConnections)
-    .where(
-      and(
-        eq(feishuOrgConnections.id, payload.connectionId),
-        eq(feishuOrgConnections.installationId, payload.installationId),
-      ),
-    )
-    .limit(1);
+  const connection = await loadFeishuCallbackConnection(args.db, payload);
   args.signal.throwIfAborted();
   if (!connection) {
     await clearThinkingReaction({
@@ -285,6 +323,7 @@ async function handleFeishuCallback(
     getFeatureOverrides: args.getFeatureOverrides,
     signal: args.signal,
   });
+  args.signal.throwIfAborted();
   const responseText =
     args.callback.status === "failed"
       ? (errorText ?? "Agent execution failed.")
@@ -294,27 +333,13 @@ async function handleFeishuCallback(
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });
-  if (payload.replyInThread) {
-    await replyWithFeishuMessage({
-      db: args.db,
-      installationId: payload.installationId,
-      messageId: payload.messageId,
-      message: responseMessage,
-      replyInThread: true,
-      signal: args.signal,
-    });
-  } else {
-    await sendFeishuMessage({
-      db: args.db,
-      installationId: payload.installationId,
-      receiveIdType: "chat_id",
-      receiveId: payload.chatId,
-      message: responseMessage,
-      idempotencyKey: args.callback.runId,
-      signal: args.signal,
-    });
-  }
-  args.signal.throwIfAborted();
+  await sendFeishuCallbackResponse({
+    db: args.db,
+    payload,
+    runId: args.callback.runId,
+    message: responseMessage,
+    signal: args.signal,
+  });
   await clearThinkingReaction({
     db: args.db,
     payload,
@@ -322,6 +347,7 @@ async function handleFeishuCallback(
   });
   args.signal.throwIfAborted();
   await args.saveRunSummary(args.callback.runId, run.prompt, output ?? "");
+  args.signal.throwIfAborted();
   return { success: true };
 }
 

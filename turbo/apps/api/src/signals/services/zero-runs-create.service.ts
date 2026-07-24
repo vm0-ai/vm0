@@ -148,6 +148,8 @@ interface CreateZeroRunCommandArgs {
     UserInfo,
     | "slackDisplayName"
     | "slackUserId"
+    | "feishuDisplayName"
+    | "feishuOpenId"
     | "teamsUserDisplayName"
     | "teamsUserPrincipalName"
     | "teamsUserId"
@@ -197,6 +199,8 @@ interface CreateZeroIntegrationRunCommandArgs {
     UserInfo,
     | "slackDisplayName"
     | "slackUserId"
+    | "feishuDisplayName"
+    | "feishuOpenId"
     | "teamsUserDisplayName"
     | "teamsUserPrincipalName"
     | "teamsUserId"
@@ -400,6 +404,12 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
   }
   if (userInfo.slackUserId) {
     lines.push(`Slack user ID: ${userInfo.slackUserId}`);
+  }
+  if (userInfo.feishuDisplayName) {
+    lines.push(`Feishu display name: ${userInfo.feishuDisplayName}`);
+  }
+  if (userInfo.feishuOpenId) {
+    lines.push(`Feishu open ID: ${userInfo.feishuOpenId}`);
   }
   if (userInfo.teamsUserDisplayName) {
     lines.push(`Teams display name: ${userInfo.teamsUserDisplayName}`);

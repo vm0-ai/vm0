@@ -2,7 +2,10 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { zeroFeishuBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-browser-connect";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -32,7 +35,11 @@ describe("zero Feishu connect page", () => {
     expect(
       screen.getByText(/Link your VM0 account to this Feishu bot/),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").find((button) => {
+        return button.textContent === "Connect";
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Back to Feishu settings")).toBeInTheDocument();
   });
 
@@ -57,7 +64,9 @@ describe("zero Feishu connect page", () => {
     });
     expect(screen.getByText(/You're connected to Okou/)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Open Feishu" }),
+      queryAllByRoleFast("button").find((button) => {
+        return button.textContent === "Open Feishu";
+      }),
     ).toBeInTheDocument();
   });
 });
