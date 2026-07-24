@@ -75,6 +75,9 @@ uv sync --locked
 uv lock --check
 ```
 
+The project applies a seven-day dependency cooldown, so lock refreshes ignore
+distribution artifacts uploaded more recently.
+
 To deliberately refresh every dependency, use `uv lock --upgrade`. To refresh
 one package and the portion of the graph it constrains, use
 `uv lock --upgrade-package <package>`. Review the resolved versions and hashes
