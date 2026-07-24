@@ -30,8 +30,6 @@ _PERMANENT_FAILURE: WebhookDeliveryOutcome = "permanent_failure"
 _MIN_RETRYABLE_HTTP_STATUS_CODE = 500
 _RETRYABLE_HTTP_STATUS_CODES = {408, 429}
 _WEBHOOK_RETRY_DELAY_SECONDS = 0.5
-_HTTP_NOT_FOUND = 404
-_MODEL_OBSERVATION_V2_PATH = "/api/webhooks/agent/model-usage-observation-v2"
 
 
 _opener = build_api_opener()
@@ -230,23 +228,6 @@ def _do_post_webhook_attempts(
             return _SUCCESS
         except urllib.error.HTTPError as exc:
             if not _is_retryable_http_error(exc):
-                if _is_expected_model_observation_v2_404(url, log_type, exc):
-                    _log_webhook_entry(
-                        proxy_log_path,
-                        "warn",
-                        "dropped during model observation v2 rollout: HTTP 404",
-                        url,
-                        log_type,
-                        payload,
-                        payload_bytes=payload_bytes,
-                        attempt=attempt + 1,
-                        error=str(exc),
-                        extra_fields={
-                            "delivery_outcome": _PERMANENT_FAILURE,
-                            "transition_drop": True,
-                        },
-                    )
-                    return _PERMANENT_FAILURE
                 _log_webhook_entry(
                     proxy_log_path,
                     "error",
@@ -305,18 +286,6 @@ def _do_post_webhook_attempts(
             raise
 
     return _RETRYABLE_FAILURE
-
-
-def _is_expected_model_observation_v2_404(
-    url: str,
-    log_type: str,
-    exc: urllib.error.HTTPError,
-) -> bool:
-    return (
-        exc.code == _HTTP_NOT_FOUND
-        and log_type == "model_usage_observation"
-        and urllib.parse.urlsplit(url).path == _MODEL_OBSERVATION_V2_PATH
-    )
 
 
 def _is_retryable_http_error(exc: urllib.error.HTTPError) -> bool:

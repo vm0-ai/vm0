@@ -944,53 +944,6 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-/**
- * Webhook model usage observation contract for
- * /api/webhooks/agent/model-usage-observation
- *
- * Receives model token observations from the sandbox for model usage statistics.
- * This endpoint is not a billing ledger input.
- */
-const modelUsageObservationCategorySchema = z.enum([
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-]);
-
-const webhookModelUsageObservationItemSchema = z
-  .object({
-    idempotencyKey: z.uuid(),
-    model: z.string().min(1).max(255),
-    category: modelUsageObservationCategorySchema,
-    quantity: z.number().int().min(1),
-  })
-  .strict();
-
-export const webhookModelUsageObservationContract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/webhooks/agent/model-usage-observation",
-    headers: authHeadersSchema,
-    body: z
-      .object({
-        runId: z.string().min(1, "runId is required"),
-        events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
-      })
-      .strict(),
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive model usage observation data from sandbox",
-  },
-});
-
 const webhookModelUsageObservationV2ItemSchema = z
   .object({
     idempotencyKey: z.uuid(),
@@ -1063,7 +1016,5 @@ export const webhookModelUsageObservationV2Contract = c.router({
 });
 
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
-export type WebhookModelUsageObservationContract =
-  typeof webhookModelUsageObservationContract;
 export type WebhookModelUsageObservationV2Contract =
   typeof webhookModelUsageObservationV2Contract;

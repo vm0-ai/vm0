@@ -12,7 +12,6 @@ import {
   webhookEventsContract,
   webhookFirewallAuthContract,
   webhookHeartbeatContract,
-  webhookModelUsageObservationContract,
   webhookModelUsageObservationV2Contract,
   webhookStoragesCommitContract,
   webhookStoragesContract,
@@ -125,11 +124,6 @@ export const runtimeApiRouteBindings = [
     id: "webhooks.agent.usageEvent",
     owner: "mitm-addon",
     route: webhookUsageEventContract.send,
-  },
-  {
-    id: "webhooks.agent.modelUsageObservation",
-    owner: "mitm-addon",
-    route: webhookModelUsageObservationContract.send,
   },
   {
     id: "webhooks.agent.modelUsageObservationV2",

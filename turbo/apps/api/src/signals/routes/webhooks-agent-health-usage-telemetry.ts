@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
-  webhookModelUsageObservationContract,
   webhookModelUsageObservationV2Contract,
   webhookTelemetryContract,
   webhookUsageEventContract,
@@ -246,28 +245,6 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const modelUsageObservationBody$ = bodyResultOf(
-  webhookModelUsageObservationContract.send,
-);
-const modelUsageObservation$ = command(async ({ get }, signal: AbortSignal) => {
-  const bodyResult = await get(modelUsageObservationBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-
-  const body = bodyResult.data;
-  const auth = getSandboxAuthForRun(body.runId, get(authorization$));
-  if (!auth) {
-    return unauthorizedRunMismatch;
-  }
-
-  return {
-    status: 200 as const,
-    body: { success: true },
-  };
-});
-
 const modelUsageObservationV2Body$ = bodyResultOf(
   webhookModelUsageObservationV2Contract.send,
 );
@@ -450,10 +427,6 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookUsageEventContract.send,
     handler: usageEvent$,
-  },
-  {
-    route: webhookModelUsageObservationContract.send,
-    handler: modelUsageObservation$,
   },
   {
     route: webhookModelUsageObservationV2Contract.send,

@@ -1210,25 +1210,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
-    const mismatchedLegacyModelUsage =
-      await api.requestAgentModelUsageObservation(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 1,
-            },
-          ],
-        },
-        mismatchedHeaders,
-        [401],
-      );
-    expectApiError(mismatchedLegacyModelUsage.body);
-    expect(mismatchedLegacyModelUsage.body.error.code).toBe("UNAUTHORIZED");
-
     const mismatchedCompactModelUsage =
       await api.requestAgentModelUsageObservationV2(
         {
@@ -1287,42 +1268,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(missingUsageRun.body);
     expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
-
-    const malformedModelUsage =
-      await api.requestAgentModelUsageObservationUnchecked(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 0,
-            },
-          ],
-        },
-        headers,
-        [400],
-      );
-    expectApiError(malformedModelUsage.body);
-    expect(malformedModelUsage.body.error.code).toBe("BAD_REQUEST");
-
-    const legacyModelUsageNoOp = await api.requestAgentModelUsageObservation(
-      {
-        runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 1,
-          },
-        ],
-      },
-      headers,
-      [200],
-    );
-    expect(legacyModelUsageNoOp.body).toStrictEqual({ success: true });
 
     const malformedCompactModelUsage =
       await api.requestAgentModelUsageObservationV2Unchecked(

@@ -3,7 +3,6 @@ import {
   uuid,
   varchar,
   bigint,
-  integer,
   timestamp,
   index,
   uniqueIndex,
@@ -21,14 +20,6 @@ export const modelStat = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     hourStart: timestamp("hour_start").notNull(),
     model: varchar("model", { length: 255 }).notNull(),
-    modelProvider: varchar("model_provider", { length: 100 })
-      .notNull()
-      .default(""),
-    requestCount: bigint("request_count", { mode: "number" })
-      .notNull()
-      .default(0),
-    orgCount: integer("org_count").notNull().default(0),
-    userCount: integer("user_count").notNull().default(0),
     inputTokens: bigint("input_tokens", { mode: "number" })
       .notNull()
       .default(0),
@@ -48,19 +39,11 @@ export const modelStat = pgTable(
     totalTokens: bigint("total_tokens", { mode: "number" })
       .notNull()
       .default(0),
-    creditsCharged: bigint("credits_charged", { mode: "number" })
-      .notNull()
-      .default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      uniqueIndex("uq_model_stat_hour_model_provider").on(
-        table.hourStart,
-        table.model,
-        table.modelProvider,
-      ),
       uniqueIndex("uq_model_stat_hour_model").on(table.hourStart, table.model),
       index("idx_model_stat_hour_start").on(table.hourStart.desc()),
       index("idx_model_stat_model_hour").on(

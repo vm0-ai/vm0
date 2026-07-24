@@ -435,12 +435,13 @@ def test_http_400_is_permanent(tmp_path, real_flow, sync_usage_executor, usage_w
     assert "permanent HTTP error" in entries[0]["message"]
 
 
-def test_model_observation_v2_404_is_an_expected_transition_drop(
+def test_model_observation_v2_404_is_a_permanent_error(
     tmp_path,
     sync_usage_executor,
     usage_webhook_server,
 ):
     proxy_log = tmp_path / "proxy.jsonl"
+    delivery_outcomes: list[str] = []
     usage_webhook_server.queue_response(404)
 
     assert usage.webhook.enqueue_webhook_delivery(
@@ -449,6 +450,7 @@ def test_model_observation_v2_404_is_an_expected_transition_drop(
         {"runId": "run-1", "events": []},
         str(proxy_log),
         "model_usage_observation",
+        delivery_outcome_callback=delivery_outcomes.append,
     )
     sync_usage_executor.shutdown(wait=True)
 
@@ -457,10 +459,11 @@ def test_model_observation_v2_404_is_an_expected_transition_drop(
     ]
     entries = [entry for entry in read_jsonl_entries_after_flush(proxy_log) if "attempt" in entry]
     assert len(entries) == 1
-    assert entries[0]["level"] == "warn"
-    assert entries[0]["delivery_outcome"] == "permanent_failure"
-    assert entries[0]["transition_drop"] is True
-    assert "v2 rollout" in entries[0]["message"]
+    assert entries[0]["level"] == "error"
+    assert entries[0]["attempt"] == 1
+    assert "permanent HTTP error" in entries[0]["message"]
+    assert "transition_drop" not in entries[0]
+    assert delivery_outcomes == ["permanent_failure"]
 
 
 def test_other_webhook_404_remains_an_error(
