@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+script="${repo_root}/.github/scripts/cancel-superseded-merge-group-runs.sh"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+fake_bin="${tmp_dir}/bin"
+mkdir -p "$fake_bin"
+
+fail() {
+  echo "FAIL: $1" >&2
+  exit 1
+}
+
+cat >"${fake_bin}/gh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$MOCK_GH_LOG"
+
+endpoint=""
+method="GET"
+status_filter=""
+previous=""
+for argument in "$@"; do
+  case "$previous" in
+    --method) method=$argument ;;
+  esac
+  case "$argument" in
+    repos/*) endpoint=$argument ;;
+    status=*) status_filter=${argument#status=} ;;
+  esac
+  previous=$argument
+done
+
+case "$endpoint" in
+  repos/vm0-ai/vm0/pulls/42)
+    printf 'feature/safe-shared-runner\tvm0-ai/vm0\n'
+    ;;
+  repos/vm0-ai/vm0/actions/runs)
+    if [ "${MOCK_NO_TARGETS:-0}" = "1" ] || [ "$status_filter" != "in_progress" ]; then
+      printf '[{"workflow_runs":[]}]\n'
+      exit 0
+    fi
+    cat <<'JSON'
+[{"workflow_runs":[
+  {"id":100,"name":"Turbo","status":"in_progress","event":"merge_group","head_sha":"old-a","head_branch":"gh-readonly-queue/main/pr-42-old-a","path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/100"},
+  {"id":110,"name":"Crates","status":"in_progress","event":"pull_request","head_sha":"old-b","head_branch":"feature/safe-shared-runner","head_repository":{"full_name":"vm0-ai/vm0"},"path":".github/workflows/crates.yml","pull_requests":[],"html_url":"https://example.test/110"},
+  {"id":115,"name":"Turbo","status":"in_progress","event":"pull_request","head_sha":"old-branch-collision","head_branch":"feature/safe-shared-runner","head_repository":{"full_name":"fork/vm0"},"path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/115"},
+  {"id":120,"name":"Runner Image","status":"in_progress","event":"merge_group","head_sha":"old-c","head_branch":"gh-readonly-queue/main/pr-42-old-c","path":".github/workflows/runner-image.yml","pull_requests":[],"html_url":"https://example.test/120"},
+  {"id":130,"name":"Turbo","status":"in_progress","event":"merge_group","head_sha":"old-d","head_branch":"gh-readonly-queue/main/pr-99-old-d","path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/130"},
+  {"id":140,"name":"Security","status":"in_progress","event":"merge_group","head_sha":"old-e","head_branch":"gh-readonly-queue/main/pr-42-old-e","path":".github/workflows/security.yml","pull_requests":[],"html_url":"https://example.test/140"},
+  {"id":190,"name":"Turbo","status":"in_progress","event":"merge_group","head_sha":"current-sha","head_branch":"gh-readonly-queue/main/pr-42-current","path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/190"},
+  {"id":300,"name":"Turbo","status":"in_progress","event":"merge_group","head_sha":"newer-sha","head_branch":"gh-readonly-queue/main/pr-42-newer","path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/300"}
+]}]
+JSON
+    ;;
+  repos/vm0-ai/vm0/actions/runs/*/cancel)
+    [ "$method" = "POST" ] || exit 1
+    run_id=${endpoint%/cancel}
+    run_id=${run_id##*/}
+    printf '%s\n' "$run_id" >>"$MOCK_CANCEL_LOG"
+    ;;
+  repos/vm0-ai/vm0/actions/runs/*)
+    if [ "${MOCK_DELAY_COMPLETION:-0}" = "1" ] && [ ! -f "$MOCK_RUNS_RELEASED" ]; then
+      printf 'in_progress\n'
+    else
+      printf 'completed\n'
+    fi
+    ;;
+  *)
+    echo "unexpected gh endpoint: ${endpoint}" >&2
+    exit 1
+    ;;
+esac
+SH
+
+cat >"${fake_bin}/sleep" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$1" >>"$MOCK_SLEEP_LOG"
+touch "$MOCK_RUNS_RELEASED"
+SH
+chmod +x "${fake_bin}/gh" "${fake_bin}/sleep"
+
+run_cancel() {
+  env -i \
+    PATH="${fake_bin}:$PATH" \
+    HOME="${HOME:-/tmp}" \
+    GH_TOKEN=test-token \
+    GITHUB_REPOSITORY=vm0-ai/vm0 \
+    GITHUB_RUN_ID=200 \
+    GITHUB_SHA=current-sha \
+    MERGE_GROUP_HEAD_REF=gh-readonly-queue/main/pr-42-current \
+    MOCK_GH_LOG="${tmp_dir}/gh.log" \
+    MOCK_CANCEL_LOG="${tmp_dir}/cancel.log" \
+    MOCK_SLEEP_LOG="${tmp_dir}/sleep.log" \
+    MOCK_RUNS_RELEASED="${tmp_dir}/runs-released" \
+    SUPERSEDED_RUN_POLL_SECONDS=0 \
+    SUPERSEDED_RUN_TIMEOUT_SECONDS=10 \
+    "$@" \
+    bash "$script"
+}
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+output=$(run_cancel)
+grep -q "All superseded CI runs completed" <<<"$output" ||
+  fail "expected cancellation barrier to complete"
+cancelled_runs=$(cat "${tmp_dir}/cancel.log")
+[ "$cancelled_runs" = $'100\n110\n120' ] ||
+  fail "expected only older same-PR consumer runs to be cancelled, got: ${cancelled_runs}"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "already-completed superseded runs must not poll"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+output=$(run_cancel MOCK_DELAY_COMPLETION=1)
+grep -q "Waiting for superseded CI runs" <<<"$output" ||
+  fail "expected an explicit completion barrier"
+[ "$(wc -l <"${tmp_dir}/sleep.log")" -eq 1 ] ||
+  fail "expected one poll before superseded runs completed"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+output=$(run_cancel MOCK_NO_TARGETS=1)
+grep -q "No superseded CI runs found" <<<"$output" ||
+  fail "expected empty active-run set to exit cleanly"
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "empty active-run set must not cancel anything"
+
+if run_cancel MERGE_GROUP_HEAD_REF=gh-readonly-queue/main/no-pr >/dev/null 2>&1; then
+  fail "invalid merge-group ref must fail closed"
+fi
+
+echo "cancel-superseded-merge-group-runs tests passed"
