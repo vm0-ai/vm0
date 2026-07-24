@@ -47,6 +47,53 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
+  it("skips backward history fetch when persistent messages start at seq one", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000729";
+    const initialMessage = {
+      id: "00000000-0000-4000-8000-000000000729",
+      role: "assistant",
+      content: "Complete history starts here",
+      createdAt: "2026-06-09T10:00:00.000Z",
+      seqId: 1,
+    } satisfies PagedChatMessage;
+    const beforeSeqIds: number[] = [];
+    const messageRefreshCompleted = context.mocks.deferred<void>();
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Complete history",
+      onMessageGet: (messageId) => {
+        if (messageId === initialMessage.id) {
+          messageRefreshCompleted.resolve();
+        }
+      },
+    });
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (query.beforeSeqId !== undefined) {
+        beforeSeqIds.push(query.beforeSeqId);
+        return respond(200, { messages: [], hasHistoryBefore: false });
+      }
+      if (query.sinceSeqId === initialMessage.seqId) {
+        return respond(200, { messages: [] });
+      }
+      if (query.sinceSeqId === undefined) {
+        return respond(200, {
+          messages: [initialMessage],
+          hasHistoryBefore: true,
+        });
+      }
+      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await messageRefreshCompleted.promise;
+    await expect(
+      screen.findByText(initialMessage.content),
+    ).resolves.toBeInTheDocument();
+    expect(beforeSeqIds).toStrictEqual([]);
+  });
+
   it("publishes the initial page before batching the remaining history", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000730";
     const messages = Array.from({ length: 70 }, (_, index) => {
