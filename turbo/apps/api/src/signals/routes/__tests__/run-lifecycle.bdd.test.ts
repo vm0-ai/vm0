@@ -81,7 +81,6 @@ import {
   holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
   removeRunCanonicalStorageState,
-  removeSessionCanonicalStorageState,
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
@@ -1976,9 +1975,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, sessionRun.runId, [200]);
   });
 
-  it("falls back to legacy run and session Storage state", async () => {
+  it("keeps the short-lived legacy runner queue projection", async () => {
     const api = createRunsApi(context);
-    const storages = createStoragesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
     const composeName = `bdd-legacy-storage-state-${randomUUID().slice(0, 8)}`;
@@ -2007,90 +2005,22 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       expectLegacyStorageManifest(legacyRunClaim.storageManifest)?.artifacts,
     ).toContainEqual(expect.objectContaining({ vasStorageName: "memory" }));
-    await api.requestCancelRun(actor, pendingLegacyRun.runId, [200]);
 
-    const initialRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
-      prompt: "create legacy session and checkpoint projections",
-    });
-    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
-      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
-    });
-    const initialManifest = initialClaim.storageManifest;
-    if (!initialManifest || !("storageMounts" in initialManifest)) {
-      throw new Error("Expected initial canonical Storage mounts");
-    }
-    const initialMemory = initialManifest.storageMounts.find((mount) => {
-      return mount.name === "memory";
-    });
-    if (!initialMemory) {
-      throw new Error("Expected the initial memory mount");
-    }
-
-    const memoryFile = storageTextFile(
-      "MEMORY.md",
-      `legacy projection ${initialRun.runId}`,
-    );
-    const preparedMemory = await storages.prepareStorage(actor, {
-      storageName: "memory",
-      storageType: "artifact",
-      files: [memoryFile],
-    });
-    await storages.commitStorage(actor, {
-      storageName: "memory",
-      storageType: "artifact",
-      versionId: preparedMemory.versionId,
-      files: [memoryFile],
-    });
-    const historyHash = createHash("sha256")
-      .update(`legacy storage state ${initialRun.runId}`)
-      .digest("hex");
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    const rejectedCheckpoint = await webhooks.requestAgentCheckpoint(
       {
-        runId: initialRun.runId,
+        runId: pendingLegacyRun.runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-legacy-cli-${initialRun.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
-        artifactSnapshots: [
-          {
-            name: initialMemory.name,
-            version: preparedMemory.versionId,
-            mountPath: initialMemory.mountPath,
-          },
-        ],
+        cliAgentSessionId: `bdd-canonical-required-${pendingLegacyRun.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`canonical required ${pendingLegacyRun.runId}`)
+          .digest("hex"),
       },
-      { authorization: `Bearer ${initialClaim.sandboxToken}` },
-      [200],
+      { authorization: `Bearer ${legacyRunClaim.sandboxToken}` },
+      [500],
     );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected the legacy projection checkpoint to succeed");
-    }
-    await webhooks.requestAgentComplete(
-      { runId: initialRun.runId, exitCode: 0 },
-      { authorization: `Bearer ${initialClaim.sandboxToken}` },
-      [200],
-    );
+    expect(rejectedCheckpoint.status).toBe(500);
 
-    await removeSessionCanonicalStorageState(context, initialRun.sessionId);
-    const sessionRun = await api.createDirectRun(actor, {
-      sessionId: initialRun.sessionId,
-      prompt: "continue a pre-canonical Storage session",
-    });
-    const sessionClaim = await api.claimRunnerJob(sessionRun.runId, {
-      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
-    });
-    const sessionManifest = sessionClaim.storageManifest;
-    if (!sessionManifest || !("storageMounts" in sessionManifest)) {
-      throw new Error("Expected canonical mounts from legacy session state");
-    }
-    expect(sessionManifest.storageMounts).toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        versionId: preparedMemory.versionId,
-        writeback: true,
-      }),
-    );
-    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    await api.requestCancelRun(actor, pendingLegacyRun.runId, [200]);
   });
 
   it("keeps a committed artifact head after initial empty artifact creation", async () => {

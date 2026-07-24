@@ -37,7 +37,6 @@ import {
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
 import { createDeferredPromise, onRejection } from "../utils";
-import { projectLegacyWritebackArtifacts } from "../services/storage-legacy-projection.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -309,36 +308,6 @@ async function removeRunCanonicalStorageState(
   signal.throwIfAborted();
 }
 
-async function removeSessionCanonicalStorageState(
-  db: Db,
-  sessionId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [session] = await db
-    .select({
-      artifacts: agentSessions.artifacts,
-      storageMounts: agentSessions.storageMounts,
-    })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!session) {
-    throw new Error("Agent session not found");
-  }
-  await db
-    .update(agentSessions)
-    .set({
-      artifacts:
-        session.storageMounts === null
-          ? session.artifacts
-          : [...projectLegacyWritebackArtifacts(session.storageMounts)],
-      storageMounts: null,
-    })
-    .where(eq(agentSessions.id, sessionId));
-  signal.throwIfAborted();
-}
-
 async function readStoragePersistenceState(
   db: Db,
   ids: {
@@ -393,11 +362,7 @@ async function readStoragePersistenceState(
 
 type StorageStateAction = Extract<
   TestRuntimeStateActionBody,
-  {
-    action:
-      | "remove-run-canonical-storage-state"
-      | "remove-session-canonical-storage-state";
-  }
+  { action: "remove-run-canonical-storage-state" }
 >;
 
 type ReadStorageStateAction = Extract<
@@ -411,7 +376,6 @@ function isStorageStateAction(
 ): body is AnyStorageStateAction {
   switch (body.action) {
     case "remove-run-canonical-storage-state":
-    case "remove-session-canonical-storage-state":
     case "read-storage-persistence-state": {
       return true;
     }
@@ -426,16 +390,7 @@ async function mutateStorageState(
   body: StorageStateAction,
   signal: AbortSignal,
 ): Promise<void> {
-  switch (body.action) {
-    case "remove-run-canonical-storage-state": {
-      await removeRunCanonicalStorageState(db, body.run_id, signal);
-      return;
-    }
-    case "remove-session-canonical-storage-state": {
-      await removeSessionCanonicalStorageState(db, body.session_id, signal);
-      break;
-    }
-  }
+  await removeRunCanonicalStorageState(db, body.run_id, signal);
   signal.throwIfAborted();
 }
 

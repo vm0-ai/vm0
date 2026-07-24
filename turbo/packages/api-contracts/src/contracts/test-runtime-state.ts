@@ -38,10 +38,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("remove-session-canonical-storage-state"),
-    session_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("read-storage-persistence-state"),
     run_id: z.uuid(),
     session_id: z.uuid(),
