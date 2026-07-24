@@ -34,6 +34,16 @@ def test_logs_batch_ids(x_usage, tmp_path, real_flow):
     assert p["quantity"] == 3
 
 
+def test_logs_lowercase_get_using_response_count(x_usage, tmp_path, real_flow):
+    """Lowercase GET methods use the same response-count billing as GET."""
+    body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
+    flow = x_usage.make_flow(real_flow, tmp_path, body=body)
+    flow.request.method = "get"
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "posts.read"
+    assert p["quantity"] == 3
+
+
 def test_logs_batch_ids_with_deletions(x_usage, tmp_path, real_flow):
     """Batch with some missing ids -> bills actual data returned."""
     body = json.dumps({"data": [{"id": "1"}, {"id": "3"}]}).encode()

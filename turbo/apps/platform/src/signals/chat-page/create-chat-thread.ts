@@ -2074,12 +2074,14 @@ function createSyncRemoteMessagesCommand({
   threadId,
   persistentMessages$,
   hasReachedOldestMessage$,
+  hasServerConfirmedOldestMessage$,
   mergePersistentMessages$,
   dataSource,
 }: {
   threadId: string;
   persistentMessages$: PersistentChatMessages$;
-  hasReachedOldestMessage$: State<boolean>;
+  hasReachedOldestMessage$: Computed<boolean>;
+  hasServerConfirmedOldestMessage$: State<boolean>;
   mergePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
@@ -2141,7 +2143,7 @@ function createSyncRemoteMessagesCommand({
         oldestMessage === undefined
       ) {
         if (initialHasHistoryBefore === false) {
-          set(hasReachedOldestMessage$, true);
+          set(hasServerConfirmedOldestMessage$, true);
         }
       } else {
         let beforeSeqId = oldestMessage.seqId;
@@ -2184,7 +2186,7 @@ function createSyncRemoteMessagesCommand({
           }
 
           if (!result.hasHistoryBefore) {
-            set(hasReachedOldestMessage$, true);
+            set(hasServerConfirmedOldestMessage$, true);
             return;
           }
 
@@ -2390,7 +2392,13 @@ function createPagedMessages(
     registerBodyBlocks(entry.parsedBodyBlocks);
   }
   const persistentChatMessages$ = state<RegisteredChatMessage[]>([]);
-  const hasReachedOldestMessage$ = state(false);
+  const hasServerConfirmedOldestMessage$ = state(false);
+  const hasReachedOldestMessage$ = computed((get): boolean => {
+    return (
+      get(hasServerConfirmedOldestMessage$) ||
+      get(persistentChatMessages$)[0]?.message.seqId === 1
+    );
+  });
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
   const appendOptimisticMessage$ = command(
     ({ set }, input: OptimisticChatMessageInput): void => {
@@ -2407,8 +2415,8 @@ function createPagedMessages(
   });
   // Approximate backfill progress from the loaded seqId range. The thread's
   // true max seqId is not exposed to the client, so the newest loaded message
-  // stands in for it. seqIds are allocated from 1, so a first seqId <= 1 means
-  // the full history is already loaded. Null hides the progress bar.
+  // stands in for it. The reached-oldest computed hides progress once the
+  // first persistent seqId is 1. Null hides the progress bar.
   const historyBackfillProgress$ = computed((get): Promise<number | null> => {
     if (get(hasReachedOldestMessage$)) {
       return Promise.resolve(null);
@@ -2416,7 +2424,7 @@ function createPagedMessages(
     const messages = get(persistentChatMessages$);
     const first = messages[0];
     const last = messages.at(-1);
-    if (first === undefined || last === undefined || first.message.seqId <= 1) {
+    if (first === undefined || last === undefined) {
       return Promise.resolve(null);
     }
     return Promise.resolve(
@@ -2463,6 +2471,7 @@ function createPagedMessages(
     threadId,
     persistentMessages$: persistentChatMessages$,
     hasReachedOldestMessage$,
+    hasServerConfirmedOldestMessage$,
     mergePersistentMessages$,
     dataSource,
   });
