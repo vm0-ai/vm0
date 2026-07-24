@@ -238,6 +238,58 @@ const runnerLockingQuery = `
   \`
 `;
 
+const creditAvailabilityQuery = `
+  sql\`
+    WITH org AS (
+      SELECT credits
+      FROM org_metadata
+      WHERE org_id = \${threadId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = \${threadId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired
+  \`
+`;
+
+const managedCreditAvailabilityQuery = `
+  sql\`
+    WITH pricing AS (
+      SELECT unit_price, unit_size
+      FROM usage_pricing
+      WHERE kind = \${threadId}
+        AND provider = \${threadId}
+        AND category = \${threadId}
+      LIMIT 1
+    ),
+    org AS (
+      SELECT credits
+      FROM org_metadata
+      WHERE org_id = \${threadId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = \${threadId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired,
+      (SELECT unit_price FROM pricing) AS unit_price,
+      (SELECT unit_size FROM pricing) AS unit_size
+  \`
+`;
+
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
     {
@@ -842,6 +894,115 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
               WHERE \${eq(runs.threadId, threadId)}
               LIMIT 1
             ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        const dynamicOrgTable = sql.identifier("org_metadata");
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              ORDER BY credits
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            pricing AS (
+              SELECT unit_price
+              FROM usage_pricing
+              WHERE kind = \${threadId}
+              LIMIT 1
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT unit_price FROM pricing) AS unit_price
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT org_id, SUM(remaining) AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+              GROUP BY org_id
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org WHERE credits > 0) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM \${dynamicOrgTable}
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
           \`,
           rowSchema,
         );
@@ -1590,6 +1751,28 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         \`);
       `,
       errors: [{ messageId: "upsertQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          ${creditAvailabilityQuery},
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "scalarCteQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          ${managedCreditAvailabilityQuery},
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "scalarCteQueryBuilder" }],
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
