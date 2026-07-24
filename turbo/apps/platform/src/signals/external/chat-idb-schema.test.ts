@@ -7,6 +7,7 @@ import {
   ARTIFACT_ITEMS_UPDATED_AT_INDEX,
   ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX,
   ARTIFACT_SYNC_STORE,
+  CHAT_IDB_VERSION,
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_EVENTS_ORDER_INDEX,
@@ -212,7 +213,7 @@ describe("upgradeChatIdb local cache resets", () => {
     expectArtifactSyncStoreCreated(createObjectStore);
   });
 
-  it("replaces the obsolete v17 message ordering index", () => {
+  it("rebuilds all local caches with v18 indexes from v17", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_SNAPSHOT_STORE,
@@ -233,27 +234,7 @@ describe("upgradeChatIdb local cache resets", () => {
     expectArtifactSyncStoreCreated(createObjectStore);
   });
 
-  it("rebuilds artifact caches with direct-read indexes from v16", () => {
-    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
-      CHAT_MESSAGES_STORE,
-      CHAT_THREAD_SNAPSHOT_STORE,
-      CHAT_THREAD_EVENTS_STORE,
-      CHAT_THREAD_EVENT_SYNC_STORE,
-      ARTIFACT_ITEMS_STORE,
-      ARTIFACT_SYNC_STORE,
-    ]);
-
-    upgradeChatIdb(db, 16);
-
-    expect(deleteObjectStore).toHaveBeenCalledTimes(2);
-    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_ITEMS_STORE);
-    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_SYNC_STORE);
-    expect(createObjectStore).toHaveBeenCalledTimes(2);
-    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
-    expectArtifactSyncStoreCreated(createObjectStore);
-  });
-
-  it("does not rebuild artifact caches at v17", () => {
+  it("does not rebuild local caches at the current schema version", () => {
     const { db, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_SNAPSHOT_STORE,
@@ -263,7 +244,7 @@ describe("upgradeChatIdb local cache resets", () => {
       ARTIFACT_SYNC_STORE,
     ]);
 
-    upgradeChatIdb(db, 17);
+    upgradeChatIdb(db, CHAT_IDB_VERSION);
 
     expect(deleteObjectStore).not.toHaveBeenCalled();
     expect(createObjectStore).not.toHaveBeenCalled();

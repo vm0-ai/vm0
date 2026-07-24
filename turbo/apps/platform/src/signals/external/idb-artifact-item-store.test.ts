@@ -503,6 +503,62 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     );
   });
 
+  it("classifies a timeout-aborted transaction as a deadline failure", async () => {
+    const pendingCursor = Promise.withResolvers<FakeCursor | null>();
+    let transactionAborted = false;
+    const index: FakeIndex = {
+      openCursor: () => {
+        return pendingCursor.promise;
+      },
+      get: () => {
+        return Promise.resolve(undefined);
+      },
+    };
+    const store: FakeStore = {
+      put: () => {
+        return Promise.resolve();
+      },
+      delete: () => {
+        return Promise.resolve();
+      },
+      clear: () => {
+        return Promise.resolve();
+      },
+      get: () => {
+        return Promise.resolve(undefined);
+      },
+      index: () => {
+        return index;
+      },
+    };
+    const transaction: FakeTransaction = {
+      abort: () => {
+        transactionAborted = true;
+        pendingCursor.reject(
+          new DOMException("Transaction aborted", "AbortError"),
+        );
+      },
+      store,
+      done: Promise.resolve(),
+      objectStore: () => {
+        return store;
+      },
+    };
+    const db = {
+      transaction: () => {
+        return transaction;
+      },
+    } as unknown as IDBPDatabase;
+    const stores = createArtifactItemCacheStores(() => {
+      return Promise.resolve(db);
+    });
+
+    await expect(stores.readStore.readRecent()).rejects.toThrow(
+      "IndexedDB operation timed out: artifacts:readRecent",
+    );
+    expect(transactionAborted).toBeTruthy();
+  });
+
   it("propagates synchronization write failures", async () => {
     const stores = createArtifactItemCacheStores(() => {
       return Promise.reject(new Error("open failed"));
