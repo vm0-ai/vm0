@@ -62,6 +62,7 @@ import {
   mockDatadogConnectorOAuth,
   mockGmailConnectorOAuth,
   mockSlackConnectorOAuth,
+  mockTestOAuthAuthCodeProvider,
   mockTestOAuthDeviceConnectorProvider,
   requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
@@ -1406,7 +1407,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  mockExternalConnectorCatalogEnabled(false);
+  clearMockedExternalConnectorCatalogEnabled();
   clearMockNow();
 });
 
@@ -1560,7 +1561,7 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
-  it("does not let a user override the global external catalog source", async () => {
+  it("does not let a user select the external catalog source", async () => {
     configureSource();
     const release = buildRelease({
       version: "2026-07-15.user-source-override",
@@ -1568,7 +1569,6 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
-    clearMockedExternalConnectorCatalogEnabled();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
@@ -1577,7 +1577,7 @@ describe("connector catalog valid lifecycle", () => {
         headers,
         body: {
           switches: {
-            [FeatureSwitchKey.ExternalConnectorCatalog]: false,
+            [FeatureSwitchKey.ExternalConnectorCatalog]: true,
           },
         },
       }),
@@ -1588,7 +1588,7 @@ describe("connector catalog valid lifecycle", () => {
     ).toBeUndefined();
     expect(
       update.body.effectiveSwitches[FeatureSwitchKey.ExternalConnectorCatalog],
-    ).toBeTruthy();
+    ).toBeFalsy();
 
     const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
@@ -1599,7 +1599,7 @@ describe("connector catalog valid lifecycle", () => {
       publicCatalog.body.connectors.some((connector) => {
         return connector.connectorRef === release.connectorRef;
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
       callsBeforePublicCatalog,
     );
@@ -4611,6 +4611,10 @@ describe("connector catalog executable compatibility", () => {
   });
 
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    const provider = mockTestOAuthAuthCodeProvider({
+      refreshToken: "catalog-test-oauth-refresh",
+    });
     configureSource();
     const method = publicAuthMethod({
       id: "oauth",
@@ -4635,9 +4639,8 @@ describe("connector catalog executable compatibility", () => {
     });
 
     mockExternalConnectorCatalogEnabled(true);
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    zeroMocks.clerk.session(userId, orgId);
+    const actor = bdd.user();
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
     const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
@@ -4665,6 +4668,25 @@ describe("connector catalog executable compatibility", () => {
       },
     ]);
     expect(JSON.stringify(enabled.body)).not.toContain("test-oauth-secret");
+
+    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    const authorizationUrl = new URL(start.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "test-oauth-client",
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected test OAuth authorization state");
+    }
+    await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "catalog-test-oauth-code",
+      state,
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("client_secret")).toBe(
+      "test-oauth-secret",
+    );
+    await connectorsApi.deleteConnectorByType(actor, "test-oauth");
   });
 
   it("filters unsupported grant, access, and revoke handlers independently", async () => {
