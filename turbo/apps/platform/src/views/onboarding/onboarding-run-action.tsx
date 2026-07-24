@@ -18,6 +18,7 @@ export function OnboardingRunAction({
   templateSlug,
   requiresPaidPlan = false,
   disabled = false,
+  runLabel = "Run now",
   onBack,
 }: {
   readonly prompt: string;
@@ -26,6 +27,7 @@ export function OnboardingRunAction({
   readonly templateSlug?: string;
   readonly requiresPaidPlan?: boolean;
   readonly disabled?: boolean;
+  readonly runLabel?: string;
   readonly onBack: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -49,7 +51,7 @@ export function OnboardingRunAction({
       : paidPlan || redeemCode
         ? "Run now"
         : "Upgrade Pro to run"
-    : "Run now";
+    : runLabel;
 
   const completeAndRun = async (): Promise<void> => {
     await complete(redeemCode, pageSignal);

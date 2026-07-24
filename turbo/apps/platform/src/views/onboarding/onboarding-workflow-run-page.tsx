@@ -7,10 +7,7 @@ import {
   updateOnboardingUi$,
 } from "../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
-import {
-  OnboardingConnectorSetup,
-  useRequiredConnectorsGate,
-} from "./onboarding-connectors.tsx";
+import { OnboardingConnectorSetup } from "./onboarding-connectors.tsx";
 import {
   buildCustomWorkflowPrompt,
   buildWorkflowPrompt,
@@ -25,18 +22,6 @@ import {
   WorkflowPreview,
 } from "./onboarding-workflow-picker-page.tsx";
 
-function formatConnectorList(labels: readonly string[]): string {
-  if (labels.length <= 1) {
-    return labels[0] ?? "";
-  }
-  const last = labels[labels.length - 1] ?? "";
-  const head = labels.slice(0, -1).join(", ");
-  if (labels.length === 2) {
-    return `${head} and ${last}`;
-  }
-  return `${head}, and ${last}`;
-}
-
 export function OnboardingWorkflowRunPage() {
   const draft = useGet(onboardingDraft$);
   const ui = useGet(onboardingUi$);
@@ -45,7 +30,6 @@ export function OnboardingWorkflowRunPage() {
   const { navigateTo } = useOnboardingNavigation();
   const custom = draft.workflowId === CUSTOM_WORKFLOW_ID;
   const workflow = findOnboardingWorkflow(draft.workflowId);
-  const runGate = useRequiredConnectorsGate(workflow?.required);
   const previewOpen = ui.workflowPreviewId === workflow?.id;
   const prompt = custom
     ? buildCustomWorkflowPrompt(draft.workflowNote)
@@ -63,10 +47,9 @@ export function OnboardingWorkflowRunPage() {
     });
   };
 
-  const title =
-    workflow && workflow.connectors.length > 0
-      ? "Connect your tools and customize your workflow"
-      : "Customize your workflow";
+  const title = custom
+    ? "Describe your workflow"
+    : "Review your workflow draft";
 
   return (
     <>
@@ -78,7 +61,8 @@ export function OnboardingWorkflowRunPage() {
         footer={
           <OnboardingRunAction
             prompt={prompt}
-            disabled={(custom && !draft.workflowNote.trim()) || runGate.blocked}
+            disabled={custom && !draft.workflowNote.trim()}
+            runLabel={custom ? "Continue with Zero" : "Create draft"}
             onBack={handleBack}
           />
         }
@@ -133,11 +117,6 @@ export function OnboardingWorkflowRunPage() {
             className="mt-[18px] min-h-[98px] w-full resize-y rounded-xl border border-border bg-background p-3 text-sm leading-5 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </OnboardingConnectorSetup>
-        {runGate.blocked ? (
-          <p className="mt-3 text-xs text-muted-foreground">
-            {`Connect ${formatConnectorList(runGate.missingLabels)} to run this workflow.`}
-          </p>
-        ) : null}
       </OnboardingShell>
       {workflow && previewOpen ? (
         <WorkflowPreview
