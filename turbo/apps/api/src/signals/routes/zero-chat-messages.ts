@@ -109,6 +109,7 @@ import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-mark
 import {
   deleteUserMessageQueueItem,
   discardUnclaimedUserMessage,
+  encryptQueuedUserMessageRunParams,
   enqueueUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
@@ -1525,6 +1526,7 @@ function appendUnassociatedUserMessage(params: {
   readonly structuredPrompt: UserMessageDocument | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly orgId: string;
+  readonly encryptedParams: string | undefined;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1565,6 +1567,7 @@ function appendUnassociatedUserMessage(params: {
         userId: params.userId,
         chatThreadId: params.threadId,
         chatMessageId: inserted.id,
+        encryptedParams: params.encryptedParams,
       });
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
@@ -2418,6 +2421,17 @@ async function queueUnassociatedNormalMessage(params: {
   /** Set when this call inserted a queue-first message. */
   readonly queuedMessageId: string | undefined;
 }> {
+  const encryptedParams = params.body.realAgentInPreview
+    ? await encryptQueuedUserMessageRunParams(
+        {
+          version: 1,
+          prompt: params.prepared.body.agentPrompt,
+          appendSystemPrompt: buildWebChatPrompt(),
+          realAgentInPreview: true,
+        },
+        { orgId: params.orgId, userId: params.userId },
+      )
+    : undefined;
   const message = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -2430,6 +2444,7 @@ async function queueUnassociatedNormalMessage(params: {
     structuredPrompt: params.body.structuredPrompt,
     generationTemplate: params.body.generationTemplate,
     orgId: params.orgId,
+    encryptedParams,
   });
   if (message.kind === "queued" && message.inserted) {
     waitUntil(
