@@ -99,13 +99,9 @@ teardown_file() {
 # Session Continue section:
 #    - 404 not found, 404 different user (security)
 #
-# Checkpoint Resume section:
-#    - 404 not found, 404 different user (security)
-#
 # Removed E2E tests (covered by route integration tests):
 #    - multiple supplied secrets - validates the same code path as Test 1
 #    - session continuation requires secrets to be re-provided
-#    - checkpoint resume requires secrets to be re-provided
 #
 # This E2E test (1 direct run) validates the happy path end-to-end, while route
 # integration tests cover error cases with faster feedback.

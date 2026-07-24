@@ -92,8 +92,7 @@ const runStatusSchema = z.enum(ALL_RUN_STATUSES);
  */
 const unifiedRunRequestSchema = z
   .object({
-    // High-level shortcuts (mutually exclusive with each other)
-    checkpointId: z.string().optional(),
+    // High-level shortcut for continuing an existing session.
     sessionId: z.string().optional(),
 
     // Base parameters (can be used directly or overridden after shortcut expansion)

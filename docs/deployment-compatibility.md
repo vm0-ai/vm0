@@ -186,20 +186,17 @@ the capability; old Runners continue receiving both legacy arrays.
 New run, session, and checkpoint writers persist canonical Storage mounts only.
 Readers prefer canonical persistence and fall back to legacy columns for
 historical rows. Legacy API response shapes are projected from canonical mounts
-for new rows. Explicit legacy checkpoint overrides remain on the compatibility
-reader because canonical mounts intentionally do not retain the old
-compose-volume versus additional-volume distinction. The short-lived runner job
-queue also retains its legacy claim projection until old Runner output is
-removed.
+for new rows. The short-lived runner job queue also retains its legacy claim
+projection until old Runner output is removed.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical
 writeback mounts, and projecting those mounts back to the legacy artifact shape
 must be lossless. Omitted and `latest` version declarations retain their
 dynamic-HEAD behavior. Historical run and checkpoint rows are not converted
-into resumable snapshots: arbitrary checkpoint resume remains a separate
-legacy path that will be retired, while a successful continuation naturally
-emits a fully resolved canonical run and checkpoint.
+into resumable snapshots: arbitrary checkpoint resume has been retired, while
+a successful session continuation naturally emits a fully resolved canonical
+run and checkpoint.
 
 Remove the remaining legacy columns and readers only after verification finds
 zero legacy writes, zero unmigrated session continuation heads, and no lossy

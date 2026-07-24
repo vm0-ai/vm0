@@ -321,7 +321,6 @@ export const enqueueCreditLowBalanceAlert$ = command(
             buildOneClickUnsubscribeUrl(recipient.userId),
           ),
           template,
-          postSendAction: null,
           status: "pending",
           attempts: 0,
         };

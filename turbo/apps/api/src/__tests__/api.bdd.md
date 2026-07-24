@@ -157,14 +157,14 @@ Then stale runners, duplicate sessions, capacity limits, and unauthorized runner
 
 Coverage: `runners`, `zero-runs-queue`, `zero-queue-position`, `zero-runs-cancel`, `agent-runs-cancel`, runner dispatch service tests.
 
-### RUN-04: Sessions, checkpoints, logs, and network logs
+### RUN-04: Sessions, logs, and network logs
 
-Given a user has a session with runs, checkpoints, logs, and network logs
-When the user reads sessions, checkpoints, logs, network logs, and run detail endpoints
+Given a user has a session with runs, logs, and network logs
+When the user reads sessions, logs, network logs, and run detail endpoints
 Then owned resources are returned.
 Then missing, cross-user, cross-org, unauthorized, malformed id, and pagination cases return the expected responses.
 
-Coverage: `agent-sessions-id`, `agent-checkpoints-id`, `zero-runs-by-id`, `agent-runs-read`, `zero-run-network-logs`, `zero-logs-list`, `zero-logs-get-by-id`, `zero-logs-search`.
+Coverage: `agent-sessions-id`, `zero-runs-by-id`, `agent-runs-read`, `zero-run-network-logs`, `zero-logs-list`, `zero-logs-get-by-id`, `zero-logs-search`.
 
 ### CHAT-01: Chat thread lifecycle
 
