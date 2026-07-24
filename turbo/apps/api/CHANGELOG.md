@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.310.0](https://github.com/vm0-ai/vm0/compare/api-v1.309.0...api-v1.310.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** add strict per-thread message sequence ids ([#22766](https://github.com/vm0-ai/vm0/issues/22766)) ([32fca1f](https://github.com/vm0-ai/vm0/commit/32fca1f3dd20f43d23dc217c290bae496cb6b78c))
+
+
+### Bug Fixes
+
+* **workflows:** create template drafts before setup ([#22786](https://github.com/vm0-ai/vm0/issues/22786)) ([cad5b07](https://github.com/vm0-ai/vm0/commit/cad5b07ab35c916a0ef8d6caebfab410208246bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.0
+    * @vm0/core bumped to 8.458.1
+    * @vm0/db bumped to 1.132.0
+
 ## [1.309.0](https://github.com/vm0-ai/vm0/compare/api-v1.308.3...api-v1.309.0) (2026-07-23)
 
 

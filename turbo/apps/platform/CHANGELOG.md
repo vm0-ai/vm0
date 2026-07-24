@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.626.0](https://github.com/vm0-ai/vm0/compare/app-v0.625.0...app-v0.626.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** add strict per-thread message sequence ids ([#22766](https://github.com/vm0-ai/vm0/issues/22766)) ([32fca1f](https://github.com/vm0-ai/vm0/commit/32fca1f3dd20f43d23dc217c290bae496cb6b78c))
+
+
+### Bug Fixes
+
+* **artifacts:** load synchronized windows from indexeddb ([#22797](https://github.com/vm0-ai/vm0/issues/22797)) ([008c5aa](https://github.com/vm0-ai/vm0/commit/008c5aa15e88defc3109d28b2b1c4ccaae4471e6))
+* clear structured thread drafts from composer ([#22813](https://github.com/vm0-ai/vm0/issues/22813)) ([0223a66](https://github.com/vm0-ai/vm0/commit/0223a668a19a53b59d66e2cacf52e9e71aa65bde))
+* **platform:** show product names for managed api credit usage ([#22811](https://github.com/vm0-ai/vm0/issues/22811)) ([a907f8c](https://github.com/vm0-ai/vm0/commit/a907f8c5f7b52656ca8cb971e025c94a1fabb575))
+* **workflows:** create template drafts before setup ([#22786](https://github.com/vm0-ai/vm0/issues/22786)) ([cad5b07](https://github.com/vm0-ai/vm0/commit/cad5b07ab35c916a0ef8d6caebfab410208246bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.0
+    * @vm0/core bumped to 8.458.1
+
 ## [0.625.0](https://github.com/vm0-ai/vm0/compare/app-v0.624.4...app-v0.625.0) (2026-07-23)
 
 
