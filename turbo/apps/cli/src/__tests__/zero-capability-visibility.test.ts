@@ -814,6 +814,28 @@ describe("registerZeroCommands", () => {
     );
   });
 
+  it("should show the people-search help example when people-search:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["people-search:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Find a professional?",
+    );
+  });
+
+  it("should hide the people-search help example when people-search:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Find a professional?",
+    );
+  });
+
   it("should show the banking help example when banking:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
