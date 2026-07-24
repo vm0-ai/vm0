@@ -130,6 +130,7 @@ type ChatMessageRow = {
   readonly runGroupId: string | null;
   readonly triggerSource: TriggerSource | null;
   readonly slackMessagePermalink: string | null;
+  readonly feishuChatOpenUrl: string | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
@@ -401,6 +402,12 @@ function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
       )`
         .mapWith(nullableTextDecoder)
         .as("slack_message_permalink"),
+      feishuChatOpenUrl: sql`COALESCE(
+        ${chatMessages.feishuChatOpenUrl},
+        ${revokedChatMessage.feishuChatOpenUrl}
+      )`
+        .mapWith(nullableTextDecoder)
+        .as("feishu_chat_open_url"),
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
       workflowName: metadata.workflowName,
@@ -792,6 +799,7 @@ function toPagedMessage(
       runGroupId: nullToUndefined(row.runGroupId),
       triggerSource: nullToUndefined(row.triggerSource),
       slackMessagePermalink: nullToUndefined(row.slackMessagePermalink),
+      feishuChatOpenUrl: nullToUndefined(row.feishuChatOpenUrl),
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: nullToUndefined(row.runEventId),

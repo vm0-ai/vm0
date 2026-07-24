@@ -473,14 +473,22 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadsContract.snapshot,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:read",
+      },
       getChatThreadSnapshotInner$,
     ),
   },
   {
     route: chatThreadsContract.events,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:read",
+      },
       listChatThreadEventsInner$,
     ),
   },

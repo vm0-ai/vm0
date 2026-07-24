@@ -1803,7 +1803,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.4",
+        model: "gpt-5.6-luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1815,7 +1815,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       prompt:
         "generate an image in web chat using the aurora-21210 color palette",
-      model: "gpt-5.4",
+      model: "gpt-5.6-luna",
     });
     const { claim } = await claimChatRun(runnerGroup, run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
@@ -2165,10 +2165,10 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
       {
-        model: "gpt-5.4",
+        model: "claude-sonnet-5",
         isDefault: false,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
         modelProviderId: null,
       },
     ]);
@@ -2223,7 +2223,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
       actor,
       fast.threadId,
-      "gpt-5.4",
+      "claude-sonnet-5",
       [400],
       { codexServiceTier: "fast" },
     );
@@ -2235,9 +2235,14 @@ describe("CHAT-02: model-first provider policies", () => {
       "fast",
     );
 
-    await chat.updateThreadModelSelection(actor, fast.threadId, "gpt-5.4", {
-      codexServiceTier: null,
-    });
+    await chat.updateThreadModelSelection(
+      actor,
+      fast.threadId,
+      "claude-sonnet-5",
+      {
+        codexServiceTier: null,
+      },
+    );
     const updatedFastThread = await chat.readThread(actor, fast.threadId);
     expect(updatedFastThread).not.toHaveProperty("selectedModel");
     expect(updatedFastThread.codexServiceTier).toBeNull();
@@ -2254,7 +2259,7 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: fast.threadId,
-        selectedModel: "gpt-5.4",
+        selectedModel: "claude-sonnet-5",
       }),
     );
     expect(updatedFastThreadEvents.body.events).toContainEqual(
@@ -2295,9 +2300,9 @@ describe("CHAT-02: model-first provider policies", () => {
       actor,
       {
         agentId,
-        prompt: "5.4 cannot fast",
+        prompt: "Claude cannot use Codex fast mode",
         clientThreadId: rejectedThreadId,
-        model: "gpt-5.4",
+        model: "claude-sonnet-5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],

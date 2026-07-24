@@ -313,6 +313,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable GitHub Actions workflow run completed event automations.",
     enabled: true,
   },
+  [FeatureSwitchKey.GithubWebhookAutomations]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show creation entry points for GitHub workflow job, pull request review, deployment status, and issue comment automations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -464,6 +472,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Create immutable hosted artifact versions behind stable site aliases.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",

@@ -3223,7 +3223,7 @@ const createNormalChatRun$ = command(
   },
 );
 
-const sendNormalMessage$ = command(
+export const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await measureApiDispatchTiming(
       args.timing,

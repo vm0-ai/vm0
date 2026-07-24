@@ -15,6 +15,7 @@ import { zeroWorkflowAutomations } from "./zero-workflow";
 export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
   "user_message",
   "slack_user_message",
+  "feishu_user_message",
   "workflow_event",
 ]);
 
@@ -26,9 +27,9 @@ export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
  * then FIFO. Rows are deleted after dequeue, mirroring agent_run_queue.
  *
  * Payload placement is per item type:
- * - `user_message` / `slack_user_message`: the message body lives in `chat_messages`
- *   (`chat_message_id` points at it); the queue row only carries the
- *   queued state.
+ * - `user_message` / `slack_user_message` / `feishu_user_message`: the
+ *   message body lives in `chat_messages` (`chat_message_id` points at it);
+ *   the queue row only carries the queued state.
  * - `workflow_event`: the row carries the automation event itself
  *   (`automation_id` / `trigger_source` / `trigger_brief` / `encrypted_params`)
  *   and materializes into a chat message at claim time.
@@ -53,7 +54,7 @@ export const chatMessageQueue = pgTable(
         { onDelete: "cascade" },
       ),
     itemType: chatMessageQueueItemType("item_type").notNull(),
-    // user_message / slack_user_message payload: the queued chat_messages row.
+    // User-message payload: the queued chat_messages row.
     chatMessageId: uuid("chat_message_id").references(
       () => {
         return chatMessages.id;

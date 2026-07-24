@@ -811,6 +811,29 @@ function createActionBlockFromLine(line: string): Extract<
   return null;
 }
 
+function retainedConnectorActionMarkdown(
+  line: string,
+  action: ConnectorActionDescriptor,
+): string | null {
+  const candidate = stripMarkdownLineDecorations(line);
+  const standaloneMarkdownLink = candidate.match(
+    new RegExp(String.raw`^\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)$`),
+  );
+  const standaloneBareUrl = candidate.match(
+    new RegExp(`^(${URL_TOKEN_PATTERN})$`),
+  );
+  if (standaloneMarkdownLink || standaloneBareUrl) {
+    return null;
+  }
+
+  return line.replace(
+    new RegExp(String.raw`\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)`),
+    (match: string, label: string, url: string) => {
+      return trimPreviewUrl(url) === action.originalUrl ? label : match;
+    },
+  );
+}
+
 function splitMarkdownTableRow(line: string): string[] | null {
   const trimmed = line.trim();
   if (!trimmed.includes("|")) {
@@ -968,8 +991,17 @@ export function parseBodyBlocks(
       continue;
     }
 
-    const actionBlock = createActionBlockFromLine(line);
+    const actionBlock = previews ? createActionBlockFromLine(line) : null;
     if (actionBlock) {
+      if (actionBlock.type === "connector-action") {
+        const retainedMarkdown = retainedConnectorActionMarkdown(
+          line,
+          actionBlock.descriptor,
+        );
+        if (retainedMarkdown) {
+          pushMarkdownLines([retainedMarkdown]);
+        }
+      }
       flushMarkdownBuffer();
       blocks.push(actionBlock);
       continue;

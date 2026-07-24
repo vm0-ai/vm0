@@ -5,6 +5,7 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -19,7 +20,6 @@ import { logger } from "../log.ts";
 import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { pathParams$ } from "../route.ts";
-import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
 const L = logger("ChatThreadEventSourcing");
 

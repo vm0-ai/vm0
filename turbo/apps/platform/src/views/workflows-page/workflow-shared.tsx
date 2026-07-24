@@ -198,6 +198,18 @@ export function gmailAutomationTitle(
   if (automation.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
+  if (automation.eventType === "github-workflow-job-completed") {
+    return "GitHub workflow job completed";
+  }
+  if (automation.eventType === "github-pull-request-review-submitted") {
+    return "GitHub pull request review submitted";
+  }
+  if (automation.eventType === "github-deployment-status-created") {
+    return "GitHub deployment status created";
+  }
+  if (automation.eventType === "github-issue-comment-created") {
+    return "GitHub issue comment created";
+  }
   if (automation.eventType === "github-workflow-run-completed") {
     return "GitHub workflow completed";
   }
@@ -225,6 +237,45 @@ export function gmailAutomationTitle(
   return "Webhook automation";
 }
 
+function githubAutomationSummary(
+  automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event" }
+  >,
+): string | null {
+  switch (automation.eventType) {
+    case "github-label-applied": {
+      return `Label ${quote(automation.eventConfig.labelName)}`;
+    }
+    case "github-workflow-run-completed":
+    case "github-workflow-job-completed": {
+      return (
+        automation.eventConfig.filters.conclusions?.join(", ") ?? "Any result"
+      );
+    }
+    case "github-pull-request-review-submitted": {
+      return (
+        automation.eventConfig.filters.reviewStates?.join(", ") ?? "Any review"
+      );
+    }
+    case "github-deployment-status-created": {
+      return (
+        automation.eventConfig.filters.states?.join(", ") ??
+        "Any deployment state"
+      );
+    }
+    case "github-issue-comment-created": {
+      return (
+        automation.eventConfig.filters.commentPrefixes?.join(", ") ??
+        "Any comment"
+      );
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 export function gmailAutomationSummary(
   automation: ZeroWorkflowAutomationSummary,
 ): string | null {
@@ -237,13 +288,9 @@ export function gmailAutomationSummary(
   if (automation.eventType === "gmail-new-message") {
     return formatGmailMatchSummary(automation.eventConfig);
   }
-  if (automation.eventType === "github-label-applied") {
-    return `Label ${quote(automation.eventConfig.labelName)}`;
-  }
-  if (automation.eventType === "github-workflow-run-completed") {
-    return (
-      automation.eventConfig.filters.conclusions?.join(", ") ?? "Any result"
-    );
+  const githubSummary = githubAutomationSummary(automation);
+  if (githubSummary) {
+    return githubSummary;
   }
   if (
     automation.eventType === "google-calendar-event-created" ||

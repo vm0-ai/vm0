@@ -2,6 +2,7 @@
 
 import json
 import sys
+from itertools import pairwise
 from types import FrameType
 
 import pytest
@@ -711,6 +712,65 @@ def test_skips_unselected_number_at_limit_without_storing_value():
 
     assert result.complete is True
     assert result.values == {("usage", "input_tokens"): 7}
+
+
+@pytest.mark.parametrize(
+    ("number", "splits"),
+    [
+        ("1e3", (1, 2, 3)),
+        ("1E-3", (1, 2, 3, 4)),
+        ("-2.5e+3", (5, 6, 7)),
+    ],
+)
+def test_preserves_selected_values_after_chunked_unselected_exponents(
+    number: str, splits: tuple[int, ...]
+):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+    prefix = b'{"meta":{"score":'
+    suffix = b'},"usage":{"input_tokens":7}}'
+    extractor.feed(prefix)
+    boundaries = (0, *splits, len(number))
+    for start, end in pairwise(boundaries):
+        extractor.feed(number[start:end].encode())
+    extractor.feed(suffix)
+
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+
+
+@pytest.mark.parametrize("number", ["1e", "1e+"])
+def test_rejects_incomplete_exponents(number: str):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+
+    extractor.feed(f'{{"meta":{{"score":{number}}},"usage":{{"input_tokens":7}}}}'.encode())
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "invalid number"
+    assert result.values == {}
+    assert result.array_counts == {}
+    assert result.wildcard_array_counts == {}
+    assert result.object_present == set()
+
+
+def test_rejects_oversized_unselected_exponent():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")},
+        max_number_bytes=3,
+    )
+
+    extractor.feed(b'{"meta":{"score":1e10},"usage":{"input_tokens":7}}')
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "number limit exceeded"
+    assert result.values == {}
 
 
 def test_rejects_oversized_unselected_root_number_at_eof():

@@ -1,5 +1,44 @@
 # Changelog
 
+## [8.463.0](https://github.com/vm0-ai/vm0/compare/core-v8.462.0...core-v8.463.0) (2026-07-24)
+
+
+### Features
+
+* **cli:** add cached chat thread listing and targeted rename ([#22927](https://github.com/vm0-ai/vm0/issues/22927)) ([1f11e99](https://github.com/vm0-ai/vm0/commit/1f11e99eda61c426b5e5782529a9aa5eb9366b50))
+* enable hosted artifact versions for staff ([#22932](https://github.com/vm0-ai/vm0/issues/22932)) ([2ae63dd](https://github.com/vm0-ai/vm0/commit/2ae63ddb5172d2fc3f227a3ce513b81e643d0311))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.226.0
+
+## [8.462.0](https://github.com/vm0-ai/vm0/compare/core-v8.461.2...core-v8.462.0) (2026-07-24)
+
+
+### Features
+
+* add github job, review, deployment, and comment automations ([#22904](https://github.com/vm0-ai/vm0/issues/22904)) ([6e20502](https://github.com/vm0-ai/vm0/commit/6e20502a92bb6cc5eea35a98d6583fd8c949cd1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.225.0
+    * @vm0/connectors bumped to 1.190.0
+
+## [8.461.2](https://github.com/vm0-ai/vm0/compare/core-v8.461.1...core-v8.461.2) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.224.0
+
 ## [8.461.1](https://github.com/vm0-ai/vm0/compare/core-v8.461.0...core-v8.461.1) (2026-07-24)
 
 

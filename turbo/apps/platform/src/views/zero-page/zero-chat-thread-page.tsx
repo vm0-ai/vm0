@@ -137,6 +137,7 @@ import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -148,6 +149,7 @@ import {
   type ConnectorSignals,
   type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
+import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
 import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
@@ -1759,6 +1761,10 @@ function headerWorkflowAutomationRows(
   automation: HeaderWorkflowAutomationEntry,
 ): readonly WorkflowAutomationCardRow[] {
   const rows: WorkflowAutomationCardRow[] = [
+    {
+      label: "Status",
+      value: automation.enabled ? "Active" : "Disabled",
+    },
     {
       label:
         automation.automation.kind === "schedule" ? "Schedule" : "Automation",
@@ -4825,6 +4831,7 @@ function BodyRenderBlockView({
 function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const pageSignal = useGet(pageSignal$);
   const available = useLastResolved(signals.available$) ?? false;
+  const connected = useLastResolved(signals.connected$) ?? false;
   const completeLoadable = useLoadable(signals.complete$);
   const complete =
     completeLoadable.state === "hasData" && completeLoadable.data;
@@ -4836,6 +4843,15 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   if (!available || !catalogItem) {
     return null;
   }
+  const reconnectRequired =
+    connectorCurrentConnectionStatus(catalogItem) === "reconnect-required";
+  const actionLabel = complete
+    ? "Authorized"
+    : reconnectRequired
+      ? "Reconnect"
+      : connected
+        ? "Authorize"
+        : "Connect";
 
   return (
     <div
@@ -4864,7 +4880,7 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {loading && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Authorize" : "Connect"}
+        {actionLabel}
       </button>
     </div>
   );
@@ -6504,6 +6520,37 @@ function SlackUserMessageOrigin({
   );
 }
 
+const feishuIconImg = settingsIconAssetUrl("lark");
+
+function FeishuUserMessageOrigin({
+  chatOpenUrl,
+}: {
+  chatOpenUrl: string | undefined;
+}) {
+  if (!chatOpenUrl) {
+    return null;
+  }
+  return (
+    <a
+      href={chatOpenUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open original chat in Feishu"
+      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+    >
+      <img
+        src={feishuIconImg}
+        alt=""
+        className="size-[15px] shrink-0 object-contain"
+      />
+      <span className="shrink-0">Feishu</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">Open chat</span>
+      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+    </a>
+  );
+}
+
 const STRUCTURED_REFERENCE_CHIP_CLASS =
   "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
@@ -6918,6 +6965,7 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
+          <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
           {structuredPrompt ? (
             <StructuredUserMessageContent
               document={structuredPrompt}

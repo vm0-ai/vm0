@@ -22,6 +22,22 @@ const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const WORKFLOW_ID = "22222222-2222-4222-8222-222222222222";
 const AUTOMATION_ID = "33333333-3333-4333-8333-333333333333";
 const THREAD_ID = "44444444-4444-4444-8444-444444444444";
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+
+function zeroToken(orgId: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      userId: "user-123",
+      runId: "run-123",
+      orgId,
+      scope: "zero",
+      capabilities: [],
+      iat: 1,
+      exp: 4_102_444_800,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_header.${payload}.signature`;
+}
 
 const workflowSummary = {
   id: WORKFLOW_ID,
@@ -598,6 +614,81 @@ describe("zero workflow automation commands", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("GitHub workflow completed");
       expect(logCalls).toContain("failure, startup_failure");
+    });
+
+    it("should reject new GitHub webhook automation kinds outside enabled workspaces", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "github-issue-comment-created",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "GitHub webhook automations are not enabled for this workspace",
+        ),
+      );
+    });
+
+    it("should add a GitHub issue comment automation for the staff workspace", async () => {
+      vi.stubEnv("ZERO_TOKEN", zeroToken(STAFF_ORG_ID));
+      const response = {
+        ...automationBase,
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            subject: "pull_requests",
+            trustedAuthors: ["e7h4n", "lancy"],
+            commentPrefixes: ["/verify", "/deploy"],
+          },
+        },
+        schedule: null,
+        scheduleSummary: null,
+        nextRunAt: null,
+      };
+      const captured = captureCreateAutomation(response);
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "github-issue-comment-created",
+        "--repository",
+        "vm0-ai/vm0",
+        "--subject",
+        "pull-requests",
+        "--trusted-author",
+        "e7h4n,lancy",
+        "--comment-prefix",
+        "/verify,/deploy",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            subject: "pull_requests",
+            trustedAuthors: ["e7h4n", "lancy"],
+            commentPrefixes: ["/verify", "/deploy"],
+          },
+        },
+      });
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        "GitHub issue comment created",
+      );
     });
 
     it("should add a Google Calendar event-created automation", async () => {

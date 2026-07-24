@@ -653,7 +653,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("renders canonical connector actions on alternate production origins", async () => {
+  it("keeps user links and renders assistant actions on alternate origins", async () => {
     const previousUrl = window.location.href;
     const threadId = `${THREAD_ID}-alternate-production-origin`;
     window.location.href = `https://app.okou.ai/chats/${threadId}`;
@@ -680,7 +680,7 @@ describe("chat message action cards", () => {
         {
           id: "msg-user-alternate-production-origin",
           role: "user",
-          content: "Authorize Slack",
+          content: `[User connector link](${canonicalUrl})`,
           runId: "run-alternate-production-origin",
           createdAt: "2026-07-23T10:00:00Z",
         },
@@ -701,6 +701,11 @@ describe("chat message action cards", () => {
 
     const connectorCard = await screen.findByTestId("connector-action-card");
     expect(within(connectorCard).getByText("Slack")).toBeInTheDocument();
+    expect(screen.getAllByTestId("connector-action-card")).toHaveLength(1);
+    const userConnectorLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent === "User connector link";
+    });
+    expect(userConnectorLink).toHaveAttribute("href", canonicalUrl);
     const untrustedLink = queryAllByRoleFast("link").find((link) => {
       return link.textContent === "Untrusted connector";
     });
@@ -974,6 +979,134 @@ describe("chat message action cards", () => {
     expect(secondDraftRequests).toBe(3);
   });
 
+  it("preserves assistant copy and reconnects an expired connector", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-reconnect`;
+    const callbackPrompt = "Retry the Gmail draft after reconnecting";
+    const connectorUrl = `${window.location.origin}/connectors/gmail/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const assistantCopy = `Gmail needs to be reconnected. [Reconnect Gmail](${connectorUrl}) to continue creating the draft.`;
+    const displayedCopy =
+      "Gmail needs to be reconnected. Reconnect Gmail to continue creating the draft.";
+    const sentPrompts: string[] = [];
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    let reconnectRequired = true;
+
+    context.mocks.data.connectors([
+      connectedConnector({
+        type: "gmail",
+        authMethod: "oauth",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    ]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "gmail",
+            label: "Gmail",
+            connected: true,
+            connectionStatus: reconnectRequired
+              ? "reconnect-required"
+              : "connected",
+            connection: {
+              authMethod: "oauth",
+              externalUsername: null,
+              externalEmail: "sender@example.com",
+              reconnectReason: reconnectRequired
+                ? "authorization_expired_or_revoked"
+                : null,
+            },
+            authMethods: [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description: null,
+                grantKind: "auth-code",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            singleAuthCodeAuthMethodId: "oauth",
+          }),
+        ],
+      });
+    });
+    mockAgentConnectorAuthorizations(["gmail"]);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("gmail");
+        expect(body).toStrictEqual({
+          authMethod: "oauth",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+          callbackTarget: "app",
+        });
+        reconnectRequired = false;
+        context.mocks.data.connectors([
+          connectedConnector({
+            type: "gmail",
+            authMethod: "oauth",
+            externalEmail: "sender@example.com",
+            updatedAt: "2026-01-01T00:00:01Z",
+          }),
+        ]);
+        return respond(200, {
+          authorizationUrl: "https://accounts.google.test/oauth",
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Reconnect connector",
+      chatMessages: [
+        {
+          id: "msg-user-reconnect",
+          role: "user",
+          content: "Create the Gmail draft",
+          runId: "run-reconnect",
+          createdAt: "2026-07-24T09:05:10Z",
+        },
+        {
+          id: "msg-assistant-reconnect",
+          role: "assistant",
+          content: assistantCopy,
+          runId: "run-reconnect",
+          createdAt: "2026-07-24T09:06:19Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const displayedCopyElement = await screen.findByText(displayedCopy);
+    expect(displayedCopyElement).toBeInTheDocument();
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    const reconnectButton = await waitForButtonByText(
+      "Reconnect",
+      connectorCard,
+    );
+    await user.click(reconnectButton);
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://accounts.google.test/oauth",
+      );
+      expect(sentPrompts).toStrictEqual([callbackPrompt]);
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
+      expect(buttonByText("Authorized", connectorCard)).toBeDisabled();
+    });
+  });
+
   it("connects a single OAuth connector directly and resumes the chat", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-direct-oauth`;
@@ -1088,7 +1221,7 @@ describe("chat message action cards", () => {
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
   });
 
@@ -1172,7 +1305,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(connectCalls).toBe(1);
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
     expect(
       screen.queryByRole("dialog", { name: "Public Stripe" }),
@@ -1637,11 +1770,11 @@ describe("chat message action cards", () => {
       "src",
       "https://icons.example.test/action-github.svg",
     );
-    await user.click(within(connectorCard).getByText("Connect"));
+    await user.click(within(connectorCard).getByText("Authorize"));
 
     await waitFor(() => {
       for (const card of connectorCards) {
-        expect(within(card).getByText("Authorize")).toBeInTheDocument();
+        expect(within(card).getByText("Authorized")).toBeInTheDocument();
       }
     });
 
@@ -1976,11 +2109,11 @@ describe("chat message action cards", () => {
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
-    await user.click(await waitForButtonByText("Connect", connectorCard));
+    await user.click(await waitForButtonByText("Authorize", connectorCard));
 
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
   });
 
@@ -2150,7 +2283,7 @@ describe("chat message action cards", () => {
     await user.click(saveButton);
 
     await waitFor(() => {
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
   });
 

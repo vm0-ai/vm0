@@ -1,5 +1,71 @@
 # Changelog
 
+## [1.317.0](https://github.com/vm0-ai/vm0/compare/api-v1.316.0...api-v1.317.0) (2026-07-24)
+
+
+### Features
+
+* **cli:** add cached chat thread listing and targeted rename ([#22927](https://github.com/vm0-ai/vm0/issues/22927)) ([1f11e99](https://github.com/vm0-ai/vm0/commit/1f11e99eda61c426b5e5782529a9aa5eb9366b50))
+
+
+### Bug Fixes
+
+* **feishu:** shorten file ids in run prompts ([#22929](https://github.com/vm0-ai/vm0/issues/22929)) ([e861d6e](https://github.com/vm0-ai/vm0/commit/e861d6e0caac4aaec7328dc1015242af6da272ad))
+* retire gpt-5.4 models ([#22923](https://github.com/vm0-ai/vm0/issues/22923)) ([0e5de85](https://github.com/vm0-ai/vm0/commit/0e5de85debf5ae6eb58e3a56a598ca2d21e506a0))
+* **workflows:** route manual runs through the chat queue ([#22933](https://github.com/vm0-ai/vm0/issues/22933)) ([b586e29](https://github.com/vm0-ai/vm0/commit/b586e29777c315815054da64a8657377d6708775))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.226.0
+    * @vm0/core bumped to 8.463.0
+    * @vm0/db bumped to 1.136.1
+
+## [1.316.0](https://github.com/vm0-ai/vm0/compare/api-v1.315.0...api-v1.316.0) (2026-07-24)
+
+
+### Features
+
+* add github job, review, deployment, and comment automations ([#22904](https://github.com/vm0-ai/vm0/issues/22904)) ([6e20502](https://github.com/vm0-ai/vm0/commit/6e20502a92bb6cc5eea35a98d6583fd8c949cd1d))
+
+
+### Performance Improvements
+
+* **chat:** reduce duplicate message sync requests ([#22886](https://github.com/vm0-ai/vm0/issues/22886)) ([ff34466](https://github.com/vm0-ai/vm0/commit/ff344661065158de4c29728c31ee92439a2cec58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.225.0
+    * @vm0/connectors bumped to 1.190.0
+    * @vm0/core bumped to 8.462.0
+    * @vm0/db bumped to 1.136.0
+
+## [1.315.0](https://github.com/vm0-ai/vm0/compare/api-v1.314.0...api-v1.315.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** source service tier and computer use host from thread events ([#22890](https://github.com/vm0-ai/vm0/issues/22890)) ([173e9c9](https://github.com/vm0-ai/vm0/commit/173e9c99c5e56f2a9cba55b0fd31a93d4e52c60e))
+
+
+### Refactoring
+
+* **api:** detach legacy storage persistence columns ([#22899](https://github.com/vm0-ai/vm0/issues/22899)) ([522c3de](https://github.com/vm0-ai/vm0/commit/522c3dee4efff435fa8235445208d81ccc92926e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.224.0
+    * @vm0/core bumped to 8.461.2
+    * @vm0/db bumped to 1.135.0
+
 ## [1.314.0](https://github.com/vm0-ai/vm0/compare/api-v1.313.2...api-v1.314.0) (2026-07-24)
 
 
