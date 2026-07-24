@@ -10,6 +10,7 @@ import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
+  connectorCurrentConnectionStatus,
   getConnectorStatusConnectLaunchMode,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
@@ -157,56 +158,31 @@ function getDirectConnectMethod(connector: PublicConnectorCatalogStatusItem) {
   return null;
 }
 
-export function createConnectorSignals(
+type ConnectorActivationSignals = Pick<
+  ConnectorSignals,
+  "available$" | "catalogItem$" | "connected$"
+>;
+
+function createConnectorActivation(
   descriptor: ConnectorActionDescriptor,
-): ConnectorSignals {
-  const catalogItem$ = computed(async (get) => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef) ?? null;
-  });
-
-  const available$ = computed(async (get): Promise<boolean> => {
-    const catalogItem = await get(catalogItem$);
-    return catalogItem !== null;
-  });
-
-  const connected$ = computed(async (get): Promise<boolean> => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
-  });
-
-  const authorized$ = computed(async (get): Promise<boolean> => {
-    return await get(
-      isAgentConnectorAuthorized({
-        agentId: descriptor.agentId,
-        connectorRef: descriptor.connectorRef,
-      }),
-    );
-  });
-
-  const complete$ = computed(async (get): Promise<boolean> => {
-    const available = await get(available$);
-    if (!available) {
-      return false;
-    }
-
-    const [connected, authorized] = await Promise.all([
-      get(connected$),
-      get(authorized$),
-    ]);
-    return connected && authorized;
-  });
-
-  const activate$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const available = await get(available$);
+  signals: ConnectorActivationSignals,
+): ConnectorSignals["activate$"] {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const available = await get(signals.available$);
     signal.throwIfAborted();
     if (!available) {
       return;
     }
 
-    const connected = await get(connected$);
+    const [connected, catalogItem] = await Promise.all([
+      get(signals.connected$),
+      get(signals.catalogItem$),
+    ]);
     signal.throwIfAborted();
-    if (connected) {
+    const reconnectRequired =
+      catalogItem !== null &&
+      connectorCurrentConnectionStatus(catalogItem) === "reconnect-required";
+    if (connected && !reconnectRequired) {
       await set(
         authorizeDirectedConnector$,
         descriptor.connectorRef,
@@ -281,6 +257,59 @@ export function createConnectorSignals(
         signal,
       );
     }
+  });
+}
+
+export function createConnectorSignals(
+  descriptor: ConnectorActionDescriptor,
+): ConnectorSignals {
+  const catalogItem$ = computed(async (get) => {
+    const statusByRef = await get(connectorCatalogStatusByRef$);
+    return statusByRef.get(descriptor.connectorRef) ?? null;
+  });
+
+  const available$ = computed(async (get): Promise<boolean> => {
+    const catalogItem = await get(catalogItem$);
+    return catalogItem !== null;
+  });
+
+  const connected$ = computed(async (get): Promise<boolean> => {
+    const statusByRef = await get(connectorCatalogStatusByRef$);
+    return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
+  });
+
+  const authorized$ = computed(async (get): Promise<boolean> => {
+    return await get(
+      isAgentConnectorAuthorized({
+        agentId: descriptor.agentId,
+        connectorRef: descriptor.connectorRef,
+      }),
+    );
+  });
+
+  const complete$ = computed(async (get): Promise<boolean> => {
+    const available = await get(available$);
+    if (!available) {
+      return false;
+    }
+
+    const [connected, authorized, catalogItem] = await Promise.all([
+      get(connected$),
+      get(authorized$),
+      get(catalogItem$),
+    ]);
+    return (
+      connected &&
+      authorized &&
+      catalogItem !== null &&
+      connectorCurrentConnectionStatus(catalogItem) !== "reconnect-required"
+    );
+  });
+
+  const activate$ = createConnectorActivation(descriptor, {
+    available$,
+    catalogItem$,
+    connected$,
   });
 
   return {
