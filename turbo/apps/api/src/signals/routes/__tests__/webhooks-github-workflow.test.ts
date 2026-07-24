@@ -105,15 +105,17 @@ function githubPayload(
 }
 
 function githubWorkflowRunPayload(args: {
-  readonly conclusion: "failure" | "success";
+  readonly conclusion: "failure" | "startup_failure" | "success";
   readonly installationId: string;
+  readonly documentedNullableFields?: boolean;
 }): string {
+  const actor = { id: 101, login: "lancy", type: "User" };
   return JSON.stringify({
     action: "completed",
     workflow_run: {
       id: 555,
       workflow_id: 777,
-      name: "Turbo",
+      name: args.documentedNullableFields ? null : "Turbo",
       path: ".github/workflows/turbo.yml",
       run_number: 42,
       run_attempt: 2,
@@ -123,8 +125,8 @@ function githubWorkflowRunPayload(args: {
       head_sha: "abc123",
       event: "push",
       html_url: "https://github.com/vm0-ai/vm0/actions/runs/555",
-      actor: { id: 101, login: "lancy", type: "User" },
-      triggering_actor: { id: 101, login: "lancy", type: "User" },
+      actor: args.documentedNullableFields ? null : actor,
+      triggering_actor: args.documentedNullableFields ? null : actor,
       pull_requests: [{ number: 123 }],
     },
     repository: { id: 456, full_name: "vm0-ai/vm0" },
@@ -382,5 +384,64 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     );
     expect(claim.appendSystemPrompt).toContain('"attempt": 2');
     expect(claim.appendSystemPrompt).toContain('"triggeringEvent": "push"');
+  });
+
+  it("accepts startup failures with GitHub's documented nullable run fields", async () => {
+    const { fixture, actor, agentId, workflowId } = await setupFixture();
+    const installed = await gh.installGithubApp(actor, agentId);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
+    });
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-workflow-run-completed",
+          eventConfig: {
+            provider: "github",
+            event: "workflow_run_completed",
+            filters: {
+              repositories: ["vm0-ai/vm0"],
+              workflows: [".github/workflows/turbo.yml"],
+              conclusions: ["startup_failure"],
+              branches: ["main"],
+              events: ["push"],
+            },
+          },
+        },
+      }),
+      [201],
+    );
+
+    const response = await postGithubWebhook({
+      event: "workflow_run",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: githubWorkflowRunPayload({
+        conclusion: "startup_failure",
+        installationId: installed.remoteInstallationId,
+        documentedNullableFields: true,
+      }),
+    });
+    expect(response).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
+
+    await runsApi.heartbeatRunner();
+    const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const runId = listedRuns.runs[0]?.id;
+    if (!runId || listedRuns.runs.length !== 1) {
+      throw new Error("Expected a startup-failure workflow automation");
+    }
+    const claim = await runsApi.claimRunnerJob(runId);
+    expect(claim.appendSystemPrompt).toContain(
+      'GitHub Actions workflow ".github/workflows/turbo.yml" completed with conclusion "startup_failure"',
+    );
+    expect(claim.appendSystemPrompt).toContain('"name": null');
+    expect(claim.appendSystemPrompt).toContain('"actor": null');
+    expect(claim.appendSystemPrompt).toContain('"triggeringActor": null');
   });
 });

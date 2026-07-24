@@ -136,7 +136,7 @@ const githubWorkflowRunAutomation = {
     filters: {
       repositories: ["vm0-ai/vm0"],
       workflows: ["Turbo"],
-      conclusions: ["failure", "timed_out"],
+      conclusions: ["failure", "startup_failure"],
       branches: ["main"],
       events: ["push"],
       actors: ["lancy"],
@@ -570,7 +570,7 @@ describe("zero workflow automation commands", () => {
         "--workflow",
         "Turbo",
         "--conclusion",
-        "failure,timed_out",
+        "failure,startup_failure",
         "--branch",
         "main",
         "--triggering-event",
@@ -588,7 +588,7 @@ describe("zero workflow automation commands", () => {
           filters: {
             repositories: ["vm0-ai/vm0"],
             workflows: ["Turbo"],
-            conclusions: ["failure", "timed_out"],
+            conclusions: ["failure", "startup_failure"],
             branches: ["main"],
             events: ["push"],
             actors: ["lancy"],
@@ -597,7 +597,7 @@ describe("zero workflow automation commands", () => {
       });
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("GitHub workflow completed");
-      expect(logCalls).toContain("failure, timed_out");
+      expect(logCalls).toContain("failure, startup_failure");
     });
 
     it("should add a Google Calendar event-created automation", async () => {

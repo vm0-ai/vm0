@@ -304,6 +304,7 @@ const GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS: readonly {
   { value: "neutral", label: "Neutral" },
   { value: "skipped", label: "Skipped" },
   { value: "stale", label: "Stale" },
+  { value: "startup_failure", label: "Startup failure" },
 ];
 
 const WORKFLOW_CRON_FREQUENCY_OPTIONS: readonly {

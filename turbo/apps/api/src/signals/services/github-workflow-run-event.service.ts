@@ -47,7 +47,7 @@ export interface GithubWorkflowRunEventPayload {
   readonly workflow_run: {
     readonly id: number;
     readonly workflow_id: number;
-    readonly name: string;
+    readonly name: string | null;
     readonly path: string;
     readonly run_number: number;
     readonly run_attempt: number;
@@ -57,8 +57,8 @@ export interface GithubWorkflowRunEventPayload {
     readonly head_sha: string;
     readonly event: string;
     readonly html_url: string;
-    readonly actor: GithubUser;
-    readonly triggering_actor: GithubUser;
+    readonly actor: GithubUser | null;
+    readonly triggering_actor: GithubUser | null;
     readonly pull_requests: readonly GithubPullRequestRef[];
   };
   readonly repository: {
@@ -150,7 +150,7 @@ function workflowRunMatchesConfig(args: {
     ]) &&
     matchesNormalizedFilter(filters.workflows, [
       String(run.workflow_id),
-      run.name,
+      ...(run.name === null ? [] : [run.name]),
       run.path,
     ]) &&
     (!filters.conclusions || filters.conclusions.includes(conclusion)) &&
@@ -158,10 +158,10 @@ function workflowRunMatchesConfig(args: {
       (run.head_branch !== null &&
         filters.branches.includes(run.head_branch))) &&
     (!filters.events || filters.events.includes(run.event)) &&
-    matchesNormalizedFilter(filters.actors, [
-      run.actor.login,
-      String(run.actor.id),
-    ])
+    matchesNormalizedFilter(
+      filters.actors,
+      run.actor ? [run.actor.login, String(run.actor.id)] : [],
+    )
   );
 }
 
@@ -296,9 +296,10 @@ function buildGithubWorkflowRunSystemPrompt(args: {
   readonly payload: GithubWorkflowRunEventPayload;
 }): string {
   const run = args.payload.workflow_run;
+  const workflowName = run.name ?? run.path;
   return [
     "# Current context",
-    `You are running because the GitHub Actions workflow "${run.name}" completed with conclusion "${run.conclusion}".`,
+    `You are running because the GitHub Actions workflow "${workflowName}" completed with conclusion "${run.conclusion}".`,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
     "This context intentionally includes only workflow run metadata. It does not include jobs, logs, or artifacts.",

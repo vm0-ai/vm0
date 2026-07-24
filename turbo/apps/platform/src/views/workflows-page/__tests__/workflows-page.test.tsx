@@ -2376,7 +2376,7 @@ describe("workflow detail page", () => {
     await fill(within(form).getByLabelText("Triggering events"), "push");
     await fill(within(form).getByLabelText("Actors"), "lancy");
     click(within(form).getByLabelText("Failure"));
-    click(within(form).getByLabelText("Timed out"));
+    click(within(form).getByLabelText("Startup failure"));
     fireEvent.submit(form);
 
     await waitFor(() => {
@@ -2389,7 +2389,7 @@ describe("workflow detail page", () => {
           filters: {
             repositories: ["vm0-ai/vm0"],
             workflows: ["Turbo", ".github/workflows/turbo.yml"],
-            conclusions: ["failure", "timed_out"],
+            conclusions: ["failure", "startup_failure"],
             branches: ["main"],
             events: ["push"],
             actors: ["lancy"],

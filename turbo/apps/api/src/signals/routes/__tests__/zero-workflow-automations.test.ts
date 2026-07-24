@@ -1879,7 +1879,7 @@ describe("zero workflow automations", () => {
             filters: {
               repositories: ["vm0-ai/vm0"],
               workflows: ["Turbo", ".github/workflows/turbo.yml"],
-              conclusions: ["failure", "timed_out"],
+              conclusions: ["failure", "startup_failure"],
               branches: ["main"],
               events: ["push", "workflow_dispatch"],
               actors: ["dependabot[bot]"],
@@ -1899,7 +1899,7 @@ describe("zero workflow automations", () => {
         filters: {
           repositories: ["vm0-ai/vm0"],
           workflows: ["Turbo", ".github/workflows/turbo.yml"],
-          conclusions: ["failure", "timed_out"],
+          conclusions: ["failure", "startup_failure"],
           branches: ["main"],
           events: ["push", "workflow_dispatch"],
           actors: ["dependabot[bot]"],

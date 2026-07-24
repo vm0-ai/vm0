@@ -123,7 +123,7 @@ export const gitHubWorkflowRunEventSchema: z.ZodType<GithubWorkflowRunEventPaylo
     workflow_run: z.object({
       id: z.number(),
       workflow_id: z.number(),
-      name: z.string(),
+      name: z.string().nullable(),
       path: z.string(),
       run_number: z.number(),
       run_attempt: z.number(),
@@ -133,8 +133,8 @@ export const gitHubWorkflowRunEventSchema: z.ZodType<GithubWorkflowRunEventPaylo
       head_sha: z.string(),
       event: z.string(),
       html_url: z.string(),
-      actor: gitHubUserSchema,
-      triggering_actor: gitHubUserSchema,
+      actor: gitHubUserSchema.nullable(),
+      triggering_actor: gitHubUserSchema.nullable(),
       pull_requests: z.array(z.object({ number: z.number() })),
     }),
     repository: z.object({

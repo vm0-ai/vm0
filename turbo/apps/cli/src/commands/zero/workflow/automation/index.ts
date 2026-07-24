@@ -493,6 +493,7 @@ const GITHUB_WORKFLOW_RUN_CONCLUSIONS: readonly GithubWorkflowRunConclusion[] =
     "neutral",
     "skipped",
     "stale",
+    "startup_failure",
     "success",
     "timed_out",
   ];

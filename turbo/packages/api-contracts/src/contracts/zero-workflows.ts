@@ -234,6 +234,7 @@ export const githubWorkflowRunConclusionSchema = z.enum([
   "neutral",
   "skipped",
   "stale",
+  "startup_failure",
   "success",
   "timed_out",
 ]);
