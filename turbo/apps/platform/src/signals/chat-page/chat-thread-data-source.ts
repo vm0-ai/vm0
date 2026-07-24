@@ -8,8 +8,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 export interface ChatThreadRealtimeHandlers {
-  onThreadDetailChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
-  onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
   onAutomationsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   onArtifactsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   onWorkflowsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;

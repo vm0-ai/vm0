@@ -57,6 +57,7 @@ interface RealtimePayloadLoopArgs {
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
+  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
 }
 
@@ -80,6 +81,26 @@ interface SetAblyMessageLoopArgs {
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
+  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
+}
+
+interface RealtimePayloadLoopState {
+  deferred: ReturnType<typeof createDeferredPromise<boolean>>;
+  poked: boolean;
+  catchUpRequested: boolean;
+  transientRetryCount: number;
+  readonly pendingPayloads: unknown[];
+}
+
+interface RealtimePayloadLoopIterationArgs {
+  readonly state: RealtimePayloadLoopState;
+  readonly loopCommand$: Command<
+    Promise<boolean> | boolean,
+    [unknown, AbortSignal]
+  >;
+  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  readonly pokeLoop: () => void;
+  readonly cleanup: () => void;
 }
 
 function errorMessage(error: unknown): string | undefined {
@@ -259,26 +280,131 @@ const runWithChannel$ = command(
   },
 );
 
+const runPayloadLoopIteration$ = command(
+  async (
+    { set },
+    {
+      state,
+      loopCommand$,
+      catchUpCommand$,
+      pokeLoop,
+      cleanup,
+    }: RealtimePayloadLoopIterationArgs,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    await state.deferred.promise;
+    signal.throwIfAborted();
+    state.deferred = createDeferredPromise(signal);
+    state.poked = false;
+
+    const hasPayload = state.pendingPayloads.length > 0;
+    const payload = state.pendingPayloads[0];
+    if (
+      !hasPayload &&
+      (!state.catchUpRequested || catchUpCommand$ === undefined)
+    ) {
+      return false;
+    }
+    if (!hasPayload) {
+      state.catchUpRequested = false;
+    }
+
+    let done = false;
+    // eslint-disable-next-line no-restricted-syntax -- payload notifications and catch-ups retry transient handler failures a few times before giving up
+    try {
+      if (hasPayload) {
+        done = await set(loopCommand$, payload, signal);
+      } else if (catchUpCommand$ !== undefined) {
+        done = await set(catchUpCommand$, signal);
+      }
+      signal.throwIfAborted();
+    } catch (error) {
+      signal.throwIfAborted();
+      throwIfAbort(error);
+      if (state.transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+        L.warn(
+          hasPayload
+            ? `dropping ably payload after repeated handler failures`
+            : `giving up on ably catch-up after repeated handler failures`,
+          error,
+        );
+        if (hasPayload) {
+          state.pendingPayloads.shift();
+        }
+        state.transientRetryCount = 0;
+        set(notifyRealtimeDegraded$);
+        if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
+          pokeLoop();
+        }
+        return false;
+      }
+      L.warn(
+        hasPayload
+          ? `transient error in ably payload notification`
+          : `transient error in ably catch-up`,
+        error,
+      );
+      await waitForTransientRetry(signal, state.transientRetryCount);
+      signal.throwIfAborted();
+      state.transientRetryCount++;
+      if (!hasPayload) {
+        state.catchUpRequested = true;
+      }
+      pokeLoop();
+      return false;
+    }
+    if (hasPayload) {
+      state.pendingPayloads.shift();
+    }
+    state.transientRetryCount = 0;
+    if (done) {
+      cleanup();
+      return true;
+    }
+    if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
+      pokeLoop();
+    }
+    return false;
+  },
+);
+
 const runWithChannelPayload$ = command(
   async (
     { set },
     args: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    const { channel, topic, passMessage, loopCommand$, options } = args;
+    const {
+      channel,
+      topic,
+      passMessage,
+      loopCommand$,
+      catchUpCommand$,
+      options,
+    } = args;
     signal.throwIfAborted();
     const subscriptionLabel = topic ?? "all user channel messages";
-    let deferred = createDeferredPromise(signal);
-    let poked = false;
-    let transientRetryCount = 0;
-    const pendingPayloads: unknown[] = [];
+    const state: RealtimePayloadLoopState = {
+      deferred: createDeferredPromise(signal),
+      poked: false,
+      catchUpRequested: false,
+      transientRetryCount: 0,
+      pendingPayloads: [],
+    };
 
     const pokeLoop = () => {
-      if (signal.aborted || poked || deferred.settled()) {
+      if (signal.aborted || state.poked || state.deferred.settled()) {
         return;
       }
-      poked = true;
-      deferred.resolve(true);
+      state.poked = true;
+      state.deferred.resolve(true);
+    };
+
+    const requestCatchUp = () => {
+      if (catchUpCommand$ !== undefined) {
+        state.catchUpRequested = true;
+      }
+      pokeLoop();
     };
 
     const callback = (message: InboundMessage) => {
@@ -286,18 +412,18 @@ const runWithChannelPayload$ = command(
         return;
       }
       L.debug("got queued message from topic", subscriptionLabel, message);
-      pendingPayloads.push(passMessage ? message : message.data);
+      state.pendingPayloads.push(passMessage ? message : message.data);
       pokeLoop();
     };
     const unregisterVisibilityPoke = registerVisibilityPoke(
       subscriptionLabel,
       signal,
-      pokeLoop,
+      requestCatchUp,
     );
-    set(addPokeSubscriber$, pokeLoop);
+    set(addPokeSubscriber$, requestCatchUp);
 
     const cleanup = () => {
-      set(removePokeSubscriber$, pokeLoop);
+      set(removePokeSubscriber$, requestCatchUp);
       unregisterVisibilityPoke();
       if (topic === null) {
         channel.unsubscribe(callback);
@@ -321,54 +447,17 @@ const runWithChannelPayload$ = command(
 
       await setLoop(
         async (loopSignal) => {
-          await deferred.promise;
-          loopSignal.throwIfAborted();
-          deferred = createDeferredPromise(loopSignal);
-          poked = false;
-
-          const payload = pendingPayloads[0];
-          if (payload === undefined) {
-            return false;
-          }
-
-          let done = false;
-          // eslint-disable-next-line no-restricted-syntax -- payload notifications retry transient handler failures a few times before dropping the payload
-          try {
-            done = await set(loopCommand$, payload, loopSignal);
-            loopSignal.throwIfAborted();
-          } catch (error) {
-            loopSignal.throwIfAborted();
-            throwIfAbort(error);
-            if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
-              L.warn(
-                `dropping ably payload after repeated handler failures`,
-                error,
-              );
-              pendingPayloads.shift();
-              transientRetryCount = 0;
-              set(notifyRealtimeDegraded$);
-              if (pendingPayloads.length > 0) {
-                pokeLoop();
-              }
-              return false;
-            }
-            L.warn(`transient error in ably payload notification`, error);
-            await waitForTransientRetry(loopSignal, transientRetryCount);
-            loopSignal.throwIfAborted();
-            transientRetryCount++;
-            pokeLoop();
-            return false;
-          }
-          pendingPayloads.shift();
-          transientRetryCount = 0;
-          if (done) {
-            cleanup();
-            return true;
-          }
-          if (pendingPayloads.length > 0) {
-            pokeLoop();
-          }
-          return false;
+          return await set(
+            runPayloadLoopIteration$,
+            {
+              state,
+              loopCommand$,
+              catchUpCommand$,
+              pokeLoop,
+              cleanup,
+            },
+            loopSignal,
+          );
         },
         0,
         signal,
@@ -570,7 +659,7 @@ export const setAblyPayloadLoop$ = command(
 export const setAblyMessageLoop$ = command(
   async (
     { set },
-    { loopCommand$ }: SetAblyMessageLoopArgs,
+    { loopCommand$, catchUpCommand$ }: SetAblyMessageLoopArgs,
     signal: AbortSignal,
   ) => {
     const channel = await set(
@@ -581,7 +670,13 @@ export const setAblyMessageLoop$ = command(
     signal.throwIfAborted();
     await set(
       runWithChannelPayload$,
-      { channel, topic: null, passMessage: true, loopCommand$ },
+      {
+        channel,
+        topic: null,
+        passMessage: true,
+        loopCommand$,
+        catchUpCommand$,
+      },
       signal,
     );
     signal.throwIfAborted();

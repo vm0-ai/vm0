@@ -561,7 +561,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       throw new Error("Expected chat thread events to load");
     }
     expect(allEvents.body.hasMore).toBeFalsy();
-    expect(allEvents.body.events).toHaveLength(3);
+    expect(allEvents.body.events).toHaveLength(4);
     expect(allEvents.body.events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -589,6 +589,13 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
           selectedModel: "claude-sonnet-4-6",
           createdAt: expect.any(String),
         }),
+        expect.objectContaining({
+          kind: "service_tier_updated",
+          chatThreadId: thread.id,
+          agentId: agent.agentId,
+          serviceTier: null,
+          createdAt: expect.any(String),
+        }),
       ]),
     );
 
@@ -601,11 +608,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     if (afterCreate.status !== 200) {
       throw new Error("Expected chat thread events after cursor to load");
     }
-    expect(afterCreate.body.events).toHaveLength(2);
+    expect(afterCreate.body.events).toHaveLength(3);
     expect(afterCreate.body.events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: renameEventId }),
         expect.objectContaining({ id: modelSelectionEventId }),
+        expect.objectContaining({ kind: "service_tier_updated" }),
       ]),
     );
 
@@ -968,6 +976,19 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
       computerUseHostId: null,
     });
+
+    const hostEvents = (await allThreadEvents(actor)).filter((event) => {
+      return (
+        event.chatThreadId === thread.id &&
+        event.kind === "computer_use_host_updated"
+      );
+    });
+    expect(hostEvents).toHaveLength(2);
+    expect(
+      hostEvents.map((event) => {
+        return event.computerUseHostId;
+      }),
+    ).toStrictEqual([host.hostId, null]);
 
     const missingThread = await chat.requestUpdateThreadComputerUseHost(
       actor,

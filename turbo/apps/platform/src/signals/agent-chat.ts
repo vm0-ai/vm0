@@ -1,8 +1,5 @@
 import { command, computed, state } from "ccstate";
-import {
-  chatThreadsContract,
-  type CodexServiceTier,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -81,12 +78,6 @@ export const currentChatAgent$ = computed(async (get) => {
 export const currentChatAgentDisplayName$ = computed(async (get) => {
   return (await get(currentChatAgent$))?.displayName;
 });
-
-export interface ChatThread {
-  lastReadAt: string | null;
-  codexServiceTier: CodexServiceTier | null;
-  computerUseHostId: string | null;
-}
 
 const filteredThreadIds$ = computed(
   async (get): Promise<ReadonlySet<string> | null> => {

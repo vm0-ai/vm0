@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.462.0](https://github.com/vm0-ai/vm0/compare/core-v8.461.2...core-v8.462.0) (2026-07-24)
+
+
+### Features
+
+* add github job, review, deployment, and comment automations ([#22904](https://github.com/vm0-ai/vm0/issues/22904)) ([6e20502](https://github.com/vm0-ai/vm0/commit/6e20502a92bb6cc5eea35a98d6583fd8c949cd1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.225.0
+    * @vm0/connectors bumped to 1.190.0
+
+## [8.461.2](https://github.com/vm0-ai/vm0/compare/core-v8.461.1...core-v8.461.2) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.224.0
+
 ## [8.461.1](https://github.com/vm0-ai/vm0/compare/core-v8.461.0...core-v8.461.1) (2026-07-24)
 
 

@@ -8,6 +8,8 @@ export interface ChatThreadSnapshotProjection {
   readonly pinnedAt: string | null;
   readonly renamedAt: string | null;
   readonly selectedModel: string | null;
+  readonly serviceTier: "priority" | null;
+  readonly computerUseHostId: string | null;
 }
 
 export type ChatThreadSnapshotProjections = ChatThreadSnapshotProjection[];

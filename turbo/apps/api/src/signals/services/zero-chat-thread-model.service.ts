@@ -9,7 +9,10 @@ import {
   publishThreadListChangedSafely,
 } from "../external/realtime";
 import { nowDate } from "../external/time";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  chatThreadServiceTierFromCodex,
+} from "./zero-chat-thread-event.service";
 import {
   isCodexFastServiceTierSupported,
   resolveDefaultModelFirstPin,
@@ -215,6 +218,19 @@ async function persistReconciledChatThreadModel(args: {
       createdAt: updatedAt,
     });
   }
+  if (args.tierChanged) {
+    await appendChatThreadEvent(args.tx, {
+      kind: "service_tier_updated",
+      userId: args.params.userId,
+      orgId: args.params.orgId,
+      chatThreadId: args.params.threadId,
+      agentComposeId: args.thread.agentComposeId,
+      serviceTier: chatThreadServiceTierFromCodex(
+        args.persistedCodexServiceTier,
+      ),
+      createdAt: updatedAt,
+    });
+  }
 }
 
 async function resolvePersistedChatThreadModelInTransaction(
@@ -289,7 +305,7 @@ async function resolvePersistedChatThreadModelInTransaction(
       persistedCodexServiceTier: tier.persistedCodexServiceTier,
       selectedModelChanged,
     },
-    publishThreadList: selectedModelChanged,
+    publishThreadList: selectedModelChanged || tier.tierChanged,
     publishThreadDetail: tier.tierChanged,
   };
 }

@@ -2257,6 +2257,20 @@ describe("CHAT-02: model-first provider policies", () => {
         selectedModel: "gpt-5.4",
       }),
     );
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "created",
+        chatThreadId: fast.threadId,
+        serviceTier: "priority",
+      }),
+    );
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "service_tier_updated",
+        chatThreadId: fast.threadId,
+        serviceTier: null,
+      }),
+    );
 
     const standard = await sendChatRun(actor, {
       agentId,

@@ -216,6 +216,7 @@ const chatThreadUnreadAgentsSchema = z.object({
 
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
+const chatThreadServiceTierSchema = z.enum(["priority"]);
 
 const chatThreadSnapshotProjectionSchema = z.object({
   id: z.string().uuid(),
@@ -227,6 +228,8 @@ const chatThreadSnapshotProjectionSchema = z.object({
   pinnedAt: z.string().nullable(),
   renamedAt: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
+  serviceTier: chatThreadServiceTierSchema.nullable().default(null),
+  computerUseHostId: z.string().uuid().nullable().default(null),
 });
 
 const chatThreadEventSchema = z.object({
@@ -238,12 +241,16 @@ const chatThreadEventSchema = z.object({
     "pinned",
     "unpinned",
     "model_selection_updated",
+    "service_tier_updated",
+    "computer_use_host_updated",
     "sort_touched",
   ]),
   chatThreadId: z.string().uuid(),
   agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
+  serviceTier: chatThreadServiceTierSchema.nullable().default(null),
+  computerUseHostId: z.string().uuid().nullable().default(null),
   createdAt: z.string(),
 });
 
@@ -524,6 +531,7 @@ const chatThreadModelSelectionUpdateBodySchema = z.preprocess(
     model: selectedModelRequestSchema.nullable(),
     codexServiceTier: codexServiceTierSchema.nullable().optional(),
     eventId: chatThreadEventIdSchema.optional(),
+    serviceTierEventId: chatThreadEventIdSchema.optional(),
   }),
 );
 
@@ -953,6 +961,7 @@ export const chatThreadComputerUseHostContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       computerUseHostId: z.string().uuid().nullable(),
+      eventId: chatThreadEventIdSchema.optional(),
     }),
     responses: {
       204: c.noBody(),
@@ -1418,6 +1427,7 @@ export {
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
+export type ChatThreadServiceTier = z.infer<typeof chatThreadServiceTierSchema>;
 export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema

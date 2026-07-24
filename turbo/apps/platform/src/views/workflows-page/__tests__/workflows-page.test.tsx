@@ -992,6 +992,13 @@ function mockCreateWorkflowAutomation(
           },
         });
       }
+      if (body.eventConfig.provider === "github") {
+        return respond(201, {
+          ...gmailWorkflowAutomation(),
+          eventType: body.eventType,
+          eventConfig: body.eventConfig,
+        } as ZeroWorkflowAutomationSummary);
+      }
       return respond(201, {
         ...gmailWorkflowAutomation(),
         eventConfig: body.eventConfig,
@@ -1019,6 +1026,21 @@ function mockUpdateWorkflowAutomation(
               eventType: "github-workflow-run-completed",
               eventConfig: body.eventConfig,
             });
+          }
+          if (body.eventConfig.event !== "label_applied") {
+            return respond(200, {
+              ...githubLabelWorkflowAutomation(),
+              id: params.id,
+              eventType:
+                body.eventConfig.event === "workflow_job_completed"
+                  ? "github-workflow-job-completed"
+                  : body.eventConfig.event === "pull_request_review_submitted"
+                    ? "github-pull-request-review-submitted"
+                    : body.eventConfig.event === "deployment_status_created"
+                      ? "github-deployment-status-created"
+                      : "github-issue-comment-created",
+              eventConfig: body.eventConfig,
+            } as ZeroWorkflowAutomationSummary);
           }
           return respond(200, {
             ...githubLabelWorkflowAutomation(),
@@ -2393,6 +2415,80 @@ describe("workflow detail page", () => {
             branches: ["main"],
             events: ["push"],
             actors: ["lancy"],
+          },
+        },
+      });
+    });
+  });
+
+  it("hides new GitHub webhook creation entries when the feature is disabled", async () => {
+    mockWorkflowApis([salesResearch()]);
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GithubWebhookAutomations]: false,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    click(buttonByText("Integrations"));
+    expect(
+      screen.queryByText("GitHub issue comment created"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("creates a GitHub issue comment automation behind the feature switch", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowAutomation((body) => {
+      createBodies.push(body);
+    });
+    setMockGithubIntegration(createDefaultMockGithubIntegration());
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GithubWebhookAutomations]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub issue comment created/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub issue comment created automation",
+    });
+    await waitFor(() => {
+      expect(within(form).getByLabelText("Trusted authors")).toBeEnabled();
+    });
+    await fill(within(form).getByLabelText("Repositories"), "vm0-ai/vm0");
+    selectOptionByLabel("Subject", "Pull requests only", form);
+    fireEvent.change(within(form).getByLabelText("Trusted authors"), {
+      target: { value: "e7h4n, lancy" },
+    });
+    fireEvent.change(within(form).getByLabelText("Comment prefixes"), {
+      target: { value: "/verify, /deploy" },
+    });
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            subject: "pull_requests",
+            trustedAuthors: ["e7h4n", "lancy"],
+            commentPrefixes: ["/verify", "/deploy"],
           },
         },
       });
