@@ -65,7 +65,6 @@ export function agentSessionById(
         orgId: agentSessions.orgId,
         agentComposeId: agentSessions.agentComposeId,
         conversationId: agentSessions.conversationId,
-        artifacts: agentSessions.artifacts,
         storageMounts: agentSessions.storageMounts,
         createdAt: agentSessions.createdAt,
         updatedAt: agentSessions.updatedAt,
@@ -86,6 +85,11 @@ export function agentSessionById(
       return { kind: "not-found" };
     }
 
+    if (session.storageMounts === null) {
+      throw new Error(
+        `Agent session "${session.id}" is missing canonical Storage mounts`,
+      );
+    }
     const secretNames = await secretNamesForCompose(db, session.agentComposeId);
 
     return {
@@ -94,9 +98,8 @@ export function agentSessionById(
         id: session.id,
         agentComposeId: session.agentComposeId,
         conversationId: session.conversationId,
-        artifactNames: (session.storageMounts === null
-          ? session.artifacts
-          : projectLegacyWritebackArtifacts(session.storageMounts)
+        artifactNames: projectLegacyWritebackArtifacts(
+          session.storageMounts,
         ).map((artifact) => {
           return artifact.name;
         }),

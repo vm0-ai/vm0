@@ -184,10 +184,13 @@ deployed, the API began sending `storageMounts` only to a Runner that advertises
 the capability; old Runners continue receiving both legacy arrays.
 
 New run, session, and checkpoint writers persist canonical Storage mounts only.
-Readers prefer canonical persistence and fall back to legacy columns for
-historical rows. Legacy API response shapes are projected from canonical mounts
-for new rows. The short-lived runner job queue also retains its legacy claim
-projection until old Runner output is removed.
+After the latest session continuation heads were backfilled and verified,
+application readers require canonical run, session, and checkpoint persistence.
+Legacy API response shapes are still projected from canonical mounts. The
+physical legacy columns remain temporarily for rollback-safe deployment and are
+removed only after API versions that read them have drained. The short-lived
+runner job queue also retains its legacy claim projection until old Runner
+output is removed.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical

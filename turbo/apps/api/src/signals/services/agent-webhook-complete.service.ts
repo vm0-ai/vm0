@@ -58,92 +58,32 @@ interface CompletionResponse {
   readonly sideEffects?: TerminalSideEffectsInput;
 }
 
-interface VolumeVersionsSnapshot {
-  readonly versions: Record<string, string>;
-}
-
 interface RunRecord {
   readonly orgId: string;
   readonly status: string;
   readonly userId: string;
 }
 
-interface ArtifactSnapshot {
-  readonly name: string;
-  readonly version: string;
-  readonly mountPath: string;
-}
-
 const L = logger("webhook:complete");
 
-function isVolumeVersionsSnapshot(
-  value: unknown,
-): value is VolumeVersionsSnapshot {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "versions" in value &&
-    typeof value.versions === "object" &&
-    value.versions !== null &&
-    !Array.isArray(value.versions) &&
-    Object.values(value.versions).every((entry) => {
-      return typeof entry === "string";
-    })
-  );
-}
-
-function isArtifactSnapshot(value: unknown): value is ArtifactSnapshot {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "name" in value &&
-    "version" in value &&
-    "mountPath" in value &&
-    typeof value.name === "string" &&
-    typeof value.version === "string" &&
-    typeof value.mountPath === "string"
-  );
-}
-
-function decodeArtifactSnapshotsToRecord(
-  raw: unknown,
-): Record<string, string> | undefined {
-  if (raw === null || raw === undefined) {
-    return undefined;
-  }
-
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return undefined;
-  }
-
-  const result: Record<string, string> = {};
-  for (const [index, entry] of raw.entries()) {
-    if (!isArtifactSnapshot(entry)) {
-      throw new Error(`Invalid checkpoint artifact snapshot at index ${index}`);
-    }
-    result[entry.name] = entry.version;
-  }
-  return result;
-}
-
 function buildRunResult(
-  checkpoint: typeof checkpoints.$inferSelect,
+  checkpoint: Pick<
+    typeof checkpoints.$inferSelect,
+    "id" | "conversationId" | "storageMounts"
+  >,
   sessionId: string | undefined,
 ): RunResult {
-  const canonicalProjection =
-    checkpoint.storageMounts === null
-      ? null
-      : projectLegacyCheckpointStorage(checkpoint.storageMounts);
-  const artifact =
-    canonicalProjection === null
-      ? decodeArtifactSnapshotsToRecord(checkpoint.artifactSnapshots)
-      : (canonicalProjection.artifactVersions ?? undefined);
+  if (checkpoint.storageMounts === null) {
+    throw new Error(
+      `Checkpoint "${checkpoint.id}" is missing canonical Storage mounts`,
+    );
+  }
+  const canonicalProjection = projectLegacyCheckpointStorage(
+    checkpoint.storageMounts,
+  );
+  const artifact = canonicalProjection.artifactVersions ?? undefined;
   const volumeVersions =
-    canonicalProjection === null
-      ? isVolumeVersionsSnapshot(checkpoint.volumeVersionsSnapshot)
-        ? checkpoint.volumeVersionsSnapshot.versions
-        : undefined
-      : (canonicalProjection.volumeVersionsSnapshot?.versions ?? undefined);
+    canonicalProjection.volumeVersionsSnapshot?.versions ?? undefined;
 
   return {
     checkpointId: checkpoint.id,
@@ -291,7 +231,11 @@ async function handleSuccessfulCompletion(
   signal: AbortSignal,
 ): Promise<CompletionResponse> {
   const [checkpoint] = await db
-    .select()
+    .select({
+      id: checkpoints.id,
+      conversationId: checkpoints.conversationId,
+      storageMounts: checkpoints.storageMounts,
+    })
     .from(checkpoints)
     .where(eq(checkpoints.runId, input.body.runId))
     .limit(1);

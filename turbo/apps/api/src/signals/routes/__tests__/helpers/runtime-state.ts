@@ -118,16 +118,6 @@ export async function removeRunCanonicalStorageState(
   });
 }
 
-export async function removeSessionCanonicalStorageState(
-  context: TestContext,
-  sessionId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "remove-session-canonical-storage-state",
-    session_id: sessionId,
-  });
-}
-
 export async function readStoragePersistenceState(
   context: TestContext,
   ids: {
