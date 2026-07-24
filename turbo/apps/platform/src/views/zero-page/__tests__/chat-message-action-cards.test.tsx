@@ -811,21 +811,21 @@ describe("chat message action cards", () => {
       ({ params, query, respond }) => {
         if (
           params.threadId !== rightThreadId ||
-          query.beforeId ||
-          query.sinceId
+          query.beforeSeqId ||
+          query.sinceSeqId
         ) {
           return respond(200, {
             messages: [],
-            ...(query.beforeId ? { hasHistoryBefore: false } : {}),
+            ...(query.beforeSeqId ? { hasHistoryBefore: false } : {}),
           });
         }
         return respond(200, {
           messages: [
             {
               id: "c0000000-0000-4000-a000-000000000034",
+              seqId: 1,
               role: "assistant",
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
-              runId: "d0000000-0000-4000-a000-000000000035",
               createdAt,
             },
           ],

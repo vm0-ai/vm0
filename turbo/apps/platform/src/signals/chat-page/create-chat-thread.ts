@@ -139,6 +139,8 @@ import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-comp
 import {
   createMailDraftCardSignalsRegistry,
   parseMailDraftUrl,
+  type MailDraftCardSignalsRegistry,
+  type MailDraftSignals,
 } from "./mail-draft.ts";
 import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
 import { searchParams$ } from "../route.ts";
@@ -2462,6 +2464,29 @@ function createInitializeIndexedDbMessages({
   });
 }
 
+function createMailDraftCardSignalsById(
+  threadId: string,
+  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
+  mailDraftCardSignals: MailDraftCardSignalsRegistry,
+): Computed<ReadonlyMap<string, MailDraftSignals>> {
+  return computed((get) => {
+    get(rawMessages$);
+    const selectedMailDraftId = get(currentMailDraftId$);
+    const restoredDraftOwnerThreadId =
+      get(searchParams$).get("sidebar") || threadId;
+    const selectedMailDraftDescriptor = selectedMailDraftId
+      ? parseMailDraftUrl(`/mail/drafts/${selectedMailDraftId}`)
+      : null;
+    if (
+      selectedMailDraftDescriptor &&
+      restoredDraftOwnerThreadId === threadId
+    ) {
+      mailDraftCardSignals.register(selectedMailDraftDescriptor);
+    }
+    return new Map(mailDraftCardSignals.entries());
+  });
+}
+
 function createPagedMessages(
   threadId: string,
   dataSource: ChatThreadRemote,
@@ -2548,22 +2573,11 @@ function createPagedMessages(
 
   const renderedMessages = createRenderedChatGroups(semanticMessages$);
 
-  const mailDraftCardSignalsById$ = computed((get) => {
-    get(rawMessages$);
-    const selectedMailDraftId = get(currentMailDraftId$);
-    const restoredDraftOwnerThreadId =
-      get(searchParams$).get("sidebar") || threadId;
-    const selectedMailDraftDescriptor = selectedMailDraftId
-      ? parseMailDraftUrl(`/mail/drafts/${selectedMailDraftId}`)
-      : null;
-    if (
-      selectedMailDraftDescriptor &&
-      restoredDraftOwnerThreadId === threadId
-    ) {
-      mailDraftCardSignals.register(selectedMailDraftDescriptor);
-    }
-    return new Map(mailDraftCardSignals.entries());
-  });
+  const mailDraftCardSignalsById$ = createMailDraftCardSignalsById(
+    threadId,
+    rawMessages$,
+    mailDraftCardSignals,
+  );
 
   const mergePersistentMessages$ = createMergePersistentMessages(
     threadId,
