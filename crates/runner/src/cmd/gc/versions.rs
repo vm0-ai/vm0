@@ -74,9 +74,8 @@ async fn version_gc_age(home: &HomePaths, name: &str) -> Duration {
         .unwrap_or_default()
 }
 
-#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum VersionArtifactState {
-    #[default]
     Missing,
     Directory,
     Other,
@@ -97,7 +96,6 @@ impl VersionArtifactKind {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
 struct VersionArtifacts {
     version: (u32, u32, u32),
     binary: VersionArtifactState,
@@ -110,13 +108,6 @@ impl VersionArtifacts {
             version,
             binary: VersionArtifactState::Missing,
             config: VersionArtifactState::Missing,
-        }
-    }
-
-    const fn state(&self, kind: VersionArtifactKind) -> VersionArtifactState {
-        match kind {
-            VersionArtifactKind::Binary => self.binary,
-            VersionArtifactKind::Config => self.config,
         }
     }
 
@@ -194,7 +185,6 @@ impl VersionRetentionReason {
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct VersionGcEntry {
     name: String,
-    artifacts: VersionArtifacts,
     retained: Option<VersionRetentionReason>,
 }
 
@@ -343,9 +333,7 @@ async fn analyze_version_gc_with_readers(
     } else {
         let mut sorted: Vec<_> = inventory
             .iter()
-            .filter(|(_, artifacts)| {
-                artifacts.state(VersionArtifactKind::Binary) == VersionArtifactState::Directory
-            })
+            .filter(|(_, artifacts)| artifacts.binary == VersionArtifactState::Directory)
             .map(|(name, artifacts)| (name.clone(), artifacts.version))
             .collect();
         sorted.sort_by_key(|entry| std::cmp::Reverse(entry.1));
@@ -371,11 +359,7 @@ async fn analyze_version_gc_with_readers(
         } else {
             version_retention_reason(home, &name, protect, &kept_by_latest).await
         };
-        entries.push(VersionGcEntry {
-            name,
-            artifacts,
-            retained,
-        });
+        entries.push(VersionGcEntry { name, retained });
     }
 
     Ok(VersionGcAnalysis {
@@ -623,7 +607,6 @@ async fn gc_versions_with_analysis_and_operations(
     let bin_dir = home.bin_dir();
     let mut removed: Vec<String> = Vec::new();
     for entry in &analysis.entries {
-        debug_assert!(entry.artifacts.has_directory());
         let name = &entry.name;
         if let Some(reason) = &entry.retained {
             reason.log_skip(name);
