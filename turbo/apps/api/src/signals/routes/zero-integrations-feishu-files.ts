@@ -5,8 +5,10 @@ import {
   integrationsFeishuDownloadFileContract,
   integrationsFeishuUploadCompleteContract,
   integrationsFeishuUploadInitContract,
+  type FeishuResourceType,
   type FeishuUploadCompleteBody,
 } from "@vm0/api-contracts/contracts/integrations";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
@@ -35,17 +37,26 @@ import {
   generatePresignedPutUrl,
   listS3Objects,
 } from "../external/s3";
+import { feishuOrgCallbackPayloadSchema } from "../services/feishu-org-callback-payload";
 import { recordFeishuUploadedFile$ } from "../services/run-uploaded-files.service";
 import type { RouteEntry } from "../route-entry";
 import { safeUriComponentDecode, settle } from "../utils";
 
 const DOWNLOAD_MAX_BYTES = 100 * 1024 * 1024;
 const PUT_URL_TTL_SECONDS = 3600;
+const FEISHU_FILE_ID_PREFIX = "feishu_file_";
 
 type InstallationResolution =
   | { readonly kind: "resolved"; readonly id: string }
   | { readonly kind: "not_found" }
   | { readonly kind: "ambiguous" };
+
+interface FeishuDownloadTarget {
+  readonly installationId: string | undefined;
+  readonly messageId: string;
+  readonly fileKey: string;
+  readonly type: FeishuResourceType;
+}
 
 function apiError(
   status: 400 | 404 | 413 | 502,
@@ -91,6 +102,52 @@ async function resolveInstallation(args: {
     return { kind: "ambiguous" };
   }
   return { kind: "resolved", id: installation.id };
+}
+
+async function resolveDownloadTarget(args: {
+  readonly db: Db;
+  readonly runId: string | undefined;
+  readonly installationId: string | undefined;
+  readonly messageId: string;
+  readonly fileKey: string;
+  readonly type: FeishuResourceType;
+}): Promise<FeishuDownloadTarget | null> {
+  if (!args.fileKey.startsWith(FEISHU_FILE_ID_PREFIX)) {
+    return {
+      installationId: args.installationId,
+      messageId: args.messageId,
+      fileKey: args.fileKey,
+      type: args.type,
+    };
+  }
+  if (!args.runId) {
+    return null;
+  }
+  const [callback] = await args.db
+    .select({ payload: agentRunCallbacks.payload })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "feishu:org"),
+      ),
+    )
+    .limit(1);
+  const parsed = feishuOrgCallbackPayloadSchema.safeParse(callback?.payload);
+  if (!parsed.success) {
+    return null;
+  }
+  const file = parsed.data.files?.find((candidate) => {
+    return candidate.fileId === args.fileKey;
+  });
+  return file
+    ? {
+        installationId: parsed.data.installationId,
+        messageId: file.messageId,
+        fileKey: file.fileKey,
+        type: file.type,
+      }
+    : null;
 }
 
 function installationError(
@@ -241,23 +298,35 @@ const download$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(integrationsFeishuDownloadFileContract.download));
   const db = set(writeDb$);
+  const target = await resolveDownloadTarget({
+    db,
+    runId: "runId" in auth ? auth.runId : undefined,
+    installationId: query.installation_id,
+    messageId: query.message_id,
+    fileKey: query.file_key,
+    type: query.type,
+  });
+  signal.throwIfAborted();
+  if (!target) {
+    return apiError(400, "BAD_REQUEST", "Invalid Feishu file id");
+  }
   const installation = await resolveInstallation({
     db,
     orgId: auth.orgId,
-    installationId: query.installation_id,
+    installationId: target.installationId,
     signal,
   });
   if (installation.kind !== "resolved") {
-    return installationError(installation, query.installation_id);
+    return installationError(installation, target.installationId);
   }
 
   const downloaded = await settle(
     downloadFeishuMessageResource({
       db,
       installationId: installation.id,
-      messageId: query.message_id,
-      fileKey: query.file_key,
-      resourceType: query.type,
+      messageId: target.messageId,
+      fileKey: target.fileKey,
+      resourceType: target.type,
       signal,
     }),
     signal,
@@ -284,7 +353,7 @@ const download$ = command(async ({ get, set }, signal: AbortSignal) => {
   const filename = sanitizeDownloadFilename(
     filenameFromContentDisposition(
       downloaded.value.headers.get("content-disposition"),
-    ) ?? `feishu-${query.file_key}`,
+    ) ?? `feishu-${target.fileKey}`,
   );
   const contentType =
     downloaded.value.headers.get("content-type") ?? inferMimetype(filename);
