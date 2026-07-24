@@ -524,7 +524,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable managed Browser Use sessions, Zero Browser CLI capabilities, and live browser chat cards.",
     enabled: false,
     userOverridable: false,
-    enabledUserHashes: ["5842633e"],
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
