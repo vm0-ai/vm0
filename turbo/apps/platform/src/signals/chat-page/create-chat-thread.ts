@@ -2487,6 +2487,30 @@ function createMailDraftCardSignalsById(
   });
 }
 
+function createHistoryBackfillProgress(
+  hasReachedOldestMessage$: Computed<boolean>,
+  persistentMessages$: PersistentChatMessages$,
+): Computed<Promise<number | null>> {
+  // Approximate backfill progress from the loaded seqId range. The thread's
+  // true max seqId is not exposed to the client, so the newest loaded message
+  // stands in for it. The reached-oldest computed hides progress once the
+  // first persistent seqId is 1. Null hides the progress bar.
+  return computed((get): Promise<number | null> => {
+    if (get(hasReachedOldestMessage$)) {
+      return Promise.resolve(null);
+    }
+    const messages = get(persistentMessages$);
+    const first = messages[0];
+    const last = messages.at(-1);
+    if (first === undefined || last === undefined) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(
+      (last.message.seqId - first.message.seqId) / last.message.seqId,
+    );
+  });
+}
+
 function createPagedMessages(
   threadId: string,
   dataSource: ChatThreadRemote,
@@ -2537,24 +2561,10 @@ function createPagedMessages(
     optimisticMessages$,
     resolveBodyBlocks,
   });
-  // Approximate backfill progress from the loaded seqId range. The thread's
-  // true max seqId is not exposed to the client, so the newest loaded message
-  // stands in for it. The reached-oldest computed hides progress once the
-  // first persistent seqId is 1. Null hides the progress bar.
-  const historyBackfillProgress$ = computed((get): Promise<number | null> => {
-    if (get(hasReachedOldestMessage$)) {
-      return Promise.resolve(null);
-    }
-    const messages = get(persistentChatMessages$);
-    const first = messages[0];
-    const last = messages.at(-1);
-    if (first === undefined || last === undefined) {
-      return Promise.resolve(null);
-    }
-    return Promise.resolve(
-      (last.message.seqId - first.message.seqId) / last.message.seqId,
-    );
-  });
+  const historyBackfillProgress$ = createHistoryBackfillProgress(
+    hasReachedOldestMessage$,
+    persistentChatMessages$,
+  );
   const semanticMessages$ = computed((get): SemanticChatMessage[] => {
     return semanticTranscriptMessagesFromRaw(get(rawMessages$));
   });
