@@ -44,8 +44,9 @@ impl EventDeliverySender {
         sequence: u32,
         event: serde_json::Value,
     ) -> Result<(), AgentError> {
-        let event = serde_json::to_vec(&event)?;
-        let event = Bytes::from(event.into_boxed_slice());
+        let serialized_event = serde_json::to_vec(&event)?;
+        drop(event);
+        let event = Bytes::from(serialized_event.into_boxed_slice());
         let conservative_bytes = self.payload_envelope.singleton_bytes(event.len());
         if conservative_bytes > EVENT_DELIVERY_MAX_REQUEST_BYTES {
             return Err(AgentError::Execution(format!(
