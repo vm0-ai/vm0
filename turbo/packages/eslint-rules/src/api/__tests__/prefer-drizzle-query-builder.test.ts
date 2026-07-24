@@ -1006,6 +1006,26 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
           \`,
           rowSchema,
         );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS value,
+              (SELECT total FROM expired) AS value
+          \`,
+          rowSchema,
+        );
       `,
     },
     {

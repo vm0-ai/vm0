@@ -636,6 +636,7 @@ function completeScalarCteProjectionMatch(syntaxSource: string): boolean {
   cursor += 1;
 
   const referencedCtes = new Set<string>();
+  const resultAliases = new Set<string>();
   let hasGuaranteedOneRowReference = false;
   previousToken = selectKeyword;
   while (cursor < tokens.length) {
@@ -653,7 +654,8 @@ function completeScalarCteProjectionMatch(syntaxSource: string): boolean {
       !isWord(asKeyword, "AS") ||
       !onlyWhitespaceBetween(syntaxSource, previousToken, open) ||
       !onlyWhitespaceBetween(syntaxSource, close, asKeyword) ||
-      !onlyWhitespaceBetween(syntaxSource, asKeyword, alias)
+      !onlyWhitespaceBetween(syntaxSource, asKeyword, alias) ||
+      resultAliases.has(alias.value)
     ) {
       return false;
     }
@@ -665,6 +667,7 @@ function completeScalarCteProjectionMatch(syntaxSource: string): boolean {
       return false;
     }
     referencedCtes.add(reference);
+    resultAliases.add(alias.value);
     hasGuaranteedOneRowReference ||= cte.guaranteedOneRow;
     cursor += 4;
 
