@@ -1,10 +1,9 @@
 import { createDecipheriv, createHash, timingSafeEqual } from "node:crypto";
 
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { zeroFeishuEventsContract } from "@vm0/api-contracts/contracts/zero-feishu-events";
-import { feishuOrgEvents } from "@vm0/db/schema/feishu-org-event";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { logger } from "../../lib/log";
@@ -17,13 +16,14 @@ import {
 } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { onRejection, safeJsonParse, safeSync, tapError } from "../utils";
+import { safeJsonParse, safeSync, tapError } from "../utils";
+import { processCanonicalFeishuIngress$ } from "./canonical-feishu-ingress-processor.service";
+import { admitFeishuChatEvent } from "./feishu-chat-ingress.service";
 import {
   loadFeishuInstallationConfig,
   type FeishuInstallationConfig,
 } from "./feishu-config";
 import {
-  dispatchFeishuMessage$,
   feishuPromptFile,
   formatFeishuFileContext,
   type FeishuInboundMessage,
@@ -293,63 +293,6 @@ async function ensureInboundBotIdentity(args: {
   return { ...args.config, botOpenId: bot.openId };
 }
 
-async function claimFeishuEvent(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly eventId: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const [claimed] = await args.db
-    .insert(feishuOrgEvents)
-    .values({
-      installationId: args.installationId,
-      eventId: args.eventId,
-    })
-    .onConflictDoNothing({
-      target: [feishuOrgEvents.installationId, feishuOrgEvents.eventId],
-    })
-    .returning({ eventId: feishuOrgEvents.eventId });
-  args.signal.throwIfAborted();
-  return Boolean(claimed);
-}
-
-async function dispatchInboundMessage(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly dispatch: () => Promise<unknown>;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const claimed = await claimFeishuEvent({
-    db: args.db,
-    installationId: args.message.installationId,
-    eventId: args.message.eventId,
-    signal: args.signal,
-  });
-  if (!claimed) {
-    return;
-  }
-  waitUntil(
-    tapError(
-      onRejection(args.dispatch(), async () => {
-        await args.db
-          .delete(feishuOrgEvents)
-          .where(
-            and(
-              eq(feishuOrgEvents.installationId, args.message.installationId),
-              eq(feishuOrgEvents.eventId, args.message.eventId),
-            ),
-          );
-      }),
-      (error) => {
-        L.error("Failed to dispatch Feishu message", {
-          error,
-          eventId: args.message.eventId,
-        });
-      },
-    ),
-  );
-}
-
 export const handleZeroFeishuEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
@@ -452,14 +395,40 @@ export const handleZeroFeishuEvents$ = command(
     });
     const message = inboundMessage(dispatchConfig, v2.data);
     if (message) {
-      await dispatchInboundMessage({
-        db,
-        message,
-        dispatch: () => {
-          return set(dispatchFeishuMessage$, message, signal);
-        },
-        signal,
+      const admittedAt = nowDate();
+      const ingress = await admitFeishuChatEvent(db, {
+        installationId: message.installationId,
+        eventId: message.eventId,
+        payload: JSON.stringify(message),
+        currentTime: admittedAt,
       });
+      signal.throwIfAborted();
+      L.debug("Canonical Feishu ingress admitted", {
+        type: "canonical_feishu_ingress_admission",
+        eventId: message.eventId,
+        outcome: ingress?.inserted ? "accepted" : "deduplicated",
+        status: ingress?.status ?? "legacy_deduplicated",
+        retryCount: ingress?.retryCount ?? 0,
+      });
+      if (ingress && ingress.status !== "processed") {
+        const backgroundSignal = new AbortController().signal;
+        waitUntil(
+          tapError(
+            set(
+              processCanonicalFeishuIngress$,
+              { ingressId: ingress.id },
+              backgroundSignal,
+            ),
+            (error) => {
+              L.error("Canonical Feishu ingress processing failed", {
+                ingressId: ingress.id,
+                eventId: message.eventId,
+                error,
+              });
+            },
+          ),
+        );
+      }
     }
     return textResponse("OK");
   },

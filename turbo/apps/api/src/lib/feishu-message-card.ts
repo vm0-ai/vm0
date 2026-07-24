@@ -88,7 +88,7 @@ export function buildFeishuWelcomeMessage(args: {
       {
         tag: "markdown",
         content:
-          "Send me a direct message or mention me in a group chat to get started.\n\nCommands: `/zero help`, `/zero connect`, `/zero disconnect`, `/zero switch`, `/zero model`.",
+          "Send me a direct message or mention me in a group chat to get started.\n\nCommands: `/help`, `/connect`, `/disconnect`, `/switch`, `/model`.",
       },
     ],
   });
@@ -103,11 +103,11 @@ export function buildFeishuHelpMessage(): FeishuOutboundMessage {
       {
         tag: "markdown",
         content: [
-          "• `/zero help` — Show this help",
-          "• `/zero connect` — Connect your VM0 account",
-          "• `/zero disconnect` — Disconnect your VM0 account",
-          "• `/zero switch` — Choose which agent responds",
-          "• `/zero model` — Choose your model",
+          "• `/help` — Show this help",
+          "• `/connect` — Connect your VM0 account",
+          "• `/disconnect` — Disconnect your VM0 account",
+          "• `/switch` — Choose which agent responds",
+          "• `/model` — Choose your model",
         ].join("\n"),
       },
       {

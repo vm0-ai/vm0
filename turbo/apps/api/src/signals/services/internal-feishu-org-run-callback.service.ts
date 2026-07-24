@@ -13,6 +13,7 @@ import { logger } from "../../lib/log";
 import {
   removeFeishuMessageReaction,
   replyWithFeishuMessage,
+  sendFeishuMessage,
 } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -191,6 +192,9 @@ async function handleFeishuCallback(
     return { success: false, error: "Invalid Feishu callback payload" };
   }
   const payload = parsed.data;
+  if (payload.canonicalChatDelivery) {
+    return { success: true, skipped: true };
+  }
   const run = await loadRun(args.db, args.callback.runId);
   args.signal.throwIfAborted();
   if (!run) {
@@ -285,18 +289,31 @@ async function handleFeishuCallback(
     args.callback.status === "failed"
       ? (errorText ?? "Agent execution failed.")
       : (output ?? "Task completed successfully.");
-  await replyWithFeishuMessage({
-    db: args.db,
-    installationId: payload.installationId,
-    messageId: payload.messageId,
-    message: buildFeishuAgentResponseMessage({
-      text: responseText,
-      auditUrl: presentation.logsUrl,
-      footerText: presentation.footerText,
-    }),
-    replyInThread: payload.replyInThread,
-    signal: args.signal,
+  const responseMessage = buildFeishuAgentResponseMessage({
+    text: responseText,
+    auditUrl: presentation.logsUrl,
+    footerText: presentation.footerText,
   });
+  if (payload.replyInThread) {
+    await replyWithFeishuMessage({
+      db: args.db,
+      installationId: payload.installationId,
+      messageId: payload.messageId,
+      message: responseMessage,
+      replyInThread: true,
+      signal: args.signal,
+    });
+  } else {
+    await sendFeishuMessage({
+      db: args.db,
+      installationId: payload.installationId,
+      receiveIdType: "chat_id",
+      receiveId: payload.chatId,
+      message: responseMessage,
+      idempotencyKey: args.callback.runId,
+      signal: args.signal,
+    });
+  }
   args.signal.throwIfAborted();
   await clearThinkingReaction({
     db: args.db,
