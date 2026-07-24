@@ -136,6 +136,7 @@ import {
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
+import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
@@ -4778,6 +4779,9 @@ function BodyRenderBlockView({
     }
     case "mail-draft": {
       return <MailDraftCard signals={block.signals} />;
+    }
+    case "browser-session": {
+      return <BrowserSessionCard signals={block.signals} />;
     }
     case "artifact": {
       const { signals } = block;

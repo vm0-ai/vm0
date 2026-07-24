@@ -19,7 +19,7 @@ import {
   deleteChatMessage,
   updateChatMessage,
 } from "./zero-chat-message.service";
-import { activeChatRunExists } from "./zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   decryptPersistentSecretsMap,
@@ -388,7 +388,7 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (await activeChatRunExists(db, { threadId: args.threadId })) {
+      if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
         outcome = "lost";
         return { kind: "lost" };
       }

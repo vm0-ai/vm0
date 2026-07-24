@@ -90,6 +90,14 @@ const cronComputerUseScreenshotCleanupResponseSchema = z.object({
   cleaned: z.number(),
 });
 
+const cronBrowserReconcileResponseSchema = z.object({
+  checked: z.number().int().nonnegative(),
+  stopped: z.number().int().nonnegative(),
+  settled: z.number().int().nonnegative(),
+  errors: z.number().int().nonnegative(),
+  healthy: z.number().int().nonnegative(),
+});
+
 const cronDrainEmailOutboxResponseSchema = z.object({
   success: z.literal(true),
   drained: z.number(),
@@ -288,6 +296,19 @@ export const cronComputerUseScreenshotCleanupContract = c.router({
   },
 });
 
+export const cronBrowserReconcileContract = c.router({
+  reconcile: {
+    method: "GET",
+    path: "/api/cron/reconcile-browsers",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronBrowserReconcileResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Reconcile terminal managed browsers and final billing",
+  },
+});
+
 export const cronDrainEmailOutboxContract = c.router({
   drain: {
     method: "GET",
@@ -459,6 +480,7 @@ export type CronConnectorOauthStateCleanupContract =
   typeof cronConnectorOauthStateCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
+export type CronBrowserReconcileContract = typeof cronBrowserReconcileContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
@@ -480,6 +502,7 @@ export {
   cronTelegramCleanupResponseSchema,
   cronConnectorOauthStateCleanupResponseSchema,
   cronComputerUseScreenshotCleanupResponseSchema,
+  cronBrowserReconcileResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
   cronExecuteWorkflowAutomationsResponseSchema,

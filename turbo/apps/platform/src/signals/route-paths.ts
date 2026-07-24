@@ -17,6 +17,7 @@ export const ROUTES = {
   prompt: "/prompt",
   works: "/works",
   artifacts: "/artifacts",
+  browser: "/browsers/:browserId",
   ideas: "/ideas",
   connectors: "/connectors",
   customConnectorProposal: "/connectors/custom/proposal",

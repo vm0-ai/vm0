@@ -49,6 +49,7 @@ Current link-backed card patterns include:
 - `/computer-use/authorize/:requestToken`
 - `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
+- `/browsers/:browserId`
 - platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
   site URLs that support an inline preview
 
@@ -269,6 +270,27 @@ The fixed-height card displays the Gmail identity, subject, sender, and
 `Draft`, `Sent`, or `Deleted` status. Draft and Sent cards open the shared right
 sidebar surface. Deleted cards retain their summary but are not interactive.
 
+### Provider-backed live resource: managed browser
+
+A managed-browser link matches `/browsers/:browserId`, where `browserId` is the
+vm0 logical browser UUID. The card never accepts a Browser Use `liveUrl` or CDP
+URL from message content. Instead, its thread-scoped computed reads the browser
+through the authenticated Zero Browser API and includes the current chat thread
+ID in that request. A copied card therefore cannot resolve a browser owned by a
+different thread.
+
+While the current run owns an active provider instance, the API returns its
+short-lived live URL and the card renders it in an iframe with a no-referrer
+policy. At every terminal run callback, the API stops and settles all eligible
+provider instances for the thread before another run can resume the logical
+browser. The card then shows the suspended state and keeps the stable
+`/browsers/:browserId` link; a later run can use `zero browser resume` to start
+a new provider instance with the saved profile.
+
+The same universal link also has an authenticated full-page route. The browser
+provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
+is never returned by the card read endpoint or printed in CLI output.
+
 ## Adding a Card Type
 
 When adding a new link-backed card:
@@ -298,7 +320,10 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/mail-draft.ts`
+- `turbo/apps/platform/src/signals/chat-page/browser-session-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/platform-action-url.ts`
 - `turbo/apps/platform/src/signals/chat-page/computer-use-authorization-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/plan-upgrade-block.ts`
 - `turbo/apps/platform/src/views/zero-page/zero-chat-thread-page.tsx`
+- `turbo/apps/platform/src/views/zero-page/browser-session-card.tsx`
+- `turbo/apps/platform/src/views/browser-session/browser-session-page.tsx`
