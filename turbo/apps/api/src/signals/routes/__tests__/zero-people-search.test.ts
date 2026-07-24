@@ -378,8 +378,6 @@ describe("zero people-search route", () => {
       tools: [
         {
           type: "people_search",
-          max_tokens: 5000,
-          max_tokens_per_page: 500,
         },
       ],
       max_steps: 2,

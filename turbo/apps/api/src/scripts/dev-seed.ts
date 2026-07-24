@@ -493,7 +493,7 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
 
   // Perplexity Agent API People Search fixed vm0 product pricing, reviewed
   // 2026-07-23. The $0.020 retail price covers the $0.005 tool invocation,
-  // bounded gpt-5-mini input/output tokens, and operating margin.
+  // gpt-5-mini model tokens, and operating margin.
   ...usageGroup("people-search", "perplexity", [["request", usd(0.02), 1]]),
 
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
