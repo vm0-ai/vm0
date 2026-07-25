@@ -1843,16 +1843,21 @@ touch "{}"
         let dir = tempfile::tempdir().unwrap();
         let locks = LockPaths::with_dir(dir.path().to_path_buf());
 
-        let (i0, hold0) = acquire_pool_lock(&locks).unwrap();
-        let (i1, _hold1) = acquire_pool_lock(&locks).unwrap();
-        assert_eq!(i0, 0);
-        assert_eq!(i1, 1);
+        let held_idx = 0;
+        let held = Flock::lock(
+            File::create(locks.netns_pool(held_idx)).unwrap(),
+            FlockArg::LockExclusiveNonblock,
+        )
+        .unwrap();
 
-        // Drop lock 0 → index 0 becomes available again.
-        drop(hold0);
+        let (available_idx, _available) = acquire_pool_lock(&locks).unwrap();
+        assert_eq!(available_idx, 1);
 
-        let (reused, _hold) = acquire_pool_lock(&locks).unwrap();
-        assert_eq!(reused, 0);
+        // Flock's explicit LOCK_UN makes release deterministic across forks.
+        drop(held);
+
+        let (reused_idx, _reused) = acquire_pool_lock(&locks).unwrap();
+        assert_eq!(reused_idx, held_idx);
     }
 
     #[test]
