@@ -285,6 +285,8 @@ async fn write_file_chunked_connection_close_while_waiting_for_writer_returns_co
 
 #[tokio::test]
 async fn write_file_chunked_frame_builder_request_times_out_waiting_for_writer() {
+    // The public chunked-write path fixes each request timeout at 300 seconds,
+    // so exercise its composite request seam with a practical test deadline.
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let writer_guard = host.shared.writer.lock().await;

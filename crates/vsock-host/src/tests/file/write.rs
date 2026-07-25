@@ -28,6 +28,8 @@ use crate::{
     operation_tracker::NormalOperationReadiness,
 };
 
+// Public file APIs intentionally use a fixed 300-second request timeout. Use
+// their shared request seam here so timeout lifecycle coverage remains fast.
 const FRAME_BUILDER_REQUEST_TIMEOUT: Duration = Duration::from_millis(50);
 
 async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
