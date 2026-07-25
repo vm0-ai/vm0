@@ -62,6 +62,7 @@ import {
   mockDatadogConnectorOAuth,
   mockGmailConnectorOAuth,
   mockSlackConnectorOAuth,
+  mockTestOAuthAuthCodeProvider,
   mockTestOAuthDeviceConnectorProvider,
   requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
@@ -390,6 +391,49 @@ function manualPrivateAuthMethod(args: {
             inputs: { token: `$secrets.${credentialName}` },
           }
         : { kind: "none" },
+  };
+}
+
+function testOauthPrivateAuthMethod(): JsonRecord {
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientId: "test-oauth-client",
+      clientSecret: "test-oauth-secret",
+    },
+    storage: {
+      version: 1,
+      secrets: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
+      variables: ["TEST_OAUTH_API_TENANT_ID"],
+    },
+    grant: {
+      kind: "auth-code",
+      scopes: ["read"],
+      callbackOrigin: "api",
+      outputs: {
+        accessToken: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+        refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
+        tenantId: "$vars.TEST_OAUTH_API_TENANT_ID",
+      },
+    },
+    access: {
+      kind: "refresh-token",
+      envBindings: {
+        TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+        TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
+      },
+      inputs: {
+        refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
+      },
+      outputs: {
+        accessToken: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+        refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
+      },
+      refreshableSecrets: ["TEST_OAUTH_ACCESS_TOKEN"],
+    },
+    revoke: { kind: "none" },
   };
 }
 
@@ -4564,6 +4608,91 @@ describe("connector catalog executable compatibility", () => {
       stale: false,
       filteredAuthMethods: [],
     });
+  });
+
+  it("accepts inline confidential test clients and applies rollout at request time", async () => {
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    const provider = mockTestOAuthAuthCodeProvider({
+      refreshToken: "catalog-test-oauth-refresh",
+    });
+    configureSource();
+    const method = publicAuthMethod({
+      id: "oauth",
+      grantKind: "auth-code",
+    });
+    method.featureSwitch = "testOauthConnector";
+    const release = buildRelease({
+      version: "2026-07-24.inline-confidential-test-client",
+      connectorRef: "test-oauth",
+      mutateCatalog: (artifact) => {
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [testOauthPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body.filtering).toMatchObject({
+      stale: false,
+      filteredAuthMethods: [],
+    });
+
+    mockExternalConnectorCatalogEnabled(true);
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        "test-oauth",
+        [204, 404],
+      );
+    });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const headers = { authorization: "Bearer clerk-session" };
+    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
+
+    expect(
+      (await accept(catalogClient.list({ headers }), [200])).body,
+    ).toStrictEqual({
+      connectors: [],
+      categoryMetadata: { categories: [], groups: [] },
+    });
+    await accept(
+      featureClient.update({
+        headers,
+        body: {
+          switches: { [FeatureSwitchKey.TestOauthConnector]: true },
+        },
+      }),
+      [200],
+    );
+    const enabled = await accept(catalogClient.list({ headers }), [200]);
+    expect(enabled.body.connectors).toMatchObject([
+      {
+        connectorRef: "test-oauth",
+        authMethods: [{ id: "oauth", grantKind: "auth-code" }],
+      },
+    ]);
+    expect(JSON.stringify(enabled.body)).not.toContain("test-oauth-secret");
+
+    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    const authorizationUrl = new URL(start.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "test-oauth-client",
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected test OAuth authorization state");
+    }
+    await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "catalog-test-oauth-code",
+      state,
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("client_secret")).toBe(
+      "test-oauth-secret",
+    );
   });
 
   it("filters unsupported grant, access, and revoke handlers independently", async () => {

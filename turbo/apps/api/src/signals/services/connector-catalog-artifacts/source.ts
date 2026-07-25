@@ -72,6 +72,15 @@ const staticConfidentialClientSourceSchema = z
   })
   .strict();
 
+const staticConfidentialLiteralClientSourceSchema = z
+  .object({
+    clientRegistration: z.literal("static"),
+    clientType: z.literal("confidential"),
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1),
+  })
+  .strict();
+
 const staticPublicClientSourceSchema = z
   .object({
     clientRegistration: z.literal("static"),
@@ -89,6 +98,7 @@ const dynamicPublicClientSourceSchema = z
 
 export const connectorAuthClientSourceSchema = z.union([
   staticConfidentialClientSourceSchema,
+  staticConfidentialLiteralClientSourceSchema,
   staticPublicClientSourceSchema,
   dynamicPublicClientSourceSchema,
 ]);

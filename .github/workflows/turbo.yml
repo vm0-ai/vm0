@@ -1069,6 +1069,62 @@ jobs:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      # Vercel does not run cron schedules for preview deployments. Reconcile
+      # through the unique deployment URL before exposing it through an alias or
+      # allowing downstream runner and E2E consumers to start.
+      - name: Reconcile preview connector catalog
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          response=""
+          for attempt in 1 2 3; do
+            if ! response=$(curl \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --max-time 120 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+              "${API_DEPLOYMENT_URL}/api/cron/sync-connector-catalog"); then
+              echo "::warning::Connector catalog reconcile request failed (attempt ${attempt}/3)"
+            elif summary=$(jq -c '{
+              outcome,
+              state,
+              active,
+              lastAttempt,
+              filtering: {
+                capabilityDigest: .filtering.capabilityDigest,
+                evaluatedAt: .filtering.evaluatedAt,
+                stale: .filtering.stale,
+                filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)
+              }
+            }' <<< "$response"); then
+              echo "Connector catalog reconcile: ${summary}"
+
+              if jq -e '
+                .state == "current"
+                and .active != null
+                and .filtering.stale == false
+              ' <<< "$response" >/dev/null; then
+                exit 0
+              fi
+              echo "::warning::Connector catalog is not ready (attempt ${attempt}/3)"
+            else
+              echo "::warning::Connector catalog reconcile returned invalid JSON (attempt ${attempt}/3)"
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              sleep 2
+            fi
+          done
+
+          echo "::error::Connector catalog reconcile did not produce a current accepted snapshot"
+          exit 1
+
       - name: Create API Vercel Alias
         id: api-alias
         if: vars.PREVIEW_DOMAIN != ''

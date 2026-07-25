@@ -111,11 +111,13 @@ function methodClientContract(
     return { kind: "dynamic-public" };
   }
   if (client.clientType === "confidential") {
-    return {
-      kind: "static-confidential-env",
-      clientIdEnv: client.clientIdEnv,
-      clientSecretEnv: client.clientSecretEnv,
-    };
+    return "clientIdEnv" in client
+      ? {
+          kind: "static-confidential-env",
+          clientIdEnv: client.clientIdEnv,
+          clientSecretEnv: client.clientSecretEnv,
+        }
+      : { kind: "static-confidential-literal" };
   }
   return { kind: "static-public-literal" };
 }
