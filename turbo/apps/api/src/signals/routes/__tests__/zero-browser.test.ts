@@ -281,7 +281,7 @@ describe("zero browser route", () => {
           });
           providerStops += 1;
           const providerId = String(params.id);
-          if (providerId === providerIds[0]) {
+          if (providerId === firstThreadProviderId) {
             if (!firstStopStarted.settled()) {
               firstStopStarted.resolve(undefined);
             }
@@ -295,7 +295,7 @@ describe("zero browser route", () => {
             }
           }
           return HttpResponse.json(
-            providerId === providerIds[0]
+            providerId === firstThreadProviderId
               ? providerBrowser(providerId, {
                   status: "stopped",
                   browserCost: "0.00333",
@@ -334,6 +334,10 @@ describe("zero browser route", () => {
       accept(firstCreateRequest, [201]),
       accept(otherCreateRequest, [201]),
     ]);
+    const firstThreadProviderId = z
+      .string()
+      .uuid()
+      .parse(new URL(created.body.cdpUrl).hostname.split(".")[0]);
     expect(created.body.browser).toMatchObject({
       name: "booking",
       status: "active",
