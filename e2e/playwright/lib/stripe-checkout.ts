@@ -63,6 +63,31 @@ async function disableLinkSaveInfo(page: Page): Promise<void> {
   }
 }
 
+// Stripe Checkout renders the "Pay with card" toggle only when wallet options
+// (Link, Apple Pay) collapse the card form behind it. Wallet availability
+// depends on the browser and on the payment methods Stripe resolves for the
+// detected locale, so some runs get the card form expanded and never render the
+// toggle at all. Waiting for it unconditionally fails those runs even though the
+// card fields are already present and fillable.
+async function revealCardForm(page: Page, cardNumber: Locator): Promise<void> {
+  const payWithCard = page
+    .getByRole("button", { name: /pay with card/i })
+    .first();
+
+  // Settle on whichever layout Stripe rendered before deciding, so the expanded
+  // layout proceeds as soon as the card fields exist instead of burning the
+  // whole timeout waiting for a toggle that will never appear.
+  await payWithCard
+    .or(cardNumber)
+    .first()
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .catch(() => {});
+
+  if (await payWithCard.isVisible().catch(() => false)) {
+    await payWithCard.dispatchEvent("click");
+  }
+}
+
 export async function fillStripeCheckout(page: Page): Promise<void> {
   await expect(page).toHaveURL(/checkout\.stripe\.com/, { timeout: 30_000 });
 
@@ -71,16 +96,17 @@ export async function fillStripeCheckout(page: Page): Promise<void> {
     `billing-e2e-${Date.now()}@vm0-e2e.ai`,
   );
   await disableLinkSaveInfo(page);
-  await page
-    .getByRole("button", { name: /pay with card/i })
-    .dispatchEvent("click", undefined, { timeout: 10_000 });
+
+  const cardNumber = page
+    .getByLabel(/card number/i)
+    .or(page.getByPlaceholder(/1234 1234 1234 1234/i))
+    .or(page.locator('input[name="cardNumber"]'));
+
+  await revealCardForm(page, cardNumber);
 
   await fillStripeField(
     page,
-    page
-      .getByLabel(/card number/i)
-      .or(page.getByPlaceholder(/1234 1234 1234 1234/i))
-      .or(page.locator('input[name="cardNumber"]')),
+    cardNumber,
     /1234 1234 1234 1234/i,
     "4242424242424242",
   );
