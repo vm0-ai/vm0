@@ -825,7 +825,7 @@ class TestDecompressJsonUsageBody:
 
         class NonConcatenableUnusedData(bytes):
             def __add__(self, _other: object) -> bytes:
-                raise AssertionError("zstd unused data must not be concatenated")
+                raise TypeError("zstd unused data must not be concatenated")
 
         class TrackingDecompressionObj:
             def __init__(self, wrapped):
