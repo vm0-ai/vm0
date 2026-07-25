@@ -27,7 +27,7 @@ import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";
 import {
   createRunsApi,
-  expectLegacyStorageManifest,
+  expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import {
   cleanupOfficialTestSkillsState,
@@ -513,8 +513,8 @@ describe("GET /api/cron/sync-skills", () => {
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);
     const skillMountPaths =
-      expectLegacyStorageManifest(claim.storageManifest)
-        ?.storages.map((storage) => {
+      expectCanonicalStorageManifest(claim.storageManifest)
+        ?.storageMounts.map((storage) => {
           return storage.mountPath;
         })
         .filter((mountPath) => {

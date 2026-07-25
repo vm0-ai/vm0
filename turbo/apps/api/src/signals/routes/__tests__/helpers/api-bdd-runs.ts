@@ -36,7 +36,7 @@ import {
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
-  type LegacyStorageManifest,
+  type CanonicalStorageManifest,
   type StorageManifest,
 } from "@vm0/api-contracts/contracts/runners";
 import {
@@ -106,14 +106,14 @@ type RunnerRealtimeTokenBody = z.infer<
   (typeof runnerRealtimeTokenContract.create)["body"]
 >;
 
-export function expectLegacyStorageManifest(
+export function expectCanonicalStorageManifest(
   manifest: StorageManifest | null | undefined,
-): LegacyStorageManifest | null | undefined {
+): CanonicalStorageManifest | null | undefined {
   if (manifest === null || manifest === undefined) {
     return manifest;
   }
-  if (!("storages" in manifest)) {
-    throw new Error("Expected a legacy Storage manifest");
+  if (!("storageMounts" in manifest)) {
+    throw new Error("Expected a canonical Storage manifest");
   }
   return manifest;
 }
