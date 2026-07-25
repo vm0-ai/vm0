@@ -235,18 +235,38 @@ function expectAcceptedWithoutRun(result: {
   expect(result.body).toStrictEqual({ success: true, duplicate: false });
 }
 
-function expectAcceptedRunId(result: {
-  readonly status: number;
-  readonly body: unknown;
-}): string {
+async function expectAcceptedRunId(
+  result: {
+    readonly status: number;
+    readonly body: unknown;
+  },
+  threadId: string,
+): Promise<string> {
   expect(result.status).toBe(200);
-  expect(result.body).toStrictEqual({
+  expect(result.body).toMatchObject({
     success: true,
     duplicate: false,
-    runId: expect.any(String),
   });
-  const runId = (result.body as { readonly runId: string }).runId;
-  return runId;
+  const runId = (result.body as { readonly runId?: unknown }).runId;
+  if (typeof runId === "string") {
+    return runId;
+  }
+
+  // Another per-thread drain can win the queue-first claim after this request
+  // admits the event. The webhook still reports an accepted event, so resolve
+  // the run that owns the durable queue item instead of requiring this caller
+  // to have created it.
+  expect(result.body).toStrictEqual({ success: true, duplicate: false });
+  await expect
+    .poll(() => {
+      return workflowRunIds(threadId);
+    })
+    .toHaveLength(1);
+  const [claimedRunId] = await workflowRunIds(threadId);
+  if (!claimedRunId) {
+    throw new Error("Expected the accepted workflow event to create a run");
+  }
+  return claimedRunId;
 }
 
 /** Run ids of automation-fired `/workflow-name` user messages, oldest first. */
@@ -480,7 +500,7 @@ describe("workflow queue", () => {
     const kms = useSecretKmsProbe();
 
     const first = await postWorkflowWebhook(automation, "first");
-    const firstRunId = expectAcceptedRunId(first);
+    const firstRunId = await expectAcceptedRunId(first, automation.threadId);
     // Every workflow event is encrypted before admission; the launched run
     // then uses a second data key for runner execution secrets.
     expect(kms.generateDataKeyCalls).toBe(2);
@@ -537,8 +557,9 @@ describe("workflow queue", () => {
     const kms = useSecretKmsProbe();
 
     // Occupy the workflow with a webhook-triggered run.
-    const busyRunId = expectAcceptedRunId(
+    const busyRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(webhookAutomation, "busy"),
+      webhookAutomation.threadId,
     );
     expect(kms.generateDataKeyCalls).toBe(2);
 
@@ -582,8 +603,9 @@ describe("workflow queue", () => {
   it("propagates queue encryption failure while persistence remains necessary", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    const firstRunId = expectAcceptedRunId(
+    const firstRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
     );
 
     const encryptionError = new Error("queue payload encryption failed");
@@ -613,8 +635,9 @@ describe("workflow queue", () => {
   it("finishes required queue persistence when the request aborts during encryption", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    const firstRunId = expectAcceptedRunId(
+    const firstRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
     );
 
     const kmsStarted = createDeferredPromise<void>(context.signal);
@@ -666,8 +689,9 @@ describe("workflow queue", () => {
   it("requires queue persistence even when encryption finishes after the thread becomes idle", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    const firstRunId = expectAcceptedRunId(
+    const firstRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
     );
 
     const kmsStarted = createDeferredPromise<void>(context.signal);
@@ -824,8 +848,9 @@ describe("workflow queue", () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
-    const busyRunId = expectAcceptedRunId(
+    const busyRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(webhookAutomation, "busy"),
+      webhookAutomation.threadId,
     );
     const created = await accept(
       automationsClient().create({
@@ -893,8 +918,9 @@ describe("workflow queue", () => {
     ]);
     chatCallbacks.acceptChatObjectStorage();
 
-    const firstRunId = expectAcceptedRunId(
+    const firstRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
     );
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
 
