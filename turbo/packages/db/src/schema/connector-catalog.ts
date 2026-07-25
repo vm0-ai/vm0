@@ -62,10 +62,6 @@ export const connectorCatalogSyncState = pgTable(
     lastAttemptOutcome: varchar("last_attempt_outcome", {
       length: 32,
     }).$type<ConnectorCatalogAttemptOutcome>(),
-    // lastAttemptMetadataRevision and lastRejectedCandidateFingerprint remain
-    // for #23001 rollback only. Runtime code must not use them; #23007 removes
-    // both physical columns.
-    lastAttemptMetadataRevision: integer("last_attempt_metadata_revision"),
     lastAttemptReusedCachedRejection: boolean(
       "last_attempt_reused_cached_rejection",
     ),
@@ -90,10 +86,6 @@ export const connectorCatalogSyncState = pgTable(
     lastRejectedBuildCommitSha: varchar("last_rejected_build_commit_sha", {
       length: 40,
     }),
-    lastRejectedCandidateFingerprint: varchar(
-      "last_rejected_candidate_fingerprint",
-      { length: 71 },
-    ),
   },
   (table) => {
     return [
