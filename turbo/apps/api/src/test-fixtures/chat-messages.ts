@@ -1,11 +1,16 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { and, count, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
+import {
+  decryptPersistentSecretsMap,
+  encryptPersistentSecretsMap,
+} from "../signals/services/crypto.utils";
 import { insertChatMessage } from "../signals/services/zero-chat-message.service";
 import { createDeferredPromise } from "../signals/utils";
 
@@ -20,6 +25,96 @@ const VM0_BDD_API_KEY_PREFIXES = [
 ] as const;
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
+const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
+const previousWorkflowQueueEventParamsSchema = z.object({
+  version: z.literal(1),
+  prompt: z.string().optional(),
+  appendSystemPrompt: z.string().optional(),
+  callbacks: z.array(z.unknown()).optional(),
+  recordLastRunId: z.boolean().optional(),
+  recordLastRunAt: z.boolean().optional(),
+});
+
+/**
+ * Rewrites one current workflow event to the persisted shape and automation
+ * state produced by the previous API version.
+ *
+ * Why product APIs cannot construct this state: the current writer always
+ * includes its new v1 fields and keeps a claimed one-time automation enabled
+ * until final run claim. This fixture is limited to one exact queue event and
+ * one exact one-time automation so the cross-version reader path can be tested.
+ */
+export async function rewriteWorkflowQueueEventAsPreviousVersionFixture(args: {
+  readonly eventId: string;
+  readonly automationId: string;
+}): Promise<void> {
+  const [event] = await db()
+    .select({
+      orgId: chatMessageQueue.orgId,
+      userId: chatMessageQueue.userId,
+      encryptedParams: chatMessageQueue.encryptedParams,
+    })
+    .from(chatMessageQueue)
+    .where(
+      and(
+        eq(chatMessageQueue.id, args.eventId),
+        eq(chatMessageQueue.automationId, args.automationId),
+        eq(chatMessageQueue.itemType, "workflow_event"),
+      ),
+    )
+    .limit(1);
+  if (!event?.encryptedParams) {
+    throw new Error("Expected a persisted workflow queue event");
+  }
+
+  const ctx = { orgId: event.orgId, userId: event.userId };
+  const decrypted = await decryptPersistentSecretsMap(
+    event.encryptedParams,
+    ctx,
+  );
+  const raw = decrypted?.[WORKFLOW_QUEUE_EVENT_PARAMS_KEY];
+  if (!raw) {
+    throw new Error("Expected workflow queue event params");
+  }
+  const previousParams = previousWorkflowQueueEventParamsSchema.parse(
+    JSON.parse(raw) as unknown,
+  );
+  const encryptedParams = await encryptPersistentSecretsMap(
+    { [WORKFLOW_QUEUE_EVENT_PARAMS_KEY]: JSON.stringify(previousParams) },
+    ctx,
+  );
+  if (!encryptedParams) {
+    throw new Error("Failed to encrypt previous workflow queue event params");
+  }
+
+  await db().transaction(async (tx) => {
+    const rewritten = await tx
+      .update(chatMessageQueue)
+      .set({ encryptedParams })
+      .where(
+        and(
+          eq(chatMessageQueue.id, args.eventId),
+          eq(chatMessageQueue.automationId, args.automationId),
+          eq(chatMessageQueue.itemType, "workflow_event"),
+        ),
+      )
+      .returning({ id: chatMessageQueue.id });
+    const disabled = await tx
+      .update(zeroWorkflowAutomations)
+      .set({ enabled: false })
+      .where(
+        and(
+          eq(zeroWorkflowAutomations.id, args.automationId),
+          eq(zeroWorkflowAutomations.kind, "schedule"),
+          eq(zeroWorkflowAutomations.scheduleType, "once"),
+        ),
+      )
+      .returning({ id: zeroWorkflowAutomations.id });
+    if (rewritten.length !== 1 || disabled.length !== 1) {
+      throw new Error("Failed to reproduce previous workflow queue state");
+    }
+  });
+}
 
 async function transitiveBlockedWaiterCount(
   holderPid: number,
