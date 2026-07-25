@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.319.0](https://github.com/vm0-ai/vm0/compare/api-v1.318.0...api-v1.319.0) (2026-07-25)
+
+
+### Features
+
+* show connector catalog diagnostics in debug settings ([#22962](https://github.com/vm0-ai/vm0/issues/22962)) ([fc40bb1](https://github.com/vm0-ai/vm0/commit/fc40bb12dcecc464dce2d4a1c9b56a5506ec733c))
+
+
+### Refactoring
+
+* **api:** replace credit availability sql with typed drizzle queries ([#22941](https://github.com/vm0-ai/vm0/issues/22941)) ([c29e911](https://github.com/vm0-ai/vm0/commit/c29e911ab1eb7ca490cc1b242b1d665a797b3328))
+
+
+### Performance Improvements
+
+* add first-output coverage and codex lifecycle timings ([#22946](https://github.com/vm0-ai/vm0/issues/22946)) ([12e1316](https://github.com/vm0-ai/vm0/commit/12e13160392117b0fbe950b51fb0edc986059b90))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.228.0
+    * @vm0/core bumped to 8.464.1
+    * @vm0/db bumped to 1.138.0
+
 ## [1.318.0](https://github.com/vm0-ai/vm0/compare/api-v1.317.0...api-v1.318.0) (2026-07-25)
 
 
