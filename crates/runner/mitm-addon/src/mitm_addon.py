@@ -145,7 +145,8 @@ def load(loader: Loader) -> None:
         typespec=str,
         # This default is a placeholder shown in `mitmdump --help`; the runner
         # always passes `--set vm0_proxy_registry_path=<per-runner path>` (see
-        # crates/runner/src/proxy.rs:362), so the default is never used in
+        # `proxy::process::spawn_mitmdump` in
+        # `crates/runner/src/proxy/process.rs`), so the default is never used in
         # production. Computed via tempfile.gettempdir() so that standalone
         # debugging works on platforms where /tmp is not the system temp dir.
         default=str(Path(tempfile.gettempdir()) / "proxy-registry.json"),
