@@ -17,6 +17,7 @@ import {
   loadNextWorkflowQueueEvent,
   pauseWorkflowQueueEventAfterRunFailure,
   type PendingWorkflowQueueEvent,
+  type WorkflowQueueEventParams,
 } from "./chat-message-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
@@ -83,6 +84,29 @@ interface DrainWorkflowQueueArgs {
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly workflowEventLaunch?: WorkflowEventLaunch;
+}
+
+function allowClaimedOnceScheduleAutomation(
+  target: DequeueTarget,
+  params: WorkflowQueueEventParams,
+): boolean | undefined {
+  if (params.allowClaimedOnceScheduleAutomation !== undefined) {
+    return params.allowClaimedOnceScheduleAutomation;
+  }
+
+  const automation = target.automation;
+  if (
+    automation.kind === "schedule" &&
+    automation.scheduleType === "once" &&
+    !automation.enabled &&
+    automation.nextRunAt === null &&
+    automation.lastRunAt !== null
+  ) {
+    // Previous writers disabled a claimed one-time automation before inserting
+    // its v1 queue payload, which did not carry the explicit claim marker.
+    return true;
+  }
+  return undefined;
 }
 
 const CONTINUE_DRAIN = Symbol("continue-workflow-queue-drain");
@@ -169,7 +193,12 @@ async function handleWorkflowLaunchResult(
     code: result.response.body.error.code,
   });
   await publishQueueChanged(event, signal);
-  return { eventId: event.id, result };
+  return {
+    eventId: event.id,
+    // The failed launch did not consume the durable event. Report accepted
+    // ownership so ingress callers do not retry or reschedule a retained event.
+    result: { kind: "enqueued" },
+  };
 }
 
 export const drainWorkflowQueueForThread$ = command(
@@ -244,7 +273,7 @@ export const drainWorkflowQueueForThread$ = command(
             workflowName: target.workflowName,
             chatThreadId: event.chatThreadId,
             allowClaimedOnceScheduleAutomation:
-              params.allowClaimedOnceScheduleAutomation,
+              allowClaimedOnceScheduleAutomation(target, params),
           },
           queueEventId: event.id,
           apiStartTime: launchHint?.apiStartTime ?? now(),

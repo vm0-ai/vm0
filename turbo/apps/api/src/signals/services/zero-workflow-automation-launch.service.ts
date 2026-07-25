@@ -423,6 +423,9 @@ async function recordWorkflowAutomationRunStart(input: {
     .set({
       ...(args.recordLastRunId === false ? {} : { lastRunId: runId }),
       ...(args.recordLastRunAt ? { lastRunAt: nowDate() } : {}),
+      ...(args.due.allowClaimedOnceScheduleAutomation
+        ? { enabled: false }
+        : {}),
       updatedAt: nowDate(),
     })
     .where(eq(zeroWorkflowAutomations.id, automation.id));
