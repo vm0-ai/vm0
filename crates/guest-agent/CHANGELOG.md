@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.56.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.0...guest-agent-v0.56.1) (2026-07-25)
+
+
+### Performance Improvements
+
+* add first-output coverage and codex lifecycle timings ([#22946](https://github.com/vm0-ai/vm0/issues/22946)) ([12e1316](https://github.com/vm0-ai/vm0/commit/12e13160392117b0fbe950b51fb0edc986059b90))
+* **guest-agent:** reuse serialized event bodies ([#22944](https://github.com/vm0-ai/vm0/issues/22944)) ([aade076](https://github.com/vm0-ai/vm0/commit/aade076d5570c98e5a575d6cb61734df4510c4cf))
+
 ## [0.56.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.55.0...guest-agent-v0.56.0) (2026-07-23)
 
 
