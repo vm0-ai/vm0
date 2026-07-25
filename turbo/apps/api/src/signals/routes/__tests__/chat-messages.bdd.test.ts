@@ -5087,27 +5087,56 @@ describe("CHAT-02: shared user message queue", () => {
       messageId,
       signal: context.signal,
     });
+
+    // Stage the callback drain at org admission before recall reaches the queue
+    // row. The direct waiter proves recall is first; the transitive count after
+    // admission opens proves the drain is queued behind it.
+    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
+    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
+      if (!releaseCallbackQuery.settled()) {
+        releaseCallbackQuery.resolve(undefined);
+      }
       admissionLock.release();
       messageQueueLock.release();
       await Promise.all([admissionLock.done, messageQueueLock.done]);
     });
 
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (!apl.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      if (!callbackQueryStarted.settled()) {
+        callbackQueryStarted.resolve(undefined);
+      }
+      return releaseCallbackQuery.promise.then(() => {
+        return [assistantEvent(0, "recall-first queue race complete")];
+      });
+    });
 
-    const recall = chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        revokesMessageId: messageId,
-        clientMessageId: randomUUID(),
-      },
-      [201],
-    );
-    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await callbackQueryStarted.promise;
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    releaseCallbackQuery.resolve(undefined);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    const recall = Promise.allSettled([
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: anchor.threadId,
+          revokesMessageId: messageId,
+          clientMessageId: randomUUID(),
+        },
+        [201],
+      ),
+    ]);
+    await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
 
     admissionLock.release();
     await admissionLock.done;
@@ -5116,7 +5145,11 @@ describe("CHAT-02: shared user message queue", () => {
       .toBeGreaterThanOrEqual(2);
     messageQueueLock.release();
 
-    const recalled = await recall;
+    const [recallResult] = await recall;
+    if (recallResult.status === "rejected") {
+      throw recallResult.reason;
+    }
+    const recalled = recallResult.value;
     expect(recalled.body).toMatchObject({
       runId: null,
       threadId: anchor.threadId,
