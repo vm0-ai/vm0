@@ -6,6 +6,7 @@ use guest_agent::cli;
 use guest_agent::complete;
 use guest_agent::control;
 use guest_agent::env;
+use guest_agent::error::AgentError;
 use guest_agent::failure_diagnostics;
 use guest_agent::heartbeat;
 use guest_agent::http::HttpClient;
@@ -34,11 +35,9 @@ use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-fn checkpoint_failure_reason(error: &str) -> Option<FailureReason> {
-    let error = error.to_ascii_lowercase();
-    (error.contains("session history")
-        && (error.contains("exceeds maximum size") || error.contains("is too large")))
-    .then_some(FailureReason::SessionHistoryLimit)
+fn checkpoint_failure_reason(error: &AgentError) -> Option<FailureReason> {
+    matches!(error, AgentError::CheckpointHistoryTooLarge { .. })
+        .then_some(FailureReason::SessionHistoryLimit)
 }
 
 #[tokio::main]
@@ -672,8 +671,7 @@ async fn complete_execution(
                         FailureClass::CheckpointFailed,
                     )
                     .with_cli_exit_code(cli_exit_code);
-                    let error = e.to_string();
-                    if let Some(reason) = checkpoint_failure_reason(&error) {
+                    if let Some(reason) = checkpoint_failure_reason(&e) {
                         diagnostic = diagnostic.with_failure_reason(reason);
                     }
                     let diagnostic = diagnostic.with_session_history_status(
@@ -823,20 +821,21 @@ mod tests {
     #[test]
     fn checkpoint_history_limit_errors_have_a_stable_failure_reason() {
         assert_eq!(
-            checkpoint_failure_reason(
-                "session history is too large after decompression: 134217729 bytes"
-            ),
+            checkpoint_failure_reason(&AgentError::CheckpointHistoryTooLarge { max_bytes: 1 }),
             Some(FailureReason::SessionHistoryLimit)
         );
         assert_eq!(
-            checkpoint_failure_reason("session history exceeds maximum size of 134217728 bytes"),
-            Some(FailureReason::SessionHistoryLimit)
+            checkpoint_failure_reason(&AgentError::Checkpoint(
+                "Session history exceeds maximum size of 134217728 bytes".to_string(),
+            )),
+            None
         );
         assert_eq!(
-            checkpoint_failure_reason("Session history exceeds maximum size of 134217728 bytes"),
-            Some(FailureReason::SessionHistoryLimit)
+            checkpoint_failure_reason(&AgentError::Checkpoint(
+                "artifact upload failed".to_string()
+            )),
+            None
         );
-        assert_eq!(checkpoint_failure_reason("artifact upload failed"), None);
     }
     static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
     static MAIN_TEST_RUNTIME_ROOT: LazyLock<std::path::PathBuf> = LazyLock::new(|| {

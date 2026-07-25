@@ -110,9 +110,7 @@ pub(crate) fn read_session_history_from_payload_bounded(
 }
 
 fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
-    AgentError::Checkpoint(format!(
-        "Session history exceeds maximum size of {max_bytes} bytes"
-    ))
+    AgentError::CheckpointHistoryTooLarge { max_bytes }
 }
 
 pub(crate) struct SessionHistoryDigest {

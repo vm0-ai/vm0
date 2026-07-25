@@ -970,15 +970,11 @@ fn analyze_decoded_session_history_reader(
             break;
         }
 
-        raw_size = raw_size.checked_add(bytes_read as u64).ok_or_else(|| {
-            AgentError::Checkpoint(format!(
-                "Session history exceeds maximum size of {max_bytes} bytes"
-            ))
-        })?;
+        raw_size = raw_size
+            .checked_add(bytes_read as u64)
+            .ok_or(AgentError::CheckpointHistoryTooLarge { max_bytes })?;
         if raw_size > max_bytes {
-            return Err(AgentError::Checkpoint(format!(
-                "Session history exceeds maximum size of {max_bytes} bytes"
-            )));
+            return Err(AgentError::CheckpointHistoryTooLarge { max_bytes });
         }
         hasher.update(&line);
         if line.iter().any(|byte| !byte.is_ascii_whitespace()) {
