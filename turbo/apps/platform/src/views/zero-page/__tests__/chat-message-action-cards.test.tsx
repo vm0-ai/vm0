@@ -768,6 +768,106 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(1);
   });
 
+  it("runs a mail draft callback prompt after the email is sent", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-000000000041";
+    const messageId = "c0000000-0000-4000-a000-000000000042";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000043";
+    const runId = "d0000000-0000-4000-a000-000000000044";
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    const callbackPrompt = "Confirm the email was sent, then track the reply";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const sentPrompts: { prompt: string; threadId?: string }[] = [];
+    let sent = false;
+    const mailDraftBody = (status: "draft" | "sent") => {
+      return {
+        version: 3 as const,
+        provider: "gmail" as const,
+        from: "sender@example.com",
+        to: ["recipient@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Callback draft",
+        body: "Mail body",
+        status,
+        detailAvailable: true,
+        gmailDraftId: "r-callback-draft",
+        gmailThreadId: "gmail-thread-id",
+        gmailMessageId: "gmail-message-id",
+        ...(status === "sent"
+          ? {
+              sentGmailMessageId: "gmail-sent-message-id",
+              sentAt: "2026-07-14T10:01:00.000Z",
+            }
+          : {}),
+        references: [],
+        attachments: [],
+        createdAt,
+        updatedAt: createdAt,
+      };
+    };
+
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({ connectorRef: "gmail", label: "Gmail" }),
+    ]);
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: mailDraftBody(sent ? "sent" : "draft"),
+      });
+    });
+    context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+      sent = true;
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: mailDraftBody("sent"),
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Mail callback",
+      chatMessages: [
+        {
+          id: messageId,
+          role: "assistant",
+          content: mailDraftUrl,
+          runId,
+          createdAt,
+        },
+      ],
+      onSendRequest: ({ prompt, threadId: sentThreadId }) => {
+        sentPrompts.push({ prompt, threadId: sentThreadId });
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    let card: HTMLElement | undefined;
+    await waitFor(() => {
+      card = queryAllByRoleFast("button").find((button) => {
+        return (
+          button.getAttribute("aria-label") ===
+          "Open draft email: Callback draft"
+        );
+      });
+      expect(card).toBeDefined();
+    });
+    await user.click(card!);
+
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual([{ prompt: callbackPrompt, threadId }]);
+    });
+  });
+
   it("keeps mail feedback scoped to the chat that owns the draft in split view", async () => {
     const user = userEvent.setup({ delay: null });
     const leftThreadId = "c0000000-0000-4000-a000-000000000031";

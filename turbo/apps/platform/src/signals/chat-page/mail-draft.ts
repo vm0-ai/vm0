@@ -17,11 +17,22 @@ import {
 } from "./card-signal-map.ts";
 import { onRef } from "../utils.ts";
 import { connectorChangedVersion$ } from "../connector-reload.ts";
+import {
+  chatActionCallbackFromUrl,
+  runChatActionCallback$,
+} from "./action-callback.ts";
+
+interface MailDraftSendCallback {
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly callbackPrompt: string;
+}
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
   readonly originalUrl: string;
   readonly href: string;
+  readonly sendCallback: MailDraftSendCallback | null;
 }
 
 export interface MailDraftSignals extends MailDraftDescriptor {
@@ -101,6 +112,15 @@ function parseUrl(value: string): URL | null {
   return URL.canParse(value) ? new URL(value) : null;
 }
 
+function parseSendCallback(url: URL): MailDraftSendCallback | null {
+  const { callbackPrompt, threadId } = chatActionCallbackFromUrl(url);
+  const agentId = url.searchParams.get("agentId");
+  if (!callbackPrompt || !threadId || !agentId) {
+    return null;
+  }
+  return { callbackPrompt, threadId, agentId };
+}
+
 export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   const url = parseUrl(value);
   if (!url) {
@@ -125,6 +145,7 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
     mailDraftId,
     originalUrl: value,
     href: `/mail/drafts/${mailDraftId}`,
+    sendCallback: parseSendCallback(url),
   };
 }
 
@@ -236,6 +257,12 @@ function createMailDraftSignals(
   threadId: string,
   descriptor: MailDraftDescriptor,
 ): MailDraftSignals {
+  // The agent can ask Zero to resume the conversation once the user sends the
+  // email. Only the chat thread that owns the draft card may be resumed.
+  const sendCallback =
+    descriptor.sendCallback?.threadId === threadId
+      ? descriptor.sendCallback
+      : null;
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
   const sidebarDraftOverride$ = state<ZeroMailDraft | null | undefined>(
     undefined,
@@ -304,6 +331,9 @@ function createMailDraftSignals(
     signal.throwIfAborted();
     set(draftOverride$, response.body.mailDraft);
     set(sidebarDraftOverride$, response.body.mailDraft);
+    if (sendCallback) {
+      await set(runChatActionCallback$, sendCallback, signal);
+    }
   });
   return {
     ...descriptor,
