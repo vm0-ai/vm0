@@ -13,6 +13,7 @@ import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { tapError } from "../utils";
+import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -242,6 +243,7 @@ const renderAndStoreArtifactPreview$ = command(
       .where(eq(runUploadedFiles.id, args.id));
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, args.id, signal);
     await publishArtifactsChangedForRun(db, args.runId, signal);
     return true;
   },

@@ -9,6 +9,7 @@ import {
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { type Db, writeDb$ } from "../external/db";
+import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import {
   scheduleVideoArtifactPreviewRender$,
@@ -193,6 +194,7 @@ export const recordHostedSiteArtifact$ = command(
       .returning({ id: runUploadedFiles.id });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     return row?.id ?? null;
   },
@@ -261,6 +263,7 @@ export const recordWebUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -349,6 +352,7 @@ export const recordTelegramUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -475,6 +479,7 @@ export const recordGithubUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -541,6 +546,7 @@ export const recordFeishuUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -607,6 +613,7 @@ export const recordTeamsUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -684,6 +691,7 @@ export const recordAgentPhoneUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -761,6 +769,7 @@ export const recordSlackUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,

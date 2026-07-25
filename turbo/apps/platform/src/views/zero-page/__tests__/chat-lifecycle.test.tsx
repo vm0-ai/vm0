@@ -340,9 +340,10 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps existing thread history visible after returning with an optimistic follow-up", async () => {
+  it("keeps the thread container without carrying resolved history or submission state across threads", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
+    const otherThreadMessagesGate = context.mocks.deferred<void>();
     const threadId = "b0000000-0000-4000-a000-000000000901";
     const otherThreadId = "b0000000-0000-4000-a000-000000000902";
     const lifecycle = mockChatLifecycle(context, {
@@ -382,12 +383,71 @@ describe("chat lifecycle", () => {
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ]);
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      async ({ params, query, respond }) => {
+        if (query.sinceSeqId || query.beforeSeqId) {
+          return respond(200, { messages: [] });
+        }
+        if (params.threadId === otherThreadId) {
+          await otherThreadMessagesGate.promise;
+          return respond(200, {
+            messages: [
+              {
+                id: "msg-other-user",
+                seqId: 1,
+                role: "user",
+                runId: "run-other",
+                content: "Other thread context",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-other-assistant",
+                seqId: 2,
+                role: "assistant",
+                runId: "run-other",
+                content: "Other thread answer",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasHistoryBefore: false,
+          });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-existing-user",
+              seqId: 1,
+              role: "user",
+              runId: "run-existing",
+              content: "Existing context before follow-up",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-existing-assistant",
+              seqId: 2,
+              role: "assistant",
+              runId: "run-existing",
+              content: "Existing assistant answer",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+          hasHistoryBefore: false,
+        });
+      },
+    );
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await expect(
       screen.findByText("Existing context before follow-up"),
     ).resolves.toBeInTheDocument();
+    const threadContainer = document.querySelector(
+      `[data-chat-thread-container-id="${threadId}"]`,
+    );
+    if (!(threadContainer instanceof HTMLElement)) {
+      throw new Error("Chat thread container not found");
+    }
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -407,15 +467,40 @@ describe("chat lifecycle", () => {
     await user.click(linkByText("Other thread"));
     await waitFor(() => {
       expect(document.title).toBe("Other thread | VM0");
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${otherThreadId}"]`,
+        ),
+      ).toBe(threadContainer);
+      expect(
+        screen.queryByText("Existing context before follow-up"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
     });
+
+    otherThreadMessagesGate.resolve(undefined);
+    await waitFor(() => {
+      expect(screen.getByText("Other thread context")).toBeInTheDocument();
+    });
+    const otherTextarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    await user.type(otherTextarea, "Fresh draft for other thread");
+    expect(screen.getByLabelText("Send")).toBeEnabled();
 
     await user.click(linkByText("Long thread"));
     await waitFor(() => {
       expect(document.title).toBe("Long thread | VM0");
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
       expect(
+        screen.queryByText("Other thread context"),
+      ).not.toBeInTheDocument();
+      expect(
         screen.getByText("Existing context before follow-up"),
       ).toBeInTheDocument();
+      expect(
+        document.querySelector(`[data-chat-thread-container-id="${threadId}"]`),
+      ).toBe(threadContainer);
     });
     expectTextBefore(
       document.body,

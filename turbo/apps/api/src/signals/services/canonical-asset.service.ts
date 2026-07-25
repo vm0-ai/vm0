@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   CANONICAL_ASSET_VERSION,
   canonicalAssetDeliveries,
@@ -27,7 +25,7 @@ import {
 } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
-import { type Db, type ReadonlyDb, writeDb$ } from "../external/db";
+import { type Db, writeDb$ } from "../external/db";
 import {
   fetchSlackFile,
   isSlackFileFetchError,
@@ -40,6 +38,7 @@ import {
   s3ObjectHead,
 } from "../external/s3";
 import { settleIncludingAbort } from "../utils";
+import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -683,16 +682,6 @@ export async function attachCanonicalAssetsToMessage(
     .onConflictDoNothing();
 }
 
-export async function canonicalSlackAssetsEnabled(
-  db: ReadonlyDb,
-  args: { readonly orgId: string; readonly userId: string },
-): Promise<boolean> {
-  return isFeatureEnabled(
-    FeatureSwitchKey.CanonicalSlackAssets,
-    await loadUserFeatureSwitchContext(db, args.orgId, args.userId),
-  );
-}
-
 interface HistoricalCanonicalSlackAssetsArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -776,11 +765,6 @@ export const materializeHistoricalCanonicalSlackAssets$ = command(
       return false;
     }
     const db = set(writeDb$);
-    if (!(await canonicalSlackAssetsEnabled(db, args))) {
-      return false;
-    }
-    signal.throwIfAborted();
-
     const rows = await loadHistoricalSlackRows(db, args);
     signal.throwIfAborted();
     if (rows.length === 0) {
@@ -1136,6 +1120,7 @@ export const materializeCanonicalPublishedAsset$ = command(
       sanitizeArtifactFilename(asset.filename),
     );
     if (asset.materializationStatus === "ready") {
+      await set(syncArtifactCatalogForFile$, asset.id, signal);
       return { ok: true, assetId: asset.id, url };
     }
 
@@ -1180,6 +1165,7 @@ export const materializeCanonicalPublishedAsset$ = command(
       })
       .where(eq(runUploadedFiles.id, asset.id));
     signal.throwIfAborted();
+    await set(syncArtifactCatalogForFile$, asset.id, signal);
     await publishArtifactsChangedForRun(db, args.runId, signal);
     return { ok: true, assetId: asset.id, url };
   },

@@ -335,6 +335,19 @@ function summarizeSchedule(schedule: ZeroWorkflowSchedule): string {
   return `Once at ${schedule.atTime}`;
 }
 
+function requiredScheduleColumn<T>(
+  row: AutomationRow,
+  field: "cronExpression" | "intervalSeconds" | "atTime",
+  value: T | null,
+): T {
+  if (value === null) {
+    throw new Error(
+      `Workflow automation ${row.id} has a ${row.scheduleType} schedule without ${field}`,
+    );
+  }
+  return value;
+}
+
 function rowToSchedule(row: AutomationRow): ZeroWorkflowSchedule {
   if (row.kind !== "schedule" || row.scheduleType === null) {
     throw new Error(
@@ -344,16 +357,27 @@ function rowToSchedule(row: AutomationRow): ZeroWorkflowSchedule {
   if (row.scheduleType === "cron") {
     return {
       type: "cron",
-      cronExpression: row.cronExpression ?? "",
+      cronExpression: requiredScheduleColumn(
+        row,
+        "cronExpression",
+        row.cronExpression,
+      ),
       timezone: row.timezone,
     };
   }
   if (row.scheduleType === "loop") {
-    return { type: "loop", intervalSeconds: row.intervalSeconds ?? 0 };
+    return {
+      type: "loop",
+      intervalSeconds: requiredScheduleColumn(
+        row,
+        "intervalSeconds",
+        row.intervalSeconds,
+      ),
+    };
   }
   return {
     type: "once",
-    atTime: (row.atTime ?? new Date(0)).toISOString(),
+    atTime: requiredScheduleColumn(row, "atTime", row.atTime).toISOString(),
     timezone: row.timezone,
   };
 }

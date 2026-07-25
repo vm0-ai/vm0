@@ -447,6 +447,40 @@ async function timingStateActionResponse(
   }
 }
 
+type LegacyArtifactCatalogFileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-legacy-artifact-catalog-file" }
+>;
+
+async function insertLegacyArtifactCatalogFile(
+  db: Db,
+  body: LegacyArtifactCatalogFileAction,
+  signal: AbortSignal,
+) {
+  const [file] = await db
+    .insert(runUploadedFiles)
+    .values({
+      source: "web",
+      externalId: body.url,
+      userId: body.user_id,
+      orgId: body.org_id,
+      filename: body.filename,
+      contentType: "application/zip",
+      sizeBytes: 512,
+      url: body.url,
+      metadata: {},
+    })
+    .returning({ id: runUploadedFiles.id });
+  signal.throwIfAborted();
+  if (!file) {
+    throw new Error("Failed to insert a legacy artifact catalog file");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, file_id: file.id },
+  };
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -466,6 +500,9 @@ const postRuntimeStateAction$ = command(
     }
     if (isTimingStateAction(body)) {
       return await timingStateActionResponse(db, body, signal);
+    }
+    if (body.action === "insert-legacy-artifact-catalog-file") {
+      return await insertLegacyArtifactCatalogFile(db, body, signal);
     }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {
