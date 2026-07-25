@@ -2202,7 +2202,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(claim5.environment).toMatchObject({
       OPENAI_MODEL: "gpt-5.6-sol",
     });
-    expect(claim5.resumeSession?.sessionId).toBe(session4);
+    expect(claim5.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run4Id}`);
     await completeSlackTriggeredRun({
       runId: run5Id,
       sandboxToken: claim5.sandboxToken,
