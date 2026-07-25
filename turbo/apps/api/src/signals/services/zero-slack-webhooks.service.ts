@@ -93,6 +93,7 @@ import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   admitCanonicalSlackChatEvent,
+  canonicalSlackChatRetryIsAdmissible,
   ensureCanonicalSlackChatThreadRoute,
   ensureLegacySlackChatThreadRoute,
   findSlackChatThreadRoute,
@@ -812,6 +813,44 @@ const postSlackAgentAdmissionNotice$ = command(
   },
 );
 
+async function resolveExistingSlackRouteAdmission(
+  db: Db,
+  args: {
+    readonly existingRoute: Awaited<
+      ReturnType<typeof findSlackChatThreadRoute>
+    >;
+    readonly routeKey: Parameters<typeof findSlackChatThreadRoute>[1];
+    readonly eventId: string;
+    readonly isRetry: boolean;
+  },
+): Promise<SlackAgentRouteAdmission | null> {
+  if (args.existingRoute?.backend === "canonical") {
+    if (
+      args.isRetry &&
+      !(await canonicalSlackChatRetryIsAdmissible(db, {
+        routeId: args.existingRoute.id,
+        legacyCutoverEventId: args.existingRoute.legacyCutoverEventId,
+        eventId: args.eventId,
+      }))
+    ) {
+      return { kind: "ignored" };
+    }
+    return { kind: "canonical", routeId: args.existingRoute.id };
+  }
+  if (!args.isRetry) {
+    return null;
+  }
+  const route =
+    args.existingRoute ??
+    (await ensureLegacySlackChatThreadRoute(db, {
+      ...args.routeKey,
+      currentTime: nowDate(),
+    }));
+  return route.backend === "canonical"
+    ? { kind: "canonical", routeId: route.id }
+    : { kind: "ignored" };
+}
+
 const resolveSlackAgentRouteAdmission$ = command(
   async (
     { set },
@@ -823,6 +862,7 @@ const resolveSlackAgentRouteAdmission$ = command(
       readonly slackUserId: string;
       readonly messageTs: string;
       readonly threadTs?: string;
+      readonly eventId: string;
       readonly isRetry: boolean;
     },
     signal: AbortSignal,
@@ -874,21 +914,18 @@ const resolveSlackAgentRouteAdmission$ = command(
     };
     const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
     signal.throwIfAborted();
-    if (existingRoute?.backend === "canonical") {
-      return { kind: "canonical", routeId: existingRoute.id };
-    }
-
-    if (args.isRetry) {
-      const route =
-        existingRoute ??
-        (await ensureLegacySlackChatThreadRoute(args.db, {
-          ...routeKey,
-          currentTime: nowDate(),
-        }));
-      signal.throwIfAborted();
-      return route.backend === "canonical"
-        ? { kind: "canonical", routeId: route.id }
-        : { kind: "ignored" };
+    const existingAdmission = await resolveExistingSlackRouteAdmission(
+      args.db,
+      {
+        existingRoute,
+        routeKey,
+        eventId: args.eventId,
+        isRetry: args.isRetry,
+      },
+    );
+    signal.throwIfAborted();
+    if (existingAdmission) {
+      return existingAdmission;
     }
 
     const effectiveCompose = await resolveEffectiveCompose(
@@ -933,6 +970,7 @@ const resolveSlackAgentRouteAdmission$ = command(
       orgId,
       agentComposeId: effectiveCompose.composeId,
       selectedModel: modelRoute?.selectedModel ?? null,
+      cutoverEventId: args.eventId,
       currentTime: nowDate(),
     });
     signal.throwIfAborted();
@@ -2513,6 +2551,18 @@ export const handleZeroSlackEvents$ = command(
       const retryNum = request.header("x-slack-retry-num");
       const agentEvent = slackAgentMessageEvent(payload.event);
       if (agentEvent) {
+        if (!payload.event_id) {
+          L.error("Canonical Slack ingress is missing required identity", {
+            type: "canonical_slack_ingress_admission",
+            success: false,
+            hasEventId: false,
+            isRetry: Boolean(retryNum),
+          });
+          return jsonResponse(
+            { error: "Canonical Slack event identity is missing" },
+            400,
+          );
+        }
         const db = set(writeDb$);
         const channelType =
           agentEvent.type === "app_mention"
@@ -2528,25 +2578,13 @@ export const handleZeroSlackEvents$ = command(
             slackUserId: agentEvent.user,
             messageTs: agentEvent.ts,
             ...(agentEvent.thread_ts ? { threadTs: agentEvent.thread_ts } : {}),
+            eventId: payload.event_id,
             isRetry: Boolean(retryNum),
           },
           signal,
         );
         signal.throwIfAborted();
         if (route.kind === "canonical") {
-          if (!payload.event_id) {
-            L.error("Canonical Slack ingress is missing required identity", {
-              type: "canonical_slack_ingress_admission",
-              success: false,
-              hasEventId: Boolean(payload.event_id),
-              isRetry: Boolean(retryNum),
-            });
-            return jsonResponse(
-              { error: "Canonical Slack event identity is missing" },
-              400,
-            );
-          }
-
           const ingress = await onRejection(
             admitCanonicalSlackChatEvent(db, {
               routeId: route.routeId,
