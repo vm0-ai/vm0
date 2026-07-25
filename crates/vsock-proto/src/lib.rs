@@ -159,12 +159,10 @@ pub use error::ProtocolError;
 pub use frame::{BorrowedRawMessage, DecodeWithError, Decoder, RawMessage, encode};
 pub use payloads::empty::decode_empty_payload;
 pub use payloads::error::{decode_error, encode_error};
-pub use payloads::exec_control::{
-    EXEC_CONTROL_MAX_PAYLOAD_BYTES, EXEC_CONTROL_NONCE_LEN, ExecControlNonce, ExecControlStatus,
-};
 pub use payloads::exec_operation::{
     DecodedExecControl, DecodedExecControlResult, DecodedExecOutput, DecodedExecResult,
-    DecodedExecStart, DecodedExecStarted, ExecCapturedOutput, ExecControlPolicy,
+    DecodedExecStart, DecodedExecStarted, EXEC_CONTROL_MAX_PAYLOAD_BYTES, EXEC_CONTROL_NONCE_LEN,
+    ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
     ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest,
     ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES, decode_exec_cancel,
     decode_exec_control, decode_exec_control_result, decode_exec_output, decode_exec_result,
