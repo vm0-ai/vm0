@@ -24,6 +24,7 @@ from mitmproxy import http
 from wsproto.utilities import generate_accept_token
 
 import body_decoding
+import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import usage
@@ -48,6 +49,7 @@ _HTTP_OWS_CHARS = " \t"
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
+_AnthropicLifecycleObserver = Callable[[str, str | None], None]
 
 
 class CapturedResponseStreamBody(NamedTuple):
@@ -129,6 +131,22 @@ def _make_model_sse_parse_error_logger(
     return log_parse_error
 
 
+def _anthropic_lifecycle_observer(
+    flow: http.HTTPFlow,
+) -> _AnthropicLifecycleObserver | None:
+    if flow_metadata.cli_agent_type(flow.metadata) != "claude-code":
+        return None
+
+    def observe(event_type: str, content_block_type: str | None) -> None:
+        claude_output_timing.observe_lifecycle_event(
+            flow,
+            event_type,
+            content_block_type,
+        )
+
+    return observe
+
+
 def _response_can_have_body(flow: http.HTTPFlow, response: http.Response) -> bool:
     """Return whether HTTP semantics permit content on this response."""
     status_code = response.status_code
@@ -190,6 +208,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     if is_observable_model_provider:
         content_type = response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
+            lifecycle_observer: _AnthropicLifecycleObserver | None = None
             if uses_openai_responses_usage_protocol(flow):
                 usage_protocol = "openai_responses_sse"
                 log_parse_error = _make_model_sse_parse_error_logger(
@@ -205,8 +224,10 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                     flow,
                     usage_protocol=usage_protocol,
                 )
+                lifecycle_observer = _anthropic_lifecycle_observer(flow)
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
-                    on_parse_error=log_parse_error
+                    on_parse_error=log_parse_error,
+                    on_lifecycle_event=lifecycle_observer,
                 )
             decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
@@ -219,8 +240,10 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                 if decode_error is not None:
                     usage_dict.clear()
                     log_parse_error("compressed_body", decode_error)
-                    return
-                parser_fn.finish()
+                else:
+                    parser_fn.finish()
+                if lifecycle_observer is not None:
+                    claude_output_timing.retry_pending(flow)
 
             flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_usage
             return _ResponseUsageStreamSetup(decode_session.feed, False)
