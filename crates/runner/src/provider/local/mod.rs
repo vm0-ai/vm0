@@ -20,7 +20,7 @@ use tracing::{info, warn};
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
 use crate::ids::RunId;
 use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
-use crate::run_cancellation::SharedRunCancellationMap;
+use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use cancel::{LocalCancelScanner, LocalCancelWatcher};
 use sandbox::SandboxId;
@@ -52,7 +52,7 @@ impl LocalProvider {
         group_dir: PathBuf,
         supported_profiles: Vec<String>,
         cancel: CancellationToken,
-        cancel_tokens: SharedRunCancellationMap,
+        cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         Self::new_inner(group_dir, supported_profiles, cancel, cancel_tokens, true)
     }
@@ -61,7 +61,7 @@ impl LocalProvider {
         group_dir: PathBuf,
         mut supported_profiles: Vec<String>,
         cancel: CancellationToken,
-        cancel_tokens: SharedRunCancellationMap,
+        cancel_tokens: RunCancellationRegistry,
         start_cancel_watcher: bool,
     ) -> Arc<Self> {
         supported_profiles.sort();

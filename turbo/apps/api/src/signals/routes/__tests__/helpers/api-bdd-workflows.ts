@@ -140,15 +140,12 @@ export function createWorkflowsBddApi(context: TestContext) {
       readonly invoiceId: string;
     }> {
       const actor = bdd.user();
-      if (options.timezone) {
-        await bdd.bootstrapOnboarding(actor, {
-          displayName: "Workflow BDD Owner",
-          timezone: options.timezone,
-        });
-      }
       const entitlement = await runs.grantProEntitlement(actor, {
         tier: options.tier,
       });
+      if (options.timezone) {
+        await bdd.updateUserTimezone(actor, options.timezone);
+      }
       await runs.ensureOrgModelProvider(actor);
       bdd.acceptAgentStorageWrites();
       return { actor, ...entitlement };

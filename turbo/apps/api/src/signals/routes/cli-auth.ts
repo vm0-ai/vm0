@@ -3,7 +3,6 @@ import { randomInt } from "node:crypto";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
-  cliAuthOrgContract,
   cliAuthTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
@@ -16,12 +15,7 @@ import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
-import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
-import {
-  CLI_TOKEN_EXPIRES_IN_SECONDS,
-  issueCliToken$,
-  orgIdBySlug$,
-} from "../services/cli-auth.service";
+import { issueCliToken$ } from "../services/cli-auth.service";
 import {
   updateUserPreferences$,
   userPreferences,
@@ -52,7 +46,6 @@ function oauthError(
 
 const tokenBody$ = bodyResultOf(cliAuthTokenContract.exchange);
 const approveBody$ = bodyResultOf(cliAuthApproveContract.approve);
-const orgBody$ = bodyResultOf(cliAuthOrgContract.switchOrg);
 
 const createDeviceInner$ = command(async ({ set }, signal: AbortSignal) => {
   const writeDb = set(writeDb$);
@@ -262,94 +255,11 @@ const approveDeviceWithSessionAuth$ = authRoute(
   approveDeviceInner$,
 );
 
-const switchOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const bodyResult = await get(orgBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return oauthError(
-      400,
-      "invalid_request",
-      bodyResult.response.body.error.message,
-    );
-  }
-
-  const auth = get(authContext$);
-  const orgId = await set(orgIdBySlug$, bodyResult.data.slug, signal);
-  signal.throwIfAborted();
-  if (!orgId) {
-    return {
-      status: 404 as const,
-      body: {
-        error: { message: "Organization not found", code: "not_found" },
-      },
-    };
-  }
-
-  const membership = await set(
-    getMemberRoleAndUpdateCache$,
-    orgId,
-    auth.userId,
-    signal,
-  );
-  signal.throwIfAborted();
-  if (!membership) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Not a member of this organization",
-          code: "forbidden",
-        },
-      },
-    };
-  }
-
-  const issued = await set(
-    issueCliToken$,
-    {
-      userId: auth.userId,
-      orgId,
-      name: "CLI Org Switch",
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  return {
-    status: 200 as const,
-    body: {
-      access_token: issued.token,
-      token_type: "Bearer" as const,
-      expires_in: CLI_TOKEN_EXPIRES_IN_SECONDS,
-    },
-  };
-});
-
-const switchOrgWithPatAuth$ = authRoute({ accept: ["pat"] }, switchOrgInner$);
-
-const switchOrgRoute$ = command(async ({ set }, signal: AbortSignal) => {
-  const result = await set(switchOrgWithPatAuth$, signal);
-  if ("status" in result && result.status === 401) {
-    return {
-      status: 401 as const,
-      body: {
-        error: { message: "Authentication required", code: "unauthorized" },
-      },
-    };
-  }
-
-  return result;
-});
-
 export const cliAuthRoutes: readonly RouteEntry[] = [
   { route: cliAuthDeviceContract.create, handler: createDeviceInner$ },
   { route: cliAuthTokenContract.exchange, handler: exchangeTokenInner$ },
   {
     route: cliAuthApproveContract.approve,
     handler: approveDeviceWithSessionAuth$,
-  },
-  {
-    route: cliAuthOrgContract.switchOrg,
-    handler: switchOrgRoute$,
   },
 ];

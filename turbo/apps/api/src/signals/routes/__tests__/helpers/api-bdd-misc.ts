@@ -188,12 +188,6 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    setOrgLogoDelete(org: ClerkOrg): void {
-      context.mocks.clerk.organizations.deleteOrganizationLogo.mockResolvedValue(
-        org,
-      );
-    },
-
     async requestOrgLogo(
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403 | 404)[],
@@ -219,18 +213,6 @@ export function createMiscRoutesApi(context: TestContext) {
         setupApp({ context })(zeroOrgLogoContract).post({
           headers: authenticate(context, actor),
           body,
-        }),
-        statuses,
-      );
-    },
-
-    async deleteOrgLogo(
-      actor: ApiTestUser,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(zeroOrgLogoContract).delete({
-          headers: authenticate(context, actor),
         }),
         statuses,
       );

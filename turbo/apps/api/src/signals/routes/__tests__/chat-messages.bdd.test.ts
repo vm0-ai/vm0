@@ -1618,9 +1618,8 @@ describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD pro-suspend admission agent",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
@@ -1893,6 +1892,18 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain("append that signature exactly once");
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
+    );
+    expect(appendSystemPrompt).toContain(
+      "add `--callback-prompt <prompt>` to `zero mail link`",
+    );
+    expect(appendSystemPrompt).toContain(
+      "confirm the send against Gmail before reporting it",
+    );
+    expect(appendSystemPrompt).toContain(
+      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Never send a reply automatically; the user always sends",
     );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
@@ -4293,38 +4304,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     expect(reconnected.hostId).toBe(installed.hostId);
 
-    // A deleted sticky host is cleared on the next send without the field.
-    // (The actor has no credits, so sends stop at admission — host selection
-    // and sticky-host updates still happen first.)
-    const sticky = await cu.startComputerUseHost(actor);
-    const pinned = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "pin the host before deleting it",
-        computerUseHostId: sticky.hostId,
-      },
-      [201],
-    );
-    if (pinned.status !== 201) {
-      throw new Error("Expected the pinned send to be accepted");
-    }
-    expect(pinned.body.runId).toBeNull();
-    await cu.deleteComputerUseHost(actor, sticky.hostId);
-    await expect(
-      readThreadComputerUseHostId(actor, pinned.body.threadId),
-    ).resolves.toBeNull();
-    const clearedSend = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        threadId: pinned.body.threadId,
-        prompt: "send after the host vanished",
-      },
-      [201],
-    );
-    expect(clearedSend.body).toMatchObject({ threadId: pinned.body.threadId });
-
     // A valid sticky host remains usable for later non-explicit sends.
     const survivor = await cu.startComputerUseHost(actor);
     const survivorThread = await chat.requestSendMessage(
@@ -5108,27 +5087,56 @@ describe("CHAT-02: shared user message queue", () => {
       messageId,
       signal: context.signal,
     });
+
+    // Stage the callback drain at org admission before recall reaches the queue
+    // row. The direct waiter proves recall is first; the transitive count after
+    // admission opens proves the drain is queued behind it.
+    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
+    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
+      if (!releaseCallbackQuery.settled()) {
+        releaseCallbackQuery.resolve(undefined);
+      }
       admissionLock.release();
       messageQueueLock.release();
       await Promise.all([admissionLock.done, messageQueueLock.done]);
     });
 
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (!apl.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      if (!callbackQueryStarted.settled()) {
+        callbackQueryStarted.resolve(undefined);
+      }
+      return releaseCallbackQuery.promise.then(() => {
+        return [assistantEvent(0, "recall-first queue race complete")];
+      });
+    });
 
-    const recall = chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        revokesMessageId: messageId,
-        clientMessageId: randomUUID(),
-      },
-      [201],
-    );
-    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await callbackQueryStarted.promise;
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    releaseCallbackQuery.resolve(undefined);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    const recall = Promise.allSettled([
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: anchor.threadId,
+          revokesMessageId: messageId,
+          clientMessageId: randomUUID(),
+        },
+        [201],
+      ),
+    ]);
+    await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
 
     admissionLock.release();
     await admissionLock.done;
@@ -5137,7 +5145,11 @@ describe("CHAT-02: shared user message queue", () => {
       .toBeGreaterThanOrEqual(2);
     messageQueueLock.release();
 
-    const recalled = await recall;
+    const [recallResult] = await recall;
+    if (recallResult.status === "rejected") {
+      throw recallResult.reason;
+    }
+    const recalled = recallResult.value;
     expect(recalled.body).toMatchObject({
       runId: null,
       threadId: anchor.threadId,

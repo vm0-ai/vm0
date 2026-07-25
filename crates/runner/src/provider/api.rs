@@ -31,7 +31,7 @@ use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
-use crate::run_cancellation::SharedRunCancellationMap;
+use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
     PollResponse, SandboxReuseResult,
@@ -192,7 +192,7 @@ pub struct ApiProvider {
     claim_cooldowns: ClaimCooldowns,
     /// Background Ably control-plane task.
     ably_supervisor: Mutex<Option<AblySupervisor>>,
-    cancel_tokens: SharedRunCancellationMap,
+    cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     /// Shutdown signal.
@@ -218,7 +218,7 @@ impl ApiProvider {
         config: ApiProviderConfig,
         builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
         cancel: CancellationToken,
-        cancel_tokens: SharedRunCancellationMap,
+        cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
             runner_id,
@@ -408,7 +408,7 @@ impl ApiProvider {
             profiles: self.supported_profiles.clone(),
             poll_wakeups: Arc::clone(&self.poll_wakeups),
             direct_candidates: Arc::clone(&self.direct_candidates),
-            cancel_tokens: Arc::clone(&self.cancel_tokens),
+            cancel_tokens: self.cancel_tokens.clone(),
             network_policy_refresh: self.network_policy_refresh.clone(),
             provider_cancel: self.cancel.clone(),
         }));
@@ -1654,7 +1654,7 @@ mod tests {
             ),
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
-            cancel_tokens: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })
     }

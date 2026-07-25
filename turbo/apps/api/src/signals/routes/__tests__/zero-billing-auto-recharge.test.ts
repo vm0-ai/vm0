@@ -42,8 +42,12 @@ function createActor(
 
 async function createOnboardedActor(): Promise<AutoRechargeActor> {
   const admin = createActor();
-  await billingApi.bootstrapOnboarding(admin, {
-    displayName: "BDD Auto Recharge",
+  const completed = await bdd.completeOnboarding(admin);
+  expect(completed.status).toBe(200);
+  await seedOrgMetadata({
+    orgId: admin.orgId,
+    tier: "limited-free-1",
+    credits: 0,
   });
   return admin;
 }

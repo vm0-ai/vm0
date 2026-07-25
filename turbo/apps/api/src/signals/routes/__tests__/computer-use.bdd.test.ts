@@ -521,23 +521,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
     expect(restarted.hostId).not.toBe(second.hostId);
 
-    const missingDelete = await api.requestDeleteComputerUseHost(
-      actor,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingDelete.body);
-    expect(missingDelete.body.error.message).toBe(
-      "Computer-use host not found",
-    );
-
-    await api.deleteComputerUseHost(actor, restarted.hostId);
-    const afterDelete = await api.listComputerUseHosts(actor);
-    expect(
-      afterDelete.hosts.map((item) => {
-        return item.id;
-      }),
-    ).toStrictEqual([first.hostId]);
+    await api.stopComputerUseHost(restarted.hostToken);
   });
 
   it("keeps installation hosts stable across stop and restart", async () => {
@@ -672,16 +656,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     );
 
     clearMockNow();
-    const restarted = await api.startComputerUseHost(actor, {
-      hostName: "Recovered Desktop",
-    });
-    context.mocks.ably.publish.mockClear();
-    await api.deleteComputerUseHost(actor, restarted.hostId);
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "computerUseHostsChanged",
-      null,
-    );
   });
 
   it("rejects host-token routes with missing or invalid host tokens", async () => {

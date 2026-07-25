@@ -31,7 +31,6 @@ import {
 } from "../external/telegram-official";
 import {
   telegramIntegrationBots,
-  telegramIntegrationBotStatus,
   telegramIntegrationLinkStatus,
   telegramBotToken,
   zeroTelegramBots,
@@ -193,27 +192,6 @@ const getIntegrationTelegramListInner$ = computed(async (get) => {
     status: 200 as const,
     body: { bots: [...bots] },
   };
-});
-
-const getIntegrationTelegramBotInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const pathParams = get(pathParamsOf(zeroIntegrationsTelegramContract.getBot));
-  const status = await get(
-    telegramIntegrationBotStatus({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      botId: pathParams.botId,
-    }),
-  );
-
-  if (!status) {
-    return {
-      status: 404 as const,
-      body: { error: { message: "Telegram bot not found", code: "NOT_FOUND" } },
-    };
-  }
-
-  return { status: 200 as const, body: status };
 });
 
 const getIntegrationTelegramLinkStatusInner$ = computed(async (get) => {
@@ -580,10 +558,6 @@ export const zeroIntegrationsTelegramRoutes: readonly RouteEntry[] = [
   {
     route: zeroIntegrationsTelegramContract.avatar,
     handler: getIntegrationTelegramAvatar$,
-  },
-  {
-    route: zeroIntegrationsTelegramContract.getBot,
-    handler: authRoute(telegramReadAuth, getIntegrationTelegramBotInner$),
   },
   {
     route: integrationsTelegramBotListContract.listBots,

@@ -958,6 +958,7 @@ function MailDraftDetail({
   const pageSignal = useGet(pageSignal$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
+  const runSendCallback = useSet(signals.runSendCallback$);
   const active = draft.status === "draft";
   const pending =
     deleteLoadable.state === "loading" || sendLoadable.state === "loading";
@@ -976,6 +977,7 @@ function MailDraftDetail({
     const sendAndNotify = async () => {
       await send(pageSignal);
       toast.success("Email sent");
+      await runSendCallback(pageSignal);
     };
     detach(sendAndNotify(), Reason.DomCallback);
   };

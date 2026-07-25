@@ -7,7 +7,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { command } from "ccstate";
-import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { Resend } from "resend";
 import { delay } from "signal-timers";
 import { Webhook } from "svix";
@@ -383,12 +383,7 @@ async function findSuppressedAddress(
     .select({ emailAddress: emailSuppressions.emailAddress })
     .from(emailSuppressions)
     .where(
-      sql`lower(${emailSuppressions.emailAddress}) IN (${sql.join(
-        lowerAddresses.map((address) => {
-          return sql`${address}`;
-        }),
-        sql`, `,
-      )})`,
+      inArray(sql`lower(${emailSuppressions.emailAddress})`, lowerAddresses),
     )
     .limit(1);
 

@@ -4,7 +4,6 @@
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
 use std::collections::BTreeMap;
-use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -35,7 +34,7 @@ use crate::ids::RunId;
 use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
-use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{
     ExecutionContext, HeldSessionState, SandboxReuseResult, SessionAffinityResource,
@@ -53,16 +52,15 @@ pub(super) struct DiscoveredJobContext<'a> {
     pub(super) idle_pool: &'a SharedIdlePool,
     pub(super) status: &'a StatusTracker,
     pub(super) mode_rx: &'a tokio::sync::watch::Receiver<RunnerMode>,
-    pub(super) cancel_tokens: &'a SharedRunCancellationMap,
+    pub(super) cancel_tokens: &'a RunCancellationRegistry,
     pub(super) spawn_ctx: &'a SpawnContext,
     pub(super) destroy_tasks: &'a mut JoinSet<bool>,
-    pub(super) jobs: &'a mut JoinSet<Option<RunId>>,
+    pub(super) jobs: &'a mut JoinSet<RunCancellationRegistration>,
 }
 
 struct LocalAdmission {
-    run_id: RunId,
     resource: LocalAdmissionResource,
-    cancel: RunCancellationHandle,
+    cancellation: RunCancellationRegistration,
 }
 
 enum LocalAdmissionResource {
@@ -73,7 +71,7 @@ enum LocalAdmissionResource {
 struct AdmittedClaim {
     claimed: ClaimedJob,
     resource: LocalAdmissionResource,
-    cancel: RunCancellationHandle,
+    cancellation: RunCancellationRegistration,
 }
 
 struct PreparedAffinityCandidate {
@@ -101,11 +99,10 @@ struct ReservedActivationRequest<'a> {
 impl LocalAdmission {
     async fn rollback(self, ctx: &mut DiscoveredJobContext<'_>) {
         let Self {
-            run_id,
             resource,
-            cancel: _,
+            cancellation,
         } = self;
-        ctx.cancel_tokens.lock().await.remove(&run_id);
+        cancellation.unregister().await;
         rollback_untracked_resource(resource, ctx).await;
     }
 
@@ -113,7 +110,7 @@ impl LocalAdmission {
         AdmittedClaim {
             claimed,
             resource: self.resource,
-            cancel: self.cancel,
+            cancellation: self.cancellation,
         }
     }
 }
@@ -157,7 +154,7 @@ pub(super) async fn handle_discovered_job(
     let AdmittedClaim {
         claimed,
         resource,
-        cancel: job_cancel,
+        cancellation,
     } = admission;
     let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
     let started_at = Instant::now();
@@ -231,7 +228,7 @@ pub(super) async fn handle_discovered_job(
                     } => {
                         fail_claimed_without_sandbox(
                             claimed,
-                            job_cancel,
+                            cancellation,
                             budget_lease,
                             reuse_result,
                             error,
@@ -250,7 +247,7 @@ pub(super) async fn handle_discovered_job(
             http: &ctx.spawn_ctx.exec_config.http,
             cpu: &ctx.spawn_ctx.exec_config.session_history_cpu,
             context: claimed.context(),
-            cancel: job_cancel.token(),
+            cancel: cancellation.token(),
             reuse_result,
             restored_identity: reuse_entry
                 .as_ref()
@@ -286,7 +283,7 @@ pub(super) async fn handle_discovered_job(
         restore_guest_state: *restore_guest_state,
         device_rate_limits,
         factory: Arc::clone(factory),
-        cancel: job_cancel,
+        cancellation,
     };
     spawn_job(
         SpawnJobRequest {
@@ -362,29 +359,21 @@ async fn claim_with_local_admission(
             .await?
         }
     };
-    // Insert cancel token before claiming so provider-side cancel channels
+    // Register cancellation before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
     // find the active job. Skip duplicate discoveries; overwriting would break
     // cancel delivery for the executor.
-    let job_cancel = RunCancellationHandle::new();
-    {
-        let mut tokens = ctx.cancel_tokens.lock().await;
-        match tokens.entry(run_id) {
-            Entry::Occupied(_) => {
-                drop(tokens);
-                rollback_untracked_resource(resource, ctx).await;
-                return None;
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(job_cancel.clone());
-            }
+    let cancellation = match ctx.cancel_tokens.register(run_id).await {
+        Ok(registration) => registration,
+        Err(_) => {
+            rollback_untracked_resource(resource, ctx).await;
+            return None;
         }
-    }
+    };
 
     let admission = LocalAdmission {
-        run_id,
         resource,
-        cancel: job_cancel,
+        cancellation,
     };
 
     // This is the last reversible point before provider-side ownership.
@@ -402,7 +391,7 @@ async fn claim_with_local_admission(
             return None;
         }
         RunnerMode::Stopping => {
-            admission.cancel.cancel().await;
+            admission.cancellation.cancel().await;
         }
         RunnerMode::Stopped => {
             admission.rollback(ctx).await;
@@ -414,7 +403,7 @@ async fn claim_with_local_admission(
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
-        // cancel token so the runner can continue.
+        // cancellation registration so the runner can continue.
         admission.rollback(ctx).await;
         return None;
     };
@@ -821,7 +810,7 @@ async fn cleanup_reserved_for_fresh_fallback(
 
 async fn fail_claimed_without_sandbox(
     claimed: ClaimedJob,
-    cancel: RunCancellationHandle,
+    cancellation: RunCancellationRegistration,
     budget_lease: BudgetLease,
     reuse_result: SandboxReuseResult,
     error: String,
@@ -842,8 +831,7 @@ async fn fail_claimed_without_sandbox(
             completion_auth,
         )
         .await;
-    ctx.cancel_tokens.lock().await.remove(&run_id);
-    drop(cancel);
+    cancellation.unregister().await;
     drop(budget_lease);
 }
 
