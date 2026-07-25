@@ -416,6 +416,8 @@ impl FailureClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
+    /// The session history exceeded the checkpoint size limit.
+    SessionHistoryLimit,
     /// The provider account has insufficient credits.
     InsufficientCredits,
     /// The configured API key is invalid.
@@ -443,6 +445,7 @@ impl FailureReason {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::SessionHistoryLimit => "session_history_limit",
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
