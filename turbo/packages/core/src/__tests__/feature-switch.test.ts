@@ -114,7 +114,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
       true,
