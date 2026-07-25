@@ -1,4 +1,5 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
@@ -7,6 +8,7 @@ import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
+import { nowDate } from "../lib/time";
 import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
@@ -55,6 +57,24 @@ export async function setWorkflowQueueEventCreatedAtFixture(args: {
     .returning({ id: chatMessageQueue.id });
   if (updated.length !== 1) {
     throw new Error("Expected one workflow queue event to become historical");
+  }
+}
+
+/**
+ * Complete one claimed run without dispatching its terminal callbacks. This
+ * reproduces the missed-callback state that the stale queue sweep recovers.
+ */
+export async function completeRunWithoutCallbacksFixture(args: {
+  readonly runId: string;
+}): Promise<void> {
+  const completedAt = nowDate();
+  const updated = await db()
+    .update(agentRuns)
+    .set({ status: "completed", completedAt })
+    .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.status, "running")))
+    .returning({ id: agentRuns.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one running run to complete without callbacks");
   }
 }
 

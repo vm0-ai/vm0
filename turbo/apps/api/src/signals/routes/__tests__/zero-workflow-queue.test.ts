@@ -30,6 +30,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
+  completeRunWithoutCallbacksFixture,
   holdOrgAdmissionLockFixture,
   rewriteWorkflowQueueEventAsPreviousVersionFixture,
   setWorkflowQueueEventCreatedAtFixture,
@@ -384,6 +385,50 @@ describe("workflow queue", () => {
     await admissionLock.done;
     expect(workflowResult.status).toBe(200);
     expect(userResult.status).toBe(201);
+  });
+
+  it("recovers a stale workflow event after its terminal callback is missed", async () => {
+    mockNow(Date.UTC(2020, 0, 1));
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstRunId = expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+    );
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "stale pending event"),
+    );
+    const queued = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    const event = queued.body.pending[0];
+    if (!event) {
+      throw new Error("Expected a pending workflow event");
+    }
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: event.id,
+      createdAt: new Date("2019-12-31T23:54:00.000Z"),
+    });
+
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    await runsApi.claimRunnerJob(firstRunId);
+    await completeRunWithoutCallbacksFixture({ runId: firstRunId });
+
+    await cleanupSandboxes();
+
+    const recovered = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(recovered.body.pending).toHaveLength(0);
+    expect(recovered.body.running?.runId).toStrictEqual(expect.any(String));
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
   });
 
   it("queues webhook events behind the active run and drains one per completion", async () => {
