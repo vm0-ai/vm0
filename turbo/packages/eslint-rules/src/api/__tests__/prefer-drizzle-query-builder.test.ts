@@ -904,6 +904,19 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
             )
           \`;
         }
+        function unionRows(userId: number) {
+          return sql\`
+            WITH rows AS (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+              UNION ALL
+              SELECT run_id
+              FROM archived_usage_event
+              WHERE user_id = \${userId}
+            )
+          \`;
+        }
         function deletingRows(userId: number) {
           return sql\`
             WITH rows AS (
@@ -942,6 +955,11 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         await executeRawRows(
           db,
           sql\`\${materializedRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${unionRows(threadId)} SELECT run_id FROM rows\`,
           rowSchema,
         );
         await executeRawRows(
