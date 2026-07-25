@@ -7,6 +7,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import {
@@ -349,6 +350,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
       (await chat.listArtifactCatalog(owner.actor)).artifacts,
     ).toHaveLength(1);
 
+    await flushWaitUntilForTest();
     await bdd.deleteAgent(owner.actor, owner.agentId);
 
     await expect(chat.listArtifactCatalog(owner.actor)).resolves.toStrictEqual({
