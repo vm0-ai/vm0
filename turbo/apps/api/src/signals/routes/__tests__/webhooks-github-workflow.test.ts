@@ -10,6 +10,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
+import { verifyZeroToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
@@ -670,6 +671,13 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected a GitHub workflow run automation");
     }
     const claim = await runsApi.claimRunnerJob(runId);
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the workflow event run to expose ZERO_TOKEN");
+    }
+    expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
+      "goal:user-control:write",
+    );
     expect(claim.appendSystemPrompt).toContain(
       'GitHub Actions workflow "Turbo" completed with conclusion "failure"',
     );
