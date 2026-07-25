@@ -112,16 +112,23 @@ async fn collect_retained_version_image_refs(
 }
 
 async fn collect_enabled_service_image_refs(refs: &mut ProtectedImageRefs) -> bool {
-    let scan = enabled_runner_service_config_paths(Path::new("/etc/systemd/system")).await;
+    collect_enabled_service_image_refs_from_dir(Path::new("/etc/systemd/system"), refs).await
+}
+
+async fn collect_enabled_service_image_refs_from_dir(
+    system_dir: &Path,
+    refs: &mut ProtectedImageRefs,
+) -> bool {
+    let scan = enabled_runner_service_config_paths(system_dir).await;
     for config_path in scan.paths {
         collect_config_image_refs(&config_path, "enabled service", refs).await;
     }
-    scan.directory_scan_complete
+    scan.inventory_complete
 }
 
 struct EnabledRunnerServiceConfigPaths {
     paths: Vec<PathBuf>,
-    directory_scan_complete: bool,
+    inventory_complete: bool,
 }
 
 async fn enabled_runner_service_config_paths(system_dir: &Path) -> EnabledRunnerServiceConfigPaths {
@@ -142,18 +149,18 @@ async fn enabled_runner_service_config_paths_with_reader(
             );
             return EnabledRunnerServiceConfigPaths {
                 paths: Vec::new(),
-                directory_scan_complete: false,
+                inventory_complete: false,
             };
         }
     }) else {
         return EnabledRunnerServiceConfigPaths {
             paths: Vec::new(),
-            directory_scan_complete: true,
+            inventory_complete: true,
         };
     };
 
     let mut paths = Vec::new();
-    let mut directory_scan_complete = true;
+    let mut inventory_complete = true;
     loop {
         let entry = match entry_reader
             .next_entry_warn(&mut entries, "runner_service_config_refs", system_dir)
@@ -162,7 +169,7 @@ async fn enabled_runner_service_config_paths_with_reader(
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(_) => {
-                directory_scan_complete = false;
+                inventory_complete = false;
                 break;
             }
         };
@@ -170,7 +177,7 @@ async fn enabled_runner_service_config_paths_with_reader(
         let Some(file_name) = file_name.to_str() else {
             continue;
         };
-        let Some(unit) = runner_service_unit_from_file_name(file_name) else {
+        let Some(unit) = service::RunnerServiceUnit::from_file_name(file_name) else {
             continue;
         };
         match service::is_unit_enabled(&unit).await {
@@ -178,32 +185,37 @@ async fn enabled_runner_service_config_paths_with_reader(
             Ok(false) => continue,
             Err(e) => {
                 warn!(
-                    "runner service image refs: cannot check whether {} is enabled ({e}), skipping",
+                    "runner service image refs: cannot check whether {} is enabled ({e}), protection inventory incomplete",
+                    unit.service_name()
+                );
+                inventory_complete = false;
+                continue;
+            }
+        }
+        let config_path = match service::read_unit_config_path(&unit).await {
+            Ok(Some(config_path)) => config_path,
+            Ok(None) => {
+                warn!(
+                    "runner service image refs: enabled service {} has no parseable config path, skipping",
                     unit.service_name()
                 );
                 continue;
             }
-        }
-        let Some(config_path) = service::read_unit_config_path(&entry.path()).await else {
-            warn!(
-                "runner service image refs: enabled service {} has no parseable config path, skipping",
-                unit.service_name()
-            );
-            continue;
+            Err(e) => {
+                warn!(
+                    "runner service image refs: cannot read effective config for enabled service {} ({e}), protection inventory incomplete",
+                    unit.service_name()
+                );
+                inventory_complete = false;
+                continue;
+            }
         };
         paths.push(config_path);
     }
     EnabledRunnerServiceConfigPaths {
         paths,
-        directory_scan_complete,
+        inventory_complete,
     }
-}
-
-fn runner_service_unit_from_file_name(file_name: &str) -> Option<service::RunnerServiceUnit> {
-    let suffix = file_name
-        .strip_prefix("vm0-runner-")?
-        .strip_suffix(".service")?;
-    service::RunnerServiceUnit::from_suffix(suffix).ok()
 }
 
 async fn collect_config_image_refs(
