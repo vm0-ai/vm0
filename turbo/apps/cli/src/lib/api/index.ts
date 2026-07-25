@@ -223,7 +223,8 @@ export {
 export {
   createZeroBrowser,
   getCurrentZeroBrowser,
-  resumeZeroBrowser,
+  leaseZeroBrowser,
+  useZeroBrowser,
 } from "./domains/zero-browser";
 
 // Domain modules - Zero Maps

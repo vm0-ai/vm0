@@ -107,7 +107,7 @@ import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
-import { finalizeThreadBrowsersForRun$ } from "./zero-browser.service";
+import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -393,13 +393,10 @@ type CreateQueuedRun = (
 ) => Promise<CreatedQueuedRun | null>;
 
 interface ChatCallbackDependencies {
-  readonly finalizeBrowsersForRun: (
-    args: {
-      readonly chatThreadId: string;
-      readonly runId: string;
-    },
+  readonly releaseBrowsersForRun: (
+    args: { readonly chatThreadId: string },
     signal: AbortSignal,
-  ) => Promise<{ readonly errors: number }>;
+  ) => Promise<{ readonly released: number }>;
   readonly insertAssistantItems: (
     args: {
       readonly runId: string;
@@ -2772,34 +2769,24 @@ interface TerminalChatCallbackArgs {
   readonly signal: AbortSignal;
 }
 
-async function finalizeManagedBrowsersForTerminalCallback(
+async function releaseManagedBrowsersForTerminalCallback(
   args: TerminalChatCallbackArgs,
 ): Promise<void> {
-  // Browser resources outlive thread deletion, so finalize from the callback
-  // payload before loading the thread or draining its queued messages.
-  const finalized = await settle(
-    args.dependencies.finalizeBrowsersForRun(
-      {
-        chatThreadId: args.payload.threadId,
-        runId: args.callback.runId,
-      },
+  // The window stays live after the run so the user can keep using it; this only
+  // restarts its idle lease. Browser resources outlive thread deletion, so use
+  // the callback payload rather than loading the thread first.
+  const released = await settle(
+    args.dependencies.releaseBrowsersForRun(
+      { chatThreadId: args.payload.threadId },
       args.signal,
     ),
     args.signal,
   );
-  if (!finalized.ok) {
-    log.error("Failed to finalize managed browsers for terminal run", {
+  if (!released.ok) {
+    log.error("Failed to extend managed browser leases for terminal run", {
       runId: args.callback.runId,
       chatThreadId: args.payload.threadId,
-      error: finalized.error,
-    });
-    return;
-  }
-  if (finalized.value.errors > 0) {
-    log.warn("Managed browser finalization deferred to reconciler", {
-      runId: args.callback.runId,
-      chatThreadId: args.payload.threadId,
-      errors: finalized.value.errors,
+      error: released.error,
     });
   }
 }
@@ -2814,7 +2801,7 @@ async function processTerminalChatCallback(
   }
   const timing = new ChatCallbackPreCreateTimingCollector();
 
-  await finalizeManagedBrowsersForTerminalCallback(args);
+  await releaseManagedBrowsersForTerminalCallback(args);
 
   const loaded = await measureChatCallbackPreCreateTiming(
     timing,
@@ -2939,7 +2926,7 @@ function withoutQueuedRunDependency(
   dependencies: ChatCallbackDependencies,
 ): ChatCallbackDependencies {
   return {
-    finalizeBrowsersForRun: dependencies.finalizeBrowsersForRun,
+    releaseBrowsersForRun: dependencies.releaseBrowsersForRun,
     insertAssistantItems: dependencies.insertAssistantItems,
     saveRunSummary: dependencies.saveRunSummary,
     formatRunError: dependencies.formatRunError,
@@ -3064,9 +3051,9 @@ export async function handleChatInternalCallbackWithoutCcstate(
     callback,
     signal,
     dependencies: {
-      finalizeBrowsersForRun: (args, inputSignal) => {
+      releaseBrowsersForRun: (args, inputSignal) => {
         return createStore().set(
-          finalizeThreadBrowsersForRun$,
+          releaseThreadBrowsersForRun$,
           args,
           inputSignal,
         );
@@ -3118,8 +3105,8 @@ const buildChatCallbackDependencies$ = command(
   ): ChatCallbackDependencies => {
     const { db } = input;
     const baseDependencies: ChatCallbackDependencies = {
-      finalizeBrowsersForRun: (args, inputSignal) => {
-        return set(finalizeThreadBrowsersForRun$, args, inputSignal);
+      releaseBrowsersForRun: (args, inputSignal) => {
+        return set(releaseThreadBrowsersForRun$, args, inputSignal);
       },
       insertAssistantItems: async (args, inputSignal) => {
         await set(insertAssistantEventMessages$, args, inputSignal);

@@ -5,8 +5,11 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const ZERO_BROWSER_DEFAULT_TIMEOUT_MINUTES = 30;
-export const ZERO_BROWSER_MAX_TIMEOUT_MINUTES = 240;
+// Zero always asks Browser Use for its longest provider lifetime and manages
+// reclamation itself through the idle lease below, so a hard provider timeout
+// can never cut a browser short while somebody is still using it.
+export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
+export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
 export const ZERO_BROWSER_DEFAULT_MAX_CREDITS = 500;
 export const ZERO_BROWSER_MAX_CREDITS = 100_000;
 
@@ -20,7 +23,9 @@ export const zeroBrowserStatusSchema = z.enum([
 ]);
 
 export const zeroBrowserSuspensionReasonSchema = z.enum([
+  // Historical reason kept for rows written before the idle lease existed.
   "run_end",
+  "idle",
   "timeout",
   "budget",
   "provider",
@@ -38,6 +43,9 @@ export const zeroBrowserSessionSchema = z.object({
   maxCredits: z.number().int().positive(),
   grossCredits: z.number().int().nonnegative(),
   creditsCharged: z.number().int().nonnegative(),
+  // When Zero reclaims the live provider instance unless somebody leases it
+  // again. Null once no provider instance is running.
+  idleExpiresAt: z.iso.datetime().nullable(),
   suspendedAt: z.iso.datetime().nullable(),
   suspensionReason: zeroBrowserSuspensionReasonSchema.nullable(),
   createdAt: z.iso.datetime(),
@@ -61,12 +69,6 @@ export const zeroBrowserCreateRequestSchema = z.object({
     })
     .nullable()
     .default(null),
-  timeoutMinutes: z
-    .number()
-    .int()
-    .min(1)
-    .max(ZERO_BROWSER_MAX_TIMEOUT_MINUTES)
-    .default(ZERO_BROWSER_DEFAULT_TIMEOUT_MINUTES),
   maxCredits: z
     .number()
     .int()
@@ -119,6 +121,18 @@ export const zeroBrowserContract = c.router({
     summary:
       "Create a new managed browser for the current chat thread using the user's shared profile",
   },
+  use: {
+    method: "POST",
+    path: "/api/zero/browsers/use",
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: browserConnectionResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary:
+      "Create, reuse, or resume the current chat thread's managed browser and extend its idle lease",
+  },
   resume: {
     method: "POST",
     path: "/api/zero/browsers/resume",
@@ -128,7 +142,43 @@ export const zeroBrowserContract = c.router({
       200: browserConnectionResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Resume the current chat thread's managed browser",
+    summary:
+      "Compatibility alias of use for CLI versions that predate zero browser use",
+  },
+  lease: {
+    method: "POST",
+    path: "/api/zero/browsers/lease",
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Extend the idle lease of the current chat thread's live browser",
+  },
+  leaseById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/lease",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Extend the idle lease of a live browser from its viewer",
+  },
+  resumeById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/resume",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Resume a suspended browser from its viewer and start billing it",
   },
   current: {
     method: "GET",

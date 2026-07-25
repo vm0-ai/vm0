@@ -3720,7 +3720,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("renders trusted browser universal links as live iframes independently of the CLI feature switch", async () => {
+  it("renders trusted browser universal links as fixed cards that open the live sidebar", async () => {
     const threadId = "c0000000-0000-4000-a000-000000000080";
     const browserId = "c0000000-0000-4000-a000-000000000081";
     const liveUrl =
@@ -3732,10 +3732,11 @@ describe("chat message action cards", () => {
       viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
       liveUrl,
       proxyCountryCode: null,
-      timeoutMinutes: 30,
+      timeoutMinutes: 240,
       maxCredits: 500,
       grossCredits: 12,
       creditsCharged: 12,
+      idleExpiresAt: "2026-07-24T10:10:00.000Z",
       suspendedAt: null,
       suspensionReason: null,
       createdAt: "2026-07-24T10:00:00.000Z",
@@ -3746,6 +3747,11 @@ describe("chat message action cards", () => {
       expect(params.browserId).toBe(browserId);
       expect(query.chatThreadId).toBe(threadId);
       browserRequests += 1;
+      return respond(200, { browser });
+    });
+    let leaseRequests = 0;
+    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+      leaseRequests += 1;
       return respond(200, { browser });
     });
 
@@ -3776,17 +3782,29 @@ describe("chat message action cards", () => {
     await waitFor(() => {
       expect(browserRequests).toBeGreaterThan(0);
     });
-    await waitFor(() => {
-      const frames = Array.from(
-        document.querySelectorAll<HTMLIFrameElement>(
-          'iframe[title="Live browser: booking"]',
+    // The message stream shows fixed-height entry points only; the live view is
+    // heavy and would resize the transcript as pages load.
+    const cards = await waitFor(() => {
+      const found = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          "[data-browser-session-card]",
         ),
       );
-      expect(frames).toHaveLength(2);
-      for (const frame of frames) {
-        expect(frame).toHaveAttribute("src", liveUrl);
-        expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
-      }
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    expect(
+      document.querySelector('iframe[title="Live browser: booking"]'),
+    ).toBeNull();
+
+    cards[0]?.click();
+
+    const frame = await screen.findByTitle("Live browser: booking");
+    expect(frame).toHaveAttribute("src", liveUrl);
+    expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    await waitFor(() => {
+      expect(leaseRequests).toBeGreaterThan(0);
     });
     expect(
       queryAllByRoleFast("link").find((link) => {
