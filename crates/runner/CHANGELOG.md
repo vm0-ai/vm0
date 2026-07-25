@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.148.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.19...runner-rs-v0.148.0) (2026-07-25)
+
+
+### Features
+
+* **zero:** add managed browsers with shared user profiles ([#22940](https://github.com/vm0-ai/vm0/issues/22940)) ([a56eeac](https://github.com/vm0-ai/vm0/commit/a56eeac6a74f30fae2fcfb2d69fa8b0840da6764))
+
+
+### Bug Fixes
+
+* **runner:** honor systemd-selected service config ([#23002](https://github.com/vm0-ai/vm0/issues/23002)) ([00d487e](https://github.com/vm0-ai/vm0/commit/00d487e6639cb54b27a0ad793091151c08721d9a))
+
+
+### Documentation
+
+* **mitm-addon:** document x tld snapshot updates ([#23005](https://github.com/vm0-ai/vm0/issues/23005)) ([eecac65](https://github.com/vm0-ai/vm0/commit/eecac65a99f5bc7118aaeeaf86b32aaa13db91ef))
+* **runner:** clarify gc command cleanup scope ([#22985](https://github.com/vm0-ai/vm0/issues/22985)) ([9067178](https://github.com/vm0-ai/vm0/commit/90671783978da24278d8eddac2e75ad30ca1d3b6))
+
+
+### Refactoring
+
+* **mitm-addon:** centralize diagnostic candidate metadata ([#22966](https://github.com/vm0-ai/vm0/issues/22966)) ([4e344ab](https://github.com/vm0-ai/vm0/commit/4e344ab729c8d57bbe271b492761af0f5fe2887a))
+* **runner:** encapsulate cancellation registrations ([#22945](https://github.com/vm0-ai/vm0/issues/22945)) ([267e12c](https://github.com/vm0-ai/vm0/commit/267e12cf7213309e120d907f31555315a6bd2b68))
+
+
+### Performance Improvements
+
+* **runner:** instrument codex provider output timing ([#22996](https://github.com/vm0-ai/vm0/issues/22996)) ([78ff42e](https://github.com/vm0-ai/vm0/commit/78ff42e1809f4044850447536d6f2155abcf80ac))
+
 ## [0.147.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.18...runner-rs-v0.147.19) (2026-07-25)
 
 ## [0.147.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.17...runner-rs-v0.147.18) (2026-07-25)

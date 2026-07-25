@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.1...guest-contracts-v0.4.2) (2026-07-25)
+
+
+### Documentation
+
+* **rust:** document private runtime file invariants ([#23000](https://github.com/vm0-ai/vm0/issues/23000)) ([200dd45](https://github.com/vm0-ai/vm0/commit/200dd45652429376a2729a09addb08dbc0167c1b))
+
 ## [0.4.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.0...guest-contracts-v0.4.1) (2026-07-23)
 
 

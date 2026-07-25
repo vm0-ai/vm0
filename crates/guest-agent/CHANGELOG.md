@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.1...guest-agent-v0.56.2) (2026-07-25)
+
+
+### Performance Improvements
+
+* **guest-agent:** reuse verified mock builds across tests ([#22984](https://github.com/vm0-ai/vm0/issues/22984)) ([cfe1d4b](https://github.com/vm0-ai/vm0/commit/cfe1d4bd614b83a1191b635f1cd80ef23d6b97c2))
+
 ## [0.56.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.0...guest-agent-v0.56.1) (2026-07-25)
 
 
