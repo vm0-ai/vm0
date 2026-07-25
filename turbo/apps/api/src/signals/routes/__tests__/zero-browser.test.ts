@@ -222,6 +222,7 @@ describe("zero browser route", () => {
     let profileCreates = 0;
     let providerCreates = 0;
     let providerStops = 0;
+    let firstProviderStopFailures = 0;
     server.use(
       http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
         expect(request.headers.get("x-browser-use-api-key")).toBe(
@@ -285,6 +286,13 @@ describe("zero browser route", () => {
               firstStopStarted.resolve(undefined);
             }
             await releaseFirstStop.promise;
+            if (firstProviderStopFailures === 0) {
+              firstProviderStopFailures += 1;
+              return HttpResponse.json(
+                { detail: "temporary Browser Use outage" },
+                { status: 503 },
+              );
+            }
           }
           return HttpResponse.json(
             providerId === providerIds[0]
@@ -501,6 +509,44 @@ describe("zero browser route", () => {
     releaseFirstStop.resolve(undefined);
     await flushWaitUntilForTest();
 
+    const terminalMessages = await chat.listThreadMessages(
+      actor,
+      sent.body.threadId,
+    );
+    expect(
+      terminalMessages.messages.some((message) => {
+        return (
+          message.role === "assistant" &&
+          message.runId === firstRunId &&
+          message.runLifecycleEvent === "failed"
+        );
+      }),
+    ).toBeTruthy();
+    const queuedBeforeReconcile = await runs.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      queuedBeforeReconcile.runs.some((run) => {
+        return run.prompt === "Continue in the saved browser";
+      }),
+    ).toBeFalsy();
+
+    const recovered = await accept(
+      cronClient().reconcile({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(recovered.body).toMatchObject({
+      checked: 2,
+      stopped: 1,
+      settled: 1,
+      errors: 0,
+      healthy: 1,
+    });
+    await flushWaitUntilForTest();
+
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const suspended = await accept(
       client().get({
@@ -516,7 +562,7 @@ describe("zero browser route", () => {
       grossCredits: 124,
       suspensionReason: "run_end",
     });
-    expect(providerStops).toBe(3);
+    expect(providerStops).toBe(4);
 
     const runList = await runs.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
@@ -565,7 +611,7 @@ describe("zero browser route", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(4);
+    expect(providerStops).toBe(5);
 
     await chat.deleteThread(actor, sent.body.threadId);
     await flushWaitUntilForTest();
@@ -578,7 +624,7 @@ describe("zero browser route", () => {
     );
     expect(hiddenAfterThreadDelete.status).toBe(404);
 
-    expect(providerStops).toBe(5);
+    expect(providerStops).toBe(6);
 
     const missing = await client().get({
       headers: followupClaim.browserHeaders,
@@ -612,6 +658,6 @@ describe("zero browser route", () => {
       settled: 0,
       errors: 0,
     });
-    expect(providerStops).toBe(5);
+    expect(providerStops).toBe(6);
   }, 120_000);
 });

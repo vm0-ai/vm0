@@ -2776,15 +2776,30 @@ async function finalizeManagedBrowsersForTerminalCallback(
 ): Promise<void> {
   // Browser resources outlive thread deletion, so finalize from the callback
   // payload before loading the thread or draining its queued messages.
-  const result = await args.dependencies.finalizeBrowsersForRun(
-    {
-      chatThreadId: args.payload.threadId,
-      runId: args.callback.runId,
-    },
+  const finalized = await settle(
+    args.dependencies.finalizeBrowsersForRun(
+      {
+        chatThreadId: args.payload.threadId,
+        runId: args.callback.runId,
+      },
+      args.signal,
+    ),
     args.signal,
   );
-  if (result.errors > 0) {
-    throw new Error("Failed to finalize managed browsers for terminal run");
+  if (!finalized.ok) {
+    log.error("Failed to finalize managed browsers for terminal run", {
+      runId: args.callback.runId,
+      chatThreadId: args.payload.threadId,
+      error: finalized.error,
+    });
+    return;
+  }
+  if (finalized.value.errors > 0) {
+    log.warn("Managed browser finalization deferred to reconciler", {
+      runId: args.callback.runId,
+      chatThreadId: args.payload.threadId,
+      errors: finalized.value.errors,
+    });
   }
 }
 
