@@ -303,12 +303,26 @@ fn fail(
     msg: impl Into<String>,
 ) -> AgentError {
     let msg = msg.into();
+    record_failure(mode, op, start, &msg);
+    AgentError::Checkpoint(msg)
+}
+
+fn fail_preserving_error(
+    mode: CheckpointMode,
+    op: &str,
+    start: std::time::Instant,
+    error: AgentError,
+) -> AgentError {
+    record_failure(mode, op, start, &error.to_string());
+    error
+}
+
+fn record_failure(mode: CheckpointMode, op: &str, start: std::time::Instant, msg: &str) {
     match mode {
         CheckpointMode::Success => log_error!(LOG_TAG, "{msg}"),
         CheckpointMode::Recovery => log_warn!(LOG_TAG, "{msg}"),
     }
-    record_sandbox_op(op, start.elapsed(), false, Some(&msg));
-    AgentError::Checkpoint(msg)
+    record_sandbox_op(op, start.elapsed(), false, Some(msg));
 }
 
 /// Build an artifact snapshot using the type generated from the canonical
@@ -768,11 +782,11 @@ fn prepare_session_history(
     ) {
         Ok(source) => source,
         Err(e) => {
-            return Err(fail(
+            return Err(fail_preserving_error(
                 mode,
                 "session_history_read",
                 history_read_start,
-                e.to_string(),
+                e,
             ));
         }
     };
@@ -863,14 +877,7 @@ fn prepare_reused_zstd_session_history(
         RESUME_SESSION_HISTORY_MAX_BYTES,
         mode.validate_history(),
     )
-    .map_err(|e| {
-        fail(
-            mode,
-            "session_history_read",
-            history_read_start,
-            e.to_string(),
-        )
-    })?;
+    .map_err(|e| fail_preserving_error(mode, "session_history_read", history_read_start, e))?;
 
     if let Some(msg) = &analysis.invalid_utf8 {
         if mode.validate_history() {
@@ -1273,6 +1280,20 @@ mod tests {
     use tokio::net::{TcpListener, TcpStream};
 
     const REQUEST_OVERLAP_TIMEOUT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn checkpoint_failure_recording_preserves_typed_history_limit_error() {
+        let error = fail_preserving_error(
+            CheckpointMode::Success,
+            "session_history_read",
+            std::time::Instant::now(),
+            AgentError::CheckpointHistoryTooLarge { max_bytes: 1 },
+        );
+        assert!(matches!(
+            error,
+            AgentError::CheckpointHistoryTooLarge { max_bytes: 1 }
+        ));
+    }
 
     #[test]
     fn zstd_checkpoint_analysis_returns_typed_history_limit_error() {
