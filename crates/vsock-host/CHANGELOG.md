@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.67](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.66...vsock-host-v0.17.67) (2026-07-25)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound frame-builder request lifecycle ([#22997](https://github.com/vm0-ai/vm0/issues/22997)) ([beb183b](https://github.com/vm0-ai/vm0/commit/beb183b61624d6ae5db085e338a01269a1c8ba13))
+
 ## [0.17.66](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.65...vsock-host-v0.17.66) (2026-07-23)
 
 

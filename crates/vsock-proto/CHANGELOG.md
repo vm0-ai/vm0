@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.24](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.23...vsock-proto-v0.18.24) (2026-07-25)
+
+
+### Refactoring
+
+* **rust:** collapse exec-control codec layer ([#22988](https://github.com/vm0-ai/vm0/issues/22988)) ([a923713](https://github.com/vm0-ai/vm0/commit/a923713089a5b42abc3004a1c280320f58c91885))
+
 ## [0.18.23](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.22...vsock-proto-v0.18.23) (2026-07-20)
 
 
