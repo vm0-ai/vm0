@@ -10,11 +10,7 @@ import { mockEnv } from "../../../../lib/env";
 import type { RouteEntry } from "../../../route-entry";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroMapsRoutes } from "../../zero-maps";
-import {
-  createBddApi,
-  type ApiTestUser,
-  type OnboardingBootstrapOptions,
-} from "./api-bdd";
+import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
@@ -85,17 +81,6 @@ export function createMapsBillingApi(context: TestContext) {
   return {
     configureMapsProvider(): void {
       mockEnv("ZERO_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
-    },
-
-    async bootstrapOnboarding(
-      actor: ApiTestUser,
-      body: OnboardingBootstrapOptions,
-    ) {
-      const agentId = await createBddApi(context).bootstrapOnboarding(
-        actor,
-        body,
-      );
-      return { status: 200 as const, body: { agentId } };
     },
 
     async readBillingStatus(

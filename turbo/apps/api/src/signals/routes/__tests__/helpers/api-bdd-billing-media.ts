@@ -284,14 +284,13 @@ export function createBillingMediaApi(context: TestContext) {
     configureCampaign,
     configureMapsProvider,
 
-    async bootstrapOnboarding(
+    async bootstrapLimitedFreeOnboarding(
       actor: ApiTestUser,
       body: OnboardingBootstrapOptions,
     ) {
-      const agentId = await createBddApi(context).bootstrapOnboarding(
-        actor,
-        body,
-      );
+      const agentId = await createBddApi(
+        context,
+      ).bootstrapLimitedFreeOnboarding(actor, body);
       return { status: 200 as const, body: { agentId } };
     },
 

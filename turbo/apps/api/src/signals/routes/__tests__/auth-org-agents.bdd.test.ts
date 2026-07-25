@@ -59,7 +59,7 @@ async function onboardAdmin(
     orgState.name = orgName;
   }
   api.mockClerkOrg(admin, orgState);
-  const bootstrap = await api.bootstrapOnboarding(admin, {
+  const bootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
     displayName: options.displayName ?? "BDD Default Agent",
     sound: "calm",
   });
@@ -123,7 +123,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expect(defaultAgent.displayName).toBe("BDD Default Agent");
     expect(defaultAgent.avatarUrl).toBe(DEFAULT_AGENT_AVATAR_URL);
 
-    const repeatedBootstrap = await api.bootstrapOnboarding(admin, {
+    const repeatedBootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
       displayName: "BDD Default Agent Repeated",
     });
     if (repeatedBootstrap.status !== 200) {

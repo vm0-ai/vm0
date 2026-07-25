@@ -461,9 +461,10 @@ describe("Feishu integration", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const defaultAgentBootstrap = await authOrgApi.bootstrapOnboarding(actor, {
-      displayName: "Feishu default agent",
-    });
+    const defaultAgentBootstrap =
+      await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
+        displayName: "Feishu default agent",
+      });
     const defaultAgent = await authOrgApi.updateAgentMetadata(
       actor,
       defaultAgentBootstrap.body.agentId,

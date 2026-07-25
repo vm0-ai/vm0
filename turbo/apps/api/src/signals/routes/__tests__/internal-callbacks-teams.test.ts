@@ -356,7 +356,7 @@ async function setupConnectedTeamsActor(
   authOrgApi.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
-  const defaultAgent = await authOrgApi.bootstrapOnboarding(actor, {
+  const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Teams callback agent",
   });
   await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {

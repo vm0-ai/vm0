@@ -823,7 +823,7 @@ async function setupConnectedTeamsBotActor(): Promise<{
   authOrgApi.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
-  const defaultAgent = await authOrgApi.bootstrapOnboarding(actor, {
+  const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Teams default agent",
   });
   await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
@@ -1399,9 +1399,12 @@ describe("POST /api/zero/teams/bot", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const defaultAgent = await authOrgApi.bootstrapOnboarding(actor, {
-      displayName: "Teams file agent",
-    });
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams file agent",
+      },
+    );
     await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
@@ -2022,9 +2025,12 @@ describe("POST /api/zero/teams/bot", () => {
     });
     context.mocks.ably.publish.mockResolvedValue(undefined);
     authOrgApi.acceptAgentStorageWrites();
-    const defaultAgent = await authOrgApi.bootstrapOnboarding(actor, {
-      displayName: "Teams default agent",
-    });
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams default agent",
+      },
+    );
     await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
@@ -2128,9 +2134,12 @@ describe("POST /api/zero/teams/bot", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const defaultAgent = await authOrgApi.bootstrapOnboarding(actor, {
-      displayName: "Teams default agent",
-    });
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams default agent",
+      },
+    );
     await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });

@@ -100,7 +100,7 @@ describe("zero finance routes", () => {
     if (!actor.orgId) {
       throw new Error("Zero Finance test actor must belong to an organization");
     }
-    await createBddApi(context).bootstrapOnboarding(actor, {
+    await createBddApi(context).bootstrapLimitedFreeOnboarding(actor, {
       displayName: "Zero Finance Test",
     });
     const seconds = Math.floor(now() / 1000);

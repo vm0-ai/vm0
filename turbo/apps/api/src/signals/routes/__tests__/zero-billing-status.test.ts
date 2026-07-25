@@ -599,7 +599,7 @@ describe("GET /api/zero/billing/status", () => {
       userId: `user_${randomUUID()}`,
       expiresRecordIds: [],
     };
-    await createBddApi(context).bootstrapOnboarding(
+    await createBddApi(context).bootstrapLimitedFreeOnboarding(
       {
         userId: fixture.userId,
         orgId: fixture.orgId,

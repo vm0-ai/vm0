@@ -135,7 +135,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     const bdd = createBddApi(context);
     const actor = bdd.user();
     authOrgApi.acceptAgentStorageWrites();
-    const { body } = await authOrgApi.bootstrapOnboarding(actor, {
+    const { body } = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
       displayName: "Default Connector Agent",
     });
 
@@ -152,7 +152,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     const bdd = createBddApi(context);
     const actor = bdd.user();
     authOrgApi.acceptAgentStorageWrites();
-    const { body } = await authOrgApi.bootstrapOnboarding(actor, {
+    const { body } = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
       displayName: "Legacy Connector Agent",
     });
 

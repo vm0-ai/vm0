@@ -56,7 +56,7 @@ async function completeVisibleOnboarding(
   api: ReturnType<typeof createBillingMediaApi>,
   admin: ApiTestUser,
 ): Promise<void> {
-  await api.bootstrapOnboarding(admin, {
+  await api.bootstrapLimitedFreeOnboarding(admin, {
     displayName: "BDD Billing Media Agent",
     sound: "calm",
   });

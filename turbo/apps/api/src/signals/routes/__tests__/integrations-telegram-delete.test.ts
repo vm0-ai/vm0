@@ -152,7 +152,7 @@ describe("DELETE /api/integrations/telegram", () => {
     readonly userId: string;
   }): Promise<string> {
     bdd.acceptAgentStorageWrites();
-    return await bdd.bootstrapOnboarding(user(args), {
+    return await bdd.bootstrapLimitedFreeOnboarding(user(args), {
       displayName: newId("agent"),
     });
   }

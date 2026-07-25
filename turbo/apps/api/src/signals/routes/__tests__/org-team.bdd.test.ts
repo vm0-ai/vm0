@@ -64,7 +64,7 @@ async function onboardAdmin(
     orgState.name = options.name;
   }
   api.mockClerkOrg(admin, orgState);
-  const bootstrap = await api.bootstrapOnboarding(admin, {
+  const bootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
     displayName: options.displayName ?? "BDD Org Team Agent",
     sound: "calm",
   });

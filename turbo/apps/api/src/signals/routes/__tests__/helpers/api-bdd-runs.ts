@@ -325,7 +325,7 @@ export function createRunsApi(context: TestContext) {
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
       const tier = options.tier ?? "pro";
 
-      await createBddApi(context).bootstrapOnboarding(actor, {
+      await createBddApi(context).bootstrapLimitedFreeOnboarding(actor, {
         displayName: "BDD Entitled Agent",
       });
 

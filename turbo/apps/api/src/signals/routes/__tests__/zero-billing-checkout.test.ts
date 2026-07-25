@@ -112,7 +112,7 @@ async function readBillingStatus(
 
 async function createOnboardingPaymentPendingOrg(): Promise<BillingOrgFixture> {
   const fixture = createOrgFixture();
-  await createBddApi(context).bootstrapOnboarding(
+  await createBddApi(context).bootstrapLimitedFreeOnboarding(
     {
       ...fixture,
       orgRole: "org:admin",

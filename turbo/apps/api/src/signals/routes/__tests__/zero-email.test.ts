@@ -59,7 +59,7 @@ async function emailOrg(): Promise<EmailOrgFixture> {
   runs.acceptStorageDownloads();
   runs.acceptTelemetryIngest();
 
-  await bdd.bootstrapOnboarding(actor, {
+  await bdd.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "BDD Email Agent",
   });
   await runs.grantProEntitlement(actor);

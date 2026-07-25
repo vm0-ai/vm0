@@ -255,7 +255,7 @@ export function createBddApi(context: TestContext) {
       );
     },
 
-    async bootstrapOnboarding(
+    async bootstrapLimitedFreeOnboarding(
       nextUser: ApiTestUser,
       options: OnboardingBootstrapOptions,
     ): Promise<string> {

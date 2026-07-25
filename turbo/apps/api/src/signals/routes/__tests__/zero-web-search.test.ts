@@ -105,7 +105,7 @@ async function rawWebSearchRequest(
 }
 
 async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
-  await createBddApi(context).bootstrapOnboarding(actor, {
+  await createBddApi(context).bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Zero Web Search Test",
   });
 }

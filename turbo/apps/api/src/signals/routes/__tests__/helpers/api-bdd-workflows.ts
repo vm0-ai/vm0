@@ -141,7 +141,7 @@ export function createWorkflowsBddApi(context: TestContext) {
     }> {
       const actor = bdd.user();
       if (options.timezone) {
-        await bdd.bootstrapOnboarding(actor, {
+        await bdd.bootstrapLimitedFreeOnboarding(actor, {
           displayName: "Workflow BDD Owner",
           timezone: options.timezone,
         });

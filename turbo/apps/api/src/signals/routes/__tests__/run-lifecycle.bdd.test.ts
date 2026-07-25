@@ -3661,7 +3661,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     bdd.acceptAgentStorageWrites();
     api.configureRunnerGroup();
 
-    await bdd.bootstrapOnboarding(actor, {
+    await bdd.bootstrapLimitedFreeOnboarding(actor, {
       displayName: "BDD Suspended Agent",
     });
     if (!actor.orgId) {
@@ -4519,7 +4519,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       supportByok: true,
       restrictedVm0Models: false,
     });
-    await bdd.bootstrapOnboarding(actor, {
+    await bdd.bootstrapLimitedFreeOnboarding(actor, {
       displayName: "BDD staff entitlement admission",
     });
     await upsertOrgPlanEntitlementFixture({
@@ -7811,7 +7811,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     api.acceptTelemetryIngest();
     const runnerGroup = api.configureRunnerGroup();
 
-    await bdd.bootstrapOnboarding(actor, {
+    await bdd.bootstrapLimitedFreeOnboarding(actor, {
       displayName: "BDD Context Agent",
       timezone: "America/Los_Angeles",
     });
@@ -8090,7 +8090,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       supportByok: true,
       restrictedVm0Models: false,
     });
-    await bdd.bootstrapOnboarding(actor, {
+    await bdd.bootstrapLimitedFreeOnboarding(actor, {
       displayName: "BDD people search staff",
     });
     await seedOrgMetadata({
