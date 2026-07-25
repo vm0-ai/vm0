@@ -7988,7 +7988,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ]) {
       expect(appendSystemPrompt).toContain(toolHint);
     }
-    expect(appendSystemPrompt).not.toContain("zero upgrade pro");
+    expect(appendSystemPrompt).toContain("zero upgrade pro");
     for (const otherIntegrationHint of [
       "zero slack download-file -h",
       "zero github download-file -h",
@@ -8003,7 +8003,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.PlanUpgradeGuidance]: false,
+      [FeatureSwitchKey.PlanUpgradeGuidance]: true,
       [FeatureSwitchKey.ZeroFinance]: true,
     });
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
