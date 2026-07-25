@@ -905,267 +905,242 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
-async function expectMigrationConstraintRejected(
-  client: Client,
-  args: {
-    readonly constraintName: string;
-    readonly migrationIndex: number;
-  },
+async function validateConnectorCatalogFinalConstraints(
+  dbUrl: string,
 ): Promise<void> {
-  await client.query("BEGIN");
-  try {
-    await applyMigrationsUpTo(client, args.migrationIndex);
-  } catch (error) {
-    assert.equal(databaseErrorCode(error), "23514");
-    assert.ok(error instanceof Error);
-    assert.ok(error.message.includes(args.constraintName));
-    await client.query("ROLLBACK");
-    return;
-  }
-  await client.query("ROLLBACK");
-  throw new Error(`Expected migration to reject ${args.constraintName}`);
-}
-
-async function validateConnectorCatalogRolloutGuardContraction(): Promise<void> {
   console.log(
-    "=== Phase 1.6: Validate connector catalog rollout guard contraction ===\n",
+    "=== Phase 2.6: Validate final connector catalog constraints ===\n",
   );
-  const testDb = "migration_connector_catalog_guard_contraction_test";
-  const dbUrl = createTestDbUrl(testDb);
   const attemptConstraint =
     "connector_catalog_sync_state_attempt_cache_reuse_complete";
+  const candidateConstraint =
+    "connector_catalog_sync_state_rejected_candidate_complete";
   const authorityConstraint =
     "connector_catalog_sync_state_rejection_authority_complete";
 
-  await createDatabase(testDb);
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
   try {
-    await runMigrationsUpTo(dbUrl, 681);
-    const client = new Client({ connectionString: dbUrl });
-    await client.connect();
-    try {
-      await client.query(`
+    await client.query(`
+      INSERT INTO "connector_catalog_sync_state" (
+        "source_id",
+        "schema_version",
+        "last_attempt_at",
+        "last_attempt_outcome",
+        "last_attempt_reused_cached_rejection",
+        "last_failure_code",
+        "last_rejected_catalog_version",
+        "last_rejected_catalog_key",
+        "last_rejected_catalog_digest",
+        "last_rejected_pointer_etag",
+        "last_rejected_failure_code",
+        "last_rejected_backend_version",
+        "last_rejected_build_commit_sha"
+      )
+      VALUES
+        (
+          'migration-final-catalog-accepted',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          FALSE,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL
+        ),
+        (
+          'migration-final-catalog-rejected',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          TRUE,
+          'invalid-artifact',
+          '2026-07-25.1',
+          'connectors/v1/releases/2026-07-25.1/catalog.json',
+          'sha256:${"b".repeat(64)}',
+          '"final-authority-etag"',
+          'invalid-artifact',
+          '1.319.0',
+          '${"a".repeat(40)}'
+        )
+    `);
+    const validRows = await client.query<{ source_id: string }>(`
+      SELECT "source_id"
+      FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+      ORDER BY "source_id"
+    `);
+    assert.deepEqual(
+      validRows.rows.map((row) => {
+        return row.source_id;
+      }),
+      ["migration-final-catalog-accepted", "migration-final-catalog-rejected"],
+    );
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_attempt_reused_cached_rejection")
+        VALUES ('invalid-provenance-without-attempt', 1, FALSE)
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
         INSERT INTO "connector_catalog_sync_state" (
           "source_id",
           "schema_version",
-          "revision",
           "last_attempt_at",
           "last_attempt_outcome",
-          "last_attempt_metadata_revision",
-          "last_attempt_reused_cached_rejection",
-          "last_failure_code",
+          "last_failure_code"
+        )
+        VALUES (
+          'invalid-missing-attempt-provenance',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          'source-unavailable'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_attempt_at",
+          "last_attempt_outcome",
+          "last_attempt_reused_cached_rejection"
+        )
+        VALUES (
+          'invalid-reused-accepted-attempt',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          TRUE
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: candidateConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_catalog_version",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-partial-rejected-candidate',
+          1,
+          '2026-07-25.2',
+          'invalid-artifact',
+          '1.319.0'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
           "last_rejected_catalog_version",
           "last_rejected_catalog_key",
           "last_rejected_catalog_digest",
+          "last_rejected_failure_code"
+        )
+        VALUES (
+          'invalid-candidate-without-authority',
+          1,
+          '2026-07-25.3',
+          'connectors/v1/releases/2026-07-25.3/catalog.json',
+          'sha256:${"c".repeat(64)}',
+          'invalid-artifact'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_rejected_backend_version")
+        VALUES ('invalid-authority-without-candidate', 1, '1.319.0')
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_pointer_etag",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-rejection-backend-version',
+          1,
+          '"invalid-version-etag"',
+          'invalid-pointer',
+          '1.319.0-rc.1'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
           "last_rejected_pointer_etag",
           "last_rejected_failure_code",
           "last_rejected_backend_version",
-          "last_rejected_candidate_fingerprint"
+          "last_rejected_build_commit_sha"
         )
-        VALUES
-          (
-            'valid-stale-attempt-rollout',
-            1,
-            5,
-            '2026-07-25 00:00:00',
-            'accepted',
-            1,
-            FALSE,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL
-          ),
-          (
-            'valid-stale-authority-rollout',
-            1,
-            3,
-            '2026-07-25 00:00:00',
-            'rejected',
-            2,
-            TRUE,
-            'invalid-artifact',
-            '2026-07-25.1',
-            'connectors/v1/releases/2026-07-25.1/catalog.json',
-            'sha256:${"b".repeat(64)}',
-            '"valid-stale-authority-etag"',
-            'invalid-artifact',
-            '1.319.0',
-            'sha256:${"a".repeat(64)}'
-          ),
-          (
-            'invalid-provenance-without-attempt',
-            1,
-            1,
-            NULL,
-            NULL,
-            1,
-            FALSE,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL
-          ),
-          (
-            'invalid-missing-attempt-provenance',
-            1,
-            1,
-            '2026-07-25 00:00:00',
-            'rejected',
-            NULL,
-            NULL,
-            'source-unavailable',
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL
-          ),
-          (
-            'invalid-reused-accepted-attempt',
-            1,
-            1,
-            '2026-07-25 00:00:00',
-            'accepted',
-            1,
-            TRUE,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL
-          ),
-          (
-            'invalid-candidate-without-authority',
-            1,
-            1,
-            '2026-07-25 00:00:00',
-            'rejected',
-            1,
-            FALSE,
-            'invalid-artifact',
-            '2026-07-25.2',
-            'connectors/v1/releases/2026-07-25.2/catalog.json',
-            'sha256:${"c".repeat(64)}',
-            '"missing-authority-etag"',
-            'invalid-artifact',
-            NULL,
-            NULL
-          ),
-          (
-            'invalid-authority-without-candidate',
-            1,
-            1,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            '1.319.0',
-            'sha256:${"d".repeat(64)}'
-          )
-      `);
+        VALUES (
+          'invalid-rejection-build-commit',
+          1,
+          '"invalid-build-etag"',
+          'invalid-pointer',
+          '1.319.0',
+          '${"d".repeat(39)}'
+        )
+      `,
+    });
 
-      await expectMigrationConstraintRejected(client, {
-        constraintName: attemptConstraint,
-        migrationIndex: 682,
-      });
-      await client.query(
-        `DELETE FROM "connector_catalog_sync_state" WHERE "source_id" = 'invalid-provenance-without-attempt'`,
-      );
-
-      await expectMigrationConstraintRejected(client, {
-        constraintName: attemptConstraint,
-        migrationIndex: 682,
-      });
-      await client.query(
-        `DELETE FROM "connector_catalog_sync_state" WHERE "source_id" = 'invalid-missing-attempt-provenance'`,
-      );
-
-      await expectMigrationConstraintRejected(client, {
-        constraintName: attemptConstraint,
-        migrationIndex: 682,
-      });
-      await client.query(
-        `DELETE FROM "connector_catalog_sync_state" WHERE "source_id" = 'invalid-reused-accepted-attempt'`,
-      );
-
-      await expectMigrationConstraintRejected(client, {
-        constraintName: authorityConstraint,
-        migrationIndex: 682,
-      });
-      await client.query(
-        `DELETE FROM "connector_catalog_sync_state" WHERE "source_id" = 'invalid-candidate-without-authority'`,
-      );
-
-      await expectMigrationConstraintRejected(client, {
-        constraintName: authorityConstraint,
-        migrationIndex: 682,
-      });
-      await client.query(
-        `DELETE FROM "connector_catalog_sync_state" WHERE "source_id" = 'invalid-authority-without-candidate'`,
-      );
-
-      await applyMigrationsUpTo(client, 682);
-
-      const retainedColumns = await client.query<{ column_name: string }>(`
-        SELECT "column_name"
-        FROM "information_schema"."columns"
-        WHERE "table_schema" = 'public'
-          AND "table_name" = 'connector_catalog_sync_state'
-          AND "column_name" IN (
-            'last_attempt_metadata_revision',
-            'last_rejected_candidate_fingerprint'
-          )
-        ORDER BY "column_name"
-      `);
-      assert.deepEqual(
-        retainedColumns.rows.map((row) => {
-          return row.column_name;
-        }),
-        [
-          "last_attempt_metadata_revision",
-          "last_rejected_candidate_fingerprint",
-        ],
-      );
-
-      const migratedRows = await client.query<{ source_id: string }>(`
-        SELECT "source_id"
-        FROM "connector_catalog_sync_state"
-        ORDER BY "source_id"
-      `);
-      assert.deepEqual(
-        migratedRows.rows.map((row) => {
-          return row.source_id;
-        }),
-        ["valid-stale-attempt-rollout", "valid-stale-authority-rollout"],
-      );
-    } finally {
-      await client.end();
-    }
+    await client.query(`
+      DELETE FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+    `);
   } finally {
-    await dropDatabase(testDb);
+    await client.end();
   }
 
   console.log(
-    "   ✅ Final catalog constraints reject ambiguous rows and ignore retained rollout fields\n",
+    "   ✅ Final connector catalog constraints accept complete state and reject ambiguous state\n",
   );
 }
 
@@ -3522,7 +3497,6 @@ async function main(): Promise<void> {
 
     await validateConnectorCredentialOwnershipBackfill();
     await validateConnectorCredentialOwnershipContraction();
-    await validateConnectorCatalogRolloutGuardContraction();
 
     await validateStorageArchiveSizeFinalization();
     await validateLegacyMemoryCleanup();
@@ -3542,6 +3516,7 @@ async function main(): Promise<void> {
     console.log("   ✅ Migrations applied successfully\n");
 
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
+    await validateConnectorCatalogFinalConstraints(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -3570,6 +3545,9 @@ async function main(): Promise<void> {
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
       console.log("   ✅ Chat event source tables reject UPDATE");
+      console.log(
+        "   ✅ Final connector catalog constraints reject invalid state",
+      );
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 
