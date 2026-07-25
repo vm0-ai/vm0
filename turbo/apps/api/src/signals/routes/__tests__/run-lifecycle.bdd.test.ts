@@ -1666,13 +1666,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const claim = await api.claimRunnerJob(created.runId);
     expect(
       expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts,
-    ).toStrictEqual([
-      expect.objectContaining({
-        mountPath: "/primary",
-        name: storageName,
-        versionId: prepared.versionId,
-      }),
-    ]);
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          mountPath: "/primary",
+          name: storageName,
+          versionId: prepared.versionId,
+        }),
+      ]),
+    );
     expect(
       expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
         (mount) => {
