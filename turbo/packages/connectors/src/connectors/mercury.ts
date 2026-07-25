@@ -25,7 +25,7 @@ export const mercury = {
         },
         grant: {
           kind: "auth-code",
-          scopes: ["openid", "read", "offline_access"],
+          scopes: ["offline_access"],
           outputs: {
             accessToken: "$secrets.MERCURY_ACCESS_TOKEN",
             refreshToken: "$secrets.MERCURY_REFRESH_TOKEN",

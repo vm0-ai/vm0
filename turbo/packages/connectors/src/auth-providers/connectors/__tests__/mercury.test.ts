@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("connector/providers/mercury", () => {
   describe("buildMercuryAuthorizationUrl", () => {
-    it("builds a production URL requesting every granted scope", () => {
+    it("builds a production URL requesting every configured scope", () => {
       const url = buildMercuryAuthorizationUrl(
         authCodeGrant(),
         "test-client-id",
@@ -45,7 +45,8 @@ describe("connector/providers/mercury", () => {
       );
       expect(url).toContain("response_type=code");
       expect(url).toContain("state=test-state");
-      expect(url).toContain("scope=openid+read+offline_access");
+      const scope = new URL(url).searchParams.get("scope");
+      expect(scope?.split(" ")).toEqual([...authCodeGrant().scopes]);
     });
 
     it("builds a sandbox URL when MERCURY_OAUTH_ENVIRONMENT is sandbox", () => {
