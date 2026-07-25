@@ -327,15 +327,9 @@ function activityTimeWindowPredicate(p: UsageInsightSqlParams) {
 }
 
 function usageRowTokenExpr() {
-  const modelTokenCondition = and(
-    eq(usageEvent.kind, MODEL_USAGE_KIND),
-    inArray(usageEvent.category, MODEL_TOKEN_CATEGORIES),
-  );
-  if (!modelTokenCondition) {
-    throw new Error("Expected model token condition");
-  }
   return sql`CASE
-    WHEN ${modelTokenCondition}
+    WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)}
+      AND ${inArray(usageEvent.category, MODEL_TOKEN_CATEGORIES)}
     THEN ${usageEvent.quantity}
     ELSE 0
   END::bigint`.mapWith(pgInt8ToSafeIntegerDecoder);
