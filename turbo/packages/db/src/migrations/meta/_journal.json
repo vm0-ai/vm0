@@ -4733,6 +4733,20 @@
       "when": 1784950319642,
       "tag": "0675_add_model_usage_observation_compatibility_view",
       "breakpoints": true
+    },
+    {
+      "idx": 676,
+      "version": "7",
+      "when": 1784952193801,
+      "tag": "0676_browser_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 677,
+      "version": "7",
+      "when": 1784952208850,
+      "tag": "0677_browser_usage_pricing",
+      "breakpoints": true
     }
   ]
 }
