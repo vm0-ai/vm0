@@ -149,18 +149,6 @@ export const zeroIntegrationsTelegramContract = c.router({
     },
     summary: "List Telegram bot integrations in the authenticated user's org",
   },
-  getBot: {
-    method: "GET",
-    path: "/api/integrations/telegram/:botId",
-    headers: authHeadersSchema,
-    pathParams: z.object({ botId: z.string().min(1) }),
-    responses: {
-      200: telegramBotStatusSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get Telegram bot integration status",
-  },
   updateBot: {
     method: "PATCH",
     path: "/api/integrations/telegram/:botId",

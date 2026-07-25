@@ -130,7 +130,6 @@ export const zeroRunsCancelContract = c.router({
 
 /**
  * Zero runs queue contract (GET /api/zero/runs/queue)
- * Proxies to runsQueueContract
  */
 export const zeroRunsQueueContract = c.router({
   getQueue: {

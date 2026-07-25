@@ -96,9 +96,8 @@ async function rawScrapeRequest(
 }
 
 async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
-  await createBddApi(context).bootstrapOnboarding(actor, {
-    displayName: "Zero Scrape Test",
-  });
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
 }
 
 async function setActorCredits(

@@ -599,15 +599,18 @@ describe("GET /api/zero/billing/status", () => {
       userId: `user_${randomUUID()}`,
       expiresRecordIds: [],
     };
-    await createBddApi(context).bootstrapOnboarding(
-      {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "org:admin",
-        email: `${fixture.userId}@example.test`,
-      },
-      { displayName: "Billing Status Test Agent" },
-    );
+    const completed = await createBddApi(context).completeOnboarding({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+      email: `${fixture.userId}@example.test`,
+    });
+    expect(completed.status).toBe(200);
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
     await setOnboardingPaymentPendingFixture({
       orgId: fixture.orgId,
       onboardingPaymentPending: true,

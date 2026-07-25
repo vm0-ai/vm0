@@ -100,9 +100,8 @@ describe("zero finance routes", () => {
     if (!actor.orgId) {
       throw new Error("Zero Finance test actor must belong to an organization");
     }
-    await createBddApi(context).bootstrapOnboarding(actor, {
-      displayName: "Zero Finance Test",
-    });
+    const completed = await createBddApi(context).completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",

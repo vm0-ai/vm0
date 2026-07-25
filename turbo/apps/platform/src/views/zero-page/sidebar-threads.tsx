@@ -201,15 +201,17 @@ function getIndicatorState({
   return hasDraft ? "draft" : null;
 }
 
+// Deliberately no `equalityFn`: an inline one closes over `threadId`, so it gets
+// a fresh identity every render. `useLastResolved` treats it as a subscription
+// dependency, which makes every render resubscribe and re-report a settled
+// rejection, spinning the row into an infinite render loop. The default
+// referential check keeps the subscription stable; the cost is that all rows
+// re-render when the set is refetched, which is cheap for a sidebar list.
 function useThreadMembership(
   threadIds$: Computed<Promise<ReadonlySet<string>>>,
   threadId: string,
 ): boolean {
-  const threadIds = useLastResolved(threadIds$, {
-    equalityFn(previous, next) {
-      return previous.has(threadId) === next.has(threadId);
-    },
-  });
+  const threadIds = useLastResolved(threadIds$);
   return threadIds?.has(threadId) ?? false;
 }
 

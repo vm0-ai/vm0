@@ -1,10 +1,11 @@
 use crate::error::ProtocolError;
-use crate::payloads::exec_control::{EXEC_CONTROL_NONCE_LEN, ExecControlNonce};
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_i32, read_slice, read_str, read_u8, read_u16, read_u32,
 };
 use crate::wire::EXEC_FLAG_SUDO;
+
+use super::control::{EXEC_CONTROL_NONCE_LEN, ExecControlNonce};
 
 pub(super) const EXEC_OUTPUT_POLICY_DISCARD: u8 = 0x00;
 pub(super) const EXEC_OUTPUT_POLICY_CAPTURE: u8 = 0x01;

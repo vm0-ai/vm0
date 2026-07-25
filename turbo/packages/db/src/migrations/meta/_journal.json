@@ -4737,15 +4737,22 @@
     {
       "idx": 676,
       "version": "7",
-      "when": 1784952193801,
-      "tag": "0676_browser_sessions",
+      "when": 1784955986223,
+      "tag": "0676_drop_model_usage_observation_compatibility_view",
       "breakpoints": true
     },
     {
       "idx": 677,
       "version": "7",
-      "when": 1784952208850,
-      "tag": "0677_browser_usage_pricing",
+      "when": 1784961476844,
+      "tag": "0677_browser_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 678,
+      "version": "7",
+      "when": 1784961486213,
+      "tag": "0678_browser_usage_pricing",
       "breakpoints": true
     }
   ]

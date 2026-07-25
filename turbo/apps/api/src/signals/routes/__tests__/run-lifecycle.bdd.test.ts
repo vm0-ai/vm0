@@ -3661,9 +3661,8 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     bdd.acceptAgentStorageWrites();
     api.configureRunnerGroup();
 
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD Suspended Agent",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     if (!actor.orgId) {
       throw new Error("Expected suspended run actor to have an org");
     }
@@ -4519,9 +4518,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       supportByok: true,
       restrictedVm0Models: false,
     });
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD staff entitlement admission",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     await upsertOrgPlanEntitlementFixture({
       orgId: STAFF_ORG_ID,
       status: "active",
@@ -7811,10 +7809,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     api.acceptTelemetryIngest();
     const runnerGroup = api.configureRunnerGroup();
 
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD Context Agent",
-      timezone: "America/Los_Angeles",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
+    await bdd.updateUserTimezone(actor, "America/Los_Angeles");
     // Reading the current user caches the Clerk name/email used by the
     // run context's user-info section.
     await bdd.readMe(actor);
@@ -8090,9 +8087,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       supportByok: true,
       restrictedVm0Models: false,
     });
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD people search staff",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     await seedOrgMetadata({
       orgId: STAFF_ORG_ID,
       tier: "limited-free-1",

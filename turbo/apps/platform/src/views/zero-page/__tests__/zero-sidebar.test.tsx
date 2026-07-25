@@ -468,6 +468,47 @@ describe("zero sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps the sidebar responsive when a draft membership request rejects", async () => {
+    prepareDefaultAgent();
+    const draftResponse = context.mocks.deferred<void>();
+    let draftRequests = 0;
+    let draftResponseSent = false;
+
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+    context.mocks.api(chatThreadsContract.drafts, async ({ respond }) => {
+      draftRequests += 1;
+      await draftResponse.promise;
+      draftResponseSent = true;
+      return respond(401, {
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Draft membership unavailable",
+        },
+      });
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(draftRequests).toBe(1);
+      expect(
+        within(sidebar()).getByText("Existing conversation"),
+      ).toBeInTheDocument();
+    });
+
+    draftResponse.resolve();
+    await waitFor(() => {
+      expect(draftResponseSent).toBeTruthy();
+      expect(
+        within(sidebar()).getByText("Existing conversation"),
+      ).toBeInTheDocument();
+    });
+    openChatListMenu();
+    expect(menuItemByText("New chat")).toBeInTheDocument();
+  });
+
   it("preserves server thread order while creating an optimistic new chat", async () => {
     prepareDefaultAgent();
     const createDeferred = context.mocks.deferred<void>();

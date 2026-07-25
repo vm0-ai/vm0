@@ -95,9 +95,8 @@ async function rawPeopleSearchRequest(
 }
 
 async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
-  await createBddApi(context).bootstrapOnboarding(actor, {
-    displayName: "Zero People Search Test",
-  });
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
 }
 
 async function setActorCredits(

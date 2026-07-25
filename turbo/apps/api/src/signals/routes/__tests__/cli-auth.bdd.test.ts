@@ -63,31 +63,6 @@ function expectCliApprovalError(
   }
 }
 
-interface MembershipDirectoryEntry {
-  readonly orgId: string;
-  readonly role: "org:admin" | "org:member";
-}
-
-function mockMembershipDirectory(
-  userId: string,
-  entries: readonly MembershipDirectoryEntry[],
-): void {
-  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
-    data: entries.map((entry, index) => {
-      return {
-        role: entry.role,
-        organization: {
-          id: entry.orgId,
-          slug: entry.orgId.toLowerCase(),
-          name: `BDD CLI Auth Org ${index}`,
-        },
-        publicUserData: { userId },
-        createdAt: Date.parse("2026-01-01T00:00:00.000Z") + index,
-      };
-    }),
-  });
-}
-
 async function issueDevicePat(
   actor: ReturnType<typeof bdd.user>,
 ): Promise<{ readonly accessToken: string }> {
@@ -267,126 +242,6 @@ describe("AUTH-02: approve credential-type boundaries", () => {
   });
 });
 
-describe("AUTH-02: CLI org switch", () => {
-  it("switches orgs by slug with cache refresh, membership checks, and error remaps", async () => {
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Expected actor with an active organization");
-    }
-    const sourceOrgId = actor.orgId;
-    const pat = await issueDevicePat(actor);
-
-    const unauthenticated = await authDevice.requestOrgSwitch(
-      null,
-      { slug: "some-org" },
-      [401],
-    );
-    expectApiError(unauthenticated.body);
-    expect(unauthenticated.body).toStrictEqual({
-      error: { message: "Authentication required", code: "unauthorized" },
-    });
-
-    authDevice.seedClerkDirectory(actor);
-    const missingSlug = await authDevice.requestOrgSwitchRaw(
-      pat.accessToken,
-      JSON.stringify({}),
-    );
-    expect(missingSlug.status).toBe(400);
-    expectOAuthError(missingSlug.body);
-    expect(missingSlug.body.error).toBe("invalid_request");
-
-    const emptySlug = await authDevice.requestOrgSwitch(
-      pat.accessToken,
-      { slug: "" },
-      [400],
-    );
-    expectOAuthError(emptySlug.body);
-    expect(emptySlug.body.error).toBe("invalid_request");
-
-    context.mocks.clerk.organizations.getOrganization.mockRejectedValue({
-      statusCode: 404,
-    });
-    const unknownSlug = await authDevice.requestOrgSwitch(
-      pat.accessToken,
-      { slug: "missing-bdd-org" },
-      [404],
-    );
-    expectApiError(unknownSlug.body);
-    expect(unknownSlug.body.error.code).toBe("not_found");
-
-    const targetOrgId = `org_bdd_target_${actor.userId.slice(-12)}`;
-    const targetSlug = targetOrgId.toLowerCase();
-    context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
-      id: targetOrgId,
-      slug: targetSlug,
-      name: "BDD Target Org",
-      createdBy: actor.userId,
-    });
-    mockMembershipDirectory(actor.userId, [
-      { orgId: sourceOrgId, role: "org:admin" },
-      { orgId: targetOrgId, role: "org:member" },
-    ]);
-
-    const switched = await authDevice.requestOrgSwitch(
-      pat.accessToken,
-      { slug: targetSlug },
-      [200],
-    );
-    if (switched.status !== 200) {
-      throw new Error(`Expected org switch to succeed, got ${switched.status}`);
-    }
-    expect(switched.body.access_token).toMatch(/^vm0_pat_/);
-    expect(switched.body.token_type).toBe("Bearer");
-    expect(switched.body.expires_in).toBe(90 * 24 * 60 * 60);
-
-    const me = await authDevice.readMeWithBearer(
-      switched.body.access_token,
-      actor,
-      [200],
-    );
-    expect(me.body).toStrictEqual({
-      userId: actor.userId,
-      email: actor.email,
-    });
-
-    const cachedSwitch = await authDevice.requestOrgSwitch(
-      pat.accessToken,
-      { slug: targetSlug },
-      [200],
-    );
-    if (cachedSwitch.status !== 200) {
-      throw new Error(
-        `Expected cached org switch to succeed, got ${cachedSwitch.status}`,
-      );
-    }
-    expect(cachedSwitch.body.access_token).toMatch(/^vm0_pat_/);
-    expect(
-      context.mocks.clerk.organizations.getOrganization,
-    ).toHaveBeenCalledTimes(2);
-
-    const foreignOrgId = `org_bdd_foreign_${actor.userId.slice(-12)}`;
-    context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
-      id: foreignOrgId,
-      slug: foreignOrgId.toLowerCase(),
-      name: "BDD Foreign Org",
-    });
-    mockMembershipDirectory(actor.userId, [
-      { orgId: sourceOrgId, role: "org:admin" },
-    ]);
-
-    const notMember = await authDevice.requestOrgSwitch(
-      pat.accessToken,
-      { slug: foreignOrgId.toLowerCase() },
-      [403],
-    );
-    expectApiError(notMember.body);
-    expect(notMember.body.error).toStrictEqual({
-      message: "Not a member of this organization",
-      code: "forbidden",
-    });
-  });
-});
-
 describe("CLI-TEST: test-token gating", () => {
   it("hides test-token outside development without a valid preview bypass", async () => {
     mockEnv("ENV", "production");
@@ -430,7 +285,7 @@ describe("CLI-TEST: test-token gating", () => {
 });
 
 describe("CLI-TEST: test-token provisioning", () => {
-  it("provisions a pro test org whose pat works against me, billing, and org switch", async () => {
+  it("provisions a pro test org whose pat works against me and billing", async () => {
     const actor = bdd.user();
     if (!actor.orgId) {
       throw new Error("Expected actor with an active organization");
@@ -464,18 +319,6 @@ describe("CLI-TEST: test-token provisioning", () => {
     const billing = await authDevice.readBillingStatus(actor);
     expect(billing.tier).toBe("pro");
     expect(billing.credits).toBe(100_000);
-
-    const switched = await authDevice.requestOrgSwitch(
-      issued.body.access_token,
-      { slug: actor.orgId.toLowerCase() },
-      [200],
-    );
-    if (switched.status !== 200) {
-      throw new Error(
-        `Expected org switch with seeded caches, got ${switched.status}`,
-      );
-    }
-    expect(switched.body.access_token).toMatch(/^vm0_pat_/);
 
     const reIssued = await authDevice.requestTestToken({}, [200]);
     if (reIssued.status !== 200) {

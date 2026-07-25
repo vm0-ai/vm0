@@ -3,7 +3,7 @@ use super::env::MockRunEnv;
 use std::future::Future;
 
 use crate::idle_pool::ParkingState;
-use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -217,12 +217,12 @@ pub(in super::super) async fn wait_parking_state(
 }
 
 pub(in super::super) async fn wait_cancel_handle(
-    tokens: &SharedRunCancellationMap,
+    tokens: &RunCancellationRegistry,
     run_id: RunId,
     timeout: Duration,
 ) -> RunCancellationHandle {
     wait_for_probe(timeout, || async {
-        let handle = tokens.lock().await.get(&run_id).cloned();
+        let handle = tokens.handle(run_id).await;
         if let Some(handle) = handle {
             WaitProbe::Ready(handle)
         } else {
@@ -235,7 +235,7 @@ pub(in super::super) async fn wait_cancel_handle(
 }
 
 pub(in super::super) async fn wait_cancel_token(
-    tokens: &SharedRunCancellationMap,
+    tokens: &RunCancellationRegistry,
     run_id: RunId,
     timeout: Duration,
 ) -> CancellationToken {
@@ -243,12 +243,12 @@ pub(in super::super) async fn wait_cancel_token(
 }
 
 pub(in super::super) async fn wait_cancel_token_removed(
-    tokens: &SharedRunCancellationMap,
+    tokens: &RunCancellationRegistry,
     run_id: RunId,
     timeout: Duration,
 ) {
     wait_for_probe(timeout, || async {
-        let present = tokens.lock().await.contains_key(&run_id);
+        let present = tokens.contains(run_id).await;
         if present {
             WaitProbe::Pending(format!(
                 "cancel token for {run_id} still present after {timeout:?}",
