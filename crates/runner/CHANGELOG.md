@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.3...runner-rs-v0.148.4) (2026-07-25)
+
+
+### Refactoring
+
+* **storage:** require canonical runner claim manifests ([#23059](https://github.com/vm0-ai/vm0/issues/23059)) ([2c8b7d3](https://github.com/vm0-ai/vm0/commit/2c8b7d3cfe190c762cd7d6559d057fa6d189b092))
+
 ## [0.148.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.2...runner-rs-v0.148.3) (2026-07-25)
 
 

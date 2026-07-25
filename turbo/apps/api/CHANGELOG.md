@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.323.1](https://github.com/vm0-ai/vm0/compare/api-v1.323.0...api-v1.323.1) (2026-07-25)
+
+
+### Refactoring
+
+* **storage:** require canonical runner claim manifests ([#23059](https://github.com/vm0-ai/vm0/issues/23059)) ([2c8b7d3](https://github.com/vm0-ai/vm0/commit/2c8b7d3cfe190c762cd7d6559d057fa6d189b092))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.1
+    * @vm0/core bumped to 8.467.2
+    * @vm0/db bumped to 1.141.1
+
 ## [1.323.0](https://github.com/vm0-ai/vm0/compare/api-v1.322.2...api-v1.323.0) (2026-07-25)
 
 
