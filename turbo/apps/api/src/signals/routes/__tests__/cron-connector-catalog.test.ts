@@ -84,6 +84,8 @@ const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const ACTIVE_KEY = "connectors/v1/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
+const DIAGNOSTICS_USER_ID = `user_${randomUUID()}`;
+const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -1301,6 +1303,10 @@ function cronClient() {
   return setupApp({ context })(cronConnectorCatalogContract);
 }
 
+function diagnosticsClient() {
+  return setupApp({ context })(zeroConnectorCatalogContract);
+}
+
 function runnerFirewallClient() {
   return setupApp({ context })(runnersBuiltinFirewallsResolveContract);
 }
@@ -1375,8 +1381,34 @@ async function syncCatalog() {
   return await accept(cronClient().sync({ headers: cronHeaders() }), [200]);
 }
 
+async function enableDiagnosticsFeatureSwitch(): Promise<void> {
+  zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
+  await accept(
+    setupApp({ context })(zeroFeatureSwitchesContract).update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
+    }),
+    [200],
+  );
+  onTestFinished(async () => {
+    zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
+    await accept(
+      setupApp({ context })(zeroFeatureSwitchesContract).delete({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+  });
+}
+
 async function readStatus() {
-  return await accept(cronClient().status({ headers: cronHeaders() }), [200]);
+  await enableDiagnosticsFeatureSwitch();
+  return await accept(
+    diagnosticsClient().diagnostics({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
 }
 
 async function rawCronRequest(path: string): Promise<Response> {
@@ -1412,23 +1444,17 @@ afterEach(() => {
 });
 
 describe("connector catalog cron authentication and initial state", () => {
-  it("rejects missing and invalid cron credentials for both operations", async () => {
-    for (const operation of [cronClient().sync, cronClient().status]) {
-      const response = await accept(
-        operation({ headers: cronHeaders("wrong-secret") }),
-        [401],
-      );
-      expect(response.body).toStrictEqual({
-        error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-      });
-    }
-    for (const path of [
-      "/api/cron/sync-connector-catalog",
-      "/api/cron/connector-catalog-status",
-    ]) {
-      const response = await rawCronRequest(path);
-      expect(response.status).toBe(401);
-    }
+  it("rejects missing and invalid cron credentials", async () => {
+    const response = await accept(
+      cronClient().sync({ headers: cronHeaders("wrong-secret") }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+
+    const missing = await rawCronRequest("/api/cron/sync-connector-catalog");
+    expect(missing.status).toBe(401);
   });
 
   it("reports never-synced without reading the shared storage bucket", async () => {

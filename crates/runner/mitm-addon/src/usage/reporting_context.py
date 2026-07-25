@@ -6,7 +6,7 @@ import flow_metadata
 from platform_api import get_api_url
 
 USAGE_EVENT_WEBHOOK_PATH = "/api/webhooks/agent/usage-event"
-MODEL_USAGE_OBSERVATION_WEBHOOK_PATH = "/api/webhooks/agent/model-usage-observation-v2"
+MODEL_USAGE_OBSERVATION_WEBHOOK_PATH = "/api/webhooks/agent/model-usage-observation"
 
 
 class UsageReportingContext:

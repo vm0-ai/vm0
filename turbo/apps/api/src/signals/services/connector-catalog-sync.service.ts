@@ -1,8 +1,8 @@
 import type {
   ConnectorCatalogSyncFailureCode,
-  ConnectorCatalogSyncResponse,
-  ConnectorCatalogSyncStatus,
-} from "@vm0/api-contracts/contracts/cron";
+  ConnectorCatalogDiagnostics,
+} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import type { ConnectorCatalogSyncResponse } from "@vm0/api-contracts/contracts/cron";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
@@ -54,7 +54,7 @@ import {
 const log = logger("connector-catalog:sync");
 
 type ConnectorCatalogRawSyncStatus = Omit<
-  ConnectorCatalogSyncStatus,
+  ConnectorCatalogDiagnostics,
   "filtering" | "credentialStorage"
 >;
 type ConnectorCatalogRawSyncResponse = Omit<

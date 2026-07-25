@@ -1,3 +1,4 @@
+import type { ConnectorCredentialStorageReadiness } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -7,13 +8,6 @@ import { z } from "zod";
 
 import { zodEnumDriverValueDecoder } from "../../lib/db-structured-result";
 import type { ReadonlyDb } from "../external/db";
-
-interface ConnectorCredentialReadiness {
-  readonly missingConnectorVersions: number;
-  readonly unownedConnectorSecrets: number;
-  readonly unownedConnectorVariables: number;
-  readonly unresolvedBridgeCredentials: number;
-}
 
 const readinessCountKindSchema = z.enum([
   "missing-connector-versions",
@@ -31,7 +25,7 @@ function readinessCountKind(kind: ReadinessCountKind) {
 
 export async function loadConnectorCredentialReadiness(
   db: ReadonlyDb,
-): Promise<ConnectorCredentialReadiness> {
+): Promise<ConnectorCredentialStorageReadiness> {
   // One UNION statement gives every count the same PostgreSQL statement
   // snapshot. The hard constraints make every unowned connector credential an
   // unresolved invariant violation, independent of catalog source selection.

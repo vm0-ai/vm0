@@ -445,7 +445,7 @@ def test_model_observation_v2_404_is_a_permanent_error(
     usage_webhook_server.queue_response(404)
 
     assert usage.webhook.enqueue_webhook_delivery(
-        usage_webhook_server.url("/api/webhooks/agent/model-usage-observation-v2"),
+        usage_webhook_server.url("/api/webhooks/agent/model-usage-observation"),
         "tok",
         {"runId": "run-1", "events": []},
         str(proxy_log),
@@ -455,7 +455,7 @@ def test_model_observation_v2_404_is_a_permanent_error(
     sync_usage_executor.shutdown(wait=True)
 
     assert [request.path for request in usage_webhook_server.requests] == [
-        "/api/webhooks/agent/model-usage-observation-v2"
+        "/api/webhooks/agent/model-usage-observation"
     ]
     entries = [entry for entry in read_jsonl_entries_after_flush(proxy_log) if "attempt" in entry]
     assert len(entries) == 1

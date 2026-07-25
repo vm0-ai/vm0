@@ -2,7 +2,7 @@ import {
   connectorCatalogFilteredAuthMethodsSchema,
   type ConnectorCatalogCompatibilityReason,
   type ConnectorCatalogFilteredAuthMethod,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";

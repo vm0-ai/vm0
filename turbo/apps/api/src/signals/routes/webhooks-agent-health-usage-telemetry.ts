@@ -1,12 +1,13 @@
 import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
+  webhookModelUsageObservationContract,
   webhookModelUsageObservationV2Contract,
   webhookTelemetryContract,
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { compactModelUsageObservation } from "@vm0/db/schema/compact-model-usage-observation";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
@@ -298,10 +299,10 @@ const modelUsageObservationV2$ = command(
 
     if (observationValues.length > 0) {
       await db
-        .insert(compactModelUsageObservation)
+        .insert(modelUsageObservation)
         .values(observationValues)
         .onConflictDoNothing({
-          target: [compactModelUsageObservation.idempotencyKey],
+          target: [modelUsageObservation.idempotencyKey],
         });
     }
     signal.throwIfAborted();
@@ -427,6 +428,10 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookUsageEventContract.send,
     handler: usageEvent$,
+  },
+  {
+    route: webhookModelUsageObservationContract.send,
+    handler: modelUsageObservationV2$,
   },
   {
     route: webhookModelUsageObservationV2Contract.send,

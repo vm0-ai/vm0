@@ -79,8 +79,21 @@ def _shared_base_catalog_firewall(
     name: str,
     token_name: str,
     *,
+    auth: dict[str, object] | None = None,
     permissions: list[dict[str, object]] | None = None,
 ) -> dict:
+    resolved_auth = (
+        {
+            "headers": {
+                "Authorization": f"Bearer ${{{{ secrets.{token_name} }}}}",
+            },
+            "query": {
+                "api_key": f"${{{{ secrets.{token_name} }}}}",
+            },
+        }
+        if auth is None
+        else auth
+    )
     return {
         "name": name,
         "apis": [
@@ -90,14 +103,7 @@ def _shared_base_catalog_firewall(
                     "kind": "providerOwned",
                     "exactHosts": ["shared.example.com"],
                 },
-                "auth": {
-                    "headers": {
-                        "Authorization": f"Bearer ${{{{ secrets.{token_name} }}}}",
-                    },
-                    "query": {
-                        "api_key": f"${{{{ secrets.{token_name} }}}}",
-                    },
-                },
+                "auth": resolved_auth,
                 "permissions": permissions or [],
             }
         ],
@@ -108,6 +114,7 @@ def _write_shared_base_diagnostic_catalog(
     tmp_path,
     *,
     active_permissions: list[dict[str, object]] | None = None,
+    inactive_auth: dict[str, object] | None = None,
     inactive_permissions: list[dict[str, object]] | None = None,
 ) -> None:
     firewalls = {
@@ -119,6 +126,7 @@ def _write_shared_base_diagnostic_catalog(
         "inactive-shared": _shared_base_catalog_firewall(
             "inactive-shared",
             "INACTIVE_TOKEN",
+            auth=inactive_auth,
             permissions=inactive_permissions,
         ),
     }
@@ -253,12 +261,34 @@ async def test_shared_base_active_connector_intent_keeps_active_auth_path(
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
 
 
-async def test_shared_base_unknown_endpoint_with_user_auth_keeps_active_auth_path(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+@pytest.mark.parametrize(
+    ("path", "request_header_pairs"),
+    [
+        ("/inactive", [("X-Inactive-Session", "user-provided")]),
+        ("/inactive?inactive_session=user-provided", []),
+    ],
+    ids=["configured-header", "configured-query"],
+)
+async def test_shared_base_unknown_endpoint_with_configured_auth_keeps_active_auth_path(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    path,
+    request_header_pairs,
 ):
     _write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
+        inactive_auth={
+            "headers": {
+                "X-Inactive-Session": "${{ secrets.INACTIVE_TOKEN }}",
+            },
+            "query": {
+                "inactive_session": "${{ secrets.INACTIVE_TOKEN }}",
+            },
+        },
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
     )
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
@@ -266,11 +296,11 @@ async def test_shared_base_unknown_endpoint_with_user_auth_keeps_active_auth_pat
         with_response=False,
         client_ip="10.200.0.5",
         host="shared.example.com",
-        path="/inactive",
+        path=path,
         request_headers=headers(
             ("Host", "shared.example.com"),
             ("X-VM0-Connector-Intent", "inactive-shared"),
-            ("Authorization", "Bearer user-provided"),
+            *request_header_pairs,
         ),
     )
 
@@ -466,6 +496,69 @@ async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
         request_headers=headers(
             ("Host", "fal.run"),
             ("Authorization", "Key user-provided"),
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    ("path", "request_header_pairs"),
+    [
+        ("/items", [("X-Workspace-Session", "user-provided")]),
+        ("/items?workspace_session=user-provided", []),
+    ],
+    ids=["configured-header", "configured-query"],
+)
+async def test_inactive_connector_url_with_configured_auth_allows_upstream(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    headers,
+    path,
+    request_header_pairs,
+):
+    write_connector_diagnostic_catalog_cache(
+        tmp_path,
+        firewalls={
+            "configured-auth": {
+                "name": "configured-auth",
+                "apis": [
+                    {
+                        "base": "https://configured.example.com",
+                        "hostPolicy": {
+                            "kind": "providerOwned",
+                            "exactHosts": ["configured.example.com"],
+                        },
+                        "auth": {
+                            "headers": {
+                                "X-Workspace-Session": "${{ secrets.WORKSPACE_TOKEN }}",
+                            },
+                            "query": {
+                                "workspace_session": "${{ secrets.WORKSPACE_TOKEN }}",
+                            },
+                        },
+                        "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                    }
+                ],
+            }
+        },
+    )
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="configured.example.com",
+        path=path,
+        request_headers=headers(
+            ("Host", "configured.example.com"),
+            *request_header_pairs,
         ),
     )
 

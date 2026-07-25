@@ -1,4 +1,4 @@
-import type { ConnectorCatalogFilteredAuthMethod } from "@vm0/api-contracts/contracts/cron";
+import type { ConnectorCatalogFilteredAuthMethod } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 
 export type ConnectorCatalogFilteredAuthMethods =
   ConnectorCatalogFilteredAuthMethod[];
