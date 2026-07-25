@@ -284,6 +284,83 @@ async fn write_file_chunked_connection_close_while_waiting_for_writer_returns_co
 }
 
 #[tokio::test]
+async fn write_file_chunked_frame_builder_request_times_out_waiting_for_writer() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let writer_guard = host.shared.writer.lock().await;
+    let (frame_built_tx, frame_built_rx) = oneshot::channel();
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let mut normal_operation = crate::CompositeNormalOperation::reserve(&host.shared).unwrap();
+
+    let err = {
+        let request = crate::request_on_shared_with_composite_operation_and_observer_frame_builder(
+            &host.shared,
+            &[MSG_ERROR, MSG_WRITE_FILE_RESULT],
+            Duration::from_millis(50),
+            &mut normal_operation,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+            move |seq, frame| {
+                vsock_proto::encode_write_file_frame_into(
+                    frame,
+                    seq,
+                    "/tmp/chunked-writer-timeout.txt",
+                    b"hello",
+                    false,
+                    false,
+                )
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+                frame_built_tx.send(()).unwrap();
+                Ok(())
+            },
+        );
+        tokio::pin!(request);
+
+        poll_once_pending(request.as_mut()).await;
+        tokio::time::timeout(Duration::from_secs(5), frame_built_rx)
+            .await
+            .expect("frame should be built before waiting for the writer")
+            .unwrap();
+        assert_eq!(pending_request_count(&host), 1);
+        assert_eq!(
+            normal_operation_readiness(&host),
+            NormalOperationReadiness::Busy
+        );
+
+        tokio::time::timeout(Duration::from_secs(5), request.as_mut())
+            .await
+            .expect("request should respect its writer-lock deadline")
+            .unwrap_err()
+    };
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    drop(normal_operation);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("timed-out writer request must not send later; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after writer timeout: {err}"),
+    }
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn write_file_chunked_rejects_invalid_path_before_cleanup_or_write() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

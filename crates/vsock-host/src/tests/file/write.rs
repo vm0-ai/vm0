@@ -1,8 +1,12 @@
+use std::future::Future;
 use std::io;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::Poll;
 use std::time::Duration;
 
+use nix::sys::socket::{setsockopt, sockopt};
 use tokio::io::AsyncWriteExt;
 use vsock_proto::{
     MSG_ERROR, MSG_EXEC_START, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE_RESULT,
@@ -10,8 +14,8 @@ use vsock_proto::{
 
 use super::super::support::{
     MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
-    make_pair, normal_operation_readiness, pending_request_count, setup_host_and_guest,
-    setup_host_and_mock_guest,
+    is_connected, make_pair, mock_handshake, normal_operation_readiness, pending_request_count,
+    setup_host_and_guest, setup_host_and_mock_guest,
 };
 use super::support::{
     expect_write_file, expect_write_files, send_guest_error, send_write_file_failure,
@@ -23,6 +27,29 @@ use crate::{
     file::test_support::{WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT},
     operation_tracker::NormalOperationReadiness,
 };
+
+const FRAME_BUILDER_REQUEST_TIMEOUT: Duration = Duration::from_millis(50);
+
+async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
+    std::future::poll_fn(|cx| {
+        assert!(
+            future.as_mut().poll(cx).is_pending(),
+            "request future unexpectedly completed"
+        );
+        Poll::Ready(())
+    })
+    .await;
+}
+
+fn encode_test_write_file_frame(
+    seq: u32,
+    frame: &mut Vec<u8>,
+    path: &str,
+    content: &[u8],
+) -> io::Result<()> {
+    vsock_proto::encode_write_file_frame_into(frame, seq, path, content, false, false)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))
+}
 
 #[tokio::test]
 async fn test_write_file() {
@@ -749,6 +776,157 @@ async fn write_file_rejects_protocol_path_too_long_before_waiting_for_writer() {
 
     drop(writer_guard);
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_frame_builder_request_zero_timeout_does_not_send_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let build_count = Arc::new(AtomicUsize::new(0));
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    let err = crate::normal_request_on_shared_with_write_observer_frame_builder(
+        &host.shared,
+        &[MSG_ERROR, MSG_WRITE_FILE_RESULT],
+        Duration::ZERO,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }),
+        {
+            let build_count = Arc::clone(&build_count);
+            move |seq, frame| {
+                build_count.fetch_add(1, Ordering::SeqCst);
+                encode_test_write_file_frame(seq, frame, "/tmp/zero-timeout.txt", b"hello")
+            }
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(build_count.load(Ordering::SeqCst), 0);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert!(is_connected(&host));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("zero-timeout request must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after zero-timeout request: {err}"),
+    }
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_frame_builder_request_times_out_waiting_for_builder() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let frame_builder_guard = host.shared.frame_builder.lock().await;
+    let build_count = Arc::new(AtomicUsize::new(0));
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let request = crate::normal_request_on_shared_with_write_observer_frame_builder(
+        &host.shared,
+        &[MSG_ERROR, MSG_WRITE_FILE_RESULT],
+        FRAME_BUILDER_REQUEST_TIMEOUT,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }),
+        {
+            let build_count = Arc::clone(&build_count);
+            move |seq, frame| {
+                build_count.fetch_add(1, Ordering::SeqCst);
+                encode_test_write_file_frame(seq, frame, "/tmp/builder-timeout.txt", b"hello")
+            }
+        },
+    );
+    tokio::pin!(request);
+
+    poll_once_pending(request.as_mut()).await;
+    assert_eq!(pending_request_count(&host), 1);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let err = tokio::time::timeout(Duration::from_secs(5), request.as_mut())
+        .await
+        .expect("request should respect its builder-lock deadline")
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(build_count.load(Ordering::SeqCst), 0);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert!(is_connected(&host));
+
+    drop(frame_builder_guard);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("timed-out builder request must not send later; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after builder timeout: {err}"),
+    }
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_frame_builder_request_blocked_write_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+    setsockopt(&host_stream, sockopt::SndBuf, &4096usize).unwrap();
+    let host_task = tokio::spawn(async move { host_from_stream(host_stream).await.unwrap() });
+    mock_handshake(&mut guest).await;
+    let host = host_task.await.unwrap();
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = vec![0xAB; 1024 * 1024];
+    let request = crate::normal_request_on_shared_with_write_observer_frame_builder(
+        &host.shared,
+        &[MSG_ERROR, MSG_WRITE_FILE_RESULT],
+        FRAME_BUILDER_REQUEST_TIMEOUT,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }),
+        move |seq, frame| {
+            encode_test_write_file_frame(seq, frame, "/tmp/blocked-write.bin", &content)
+        },
+    );
+    tokio::pin!(request);
+
+    poll_once_pending(request.as_mut()).await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
+
+    let err = tokio::time::timeout(Duration::from_secs(5), request.as_mut())
+        .await
+        .expect("blocked write should respect its request deadline")
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert!(!is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(host.shared.writer.try_lock().is_ok());
+    assert!(host.shared.frame_builder.try_lock().is_ok());
 }
 
 #[tokio::test]
