@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.467.0](https://github.com/vm0-ai/vm0/compare/core-v8.466.3...core-v8.467.0) (2026-07-25)
+
+
+### Features
+
+* **zero:** enable zero browser for staff organizations ([#23050](https://github.com/vm0-ai/vm0/issues/23050)) ([dc028c3](https://github.com/vm0-ai/vm0/commit/dc028c3ad8e9b562658189699f22686bae295597))
+
 ## [8.466.3](https://github.com/vm0-ai/vm0/compare/core-v8.466.2...core-v8.466.3) (2026-07-25)
 
 
