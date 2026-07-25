@@ -495,11 +495,23 @@ async fn connection_closed_before_connected() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
-        let conn = ws.accept_raw().await.unwrap();
-        drop(conn);
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_raw().await.unwrap();
+        conn.close(None).await.unwrap();
+        expect_websocket_close_frame(&mut conn).await.unwrap();
     });
 
     let result = subscribe(test_config(ws_port, http.port(), "ch")).await;
-    assert!(result.is_err());
+    match result {
+        Err(ably_subscriber::Error::Protocol { code, message }) => {
+            assert_eq!(code, error_code::FAILED);
+            assert_eq!(message, "Connection closed before CONNECTED received");
+        }
+        Err(other) => panic!("expected Protocol error, got {other:?}"),
+        Ok(_) => panic!("expected error, got Ok"),
+    }
+
+    join_server_task(server_task, "pre-CONNECTED close server")
+        .await
+        .unwrap();
 }
