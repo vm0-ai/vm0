@@ -37,6 +37,14 @@ const currentChatThreadAgentId$ = computed((get): string | null => {
   return get(chatThreadMetaMap$).get(threadId)?.agentId ?? null;
 });
 
+export const currentChatAgentScope$ = computed((get): string | null => {
+  return (
+    get(currentChatThreadAgentId$) ??
+    get(internalChatAgentId$) ??
+    get(currentAgentId$)
+  );
+});
+
 export const currentChatAgentId$ = computed(
   async (get): Promise<string | null> => {
     return (
