@@ -673,7 +673,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.set_pending_path(str(pending_path))
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation-v2",
+        "https://api.test/api/webhooks/agent/model-usage-observation",
         "token-a",
         "run-1",
         [observation(source_key="observation-source", input_tokens=1)],

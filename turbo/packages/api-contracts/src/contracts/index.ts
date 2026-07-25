@@ -237,6 +237,7 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookModelUsageObservationV2Contract,
+  webhookModelUsageObservationContract,
   webhookUsageEventContract,
   type WebhookClerkContract,
   type WebhookModelUsageObservationV2Contract,

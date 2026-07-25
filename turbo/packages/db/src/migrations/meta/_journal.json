@@ -4719,6 +4719,20 @@
       "when": 1784940295284,
       "tag": "0673_add_claude_opus_5_managed_data",
       "breakpoints": true
+    },
+    {
+      "idx": 674,
+      "version": "7",
+      "when": 1784950114894,
+      "tag": "0674_restore_model_usage_observation_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 675,
+      "version": "7",
+      "when": 1784950319642,
+      "tag": "0675_add_model_usage_observation_compatibility_view",
+      "breakpoints": true
     }
   ]
 }

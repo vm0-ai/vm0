@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { and, eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
-import { compactModelUsageObservation } from "@vm0/db/schema/compact-model-usage-observation";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import {
   VM0_MODEL_ALIAS_TO_MODEL,
   VM0_MODEL_TO_PROVIDER,
@@ -129,8 +129,8 @@ function parseModelRankingPeriod(
   return "week";
 }
 
-function compactModelUsageObservationModelExpression() {
-  const modelColumn = compactModelUsageObservation.model;
+function modelUsageObservationModelExpression() {
+  const modelColumn = modelUsageObservation.model;
   return sql`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
       return sql`WHEN ${eq(modelColumn, alias)} THEN ${model}`;
@@ -154,7 +154,7 @@ async function replaceModelStats(
   windowStart: Date,
   windowEnd: Date,
 ): Promise<number> {
-  const observationModelExpr = compactModelUsageObservationModelExpression();
+  const observationModelExpr = modelUsageObservationModelExpression();
   const modelStatsModelIds = getModelStatsModelIds();
   const windowStartParam = utcTimestampParam(windowStart);
   const windowEndParam = utcTimestampParam(windowEnd);
@@ -173,21 +173,21 @@ async function replaceModelStats(
     const { rowCount } = await tx.execute(sql`
       WITH usage_rows AS (
         SELECT
-          date_trunc('hour', ${compactModelUsageObservation.observedAt})::timestamp AS hour_start,
+          date_trunc('hour', ${modelUsageObservation.observedAt})::timestamp AS hour_start,
           ${observationModelExpr} AS model,
-          ${compactModelUsageObservation.inputTokens}::bigint AS input_tokens,
-          ${compactModelUsageObservation.outputTokens}::bigint AS output_tokens,
-          ${compactModelUsageObservation.cacheReadInputTokens}::bigint AS cache_read_input_tokens,
-          ${compactModelUsageObservation.cacheCreationInputTokens}::bigint AS cache_creation_input_tokens
-        FROM ${compactModelUsageObservation}
-        WHERE ${gte(compactModelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
-          AND ${lt(compactModelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
-          AND ${inArray(compactModelUsageObservation.model, modelStatsModelIds)}
+          ${modelUsageObservation.inputTokens}::bigint AS input_tokens,
+          ${modelUsageObservation.outputTokens}::bigint AS output_tokens,
+          ${modelUsageObservation.cacheReadInputTokens}::bigint AS cache_read_input_tokens,
+          ${modelUsageObservation.cacheCreationInputTokens}::bigint AS cache_creation_input_tokens
+        FROM ${modelUsageObservation}
+        WHERE ${gte(modelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
+          AND ${lt(modelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
+          AND ${inArray(modelUsageObservation.model, modelStatsModelIds)}
           AND (
-            ${compactModelUsageObservation.inputTokens} > 0
-            OR ${compactModelUsageObservation.outputTokens} > 0
-            OR ${compactModelUsageObservation.cacheReadInputTokens} > 0
-            OR ${compactModelUsageObservation.cacheCreationInputTokens} > 0
+            ${modelUsageObservation.inputTokens} > 0
+            OR ${modelUsageObservation.outputTokens} > 0
+            OR ${modelUsageObservation.cacheReadInputTokens} > 0
+            OR ${modelUsageObservation.cacheCreationInputTokens} > 0
           )
       ),
       aggregated AS (
@@ -246,8 +246,8 @@ async function deleteExpiredModelUsageObservations(
   retentionStart: Date,
 ): Promise<void> {
   await db
-    .delete(compactModelUsageObservation)
-    .where(lt(compactModelUsageObservation.observedAt, retentionStart));
+    .delete(modelUsageObservation)
+    .where(lt(modelUsageObservation.observedAt, retentionStart));
 }
 
 async function selectModelRankings(
