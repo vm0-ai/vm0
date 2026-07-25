@@ -63,6 +63,19 @@ describe("connector/providers/mercury", () => {
         url.startsWith("https://oauth2-sandbox.mercury.com/oauth2/auth?"),
       ).toBe(true);
     });
+
+    it("fails when MERCURY_OAUTH_ENVIRONMENT is not a known environment", () => {
+      vi.stubEnv("MERCURY_OAUTH_ENVIRONMENT", "snadbox");
+
+      expect(() => {
+        buildMercuryAuthorizationUrl(
+          authCodeGrant(),
+          "test-client-id",
+          "https://example.com/callback",
+          "test-state",
+        );
+      }).toThrow('MERCURY_OAUTH_ENVIRONMENT must be "sandbox" or "production"');
+    });
   });
 
   describe("exchangeMercuryCode", () => {

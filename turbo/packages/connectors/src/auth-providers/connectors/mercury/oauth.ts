@@ -24,12 +24,24 @@ interface MercuryEndpoints {
  * only exists on the one it was registered with. Set
  * MERCURY_OAUTH_ENVIRONMENT=sandbox wherever the sandbox client credentials are
  * configured, otherwise the authorization request fails with invalid_client.
+ * An unset or empty value selects production; any other value is a deployment
+ * misconfiguration and fails instead of silently using production.
  * Ref: https://docs.mercury.com/docs/using-mercury-sandbox
  */
 function mercuryEndpoints(): MercuryEndpoints {
-  return process.env.MERCURY_OAUTH_ENVIRONMENT === "sandbox"
-    ? MERCURY_ENDPOINTS.sandbox
-    : MERCURY_ENDPOINTS.production;
+  const environment = process.env.MERCURY_OAUTH_ENVIRONMENT;
+  if (environment === undefined || environment === "") {
+    return MERCURY_ENDPOINTS.production;
+  }
+  if (environment === "production") {
+    return MERCURY_ENDPOINTS.production;
+  }
+  if (environment === "sandbox") {
+    return MERCURY_ENDPOINTS.sandbox;
+  }
+  throw new Error(
+    'MERCURY_OAUTH_ENVIRONMENT must be "sandbox" or "production"',
+  );
 }
 
 /**
