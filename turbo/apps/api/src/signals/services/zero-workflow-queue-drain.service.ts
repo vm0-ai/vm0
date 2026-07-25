@@ -83,6 +83,7 @@ interface WorkflowEventLaunch {
 interface DrainWorkflowQueueArgs {
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly queueItemCreatedBefore?: Date;
   readonly workflowEventLaunch?: WorkflowEventLaunch;
 }
 
@@ -210,7 +211,11 @@ export const drainWorkflowQueueForThread$ = command(
     const db = set(writeDb$);
 
     for (let attempt = 0; attempt < MAX_DRAIN_ATTEMPTS; attempt++) {
-      const event = await loadNextWorkflowQueueEvent(db, args.chatThreadId);
+      const event = await loadNextWorkflowQueueEvent(
+        db,
+        args.chatThreadId,
+        args.queueItemCreatedBefore,
+      );
       signal.throwIfAborted();
       if (!event) {
         return null;

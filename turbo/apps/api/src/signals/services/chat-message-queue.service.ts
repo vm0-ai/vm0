@@ -7,7 +7,7 @@ import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db, ReadonlyDb } from "../external/db";
@@ -272,6 +272,7 @@ export interface PendingWorkflowQueueEvent {
 export async function loadNextWorkflowQueueEvent(
   db: Db,
   chatThreadId: string,
+  queueItemCreatedBefore?: Date,
 ): Promise<PendingWorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(chatThreadId));
@@ -303,6 +304,9 @@ export async function loadNextWorkflowQueueEvent(
         and(
           eq(chatMessageQueue.chatThreadId, chatThreadId),
           eq(chatMessageQueue.itemType, "workflow_event"),
+          queueItemCreatedBefore
+            ? lt(chatMessageQueue.createdAt, queueItemCreatedBefore)
+            : undefined,
         ),
       )
       .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
@@ -438,13 +442,16 @@ export async function pauseWorkflowQueueEventAfterRunFailure(
 }
 
 /**
- * Chat threads with pending work — the safety-net sweep re-drains these in
- * case admission or a terminal-run callback missed its immediate drain.
+ * Chat threads with stale pending work — the safety-net sweep re-drains these
+ * after the immediate admission or terminal-run callback had time to finish.
  * User messages remain drainable while workflow automation intake is paused.
  */
-export async function pendingChatThreadQueueThreadIds(
+export async function staleChatThreadQueueThreadIds(
   db: Db,
-  limit: number,
+  args: {
+    readonly staleBefore: Date;
+    readonly limit: number;
+  },
 ): Promise<readonly string[]> {
   const rows = await db
     .selectDistinct({ chatThreadId: chatMessageQueue.chatThreadId })
@@ -452,6 +459,7 @@ export async function pendingChatThreadQueueThreadIds(
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessageQueue.chatThreadId))
     .where(
       and(
+        lt(chatMessageQueue.createdAt, args.staleBefore),
         or(
           inArray(chatMessageQueue.itemType, [
             "user_message",
@@ -465,7 +473,7 @@ export async function pendingChatThreadQueueThreadIds(
         ),
       ),
     )
-    .limit(limit);
+    .limit(args.limit);
   return rows.map((row) => {
     return row.chatThreadId;
   });
