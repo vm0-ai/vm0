@@ -80,6 +80,9 @@ class _PauseFirstHandlerReacquire:
     def unblock_for_cleanup(self) -> None:
         self._second_handler_reserved_or_cleanup.set()
 
+    def locked(self) -> bool:
+        return self._lock.locked()
+
     def _is_owned(self) -> bool:
         with self._state_lock:
             return self._owner_thread == threading.current_thread()

@@ -11,7 +11,7 @@ from tests.flow_helpers import header_map
 from tests.stream_buffer_helpers import set_response_stream_buffer
 
 RealFlowFactory = Callable[..., http.HTTPFlow]
-_JSON_RECURSION_FAILURE_DEPTH = 10_000
+_JSON_EXCESSIVE_NESTING_DEPTH = 10_000
 _JSON_INTEGER_DIGIT_LIMIT_DIGITS = 10_000
 
 
@@ -19,12 +19,12 @@ def x_original_url(path: str, query: str = "") -> str:
     return f"https://api.x.com{path}?{query}" if query else f"https://api.x.com{path}"
 
 
-def json_body_that_exceeds_decoder_recursion() -> bytes:
+def json_body_that_exceeds_nesting_limit() -> bytes:
     return (
         b'{"text":"hi","x":'
-        + b"[" * _JSON_RECURSION_FAILURE_DEPTH
+        + b"[" * _JSON_EXCESSIVE_NESTING_DEPTH
         + b"0"
-        + b"]" * _JSON_RECURSION_FAILURE_DEPTH
+        + b"]" * _JSON_EXCESSIVE_NESTING_DEPTH
         + b"}"
     )
 
