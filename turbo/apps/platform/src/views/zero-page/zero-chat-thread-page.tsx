@@ -2507,7 +2507,6 @@ function ChatThreadArea({
         <>
           {leftThread && (
             <ChatThread
-              key={leftThread.threadId}
               thread={leftThread}
               onFocusFallbackRef={setMainThreadKeyboardFocusRef}
             />
@@ -2515,7 +2514,7 @@ function ChatThreadArea({
           {rightThread && (
             <>
               <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-              <ChatThread key={rightThread.threadId} thread={rightThread} />
+              <ChatThread thread={rightThread} />
             </>
           )}
         </>

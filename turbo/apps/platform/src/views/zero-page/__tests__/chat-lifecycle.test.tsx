@@ -340,7 +340,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps existing thread history visible after returning with an optimistic follow-up", async () => {
+  it("keeps existing thread history without replacing the thread container after returning with an optimistic follow-up", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
     const threadId = "b0000000-0000-4000-a000-000000000901";
@@ -388,6 +388,12 @@ describe("chat lifecycle", () => {
     await expect(
       screen.findByText("Existing context before follow-up"),
     ).resolves.toBeInTheDocument();
+    const threadContainer = document.querySelector(
+      `[data-chat-thread-container-id="${threadId}"]`,
+    );
+    if (!(threadContainer instanceof HTMLElement)) {
+      throw new Error("Chat thread container not found");
+    }
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -407,6 +413,11 @@ describe("chat lifecycle", () => {
     await user.click(linkByText("Other thread"));
     await waitFor(() => {
       expect(document.title).toBe("Other thread | VM0");
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${otherThreadId}"]`,
+        ),
+      ).toBe(threadContainer);
     });
 
     await user.click(linkByText("Long thread"));
@@ -416,6 +427,9 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Existing context before follow-up"),
       ).toBeInTheDocument();
+      expect(
+        document.querySelector(`[data-chat-thread-container-id="${threadId}"]`),
+      ).toBe(threadContainer);
     });
     expectTextBefore(
       document.body,

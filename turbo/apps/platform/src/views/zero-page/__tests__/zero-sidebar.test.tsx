@@ -1851,7 +1851,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("moves to the first chat thread for the next pinned agent from a chat thread", async () => {
+  it("moves to the next pinned agent thread without replacing the chat list", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
@@ -1886,6 +1886,7 @@ describe("zero sidebar", () => {
         within(sidebar()).getByText("Research kickoff"),
       ).toBeInTheDocument();
     });
+    const chatList = within(sidebar()).getByLabelText("Chat threads");
 
     fireEvent.keyDown(document.body, {
       key: "}",
@@ -1895,6 +1896,10 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+      expect(
+        within(sidebar()).getByText("Support escalation"),
+      ).toBeInTheDocument();
+      expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
     });
   });
 
