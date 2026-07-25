@@ -446,6 +446,9 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   it("binds one canonical output asset to the final reply, Slack, and Google Drive", async () => {
     const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
+    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
+      [FeatureSwitchKey.Artifacts]: true,
+    });
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
     const token = zeroToken({ userId, orgId, runId });
@@ -516,6 +519,28 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     expect(
       context.mocks.slack.files.getUploadURLExternal,
     ).toHaveBeenCalledTimes(1);
+
+    const catalog = await chatApi.listArtifactCatalog(
+      actorFor({ orgId, userId }),
+    );
+    const catalogEntry = catalog.artifacts.find((artifact) => {
+      return artifact.title === "report.csv";
+    });
+    expect(catalogEntry).toMatchObject({
+      kind: "file",
+      title: "report.csv",
+    });
+    if (!catalogEntry) {
+      throw new Error("Expected the canonical output in the artifact catalog");
+    }
+    const catalogDetail = await chatApi.getArtifactCatalogEntry(
+      actorFor({ orgId, userId }),
+      catalogEntry.id,
+    );
+    if (catalogDetail.kind !== "file") {
+      throw new Error("Expected canonical output to use the file kind");
+    }
+    expect(catalogDetail.file.id).toBe(canonicalAssetId);
 
     const completeClient = setupApp({ context })(
       integrationsSlackUploadCompleteContract,

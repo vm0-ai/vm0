@@ -38,6 +38,7 @@ import {
   s3ObjectHead,
 } from "../external/s3";
 import { settleIncludingAbort } from "../utils";
+import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -1119,6 +1120,7 @@ export const materializeCanonicalPublishedAsset$ = command(
       sanitizeArtifactFilename(asset.filename),
     );
     if (asset.materializationStatus === "ready") {
+      await set(syncArtifactCatalogForFile$, asset.id, signal);
       return { ok: true, assetId: asset.id, url };
     }
 
@@ -1163,6 +1165,7 @@ export const materializeCanonicalPublishedAsset$ = command(
       })
       .where(eq(runUploadedFiles.id, asset.id));
     signal.throwIfAborted();
+    await set(syncArtifactCatalogForFile$, asset.id, signal);
     await publishArtifactsChangedForRun(db, args.runId, signal);
     return { ok: true, assetId: asset.id, url };
   },
