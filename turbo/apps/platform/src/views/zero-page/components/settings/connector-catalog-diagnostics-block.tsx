@@ -28,13 +28,7 @@ function formatRejectedAttemptCacheUse(
   if (!lastAttempt || lastAttempt.outcome !== "rejected") {
     return EMPTY_VALUE;
   }
-  if (lastAttempt.reusedCachedRejection === true) {
-    return "Reused";
-  }
-  if (lastAttempt.reusedCachedRejection === false) {
-    return "Not reused";
-  }
-  return "Unknown";
+  return lastAttempt.reusedCachedRejection ? "Reused" : "Not reused";
 }
 
 function DiagnosticField({
@@ -83,8 +77,8 @@ function RejectedCandidateDiagnostics({
         />
         <DiagnosticField
           label="Rejecting backend"
-          value={candidate.backendVersion ?? "Unknown"}
-          code={candidate.backendVersion !== null}
+          value={candidate.backendVersion}
+          code
         />
         <DiagnosticField
           label="Rejection failure"

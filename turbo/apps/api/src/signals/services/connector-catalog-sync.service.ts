@@ -42,11 +42,9 @@ import {
   type ExecutableCapabilityState,
 } from "./connector-catalog-compatibility.service";
 import {
-  connectorCatalogAttemptReusedCachedRejection,
-  connectorCatalogRejectedCandidateFingerprint,
   connectorCatalogRejectionIsReusable,
   createConnectorCatalogValidatorIdentity,
-  type ConnectorCatalogRejectedCandidateIdentity,
+  type ConnectorCatalogRejectionAuthority,
   type ConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-rejection-authority";
 import {
@@ -80,7 +78,6 @@ interface SyncStateSnapshot {
   readonly lastObservedPointerEtag: string | null;
   readonly lastAttemptAt: Date | null;
   readonly lastAttemptOutcome: "accepted" | "unchanged" | "rejected" | null;
-  readonly lastAttemptMetadataRevision: number | null;
   readonly lastAttemptReusedCachedRejection: boolean | null;
   readonly lastSuccessAt: Date | null;
   readonly lastFailureCode: ConnectorCatalogSyncFailureCode | null;
@@ -91,7 +88,6 @@ interface SyncStateSnapshot {
   readonly lastRejectedFailureCode: ConnectorCatalogSyncFailureCode | null;
   readonly lastRejectedBackendVersion: string | null;
   readonly lastRejectedBuildCommitSha: string | null;
-  readonly lastRejectedCandidateFingerprint: string | null;
   readonly activeCatalogVersion: string | null;
   readonly activeCatalogKey: string | null;
   readonly activeCatalogDigest: string | null;
@@ -142,8 +138,6 @@ async function readSyncState(
         connectorCatalogSyncState.lastObservedPointerEtag,
       lastAttemptAt: connectorCatalogSyncState.lastAttemptAt,
       lastAttemptOutcome: connectorCatalogSyncState.lastAttemptOutcome,
-      lastAttemptMetadataRevision:
-        connectorCatalogSyncState.lastAttemptMetadataRevision,
       lastAttemptReusedCachedRejection:
         connectorCatalogSyncState.lastAttemptReusedCachedRejection,
       lastSuccessAt: connectorCatalogSyncState.lastSuccessAt,
@@ -161,8 +155,6 @@ async function readSyncState(
         connectorCatalogSyncState.lastRejectedBackendVersion,
       lastRejectedBuildCommitSha:
         connectorCatalogSyncState.lastRejectedBuildCommitSha,
-      lastRejectedCandidateFingerprint:
-        connectorCatalogSyncState.lastRejectedCandidateFingerprint,
       activeCatalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
       activeCatalogKey: connectorCatalogActiveSnapshot.catalogKey,
       activeCatalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
@@ -195,17 +187,6 @@ async function readSyncState(
   return state;
 }
 
-function rejectedCandidateIdentity(
-  candidate: RejectedCandidate,
-): ConnectorCatalogRejectedCandidateIdentity {
-  return {
-    catalogVersion: candidate.pointer?.catalogVersion ?? null,
-    catalogKey: candidate.pointer?.catalogKey ?? null,
-    catalogDigest: candidate.pointer?.catalogDigest ?? null,
-    pointerEtag: candidate.pointerEtag,
-  };
-}
-
 function rejectedCandidateFromState(
   state: SyncStateSnapshot | undefined,
 ): RejectedCandidate | undefined {
@@ -230,21 +211,16 @@ function rejectedCandidateFromState(
   };
 }
 
-function validatedRejectionBackendVersion(
-  candidate: RejectedCandidate,
+function rejectionAuthorityFromState(
   state: SyncStateSnapshot,
-): string | null {
-  if (
-    state.lastRejectedBackendVersion === null ||
-    state.lastRejectedCandidateFingerprint === null ||
-    state.lastRejectedCandidateFingerprint !==
-      connectorCatalogRejectedCandidateFingerprint(
-        rejectedCandidateIdentity(candidate),
-      )
-  ) {
-    return null;
+): ConnectorCatalogRejectionAuthority {
+  if (state.lastRejectedBackendVersion === null) {
+    throw new Error("Connector catalog rejection authority is incomplete");
   }
-  return state.lastRejectedBackendVersion;
+  return {
+    backendVersion: state.lastRejectedBackendVersion,
+    buildCommitSha: state.lastRejectedBuildCommitSha,
+  };
 }
 
 function currentConnectorCatalogValidatorIdentity(): ConnectorCatalogValidatorIdentity {
@@ -287,15 +263,14 @@ function lastAttemptStatusFromState(
   if (!state?.lastAttemptAt || !state.lastAttemptOutcome) {
     throw new Error("Connector catalog attempt state is incomplete");
   }
+  if (state.lastAttemptReusedCachedRejection === null) {
+    throw new Error("Connector catalog attempt cache provenance is incomplete");
+  }
   return {
     at: state.lastAttemptAt.toISOString(),
     outcome: state.lastAttemptOutcome,
     failureCode: state.lastFailureCode,
-    reusedCachedRejection: connectorCatalogAttemptReusedCachedRejection({
-      revision: state.revision,
-      metadataRevision: state.lastAttemptMetadataRevision,
-      reusedCachedRejection: state.lastAttemptReusedCachedRejection,
-    }),
+    reusedCachedRejection: state.lastAttemptReusedCachedRejection,
   };
 }
 
@@ -309,11 +284,12 @@ function rejectedCandidateStatusFromState(
   if (!candidate) {
     return null;
   }
+  const authority = rejectionAuthorityFromState(state);
   return {
     catalogVersion: candidate.pointer?.catalogVersion ?? null,
     catalogDigest: candidate.pointer?.catalogDigest ?? null,
     failureCode: candidate.failureCode,
-    backendVersion: validatedRejectionBackendVersion(candidate, state),
+    backendVersion: authority.backendVersion,
   };
 }
 
@@ -374,25 +350,15 @@ function cachedRejectionForPointer(
   if (!state || !rejectedCandidate?.pointer) {
     return undefined;
   }
-  const candidate: RejectedCandidate = {
-    pointer: observation.pointer,
-    pointerEtag: observation.etag,
-    failureCode: rejectedCandidate.failureCode,
-  };
   if (
     observation.pointer.catalogVersion !==
       rejectedCandidate.pointer.catalogVersion ||
     observation.pointer.catalogKey !== rejectedCandidate.pointer.catalogKey ||
     observation.pointer.catalogDigest !==
       rejectedCandidate.pointer.catalogDigest ||
-    candidate.pointerEtag !== rejectedCandidate.pointerEtag ||
+    observation.etag !== rejectedCandidate.pointerEtag ||
     !connectorCatalogRejectionIsReusable({
-      candidate: rejectedCandidateIdentity(candidate),
-      authority: {
-        backendVersion: state.lastRejectedBackendVersion,
-        buildCommitSha: state.lastRejectedBuildCommitSha,
-        candidateFingerprint: state.lastRejectedCandidateFingerprint,
-      },
+      authority: rejectionAuthorityFromState(state),
       validator,
     })
   ) {
@@ -411,12 +377,7 @@ function cachedRejectionForObservedEtag(
     !rejectedCandidate ||
     state.lastObservedPointerEtag !== rejectedCandidate.pointerEtag ||
     !connectorCatalogRejectionIsReusable({
-      candidate: rejectedCandidateIdentity(rejectedCandidate),
-      authority: {
-        backendVersion: state.lastRejectedBackendVersion,
-        buildCommitSha: state.lastRejectedBuildCommitSha,
-        candidateFingerprint: state.lastRejectedCandidateFingerprint,
-      },
+      authority: rejectionAuthorityFromState(state),
       validator,
     })
   ) {
@@ -460,17 +421,14 @@ function rejectedCandidateValues(
   if (!candidate) {
     return {};
   }
-  const identity = rejectedCandidateIdentity(candidate);
   return {
-    lastRejectedCatalogVersion: identity.catalogVersion,
-    lastRejectedCatalogKey: identity.catalogKey,
-    lastRejectedCatalogDigest: identity.catalogDigest,
-    lastRejectedPointerEtag: identity.pointerEtag,
+    lastRejectedCatalogVersion: candidate.pointer?.catalogVersion ?? null,
+    lastRejectedCatalogKey: candidate.pointer?.catalogKey ?? null,
+    lastRejectedCatalogDigest: candidate.pointer?.catalogDigest ?? null,
+    lastRejectedPointerEtag: candidate.pointerEtag,
     lastRejectedFailureCode: candidate.failureCode,
     lastRejectedBackendVersion: validator.backendVersion,
     lastRejectedBuildCommitSha: validator.buildCommitSha,
-    lastRejectedCandidateFingerprint:
-      connectorCatalogRejectedCandidateFingerprint(identity),
   };
 }
 
@@ -483,7 +441,6 @@ function clearedRejectedCandidateValues() {
     lastRejectedFailureCode: null,
     lastRejectedBackendVersion: null,
     lastRejectedBuildCommitSha: null,
-    lastRejectedCandidateFingerprint: null,
   };
 }
 
@@ -525,7 +482,6 @@ async function recordRejectedAttempt(args: {
         revision: nextRevision,
         lastAttemptAt: args.attemptedAt,
         lastAttemptOutcome: "rejected",
-        lastAttemptMetadataRevision: nextRevision,
         lastAttemptReusedCachedRejection: args.reusedCachedRejection,
         lastFailureCode: args.failureCode,
         ...observationValues,
@@ -542,7 +498,6 @@ async function recordRejectedAttempt(args: {
       revision: nextRevision,
       lastAttemptAt: args.attemptedAt,
       lastAttemptOutcome: "rejected",
-      lastAttemptMetadataRevision: nextRevision,
       lastAttemptReusedCachedRejection: args.reusedCachedRejection,
       lastFailureCode: args.failureCode,
       ...observationValues,
@@ -577,7 +532,6 @@ async function recordUnchangedAttempt(args: {
       revision: nextRevision,
       lastAttemptAt: args.attemptedAt,
       lastAttemptOutcome: "unchanged",
-      lastAttemptMetadataRevision: nextRevision,
       lastAttemptReusedCachedRejection: false,
       lastSuccessAt: args.attemptedAt,
       lastFailureCode: null,
@@ -627,7 +581,6 @@ async function activateCandidate(args: {
     ...pointerObservationValues(args.pointerObservation),
     lastAttemptAt: args.attemptedAt,
     lastAttemptOutcome: "accepted" as const,
-    lastAttemptMetadataRevision: nextRevision,
     lastAttemptReusedCachedRejection: false,
     lastSuccessAt: args.attemptedAt,
     lastFailureCode: null,

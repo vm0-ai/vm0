@@ -262,9 +262,9 @@ export default [
     },
   },
   {
-    // The production API cannot construct legacy or old-writer-mismatched
-    // authority rows. Keep this finite state-policy matrix as the documented
-    // narrow exception while route tests cover all constructible behavior.
+    // Keep the finite SemVer/build-identity policy matrix as a narrow
+    // state-machine exception. Route tests cover the constructible sync
+    // behavior, while arbitrary build versions are not a production API input.
     files: [
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
     ],
