@@ -226,16 +226,20 @@ async fn write_registered_request_and_wait_with_frame_builder(
     shared: &Arc<Shared>,
     seq: u32,
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
-    response_timeout: Duration,
+    deadline: Instant,
     before_write: impl FnOnce() -> io::Result<()>,
     rx: oneshot::Receiver<RawMessage>,
 ) -> io::Result<RawMessage> {
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    write_request_frame_with_builder(shared, seq, build_frame, before_write).await?;
+    time::timeout_at(
+        deadline,
+        write_request_frame_with_builder(shared, seq, build_frame, before_write),
+    )
+    .await
+    .map_err(|_| request_timeout_error())??;
 
-    let response_deadline = deadline_after(response_timeout, "request timeout overflowed")?;
-    await_pending_response(rx, response_deadline).await
+    await_pending_response(rx, deadline).await
 }
 
 async fn await_pending_response(
@@ -290,6 +294,10 @@ pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
     write_observer: FrameWriteObserver,
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
 ) -> io::Result<RawMessage> {
+    if timeout.is_zero() {
+        return Err(request_timeout_error());
+    }
+    let deadline = deadline_after(timeout, "request timeout overflowed")?;
     let seq = shared.next_seq();
     let normal_operation = shared.reserve_normal_operation()?;
     let rx = register_pending_response(shared, seq, |tx| {
@@ -304,7 +312,7 @@ pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
         shared,
         seq,
         build_frame,
-        timeout,
+        deadline,
         || {
             mark_pending_normal_operation_possible_guest_write(shared, seq, |_| Ok(()))?;
             write_observer.record_write_start()
@@ -322,6 +330,10 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
     write_observer: FrameWriteObserver,
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
 ) -> io::Result<RawMessage> {
+    if timeout.is_zero() {
+        return Err(request_timeout_error());
+    }
+    let deadline = deadline_after(timeout, "request timeout overflowed")?;
     let seq = shared.next_seq();
     let rx = register_pending_response(shared, seq, |tx| {
         Ok(PendingResponse {
@@ -337,7 +349,7 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
         shared,
         seq,
         build_frame,
-        timeout,
+        deadline,
         || {
             mark_pending_normal_operation_possible_guest_write(shared, seq, |_| Ok(()))?;
             write_observer.record_write_start()
