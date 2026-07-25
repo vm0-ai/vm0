@@ -70,6 +70,13 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-run-api-start"),
     run_id: z.uuid(),
   }),
+  z.object({
+    action: z.literal("insert-legacy-artifact-catalog-file"),
+    user_id: z.string(),
+    org_id: z.string(),
+    filename: z.string(),
+    url: z.url(),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({
@@ -80,6 +87,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
   api_started_at: z.string().nullable().optional(),
+  file_id: z.uuid().optional(),
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),

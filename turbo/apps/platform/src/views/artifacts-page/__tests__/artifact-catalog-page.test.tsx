@@ -12,10 +12,12 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+const CATALOG_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const CATALOG_USER_ID = "test-user-artifact-catalog";
 const CATALOG_ORG_ID = "org_artifact_catalog";
 
@@ -31,7 +33,7 @@ function artifact(overrides: Partial<ArtifactSummary> = {}): ArtifactSummary {
   };
 }
 
-function setupArtifactCatalogPage(): void {
+function setupArtifactCatalogPage(enabled = true): void {
   detachedSetupPage({
     context,
     path: "/artifacts",
@@ -41,7 +43,7 @@ function setupArtifactCatalogPage(): void {
       memberships: [{ id: CATALOG_ORG_ID }],
     },
     featureSwitches: {
-      [FeatureSwitchKey.Artifacts]: true,
+      [FeatureSwitchKey.Artifacts]: enabled,
     },
   });
 }
@@ -311,6 +313,125 @@ describe("artifact catalog page", () => {
         "a0000000-0000-4000-a000-000000000001",
       ]);
     });
+  });
+
+  it("downloads a generic binary when its card is opened", async () => {
+    const browser = context.mocks.browser.blobDownload();
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ title: "release-bundle.zip" })],
+        nextCursor: null,
+      });
+    });
+    context.mocks.http.get(
+      "https://artifacts.example.com/release-bundle.zip",
+      () => {
+        return HttpResponse.text("archive bytes", {
+          headers: { "Content-Type": "application/zip" },
+        });
+      },
+    );
+    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        ...artifact({ title: "release-bundle.zip" }),
+        kind: "file",
+        file: {
+          id: "f0000000-0000-4000-a000-000000000002",
+          filename: "release-bundle.zip",
+          contentType: "application/zip",
+          size: 2048,
+          url: "https://artifacts.example.com/release-bundle.zip",
+          previewImageUrl: null,
+        },
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await click(await findCard("release-bundle.zip"));
+
+    await waitFor(() => {
+      expect(browser.downloads).toHaveLength(1);
+    });
+    expect(browser.downloads[0]).toMatchObject({
+      filename: "release-bundle.zip",
+      blob: expect.any(Blob),
+    });
+  });
+
+  it("reloads the same artifact detail after a realtime catalog change", async () => {
+    const browser = context.mocks.browser.blobDownload();
+    let listRequests = 0;
+    const detailRequests: string[] = [];
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      listRequests += 1;
+      return respond(200, {
+        artifacts: [artifact({ title: "changing.bin" })],
+        nextCursor: null,
+      });
+    });
+    context.mocks.http.get("https://artifacts.example.com/changing.bin", () => {
+      return HttpResponse.text("binary");
+    });
+    context.mocks.api(artifactCatalogContract.get, ({ params, respond }) => {
+      detailRequests.push(params.artifactId);
+      return respond(200, {
+        ...artifact({ title: "changing.bin" }),
+        kind: "file",
+        file: {
+          id: "f0000000-0000-4000-a000-000000000003",
+          filename: "changing.bin",
+          contentType: "application/octet-stream",
+          size: 512,
+          url: "https://artifacts.example.com/changing.bin",
+          previewImageUrl: null,
+        },
+      });
+    });
+
+    setupArtifactCatalogPage();
+    const card = await findCard("changing.bin");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("artifactCatalogChanged"),
+      ).toBeTruthy();
+    });
+
+    await click(card);
+    await waitFor(() => {
+      expect(detailRequests).toHaveLength(1);
+      expect(browser.downloads).toHaveLength(1);
+    });
+
+    context.mocks.ably.trigger("artifactCatalogChanged");
+    await waitFor(() => {
+      expect(listRequests).toBeGreaterThanOrEqual(2);
+    });
+
+    await click(await findCard("changing.bin"));
+    await waitFor(() => {
+      expect(detailRequests).toHaveLength(2);
+      expect(browser.downloads).toHaveLength(2);
+    });
+  });
+
+  it("hides the entry, redirects, and skips the list when disabled", async () => {
+    let requested = false;
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      requested = true;
+      return respond(200, { artifacts: [], nextCursor: null });
+    });
+
+    setupArtifactCatalogPage(false);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${CATALOG_AGENT_ID}/chat`);
+    });
+    expect(requested).toBeFalsy();
+    expect(
+      queryAllByRoleFast("link").some((link) => {
+        return link.textContent === "Artifacts";
+      }),
+    ).toBeFalsy();
   });
 
   it("shows the empty state when the catalog has no artifacts", async () => {

@@ -15,6 +15,7 @@ import {
 } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { insertLegacyArtifactCatalogFile } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
@@ -133,6 +134,7 @@ async function uploadFile(args: {
   readonly filename: string;
   readonly contentType: string;
   readonly sizeBytes?: number;
+  readonly fileId?: string;
 }): Promise<{ readonly fileId: string; readonly url: string }> {
   const run = await sendChatRun(args.owner.actor, {
     agentId: args.owner.agentId,
@@ -143,7 +145,7 @@ async function uploadFile(args: {
     run.runId,
   );
   const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
-  const fileId = randomUUID();
+  const fileId = args.fileId ?? randomUUID();
   stageUploadObject(
     `artifacts/${args.owner.actor.userId}/${fileId}/${args.filename}`,
     args.sizeBytes ?? 1024,
@@ -158,6 +160,26 @@ async function uploadFile(args: {
   }
   await completeChatRunOk(run.runId, sandboxHeaders);
   return { fileId, url: completed.body.url };
+}
+
+async function insertLegacyCatalogFile(args: {
+  readonly owner: CatalogActor;
+  readonly filename: string;
+  readonly url: string;
+}): Promise<string> {
+  if (!args.owner.actor.orgId) {
+    throw new Error("Expected artifact catalog actor to have an org");
+  }
+
+  // The previous API version cannot be invoked through the current route
+  // boundary. The guarded test route reproduces its schema-compatible insert
+  // so the public catalog endpoint proves migration-trigger reconciliation.
+  return await insertLegacyArtifactCatalogFile(context, {
+    userId: args.owner.actor.userId,
+    orgId: args.owner.actor.orgId,
+    filename: args.filename,
+    url: args.url,
+  });
 }
 
 async function publishHostedSite(args: {
@@ -258,6 +280,63 @@ describe("GET /api/zero/artifacts/catalog", () => {
     });
   }, 180_000);
 
+  it("keeps repeated projections of one file URL as one artifact", async () => {
+    const owner = await catalogActor("Artifact catalog repeated URL owner");
+    const fileId = randomUUID();
+
+    await uploadFile({
+      owner,
+      prompt: "upload a report for the first run",
+      filename: "repeatable-report.txt",
+      contentType: "text/plain",
+      fileId,
+    });
+    await uploadFile({
+      owner,
+      prompt: "upload the same report for a later run",
+      filename: "repeatable-report.txt",
+      contentType: "text/plain",
+      fileId,
+    });
+
+    const catalog = await chat.listArtifactCatalog(owner.actor);
+
+    expect(catalog.artifacts).toStrictEqual([
+      expect.objectContaining({
+        kind: "file",
+        title: "repeatable-report.txt",
+      }),
+    ]);
+  }, 180_000);
+
+  it("reconciles a file written by the previous API after migration", async () => {
+    const owner = await catalogActor("Artifact catalog promotion owner");
+    const url = `https://files.vm0.test/${randomUUID()}/legacy-output.zip`;
+    const fileId = await insertLegacyCatalogFile({
+      owner,
+      filename: "legacy-output.zip",
+      url,
+    });
+
+    const catalog = await chat.listArtifactCatalog(owner.actor);
+    expect(catalog.artifacts).toStrictEqual([
+      expect.objectContaining({
+        kind: "file",
+        title: "legacy-output.zip",
+      }),
+    ]);
+
+    const artifactId = catalog.artifacts[0]?.id;
+    if (!artifactId) {
+      throw new Error("Expected the reconciled artifact to be listed");
+    }
+    const detail = await chat.getArtifactCatalogEntry(owner.actor, artifactId);
+    if (detail.kind !== "file") {
+      throw new Error("Expected the reconciled artifact to be a file");
+    }
+    expect(detail.file).toMatchObject({ id: fileId, url });
+  }, 180_000);
+
   it("removes catalog rows when deleting the backing agent", async () => {
     const owner = await catalogActor("Artifact catalog deletion owner");
     await uploadFile({
@@ -332,6 +411,36 @@ describe("GET /api/zero/artifacts/catalog", () => {
       kind: "presentation",
       title: site,
     });
+  }, 180_000);
+
+  it("keeps one card when a hosted site becomes a presentation", async () => {
+    const owner = await catalogActor(
+      "Artifact catalog hosted transition owner",
+      bdd.user(),
+      {
+        [FeatureSwitchKey.HostedArtifactVersions]: true,
+      },
+    );
+    const site = `catalog-transition-${randomUUID().slice(0, 8)}`;
+    const hosted = await publishHostedSite({
+      owner,
+      site,
+      artifactKind: "hosted-site",
+    });
+    const presentation = await publishHostedSite({
+      owner,
+      site,
+      artifactKind: "presentation-html",
+    });
+
+    expect(presentation.siteId).toBe(hosted.siteId);
+    const catalog = await chat.listArtifactCatalog(owner.actor);
+    expect(catalog.artifacts).toStrictEqual([
+      expect.objectContaining({
+        kind: "presentation",
+        title: site,
+      }),
+    ]);
   }, 180_000);
 
   it("filters by kind without leaking other kinds", async () => {
