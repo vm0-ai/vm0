@@ -103,7 +103,7 @@ import {
   updateChatMessage,
 } from "../services/zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
-import { activeChatRunExists } from "../services/zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "../services/zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
@@ -837,7 +837,8 @@ async function latestSessionForThread(
     // mirrored in latestSessionForThreadFromDb
     // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
     // (zero-goal-continuation.service.ts) — keep them in sync. This is a
-    // continuity filter ONLY; it must NOT be copied into activeChatRunExists.
+    // continuity filter ONLY; it must NOT be copied into the thread admission
+    // check.
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
@@ -3307,7 +3308,7 @@ export const sendNormalMessage$ = command(
       "api_dispatch_pre_create_zero_web_chat_check_active_run",
       "nested",
       async () => {
-        return await activeChatRunExists(prepared.db, {
+        return await chatThreadAdmissionBlocked(prepared.db, {
           threadId: prepared.thread.threadId,
         });
       },
@@ -3368,7 +3369,7 @@ const sendQueueFirstNormalMessage$ = command(
       "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
       "nested",
       async (): Promise<"self" | "wait" | "drain"> => {
-        if (await activeChatRunExists(prepared.db, { threadId })) {
+        if (await chatThreadAdmissionBlocked(prepared.db, { threadId })) {
           return "wait";
         }
         const headMessageId = await loadNextUnclaimedQueuedUserMessageId(

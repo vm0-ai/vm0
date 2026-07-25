@@ -117,7 +117,9 @@ CLAUDE_CODE_VERSION="2.1.220"
 CODEX_CLI_VERSION="0.145.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.3.1"
-AGENT_BROWSER_VERSION="0.33.0"
+AGENT_BROWSER_VERSION="0.33.0-vm0.1"
+AGENT_BROWSER_LINUX_X64_SHA256="a9e3fbe24c537960b9ac0d1f358224a10eb70d87a619aec7bcb1175222a46a18"
+AGENT_BROWSER_LINUX_ARM64_SHA256="6a74dba04c299a69d564eae5aff67adc2ffc6fda5ddf672994ff75b73d64a9fe"
 PNPM_VERSION="11.17.0"
 CHROMIUM_VERSION="150.0.7871.181-1~deb12u1"
 CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260723T024428Z"
@@ -469,13 +471,34 @@ install_runtimes() {
     chmod +x /usr/local/bin/claude
   "
 
+  # agent-browser CLI (vm0 fork with native system root certificate support)
+  sudo chroot "$ROOTFS_DIR" bash -c "
+    ARCH=\$(dpkg --print-architecture)
+    case \"\$ARCH\" in
+      amd64)
+        PLATFORM=\"linux-x64\"
+        CHECKSUM=\"${AGENT_BROWSER_LINUX_X64_SHA256}\"
+        ;;
+      arm64)
+        PLATFORM=\"linux-arm64\"
+        CHECKSUM=\"${AGENT_BROWSER_LINUX_ARM64_SHA256}\"
+        ;;
+      *) echo \"Unsupported architecture: \$ARCH\" >&2; exit 1 ;;
+    esac
+    DOWNLOAD_BASE_URL=\"https://github.com/vm0-ai/agent-browser/releases/download/v${AGENT_BROWSER_VERSION}\"
+    curl -fsSL \"\${DOWNLOAD_BASE_URL}/agent-browser-\${PLATFORM}\" -o /tmp/agent-browser
+    echo \"\${CHECKSUM}  /tmp/agent-browser\" | sha256sum -c -
+    install -m 0755 /tmp/agent-browser /usr/local/bin/agent-browser
+    rm /tmp/agent-browser
+    test \"\$(/usr/local/bin/agent-browser --version)\" = \"agent-browser ${AGENT_BROWSER_VERSION}\"
+  "
+
   # npm global packages (combined into one install)
   sudo chroot "$ROOTFS_DIR" bash -c "
     npm install -g \
       @googleworkspace/cli@${GWS_CLI_VERSION} \
       @xdevplatform/xurl@${XURL_VERSION} \
       @openai/codex@${CODEX_CLI_VERSION} \
-      agent-browser@${AGENT_BROWSER_VERSION} \
       pnpm@${PNPM_VERSION}
     npm cache clean --force
   "

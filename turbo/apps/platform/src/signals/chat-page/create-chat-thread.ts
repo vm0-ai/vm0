@@ -144,6 +144,10 @@ import {
   type MailDraftSignals,
 } from "./mail-draft.ts";
 import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
+import {
+  createBrowserSessionCardSignalsRegistry,
+  type BrowserSessionCardSignalsRegistry,
+} from "./browser-session-block.ts";
 import { searchParams$ } from "../route.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
@@ -2231,6 +2235,7 @@ interface BodyBlockRegistries {
   readonly mailDraftCardSignals: ReturnType<
     typeof createMailDraftCardSignalsRegistry
   >;
+  readonly browserSessionCardSignals: BrowserSessionCardSignalsRegistry;
 }
 
 function createBodyBlocksRenderer({
@@ -2241,6 +2246,7 @@ function createBodyBlocksRenderer({
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
   mailDraftCardSignals,
+  browserSessionCardSignals,
 }: BodyBlockRegistries): (
   resolution: "register" | "resolve",
 ) => BodyBlocksRenderer {
@@ -2323,6 +2329,16 @@ function createBodyBlocksRenderer({
                 resolution === "register"
                   ? mailDraftCardSignals.register(block.descriptor)
                   : mailDraftCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "browser-session": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? browserSessionCardSignals.register(block.descriptor)
+                  : browserSessionCardSignals.resolve(block.resourceKey),
             };
           }
         }
@@ -2417,6 +2433,8 @@ function createPagedMessages(
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
+  const browserSessionCardSignals =
+    createBrowserSessionCardSignalsRegistry(threadId);
   const artifactCardSignals = createArtifactCardSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
@@ -2432,6 +2450,7 @@ function createPagedMessages(
     computerUseAuthorizationCardSignals,
     planUpgradeCardSignals,
     mailDraftCardSignals,
+    browserSessionCardSignals,
   });
   const registerBodyBlocks = bodyBlocksRenderer("register");
   const resolveBodyBlocks = bodyBlocksRenderer("resolve");

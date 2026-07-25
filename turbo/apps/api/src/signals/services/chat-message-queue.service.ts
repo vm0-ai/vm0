@@ -20,6 +20,7 @@ import {
   internalRunCallbackKinds,
   type InternalRunCallbackKind,
 } from "./internal-run-callback";
+import { browserCleanupRequiredForChatThread } from "./zero-chat-active-run.service";
 import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
 
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
@@ -124,7 +125,10 @@ async function activeRunExistsForWorkflowThread(
       ),
     )
     .limit(1);
-  return run !== undefined;
+  if (run !== undefined) {
+    return true;
+  }
+  return await browserCleanupRequiredForChatThread(db, threadId);
 }
 
 async function pendingWorkflowEventExists(

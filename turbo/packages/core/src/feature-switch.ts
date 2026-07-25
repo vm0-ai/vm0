@@ -518,6 +518,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroBrowser]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Show the Zero Browser command in the Zero CLI.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
     description:

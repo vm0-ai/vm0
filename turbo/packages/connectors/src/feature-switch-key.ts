@@ -47,6 +47,7 @@ export enum FeatureSwitchKey {
   ZeroWeather = "zeroWeather",
   ZeroFinance = "zeroFinance",
   ZeroPeopleSearch = "zeroPeopleSearch",
+  ZeroBrowser = "zeroBrowser",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",

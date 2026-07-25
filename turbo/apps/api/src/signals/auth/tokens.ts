@@ -74,6 +74,7 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
+  featureSwitchOverrides: z.record(z.string(), z.boolean()).optional(),
   computerUseHostId: z.string().uuid().optional(),
 });
 
@@ -324,6 +325,7 @@ export function generateZeroToken(
     runId,
     orgId,
     capabilities,
+    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

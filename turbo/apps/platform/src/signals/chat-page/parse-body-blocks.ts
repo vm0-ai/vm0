@@ -33,6 +33,11 @@ import {
   type MailDraftSignals,
 } from "./mail-draft.ts";
 import {
+  parseBrowserSessionUrl,
+  type BrowserSessionDescriptor,
+  type BrowserSessionSignals,
+} from "./browser-session-block.ts";
+import {
   resolvePublicArtifactsBaseUrl,
   resolveZeroHostDomain,
 } from "../../lib/platform-host.ts";
@@ -83,6 +88,11 @@ export type BodyRenderBlock =
       type: "mail-draft";
       resourceKey: string;
       signals: MailDraftSignals;
+    }
+  | {
+      type: "browser-session";
+      resourceKey: string;
+      signals: BrowserSessionSignals;
     };
 
 export type ParsedBodyBlock =
@@ -121,6 +131,11 @@ export type ParsedBodyBlock =
       type: "mail-draft";
       resourceKey: string;
       descriptor: MailDraftDescriptor;
+    }
+  | {
+      type: "browser-session";
+      resourceKey: string;
+      descriptor: BrowserSessionDescriptor;
     };
 
 type ChatAttachmentKind = BodyPreviewKind;
@@ -151,7 +166,7 @@ const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
-const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -746,7 +761,8 @@ function createActionBlockFromLine(line: string): Extract<
       | "permission-action"
       | "computer-use-authorization"
       | "plan-upgrade"
-      | "mail-draft";
+      | "mail-draft"
+      | "browser-session";
   }
 > | null {
   const url = extractActionUrlFromLine(line);
@@ -805,6 +821,15 @@ function createActionBlockFromLine(line: string): Extract<
       type: "mail-draft",
       resourceKey: mailDraft.mailDraftId,
       descriptor: mailDraft,
+    };
+  }
+
+  const browserSession = parseBrowserSessionUrl(url, line);
+  if (browserSession) {
+    return {
+      type: "browser-session",
+      resourceKey: browserSession.fallbackMarkdown,
+      descriptor: browserSession,
     };
   }
 

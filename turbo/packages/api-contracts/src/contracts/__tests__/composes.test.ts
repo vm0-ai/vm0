@@ -40,8 +40,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 35 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(35);
+  it("should have exactly 37 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(37);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -91,6 +91,11 @@ describe("ZERO_CAPABILITIES", () => {
   it("should include hosted-site read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("host:read");
     expect(ZERO_CAPABILITIES).toContain("host:write");
+  });
+
+  it("should include managed browser read and write capabilities", () => {
+    expect(ZERO_CAPABILITIES).toContain("browser:read");
+    expect(ZERO_CAPABILITIES).toContain("browser:write");
   });
 
   it("should include managed maps read capability", () => {
