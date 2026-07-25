@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.321.0](https://github.com/vm0-ai/vm0/compare/api-v1.320.0...api-v1.321.0) (2026-07-25)
+
+
+### Features
+
+* **billing:** enable plan upgrade guidance globally ([#23019](https://github.com/vm0-ai/vm0/issues/23019)) ([4f6feb6](https://github.com/vm0-ai/vm0/commit/4f6feb654f4c3a0b908786e481f91cbbb235ebb9))
+
+
+### Bug Fixes
+
+* **api:** revalidate catalog rejections after backend releases ([#23001](https://github.com/vm0-ai/vm0/issues/23001)) ([ac8c4ab](https://github.com/vm0-ai/vm0/commit/ac8c4ab4d51a574cec6c0f8c274e7a880868e11f))
+
+
+### Refactoring
+
+* **api:** replace usage insight sql with typed drizzle builders ([#23003](https://github.com/vm0-ai/vm0/issues/23003)) ([9df6f88](https://github.com/vm0-ai/vm0/commit/9df6f88c128974f1f131c6ca2a9d255d98c2c362))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.1
+    * @vm0/core bumped to 8.466.0
+    * @vm0/db bumped to 1.139.1
+
 ## [1.320.0](https://github.com/vm0-ai/vm0/compare/api-v1.319.0...api-v1.320.0) (2026-07-25)
 
 
