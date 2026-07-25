@@ -116,6 +116,9 @@ export const browserSessionInstances = pgTable(
     // Provider cleanup and settlement must outlive deletion of either parent.
     chatThreadId: uuid("chat_thread_id").notNull(),
     runId: uuid("run_id").notNull(),
+    // Run that owns this instance's whole cost. Chosen once when the instance
+    // is claimed for stop, so retries always settle onto the same run.
+    billingRunId: uuid("billing_run_id"),
     status: varchar("status", { length: 20 })
       .$type<"active" | "stopping" | "stopped">()
       .notNull(),
@@ -142,6 +145,11 @@ export const browserSessionInstances = pgTable(
     ),
     timeoutAt: timestamp("timeout_at").notNull(),
     startedAt: timestamp("started_at").notNull(),
+    // Idle lease. Any run or open viewer touches the instance, and the
+    // reconciler reclaims it once the lease expires. updatedAt cannot carry
+    // this because the reconciler bumps updatedAt on every healthy pass.
+    lastTouchedAt: timestamp("last_touched_at").defaultNow().notNull(),
+    idleExpiresAt: timestamp("idle_expires_at").defaultNow().notNull(),
     stopRequestedAt: timestamp("stop_requested_at"),
     finishedAt: timestamp("finished_at"),
     settledAt: timestamp("settled_at"),

@@ -144,9 +144,12 @@ import {
   type MailDraftSignals,
 } from "./mail-draft.ts";
 import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
+import { currentBrowserSessionId$ } from "../zero-page/browser-session-sidebar.ts";
 import {
   createBrowserSessionCardSignalsRegistry,
+  parseBrowserSessionUrl,
   type BrowserSessionCardSignalsRegistry,
+  type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { searchParams$ } from "../route.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
@@ -2403,6 +2406,25 @@ function createMailDraftCardSignalsById(
   });
 }
 
+function createBrowserSessionCardSignalsById(
+  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
+  browserSessionCardSignals: BrowserSessionCardSignalsRegistry,
+): Computed<ReadonlyMap<string, BrowserSessionSignals>> {
+  return computed((get) => {
+    get(rawMessages$);
+    // The sidebar can be restored from the URL before its message renders, so
+    // register the selected browser as well as the ones already in the stream.
+    const selectedBrowserId = get(currentBrowserSessionId$);
+    const selectedDescriptor = selectedBrowserId
+      ? parseBrowserSessionUrl(`/browsers/${selectedBrowserId}`)
+      : null;
+    if (selectedDescriptor) {
+      browserSessionCardSignals.register(selectedDescriptor);
+    }
+    return new Map(browserSessionCardSignals.entries());
+  });
+}
+
 function createHistoryBackfillProgress(
   hasReachedOldestMessage$: Computed<boolean>,
   persistentMessages$: PersistentChatMessages$,
@@ -2507,6 +2529,10 @@ function createPagedMessages(
     rawMessages$,
     mailDraftCardSignals,
   );
+  const browserSessionCardSignalsById$ = createBrowserSessionCardSignalsById(
+    rawMessages$,
+    browserSessionCardSignals,
+  );
 
   const mergePersistentMessages$ = createMergePersistentMessages(
     threadId,
@@ -2547,6 +2573,7 @@ function createPagedMessages(
     messageRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
+    browserSessionCardSignalsById$,
     syncRemoteMessages$,
   };
 }
@@ -4228,6 +4255,7 @@ function publicChatThreadMessageSignals(
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
     messageImageGroups$: messages.messageImageGroups$,
     mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
+    browserSessionCardSignalsById$: messages.browserSessionCardSignalsById$,
     hasMessages$: messages.hasMessages$,
     hasNewMessages$: messages.hasNewMessages$,
     hasQueuedMessages$: messages.hasQueuedMessages$,

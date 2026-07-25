@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   ZERO_BROWSER_DEFAULT_MAX_CREDITS,
-  ZERO_BROWSER_DEFAULT_TIMEOUT_MINUTES,
+  ZERO_BROWSER_IDLE_LEASE_MINUTES,
+  ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
   type ZeroBrowserSession,
   type ZeroBrowserSuspensionReason,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -26,6 +27,7 @@ import {
   isNull,
   lte,
   ne,
+  notExists,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -58,6 +60,7 @@ const RECONCILE_BATCH_SIZE = 20;
 const PROVIDER_CLEANUP_TIMEOUT_MS = 30_000;
 const PROVIDER_START_LIFECYCLE_TIMEOUT_MS = 90_000;
 const STRANDED_START_GRACE_MS = 60_000;
+const IDLE_LEASE_MS = ZERO_BROWSER_IDLE_LEASE_MINUTES * 60_000;
 const OWNED_BROWSER_STATUSES = [
   "creating",
   "active",
@@ -105,14 +108,18 @@ interface BrowserActor {
 interface BrowserRunContext {
   readonly orgId: string;
   readonly userId: string;
+  // Run the provider instance is attributed to. For run tokens this is the
+  // calling run; for viewer requests it is the thread's most recent run.
   readonly runId: string;
   readonly chatThreadId: string;
+  // Viewer requests may start a browser while no run is alive, so only run
+  // tokens assert that their own run is still running.
+  readonly requireLiveRun: boolean;
 }
 
 interface BrowserCreateInput {
   readonly name: string;
   readonly proxyCountryCode: string | null;
-  readonly timeoutMinutes: number;
   readonly maxCredits: number;
 }
 
@@ -139,14 +146,15 @@ interface ClaimedBrowserInstance {
   readonly reason: ZeroBrowserSuspensionReason;
 }
 
-interface BrowserFinalizeResult {
+interface BrowserReleaseResult {
+  readonly released: number;
+}
+
+interface BrowserReconcileResult {
   readonly checked: number;
   readonly stopped: number;
   readonly settled: number;
   readonly errors: number;
-}
-
-interface BrowserReconcileResult extends BrowserFinalizeResult {
   readonly healthy: number;
 }
 
@@ -196,6 +204,7 @@ function browserViewerUrl(browserId: string): string {
 function publicBrowser(
   row: BrowserSessionRow,
   liveUrl: string | null,
+  idleExpiresAt: Date | null = null,
 ): ZeroBrowserSession {
   return {
     id: row.id,
@@ -208,11 +217,41 @@ function publicBrowser(
     maxCredits: row.maxCredits,
     grossCredits: row.grossCredits,
     creditsCharged: row.creditsCharged,
+    idleExpiresAt: idleExpiresAt?.toISOString() ?? null,
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspensionReason: row.suspensionReason,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function nextIdleDeadline(): Date {
+  return new Date(nowDate().getTime() + IDLE_LEASE_MS);
+}
+
+// Extending the lease is unconditional and fixed-length: every toucher gets the
+// same 10 minutes from now, so leases cannot be stacked into a longer lifetime.
+async function touchInstanceLease(
+  db: Db,
+  providerSessionId: string,
+  signal: AbortSignal,
+): Promise<BrowserInstanceRow | null> {
+  const [touched] = await db
+    .update(browserSessionInstances)
+    .set({
+      lastTouchedAt: nowDate(),
+      idleExpiresAt: nextIdleDeadline(),
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(browserSessionInstances.providerSessionId, providerSessionId),
+        eq(browserSessionInstances.status, "active"),
+      ),
+    )
+    .returning();
+  signal.throwIfAborted();
+  return touched ?? null;
 }
 
 function decimalParts(value: string): {
@@ -329,6 +368,13 @@ async function cappedInstanceGrossCredits(
   );
 }
 
+// A provider instance can outlive the run that started it, so its cost belongs
+// to whichever run last owned it. The choice is frozen on the instance row when
+// it is claimed for stop, which keeps retries idempotent.
+function billingRunId(instance: BrowserInstanceRow): string {
+  return instance.billingRunId ?? instance.runId;
+}
+
 function usageEventMatchesBrowserCharge(
   event: typeof usageEvent.$inferSelect,
   browser: BrowserSessionRow,
@@ -337,7 +383,7 @@ function usageEventMatchesBrowserCharge(
   grossCredits: number,
 ): boolean {
   return (
-    event.runId === instance.runId &&
+    event.runId === billingRunId(instance) &&
     event.orgId === browser.orgId &&
     event.userId === browser.userId &&
     event.kind === BROWSER_USAGE_KIND &&
@@ -371,7 +417,7 @@ const chargeBrowserUsage$ = command(
     await db
       .insert(usageEvent)
       .values({
-        runId: args.instance.runId,
+        runId: billingRunId(args.instance),
         idempotencyKey: args.instance.providerSessionId,
         orgId: args.browser.orgId,
         userId: args.browser.userId,
@@ -535,14 +581,35 @@ const settleStoppedBrowserInstance$ = command(
     const db = set(writeDb$);
     const browser = await refreshBrowserRow(db, args.browserId);
     signal.throwIfAborted();
-    const instance = await refreshInstanceRow(db, args.providerSessionId);
+    const claimed = await refreshInstanceRow(db, args.providerSessionId);
     signal.throwIfAborted();
-    if (instance.settledAt) {
+    if (claimed.settledAt) {
       return false;
     }
-    if (instance.status !== "stopped") {
+    if (claimed.status !== "stopped") {
       throw new Error("Cannot settle a browser provider instance before stop");
     }
+    // Freeze the billed run before charging so a retry after a partial failure
+    // cannot move the charge onto a run that started in the meantime.
+    await db
+      .update(browserSessionInstances)
+      .set({
+        billingRunId: await resolveBillingRunId(db, {
+          chatThreadId: claimed.chatThreadId,
+          fallbackRunId: claimed.runId,
+          current: claimed.billingRunId,
+        }),
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(browserSessionInstances.providerSessionId, args.providerSessionId),
+          isNull(browserSessionInstances.billingRunId),
+        ),
+      );
+    signal.throwIfAborted();
+    const instance = await refreshInstanceRow(db, args.providerSessionId);
+    signal.throwIfAborted();
 
     const providerCostMicrousd =
       instance.browserCostMicrousd + instance.proxyCostMicrousd;
@@ -649,6 +716,36 @@ async function lockBrowserProfileCreation(
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
+async function latestThreadRunId(
+  db: Pick<Db, "select">,
+  chatThreadId: string,
+): Promise<string | null> {
+  const [run] = await db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.chatThreadId, chatThreadId))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(1);
+  return run?.id ?? null;
+}
+
+async function resolveBillingRunId(
+  db: Pick<Db, "select">,
+  args: {
+    readonly chatThreadId: string;
+    readonly fallbackRunId: string;
+    readonly current?: string | null;
+  },
+): Promise<string> {
+  if (args.current) {
+    return args.current;
+  }
+  // Deleting the chat thread detaches its runs, so fall back to the run that
+  // started the instance; provider cleanup and settlement must still complete.
+  return (await latestThreadRunId(db, args.chatThreadId)) ?? args.fallbackRunId;
+}
+
 async function resolveRunContext(
   db: Db,
   actor: BrowserActor,
@@ -692,6 +789,31 @@ async function resolveRunContext(
       userId: actor.userId,
       runId: actor.runId,
       chatThreadId: run.chatThreadId,
+      requireLiveRun: true,
+    },
+  };
+}
+
+async function resolveViewerContext(
+  db: Db,
+  browser: BrowserSessionRow,
+): Promise<BrowserServiceResult<BrowserRunContext>> {
+  const attributionRunId =
+    (await latestThreadRunId(db, browser.chatThreadId)) ?? browser.runId;
+  if (!attributionRunId) {
+    return conflict(
+      "This browser's chat thread has no run to bill; send a message first",
+      "BROWSER_RUN_REQUIRED",
+    );
+  }
+  return {
+    kind: "ok",
+    value: {
+      orgId: browser.orgId,
+      userId: browser.userId,
+      runId: attributionRunId,
+      chatThreadId: browser.chatThreadId,
+      requireLiveRun: false,
     },
   };
 }
@@ -940,6 +1062,8 @@ async function claimStartedProviderInstance(
         pricingUnitSize: args.pricing.unitSize,
         timeoutAt: new Date(args.provider.timeoutAt),
         startedAt: new Date(args.provider.startedAt),
+        lastTouchedAt: nowDate(),
+        idleExpiresAt: nextIdleDeadline(),
         stopRequestedAt: cleanupAfterStart ? nowDate() : null,
       })
       .returning();
@@ -962,7 +1086,7 @@ async function claimStartedProviderInstance(
         updatedAt: nowDate(),
       })
       .where(eq(browserSessions.id, current.id));
-    return { kind: "active" as const };
+    return { kind: "active" as const, instance };
   });
 }
 
@@ -980,7 +1104,9 @@ async function createAndClaimProviderInstance(
       {
         profileId: args.profile.providerProfileId,
         proxyCountryCode: args.browser.proxyCountryCode,
-        timeoutMinutes: args.browser.timeoutMinutes,
+        // Zero owns reclamation through the idle lease, so the provider only
+        // needs to enforce the absolute upper bound.
+        timeoutMinutes: ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
       },
       AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
     ),
@@ -1063,7 +1189,7 @@ const startProviderInstance$ = command(
             status: "stopping",
           },
           instance: claimed.instance,
-          reason: claimed.browser.suspensionReason ?? "run_end",
+          reason: claimed.browser.suspensionReason ?? "reconcile",
         },
         cleanupSignal,
       );
@@ -1093,7 +1219,11 @@ const startProviderInstance$ = command(
     return {
       kind: "ok",
       value: {
-        browser: publicBrowser(browser, started.liveUrl),
+        browser: publicBrowser(
+          browser,
+          started.liveUrl,
+          claimed.instance.idleExpiresAt,
+        ),
         cdpUrl: started.cdpUrl,
       },
     };
@@ -1139,7 +1269,10 @@ async function claimFreshBrowser(
         .where(eq(agentRuns.id, context.runId))
         .limit(1),
     ]);
-    if (!run[0] || isTerminalRunStatus(run[0].status)) {
+    if (
+      context.requireLiveRun &&
+      (!run[0] || isTerminalRunStatus(run[0].status))
+    ) {
       return conflict("The chat run already ended", "BROWSER_RUN_ENDED");
     }
     if (owned[0]) {
@@ -1181,7 +1314,9 @@ async function claimFreshBrowser(
         browserProfileId: args.browserProfileId,
         status: "creating",
         proxyCountryCode: args.proxyCountryCode,
-        timeoutMinutes: args.timeoutMinutes,
+        // Records the provider's hard lifetime cap; Zero's own idle lease is
+        // what normally ends a browser well before it.
+        timeoutMinutes: ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
         maxCredits: args.maxCredits,
       })
       .returning();
@@ -1192,25 +1327,20 @@ async function claimFreshBrowser(
   });
 }
 
-export const createZeroBrowser$ = command(
+const createBrowserForContext$ = command(
   async (
     { set },
     args: {
-      readonly actor: BrowserActor;
+      readonly context: BrowserRunContext;
       readonly input: BrowserCreateInput;
     },
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserConnection>> => {
     const db = set(writeDb$);
-    const context = await resolveRunContext(db, args.actor);
-    signal.throwIfAborted();
-    if (context.kind === "error") {
-      return context;
-    }
     const creditError = await set(
       checkCreditAmount$,
       {
-        orgId: args.actor.orgId,
+        orgId: args.context.orgId,
         requiredCredits: args.input.maxCredits,
       },
       signal,
@@ -1223,14 +1353,14 @@ export const createZeroBrowser$ = command(
       );
     }
 
-    const profile = await getOrCreateBrowserProfile(db, context.value);
+    const profile = await getOrCreateBrowserProfile(db, args.context);
     signal.throwIfAborted();
     if (profile.kind === "error") {
       return profile;
     }
     const claimed = await claimFreshBrowser(
       db,
-      context.value,
+      args.context,
       {
         ...args.input,
         browserId: randomUUID(),
@@ -1247,7 +1377,7 @@ export const createZeroBrowser$ = command(
       startProviderInstance$,
       {
         browser: claimed.value,
-        context: context.value,
+        context: args.context,
       },
       AbortSignal.timeout(PROVIDER_START_LIFECYCLE_TIMEOUT_MS),
     );
@@ -1269,6 +1399,29 @@ export const createZeroBrowser$ = command(
   },
 );
 
+export const createZeroBrowser$ = command(
+  async (
+    { set },
+    args: {
+      readonly actor: BrowserActor;
+      readonly input: BrowserCreateInput;
+    },
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<BrowserConnection>> => {
+    const db = set(writeDb$);
+    const context = await resolveRunContext(db, args.actor);
+    signal.throwIfAborted();
+    if (context.kind === "error") {
+      return context;
+    }
+    return await set(
+      createBrowserForContext$,
+      { context: context.value, input: args.input },
+      signal,
+    );
+  },
+);
+
 interface InspectActiveConnectionResume {
   readonly kind: "resume";
   readonly browser: BrowserSessionRow;
@@ -1277,11 +1430,15 @@ interface InspectActiveConnectionResume {
 const inspectActiveConnection$ = command(
   async (
     { set },
-    browser: BrowserSessionRow,
+    args: {
+      readonly browser: BrowserSessionRow;
+      readonly context: BrowserRunContext;
+    },
     signal: AbortSignal,
   ): Promise<
     BrowserServiceResult<BrowserConnection> | InspectActiveConnectionResume
   > => {
+    const { browser } = args;
     const db = set(writeDb$);
     const instance = await loadActiveInstance(db, browser.id);
     signal.throwIfAborted();
@@ -1310,10 +1467,32 @@ const inspectActiveConnection$ = command(
     }
     const { cdpUrl, liveUrl } = provider.value;
     if (provider.value.status === "active" && cdpUrl && liveUrl) {
+      // A later run in the same thread takes the live instance over instead of
+      // waiting for it to be reclaimed, and its lease restarts from now.
+      const [owner] = await db
+        .update(browserSessions)
+        .set({ runId: args.context.runId, updatedAt: nowDate() })
+        .where(
+          and(
+            eq(browserSessions.id, browser.id),
+            eq(browserSessions.status, "active"),
+          ),
+        )
+        .returning();
+      signal.throwIfAborted();
+      const leased = await touchInstanceLease(
+        db,
+        instance.providerSessionId,
+        signal,
+      );
       return {
         kind: "ok",
         value: {
-          browser: publicBrowser(browser, liveUrl),
+          browser: publicBrowser(
+            owner ?? browser,
+            liveUrl,
+            leased?.idleExpiresAt ?? instance.idleExpiresAt,
+          ),
           cdpUrl,
         },
       };
@@ -1386,26 +1565,25 @@ async function claimBrowserForResume(
         ),
     ]);
     const [run] = runs;
-    if (!run || isTerminalRunStatus(run.status)) {
+    if (context.requireLiveRun && (!run || isTerminalRunStatus(run.status))) {
       return conflict("The chat run already ended", "BROWSER_RUN_ENDED");
     }
     const owned = await loadOwnedThreadBrowser(tx, context.chatThreadId);
     if (owned) {
-      if (owned.status === "active" && owned.runId === context.runId) {
+      // A live instance is shared across the thread's runs, so ownership no
+      // longer decides who may attach to it.
+      if (owned.status === "active") {
         return { kind: "active", browser: owned };
       }
-      if (
-        ["creating", "resuming"].includes(owned.status) &&
-        owned.runId === context.runId
-      ) {
+      if (["creating", "resuming"].includes(owned.status)) {
         return conflict(
           "The managed browser is already starting",
           "BROWSER_STARTING",
         );
       }
       return conflict(
-        "The previous run is still cleaning up its managed browser",
-        "BROWSER_PREVIOUS_RUN_CLEANUP",
+        "Zero is still reclaiming this thread's previous managed browser; retry in a moment",
+        "BROWSER_STOPPING",
       );
     }
     const current = await loadCurrentBrowser(tx, context);
@@ -1465,49 +1643,67 @@ async function claimBrowserForResume(
   });
 }
 
-export const resumeZeroBrowser$ = command(
+// Create, reuse, or resume the thread's browser. A live provider instance is
+// reused across runs and its lease restarts; a suspended one is restarted from
+// the saved profile, which restores cookies and storage but not the old tabs.
+const openBrowserForContext$ = command(
   async (
     { set },
-    actor: BrowserActor,
+    args: {
+      readonly context: BrowserRunContext;
+      readonly expectedBrowserId?: string;
+    },
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserConnection>> => {
     const db = set(writeDb$);
-    const context = await resolveRunContext(db, actor);
-    signal.throwIfAborted();
-    if (context.kind === "error") {
-      return context;
-    }
+    const { context } = args;
 
-    let current = await loadCurrentBrowser(db, context.value);
+    let current = await loadCurrentBrowser(db, context);
     signal.throwIfAborted();
     if (!current) {
-      return await set(
-        createZeroBrowser$,
-        {
-          actor,
-          input: {
-            name: "browser",
-            proxyCountryCode: null,
-            timeoutMinutes: ZERO_BROWSER_DEFAULT_TIMEOUT_MINUTES,
-            maxCredits: ZERO_BROWSER_DEFAULT_MAX_CREDITS,
-          },
-        },
-        signal,
-      );
+      return args.expectedBrowserId
+        ? notFound()
+        : await set(
+            createBrowserForContext$,
+            {
+              context,
+              input: {
+                name: "browser",
+                proxyCountryCode: null,
+                maxCredits: ZERO_BROWSER_DEFAULT_MAX_CREDITS,
+              },
+            },
+            signal,
+          );
     }
 
-    const owned = await loadOwnedThreadBrowser(db, context.value.chatThreadId);
+    const owned = await loadOwnedThreadBrowser(db, context.chatThreadId);
     signal.throwIfAborted();
-    if (owned?.status === "active" && owned.runId === context.value.runId) {
-      const inspected = await set(inspectActiveConnection$, owned, signal);
+    if (owned?.status === "active") {
+      const inspected = await set(
+        inspectActiveConnection$,
+        { browser: owned, context },
+        signal,
+      );
       if (inspected.kind !== "resume") {
         return inspected;
       }
       current = inspected.browser;
     } else if (owned) {
+      return ["creating", "resuming"].includes(owned.status)
+        ? conflict(
+            "The managed browser is already starting",
+            "BROWSER_STARTING",
+          )
+        : conflict(
+            "Zero is still reclaiming this thread's previous managed browser; retry in a moment",
+            "BROWSER_STOPPING",
+          );
+    }
+    if (args.expectedBrowserId && current.id !== args.expectedBrowserId) {
       return conflict(
-        "The previous run is still cleaning up its managed browser",
-        "BROWSER_PREVIOUS_RUN_CLEANUP",
+        "This chat thread has a newer managed browser; use that one instead",
+        "BROWSER_CHANGED",
       );
     }
 
@@ -1520,7 +1716,7 @@ export const resumeZeroBrowser$ = command(
     }
     const creditError = await set(
       checkCreditAmount$,
-      { orgId: actor.orgId, requiredCredits: remainingCredits },
+      { orgId: context.orgId, requiredCredits: remainingCredits },
       signal,
     );
     if (creditError) {
@@ -1533,7 +1729,7 @@ export const resumeZeroBrowser$ = command(
 
     const claim = await claimBrowserForResume(
       db,
-      context.value,
+      context,
       {
         expectedBrowserId: current.id,
         browserProfileId: current.browserProfileId,
@@ -1554,7 +1750,7 @@ export const resumeZeroBrowser$ = command(
     if (claim.kind === "active") {
       const inspected = await set(
         inspectActiveConnection$,
-        claim.browser,
+        { browser: claim.browser, context },
         signal,
       );
       return inspected.kind === "resume"
@@ -1567,7 +1763,7 @@ export const resumeZeroBrowser$ = command(
 
     const connection = await set(
       startProviderInstance$,
-      { browser: claim.browser, context: context.value },
+      { browser: claim.browser, context },
       AbortSignal.timeout(PROVIDER_START_LIFECYCLE_TIMEOUT_MS),
     );
     signal.throwIfAborted();
@@ -1588,6 +1784,118 @@ export const resumeZeroBrowser$ = command(
   },
 );
 
+export const useZeroBrowser$ = command(
+  async (
+    { set },
+    actor: BrowserActor,
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<BrowserConnection>> => {
+    const db = set(writeDb$);
+    const context = await resolveRunContext(db, actor);
+    signal.throwIfAborted();
+    if (context.kind === "error") {
+      return context;
+    }
+    return await set(
+      openBrowserForContext$,
+      { context: context.value },
+      signal,
+    );
+  },
+);
+
+export const resumeZeroBrowserFromViewer$ = command(
+  async (
+    { set },
+    access: BrowserSessionAccess,
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+    const db = set(writeDb$);
+    const browser = await loadOwnedBrowser(db, access);
+    signal.throwIfAborted();
+    if (!browser) {
+      return notFound();
+    }
+    const context = await resolveViewerContext(db, browser);
+    signal.throwIfAborted();
+    if (context.kind === "error") {
+      return context;
+    }
+    const connection = await set(
+      openBrowserForContext$,
+      { context: context.value, expectedBrowserId: browser.id },
+      signal,
+    );
+    // The viewer runs in the user's browser, so it only ever learns the live
+    // view; the CDP endpoint stays inside the agent runtime.
+    return connection.kind === "error"
+      ? connection
+      : { kind: "ok", value: connection.value.browser };
+  },
+);
+
+const leaseInstanceForBrowser$ = command(
+  async (
+    { set },
+    browser: BrowserSessionRow,
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+    const db = set(writeDb$);
+    const instance = await loadActiveInstance(db, browser.id);
+    signal.throwIfAborted();
+    const leased = instance
+      ? await touchInstanceLease(db, instance.providerSessionId, signal)
+      : null;
+    if (!leased) {
+      return conflict(
+        "This managed browser is no longer live; resume it to keep working in it",
+        "BROWSER_NOT_LIVE",
+      );
+    }
+    return {
+      kind: "ok",
+      value: publicBrowser(browser, null, leased.idleExpiresAt),
+    };
+  },
+);
+
+export const leaseCurrentZeroBrowser$ = command(
+  async (
+    { set },
+    actor: BrowserActor,
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+    const db = set(writeDb$);
+    const context = await resolveRunContext(db, actor);
+    signal.throwIfAborted();
+    if (context.kind === "error") {
+      return context;
+    }
+    const browser = await loadCurrentBrowser(db, context.value);
+    signal.throwIfAborted();
+    if (!browser) {
+      return notFound();
+    }
+    return await set(leaseInstanceForBrowser$, browser, signal);
+  },
+);
+
+export const leaseZeroBrowserById$ = command(
+  async (
+    { set },
+    access: BrowserSessionAccess,
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+    const db = set(writeDb$);
+    const browser = await loadOwnedBrowser(db, access);
+    signal.throwIfAborted();
+    if (!browser) {
+      return notFound();
+    }
+    return await set(leaseInstanceForBrowser$, browser, signal);
+  },
+);
+
 export const getZeroBrowser$ = command(
   async (
     { set },
@@ -1601,10 +1909,12 @@ export const getZeroBrowser$ = command(
       return notFound();
     }
     let liveUrl: string | null = null;
+    let idleExpiresAt: Date | null = null;
     if (row.status === "active") {
       const instance = await loadActiveInstance(db, row.id);
       signal.throwIfAborted();
       if (instance) {
+        idleExpiresAt = instance.idleExpiresAt;
         const provider = await providerCall(
           getBrowserUseSession(instance.providerSessionId, signal),
         );
@@ -1616,7 +1926,7 @@ export const getZeroBrowser$ = command(
           provider.value.status === "active" ? provider.value.liveUrl : null;
       }
     }
-    return { kind: "ok", value: publicBrowser(row, liveUrl) };
+    return { kind: "ok", value: publicBrowser(row, liveUrl, idleExpiresAt) };
   },
 );
 
@@ -1654,116 +1964,6 @@ function isTerminalRunStatus(status: string): boolean {
   return TERMINAL_RUN_STATUSES.some((terminalStatus) => {
     return terminalStatus === status;
   });
-}
-
-async function claimThreadBrowserInstances(
-  db: Db,
-  args: {
-    readonly chatThreadId: string;
-    readonly runId: string;
-  },
-  signal: AbortSignal,
-): Promise<readonly ClaimedBrowserInstance[]> {
-  const claimed = await db.transaction(async (tx) => {
-    await lockBrowserThread(tx, args.chatThreadId);
-    const rows = await tx
-      .select({
-        browser: browserSessions,
-        instance: browserSessionInstances,
-        runStatus: agentRuns.status,
-      })
-      .from(browserSessionInstances)
-      .innerJoin(
-        browserSessions,
-        eq(browserSessions.id, browserSessionInstances.browserSessionId),
-      )
-      .leftJoin(agentRuns, eq(agentRuns.id, browserSessionInstances.runId))
-      .where(
-        and(
-          eq(browserSessionInstances.chatThreadId, args.chatThreadId),
-          inArray(browserSessionInstances.status, [
-            ...CLEANUP_INSTANCE_STATUSES,
-          ]),
-          isNull(browserSessionInstances.settledAt),
-        ),
-      );
-    const candidates = rows.filter((row) => {
-      return (
-        row.instance.runId === args.runId ||
-        row.runStatus === null ||
-        isTerminalRunStatus(row.runStatus)
-      );
-    });
-
-    for (const row of candidates) {
-      const reason =
-        row.instance.runId === args.runId ? "run_end" : "reconcile";
-      await tx
-        .update(browserSessions)
-        .set({
-          status: "stopping",
-          suspensionReason: reason,
-          updatedAt: nowDate(),
-        })
-        .where(eq(browserSessions.id, row.browser.id));
-      if (row.instance.status === "active") {
-        await tx
-          .update(browserSessionInstances)
-          .set({
-            status: "stopping",
-            stopRequestedAt: nowDate(),
-            updatedAt: nowDate(),
-          })
-          .where(
-            and(
-              eq(
-                browserSessionInstances.providerSessionId,
-                row.instance.providerSessionId,
-              ),
-              eq(browserSessionInstances.status, "active"),
-            ),
-          );
-      }
-    }
-
-    await tx
-      .update(browserSessions)
-      .set({
-        status: "stopping",
-        suspensionReason: "run_end",
-        updatedAt: nowDate(),
-      })
-      .where(
-        and(
-          eq(browserSessions.chatThreadId, args.chatThreadId),
-          eq(browserSessions.runId, args.runId),
-          inArray(browserSessions.status, ["creating", "resuming"]),
-        ),
-      );
-
-    return candidates.map((row) => {
-      const reason: ZeroBrowserSuspensionReason =
-        row.instance.runId === args.runId ? "run_end" : "reconcile";
-      return {
-        browser: {
-          ...row.browser,
-          status: "stopping" as const,
-          suspensionReason: reason,
-        },
-        instance:
-          row.instance.status === "active"
-            ? {
-                ...row.instance,
-                status: "stopping" as const,
-                stopRequestedAt: nowDate(),
-              }
-            : row.instance,
-        reason,
-      };
-    });
-  });
-  signal.throwIfAborted();
-  return claimed;
 }
 
 const finalizeClaimedBrowserInstance$ = command(
@@ -1818,38 +2018,34 @@ const finalizeClaimedBrowserInstance$ = command(
   },
 );
 
-export const finalizeThreadBrowsersForRun$ = command(
+// A terminal run no longer stops its browser: the window stays live so the user
+// can keep working in it and the next run can attach to it. Refreshing the lease
+// here gives that hand-off a full idle window measured from the run's end.
+export const releaseThreadBrowsersForRun$ = command(
   async (
     { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly runId: string;
-    },
+    args: { readonly chatThreadId: string },
     signal: AbortSignal,
-  ): Promise<BrowserFinalizeResult> => {
+  ): Promise<BrowserReleaseResult> => {
     const db = set(writeDb$);
-    const claimed = await claimThreadBrowserInstances(db, args, signal);
-    let stopped = 0;
-    let settledCount = 0;
-    let errors = 0;
-    for (const candidate of claimed) {
-      const result = await settle(
-        set(finalizeClaimedBrowserInstance$, candidate, signal),
-        signal,
-      );
-      if (!result.ok) {
-        errors += 1;
-        continue;
-      }
-      stopped += result.value.stopped ? 1 : 0;
-      settledCount += result.value.settled ? 1 : 0;
-    }
-    return {
-      checked: claimed.length,
-      stopped,
-      settled: settledCount,
-      errors,
-    };
+    const released = await db
+      .update(browserSessionInstances)
+      .set({
+        lastTouchedAt: nowDate(),
+        idleExpiresAt: nextIdleDeadline(),
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(browserSessionInstances.chatThreadId, args.chatThreadId),
+          eq(browserSessionInstances.status, "active"),
+        ),
+      )
+      .returning({
+        providerSessionId: browserSessionInstances.providerSessionId,
+      });
+    signal.throwIfAborted();
+    return { released: released.length };
   },
 );
 
@@ -1933,7 +2129,40 @@ async function releaseStrandedBrowserStarts(
   for (const browser of stranded) {
     await markBrowserResumableIfSettled(db, browser.id, signal);
   }
-  return stranded.length;
+  // Nothing stops a browser at run end any more, so a sandbox that dies while
+  // its provider instance is starting would otherwise hold the thread's only
+  // live-browser slot forever.
+  const abandonedStarts = await db
+    .update(browserSessions)
+    .set({ status: "error", updatedAt: nowDate() })
+    .where(
+      and(
+        inArray(browserSessions.status, ["creating", "resuming"]),
+        lte(
+          browserSessions.updatedAt,
+          new Date(nowDate().getTime() - PROVIDER_START_LIFECYCLE_TIMEOUT_MS),
+        ),
+        notExists(
+          db
+            .select({
+              providerSessionId: browserSessionInstances.providerSessionId,
+            })
+            .from(browserSessionInstances)
+            .where(
+              and(
+                eq(
+                  browserSessionInstances.browserSessionId,
+                  browserSessions.id,
+                ),
+                isNull(browserSessionInstances.settledAt),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: browserSessions.id });
+  signal.throwIfAborted();
+  return stranded.length + abandonedStarts.length;
 }
 
 async function deferBrowserInstanceReconcile(
@@ -1951,7 +2180,7 @@ async function deferBrowserInstanceReconcile(
 interface BrowserReconcileCandidate {
   readonly browser: BrowserSessionRow;
   readonly instance: BrowserInstanceRow;
-  readonly runStatus: (typeof agentRuns.$inferSelect)["status"] | null;
+  readonly chatThreadId: string | null;
 }
 
 interface BrowserReconcileOutcome {
@@ -1975,10 +2204,14 @@ const reconcileBrowserInstance$ = command(
       row.instance.status === "stopped"
     ) {
       reason = row.browser.suspensionReason ?? "reconcile";
-    } else if (row.runStatus === null || isTerminalRunStatus(row.runStatus)) {
+    } else if (row.chatThreadId === null) {
+      // Nobody can reach a deleted thread's browser, so reclaim it now instead
+      // of paying for it until the lease runs out.
       reason = "reconcile";
     } else if (row.instance.timeoutAt <= nowDate()) {
       reason = "timeout";
+    } else if (row.instance.idleExpiresAt <= nowDate()) {
+      reason = "idle";
     } else {
       const provider = await providerCall(
         getBrowserUseSession(row.instance.providerSessionId, signal),
@@ -2065,14 +2298,17 @@ export const reconcileZeroBrowsers$ = command(
       .select({
         browser: browserSessions,
         instance: browserSessionInstances,
-        runStatus: agentRuns.status,
+        chatThreadId: chatThreads.id,
       })
       .from(browserSessionInstances)
       .innerJoin(
         browserSessions,
         eq(browserSessions.id, browserSessionInstances.browserSessionId),
       )
-      .leftJoin(agentRuns, eq(agentRuns.id, browserSessionInstances.runId))
+      .leftJoin(
+        chatThreads,
+        eq(chatThreads.id, browserSessionInstances.chatThreadId),
+      )
       .where(
         and(
           inArray(browserSessionInstances.status, [
