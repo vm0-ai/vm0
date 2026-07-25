@@ -368,7 +368,7 @@ describe("workflow queue", () => {
     });
 
     const workflowRequest = postWorkflowWebhook(automation, "stale event");
-    await expect.poll(admissionLock.waiterCount).toBe(1);
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
     const queued = await accept(
       queueClient().get({
         headers: authHeaders(),
@@ -393,10 +393,26 @@ describe("workflow queue", () => {
         prompt: "fresh user message",
       },
     });
-    await expect.poll(admissionLock.waiterCount).toBe(2);
+    // The persisted queued message is the product milestone proving the send
+    // reached the queue; the waiter count is a cluster-wide `pg_locks`
+    // observation of one org key that several admission attempts share, so it
+    // is only used as a lower-bound barrier here.
+    await expect
+      .poll(async () => {
+        const messages = await wf.readThreadMessages(automation.threadId);
+        return messages.some((message) => {
+          return message.content === "fresh user message";
+        });
+      })
+      .toBe(true);
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(2);
+    const admittedWaiters = await admissionLock.waiterCount();
 
+    // The business assertion: the stale sweep must not add an admission
+    // attempt of its own for this org, so the waiter count stays exactly where
+    // both blocked requests left it.
     await cleanupSandboxes();
-    await expect(admissionLock.waiterCount()).resolves.toBe(2);
+    await expect(admissionLock.waiterCount()).resolves.toBe(admittedWaiters);
 
     admissionLock.release();
     const [workflowResult, userResult] = await Promise.all([
