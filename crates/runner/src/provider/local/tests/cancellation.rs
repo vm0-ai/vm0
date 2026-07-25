@@ -7,7 +7,8 @@ async fn cancel_file_triggers_token() {
     let tokens = empty_cancel_tokens();
 
     let run_id = RunId::new_v4();
-    let job_token = insert_cancel_handle(&tokens, run_id).await;
+    let registration = insert_cancel_registration(&tokens, run_id).await;
+    let job_token = registration.token();
 
     let provider = default_provider(dir.path(), cancel, tokens);
 
@@ -28,7 +29,8 @@ async fn owned_cancel_file_is_deleted_after_provider_claim() {
     let dir = tempfile::tempdir().unwrap();
     let tokens = empty_cancel_tokens();
     let run_id = RunId::new_v4();
-    let job_token = insert_cancel_handle(&tokens, run_id).await;
+    let registration = insert_cancel_registration(&tokens, run_id).await;
+    let job_token = registration.token();
     let provider = default_provider(dir.path(), CancellationToken::new(), tokens);
     write_job(dir.path(), run_id, "owned");
     let candidate = provider.discover().await.unwrap();
@@ -74,7 +76,7 @@ async fn stale_cancel_file_is_deleted_before_provider_discovers_next_job() {
 async fn cancel_file_before_token_survives_until_provider_claim_token_exists() {
     let dir = tempfile::tempdir().unwrap();
     let tokens = empty_cancel_tokens();
-    let provider = default_provider(dir.path(), CancellationToken::new(), Arc::clone(&tokens));
+    let provider = default_provider(dir.path(), CancellationToken::new(), tokens.clone());
     let run_id = RunId::new_v4();
     let cancel_path = local_queue::cancel_path(dir.path(), run_id);
     std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
@@ -88,7 +90,8 @@ async fn cancel_file_before_token_survives_until_provider_claim_token_exists() {
         "cancel file should survive before the token is inserted"
     );
 
-    let job_token = insert_cancel_handle(&tokens, run_id).await;
+    let registration = insert_cancel_registration(&tokens, run_id).await;
+    let job_token = registration.token();
     provider.claim(candidate).await.unwrap();
     let other_job = RunId::new_v4();
     write_job(dir.path(), other_job, "next job");
@@ -114,10 +117,11 @@ async fn provider_cancel_watcher_triggers_owned_token_without_discover() {
         dir.path().to_path_buf(),
         default_profiles(),
         CancellationToken::new(),
-        Arc::clone(&tokens),
+        tokens.clone(),
     );
     let run_id = RunId::new_v4();
-    let job_token = insert_cancel_handle(&tokens, run_id).await;
+    let registration = insert_cancel_registration(&tokens, run_id).await;
+    let job_token = registration.token();
     write_job(dir.path(), run_id, "owned");
     let candidate = provider.discover().await.unwrap();
     provider.claim(candidate).await.unwrap();

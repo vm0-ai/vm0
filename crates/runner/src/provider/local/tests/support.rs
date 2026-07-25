@@ -11,7 +11,7 @@ pub(super) use crate::local_queue;
 use crate::local_queue::JobRequest;
 pub(super) use crate::local_queue::JobResponse;
 pub(super) use crate::provider::{CompletionAuth, JobCandidate, JobProvider};
-use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 pub(super) use tokio_util::sync::CancellationToken;
 
 pub(super) trait LocalProviderTestExt {
@@ -32,18 +32,15 @@ impl LocalProviderTestExt for LocalProvider {
     }
 }
 
-pub(super) fn empty_cancel_tokens() -> SharedRunCancellationMap {
-    Arc::new(tokio::sync::Mutex::new(HashMap::new()))
+pub(super) fn empty_cancel_tokens() -> RunCancellationRegistry {
+    RunCancellationRegistry::new()
 }
 
-pub(super) async fn insert_cancel_handle(
-    tokens: &SharedRunCancellationMap,
+pub(super) async fn insert_cancel_registration(
+    tokens: &RunCancellationRegistry,
     run_id: RunId,
-) -> CancellationToken {
-    let handle = RunCancellationHandle::new();
-    let token = handle.token();
-    tokens.lock().await.insert(run_id, handle);
-    token
+) -> RunCancellationRegistration {
+    tokens.register(run_id).await.unwrap()
 }
 
 pub(super) fn profiles(names: &[&str]) -> Vec<String> {
@@ -57,7 +54,7 @@ pub(super) fn default_profiles() -> Vec<String> {
 pub(super) fn default_provider(
     dir: &std::path::Path,
     cancel: CancellationToken,
-    tokens: SharedRunCancellationMap,
+    tokens: RunCancellationRegistry,
 ) -> Arc<LocalProvider> {
     LocalProvider::new_inner(dir.to_path_buf(), default_profiles(), cancel, tokens, false)
 }
@@ -66,7 +63,7 @@ pub(super) fn provider_with_profiles(
     dir: &std::path::Path,
     supported_profiles: &[&str],
     cancel: CancellationToken,
-    tokens: SharedRunCancellationMap,
+    tokens: RunCancellationRegistry,
 ) -> Arc<LocalProvider> {
     LocalProvider::new_inner(
         dir.to_path_buf(),

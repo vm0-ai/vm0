@@ -19,7 +19,7 @@ async fn outer_job_panic_after_idle_pool_owned_cleans_token_and_active_status() 
     );
     config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::IdlePoolOwned);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
@@ -64,7 +64,7 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
         proc_scan_complete: true,
         incomplete_for_current_runner: false,
     });
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
@@ -106,7 +106,7 @@ async fn outer_job_panic_after_active_stop_panic_preserves_status_for_reconcilia
         incomplete_for_current_runner: false,
     });
     let budget = Arc::clone(&config.capacity.budget);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
@@ -156,7 +156,7 @@ async fn outer_job_panic_after_destroy_completed_cleans_token_and_active_status(
 
     let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
     config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::DestroyCompleted);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 

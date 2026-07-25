@@ -224,7 +224,7 @@ async fn group_claim_only_one_winner() {
     let cancel = CancellationToken::new();
 
     let tokens = empty_cancel_tokens();
-    let provider_a = default_provider(dir.path(), cancel.clone(), Arc::clone(&tokens));
+    let provider_a = default_provider(dir.path(), cancel.clone(), tokens.clone());
     let provider_b = default_provider(dir.path(), cancel, tokens);
 
     let job_id = RunId::new_v4();
