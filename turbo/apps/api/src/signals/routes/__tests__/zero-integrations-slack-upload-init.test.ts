@@ -193,7 +193,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     ).toHaveBeenLastCalledWith({ filename: "quarterly.csv", length: 4096 });
   });
 
-  it("preserves large direct uploads when canonical assets are disabled", async () => {
+  it("rejects large canonical uploads after asset graduation", async () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
@@ -212,19 +212,16 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
         },
         headers: { authorization: `Bearer ${token}` },
       }),
-      [200],
+      [400],
     );
 
-    expect(response.body).toMatchObject({
-      uploadUrl: "https://files.slack.com/upload/v1/abc",
-      fileId: "F-mock-file",
+    expect(response.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message: "File too large (max 100 MB)",
     });
     expect(
       context.mocks.slack.files.getUploadURLExternal,
-    ).toHaveBeenLastCalledWith({
-      filename: "legacy-archive.zip",
-      length: LARGE_DIRECT_UPLOAD_BYTES,
-    });
+    ).not.toHaveBeenCalled();
   });
 
   it("forwards Slack non-ok upload URL responses as 400 SLACK_ERROR", async () => {
