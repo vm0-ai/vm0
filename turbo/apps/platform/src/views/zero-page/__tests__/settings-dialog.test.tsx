@@ -87,8 +87,17 @@ describe("settings dialog", () => {
     const diagnostics = await screen.findByRole("region", {
       name: "Connector catalog",
     });
-    expect(within(diagnostics).getAllByText("Current")).toHaveLength(2);
+    expect(within(diagnostics).getByText("Stale")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Current")).toBeInTheDocument();
     expect(within(diagnostics).getByText("2026-07-25.1")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("2026-07-25.2")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("1.319.0")).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("Cached rejection"),
+    ).toBeInTheDocument();
+    expect(within(diagnostics).getAllByText("Invalid artifact")).toHaveLength(
+      2,
+    );
     expect(within(diagnostics).getByText("github / oauth")).toBeInTheDocument();
     expect(
       within(diagnostics).getByText("Missing revoke provider"),
@@ -105,6 +114,50 @@ describe("settings dialog", () => {
     expect(
       within(diagnostics).getByText("Unresolved bridge credentials"),
     ).toBeInTheDocument();
+  });
+
+  it("tolerates connector diagnostics from an older api", async () => {
+    context.mocks.api(
+      zeroConnectorCatalogContract.diagnostics,
+      ({ respond }) => {
+        return respond(200, {
+          state: "stale",
+          active: {
+            catalogVersion: "2026-07-25.1",
+            catalogDigest: `sha256:${"a".repeat(64)}`,
+            activatedAt: "2026-07-25T01:00:00.000Z",
+          },
+          lastAttempt: {
+            at: "2026-07-25T02:00:00.000Z",
+            outcome: "rejected",
+            failureCode: "invalid-artifact",
+          },
+          lastSuccessAt: "2026-07-25T01:00:00.000Z",
+          filtering: {
+            capabilityDigest: `sha256:${"b".repeat(64)}`,
+            evaluatedAt: "2026-07-25T01:00:00.000Z",
+            stale: false,
+            filteredAuthMethods: [],
+          },
+          credentialStorage: {
+            missingConnectorVersions: 0,
+            unownedConnectorSecrets: 0,
+            unownedConnectorVariables: 0,
+            unresolvedBridgeCredentials: 0,
+          },
+        });
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Connector catalog",
+    });
+    expect(within(diagnostics).getByText("Unknown")).toBeInTheDocument();
+    expect(
+      within(diagnostics).queryByText("Rejected candidate"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps Debug settings usable when diagnostics are unavailable", async () => {

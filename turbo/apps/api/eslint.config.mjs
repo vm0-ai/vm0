@@ -262,6 +262,17 @@ export default [
     },
   },
   {
+    // The production API cannot construct legacy or old-writer-mismatched
+    // authority rows. Keep this finite state-policy matrix as the documented
+    // narrow exception while route tests cover all constructible behavior.
+    files: [
+      "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": ["error", ...restrictedSyntax],
+    },
+  },
+  {
     files: ["src/signals/route.ts"],
     rules: {
       "no-restricted-imports": [

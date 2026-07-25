@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   customType,
   foreignKey,
@@ -61,6 +62,10 @@ export const connectorCatalogSyncState = pgTable(
     lastAttemptOutcome: varchar("last_attempt_outcome", {
       length: 32,
     }).$type<ConnectorCatalogAttemptOutcome>(),
+    lastAttemptMetadataRevision: integer("last_attempt_metadata_revision"),
+    lastAttemptReusedCachedRejection: boolean(
+      "last_attempt_reused_cached_rejection",
+    ),
     lastSuccessAt: timestamp("last_success_at"),
     lastFailureCode: varchar("last_failure_code", {
       length: 64,
@@ -76,6 +81,16 @@ export const connectorCatalogSyncState = pgTable(
     lastRejectedFailureCode: varchar("last_rejected_failure_code", {
       length: 64,
     }).$type<ConnectorCatalogFailureCode>(),
+    lastRejectedBackendVersion: varchar("last_rejected_backend_version", {
+      length: 64,
+    }),
+    lastRejectedBuildCommitSha: varchar("last_rejected_build_commit_sha", {
+      length: 40,
+    }),
+    lastRejectedCandidateFingerprint: varchar(
+      "last_rejected_candidate_fingerprint",
+      { length: 71 },
+    ),
   },
   (table) => {
     return [
@@ -120,6 +135,18 @@ export const connectorCatalogSyncState = pgTable(
         )`,
       ),
       check(
+        "connector_catalog_sync_state_attempt_metadata_complete",
+        sql`(
+          ${table.lastAttemptMetadataRevision} IS NULL
+          AND ${table.lastAttemptReusedCachedRejection} IS NULL
+        ) OR (
+          ${table.lastAttemptMetadataRevision} IS NOT NULL
+          AND ${table.lastAttemptMetadataRevision} >= 0
+          AND ${table.lastAttemptMetadataRevision} <= ${table.revision}
+          AND ${table.lastAttemptReusedCachedRejection} IS NOT NULL
+        )`,
+      ),
+      check(
         "connector_catalog_sync_state_rejected_candidate_complete",
         sql`(
           ${table.lastRejectedCatalogVersion} IS NULL
@@ -147,6 +174,23 @@ export const connectorCatalogSyncState = pgTable(
               AND ${table.lastRejectedCatalogKey} IS NOT NULL
               AND ${table.lastRejectedCatalogDigest} IS NOT NULL
             )
+          )
+        )`,
+      ),
+      check(
+        "connector_catalog_sync_state_rejection_authority_complete",
+        sql`(
+          ${table.lastRejectedBackendVersion} IS NULL
+          AND ${table.lastRejectedBuildCommitSha} IS NULL
+          AND ${table.lastRejectedCandidateFingerprint} IS NULL
+        ) OR (
+          ${table.lastRejectedBackendVersion} IS NOT NULL
+          AND ${table.lastRejectedBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
+          AND ${table.lastRejectedCandidateFingerprint} IS NOT NULL
+          AND ${table.lastRejectedCandidateFingerprint} ~ '^sha256:[a-f0-9]{64}$'
+          AND (
+            ${table.lastRejectedBuildCommitSha} IS NULL
+            OR ${table.lastRejectedBuildCommitSha} ~ '^[a-f0-9]{40}$'
           )
         )`,
       ),

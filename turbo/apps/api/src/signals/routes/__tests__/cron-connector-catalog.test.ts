@@ -35,6 +35,7 @@ import {
   onTestFinished,
 } from "vitest";
 
+import apiPackage from "../../../../package.json";
 import { createApp } from "../../../app-factory";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -87,6 +88,7 @@ const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const DIAGNOSTICS_USER_ID = `user_${randomUUID()}`;
 const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
+const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -1295,6 +1297,10 @@ function configureSource(): string {
   return bucket;
 }
 
+function setApiVersion(version: string): void {
+  apiPackage.version = version;
+}
+
 function cronHeaders(secret = CRON_SECRET): { readonly authorization: string } {
   return { authorization: `Bearer ${secret}` };
 }
@@ -1439,6 +1445,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setApiVersion(DEFAULT_API_VERSION);
   clearMockedExternalConnectorCatalogEnabled();
   clearMockNow();
 });
@@ -1464,6 +1471,7 @@ describe("connector catalog cron authentication and initial state", () => {
       active: null,
       lastAttempt: null,
       lastSuccessAt: null,
+      rejectedCandidate: null,
       credentialStorage: {
         missingConnectorVersions: expect.any(Number),
         unownedConnectorSecrets: expect.any(Number),
@@ -5773,6 +5781,14 @@ describe("connector catalog rejection and latest-valid retention", () => {
     );
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeStatus);
     expect(JSON.stringify(rejected.body)).not.toContain(PRIVATE_VALUE);
+
+    serveObjects(catalogObjects([accepted], accepted));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "unchanged",
+      state: "current",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: null,
+    });
   });
 
   it("skips large artifacts for a deterministically rejected candidate", async () => {
@@ -5789,20 +5805,38 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
     serveObjects(catalogObjects([accepted, invalid], invalid));
     const callsBeforeFirstRejection = context.mocks.s3.send.mock.calls.length;
-    expect((await syncCatalog()).body).toMatchObject({
+    const freshRejection = await syncCatalog();
+    expect(freshRejection.body).toMatchObject({
       outcome: "rejected",
       state: "stale",
-      lastAttempt: { failureCode: "invalid-artifact" },
+      lastAttempt: {
+        failureCode: "invalid-artifact",
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: {
+        catalogVersion: invalid.version,
+        failureCode: "invalid-artifact",
+        backendVersion: DEFAULT_API_VERSION,
+      },
     });
     expect(
       context.mocks.s3.send.mock.calls.length - callsBeforeFirstRejection,
     ).toBe(2);
 
     const callsBeforeCachedRejection = context.mocks.s3.send.mock.calls.length;
-    expect((await syncCatalog()).body).toMatchObject({
+    const cachedRejection = await syncCatalog();
+    expect(cachedRejection.body).toMatchObject({
       outcome: "rejected",
       state: "stale",
-      lastAttempt: { failureCode: "invalid-artifact" },
+      lastAttempt: {
+        failureCode: "invalid-artifact",
+        reusedCachedRejection: true,
+      },
+      rejectedCandidate: {
+        catalogVersion: invalid.version,
+        failureCode: "invalid-artifact",
+        backendVersion: DEFAULT_API_VERSION,
+      },
     });
     expect(
       context.mocks.s3.send.mock.calls.length - callsBeforeCachedRejection,
@@ -5814,6 +5848,193 @@ describe("connector catalog rejection and latest-valid retention", () => {
     ).toMatchObject({
       Key: ACTIVE_KEY,
       IfNoneMatch: objectEtag(invalid.pointer),
+    });
+    expect(JSON.stringify(cachedRejection.body)).not.toContain(
+      invalid.catalogKey,
+    );
+    expect(JSON.stringify(cachedRejection.body)).not.toContain(
+      objectEtag(invalid.pointer),
+    );
+  });
+
+  it("revalidates a rejection when the production backend version advances", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const invalid = buildRelease({
+      version: "2026-07-25.backend-version-rejection",
+      mutateCatalog: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([invalid], invalid));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: "1.318.0" },
+    });
+
+    setApiVersion("1.319.0");
+    const callsBeforeNewBackend = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeNewBackend,
+    ).toBe(2);
+
+    setApiVersion("1.318.0");
+    const callsBeforeOlderBackend = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: true },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeOlderBackend,
+    ).toBe(1);
+  });
+
+  it("activates a candidate after backend-version revalidation succeeds", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const candidate = buildRelease({
+      version: "2026-07-25.backend-version-acceptance",
+    });
+    const rejectedObjects = new Map(catalogObjects([candidate], candidate));
+    rejectedObjects.set(candidate.catalogKey, Buffer.from("{}"));
+    serveObjects(rejectedObjects);
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: {
+        failureCode: "digest-mismatch",
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: { backendVersion: "1.318.0" },
+    });
+
+    setApiVersion("1.319.0");
+    serveObjects(catalogObjects([candidate], candidate));
+    const callsBeforeAcceptance = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: candidate.version },
+      lastAttempt: {
+        failureCode: null,
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: null,
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeAcceptance,
+    ).toBe(2);
+  });
+
+  it("uses build commits to invalidate preview rejections", async () => {
+    configureSource();
+    mockEnv("ENV", "preview");
+    mockEnv("GIT_COMMIT_SHA", "a".repeat(40));
+    const invalid = buildRelease({
+      version: "2026-07-25.preview-commit-rejection",
+      mutateCatalog: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([invalid], invalid));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: DEFAULT_API_VERSION },
+    });
+
+    mockEnv("GIT_COMMIT_SHA", "b".repeat(40));
+    const callsBeforeNewCommit = context.mocks.s3.send.mock.calls.length;
+    const revalidated = await syncCatalog();
+    expect(revalidated.body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: DEFAULT_API_VERSION },
+    });
+    expect(context.mocks.s3.send.mock.calls.length - callsBeforeNewCommit).toBe(
+      2,
+    );
+
+    const callsBeforeCachedCommit = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: true },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeCachedCommit,
+    ).toBe(1);
+    expect(JSON.stringify(revalidated.body)).not.toContain("a".repeat(40));
+    expect(JSON.stringify(revalidated.body)).not.toContain("b".repeat(40));
+  });
+
+  it("keeps the newer rejection authority across concurrent backend versions", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const invalid = buildRelease({
+      version: "2026-07-25.concurrent-backend-rejection",
+      mutateCatalog: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    const objects = catalogObjects([invalid], invalid);
+    const blocked = deferredGate();
+    const resume = deferredGate();
+    let blockedFirstCatalogRead = false;
+    context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+      const input = commandInput(command);
+      const key = typeof input.Key === "string" ? input.Key : undefined;
+      const bytes = key ? objects.get(key) : undefined;
+      if (!bytes) {
+        throw new Error("Object unavailable");
+      }
+      if (key === invalid.catalogKey && !blockedFirstCatalogRead) {
+        blockedFirstCatalogRead = true;
+        blocked.release();
+        await resume.promise;
+      }
+      const etag = objectEtag(bytes);
+      if (input.IfNoneMatch === etag) {
+        throw Object.assign(new Error("Not modified"), {
+          $metadata: { httpStatusCode: 304 },
+        });
+      }
+      return {
+        ContentLength: bytes.length,
+        Body: s3Body(bytes),
+        ETag: etag,
+      };
+    });
+
+    const olderSync = syncCatalog();
+    await blocked.promise;
+    setApiVersion("1.319.0");
+    const newerResult = await syncCatalog();
+    resume.release();
+    const olderResult = await olderSync;
+
+    expect(newerResult.body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect(olderResult.body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: true },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect((await readStatus()).body).toMatchObject({
+      lastAttempt: { reusedCachedRejection: true },
+      rejectedCandidate: { backendVersion: "1.319.0" },
     });
   });
 
@@ -5895,8 +6116,10 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
   });
 
-  it("caches a malformed active pointer by its observed ETag", async () => {
+  it("revalidates an ETag-only pointer rejection after a backend release", async () => {
     configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
     const invalid = buildRelease({
       version: "2026-07-15.malformed-pointer-cache",
       mutatePointer: (pointer) => {
@@ -5924,6 +6147,38 @@ describe("connector catalog rejection and latest-valid retention", () => {
     ).toMatchObject({
       Key: ACTIVE_KEY,
       IfNoneMatch: objectEtag(invalid.pointer),
+    });
+
+    setApiVersion("1.319.0");
+    const callsBeforeNewBackend = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: {
+        failureCode: "invalid-pointer",
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: {
+        catalogVersion: null,
+        catalogDigest: null,
+        backendVersion: "1.319.0",
+      },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeNewBackend,
+    ).toBe(1);
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeNewBackend]?.[0],
+      ),
+    ).toMatchObject({
+      Key: ACTIVE_KEY,
+    });
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeNewBackend]?.[0],
+      ),
+    ).toMatchObject({
+      IfNoneMatch: undefined,
     });
   });
 

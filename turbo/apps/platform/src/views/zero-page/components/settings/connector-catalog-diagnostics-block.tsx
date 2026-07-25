@@ -22,6 +22,21 @@ function formatTimestamp(value: string | null): string {
   }).format(new Date(value));
 }
 
+function formatRejectedAttemptSource(
+  lastAttempt: ConnectorCatalogDiagnostics["lastAttempt"],
+): string {
+  if (!lastAttempt || lastAttempt.outcome !== "rejected") {
+    return EMPTY_VALUE;
+  }
+  if (lastAttempt.reusedCachedRejection === true) {
+    return "Cached rejection";
+  }
+  if (lastAttempt.reusedCachedRejection === false) {
+    return "Fresh evaluation";
+  }
+  return "Unknown";
+}
+
 function DiagnosticField({
   label,
   value,
@@ -48,17 +63,54 @@ function DiagnosticField({
   );
 }
 
-function DiagnosticsContent({
+function RejectedCandidateDiagnostics({
+  candidate,
+}: {
+  readonly candidate: NonNullable<
+    ConnectorCatalogDiagnostics["rejectedCandidate"]
+  >;
+}) {
+  return (
+    <div className="border-t border-border/60 pt-4">
+      <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Rejected candidate
+      </div>
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+        <DiagnosticField
+          label="Rejected version"
+          value={candidate.catalogVersion ?? EMPTY_VALUE}
+          code={candidate.catalogVersion !== null}
+        />
+        <DiagnosticField
+          label="Rejecting backend"
+          value={candidate.backendVersion ?? "Unknown"}
+          code={candidate.backendVersion !== null}
+        />
+        <DiagnosticField
+          label="Rejection failure"
+          value={formatEnumValue(candidate.failureCode)}
+        />
+      </div>
+      <div className="mt-4">
+        <DiagnosticField
+          label="Rejected catalog digest"
+          value={candidate.catalogDigest ?? EMPTY_VALUE}
+          code={candidate.catalogDigest !== null}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CatalogSyncDiagnostics({
   diagnostics,
 }: {
   readonly diagnostics: ConnectorCatalogDiagnostics;
 }) {
   const active = diagnostics.active;
   const lastAttempt = diagnostics.lastAttempt;
-  const filteredAuthMethods = diagnostics.filtering.filteredAuthMethods;
-
   return (
-    <div className="flex min-w-0 flex-col gap-5">
+    <>
       <div className="grid min-w-0 gap-4 sm:grid-cols-2">
         <DiagnosticField
           label="Sync state"
@@ -95,6 +147,10 @@ function DiagnosticsContent({
               : EMPTY_VALUE
           }
         />
+        <DiagnosticField
+          label="Rejected attempt source"
+          value={formatRejectedAttemptSource(lastAttempt)}
+        />
       </div>
 
       <DiagnosticField
@@ -102,6 +158,26 @@ function DiagnosticsContent({
         value={active?.catalogDigest ?? EMPTY_VALUE}
         code={active !== null}
       />
+
+      {diagnostics.rejectedCandidate ? (
+        <RejectedCandidateDiagnostics
+          candidate={diagnostics.rejectedCandidate}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function DiagnosticsContent({
+  diagnostics,
+}: {
+  readonly diagnostics: ConnectorCatalogDiagnostics;
+}) {
+  const filteredAuthMethods = diagnostics.filtering.filteredAuthMethods;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      <CatalogSyncDiagnostics diagnostics={diagnostics} />
 
       <div className="border-t border-border/60 pt-4">
         <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">

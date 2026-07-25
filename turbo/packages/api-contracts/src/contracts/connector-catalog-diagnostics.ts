@@ -65,9 +65,25 @@ export const connectorCatalogDiagnosticsSchema = z.object({
       at: z.string().datetime(),
       outcome: z.enum(["accepted", "unchanged", "rejected"]),
       failureCode: connectorCatalogSyncFailureCodeSchema.nullable(),
+      reusedCachedRejection: z.boolean().nullable().optional(),
     })
     .nullable(),
   lastSuccessAt: z.string().datetime().nullable(),
+  rejectedCandidate: z
+    .object({
+      catalogVersion: z.string().nullable(),
+      catalogDigest: z
+        .string()
+        .regex(/^sha256:[a-f0-9]{64}$/u)
+        .nullable(),
+      failureCode: connectorCatalogSyncFailureCodeSchema,
+      backendVersion: z
+        .string()
+        .regex(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u)
+        .nullable(),
+    })
+    .nullable()
+    .optional(),
   filtering: connectorCatalogFilteringStatusSchema,
   credentialStorage: connectorCredentialStorageReadinessSchema,
 });
