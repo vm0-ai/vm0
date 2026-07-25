@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import {
   artifactCatalogContract,
   type ArtifactSummary,
@@ -150,6 +150,124 @@ describe("artifact catalog page", () => {
 
     await findCard("second-page.txt");
     expect(buttonByLabel("Preview first-page.txt")).toBeInTheDocument();
+  });
+
+  it("discards an in-flight page after the kind changes", async () => {
+    const secondPageStarted = context.mocks.deferred<void>();
+    const releaseSecondPage = context.mocks.deferred<void>();
+    context.mocks.api(
+      artifactCatalogContract.list,
+      async ({ query, respond }) => {
+        if (query.cursor === "all-next") {
+          secondPageStarted.resolve();
+          await releaseSecondPage.promise;
+          return respond(200, {
+            artifacts: [
+              artifact({
+                id: "a0000000-0000-4000-a000-000000000002",
+                title: "stale-file.txt",
+              }),
+            ],
+            nextCursor: null,
+          });
+        }
+        if (query.kind === "image") {
+          return respond(200, {
+            artifacts: [
+              artifact({
+                id: "a0000000-0000-4000-a000-000000000003",
+                kind: "image",
+                title: "fresh-image.png",
+              }),
+            ],
+            nextCursor: null,
+          });
+        }
+        return respond(200, {
+          artifacts: [artifact({ title: "first-page.txt" })],
+          nextCursor: "all-next",
+        });
+      },
+    );
+
+    setupArtifactCatalogPage();
+    await findCard("first-page.txt");
+    const viewport = document.querySelector("main");
+    if (!viewport) {
+      throw new Error("Expected the artifacts page to render a scroll region");
+    }
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+    await secondPageStarted.promise;
+
+    const imageFilter = buttonByLabel("Show image artifacts");
+    if (!imageFilter) {
+      throw new Error("Expected an image kind filter");
+    }
+    await click(imageFilter);
+    await findCard("fresh-image.png");
+
+    await act(async () => {
+      releaseSecondPage.resolve();
+      await releaseSecondPage.promise;
+    });
+
+    expect(buttonByLabel("Preview stale-file.txt")).toBeUndefined();
+    expect(buttonByLabel("Preview fresh-image.png")).toBeInTheDocument();
+  });
+
+  it("retries a cursor after the previous page request fails", async () => {
+    const failedPageStarted = context.mocks.deferred<void>();
+    const releaseFailedPage = context.mocks.deferred<void>();
+    let nextPageAttempts = 0;
+    context.mocks.api(
+      artifactCatalogContract.list,
+      async ({ query, respond }) => {
+        if (query.cursor !== "retry-next") {
+          return respond(200, {
+            artifacts: [artifact({ title: "first-page.txt" })],
+            nextCursor: "retry-next",
+          });
+        }
+        nextPageAttempts += 1;
+        if (nextPageAttempts === 1) {
+          failedPageStarted.resolve();
+          await releaseFailedPage.promise;
+          return respond(403, {
+            error: {
+              code: "FORBIDDEN",
+              message: "Transient catalog failure",
+            },
+          });
+        }
+        return respond(200, {
+          artifacts: [
+            artifact({
+              id: "a0000000-0000-4000-a000-000000000002",
+              title: "retried-page.txt",
+            }),
+          ],
+          nextCursor: null,
+        });
+      },
+    );
+
+    setupArtifactCatalogPage();
+    await findCard("first-page.txt");
+    const viewport = document.querySelector("main");
+    if (!viewport) {
+      throw new Error("Expected the artifacts page to render a scroll region");
+    }
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+    await failedPageStarted.promise;
+    await act(async () => {
+      releaseFailedPage.resolve();
+      await releaseFailedPage.promise;
+    });
+
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+
+    await findCard("retried-page.txt");
+    expect(nextPageAttempts).toBe(2);
   });
 
   it("loads the kind detail only after a card is opened", async () => {

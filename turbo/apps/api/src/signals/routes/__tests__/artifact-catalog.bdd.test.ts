@@ -258,6 +258,26 @@ describe("GET /api/zero/artifacts/catalog", () => {
     });
   }, 180_000);
 
+  it("removes catalog rows when deleting the backing agent", async () => {
+    const owner = await catalogActor("Artifact catalog deletion owner");
+    await uploadFile({
+      owner,
+      prompt: "upload a disposable report",
+      filename: "disposable-report.txt",
+      contentType: "text/plain",
+    });
+    expect(
+      (await chat.listArtifactCatalog(owner.actor)).artifacts,
+    ).toHaveLength(1);
+
+    await bdd.deleteAgent(owner.actor, owner.agentId);
+
+    await expect(chat.listArtifactCatalog(owner.actor)).resolves.toStrictEqual({
+      artifacts: [],
+      nextCursor: null,
+    });
+  }, 180_000);
+
   it("collapses every deployment of a hosted site into one artifact", async () => {
     const owner = await catalogActor(
       "Artifact catalog hosted owner",

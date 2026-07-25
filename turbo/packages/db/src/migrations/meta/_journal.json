@@ -4782,6 +4782,13 @@
       "when": 1784977240207,
       "tag": "0682_backfill_artifact_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 683,
+      "version": "7",
+      "when": 1784979226553,
+      "tag": "0683_cleanup_artifact_registry",
+      "breakpoints": true
     }
   ]
 }

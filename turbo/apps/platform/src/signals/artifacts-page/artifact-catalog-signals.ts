@@ -14,6 +14,7 @@ import {
   type BodyPreviewKind,
 } from "../chat-page/parse-body-blocks.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { onRejection } from "../utils.ts";
 import {
   openAudioLightbox$,
   openDocumentLightbox$,
@@ -33,6 +34,7 @@ interface ArtifactCatalogPage {
 
 const internalArtifactCatalogKind$ = state<ArtifactCatalogKind | null>(null);
 const internalArtifactCatalogReload$ = state(0);
+const internalArtifactCatalogGeneration$ = state(0);
 const internalArtifactCatalogPages$ = state<readonly ArtifactCatalogPage[]>([]);
 // Cursors already handed to the server. Scroll events fire faster than a page
 // resolves, so this keeps one request per cursor without a loading flag.
@@ -52,6 +54,9 @@ export const selectedArtifactId$ = computed((get) => {
 const resetArtifactCatalogPages$ = command(({ set }) => {
   set(internalArtifactCatalogPages$, []);
   set(internalArtifactCatalogFetchedCursors$, new Set());
+  set(internalArtifactCatalogGeneration$, (generation) => {
+    return generation + 1;
+  });
 });
 
 export const setArtifactCatalogKind$ = command(
@@ -116,8 +121,13 @@ export const artifactCatalog$ = computed(
 
 export const loadMoreArtifactCatalog$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const generation = get(internalArtifactCatalogGeneration$);
+    const kind = get(internalArtifactCatalogKind$);
     const loaded = await get(artifactCatalog$);
     signal.throwIfAborted();
+    if (get(internalArtifactCatalogGeneration$) !== generation) {
+      return;
+    }
     const cursor = loaded.nextCursor;
     if (!cursor || get(internalArtifactCatalogFetchedCursors$).has(cursor)) {
       return;
@@ -126,21 +136,35 @@ export const loadMoreArtifactCatalog$ = command(
       return new Set([...cursors, cursor]);
     });
 
-    const kind = get(internalArtifactCatalogKind$);
     const client = get(zeroClient$)(artifactCatalogContract);
-    const result = await accept(
-      client.list({
-        query: {
-          limit: ARTIFACT_CATALOG_PAGE_SIZE,
-          cursor,
-          ...(kind ? { kind } : {}),
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-      signal,
+    const result = await onRejection(
+      accept(
+        client.list({
+          query: {
+            limit: ARTIFACT_CATALOG_PAGE_SIZE,
+            cursor,
+            ...(kind ? { kind } : {}),
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+        signal,
+      ),
+      () => {
+        if (get(internalArtifactCatalogGeneration$) !== generation) {
+          return;
+        }
+        set(internalArtifactCatalogFetchedCursors$, (cursors) => {
+          const retryableCursors = new Set(cursors);
+          retryableCursors.delete(cursor);
+          return retryableCursors;
+        });
+      },
     );
     signal.throwIfAborted();
+    if (get(internalArtifactCatalogGeneration$) !== generation) {
+      return;
+    }
     set(internalArtifactCatalogPages$, (pages) => {
       return [...pages, result.body];
     });
