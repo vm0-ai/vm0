@@ -2087,6 +2087,13 @@ describe("POST /api/zero/teams/bot", () => {
     expect(switchBody).not.toHaveProperty("dispatch");
 
     outboundRequests.splice(0, outboundRequests.length);
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      chatMessages: [],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
     const failedResponse = await postTeamsActivity({
       activity: teamsPersonalMessageActivity({
         fixture,
