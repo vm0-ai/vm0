@@ -1135,8 +1135,8 @@ async fn duplicate_discovery_deduplicated() {
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
     // Push the same run_id again with reusable affinity. The duplicate first
-    // owns the idle reservation, then must restore it when cancel_tokens shows
-    // that the original run already owns local admission.
+    // owns the idle reservation, then must restore it when the cancellation
+    // registry reports that the original run already owns local admission.
     env.handle
         .discover_tx
         .send(reusable_affinity_protected_candidate(run_id, session_id))

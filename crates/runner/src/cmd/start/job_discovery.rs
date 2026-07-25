@@ -403,7 +403,7 @@ async fn claim_with_local_admission(
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
-        // cancel token so the runner can continue.
+        // cancellation registration so the runner can continue.
         admission.rollback(ctx).await;
         return None;
     };

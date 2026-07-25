@@ -828,8 +828,8 @@ struct RunnerSharedState {
 
 struct ProviderState {
     provider: Arc<dyn JobProvider>,
-    /// Per-job cancel tokens shared with the provider for cancel events
-    /// (Ably for ApiProvider, `.cancel` files for LocalProvider).
+    /// Per-job cancellation registrations shared with the provider for cancel
+    /// events (Ably for ApiProvider, `.cancel` files for LocalProvider).
     cancel_tokens: RunCancellationRegistry,
     cancel: CancellationToken,
 }
@@ -1565,7 +1565,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Reap completed jobs promptly in all live modes. Without this,
             // normal Running mode can retain completed JoinSet entries and
-            // stale cancel tokens until drain, budget exhaustion, or shutdown.
+            // stale cancellation registrations until drain, budget exhaustion,
+            // or shutdown.
             result = jobs.join_next(), if !jobs.is_empty() => {
                 handle_job_result(result).await;
                 if !orphaned_active_runs.is_empty() {

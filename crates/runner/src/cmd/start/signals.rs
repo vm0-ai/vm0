@@ -630,8 +630,8 @@ mod tests {
     }
 
     /// `handle_stopping_signal` idempotency: a repeat invocation takes the
-    /// "already Stopping" guard and returns without re-iterating
-    /// `cancel_tokens` or re-cancelling `cancel`.
+    /// "already Stopping" guard and returns without re-entering the registry's
+    /// hard-stop barrier or re-cancelling `cancel`.
     #[tokio::test]
     async fn stopping_signal_repeat_is_idempotent() {
         use crate::idle_pool::ParkingState;
