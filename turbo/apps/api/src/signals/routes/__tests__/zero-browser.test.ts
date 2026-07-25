@@ -25,7 +25,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const BROWSER_USE_API_URL = "https://api.browser-use.com/api/v3";
 const CRON_SECRET = "test-browser-reconcile-secret";
 const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
@@ -83,6 +82,18 @@ function providerBrowser(
   };
 }
 
+function providerProfile(id: string, name: string) {
+  return {
+    id,
+    userId: null,
+    name,
+    lastUsedAt: null,
+    createdAt: "2026-07-24T10:00:00.000000Z",
+    updatedAt: "2026-07-24T10:00:00.000000Z",
+    cookieDomains: null,
+  };
+}
+
 async function claimChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
@@ -106,123 +117,114 @@ async function claimChatRun(
   };
 }
 
+async function setupBrowserScenario() {
+  mockNow(STARTED_AT_MS);
+  mockEnv("ZERO_BROWSER_USE_API_KEY", "test-browser-use-key");
+  mockEnv("APP_URL", "https://app.vm0.ai");
+  mockEnv("CRON_SECRET", CRON_SECRET);
+  await seedUsagePricingRows([
+    {
+      kind: "browser",
+      provider: "browser-use",
+      category: "provider_cost_usd_micros",
+      unitPrice: 1200,
+      unitSize: 1_000_000,
+    },
+  ]);
+
+  const bdd = createBddApi(context);
+  const routeMocks = createZeroRouteMocks(context);
+  const runs = createRunsApi(context);
+  const chat = createChatFilesBddApi(context);
+  const callbacks = createChatCallbacksApi(context);
+  const webhooks = createWebhookCallbackApi(context);
+  const actor = bdd.user();
+  callbacks.acceptChatObjectStorage();
+  callbacks.disableVapid();
+  callbacks.failIfChatCallbackRouteIsFetched();
+  bdd.acceptAgentStorageWrites();
+  runs.acceptStorageDownloads();
+  runs.acceptTelemetryIngest();
+  const runnerGroup = runs.configureRunnerGroup();
+  await runs.heartbeatRunner(runnerGroup);
+  await runs.grantProEntitlement(actor);
+  await runs.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Managed Browser Test",
+    visibility: "private",
+  });
+
+  return {
+    routeMocks,
+    runs,
+    chat,
+    webhooks,
+    actor,
+    runnerGroup,
+    agent,
+  };
+}
+
+async function createClaimedChatRun(
+  chat: ReturnType<typeof createChatFilesBddApi>,
+  runs: ReturnType<typeof createRunsApi>,
+  actor: ApiTestUser,
+  agentId: string,
+  prompt: string,
+) {
+  const sent = await chat.requestSendMessage(
+    actor,
+    {
+      agentId,
+      prompt,
+    },
+    [201],
+  );
+  if (sent.status !== 201 || sent.body.runId === null) {
+    throw new Error("Expected a chat run");
+  }
+  return {
+    sent,
+    runId: sent.body.runId,
+    claim: await claimChatRun(runs, actor, sent.body.runId),
+  };
+}
+
 describe("zero browser route", () => {
   afterEach(() => {
     clearMockNow();
   });
 
   it("shares one profile across concurrent thread browser sessions", async () => {
-    mockNow(STARTED_AT_MS);
-    mockEnv("ZERO_BROWSER_USE_API_KEY", "test-browser-use-key");
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("CRON_SECRET", CRON_SECRET);
-    await seedUsagePricingRows([
-      {
-        kind: "browser",
-        provider: "browser-use",
-        category: "provider_cost_usd_micros",
-        unitPrice: 1200,
-        unitSize: 1_000_000,
-      },
-    ]);
-
-    const bdd = createBddApi(context);
-    const routeMocks = createZeroRouteMocks(context);
-    const runs = createRunsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const callbacks = createChatCallbacksApi(context);
-    const webhooks = createWebhookCallbackApi(context);
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
-    callbacks.acceptChatObjectStorage();
-    callbacks.disableVapid();
-    callbacks.failIfChatCallbackRouteIsFetched();
-    bdd.acceptAgentStorageWrites();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-    const runnerGroup = runs.configureRunnerGroup();
-    await runs.heartbeatRunner(runnerGroup);
-    await runs.grantProEntitlement(actor);
-    await runs.ensureOrgModelProvider(actor);
-    const agent = await bdd.createAgent(actor, {
-      displayName: "Managed Browser Test",
-      visibility: "private",
-    });
-    const sent = await chat.requestSendMessage(
+    const { runs, chat, webhooks, actor, agent } = await setupBrowserScenario();
+    const first = await createClaimedChatRun(
+      chat,
+      runs,
       actor,
-      {
-        agentId: agent.agentId,
-        prompt: "Open a managed browser",
-      },
-      [201],
+      agent.agentId,
+      "Open a managed browser",
     );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected a chat run");
-    }
-    const firstRunId = sent.body.runId;
-    const firstClaim = await claimChatRun(runs, actor, firstRunId);
-    const otherThread = await chat.requestSendMessage(
+    const other = await createClaimedChatRun(
+      chat,
+      runs,
       actor,
-      {
-        agentId: agent.agentId,
-        prompt: "Use the shared profile from another thread",
-      },
-      [201],
+      agent.agentId,
+      "Use the shared profile from another thread",
     );
-    if (otherThread.status !== 201 || otherThread.body.runId === null) {
-      throw new Error("Expected a second chat thread run");
-    }
-    const otherThreadRunId = otherThread.body.runId;
-    const otherThreadClaim = await claimChatRun(runs, actor, otherThreadRunId);
-    async function createCandidate(prompt: string) {
-      const sentCandidate = await chat.requestSendMessage(
-        actor,
-        {
-          agentId: agent.agentId,
-          prompt,
-        },
-        [201],
-      );
-      if (sentCandidate.status !== 201 || sentCandidate.body.runId === null) {
-        throw new Error("Expected a browser admission candidate run");
-      }
-      return {
-        runId: sentCandidate.body.runId,
-        browserHeaders: {
-          authorization: `Bearer ${runs.zeroTokenForRunWithCapabilities(
-            actor,
-            sentCandidate.body.runId,
-            ["browser:read", "browser:write"],
-          )}`,
-        },
-      };
-    }
 
     const profileId = randomUUID();
-    const providerIds = [
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-    ] as const;
-    const providerCreateBodies: unknown[] = [];
+    const providerIds = [randomUUID(), randomUUID()] as const;
     const deletedProfiles: string[] = [];
     const profileCreateStarted = createDeferredPromise<void>(context.signal);
     const releaseProfileCreate = createDeferredPromise<void>(context.signal);
-    const firstStopStarted = createDeferredPromise<void>(context.signal);
-    const releaseFirstStop = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
       if (!releaseProfileCreate.settled()) {
         releaseProfileCreate.resolve(undefined);
-      }
-      if (!releaseFirstStop.settled()) {
-        releaseFirstStop.resolve(undefined);
       }
     });
     let profileCreates = 0;
     let providerCreates = 0;
     let providerStops = 0;
-    let firstProviderStopFailures = 0;
     server.use(
       http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
         expect(request.headers.get("x-browser-use-api-key")).toBe(
@@ -241,25 +243,16 @@ describe("zero browser route", () => {
         }
         profileCreateStarted.resolve(undefined);
         await releaseProfileCreate.promise;
-        return HttpResponse.json(
-          {
-            id: profileId,
-            userId: null,
-            name: body.name,
-            lastUsedAt: null,
-            createdAt: "2026-07-24T10:00:00.000000Z",
-            updatedAt: "2026-07-24T10:00:00.000000Z",
-            cookieDomains: null,
-          },
-          { status: 201 },
-        );
+        return HttpResponse.json(providerProfile(profileId, body.name), {
+          status: 201,
+        });
       }),
       http.delete(`${BROWSER_USE_API_URL}/profiles/:id`, ({ params }) => {
         deletedProfiles.push(String(params.id));
         return new HttpResponse(null, { status: 204 });
       }),
       http.post(`${BROWSER_USE_API_URL}/browsers`, async ({ request }) => {
-        providerCreateBodies.push(await request.json());
+        await request.json();
         const id = providerIds[providerCreates];
         providerCreates += 1;
         if (!id) {
@@ -280,38 +273,15 @@ describe("zero browser route", () => {
             action: "stop",
           });
           providerStops += 1;
-          const providerId = String(params.id);
-          if (providerId === providerIds[0]) {
-            if (!firstStopStarted.settled()) {
-              firstStopStarted.resolve(undefined);
-            }
-            await releaseFirstStop.promise;
-            if (firstProviderStopFailures === 0) {
-              firstProviderStopFailures += 1;
-              return HttpResponse.json(
-                { detail: "temporary Browser Use outage" },
-                { status: 503 },
-              );
-            }
-          }
           return HttpResponse.json(
-            providerId === providerIds[0]
-              ? providerBrowser(providerId, {
-                  status: "stopped",
-                  browserCost: "0.00333",
-                  proxyCost: "0.1",
-                })
-              : providerBrowser(providerId, {
-                  status: "stopped",
-                  browserCost: "0.1",
-                }),
+            providerBrowser(String(params.id), { status: "stopped" }),
           );
         },
       ),
     );
 
     const firstCreateRequest = client().create({
-      headers: firstClaim.browserHeaders,
+      headers: first.claim.browserHeaders,
       body: {
         name: "booking",
         proxyCountryCode: null,
@@ -320,7 +290,7 @@ describe("zero browser route", () => {
       },
     });
     const otherCreateRequest = client().create({
-      headers: otherThreadClaim.browserHeaders,
+      headers: other.claim.browserHeaders,
       body: {
         name: "research",
         proxyCountryCode: null,
@@ -358,7 +328,7 @@ describe("zero browser route", () => {
       signal: context.signal,
     }).request(
       `/api/zero/browsers/${created.body.browser.id}?chatThreadId=${randomUUID()}`,
-      { headers: firstClaim.browserHeaders },
+      { headers: first.claim.browserHeaders },
     );
     expect(copiedToAnotherThread.status).toBe(404);
 
@@ -367,7 +337,7 @@ describe("zero browser route", () => {
     }).request("/api/zero/browsers", {
       method: "POST",
       headers: {
-        ...firstClaim.browserHeaders,
+        ...first.claim.browserHeaders,
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -384,6 +354,222 @@ describe("zero browser route", () => {
     expect(providerCreates).toBe(2);
     expect(profileCreates).toBe(1);
     expect(deletedProfiles).toStrictEqual([]);
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: first.runId,
+        exitCode: 0,
+      },
+      first.claim.sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      {
+        runId: other.runId,
+        exitCode: 0,
+      },
+      other.claim.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(2);
+    expect(deletedProfiles).toStrictEqual([]);
+  });
+
+  it("recovers failed browser cleanup before promoting a queued follow-up", async () => {
+    const { routeMocks, runs, chat, webhooks, actor, runnerGroup, agent } =
+      await setupBrowserScenario();
+    const first = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Open a managed browser",
+    );
+    const other = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Use the shared profile from another thread",
+    );
+    const sent = first.sent;
+    const firstRunId = first.runId;
+    const firstClaim = first.claim;
+    const otherThread = other.sent;
+    const otherThreadRunId = other.runId;
+    const otherThreadClaim = other.claim;
+
+    async function createCandidate(prompt: string) {
+      const sentCandidate = await chat.requestSendMessage(
+        actor,
+        {
+          agentId: agent.agentId,
+          prompt,
+        },
+        [201],
+      );
+      if (sentCandidate.status !== 201 || sentCandidate.body.runId === null) {
+        throw new Error("Expected a browser admission candidate run");
+      }
+      return {
+        runId: sentCandidate.body.runId,
+        browserHeaders: {
+          authorization: `Bearer ${runs.zeroTokenForRunWithCapabilities(
+            actor,
+            sentCandidate.body.runId,
+            ["browser:read", "browser:write"],
+          )}`,
+        },
+      };
+    }
+
+    const profileId = randomUUID();
+    const providerIds = [
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+    ] as const;
+    const providerCreateBodies: unknown[] = [];
+    const firstStopStarted = createDeferredPromise<void>(context.signal);
+    const releaseFirstStop = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseFirstStop.settled()) {
+        releaseFirstStop.resolve(undefined);
+      }
+    });
+    let firstRunProviderId: string | null = null;
+    let profileCreates = 0;
+    let providerCreates = 0;
+    let providerStops = 0;
+    let firstProviderStopFailures = 0;
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        expect(request.headers.get("x-browser-use-api-key")).toBe(
+          "test-browser-use-key",
+        );
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        expect(body.name).toMatch(/^vm0-browser-profile-[0-9a-f-]{36}$/u);
+        profileCreates += 1;
+        if (profileCreates > 1) {
+          return HttpResponse.json(
+            { error: "unexpected profile create" },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json(providerProfile(profileId, body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, async ({ request }) => {
+        providerCreateBodies.push(await request.json());
+        const id = providerIds[providerCreates];
+        providerCreates += 1;
+        if (!id) {
+          return HttpResponse.json(
+            { error: "unexpected browser create" },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json(providerBrowser(id), { status: 201 });
+      }),
+      http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(providerBrowser(String(params.id)));
+      }),
+      http.patch(
+        `${BROWSER_USE_API_URL}/browsers/:id`,
+        async ({ params, request }) => {
+          await expect(request.json()).resolves.toStrictEqual({
+            action: "stop",
+          });
+          providerStops += 1;
+          const providerId = String(params.id);
+          if (providerId === firstRunProviderId) {
+            if (!firstStopStarted.settled()) {
+              firstStopStarted.resolve(undefined);
+            }
+            await releaseFirstStop.promise;
+            if (firstProviderStopFailures === 0) {
+              firstProviderStopFailures += 1;
+              return HttpResponse.json(
+                { detail: "temporary Browser Use outage" },
+                { status: 503 },
+              );
+            }
+          }
+          return HttpResponse.json(
+            providerId === firstRunProviderId
+              ? providerBrowser(providerId, {
+                  status: "stopped",
+                  browserCost: "0.00333",
+                  proxyCost: "0.1",
+                })
+              : providerBrowser(providerId, {
+                  status: "stopped",
+                  browserCost: "0.1",
+                }),
+          );
+        },
+      ),
+    );
+
+    const createdInOtherThread = await accept(
+      client().create({
+        headers: otherThreadClaim.browserHeaders,
+        body: {
+          name: "research",
+          proxyCountryCode: null,
+          timeoutMinutes: 30,
+          maxCredits: 150,
+        },
+      }),
+      [201],
+    );
+    const created = await accept(
+      client().create({
+        headers: firstClaim.browserHeaders,
+        body: {
+          name: "booking",
+          proxyCountryCode: null,
+          timeoutMinutes: 30,
+          maxCredits: 150,
+        },
+      }),
+      [201],
+    );
+    firstRunProviderId =
+      providerIds.find((providerId) => {
+        return (
+          new URL(created.body.cdpUrl).hostname ===
+          `${providerId}.cdp.browser-use.com`
+        );
+      }) ?? null;
+    if (!firstRunProviderId) {
+      throw new Error("Expected the first run provider ID in its CDP URL");
+    }
+    expect(new URL(createdInOtherThread.body.cdpUrl).hostname).toBe(
+      `${providerIds[0]}.cdp.browser-use.com`,
+    );
+    expect(firstRunProviderId).toBe(providerIds[1]);
+    expect(created.body.browser).toMatchObject({
+      name: "booking",
+      status: "active",
+      maxCredits: 150,
+      viewerUrl: `https://app.vm0.ai/browsers/${created.body.browser.id}`,
+    });
+    expect(createdInOtherThread.body.browser).toMatchObject({
+      name: "research",
+      status: "active",
+    });
+    expect(createdInOtherThread.body.browser.id).not.toBe(
+      created.body.browser.id,
+    );
+    expect(profileCreates).toBe(1);
+    expect(providerCreates).toBe(2);
 
     const creditCandidates = await Promise.all([
       createCandidate("Race for the last browser credit reservation A"),
