@@ -17,14 +17,28 @@ import {
 } from "./card-signal-map.ts";
 import { onRef } from "../utils.ts";
 import { connectorChangedVersion$ } from "../connector-reload.ts";
+import {
+  chatActionCallbackFromUrl,
+  runChatActionCallback$,
+} from "./action-callback.ts";
+
+interface MailDraftSendCallback {
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly callbackPrompt: string;
+}
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
   readonly originalUrl: string;
   readonly href: string;
+  readonly sendCallback: MailDraftSendCallback | null;
 }
 
-export interface MailDraftSignals extends MailDraftDescriptor {
+export interface MailDraftSignals extends Omit<
+  MailDraftDescriptor,
+  "sendCallback"
+> {
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
@@ -38,6 +52,7 @@ export interface MailDraftSignals extends MailDraftDescriptor {
   readonly reloadSidebar$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
+  readonly runSendCallback$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
@@ -101,6 +116,15 @@ function parseUrl(value: string): URL | null {
   return URL.canParse(value) ? new URL(value) : null;
 }
 
+function parseSendCallback(url: URL): MailDraftSendCallback | null {
+  const { callbackPrompt, threadId } = chatActionCallbackFromUrl(url);
+  const agentId = url.searchParams.get("agentId");
+  if (!callbackPrompt || !threadId || !agentId) {
+    return null;
+  }
+  return { callbackPrompt, threadId, agentId };
+}
+
 export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   const url = parseUrl(value);
   if (!url) {
@@ -125,6 +149,7 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
     mailDraftId,
     originalUrl: value,
     href: `/mail/drafts/${mailDraftId}`,
+    sendCallback: parseSendCallback(url),
   };
 }
 
@@ -235,6 +260,7 @@ function createAttachmentUrls(
 function createMailDraftSignals(
   threadId: string,
   descriptor: MailDraftDescriptor,
+  sendCallbacks: ReadonlyMap<string, MailDraftSendCallback>,
 ): MailDraftSignals {
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
   const sidebarDraftOverride$ = state<ZeroMailDraft | null | undefined>(
@@ -305,8 +331,21 @@ function createMailDraftSignals(
     set(draftOverride$, response.body.mailDraft);
     set(sidebarDraftOverride$, response.body.mailDraft);
   });
+  // Resuming the chat is a separate transition from sending the email: a failed
+  // resume must not report the sent email as a failed send.
+  const runSendCallback$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const sendCallback = sendCallbacks.get(descriptor.mailDraftId);
+      if (!sendCallback) {
+        return;
+      }
+      await set(runChatActionCallback$, sendCallback, signal);
+    },
+  );
   return {
-    ...descriptor,
+    mailDraftId: descriptor.mailDraftId,
+    originalUrl: descriptor.originalUrl,
+    href: descriptor.href,
     threadId,
     draft$,
     sidebarDraft$,
@@ -314,6 +353,7 @@ function createMailDraftSignals(
     reloadSidebar$,
     delete$,
     send$,
+    runSendCallback$,
   };
 }
 
@@ -321,13 +361,23 @@ export function createMailDraftCardSignalsRegistry(
   threadId: string,
 ): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
+  // One draft has one card, but the same draft can be linked by several
+  // messages and restored from the sidebar URL without its callback. The card
+  // signals are created from whichever descriptor registers first, so the send
+  // callback lives beside them and any later descriptor that carries one can
+  // still attach it. Only the chat thread that owns the card may be resumed.
+  const sendCallbacks = new Map<string, MailDraftSendCallback>();
   return {
     register(descriptor) {
+      const sendCallback = descriptor.sendCallback;
+      if (sendCallback?.threadId === threadId) {
+        sendCallbacks.set(descriptor.mailDraftId, sendCallback);
+      }
       return getOrCreateCardSignals(
         signalsByResourceKey,
         descriptor.mailDraftId,
         () => {
-          return createMailDraftSignals(threadId, descriptor);
+          return createMailDraftSignals(threadId, descriptor, sendCallbacks);
         },
       );
     },

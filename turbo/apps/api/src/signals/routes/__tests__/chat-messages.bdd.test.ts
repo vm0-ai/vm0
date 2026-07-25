@@ -1894,6 +1894,18 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
     );
+    expect(appendSystemPrompt).toContain(
+      "add `--callback-prompt <prompt>` to `zero mail link`",
+    );
+    expect(appendSystemPrompt).toContain(
+      "confirm the send against Gmail before reporting it",
+    );
+    expect(appendSystemPrompt).toContain(
+      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Never send a reply automatically; the user always sends",
+    );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
     let previousSectionIndex = -1;
