@@ -292,9 +292,9 @@ def _normalize_host_policy_hostname(hostname: str) -> str:
 
 
 def _host_policy_string_list(policy: dict, key: str) -> list[str]:
-    value = policy.get(key)
-    if value is None:
+    if key not in policy:
         return []
+    value = policy[key]
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise BuiltinHostPolicyError(f"builtin firewall hostPolicy.{key} must be a string list")
     return value
@@ -315,9 +315,9 @@ def _validate_host_policy_keys(
 
 
 def _host_policy_optional_bool(*, firewall_name: str, policy: dict, key: str) -> bool:
-    value = policy.get(key)
-    if value is None:
+    if key not in policy:
         return False
+    value = policy[key]
     if not isinstance(value, bool):
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" hostPolicy.{key} must be a boolean'
