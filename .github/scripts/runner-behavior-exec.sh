@@ -23,6 +23,7 @@ RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-exec"
 SVC="${JOB_REF}-exec"
 UNIT="vm0-runner-${SVC}.service"
 GROUP="vm0/exec-${JOB_REF}"
+# Keep this distinct from startup readiness so NAT observes a new conntrack flow.
 BEHAVIOR_DNS_DESTINATION="198.51.100.1"
 STARTUP_TIMEOUT_SECS=120
 STARTUP_LOG_LINES=300
