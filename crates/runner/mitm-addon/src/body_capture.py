@@ -16,16 +16,21 @@ from body_limits import BODY_CAPTURE_LIMIT
 
 _REDACTED_HEADER_VALUE = "***"
 
-_TEXT_CONTENT_TYPES = (
-    "text/",
-    "application/json",
-    "application/xml",
-    "application/javascript",
-    "application/x-www-form-urlencoded",
-    "application/graphql",
+_TEXT_APPLICATION_SUBTYPES = frozenset(
+    {
+        "graphql",
+        "javascript",
+        "json",
+        "json-seq",
+        "x-ndjson",
+        "x-www-form-urlencoded",
+        "xml",
+    }
 )
 
 _HTTP_FIELD_NAME_PATTERN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+# RFC 6838 section 4.2 limits registered media type names to 127 ASCII characters.
+_MEDIA_TYPE_NAME_PATTERN = re.compile(r"[0-9A-Za-z][!#$&+\-.^_0-9A-Za-z]{0,126}")
 _HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
 _HTTP_OPTIONAL_WHITESPACE_PATTERN = r"[ \t]*"
 _HTTP_ENCODING_PATTERN = (
@@ -95,8 +100,22 @@ def _is_text_content(content_type: str) -> bool:
     """Check if content-type indicates text-like content worth capturing."""
     if not content_type:
         return True  # assume text when unspecified
-    ct = content_type.lower().split(";")[0].strip()
-    return any(ct.startswith(prefix) for prefix in _TEXT_CONTENT_TYPES)
+    media_type = content_type.partition(";")[0].strip()
+    type_name, separator, subtype_name = media_type.partition("/")
+    if (
+        separator != "/"
+        or _MEDIA_TYPE_NAME_PATTERN.fullmatch(type_name) is None
+        or _MEDIA_TYPE_NAME_PATTERN.fullmatch(subtype_name) is None
+    ):
+        return False
+
+    normalized_type = type_name.lower()
+    normalized_subtype = subtype_name.lower()
+    return (
+        normalized_type == "text"
+        or (normalized_type == "application" and normalized_subtype in _TEXT_APPLICATION_SUBTYPES)
+        or normalized_subtype.endswith("+json")
+    )
 
 
 def _encode_body(
