@@ -755,16 +755,21 @@ async fn find_installed_services() -> Vec<InstalledService> {
         let Some(name_str) = name.to_str() else {
             continue;
         };
-        if !name_str.starts_with("vm0-runner-") || !name_str.ends_with(".service") {
+        let Some(unit) = super::service::RunnerServiceUnit::from_file_name(name_str) else {
             continue;
-        }
-        let unit_name = name_str
-            .strip_suffix(".service")
-            .unwrap_or(name_str)
-            .to_string();
-        let config_path = super::service::read_unit_config_path(&entry.path()).await;
+        };
+        let config_path = match super::service::read_unit_config_path(&unit).await {
+            Ok(config_path) => config_path,
+            Err(e) => {
+                tracing::warn!(
+                    "find_installed_services: cannot read effective config for {}: {e}",
+                    unit.service_name()
+                );
+                None
+            }
+        };
         services.push(InstalledService {
-            unit_name,
+            unit_name: unit.unit_name().to_string(),
             config_path,
         });
     }
