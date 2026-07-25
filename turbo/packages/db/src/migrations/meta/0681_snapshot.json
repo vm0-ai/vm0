@@ -1,6 +1,6 @@
 {
-  "id": "ec3be2cc-d085-46a8-9b35-2be6cf3baa64",
-  "prevId": "c56a4b0b-b84e-4712-9090-7b93dfc918cf",
+  "id": "9f01ef47-47cf-4725-aa37-02acbfbf466d",
+  "prevId": "ec3be2cc-d085-46a8-9b35-2be6cf3baa64",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2490,6 +2490,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "billing_run_id": {
+          "name": "billing_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
@@ -2559,6 +2565,20 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true
+        },
+        "last_touched_at": {
+          "name": "last_touched_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "idle_expires_at": {
+          "name": "idle_expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         },
         "stop_requested_at": {
           "name": "stop_requested_at",

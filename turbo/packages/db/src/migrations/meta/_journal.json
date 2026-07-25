@@ -4765,8 +4765,15 @@
     {
       "idx": 680,
       "version": "7",
-      "when": 1784971755391,
-      "tag": "0680_rich_roland_deschain",
+      "when": 1784971441848,
+      "tag": "0680_keen_strong_guy",
+      "breakpoints": true
+    },
+    {
+      "idx": 681,
+      "version": "7",
+      "when": 1784978635636,
+      "tag": "0681_majestic_iron_lad",
       "breakpoints": true
     }
   ]
