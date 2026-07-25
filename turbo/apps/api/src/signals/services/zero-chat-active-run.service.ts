@@ -1,9 +1,5 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import {
-  browserSessionInstances,
-  browserSessions,
-} from "@vm0/db/schema/browser-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -11,7 +7,6 @@ import {
   eq,
   exists,
   inArray,
-  isNull,
   isNotNull,
   ne,
   notExists,
@@ -22,12 +17,6 @@ import {
 import type { Db } from "../external/db";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
-const BROWSER_ADMISSION_BLOCKING_STATUSES = [
-  "creating",
-  "active",
-  "resuming",
-  "stopping",
-] as const;
 
 async function activeChatRunExists(
   db: Pick<Db, "select">,
@@ -81,44 +70,9 @@ async function activeChatRunExists(
   return run !== undefined;
 }
 
-export async function browserCleanupRequiredForChatThread(
-  db: Pick<Db, "select">,
-  threadId: string,
-): Promise<boolean> {
-  const [browser] = await db
-    .select({ id: browserSessions.id })
-    .from(browserSessions)
-    .where(
-      and(
-        eq(browserSessions.chatThreadId, threadId),
-        or(
-          inArray(browserSessions.status, [
-            ...BROWSER_ADMISSION_BLOCKING_STATUSES,
-          ]),
-          exists(
-            db
-              .select({
-                providerSessionId: browserSessionInstances.providerSessionId,
-              })
-              .from(browserSessionInstances)
-              .where(
-                and(
-                  eq(
-                    browserSessionInstances.browserSessionId,
-                    browserSessions.id,
-                  ),
-                  isNull(browserSessionInstances.settledAt),
-                ),
-              ),
-          ),
-        ),
-      ),
-    )
-    .limit(1);
-
-  return browser !== undefined;
-}
-
+// A managed browser now outlives the run that opened it and the next run simply
+// attaches to the same live instance, so an unsettled browser must not hold up
+// the thread's next run.
 export async function chatThreadAdmissionBlocked(
   db: Pick<Db, "select">,
   args: {
@@ -126,8 +80,5 @@ export async function chatThreadAdmissionBlocked(
     readonly excludeRunId?: string;
   },
 ): Promise<boolean> {
-  if (await activeChatRunExists(db, args)) {
-    return true;
-  }
-  return await browserCleanupRequiredForChatThread(db, args.threadId);
+  return await activeChatRunExists(db, args);
 }

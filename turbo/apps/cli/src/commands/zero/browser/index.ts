@@ -4,9 +4,8 @@ import chalk from "chalk";
 import { Command, InvalidArgumentError, Option } from "commander";
 import {
   ZERO_BROWSER_DEFAULT_MAX_CREDITS,
-  ZERO_BROWSER_DEFAULT_TIMEOUT_MINUTES,
+  ZERO_BROWSER_IDLE_LEASE_MINUTES,
   ZERO_BROWSER_MAX_CREDITS,
-  ZERO_BROWSER_MAX_TIMEOUT_MINUTES,
   zeroBrowserCreateRequestSchema,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -14,7 +13,8 @@ import {
 import {
   createZeroBrowser,
   getCurrentZeroBrowser,
-  resumeZeroBrowser,
+  leaseZeroBrowser,
+  useZeroBrowser,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
@@ -23,7 +23,6 @@ const DEFAULT_AGENT_BROWSER_SESSION = "zero-browser";
 interface NewOptions {
   readonly name: string;
   readonly country?: string;
-  readonly timeout: number;
   readonly maxCredits: number;
   readonly agentSession?: string;
   readonly json?: boolean;
@@ -100,6 +99,12 @@ function connectAgentBrowser(cdpUrl: string, sessionName: string): void {
   }
 }
 
+function reclaimNotice(browser: ZeroBrowserSession): string {
+  return browser.idleExpiresAt
+    ? `Zero reclaims this browser at ${browser.idleExpiresAt} unless it is used or leased again`
+    : "This browser has no live window to reclaim";
+}
+
 function renderBrowser(browser: ZeroBrowserSession): void {
   console.log(`${browser.name} · ${browser.status}`);
   console.log(chalk.dim(`  ID: ${browser.id}`));
@@ -108,7 +113,7 @@ function renderBrowser(browser: ZeroBrowserSession): void {
       `  Credits: ${browser.creditsCharged} charged / ${browser.maxCredits} budget`,
     ),
   );
-  console.log(chalk.dim(`  Per-run timeout: ${browser.timeoutMinutes}m`));
+  console.log(chalk.dim(`  ${reclaimNotice(browser)}`));
   console.log(`  ${browser.viewerUrl}`);
 }
 
@@ -132,13 +137,14 @@ async function connectResponse(
   }
   console.log(chalk.green("✓ Managed browser ready"));
   console.log(chalk.dim(`  agent-browser session: ${sessionName}`));
+  console.log(chalk.dim(`  ${reclaimNotice(response.browser)}`));
   console.log(`[Open live browser](${response.browser.viewerUrl})`);
 }
 
-const resumeCommand = new Command()
-  .name("resume")
+const useCommand = new Command()
+  .name("use")
   .description(
-    "Resume the current thread browser and attach it to agent-browser",
+    "Create, reuse, or resume this thread's browser, attach it to agent-browser, and extend its lease",
   )
   .addOption(
     new Option(
@@ -149,14 +155,48 @@ const resumeCommand = new Command()
   .option("--json", "Print machine-readable output without connection secrets")
   .action(
     withErrorHandler(async (options: ConnectionOptions) => {
-      await connectResponse(await resumeZeroBrowser(), options);
+      await connectResponse(await useZeroBrowser(), options);
+    }),
+  );
+
+const resumeCommand = new Command()
+  .name("resume")
+  .description("Deprecated alias of use")
+  .addOption(
+    new Option(
+      "--agent-session <name>",
+      "Named agent-browser session",
+    ).argParser(parseAgentSession),
+  )
+  .option("--json", "Print machine-readable output without connection secrets")
+  .action(
+    withErrorHandler(async (options: ConnectionOptions) => {
+      await connectResponse(await useZeroBrowser(), options);
+    }),
+  );
+
+const leaseCommand = new Command()
+  .name("lease")
+  .description(
+    `Keep this thread's live browser for another ${ZERO_BROWSER_IDLE_LEASE_MINUTES} minutes`,
+  )
+  .option("--json", "Print machine-readable output")
+  .action(
+    withErrorHandler(async (options: OutputOptions) => {
+      const browser = await leaseZeroBrowser();
+      if (options.json) {
+        console.log(JSON.stringify({ browser: browserJson(browser) }));
+        return;
+      }
+      console.log(chalk.green("✓ Managed browser lease extended"));
+      console.log(chalk.dim(`  ${reclaimNotice(browser)}`));
     }),
   );
 
 const newCommand = new Command()
   .name("new")
   .description(
-    "Create a new thread browser with the shared user profile and attach it to agent-browser",
+    "Create another thread browser with the shared user profile and attach it to agent-browser",
   )
   .addOption(new Option("--name <name>", "Browser name").default("browser"))
   .addOption(
@@ -164,11 +204,6 @@ const newCommand = new Command()
       "--country <code>",
       "Residential proxy country; omitted uses lower-cost proxyless egress",
     ).argParser(parseCountry),
-  )
-  .addOption(
-    new Option("--timeout <minutes>", "Provider lifetime for this run")
-      .default(ZERO_BROWSER_DEFAULT_TIMEOUT_MINUTES)
-      .argParser(positiveInteger("timeout", ZERO_BROWSER_MAX_TIMEOUT_MINUTES)),
   )
   .addOption(
     new Option("--max-credits <credits>", "Logical browser credit budget")
@@ -187,7 +222,6 @@ const newCommand = new Command()
       const request = zeroBrowserCreateRequestSchema.parse({
         name: options.name,
         proxyCountryCode: options.country ?? null,
-        timeoutMinutes: options.timeout,
         maxCredits: options.maxCredits,
       });
       await connectResponse(await createZeroBrowser(request), options);
@@ -221,6 +255,8 @@ const viewCommand = new Command()
 export const zeroBrowserCommand = new Command()
   .name("browser")
   .description("Use a managed remote browser through agent-browser")
+  .addCommand(useCommand)
+  .addCommand(leaseCommand)
   .addCommand(resumeCommand)
   .addCommand(newCommand)
   .addCommand(statusCommand)
@@ -229,14 +265,16 @@ export const zeroBrowserCommand = new Command()
     "after",
     `
 Examples:
-  Resume this thread:    zero browser resume
-  Create another browser: zero browser new --name booking --country us
-  Use the browser:       agent-browser --session zero-browser open https://example.com
-  Share live view:       zero browser view
+  Open this thread's browser: zero browser use
+  Keep it alive:              zero browser lease
+  Create another browser:     zero browser new --name booking --country us
+  Use the browser:            agent-browser --session zero-browser open https://example.com
+  Share live view:            zero browser view
 
 Notes:
-  - Zero stops and settles the provider instance automatically when the run ends
-  - There are no manual stop or suspend commands
+  - The browser outlives this run; the user can keep working in it from the viewer link
+  - Zero reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes and settles its cost then
+  - \`zero browser use\` restores a reclaimed browser's login profile, not its old tabs
   - Browser Use credentials and connection URLs are never printed
   - Threads for the same user and organization share one login profile
   - Threads can use the shared profile in parallel`,
