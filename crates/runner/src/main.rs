@@ -358,7 +358,7 @@ mod tests {
 
         assert!(
             normalized_help
-                .contains("Clean up unused runner resources, artifacts, logs, and caches")
+                .contains("gc Clean up unused runner resources, artifacts, logs, and caches")
         );
     }
 
