@@ -121,7 +121,6 @@ pub(super) fn codex_output_item_start(
         "agentMessage" => CodexOutputItemKind::AgentMessage,
         _ => return Ok(None),
     };
-    required_non_empty_string_key(item, &notification.method, "id", "item.id")?;
     let thread_id =
         required_non_empty_string_key(params, &notification.method, "threadId", "threadId")?;
     let turn_id = required_non_empty_string_key(params, &notification.method, "turnId", "turnId")?;
@@ -1737,7 +1736,6 @@ mod tests {
                     "turnId": "turn-1",
                     "startedAtMs": 1_700_000_000_123_u64,
                     "item": {
-                        "id": "item-1",
                         "type": item_type
                     }
                 }),
