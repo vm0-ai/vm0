@@ -35,7 +35,10 @@ export interface MailDraftDescriptor {
   readonly sendCallback: MailDraftSendCallback | null;
 }
 
-export interface MailDraftSignals extends MailDraftDescriptor {
+export interface MailDraftSignals extends Omit<
+  MailDraftDescriptor,
+  "sendCallback"
+> {
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
@@ -49,6 +52,7 @@ export interface MailDraftSignals extends MailDraftDescriptor {
   readonly reloadSidebar$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
+  readonly runSendCallback$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
@@ -256,13 +260,8 @@ function createAttachmentUrls(
 function createMailDraftSignals(
   threadId: string,
   descriptor: MailDraftDescriptor,
+  sendCallbacks: ReadonlyMap<string, MailDraftSendCallback>,
 ): MailDraftSignals {
-  // The agent can ask Zero to resume the conversation once the user sends the
-  // email. Only the chat thread that owns the draft card may be resumed.
-  const sendCallback =
-    descriptor.sendCallback?.threadId === threadId
-      ? descriptor.sendCallback
-      : null;
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
   const sidebarDraftOverride$ = state<ZeroMailDraft | null | undefined>(
     undefined,
@@ -331,12 +330,22 @@ function createMailDraftSignals(
     signal.throwIfAborted();
     set(draftOverride$, response.body.mailDraft);
     set(sidebarDraftOverride$, response.body.mailDraft);
-    if (sendCallback) {
-      await set(runChatActionCallback$, sendCallback, signal);
-    }
   });
+  // Resuming the chat is a separate transition from sending the email: a failed
+  // resume must not report the sent email as a failed send.
+  const runSendCallback$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const sendCallback = sendCallbacks.get(descriptor.mailDraftId);
+      if (!sendCallback) {
+        return;
+      }
+      await set(runChatActionCallback$, sendCallback, signal);
+    },
+  );
   return {
-    ...descriptor,
+    mailDraftId: descriptor.mailDraftId,
+    originalUrl: descriptor.originalUrl,
+    href: descriptor.href,
     threadId,
     draft$,
     sidebarDraft$,
@@ -344,6 +353,7 @@ function createMailDraftSignals(
     reloadSidebar$,
     delete$,
     send$,
+    runSendCallback$,
   };
 }
 
@@ -351,13 +361,23 @@ export function createMailDraftCardSignalsRegistry(
   threadId: string,
 ): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
+  // One draft has one card, but the same draft can be linked by several
+  // messages and restored from the sidebar URL without its callback. The card
+  // signals are created from whichever descriptor registers first, so the send
+  // callback lives beside them and any later descriptor that carries one can
+  // still attach it. Only the chat thread that owns the card may be resumed.
+  const sendCallbacks = new Map<string, MailDraftSendCallback>();
   return {
     register(descriptor) {
+      const sendCallback = descriptor.sendCallback;
+      if (sendCallback?.threadId === threadId) {
+        sendCallbacks.set(descriptor.mailDraftId, sendCallback);
+      }
       return getOrCreateCardSignals(
         signalsByResourceKey,
         descriptor.mailDraftId,
         () => {
-          return createMailDraftSignals(threadId, descriptor);
+          return createMailDraftSignals(threadId, descriptor, sendCallbacks);
         },
       );
     },

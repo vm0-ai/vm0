@@ -1900,7 +1900,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain(
       "confirm the send against Gmail before reporting it",
     );
-    expect(appendSystemPrompt).toContain("zero workflow automation list");
+    expect(appendSystemPrompt).toContain(
+      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+    );
     expect(appendSystemPrompt).toContain(
       "Never send a reply automatically; the user always sends",
     );
