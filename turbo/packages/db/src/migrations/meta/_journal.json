@@ -4775,6 +4775,13 @@
       "when": 1784979723299,
       "tag": "0681_workable_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 682,
+      "version": "7",
+      "when": 1784982608570,
+      "tag": "0682_lethal_queen_noir",
+      "breakpoints": true
     }
   ]
 }
