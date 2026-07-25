@@ -37,8 +37,10 @@ import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { processCanonicalSlackIngress$ } from "../services/canonical-slack-ingress-processor.service";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import { admitCanonicalSlackChatEvent } from "../services/slack-chat-ingress.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -527,6 +529,8 @@ function slackChatRoutes(db: ReadonlyDb, teamId: string) {
       userId: slackChatThreadRoutes.userId,
       backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
+      legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
+      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
       createdAt: slackChatThreadRoutes.createdAt,
     })
     .from(slackChatThreadRoutes)
@@ -948,6 +952,9 @@ function shouldUpsertSlackInstallationForPost(
   if (!body.team_id) {
     return false;
   }
+  if (body.previous_reader_ingress) {
+    return false;
+  }
 
   if (body.seed_connection || !body.delete_connection) {
     return true;
@@ -1103,6 +1110,28 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   await seedPostSlackUserData(db, body, actor);
   signal.throwIfAborted();
+  if (body.previous_reader_ingress) {
+    const ingress = await admitCanonicalSlackChatEvent(db, {
+      routeId: body.previous_reader_ingress.route_id,
+      eventId: body.previous_reader_ingress.event_id,
+      payload: body.previous_reader_ingress.payload,
+      isRetry: body.previous_reader_ingress.is_retry,
+      currentTime: nowDate(),
+    });
+    signal.throwIfAborted();
+    // Reproduce the pre-cutover reader protocol: once a route was canonical,
+    // it attempted admission without reading cutover markers and scheduled
+    // every status except "processed". The database compatibility classifier
+    // must make that protocol harmless while old API instances drain.
+    if (ingress.status !== "processed") {
+      await set(
+        processCanonicalSlackIngress$,
+        { ingressId: ingress.id },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+  }
 
   return {
     status: 200 as const,

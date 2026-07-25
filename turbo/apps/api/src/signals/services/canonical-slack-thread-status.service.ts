@@ -200,6 +200,37 @@ export async function canonicalSlackThreadStatusTargetForIngress(
   };
 }
 
+export async function refreshCanonicalSlackThreadStatus(
+  db: Db,
+  target: CanonicalSlackThreadStatusTarget,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const binding = await loadCanonicalSlackThreadStatusBinding(db, target);
+  signal.throwIfAborted();
+  if (!binding) {
+    return false;
+  }
+  const featureContext = await loadUserFeatureSwitchContext(
+    db,
+    binding.orgId,
+    binding.userId,
+  );
+  signal.throwIfAborted();
+  const botToken = await decryptPersistentSecretValue(
+    binding.encryptedBotToken,
+    featureContext,
+  );
+  signal.throwIfAborted();
+  await setThreadStatus(
+    createSlackClient(botToken),
+    target.channelId,
+    target.threadTs,
+    "is thinking...",
+  );
+  signal.throwIfAborted();
+  return true;
+}
+
 export async function clearCanonicalSlackThreadStatusIfIdle(
   db: Db,
   target: CanonicalSlackThreadStatusTarget,

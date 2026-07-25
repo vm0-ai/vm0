@@ -106,7 +106,6 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
-import { excludeCanonicalSlackChatThreads } from "./canonical-slack-web-visibility.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -912,7 +911,6 @@ export function zeroChatThreadDetail(args: {
 export function zeroChatThreadUnreads(args: {
   readonly userId: string;
   readonly agentComposeId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -934,9 +932,6 @@ export function zeroChatThreadUnreads(args: {
           ),
           noActiveRunsForCurrentThreadCondition(db),
           noActiveGoalsForCurrentThreadCondition(db),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.map((row) => {
@@ -952,7 +947,6 @@ export function zeroChatThreadUnreads(args: {
 export function zeroChatThreadUnreadAgentIds(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -972,9 +966,6 @@ export function zeroChatThreadUnreadAgentIds(args: {
           ),
           noActiveRunsForCurrentThreadCondition(db),
           noActiveGoalsForCurrentThreadCondition(db),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.map((row) => {
@@ -991,7 +982,6 @@ export function zeroChatThreadUnreadAgentIds(args: {
 export function zeroChatThreadActiveRunThreadIds(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -1007,9 +997,6 @@ export function zeroChatThreadActiveRunThreadIds(args: {
           eq(zeroAgents.orgId, args.orgId),
           isNotNull(zeroRuns.chatThreadId),
           inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
 
@@ -1025,7 +1012,6 @@ export function zeroChatThreadActiveRunThreadIds(args: {
  */
 export function zeroChatThreadDraftIds(args: {
   readonly userId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get): Promise<readonly string[]> => {
     const db = get(db$);
@@ -1035,9 +1021,6 @@ export function zeroChatThreadDraftIds(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
             OR ${isNotNull(chatThreads.draftStructuredPrompt)}
@@ -1922,7 +1905,6 @@ export function zeroChatSearch(args: {
   readonly limit: number;
   readonly before: number;
   readonly after: number;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<
   Promise<{
     readonly results: readonly ChatSearchResult[];
@@ -1941,9 +1923,6 @@ export function zeroChatSearch(args: {
       visibleChatMessageCondition(db),
       excludeGoalMarkerCondition(),
       ilike(chatMessages.content, pattern),
-      ...(args.includeCanonicalSlackThreads
-        ? []
-        : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatMessages.createdAt, sinceDate));

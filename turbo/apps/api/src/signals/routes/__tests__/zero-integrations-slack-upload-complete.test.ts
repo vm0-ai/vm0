@@ -447,7 +447,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
     await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
-      [FeatureSwitchKey.CanonicalSlackAssets]: true,
       [FeatureSwitchKey.Artifacts]: true,
     });
     const objectStore = chatCallbacks.acceptChatObjectStorage();
@@ -696,9 +695,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   it("creates a real assistant reply when a canonical output has no text", async () => {
     const { orgId, userId, runId, threadId, runnerGroup } =
       await seedRunScoped();
-    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
-      [FeatureSwitchKey.CanonicalSlackAssets]: true,
-    });
     const operationId = randomUUID();
     const token = zeroToken({ userId, orgId, runId });
     const initClient = setupApp({ context })(
@@ -772,9 +768,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
   it("keeps one Slack delivery authoritative across concurrent retries", async () => {
     const { orgId, userId, runId } = await seedRunScoped();
-    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
-      [FeatureSwitchKey.CanonicalSlackAssets]: true,
-    });
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
     const token = zeroToken({ userId, orgId, runId });

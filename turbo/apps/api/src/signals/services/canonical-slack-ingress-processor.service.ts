@@ -1,6 +1,4 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
@@ -418,31 +416,25 @@ const persistClaimedCanonicalSlackIngress$ = command(
     signal.throwIfAborted();
     const userInfoResolver = createSlackUserInfoResolver(client);
     const messageContent = stripBotMention(event.text, ingress.botUserId);
-    const canonicalAssetsEnabled = isFeatureEnabled(
-      FeatureSwitchKey.CanonicalSlackAssets,
-      featureContext,
+    const canonicalAssets = await set(
+      materializeCanonicalSlackInputAssets$,
+      {
+        userId: ingress.userId,
+        orgId,
+        chatThreadId,
+        workspaceId: ingress.workspaceId,
+        channelId: ingress.channelId,
+        messageTs: event.ts,
+        botToken,
+        files: event.files ?? [],
+      },
+      signal,
     );
-    const canonicalAssets = canonicalAssetsEnabled
-      ? await set(
-          materializeCanonicalSlackInputAssets$,
-          {
-            userId: ingress.userId,
-            orgId,
-            chatThreadId,
-            workspaceId: ingress.workspaceId,
-            channelId: ingress.channelId,
-            messageTs: event.ts,
-            botToken,
-            files: event.files ?? [],
-          },
-          signal,
-        )
-      : [];
     signal.throwIfAborted();
     const [enriched, context, permalinkResult] = await Promise.all([
       enrichMessageContent({
         messageContent,
-        files: canonicalAssetsEnabled ? undefined : event.files,
+        files: undefined,
         client,
         userId: event.user,
         userInfoResolver,
