@@ -24,6 +24,11 @@ export type { ArtifactThumbnail } from "@vm0/db/jsonb-contracts/artifact";
  * - `image` -> `image_artifacts.id`
  * - `video` -> `video_artifacts.id`
  * - `presentation` -> `presentation_artifacts.id`
+ *
+ * `logical_key` is stable across repeated projections of the same product:
+ * `file:<url>` for stored files and `site:<hosted_site_id>` for hosted
+ * products. Projection metadata records which `run_uploaded_files` row most
+ * recently won that logical key without changing the catalog sort position.
  */
 export const ARTIFACT_KINDS = [
   "file",
@@ -47,6 +52,9 @@ export const artifacts = pgTable(
     authorUserId: text("author_user_id").notNull(),
     kind: varchar("kind", { length: 32 }).$type<ArtifactKind>().notNull(),
     entityId: uuid("entity_id").notNull(),
+    logicalKey: text("logical_key").notNull(),
+    projectionFileId: uuid("projection_file_id").notNull(),
+    projectionCreatedAt: timestamp("projection_created_at").notNull(),
     title: text("title").notNull(),
     thumbnail: jsonb("thumbnail").$type<ArtifactThumbnail>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -57,6 +65,11 @@ export const artifacts = pgTable(
       uniqueIndex("artifacts_kind_entity_unique").on(
         table.kind,
         table.entityId,
+      ),
+      uniqueIndex("artifacts_author_logical_key_unique").on(
+        table.orgId,
+        table.authorUserId,
+        table.logicalKey,
       ),
       index("artifacts_author_created_idx").on(
         table.orgId,
@@ -70,6 +83,40 @@ export const artifacts = pgTable(
         table.kind,
         table.createdAt.desc(),
         table.id.desc(),
+      ),
+    ];
+  },
+);
+
+/**
+ * Durable handoff between schema rollout and the catalog-writing API.
+ *
+ * The migration installs a `run_uploaded_files` trigger that queues ready rows,
+ * including rows written by the previous API version after the backfill. The
+ * new API drains caller-owned rows before serving the catalog.
+ */
+export const artifactCatalogPendingFiles = pgTable(
+  "artifact_catalog_pending_files",
+  {
+    fileId: uuid("file_id")
+      .primaryKey()
+      .references(
+        () => {
+          return runUploadedFiles.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    orgId: text("org_id").notNull(),
+    authorUserId: text("author_user_id").notNull(),
+    queuedAt: timestamp("queued_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("artifact_catalog_pending_owner_idx").on(
+        table.orgId,
+        table.authorUserId,
+        table.queuedAt,
+        table.fileId,
       ),
     ];
   },

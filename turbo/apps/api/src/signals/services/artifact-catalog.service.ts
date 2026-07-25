@@ -1,11 +1,12 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
   ArtifactSummary,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 import {
+  artifactCatalogPendingFiles,
   artifacts,
   imageArtifacts,
   presentationArtifacts,
@@ -201,6 +202,9 @@ interface UpsertArtifactArgs {
   readonly db: Db;
   readonly kind: ArtifactKind;
   readonly entityId: string;
+  readonly logicalKey: string;
+  readonly projectionFileId: string;
+  readonly projectionCreatedAt: Date;
   readonly orgId: string;
   readonly authorUserId: string;
   readonly title: string;
@@ -219,6 +223,9 @@ async function upsertArtifact(args: UpsertArtifactArgs): Promise<void> {
     .values({
       kind: args.kind,
       entityId: args.entityId,
+      logicalKey: args.logicalKey,
+      projectionFileId: args.projectionFileId,
+      projectionCreatedAt: args.projectionCreatedAt,
       orgId: args.orgId,
       authorUserId: args.authorUserId,
       title: args.title,
@@ -226,14 +233,19 @@ async function upsertArtifact(args: UpsertArtifactArgs): Promise<void> {
       createdAt: args.createdAt,
     })
     .onConflictDoUpdate({
-      target: [artifacts.kind, artifacts.entityId],
+      target: [artifacts.orgId, artifacts.authorUserId, artifacts.logicalKey],
       set: {
+        kind: args.kind,
+        entityId: args.entityId,
+        projectionFileId: args.projectionFileId,
+        projectionCreatedAt: args.projectionCreatedAt,
         orgId: args.orgId,
         authorUserId: args.authorUserId,
         title: args.title,
         thumbnail: args.thumbnail,
         updatedAt: nowDate(),
       },
+      setWhere: sql`(${artifacts.projectionCreatedAt}, ${artifacts.projectionFileId}) <= (excluded.projection_created_at, excluded.projection_file_id)`,
     });
 }
 
@@ -316,10 +328,10 @@ async function syncHostedArtifact(args: {
   readonly orgId: string;
   readonly authorUserId: string;
   readonly signal: AbortSignal;
-}): Promise<void> {
+}): Promise<boolean> {
   const siteId = metadataString(args.row.metadata, "siteId");
   if (!siteId) {
-    return;
+    return true;
   }
   const [site] = await args.db
     .select({
@@ -332,7 +344,7 @@ async function syncHostedArtifact(args: {
     .limit(1);
   args.signal.throwIfAborted();
   if (!site) {
-    return;
+    return false;
   }
 
   const entityId =
@@ -344,13 +356,16 @@ async function syncHostedArtifact(args: {
         })
       : site.id;
   if (!entityId) {
-    return;
+    return false;
   }
 
   await upsertArtifact({
     db: args.db,
     kind: args.kind,
     entityId,
+    logicalKey: `site:${site.id}`,
+    projectionFileId: args.row.id,
+    projectionCreatedAt: args.row.createdAt,
     orgId: args.orgId,
     authorUserId: args.authorUserId,
     title: site.slug,
@@ -360,6 +375,158 @@ async function syncHostedArtifact(args: {
     createdAt: site.createdAt,
   });
   args.signal.throwIfAborted();
+  return true;
+}
+
+async function runHasHostedProjection(
+  db: Db,
+  runId: string | null,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (!runId) {
+    return false;
+  }
+  const [hosted] = await db
+    .select({ id: runUploadedFiles.id })
+    .from(runUploadedFiles)
+    .where(
+      and(
+        eq(runUploadedFiles.runId, runId),
+        sql`${runUploadedFiles.metadata} ->> 'artifactKind' IN ('hosted-site', 'presentation-html')`,
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return Boolean(hosted);
+}
+
+async function removeHostedRunShadowArtifacts(args: {
+  readonly db: Db;
+  readonly row: CatalogFileRow;
+  readonly orgId: string;
+  readonly authorUserId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (!args.row.runId) {
+    return;
+  }
+  const shadowRows = await args.db
+    .select({ id: runUploadedFiles.id })
+    .from(runUploadedFiles)
+    .where(
+      and(
+        eq(runUploadedFiles.runId, args.row.runId),
+        sql`${runUploadedFiles.metadata} ->> 'artifactKind' IS DISTINCT FROM 'hosted-site'`,
+        sql`${runUploadedFiles.metadata} ->> 'artifactKind' IS DISTINCT FROM 'presentation-html'`,
+      ),
+    );
+  args.signal.throwIfAborted();
+  const shadowIds = shadowRows.map((shadow) => {
+    return shadow.id;
+  });
+  if (shadowIds.length === 0) {
+    return;
+  }
+  await args.db
+    .delete(artifacts)
+    .where(
+      and(
+        eq(artifacts.orgId, args.orgId),
+        eq(artifacts.authorUserId, args.authorUserId),
+        inArray(artifacts.projectionFileId, shadowIds),
+      ),
+    );
+  args.signal.throwIfAborted();
+}
+
+async function finishPendingArtifactFile(
+  db: Db,
+  fileId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await db
+    .delete(artifactCatalogPendingFiles)
+    .where(eq(artifactCatalogPendingFiles.fileId, fileId));
+  signal.throwIfAborted();
+}
+
+async function syncArtifactCatalogFile(
+  db: Db,
+  fileId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const row = await readCatalogFileRow(db, fileId, signal);
+  if (!row?.url || !row.orgId) {
+    await finishPendingArtifactFile(db, fileId, signal);
+    return null;
+  }
+
+  const authorUserId = await resolveAuthorUserId(db, row, signal);
+  const hostedKind = hostedArtifactKind(row);
+  if (hostedKind) {
+    await removeHostedRunShadowArtifacts({
+      db,
+      row,
+      orgId: row.orgId,
+      authorUserId,
+      signal,
+    });
+    const complete = await syncHostedArtifact({
+      db,
+      kind: hostedKind,
+      row,
+      orgId: row.orgId,
+      authorUserId,
+      signal,
+    });
+    if (!complete) {
+      return null;
+    }
+    await finishPendingArtifactFile(db, fileId, signal);
+    return authorUserId;
+  }
+
+  if (await runHasHostedProjection(db, row.runId, signal)) {
+    await db
+      .delete(artifacts)
+      .where(
+        and(
+          eq(artifacts.orgId, row.orgId),
+          eq(artifacts.authorUserId, authorUserId),
+          eq(artifacts.logicalKey, `file:${row.url}`),
+          eq(artifacts.projectionFileId, row.id),
+        ),
+      );
+    signal.throwIfAborted();
+    await finishPendingArtifactFile(db, fileId, signal);
+    return authorUserId;
+  }
+
+  const kind = fileArtifactKind(row);
+  const entityId =
+    kind === "file"
+      ? row.id
+      : await upsertGeneratedMediaEntity({ db, kind, row, signal });
+  if (!entityId) {
+    return null;
+  }
+
+  await upsertArtifact({
+    db,
+    kind,
+    entityId,
+    logicalKey: `file:${row.url}`,
+    projectionFileId: row.id,
+    projectionCreatedAt: row.createdAt,
+    orgId: row.orgId,
+    authorUserId,
+    title: row.filename ?? row.externalId,
+    thumbnail: fileThumbnail(row),
+    createdAt: row.createdAt,
+  });
+  signal.throwIfAborted();
+  await finishPendingArtifactFile(db, fileId, signal);
+  return authorUserId;
 }
 
 /**
@@ -380,47 +547,10 @@ export const syncArtifactCatalogForFile$ = command(
       return;
     }
     const db = set(writeDb$);
-    const row = await readCatalogFileRow(db, fileId, signal);
-    if (!row?.url || !row.orgId) {
+    const authorUserId = await syncArtifactCatalogFile(db, fileId, signal);
+    if (!authorUserId) {
       return;
     }
-
-    const authorUserId = await resolveAuthorUserId(db, row, signal);
-    const hostedKind = hostedArtifactKind(row);
-    if (hostedKind) {
-      await syncHostedArtifact({
-        db,
-        kind: hostedKind,
-        row,
-        orgId: row.orgId,
-        authorUserId,
-        signal,
-      });
-      await publishArtifactCatalogChanged(authorUserId);
-      signal.throwIfAborted();
-      return;
-    }
-
-    const kind = fileArtifactKind(row);
-    const entityId =
-      kind === "file"
-        ? row.id
-        : await upsertGeneratedMediaEntity({ db, kind, row, signal });
-    if (!entityId) {
-      return;
-    }
-
-    await upsertArtifact({
-      db,
-      kind,
-      entityId,
-      orgId: row.orgId,
-      authorUserId,
-      title: row.filename ?? row.externalId,
-      thumbnail: fileThumbnail(row),
-      createdAt: row.createdAt,
-    });
-    signal.throwIfAborted();
     await publishArtifactCatalogChanged(authorUserId);
     signal.throwIfAborted();
   },
@@ -437,6 +567,32 @@ interface ListArtifactCatalogArgs {
 interface ListArtifactCatalogResult {
   readonly artifacts: readonly ArtifactSummary[];
   readonly nextCursor: string | null;
+}
+
+async function reconcilePendingArtifactCatalog(
+  db: Db,
+  args: Pick<ListArtifactCatalogArgs, "orgId" | "userId">,
+  signal: AbortSignal,
+): Promise<void> {
+  const pendingRows = await db
+    .select({ fileId: artifactCatalogPendingFiles.fileId })
+    .from(artifactCatalogPendingFiles)
+    .where(
+      and(
+        eq(artifactCatalogPendingFiles.orgId, args.orgId),
+        eq(artifactCatalogPendingFiles.authorUserId, args.userId),
+      ),
+    )
+    .orderBy(
+      asc(artifactCatalogPendingFiles.queuedAt),
+      asc(artifactCatalogPendingFiles.fileId),
+    );
+  signal.throwIfAborted();
+
+  for (const pending of pendingRows) {
+    await syncArtifactCatalogFile(db, pending.fileId, signal);
+    signal.throwIfAborted();
+  }
 }
 
 function toArtifactSummary(row: {
@@ -464,6 +620,8 @@ export const listArtifactCatalog$ = command(
     signal: AbortSignal,
   ): Promise<ListArtifactCatalogResult> => {
     const db = set(writeDb$);
+    await reconcilePendingArtifactCatalog(db, args, signal);
+    signal.throwIfAborted();
     const limit = args.limit ?? ARTIFACT_CATALOG_DEFAULT_LIMIT;
     const cursor = args.cursor ? decodeArtifactCursor(args.cursor) : null;
     const rows = await db

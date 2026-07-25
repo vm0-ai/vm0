@@ -218,3 +218,25 @@ export async function readRunApiStart(
   }
   return response.api_started_at ?? null;
 }
+
+export async function insertLegacyArtifactCatalogFile(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly filename: string;
+    readonly url: string;
+  },
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "insert-legacy-artifact-catalog-file",
+    user_id: args.userId,
+    org_id: args.orgId,
+    filename: args.filename,
+    url: args.url,
+  });
+  if (!response.file_id) {
+    throw new Error("insertLegacyArtifactCatalogFile missing file_id");
+  }
+  return response.file_id;
+}

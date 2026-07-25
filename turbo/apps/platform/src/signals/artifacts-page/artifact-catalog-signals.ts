@@ -7,7 +7,10 @@ import {
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 
 import { accept } from "../../lib/accept.ts";
-import { publicAttachmentUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import {
+  downloadAttachmentUrl,
+  publicAttachmentUrl,
+} from "../../views/zero-page/zero-attachment-url.ts";
 import { zeroClient$ } from "../api-client.ts";
 import {
   classifyChatAttachment,
@@ -181,6 +184,7 @@ export const selectArtifact$ = command(({ set }, artifactId: string | null) => {
  */
 export const selectedArtifactDetail$ = computed(
   async (get, { signal }): Promise<ArtifactDetail | null> => {
+    get(internalArtifactCatalogReload$);
     const artifactId = get(internalSelectedArtifactId$);
     if (!artifactId) {
       return null;
@@ -250,9 +254,12 @@ export const openArtifact$ = command(
       set(openAudioLightbox$, base);
       return;
     }
-    if (preview.kind !== "file") {
-      set(openDocumentLightbox$, { ...base, kind: preview.kind });
+    if (preview.kind === "file") {
+      await downloadAttachmentUrl(preview.url, signal, preview.filename);
+      signal.throwIfAborted();
+      return;
     }
+    set(openDocumentLightbox$, { ...base, kind: preview.kind });
   },
 );
 

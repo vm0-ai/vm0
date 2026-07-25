@@ -1,18 +1,87 @@
--- Backfill the artifact catalog from the visible artifact history.
---
--- The legacy artifact list derives its rows from `run_uploaded_files` and hides
--- two classes of rows at query time: ordinary uploads produced by a run that
--- also published a hosted artifact, and repeated projections of the same URL.
--- Those collapses happen here instead, so one logical product becomes exactly
--- one `artifacts` row.
---
--- Hosted sites merge by `metadata.siteId`, so every deployment version of a
--- site shares a single artifact whose `created_at` is the site's creation time.
--- The catalog therefore holds fewer rows than the legacy list.
---
--- Every statement is idempotent: re-running the migration inserts nothing new
--- and never rewrites an artifact's list position.
+-- Queue every ready file written after the catalog tables exist. The previous
+-- API version does not know how to dual-write `artifacts`, so this trigger is
+-- the durable handoff across the migration-to-API promotion window.
+CREATE FUNCTION "queue_artifact_catalog_file"() RETURNS trigger AS $$
+DECLARE
+  catalog_author_user_id text;
+BEGIN
+  IF NEW."url" IS NULL OR NEW."org_id" IS NULL THEN
+    DELETE FROM "artifact_catalog_pending_files"
+    WHERE "file_id" = NEW."id";
+    RETURN NEW;
+  END IF;
 
+  catalog_author_user_id := COALESCE(
+    (
+      SELECT thread."user_id"
+      FROM "chat_threads" AS thread
+      WHERE thread."id" = COALESCE(
+        NEW."chat_thread_id",
+        (
+          SELECT run."chat_thread_id"
+          FROM "zero_runs" AS run
+          WHERE run."id" = NEW."run_id"
+        ),
+        (
+          SELECT message."chat_thread_id"
+          FROM "chat_messages" AS message
+          WHERE message."run_id" = NEW."run_id"
+          ORDER BY message."seq_id" ASC
+          LIMIT 1
+        )
+      )
+    ),
+    NEW."user_id"
+  );
+
+  INSERT INTO "artifact_catalog_pending_files" (
+    "file_id",
+    "org_id",
+    "author_user_id",
+    "queued_at"
+  )
+  VALUES (
+    NEW."id",
+    NEW."org_id",
+    catalog_author_user_id,
+    clock_timestamp()
+  )
+  ON CONFLICT ("file_id") DO UPDATE SET
+    "org_id" = EXCLUDED."org_id",
+    "author_user_id" = EXCLUDED."author_user_id",
+    "queued_at" = EXCLUDED."queued_at";
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;--> statement-breakpoint
+
+CREATE TRIGGER "run_uploaded_files_queue_artifact_catalog"
+AFTER INSERT OR UPDATE OF
+  "run_id",
+  "chat_thread_id",
+  "user_id",
+  "org_id",
+  "external_id",
+  "filename",
+  "content_type",
+  "url",
+  "preview_image_url",
+  "metadata"
+ON "run_uploaded_files"
+FOR EACH ROW EXECUTE FUNCTION "queue_artifact_catalog_file"();--> statement-breakpoint
+
+-- Capture one fixed rollout boundary after the trigger is live. Rows that
+-- commit later stay queued; rows inside this snapshot are handled by the
+-- backfill below and removed from the pending handoff at the end.
+CREATE TEMP TABLE vm0_artifact_catalog_backfill_context ON COMMIT DROP AS
+SELECT clock_timestamp() AS captured_at;--> statement-breakpoint
+
+CREATE TEMP TABLE vm0_artifact_catalog_rollout_file_ids ON COMMIT DROP AS
+SELECT file."id"
+FROM "run_uploaded_files" AS file;--> statement-breakpoint
+
+-- Backfill the visible artifact history. The legacy list hides ordinary upload
+-- shadows for hosted runs and collapses repeated projections of the same URL.
 CREATE TEMP TABLE vm0_artifact_catalog_visible_files ON COMMIT DROP AS
 SELECT
   file."id",
@@ -47,6 +116,8 @@ SELECT
     file."user_id"
   ) AS author_user_id
 FROM "run_uploaded_files" AS file
+INNER JOIN pg_temp.vm0_artifact_catalog_rollout_file_ids AS rollout
+  ON rollout."id" = file."id"
 WHERE file."url" IS NOT NULL
   AND file."org_id" IS NOT NULL
   AND (
@@ -59,16 +130,16 @@ WHERE file."url" IS NOT NULL
         AND hosted."metadata" ->> 'artifactKind'
           IN ('hosted-site', 'presentation-html')
     )
-  );
---> statement-breakpoint
+  );--> statement-breakpoint
 
--- Ordinary uploads and officially generated media. Repeated projections of the
--- same URL keep only their newest row.
+-- One file URL is one logical product for an owner. The newest projection
+-- supplies the kind entity and card metadata.
 CREATE TEMP TABLE vm0_artifact_catalog_file_plan ON COMMIT DROP AS
 SELECT DISTINCT ON (file."org_id", file.author_user_id, file."url")
   file."id" AS file_id,
   file."org_id",
   file.author_user_id,
+  'file:' || file."url" AS logical_key,
   CASE file."metadata" ->> 'generatedBy'
     WHEN 'zero-official-image' THEN 'image'
     WHEN 'zero-official-video' THEN 'video'
@@ -98,16 +169,17 @@ ORDER BY
   file.author_user_id,
   file."url",
   file."created_at" DESC,
-  file."id" DESC;
---> statement-breakpoint
+  file."id" DESC;--> statement-breakpoint
 
--- Hosted sites and presentations collapse onto their site. The newest
--- projection supplies the preview image and the owning user.
+-- Every deployment of one hosted site shares a logical product. The newest
+-- projection decides whether that product is a site or presentation.
 CREATE TEMP TABLE vm0_artifact_catalog_hosted_plan ON COMMIT DROP AS
 SELECT DISTINCT ON (site."id")
+  file."id" AS file_id,
   site."id" AS hosted_site_id,
   file."org_id",
   file.author_user_id,
+  'site:' || site."id"::text AS logical_key,
   CASE file."metadata" ->> 'artifactKind'
     WHEN 'presentation-html' THEN 'presentation'
     ELSE 'hosted-site'
@@ -118,7 +190,8 @@ SELECT DISTINCT ON (site."id")
       THEN jsonb_build_object('url', file."preview_image_url")
     ELSE NULL
   END AS thumbnail,
-  site."created_at"
+  site."created_at",
+  file."created_at" AS projection_created_at
 FROM pg_temp.vm0_artifact_catalog_visible_files AS file
 INNER JOIN "hosted_sites" AS site
   ON site."id" = (file."metadata" ->> 'siteId')::uuid
@@ -127,35 +200,34 @@ WHERE file."metadata" ->> 'artifactKind'
 ORDER BY
   site."id",
   file."created_at" DESC,
-  file."id" DESC;
---> statement-breakpoint
+  file."id" DESC;--> statement-breakpoint
 
 INSERT INTO "image_artifacts" ("file_id", "model", "provider")
 SELECT plan.file_id, plan.model, plan.provider
 FROM pg_temp.vm0_artifact_catalog_file_plan AS plan
 WHERE plan.kind = 'image'
-ON CONFLICT ("file_id") DO NOTHING;
---> statement-breakpoint
+ON CONFLICT ("file_id") DO NOTHING;--> statement-breakpoint
 
 INSERT INTO "video_artifacts" ("file_id", "model", "duration_seconds")
 SELECT plan.file_id, plan.model, plan.duration_seconds
 FROM pg_temp.vm0_artifact_catalog_file_plan AS plan
 WHERE plan.kind = 'video'
-ON CONFLICT ("file_id") DO NOTHING;
---> statement-breakpoint
+ON CONFLICT ("file_id") DO NOTHING;--> statement-breakpoint
 
 INSERT INTO "presentation_artifacts" ("hosted_site_id")
 SELECT plan.hosted_site_id
 FROM pg_temp.vm0_artifact_catalog_hosted_plan AS plan
 WHERE plan.kind = 'presentation'
-ON CONFLICT ("hosted_site_id") DO NOTHING;
---> statement-breakpoint
+ON CONFLICT ("hosted_site_id") DO NOTHING;--> statement-breakpoint
 
 INSERT INTO "artifacts" (
   "org_id",
   "author_user_id",
   "kind",
   "entity_id",
+  "logical_key",
+  "projection_file_id",
+  "projection_created_at",
   "title",
   "thumbnail",
   "created_at",
@@ -170,6 +242,9 @@ SELECT
     WHEN 'video' THEN video_entity."id"
     ELSE plan.file_id
   END,
+  plan.logical_key,
+  plan.file_id,
+  plan."created_at",
   plan.title,
   plan.thumbnail,
   plan."created_at",
@@ -182,14 +257,30 @@ LEFT JOIN "video_artifacts" AS video_entity
 WHERE plan.kind = 'file'
   OR image_entity."id" IS NOT NULL
   OR video_entity."id" IS NOT NULL
-ON CONFLICT ("kind", "entity_id") DO NOTHING;
---> statement-breakpoint
+ON CONFLICT ("org_id", "author_user_id", "logical_key") DO UPDATE SET
+  "kind" = EXCLUDED."kind",
+  "entity_id" = EXCLUDED."entity_id",
+  "projection_file_id" = EXCLUDED."projection_file_id",
+  "projection_created_at" = EXCLUDED."projection_created_at",
+  "title" = EXCLUDED."title",
+  "thumbnail" = EXCLUDED."thumbnail",
+  "updated_at" = EXCLUDED."updated_at"
+WHERE (
+  "artifacts"."projection_created_at",
+  "artifacts"."projection_file_id"
+) <= (
+  EXCLUDED."projection_created_at",
+  EXCLUDED."projection_file_id"
+);--> statement-breakpoint
 
 INSERT INTO "artifacts" (
   "org_id",
   "author_user_id",
   "kind",
   "entity_id",
+  "logical_key",
+  "projection_file_id",
+  "projection_created_at",
   "title",
   "thumbnail",
   "created_at",
@@ -203,18 +294,34 @@ SELECT
     WHEN 'presentation' THEN presentation_entity."id"
     ELSE plan.hosted_site_id
   END,
+  plan.logical_key,
+  plan.file_id,
+  plan.projection_created_at,
   plan.title,
   plan.thumbnail,
   plan."created_at",
-  plan."created_at"
+  plan.projection_created_at
 FROM pg_temp.vm0_artifact_catalog_hosted_plan AS plan
 LEFT JOIN "presentation_artifacts" AS presentation_entity
   ON plan.kind = 'presentation'
   AND presentation_entity."hosted_site_id" = plan.hosted_site_id
 WHERE plan.kind = 'hosted-site'
   OR presentation_entity."id" IS NOT NULL
-ON CONFLICT ("kind", "entity_id") DO NOTHING;
---> statement-breakpoint
+ON CONFLICT ("org_id", "author_user_id", "logical_key") DO UPDATE SET
+  "kind" = EXCLUDED."kind",
+  "entity_id" = EXCLUDED."entity_id",
+  "projection_file_id" = EXCLUDED."projection_file_id",
+  "projection_created_at" = EXCLUDED."projection_created_at",
+  "title" = EXCLUDED."title",
+  "thumbnail" = EXCLUDED."thumbnail",
+  "updated_at" = EXCLUDED."updated_at"
+WHERE (
+  "artifacts"."projection_created_at",
+  "artifacts"."projection_file_id"
+) <= (
+  EXCLUDED."projection_created_at",
+  EXCLUDED."projection_file_id"
+);--> statement-breakpoint
 
 DO $$
 DECLARE
@@ -286,4 +393,13 @@ BEGIN
     'artifact catalog backfill covered % artifacts',
     planned_artifacts;
 END
-$$;
+$$;--> statement-breakpoint
+
+-- Clear only queue entries covered by the fixed snapshot. A concurrent insert
+-- or update receives a later `queued_at` and remains for the new API to drain.
+DELETE FROM "artifact_catalog_pending_files" AS pending
+USING
+  pg_temp.vm0_artifact_catalog_rollout_file_ids AS rollout,
+  pg_temp.vm0_artifact_catalog_backfill_context AS context
+WHERE pending."file_id" = rollout."id"
+  AND pending."queued_at" <= context.captured_at;
