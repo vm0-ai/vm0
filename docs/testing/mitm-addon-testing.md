@@ -175,6 +175,7 @@ tests must not resolve a different mitmproxy version from production.
 | `test_model_provider_sse_usage.py`                      | Model provider SSE usage pipeline                                                                                    |
 | `test_model_provider_websocket_usage.py`                | Model provider WebSocket usage reporting and source reconciliation                                                   |
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
+| `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
 | `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |
