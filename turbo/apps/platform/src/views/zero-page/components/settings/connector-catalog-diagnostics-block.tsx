@@ -22,17 +22,17 @@ function formatTimestamp(value: string | null): string {
   }).format(new Date(value));
 }
 
-function formatRejectedAttemptSource(
+function formatRejectedAttemptCacheUse(
   lastAttempt: ConnectorCatalogDiagnostics["lastAttempt"],
 ): string {
   if (!lastAttempt || lastAttempt.outcome !== "rejected") {
     return EMPTY_VALUE;
   }
   if (lastAttempt.reusedCachedRejection === true) {
-    return "Cached rejection";
+    return "Reused";
   }
   if (lastAttempt.reusedCachedRejection === false) {
-    return "Fresh evaluation";
+    return "Not reused";
   }
   return "Unknown";
 }
@@ -148,8 +148,8 @@ function CatalogSyncDiagnostics({
           }
         />
         <DiagnosticField
-          label="Rejected attempt source"
-          value={formatRejectedAttemptSource(lastAttempt)}
+          label="Rejection cache"
+          value={formatRejectedAttemptCacheUse(lastAttempt)}
         />
       </div>
 
