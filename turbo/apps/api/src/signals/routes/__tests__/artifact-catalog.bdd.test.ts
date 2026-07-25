@@ -60,7 +60,7 @@ async function catalogActor(
   await updateFeatureSwitchesForUser(
     context,
     { userId: actor.userId, orgId: actor.orgId },
-    { [FeatureSwitchKey.ArtifactCatalog]: true, ...switches },
+    { [FeatureSwitchKey.Artifacts]: true, ...switches },
   );
   const agent = await bdd.createAgent(actor, {
     displayName,
@@ -444,7 +444,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog disabled owner",
       bdd.user(),
-      { [FeatureSwitchKey.ArtifactCatalog]: false },
+      { [FeatureSwitchKey.Artifacts]: false },
     );
 
     const denied = await chat.requestListArtifactCatalog(owner.actor, [403]);

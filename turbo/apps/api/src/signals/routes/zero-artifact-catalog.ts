@@ -26,6 +26,11 @@ function catalogDisabled() {
   };
 }
 
+/**
+ * The catalog is only reachable from the Artifacts page, which the `Artifacts`
+ * switch already gates per org. Reusing that switch keeps the page and its API
+ * from drifting apart during rollout.
+ */
 const artifactCatalogEnabled$ = command(
   async (
     { get },
@@ -34,7 +39,7 @@ const artifactCatalogEnabled$ = command(
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
     );
-    return isFeatureEnabled(FeatureSwitchKey.ArtifactCatalog, {
+    return isFeatureEnabled(FeatureSwitchKey.Artifacts, {
       orgId: auth.orgId,
       userId: auth.userId,
       overrides,

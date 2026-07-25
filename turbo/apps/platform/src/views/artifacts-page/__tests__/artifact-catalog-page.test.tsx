@@ -42,7 +42,6 @@ function setupArtifactCatalogPage(): void {
     },
     featureSwitches: {
       [FeatureSwitchKey.Artifacts]: true,
-      [FeatureSwitchKey.ArtifactCatalog]: true,
     },
   });
 }
