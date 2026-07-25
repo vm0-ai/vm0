@@ -450,20 +450,20 @@ def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
     if max_output <= 0:
         return DECODED_BODY_LIMIT_EXCEEDED if data else None
 
-    remaining_data = data
+    source = memoryview(data)
+    source_offset = 0
+    pending_input = b""
     decoded_size = 0
-    while remaining_data:
+    while source_offset < len(source) or pending_input:
         obj = zstandard.ZstdDecompressor().decompressobj()
-        offset = 0
-        unconsumed_tail = b""
 
-        while offset < len(remaining_data) or unconsumed_tail:
-            if unconsumed_tail:
-                chunk = unconsumed_tail
-                unconsumed_tail = b""
+        while source_offset < len(source) or pending_input:
+            if pending_input:
+                chunk = pending_input
+                pending_input = b""
             else:
-                chunk = remaining_data[offset : offset + _ZSTD_VALIDATE_INPUT_CHUNK_SIZE]
-                offset += len(chunk)
+                chunk = source[source_offset : source_offset + _ZSTD_VALIDATE_INPUT_CHUNK_SIZE]
+                source_offset += len(chunk)
             try:
                 decoded = obj.decompress(chunk)
             except zstandard.ZstdError:
@@ -473,9 +473,9 @@ def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
             if decoded_size > max_output:
                 return DECODED_BODY_LIMIT_EXCEEDED
             if obj.eof:
-                remaining_data = obj.unused_data + remaining_data[offset:]
+                pending_input = obj.unused_data
                 break
-            unconsumed_tail = obj.unconsumed_tail
+            pending_input = obj.unconsumed_tail
         else:
             return INCOMPLETE_COMPRESSED_BODY
     return None
