@@ -7,7 +7,8 @@ mod exec_started_cancel;
 mod shared;
 
 use crate::error::ProtocolError;
-use crate::payloads::exec_control::ExecControlNonce;
+
+use super::ExecControlNonce;
 
 const NONCE: ExecControlNonce = *b"0123456789abcdef";
 
