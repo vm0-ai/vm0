@@ -3,6 +3,11 @@ import { command, computed, state } from "ccstate";
 import type { Context } from "hono";
 import { RedirectStatusCode } from "hono/utils/http-status";
 
+import {
+  previewAutomationBypassSecret,
+  requestHasPreviewAutomationBypassHeaderOrCookie,
+} from "../../lib/preview-automation-bypass";
+
 const innerHonoContext$ = state<Context>({} as Context);
 const innerRoute$ = state<AppRoute | null>(null);
 
@@ -23,6 +28,14 @@ function header(name: string) {
 export const userAgent$ = header("User-Agent");
 export const authorization$ = header("authorization");
 export const cookie$ = header("cookie");
+export const previewAutomationBypass$ = computed((get) => {
+  const context = get(innerHonoContext$);
+  const secret = previewAutomationBypassSecret();
+  return secret &&
+    requestHasPreviewAutomationBypassHeaderOrCookie(context.req.raw, secret)
+    ? secret
+    : undefined;
+});
 
 function resHeader(name: string) {
   return computed((get) => {

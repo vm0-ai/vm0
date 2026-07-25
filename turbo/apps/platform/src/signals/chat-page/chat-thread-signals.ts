@@ -16,6 +16,7 @@ import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
+import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 
@@ -144,6 +145,9 @@ export interface ChatThreadSignals {
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
+  browserSessionCardSignalsById$: Computed<
+    ReadonlyMap<string, BrowserSessionSignals>
+  >;
   hasMessages$: Computed<Promise<boolean>>;
   hasNewMessages$: Computed<Promise<boolean>>;
   hasQueuedMessages$: Computed<Promise<boolean>>;

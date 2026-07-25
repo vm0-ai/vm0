@@ -9,7 +9,10 @@ import {
   createZeroBrowser$,
   getCurrentZeroBrowser$,
   getZeroBrowser$,
-  resumeZeroBrowser$,
+  leaseCurrentZeroBrowser$,
+  leaseZeroBrowserById$,
+  resumeZeroBrowserFromViewer$,
+  useZeroBrowser$,
   type BrowserServiceError,
 } from "../services/zero-browser.service";
 
@@ -52,17 +55,39 @@ const createBrowserInner$ = command(
   },
 );
 
-const resumeBody$ = bodyResultOf(zeroBrowserContract.resume);
-const resumeBrowserInner$ = command(
+const useBody$ = bodyResultOf(zeroBrowserContract.use);
+const useBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const body = await get(useBody$);
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+  const auth = get(organizationAuthContext$);
+  const result = await set(
+    useZeroBrowser$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      ...("runId" in auth ? { runId: auth.runId } : {}),
+    },
+    signal,
+  );
+  return result.kind === "error"
+    ? errorResponse(result)
+    : { status: 200 as const, body: result.value };
+});
+
+const leaseBody$ = bodyResultOf(zeroBrowserContract.lease);
+const leaseBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const body = await get(resumeBody$);
+    const body = await get(leaseBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
     const auth = get(organizationAuthContext$);
     const result = await set(
-      resumeZeroBrowser$,
+      leaseCurrentZeroBrowser$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -72,7 +97,57 @@ const resumeBrowserInner$ = command(
     );
     return result.kind === "error"
       ? errorResponse(result)
-      : { status: 200 as const, body: result.value };
+      : { status: 200 as const, body: { browser: result.value } };
+  },
+);
+
+const leaseByIdParams$ = pathParamsOf(zeroBrowserContract.leaseById);
+const leaseByIdBody$ = bodyResultOf(zeroBrowserContract.leaseById);
+const leaseBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(leaseByIdBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      leaseZeroBrowserById$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(leaseByIdParams$).browserId,
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
+  },
+);
+
+const resumeByIdParams$ = pathParamsOf(zeroBrowserContract.resumeById);
+const resumeByIdBody$ = bodyResultOf(zeroBrowserContract.resumeById);
+const resumeBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(resumeByIdBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      resumeZeroBrowserFromViewer$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(resumeByIdParams$).browserId,
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
   },
 );
 
@@ -127,6 +202,15 @@ const browserWriteAuth = Object.freeze({
   accept: Object.freeze(["zero"] as const),
 });
 
+// Keeping a browser alive and restarting a suspended one are viewer actions, so
+// the signed-in owner may call them without a live run.
+const browserViewerWriteAuth = Object.freeze({
+  requireOrganization: true,
+  missingOrganizationStatus: 401 as const,
+  requiredCapability: "browser:write" as const,
+  accept: Object.freeze(["session", "zero"] as const),
+});
+
 const browserCurrentAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
@@ -140,8 +224,24 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
     handler: authRoute(browserWriteAuth, createBrowserInner$),
   },
   {
+    route: zeroBrowserContract.use,
+    handler: authRoute(browserWriteAuth, useBrowserInner$),
+  },
+  {
     route: zeroBrowserContract.resume,
-    handler: authRoute(browserWriteAuth, resumeBrowserInner$),
+    handler: authRoute(browserWriteAuth, useBrowserInner$),
+  },
+  {
+    route: zeroBrowserContract.lease,
+    handler: authRoute(browserWriteAuth, leaseBrowserInner$),
+  },
+  {
+    route: zeroBrowserContract.leaseById,
+    handler: authRoute(browserViewerWriteAuth, leaseBrowserByIdInner$),
+  },
+  {
+    route: zeroBrowserContract.resumeById,
+    handler: authRoute(browserViewerWriteAuth, resumeBrowserByIdInner$),
   },
   {
     route: zeroBrowserContract.current,

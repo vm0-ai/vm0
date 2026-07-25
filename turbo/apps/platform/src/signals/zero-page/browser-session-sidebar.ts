@@ -6,33 +6,33 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import {
-  MAIL_DRAFT_QUERY_PARAM,
+  BROWSER_SESSION_QUERY_PARAM,
   clearArtifactSidebarParams,
   clearBrowserSessionSidebarParams,
   clearChatAutomationSidebarParams,
   clearMailDraftSidebarParams,
 } from "./right-sidebar-search-params.ts";
 
-export const currentMailDraftId$ = computed((get) => {
-  return get(searchParams$).get(MAIL_DRAFT_QUERY_PARAM);
+export const currentBrowserSessionId$ = computed((get) => {
+  return get(searchParams$).get(BROWSER_SESSION_QUERY_PARAM);
 });
 
-export const openMailDraftSidebar$ = command(
-  ({ get, set }, mailDraftId: string) => {
+export const openBrowserSessionSidebar$ = command(
+  ({ get, set }, browserId: string) => {
     const params = new URLSearchParams(get(searchParams$));
-    params.set(MAIL_DRAFT_QUERY_PARAM, mailDraftId);
+    params.set(BROWSER_SESSION_QUERY_PARAM, browserId);
     clearArtifactSidebarParams(params);
     clearChatAutomationSidebarParams(params);
-    clearBrowserSessionSidebarParams(params);
+    clearMailDraftSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );
 
-export const closeMailDraftSidebar$ = command(({ get, set }) => {
+export const closeBrowserSessionSidebar$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
-  if (!params.has(MAIL_DRAFT_QUERY_PARAM)) {
+  if (!params.has(BROWSER_SESSION_QUERY_PARAM)) {
     return;
   }
-  clearMailDraftSidebarParams(params);
+  clearBrowserSessionSidebarParams(params);
   set(replaceSearchParams$, params);
 });

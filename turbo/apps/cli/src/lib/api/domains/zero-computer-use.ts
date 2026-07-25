@@ -48,10 +48,6 @@ function buildHeaders(token?: string): Record<string, string> {
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
   return headers;
 }
 

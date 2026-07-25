@@ -137,6 +137,7 @@ import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
+import { BrowserSessionSidebar } from "./browser-session-sidebar.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
@@ -170,6 +171,10 @@ import {
   emptyMailDraftSignalsById$,
   type MailDraftSignals,
 } from "../../signals/chat-page/mail-draft.ts";
+import {
+  emptyBrowserSessionSignalsById$,
+  type BrowserSessionSignals,
+} from "../../signals/chat-page/browser-session-block.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -228,6 +233,7 @@ import {
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
+import { currentBrowserSessionId$ } from "../../signals/zero-page/browser-session-sidebar.ts";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -2518,6 +2524,28 @@ function ChatThreadArea({
   );
 }
 
+function useSelectedBrowserSessionSignals(
+  leftThread: ChatThreadSignals | null,
+  rightThread: ChatThreadSignals | null,
+): BrowserSessionSignals | undefined {
+  const selectedBrowserId = useGet(currentBrowserSessionId$);
+  const leftBrowserSignalsById = useGet(
+    leftThread?.browserSessionCardSignalsById$ ??
+      emptyBrowserSessionSignalsById$,
+  );
+  const rightBrowserSignalsById = useGet(
+    rightThread?.browserSessionCardSignalsById$ ??
+      emptyBrowserSessionSignalsById$,
+  );
+  if (!selectedBrowserId) {
+    return undefined;
+  }
+  return (
+    leftBrowserSignalsById.get(selectedBrowserId) ??
+    rightBrowserSignalsById.get(selectedBrowserId)
+  );
+}
+
 function useSelectedMailDraftSignals(
   leftThread: ChatThreadSignals | null,
   rightThread: ChatThreadSignals | null,
@@ -2553,6 +2581,10 @@ export function ZeroChatThreadPage() {
     leftThread,
     rightThread,
   );
+  const selectedBrowserSessionSignals = useSelectedBrowserSessionSignals(
+    leftThread,
+    rightThread,
+  );
   const closePresentationEditor = useSet(closePresentationEditor$);
   const artifactFullscreen = useGet(artifactFullscreen$);
   const activePresentationEditorUrl = presentationEditorUrl;
@@ -2560,8 +2592,12 @@ export function ZeroChatThreadPage() {
     artifactRef !== null || artifactInboxThreadId !== null;
   const automationPanelOpen = automationPanelThread !== undefined;
   const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
+  const browserPanelOpen = selectedBrowserSessionSignals !== undefined;
   const rightPanelOpen =
-    artifactPanelOpen || automationPanelOpen || mailDraftPanelOpen;
+    artifactPanelOpen ||
+    automationPanelOpen ||
+    mailDraftPanelOpen ||
+    browserPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
       useGet(artifactPanelWidth$),
@@ -2623,7 +2659,9 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {selectedMailDraftSignals ? (
+          {selectedBrowserSessionSignals ? (
+            <BrowserSessionSidebar signals={selectedBrowserSessionSignals} />
+          ) : selectedMailDraftSignals ? (
             <MailDraftSidebar signals={selectedMailDraftSignals} />
           ) : automationPanelThread ? (
             <HeaderAutomationSidebar thread={automationPanelThread} />

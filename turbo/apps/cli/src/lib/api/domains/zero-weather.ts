@@ -24,10 +24,6 @@ function authenticatedJsonHeaders(token: string): Record<string, string> {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
   return headers;
 }
 

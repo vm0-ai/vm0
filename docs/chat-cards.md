@@ -279,21 +279,35 @@ through the authenticated Zero Browser API and includes the current chat thread
 ID in that request. A copied card therefore cannot resolve a browser owned by a
 different thread.
 
-While the current run owns an active provider instance, the API returns its
-short-lived live URL and the card renders it in an iframe with a no-referrer
-policy. At every terminal run callback, the API stops and settles all eligible
-provider instances for the thread before another run can resume the logical
-browser. The card then shows the suspended state and keeps the stable
-`/browsers/:browserId` link; a later run can use `zero browser resume` to start
-a new provider instance with the saved profile. Logical browsers remain scoped
-to their chat threads, while every thread for the same user in the same
-organization uses one shared login profile. Multiple threads may run provider
-instances with that profile in parallel. The API serializes only the profile's
-first creation so concurrent first use still creates one provider profile.
+The fixed-height card shows the browser name, charged credits, and status, and
+opens the shared right sidebar surface. The live view lives in that sidebar and
+in the full-page route rather than in the message stream, because a live page
+resizes as it loads and would otherwise shift the transcript.
+
+A provider instance outlives the run that opened it. Every terminal run callback
+only extends the instance's idle lease, so the user can keep working in the same
+window and a later run in the same thread attaches to it with
+`zero browser use`. The reconciler reclaims and settles an instance once its
+lease expires, its budget is reached, its chat thread is deleted, or the
+provider ends it. While the sidebar or full-page viewer is open and its page is
+visible, it refreshes the lease on a timer; the CLI can do the same with
+`zero browser lease`. Each lease is a fixed window from now and cannot be
+stacked. The whole instance is billed to the run that last used it.
+
+Once an instance is reclaimed the card shows the suspended state and keeps the
+stable `/browsers/:browserId` link. The viewer's resume action, and
+`zero browser use` in a later run, start a new provider instance from the saved
+profile: cookies and storage come back, the previous pages and tabs do not.
+Logical browsers remain scoped to their chat threads, while every thread for the
+same user in the same organization uses one shared login profile. Multiple
+threads may run provider instances with that profile in parallel. The API
+serializes only the profile's first creation so concurrent first use still
+creates one provider profile.
 
 The same universal link also has an authenticated full-page route. The browser
 provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
-is never returned by the card read endpoint or printed in CLI output.
+is never returned by the card read, lease, or resume endpoints, nor printed in
+CLI output.
 
 ## Adding a Card Type
 
