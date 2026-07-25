@@ -25,6 +25,11 @@ interface SlackChatThreadRouteBinding extends SlackChatThreadRouteKey {
   readonly chatThreadId: string | null;
 }
 
+interface CanonicalSlackChatThreadRouteBinding extends SlackChatThreadRouteBinding {
+  readonly backend: "canonical";
+  readonly chatThreadId: string;
+}
+
 function slackChatThreadRouteWhere(key: SlackChatThreadRouteKey) {
   return and(
     eq(slackChatThreadRoutes.connectionId, key.connectionId),
@@ -72,6 +77,19 @@ async function requireSlackChatThreadRoute(
   return route;
 }
 
+function requireCanonicalSlackChatThreadRoute(
+  route: SlackChatThreadRouteBinding,
+): CanonicalSlackChatThreadRouteBinding {
+  if (route.backend !== "canonical" || !route.chatThreadId) {
+    throw new Error("Failed to resolve canonical Slack chat thread route");
+  }
+  return {
+    ...route,
+    backend: "canonical",
+    chatThreadId: route.chatThreadId,
+  };
+}
+
 export async function ensureLegacySlackChatThreadRoute(
   db: Db,
   args: SlackChatThreadRouteKey & { readonly currentTime: Date },
@@ -115,11 +133,11 @@ export async function ensureCanonicalSlackChatThreadRoute(
     readonly selectedModel: string | null;
     readonly currentTime: Date;
   },
-): Promise<SlackChatThreadRouteBinding> {
+): Promise<CanonicalSlackChatThreadRouteBinding> {
   return await db.transaction(async (tx) => {
     const existing = await loadSlackChatThreadRoute(tx, args);
-    if (existing) {
-      return existing;
+    if (existing?.backend === "canonical") {
+      return requireCanonicalSlackChatThreadRoute(existing);
     }
 
     const [thread] = await tx
@@ -139,38 +157,76 @@ export async function ensureCanonicalSlackChatThreadRoute(
       throw new Error("Failed to create canonical Slack chat thread");
     }
 
-    const [route] = await tx
-      .insert(slackChatThreadRoutes)
-      .values({
-        connectionId: args.connectionId,
-        channelId: args.channelId,
-        threadTs: args.threadTs,
-        userId: args.userId,
-        backend: "canonical",
-        chatThreadId: thread.id,
-        createdAt: args.currentTime,
-      })
-      .onConflictDoNothing({
-        target: [
-          slackChatThreadRoutes.connectionId,
-          slackChatThreadRoutes.channelId,
-          slackChatThreadRoutes.threadTs,
-          slackChatThreadRoutes.userId,
-        ],
-      })
-      .returning({
-        id: slackChatThreadRoutes.id,
-        connectionId: slackChatThreadRoutes.connectionId,
-        channelId: slackChatThreadRoutes.channelId,
-        threadTs: slackChatThreadRoutes.threadTs,
-        userId: slackChatThreadRoutes.userId,
-        backend: slackChatThreadRoutes.backend,
-        chatThreadId: slackChatThreadRoutes.chatThreadId,
-      });
+    const returning = {
+      id: slackChatThreadRoutes.id,
+      connectionId: slackChatThreadRoutes.connectionId,
+      channelId: slackChatThreadRoutes.channelId,
+      threadTs: slackChatThreadRoutes.threadTs,
+      userId: slackChatThreadRoutes.userId,
+      backend: slackChatThreadRoutes.backend,
+      chatThreadId: slackChatThreadRoutes.chatThreadId,
+    };
+    const [route] = existing
+      ? await tx
+          .update(slackChatThreadRoutes)
+          .set({ backend: "canonical", chatThreadId: thread.id })
+          .where(
+            and(
+              eq(slackChatThreadRoutes.id, existing.id),
+              eq(slackChatThreadRoutes.backend, "legacy"),
+            ),
+          )
+          .returning(returning)
+      : await tx
+          .insert(slackChatThreadRoutes)
+          .values({
+            connectionId: args.connectionId,
+            channelId: args.channelId,
+            threadTs: args.threadTs,
+            userId: args.userId,
+            backend: "canonical",
+            chatThreadId: thread.id,
+            createdAt: args.currentTime,
+          })
+          .onConflictDoNothing({
+            target: [
+              slackChatThreadRoutes.connectionId,
+              slackChatThreadRoutes.channelId,
+              slackChatThreadRoutes.threadTs,
+              slackChatThreadRoutes.userId,
+            ],
+          })
+          .returning(returning);
 
     if (!route) {
+      const [promoted] = await tx
+        .update(slackChatThreadRoutes)
+        .set({ backend: "canonical", chatThreadId: thread.id })
+        .where(
+          and(
+            slackChatThreadRouteWhere(args),
+            eq(slackChatThreadRoutes.backend, "legacy"),
+          ),
+        )
+        .returning(returning);
+      if (promoted) {
+        await appendChatThreadEvent(tx, {
+          kind: "created",
+          userId: args.userId,
+          orgId: args.orgId,
+          chatThreadId: thread.id,
+          agentComposeId: args.agentComposeId,
+          title: null,
+          selectedModel: args.selectedModel,
+          createdAt: thread.createdAt,
+        });
+        return requireCanonicalSlackChatThreadRoute(promoted);
+      }
+
       await tx.delete(chatThreads).where(eq(chatThreads.id, thread.id));
-      return await requireSlackChatThreadRoute(tx, args);
+      return requireCanonicalSlackChatThreadRoute(
+        await requireSlackChatThreadRoute(tx, args),
+      );
     }
 
     await appendChatThreadEvent(tx, {
@@ -183,7 +239,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       selectedModel: args.selectedModel,
       createdAt: thread.createdAt,
     });
-    return route;
+    return requireCanonicalSlackChatThreadRoute(route);
   });
 }
 
