@@ -605,6 +605,13 @@ export {
   type SessionResponse,
 } from "./sessions";
 export {
+  artifactCatalogContract,
+  type ArtifactCatalogContract,
+  type ArtifactCatalogKind,
+  type ArtifactDetail,
+  type ArtifactSummary,
+} from "./artifact-catalog";
+export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadDraftContract,

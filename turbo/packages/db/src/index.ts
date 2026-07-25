@@ -100,6 +100,7 @@ import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
+import * as artifactSchema from "./schema/artifact";
 import * as htmlArtifactEditDraftSchema from "./schema/html-artifact-edit-draft";
 import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-snapshot";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
@@ -216,6 +217,7 @@ export const schema = {
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
+  ...artifactSchema,
   ...htmlArtifactEditDraftSchema,
   ...imageArtifactEditSnapshotSchema,
   ...userArtifactFavoriteSchema,
