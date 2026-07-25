@@ -106,6 +106,15 @@ interface SimpleUpsertMatch {
   readonly targetTableExpressionIndex: number | undefined;
 }
 
+interface ScalarCteBodyMatch {
+  readonly guaranteedOneRow: boolean;
+}
+
+interface TopLevelCallMatch {
+  readonly body: string;
+  readonly end: number;
+}
+
 interface CompleteSqlStatement {
   readonly end: number;
   readonly hasTrailingSemicolon: boolean;
@@ -138,6 +147,34 @@ const UNSUPPORTED_SCALAR_QUERY_KEYWORDS = new Set([
   ...UNSUPPORTED_TOP_LEVEL_WHERE_KEYWORDS,
   "INTO",
   "OVER",
+]);
+
+const UNSUPPORTED_SCALAR_CTE_KEYWORDS = new Set([
+  "CROSS",
+  "DISTINCT",
+  "EXCEPT",
+  "FETCH",
+  "FOR",
+  "FULL",
+  "GROUP",
+  "HAVING",
+  "INNER",
+  "INTERSECT",
+  "INTO",
+  "JOIN",
+  "LATERAL",
+  "LEFT",
+  "OFFSET",
+  "ORDER",
+  "OUTER",
+  "OVER",
+  "QUALIFY",
+  "RECURSIVE",
+  "RIGHT",
+  "UNION",
+  "USING",
+  "WINDOW",
+  "WITH",
 ]);
 
 const UNSUPPORTED_PAGINATED_JOINED_SELECT_KEYWORDS = new Set([
@@ -399,6 +436,340 @@ function completeSqlStatement(
     hasTrailingSemicolon,
     tokens: statementTokens,
   };
+}
+
+const SCALAR_AGGREGATE_FUNCTIONS = new Set([
+  "AVG",
+  "COUNT",
+  "MAX",
+  "MIN",
+  "SUM",
+]);
+const SCALAR_COALESCE_FUNCTIONS = new Set(["COALESCE"]);
+
+function topLevelCallMatch(
+  source: string,
+  names: ReadonlySet<string>,
+): TopLevelCallMatch | undefined {
+  const tokens = topLevelTokens(source);
+  const name = tokens?.[0];
+  const open = tokens?.[1];
+  const close = tokens?.[2];
+  if (
+    name?.kind !== "word" ||
+    !names.has(name.value) ||
+    open === undefined ||
+    close === undefined ||
+    !isPunctuation(open, "(") ||
+    !isPunctuation(close, ")") ||
+    source.slice(0, name.start).trim() !== "" ||
+    !onlyWhitespaceBetween(source, name, open) ||
+    source.slice(open.end, close.start).trim() === ""
+  ) {
+    return undefined;
+  }
+  return {
+    body: source.slice(open.end, close.start),
+    end: close.end,
+  };
+}
+
+function isScalarSelectionSuffix(source: string): boolean {
+  return /^(?:\s*::\s*[A-Za-z_][A-Za-z0-9_$]*)*(?:\s+AS\s+[A-Za-z_][A-Za-z0-9_$]*)?\s*$/iu.test(
+    source,
+  );
+}
+
+function isCompleteScalarAggregateCall(source: string): boolean {
+  const aggregate = topLevelCallMatch(source, SCALAR_AGGREGATE_FUNCTIONS);
+  return aggregate !== undefined && source.slice(aggregate.end).trim() === "";
+}
+
+function isScalarCoalesceFallback(source: string): boolean {
+  const value = source.trim();
+  return (
+    /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/u.test(value) ||
+    /^(?:FALSE|NULL|TRUE)$/iu.test(value) ||
+    value === SQL_TEMPLATE_EXPRESSION_BOUNDARY
+  );
+}
+
+/**
+ * An ungrouped aggregate guarantees one row only while its complete target
+ * expression stays scalar. PostgreSQL target-list set-returning functions can
+ * otherwise expand the aggregate result to zero or multiple rows.
+ */
+function isGuaranteedOneRowAggregateSelection(selection: string): boolean {
+  const aggregate = topLevelCallMatch(selection, SCALAR_AGGREGATE_FUNCTIONS);
+  if (
+    aggregate !== undefined &&
+    isScalarSelectionSuffix(selection.slice(aggregate.end))
+  ) {
+    return true;
+  }
+
+  const coalesce = topLevelCallMatch(selection, SCALAR_COALESCE_FUNCTIONS);
+  if (
+    coalesce === undefined ||
+    !isScalarSelectionSuffix(selection.slice(coalesce.end))
+  ) {
+    return false;
+  }
+  const commas =
+    topLevelTokens(coalesce.body)?.filter((token) => {
+      return isPunctuation(token, ",");
+    }) ?? [];
+  const comma = commas.length === 1 ? commas[0] : undefined;
+  return (
+    comma !== undefined &&
+    isCompleteScalarAggregateCall(coalesce.body.slice(0, comma.start)) &&
+    isScalarCoalesceFallback(coalesce.body.slice(comma.end))
+  );
+}
+
+function scalarCteBodyMatch(
+  syntaxSource: string,
+): ScalarCteBodyMatch | undefined {
+  const statement = completeSqlStatement(syntaxSource);
+  if (statement === undefined || statement.hasTrailingSemicolon) {
+    return undefined;
+  }
+  const tokens = statement.tokens;
+  if (
+    !isWord(tokens[0], "SELECT") ||
+    tokens.some((token) => {
+      return (
+        token.kind === "word" &&
+        UNSUPPORTED_SCALAR_CTE_KEYWORDS.has(token.value)
+      );
+    }) ||
+    (syntaxSource.match(/\bSELECT\b/giu)?.length ?? 0) !== 1
+  ) {
+    return undefined;
+  }
+
+  const fromIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "FROM") ? [index] : [];
+  });
+  const whereIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "WHERE") ? [index] : [];
+  });
+  const limitIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "LIMIT") ? [index] : [];
+  });
+  const fromIndex = fromIndexes.length === 1 ? fromIndexes[0] : undefined;
+  const whereIndex = whereIndexes.length === 1 ? whereIndexes[0] : undefined;
+  const limitIndex = limitIndexes.length === 1 ? limitIndexes[0] : undefined;
+  const selectKeyword = tokens[0];
+  const fromKeyword = fromIndex === undefined ? undefined : tokens[fromIndex];
+  const sourceTable =
+    fromIndex === undefined ? undefined : tokens[fromIndex + 1];
+  const whereKeyword =
+    whereIndex === undefined ? undefined : tokens[whereIndex];
+  if (
+    selectKeyword === undefined ||
+    fromIndex === undefined ||
+    whereIndex === undefined ||
+    fromKeyword === undefined ||
+    sourceTable === undefined ||
+    whereKeyword === undefined ||
+    fromIndex <= 1 ||
+    whereIndex !== fromIndex + 2 ||
+    sourceTable.kind !== "word" ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, sourceTable) ||
+    !onlyWhitespaceBetween(syntaxSource, sourceTable, whereKeyword) ||
+    syntaxSource.slice(selectKeyword.end, fromKeyword.start).trim() === ""
+  ) {
+    return undefined;
+  }
+
+  let predicateEnd = statement.end;
+  if (limitIndex !== undefined) {
+    const limitKeyword = tokens[limitIndex];
+    const limitValue = tokens[limitIndex + 1];
+    if (
+      limitKeyword === undefined ||
+      limitValue?.kind !== "number" ||
+      limitValue.value !== "1" ||
+      limitIndex !== tokens.length - 2 ||
+      limitIndex <= whereIndex + 1 ||
+      !onlyWhitespaceBetween(syntaxSource, limitKeyword, limitValue) ||
+      syntaxSource.slice(limitValue.end, statement.end).trim() !== ""
+    ) {
+      return undefined;
+    }
+    predicateEnd = limitKeyword.start;
+  }
+  if (syntaxSource.slice(whereKeyword.end, predicateEnd).trim() === "") {
+    return undefined;
+  }
+
+  const selection = syntaxSource.slice(selectKeyword.end, fromKeyword.start);
+  const guaranteedOneRow = isGuaranteedOneRowAggregateSelection(selection);
+  if (!guaranteedOneRow && limitIndex === undefined) {
+    return undefined;
+  }
+
+  return { guaranteedOneRow };
+}
+
+function scalarCteReference(syntaxSource: string): string | undefined {
+  const statement = completeSqlStatement(syntaxSource);
+  if (statement === undefined || statement.hasTrailingSemicolon) {
+    return undefined;
+  }
+  const tokens = statement.tokens;
+  const selectKeyword = tokens[0];
+  const selectedColumn = tokens[1];
+  const fromKeyword = tokens[2];
+  const sourceCte = tokens[3];
+  if (
+    tokens.length !== 4 ||
+    selectKeyword === undefined ||
+    selectedColumn?.kind !== "word" ||
+    fromKeyword === undefined ||
+    sourceCte?.kind !== "word" ||
+    !isWord(selectKeyword, "SELECT") ||
+    !isWord(fromKeyword, "FROM") ||
+    !onlyWhitespaceBetween(syntaxSource, selectKeyword, selectedColumn) ||
+    !onlyWhitespaceBetween(syntaxSource, selectedColumn, fromKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, sourceCte) ||
+    syntaxSource.slice(sourceCte.end, statement.end).trim() !== ""
+  ) {
+    return undefined;
+  }
+  return sourceCte.value;
+}
+
+/**
+ * Recognizes a narrow CTE projection that can preserve scalar-subquery
+ * cardinality with one aggregate CTE as the FROM anchor and LIMIT 1 CTEs as
+ * left joins. Unsupported CTE clauses and outer expressions fail closed.
+ */
+function completeScalarCteProjectionMatch(syntaxSource: string): boolean {
+  const statement = completeSqlStatement(syntaxSource);
+  if (statement === undefined) {
+    return false;
+  }
+  const tokens = statement.tokens;
+  const withKeyword = tokens[0];
+  if (withKeyword === undefined || !isWord(withKeyword, "WITH")) {
+    return false;
+  }
+
+  const ctes = new Map<string, ScalarCteBodyMatch>();
+  let cursor = 1;
+  let previousToken = withKeyword;
+  while (cursor < tokens.length && !isWord(tokens[cursor], "SELECT")) {
+    const name = tokens[cursor];
+    const asKeyword = tokens[cursor + 1];
+    const open = tokens[cursor + 2];
+    const close = tokens[cursor + 3];
+    if (
+      name?.kind !== "word" ||
+      asKeyword === undefined ||
+      open === undefined ||
+      close === undefined ||
+      !isWord(asKeyword, "AS") ||
+      !isPunctuation(open, "(") ||
+      !isPunctuation(close, ")") ||
+      !onlyWhitespaceBetween(syntaxSource, previousToken, name) ||
+      !onlyWhitespaceBetween(syntaxSource, name, asKeyword) ||
+      !onlyWhitespaceBetween(syntaxSource, asKeyword, open) ||
+      ctes.has(name.value)
+    ) {
+      return false;
+    }
+    const body = scalarCteBodyMatch(syntaxSource.slice(open.end, close.start));
+    if (body === undefined) {
+      return false;
+    }
+    ctes.set(name.value, body);
+    cursor += 4;
+
+    const separator = tokens[cursor];
+    if (!isPunctuation(separator, ",")) {
+      previousToken = close;
+      break;
+    }
+    if (!onlyWhitespaceBetween(syntaxSource, close, separator)) {
+      return false;
+    }
+    previousToken = separator;
+    cursor += 1;
+  }
+
+  const selectKeyword = tokens[cursor];
+  if (
+    ctes.size < 2 ||
+    selectKeyword === undefined ||
+    !isWord(selectKeyword, "SELECT") ||
+    !onlyWhitespaceBetween(syntaxSource, previousToken, selectKeyword)
+  ) {
+    return false;
+  }
+  cursor += 1;
+
+  const referencedCtes = new Set<string>();
+  const resultAliases = new Set<string>();
+  let hasGuaranteedOneRowReference = false;
+  previousToken = selectKeyword;
+  while (cursor < tokens.length) {
+    const open = tokens[cursor];
+    const close = tokens[cursor + 1];
+    const asKeyword = tokens[cursor + 2];
+    const alias = tokens[cursor + 3];
+    if (
+      open === undefined ||
+      close === undefined ||
+      asKeyword === undefined ||
+      alias?.kind !== "word" ||
+      !isPunctuation(open, "(") ||
+      !isPunctuation(close, ")") ||
+      !isWord(asKeyword, "AS") ||
+      !onlyWhitespaceBetween(syntaxSource, previousToken, open) ||
+      !onlyWhitespaceBetween(syntaxSource, close, asKeyword) ||
+      !onlyWhitespaceBetween(syntaxSource, asKeyword, alias) ||
+      resultAliases.has(alias.value)
+    ) {
+      return false;
+    }
+    const reference = scalarCteReference(
+      syntaxSource.slice(open.end, close.start),
+    );
+    const cte = reference === undefined ? undefined : ctes.get(reference);
+    if (reference === undefined || cte === undefined) {
+      return false;
+    }
+    referencedCtes.add(reference);
+    resultAliases.add(alias.value);
+    hasGuaranteedOneRowReference ||= cte.guaranteedOneRow;
+    cursor += 4;
+
+    const separator = tokens[cursor];
+    if (separator === undefined) {
+      if (syntaxSource.slice(alias.end, statement.end).trim() !== "") {
+        return false;
+      }
+      previousToken = alias;
+      break;
+    }
+    if (
+      !isPunctuation(separator, ",") ||
+      !onlyWhitespaceBetween(syntaxSource, alias, separator)
+    ) {
+      return false;
+    }
+    previousToken = separator;
+    cursor += 1;
+  }
+
+  return (
+    cursor === tokens.length &&
+    previousToken.kind === "word" &&
+    hasGuaranteedOneRowReference &&
+    referencedCtes.size === ctes.size
+  );
 }
 
 function isSimpleIdentifierList(
@@ -1589,7 +1960,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete schema-backed deletes, updates, upserts, selects, existence checks, locking selects, and scalar result queries",
+        "Prefer Drizzle query builders for complete schema-backed deletes, updates, upserts, selects, existence checks, locking selects, scalar CTE projections, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -1609,6 +1980,8 @@ export const preferDrizzleQueryBuilder = createRule({
         "Use a Drizzle update builder with .from(...) for this complete unnest-backed update.",
       lockingCteUpdateQueryBuilder:
         "Use Drizzle $with(...), select().for(...), and update().from(...) builders for this complete locking CTE update.",
+      scalarCteQueryBuilder:
+        "Use Drizzle $with(...), select(), and joins for this complete scalar CTE projection.",
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
@@ -1717,6 +2090,27 @@ export const preferDrizzleQueryBuilder = createRule({
         return type.types.every(isNumberLikeType);
       }
       return (type.flags & (TypeFlags.Number | TypeFlags.NumberLiteral)) !== 0;
+    }
+
+    function isBoundScalarParameterType(type: Type): boolean {
+      if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+        const constraint = checker.getBaseConstraintOfType(type);
+        return (
+          constraint !== undefined && isBoundScalarParameterType(constraint)
+        );
+      }
+      if (type.isUnion()) {
+        return type.types.every(isBoundScalarParameterType);
+      }
+      return (
+        (type.flags &
+          (TypeFlags.BigIntLike |
+            TypeFlags.BooleanLike |
+            TypeFlags.Null |
+            TypeFlags.NumberLike |
+            TypeFlags.StringLike)) !==
+        0
+      );
     }
 
     function isDrizzleWrapperExpression(
@@ -2330,6 +2724,15 @@ export const preferDrizzleQueryBuilder = createRule({
           .map(quasiText)
           .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
         const syntaxSource = sqlCodeMask(source);
+        if (
+          completeScalarCteProjectionMatch(syntaxSource) &&
+          query.quasi.expressions.every((expression) => {
+            return isBoundScalarParameterType(expressionType(expression).type);
+          })
+        ) {
+          context.report({ node: query, messageId: "scalarCteQueryBuilder" });
+          return;
+        }
         const lockingMatch = simpleLockingSelectMatch(syntaxSource);
         if (lockingMatch !== undefined) {
           const sourceTableExpressionIndex =
