@@ -86,6 +86,44 @@ mod tests {
     }
 
     #[test]
+    fn nbd_cleanup_candidate_rejects_live_foreign_owner() {
+        struct ChildGuard(std::process::Child);
+
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        let mut child = ChildGuard(
+            std::process::Command::new("cat")
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .expect("spawn live foreign owner"),
+        );
+        let pid = child.0.id();
+
+        assert_ne!(pid, std::process::id());
+        assert!(
+            child
+                .0
+                .try_wait()
+                .expect("check live foreign owner")
+                .is_none()
+        );
+        assert!(!nbd_cleanup_candidate_owner(pid));
+        assert!(!nbd_cleanup_candidate(NbdDeviceState { size: 1, pid }));
+        assert!(
+            child
+                .0
+                .try_wait()
+                .expect("recheck live foreign owner")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn nbd_cleanup_candidate_requires_nonzero_size_and_cleanup_owner() {
         assert!(!nbd_cleanup_candidate(NbdDeviceState {
             size: 0,
