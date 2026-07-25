@@ -35,6 +35,7 @@ use tokio_util::sync::CancellationToken;
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 fn checkpoint_failure_reason(error: &str) -> Option<FailureReason> {
+    let error = error.to_ascii_lowercase();
     (error.contains("session history")
         && (error.contains("exceeds maximum size") || error.contains("is too large")))
     .then_some(FailureReason::SessionHistoryLimit)
@@ -829,6 +830,10 @@ mod tests {
         );
         assert_eq!(
             checkpoint_failure_reason("session history exceeds maximum size of 134217728 bytes"),
+            Some(FailureReason::SessionHistoryLimit)
+        );
+        assert_eq!(
+            checkpoint_failure_reason("Session history exceeds maximum size of 134217728 bytes"),
             Some(FailureReason::SessionHistoryLimit)
         );
         assert_eq!(checkpoint_failure_reason("artifact upload failed"), None);
