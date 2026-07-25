@@ -109,7 +109,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
         http.clone(),
         runtime.event_error_flag.to_string(),
         &runtime.run_id,
-    );
+    )?;
 
     let run_result = run_codex_app_server(
         masker,

@@ -48,6 +48,8 @@ _UTF8_MIN_FOUR_BYTE_CODEPOINT = 0x10000
 _UTF8_MAX_CODEPOINT = 0x10FFFF
 _UTF8_SURROGATE_MIN = 0xD800
 _UTF8_SURROGATE_MAX = 0xDFFF
+_DEFAULT_MAX_DEPTH = 256
+_JSON_STRING_OR_CONTAINER_RE = re.compile(rb'"(?:\\.|[^"\\])*"|[{}\[\]]', re.DOTALL)
 
 
 def _validate_positive_int(name: str, value: int) -> None:
@@ -55,6 +57,32 @@ def _validate_positive_int(name: str, value: int) -> None:
         raise TypeError(f"{name} must be an integer")
     if value <= 0:
         raise ValueError(f"{name} must be a positive integer")
+
+
+def json_nesting_within_limit(body: bytes, *, max_depth: int = _DEFAULT_MAX_DEPTH) -> bool:
+    """Return whether JSON container nesting stays within ``max_depth``.
+
+    This is a boundedness guard, not a JSON validator. The fast path accepts
+    payloads with at most ``max_depth`` opening delimiters. The slow path
+    ignores delimiters inside complete strings before tracking structural
+    object and array depth. Callers must still parse the body to validate it.
+    """
+    _validate_positive_int("max_depth", max_depth)
+    if body.count(b"{") + body.count(b"[") <= max_depth:
+        return True
+
+    depth = 0
+    for match in _JSON_STRING_OR_CONTAINER_RE.finditer(body):
+        token = body[match.start()]
+        if token == ord('"'):
+            continue
+        if token in (ord("{"), ord("[")):
+            depth += 1
+            if depth > max_depth:
+                return False
+        else:
+            depth -= 1
+    return True
 
 
 @dataclass(frozen=True)
@@ -160,7 +188,7 @@ class JsonSelectiveExtractor:
         array_count_paths: set[Path] | None = None,
         wildcard_array_count_paths: set[WildcardPath] | None = None,
         object_presence_paths: set[Path] | None = None,
-        max_depth: int = 256,
+        max_depth: int = _DEFAULT_MAX_DEPTH,
         max_key_bytes: int = 1024,
         max_number_bytes: int = 128,
         max_wildcard_keys: int = 256,
