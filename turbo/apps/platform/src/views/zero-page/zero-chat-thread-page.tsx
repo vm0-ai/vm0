@@ -467,7 +467,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <AutomationMenuButton thread={thread} />
+        <AutomationMenuButton key={thread.threadId} thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
     </header>
@@ -1650,7 +1650,7 @@ function ChatArtifactInboxSlot({
     return null;
   }
 
-  return <ChatArtifactInboxList thread={thread} />;
+  return <ChatArtifactInboxList key={thread.threadId} thread={thread} />;
 }
 
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
@@ -2663,7 +2663,10 @@ export function ZeroChatThreadPage() {
           ) : selectedMailDraftSignals ? (
             <MailDraftSidebar signals={selectedMailDraftSignals} />
           ) : automationPanelThread ? (
-            <HeaderAutomationSidebar thread={automationPanelThread} />
+            <HeaderAutomationSidebar
+              key={automationPanelThread.threadId}
+              thread={automationPanelThread}
+            />
           ) : artifactPanelOpen ? (
             <ChatArtifactInboxSlot
               artifactRef={artifactRef}
@@ -3593,10 +3596,19 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
         onScroll={handleScroll}
         className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
-        <ChatThreadMessagesMain thread={thread} />
+        <ChatThreadMessagesMain
+          key={`messages:${thread.threadId}`}
+          thread={thread}
+        />
       </div>
-      <ChatThreadSkeletonOverlay thread={thread} />
-      <ScrollToBottomButton thread={thread} />
+      <ChatThreadSkeletonOverlay
+        key={`skeleton:${thread.threadId}`}
+        thread={thread}
+      />
+      <ScrollToBottomButton
+        key={`scroll-button:${thread.threadId}`}
+        thread={thread}
+      />
     </div>
   );
 }
@@ -3636,12 +3648,14 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   return (
     <>
       <ChatThreadHeader thread={thread} />
-      <ChatHistoryBackfillProgress thread={thread} />
+      <ChatHistoryBackfillProgress key={thread.threadId} thread={thread} />
 
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
           <ChatThreadMessagesPane thread={thread} />
-          <ChatThreadComposer thread={thread} />
+          {/* Command loadables are hook-owned, so keep their identity boundary
+              narrower than the persistent thread and message owners. */}
+          <ChatThreadComposer key={thread.threadId} thread={thread} />
         </div>
       </div>
 
