@@ -96,7 +96,7 @@ export interface RunWorkflowAutomationNowArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-export interface LaunchQueuedWorkflowAutomationArgs extends RunWorkflowAutomationNowArgs {
+interface LaunchQueuedWorkflowAutomationArgs extends RunWorkflowAutomationNowArgs {
   readonly queueEventId: string;
 }
 

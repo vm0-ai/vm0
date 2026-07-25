@@ -152,14 +152,14 @@ async function pendingTickExistsForAutomation(
   return tick !== undefined;
 }
 
-export type WorkflowQueueAdmission =
+type WorkflowQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
   | { readonly kind: "coalesced" };
 type WorkflowQueueAdmissionAttempt =
   | WorkflowQueueAdmission
   | { readonly kind: "payload-required" };
 
-export interface WorkflowQueueAdmissionArgs {
+interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
