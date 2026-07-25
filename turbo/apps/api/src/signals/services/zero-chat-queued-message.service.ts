@@ -95,10 +95,19 @@ export interface QueuedUserMessage {
   readonly encryptedParams: string | null;
 }
 
-export interface QueueFirstRunAssociation {
-  readonly threadId: string;
-  readonly messageId: string;
-}
+export type QueueFirstRunAssociation =
+  | {
+      readonly kind: "user_message";
+      readonly threadId: string;
+      readonly messageId: string;
+    }
+  | {
+      readonly kind: "workflow_event";
+      readonly threadId: string;
+      readonly eventId: string;
+      readonly prompt: string;
+      readonly runGroupId: string;
+    };
 
 export type QueueFirstRunClaimResult =
   | { readonly kind: "claimed"; readonly createdAt: Date }
@@ -393,6 +402,67 @@ export async function claimQueueFirstRunAssociation(
       if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
         outcome = "lost";
         return { kind: "lost" };
+      }
+
+      if (args.kind === "workflow_event") {
+        const [thread] = await db
+          .select({ queuePausedAt: chatThreads.queuePausedAt })
+          .from(chatThreads)
+          .where(eq(chatThreads.id, args.threadId))
+          .limit(1);
+        if (
+          thread?.queuePausedAt ||
+          (await hasUnclaimedQueuedUserMessage(db, args.threadId))
+        ) {
+          outcome = "lost";
+          return { kind: "lost" };
+        }
+
+        const [head] = await db
+          .select({
+            id: chatMessageQueue.id,
+            automationId: chatMessageQueue.automationId,
+          })
+          .from(chatMessageQueue)
+          .where(
+            and(
+              eq(chatMessageQueue.chatThreadId, args.threadId),
+              eq(chatMessageQueue.itemType, "workflow_event"),
+            ),
+          )
+          .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
+          .limit(1);
+        if (
+          head?.id !== args.eventId ||
+          head.automationId !== args.runGroupId
+        ) {
+          outcome = "lost";
+          return { kind: "lost" };
+        }
+
+        const claimed = await insertChatMessage(db, {
+          chatThreadId: args.threadId,
+          role: "user",
+          content: args.prompt,
+          runId: args.runId,
+          runGroupId: args.runGroupId,
+        });
+        const deleted = await db
+          .delete(chatMessageQueue)
+          .where(
+            and(
+              eq(chatMessageQueue.id, args.eventId),
+              eq(chatMessageQueue.chatThreadId, args.threadId),
+              eq(chatMessageQueue.itemType, "workflow_event"),
+            ),
+          )
+          .returning({ id: chatMessageQueue.id });
+        if (!claimed || deleted.length !== 1) {
+          throw new Error("Claimed workflow queue event disappeared");
+        }
+
+        outcome = "claimed";
+        return { kind: "claimed", createdAt: claimed.createdAt };
       }
 
       const headMessageId = await loadNextUnclaimedQueuedUserMessageId(
