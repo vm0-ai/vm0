@@ -14,6 +14,13 @@ describe("getModelDisplayName", () => {
     expect(getModelDisplayName("kimi-k3")).toBe("Kimi K3");
   });
 
+  it("uses friendly labels for Claude Opus 5 model IDs", () => {
+    expect(getModelDisplayName("claude-opus-5")).toBe("Claude Opus 5");
+    expect(getModelDisplayName("anthropic/claude-opus-5")).toBe(
+      "Claude Opus 5",
+    );
+  });
+
   it("falls back to the raw model ID when no display name is defined", () => {
     expect(getModelDisplayName("custom/model")).toBe("custom/model");
   });
