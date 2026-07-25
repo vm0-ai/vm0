@@ -171,17 +171,18 @@ For runner/backend API changes:
 
 ### Storage mount manifest rollout
 
-The runtime Storage unification uses a receiver-first Runner rollout. New
-Runners advertise `storage-mounts-v1` through the existing claim
-`capabilities[]` field and accept exactly one of these response shapes:
+The runtime Storage unification used a receiver-first Runner rollout. Runners
+accept exactly one of these response shapes:
 
 - canonical `storageMounts`
 - legacy `storages` plus `artifacts`
 
 Mixed, incomplete, and representation-free manifests are invalid. The initial
 receiver release left backend output unchanged. After that receiver fleet was
-deployed, the API began sending `storageMounts` only to a Runner that advertises
-the capability; old Runners continue receiving both legacy arrays.
+deployed, the API selected `storageMounts` through the temporary
+`storage-mounts-v1` capability. Once production claim traffic and live Runner
+state showed only receiver-capable versions, the API began sending
+`storageMounts` to every Runner and the active capability was retired.
 
 New run, session, and checkpoint writers persist canonical Storage mounts only.
 After the latest session continuation heads were backfilled and verified,
@@ -190,7 +191,7 @@ Legacy API response shapes are still projected from canonical mounts. After the
 detached API release was healthy and every rollback-eligible API version that
 accessed them had drained, the physical legacy run, session, and checkpoint
 columns were removed. The short-lived runner job queue still retains its legacy
-claim projection until old Runner output is removed.
+claim projection for the previous API version and rollback.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical
@@ -207,9 +208,11 @@ conversion. Malformed, ambiguous, or unresolvable latest session state blocked
 contraction rather than being silently rewritten.
 
 Runner and guest binaries ship together, so the Runner-to-guest manifest uses
-the canonical shape immediately while the guest reader temporarily accepts both
-representations. Remove the legacy readers and the capability only after the
-canonical API output has been stable across the fully upgraded Runner fleet.
+the canonical shape while the guest reader temporarily accepts both
+representations. This keeps a newly promoted Runner compatible with the
+previous API during a cross-version window. Remove the legacy readers and queue
+projection only after canonical-only API output is stable and rollback-eligible
+API versions have drained.
 
 ### Firewall hostname policy
 

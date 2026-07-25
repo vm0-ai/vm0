@@ -22,7 +22,7 @@ import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import {
   createRunsApi,
-  expectLegacyStorageManifest,
+  expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -344,10 +344,10 @@ describe("system storage presigned URL cache", () => {
             });
             await api.heartbeatRunner(runnerGroup);
             const firstClaim = await api.claimRunnerJob(firstRun.runId);
-            const firstSkillEntry = expectLegacyStorageManifest(
+            const firstSkillEntry = expectCanonicalStorageManifest(
               firstClaim.storageManifest,
-            )?.storages.find((storage) => {
-              return storage.vasStorageName === skill.storageName;
+            )?.storageMounts.find((storage) => {
+              return storage.name === skill.storageName;
             });
             expect(firstSkillEntry?.archiveSize).toBe(1024);
 
@@ -358,10 +358,10 @@ describe("system storage presigned URL cache", () => {
             });
             await api.heartbeatRunner(runnerGroup);
             const secondClaim = await api.claimRunnerJob(secondRun.runId);
-            const secondSkillEntry = expectLegacyStorageManifest(
+            const secondSkillEntry = expectCanonicalStorageManifest(
               secondClaim.storageManifest,
-            )?.storages.find((storage) => {
-              return storage.vasStorageName === skill.storageName;
+            )?.storageMounts.find((storage) => {
+              return storage.name === skill.storageName;
             });
 
             expect(secondSkillEntry?.archiveUrl).toBe(
@@ -423,13 +423,13 @@ describe("system storage presigned URL cache", () => {
           });
           await api.heartbeatRunner(runnerGroup);
           const systemClaim = await api.claimRunnerJob(systemRun.runId);
-          const systemStorage = expectLegacyStorageManifest(
+          const systemStorage = expectCanonicalStorageManifest(
             systemClaim.storageManifest,
-          )?.storages.find((storage) => {
-            return storage.vasStorageName === skill.storageName;
+          )?.storageMounts.find((storage) => {
+            return storage.name === skill.storageName;
           });
           expect(systemStorage).toMatchObject({
-            vasVersionId: skill.versionId,
+            versionId: skill.versionId,
             archiveSize: 1024,
           });
 
@@ -454,20 +454,20 @@ describe("system storage presigned URL cache", () => {
           });
           const fallbackClaim = await api.claimRunnerJob(fallbackRun.runId);
           expect(
-            expectLegacyStorageManifest(
+            expectCanonicalStorageManifest(
               fallbackClaim.storageManifest,
-            )?.storages.find((storage) => {
-              return storage.vasStorageName === skill.storageName;
+            )?.storageMounts.find((storage) => {
+              return storage.name === skill.storageName;
             }),
           ).toMatchObject({
-            vasVersionId: primary.versionId,
+            versionId: primary.versionId,
             archiveSize: 2048,
           });
           expect(
-            expectLegacyStorageManifest(
+            expectCanonicalStorageManifest(
               fallbackClaim.storageManifest,
-            )?.artifacts.some((artifact) => {
-              return artifact.vasStorageName === "memory";
+            )?.storageMounts.some((mount) => {
+              return mount.name === "memory";
             }),
           ).toBeTruthy();
 

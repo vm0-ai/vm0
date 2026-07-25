@@ -259,6 +259,7 @@ async function seedRunnerJobForAction(
     profile: readOptionalString(body, "profile") ?? "vm0/default",
     executionContext: {
       storageManifest: null,
+      storageMounts: [],
       environment: null,
       resumeSession: null,
       encryptedSecrets: null,

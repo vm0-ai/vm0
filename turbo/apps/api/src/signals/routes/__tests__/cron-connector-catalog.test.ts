@@ -71,7 +71,7 @@ import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
-  expectLegacyStorageManifest,
+  expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
@@ -2578,7 +2578,7 @@ describe("connector catalog valid lifecycle", () => {
       unknownPolicy: "deny",
     });
     expect(
-      expectLegacyStorageManifest(claim.storageManifest)?.storages.some(
+      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
         (storage) => {
           return storage.mountPath.endsWith(`/skills/${connectorRef}`);
         },
@@ -2835,19 +2835,18 @@ describe("connector catalog valid lifecycle", () => {
       .toBe(run.runId);
     const claim = await runs.claimRunnerJob(run.runId);
     const mountedSkills =
-      expectLegacyStorageManifest(claim.storageManifest)?.storages.filter(
-        (storage) => {
-          return (
-            storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
-          );
-        },
-      ) ?? [];
+      expectCanonicalStorageManifest(
+        claim.storageManifest,
+      )?.storageMounts.filter((storage) => {
+        return (
+          storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
+        );
+      }) ?? [];
     expect(mountedSkills).toHaveLength(1);
     expect(mountedSkills[0]).toMatchObject({
       name: storageName,
       mountPath: `/home/user/.claude/skills/${connectorRef}`,
-      vasStorageName: storageName,
-      vasVersionId: selectedVersionId,
+      versionId: selectedVersionId,
       archiveSize: 321,
       archiveUrl: expect.any(String),
     });

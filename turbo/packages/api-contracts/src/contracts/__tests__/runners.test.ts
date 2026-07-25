@@ -49,6 +49,16 @@ describe("runner claim response contract", () => {
 });
 
 describe("runner storage manifest contract", () => {
+  it("requires canonical mounts in stored execution contexts", () => {
+    expect(
+      storedExecutionContextSchema.shape.storageMounts.safeParse([]).success,
+    ).toBe(true);
+    expect(
+      storedExecutionContextSchema.shape.storageMounts.safeParse(undefined)
+        .success,
+    ).toBe(false);
+  });
+
   it("accepts canonical read-only and writeback mounts", () => {
     expect(
       storageMountEntrySchema.parse({
