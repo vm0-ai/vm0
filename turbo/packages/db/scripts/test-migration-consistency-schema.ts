@@ -909,7 +909,7 @@ async function validateConnectorCatalogFinalConstraints(
   dbUrl: string,
 ): Promise<void> {
   console.log(
-    "=== Phase 2.1: Validate final connector catalog constraints ===\n",
+    "=== Phase 2.6: Validate final connector catalog constraints ===\n",
   );
   const attemptConstraint =
     "connector_catalog_sync_state_attempt_cache_reuse_complete";
