@@ -146,10 +146,6 @@ export async function downloadWebFile(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const response = await fetch(url, {
     headers: headersWithCliClientHeaders(headers),
@@ -387,10 +383,6 @@ function authenticatedJsonHeaders(token: string): Headers {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
   return headersWithCliClientHeaders(headers);
 }
 
@@ -726,10 +718,6 @@ export async function uploadWebFile(
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    prepareHeaders["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const prepareUrl = new URL("/api/zero/uploads/prepare", baseUrl);
   const prepareRes = await fetch(prepareUrl, {
@@ -810,10 +798,6 @@ export async function generateWebVoice(
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const response = await fetch(new URL("/api/zero/voice-io/speech", baseUrl), {
     method: "POST",
@@ -854,10 +838,6 @@ export async function generateWebImage(
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const response = await fetch(
     new URL("/api/zero/image-io/generate", baseUrl),
@@ -930,10 +910,6 @@ export async function generateWebVideo(
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const response = await fetch(
     new URL("/api/zero/video-io/generate", baseUrl),
@@ -984,10 +960,6 @@ export async function transcribeAudio(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const url = new URL("/api/zero/voice-io/stt", baseUrl);
   if (options.verbose) {

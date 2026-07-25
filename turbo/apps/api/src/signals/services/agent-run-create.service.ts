@@ -115,6 +115,8 @@ import {
   notFound,
   providerUnavailable,
 } from "../../lib/error";
+import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypass";
+import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
@@ -6912,7 +6914,19 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
-    const { args, timing } = input;
+    // A preview request that passed the protection guard gives its sandbox CLI
+    // the same bypass through the existing user-environment channel.
+    const previewAutomationBypass = get(previewAutomationBypass$);
+    const args = previewAutomationBypass
+      ? {
+          ...input.args,
+          extraEnvironment: {
+            ...input.args.extraEnvironment,
+            [VERCEL_AUTOMATION_BYPASS_ENV]: previewAutomationBypass,
+          },
+        }
+      : input.args;
+    const { timing } = input;
     const db = set(writeDb$);
     if (input.checkOrgPlanStatusBeforeContext) {
       const tierGate = await timing.measure(

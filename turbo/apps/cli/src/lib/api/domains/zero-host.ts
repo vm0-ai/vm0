@@ -19,10 +19,6 @@ function authHeaders(
   if (options.json) {
     headers["Content-Type"] = "application/json";
   }
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
   return headers;
 }
 

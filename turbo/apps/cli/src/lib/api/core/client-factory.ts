@@ -25,13 +25,6 @@ function buildHeaders(token: string): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
-
-  // Add Vercel bypass secret if available (for CI/preview deployments)
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
-
   return headers;
 }
 
