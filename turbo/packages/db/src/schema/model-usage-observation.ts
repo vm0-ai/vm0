@@ -2,7 +2,6 @@ import {
   bigint,
   index,
   pgTable,
-  pgView,
   timestamp,
   uuid,
   varchar,
@@ -37,24 +36,3 @@ export const modelUsageObservation = pgTable(
     ];
   },
 );
-
-/**
- * Temporary compatibility view for API versions deployed before the table
- * rename. It is created by migration 0675 and removed by the follow-up cleanup.
- */
-export const compactModelUsageObservation = pgView(
-  "compact_model_usage_observation",
-  {
-    idempotencyKey: uuid("idempotency_key"),
-    model: varchar("model", { length: 255 }),
-    inputTokens: bigint("input_tokens", { mode: "number" }),
-    outputTokens: bigint("output_tokens", { mode: "number" }),
-    cacheReadInputTokens: bigint("cache_read_input_tokens", {
-      mode: "number",
-    }),
-    cacheCreationInputTokens: bigint("cache_creation_input_tokens", {
-      mode: "number",
-    }),
-    observedAt: timestamp("observed_at"),
-  },
-).existing();

@@ -944,7 +944,7 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-const webhookModelUsageObservationV2ItemSchema = z
+const webhookModelUsageObservationItemSchema = z
   .object({
     idempotencyKey: z.uuid(),
     model: z.string().min(1).max(255),
@@ -970,10 +970,10 @@ const webhookModelUsageObservationV2ItemSchema = z
     { message: "At least one token counter must be positive" },
   );
 
-const webhookModelUsageObservationV2BodySchema = z
+const webhookModelUsageObservationBodySchema = z
   .object({
     runId: z.string().min(1, "runId is required"),
-    events: z.array(webhookModelUsageObservationV2ItemSchema).min(1).max(100),
+    events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -1001,27 +1001,7 @@ export const webhookModelUsageObservationContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/model-usage-observation",
     headers: authHeadersSchema,
-    body: webhookModelUsageObservationV2BodySchema,
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive compact model usage observation data from sandbox",
-  },
-});
-
-/** Temporary compatibility route for runners during the endpoint rename. */
-export const webhookModelUsageObservationV2Contract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/webhooks/agent/model-usage-observation-v2",
-    headers: authHeadersSchema,
-    body: webhookModelUsageObservationV2BodySchema,
+    body: webhookModelUsageObservationBodySchema,
     responses: {
       200: z.object({
         success: z.boolean(),
@@ -1036,7 +1016,5 @@ export const webhookModelUsageObservationV2Contract = c.router({
 });
 
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
-export type WebhookModelUsageObservationV2Contract =
-  typeof webhookModelUsageObservationV2Contract;
 export type WebhookModelUsageObservationContract =
   typeof webhookModelUsageObservationContract;

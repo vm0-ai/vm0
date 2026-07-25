@@ -2930,12 +2930,12 @@ async function validateModelObservationContractCleanup(): Promise<void> {
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, 670);
+    await runMigrationsUpTo(testDbUrl, 676);
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
       await client.query(`
-        INSERT INTO "compact_model_usage_observation" (
+        INSERT INTO "model_usage_observation" (
           "idempotency_key",
           "model",
           "input_tokens",
@@ -2976,7 +2976,7 @@ async function validateModelObservationContractCleanup(): Promise<void> {
         )
       `);
 
-      await applyMigrationsUpTo(client, 672);
+      await applyMigrationsUpTo(client, 676);
 
       const compactRows = await client.query<{
         cacheCreationInputTokens: string;
@@ -2991,7 +2991,7 @@ async function validateModelObservationContractCleanup(): Promise<void> {
           "output_tokens"::text AS "outputTokens",
           "cache_read_input_tokens"::text AS "cacheReadInputTokens",
           "cache_creation_input_tokens"::text AS "cacheCreationInputTokens"
-        FROM "compact_model_usage_observation"
+        FROM "model_usage_observation"
       `);
       assert.deepEqual(compactRows.rows, [
         {
