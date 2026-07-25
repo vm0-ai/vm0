@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.322.1](https://github.com/vm0-ai/vm0/compare/api-v1.322.0...api-v1.322.1) (2026-07-25)
+
+
+### Refactoring
+
+* **api:** retire catalog rejection rollout guards ([#23042](https://github.com/vm0-ai/vm0/issues/23042)) ([fc90bd2](https://github.com/vm0-ai/vm0/commit/fc90bd248956a6bba0a3577a512c0aa2f0295694))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.230.1
+    * @vm0/core bumped to 8.466.3
+    * @vm0/db bumped to 1.140.1
+
 ## [1.322.0](https://github.com/vm0-ai/vm0/compare/api-v1.321.1...api-v1.322.0) (2026-07-25)
 
 
