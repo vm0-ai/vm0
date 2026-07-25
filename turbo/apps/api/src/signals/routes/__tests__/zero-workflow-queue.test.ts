@@ -348,7 +348,7 @@ describe("workflow queue", () => {
     admissionLock.release();
     const result = await workflowRequest;
     await admissionLock.done;
-    const runId = expectAcceptedRunId(result);
+    const runId = await expectAcceptedRunId(result, automation.threadId);
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       runId,
     ]);
@@ -412,8 +412,9 @@ describe("workflow queue", () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    const firstRunId = expectAcceptedRunId(
+    const firstRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
     );
     expectAcceptedWithoutRun(
       await postWorkflowWebhook(automation, "stale pending event"),
@@ -456,8 +457,9 @@ describe("workflow queue", () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    const firstRunId = expectAcceptedRunId(
+    const firstRunId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
     );
     const messageId = randomUUID();
     const queued = await accept(
