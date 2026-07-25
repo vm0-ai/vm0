@@ -138,11 +138,11 @@ class TestUsageReportingIdempotency:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation-v2",
+            "/api/webhooks/agent/model-usage-observation",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation-v2"
+            "/api/webhooks/agent/model-usage-observation"
         ].json_body()
         assert body["events"][0]["quantity"] == 10
         assert observation_body["events"][0]["inputTokens"] == 10
@@ -187,11 +187,11 @@ class TestUsageReportingIdempotency:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation-v2",
+            "/api/webhooks/agent/model-usage-observation",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation-v2"
+            "/api/webhooks/agent/model-usage-observation"
         ].json_body()
         assert body["events"][0]["quantity"] == 10
         assert observation_body["events"][0]["inputTokens"] == 10

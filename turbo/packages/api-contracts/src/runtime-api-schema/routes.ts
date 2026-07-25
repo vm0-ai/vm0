@@ -13,6 +13,7 @@ import {
   webhookFirewallAuthContract,
   webhookHeartbeatContract,
   webhookModelUsageObservationV2Contract,
+  webhookModelUsageObservationContract,
   webhookStoragesCommitContract,
   webhookStoragesContract,
   webhookStoragesIncrementalContract,
@@ -40,6 +41,11 @@ export interface RuntimeApiRouteBinding {
 }
 
 export const runtimeApiRouteBindings = [
+  {
+    id: "webhooks.agent.modelUsageObservation",
+    owner: "mitm-addon",
+    route: webhookModelUsageObservationContract.send,
+  },
   {
     id: "runners.poll",
     owner: "runner",
@@ -124,6 +130,11 @@ export const runtimeApiRouteBindings = [
     id: "webhooks.agent.usageEvent",
     owner: "mitm-addon",
     route: webhookUsageEventContract.send,
+  },
+  {
+    id: "webhooks.agent.modelUsageObservation",
+    owner: "mitm-addon",
+    route: webhookModelUsageObservationContract.send,
   },
   {
     id: "webhooks.agent.modelUsageObservationV2",

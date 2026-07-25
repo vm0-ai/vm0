@@ -72,7 +72,7 @@ def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation-v2",
+        "https://api.test/api/webhooks/agent/model-usage-observation",
         "token-a",
         "run-1",
         [
@@ -323,7 +323,7 @@ def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
     usage.buffer_source_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation-v2",
+        "https://api.test/api/webhooks/agent/model-usage-observation",
         "token-a",
         "run-1",
         [

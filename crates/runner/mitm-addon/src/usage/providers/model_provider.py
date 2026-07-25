@@ -11,7 +11,7 @@ Model-provider usage reporting is separate from platform billing. Run contexts
 set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the canonical model
 id the proxy should report for model token usage. Billable rows go to
 ``/api/webhooks/agent/usage-event``; model usage statistics go to
-``/api/webhooks/agent/model-usage-observation-v2``.
+``/api/webhooks/agent/model-usage-observation``.
 """
 
 import uuid
@@ -116,7 +116,7 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
     """Buffer model usage statistics for observable model-provider responses.
 
     Observations are sent to
-    ``/api/webhooks/agent/model-usage-observation-v2`` and are separate from
+    ``/api/webhooks/agent/model-usage-observation`` and are separate from
     billable ``/api/webhooks/agent/usage-event`` rows. Accepted observation
     reporting requires all gates to pass:
 

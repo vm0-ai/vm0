@@ -992,10 +992,30 @@ const webhookModelUsageObservationV2BodySchema = z
 
 /**
  * Compact model usage observation contract for
- * /api/webhooks/agent/model-usage-observation-v2
+ * /api/webhooks/agent/model-usage-observation
  *
  * Each immutable event carries the four counters consumed by model rankings.
  */
+export const webhookModelUsageObservationContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/model-usage-observation",
+    headers: authHeadersSchema,
+    body: webhookModelUsageObservationV2BodySchema,
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive compact model usage observation data from sandbox",
+  },
+});
+
+/** Temporary compatibility route for runners during the endpoint rename. */
 export const webhookModelUsageObservationV2Contract = c.router({
   send: {
     method: "POST",
@@ -1018,3 +1038,5 @@ export const webhookModelUsageObservationV2Contract = c.router({
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
 export type WebhookModelUsageObservationV2Contract =
   typeof webhookModelUsageObservationV2Contract;
+export type WebhookModelUsageObservationContract =
+  typeof webhookModelUsageObservationContract;
