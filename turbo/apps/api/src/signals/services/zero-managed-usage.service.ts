@@ -103,7 +103,7 @@ export const checkCreditAmount$ = command(
         .select({
           total: sql`COALESCE(${sum(creditExpiresRecord.remaining)}, 0)::bigint`
             .mapWith(pgInt8ToBigIntDecoder)
-            .as("total"),
+            .as("expired_total"),
         })
         .from(creditExpiresRecord)
         .where(
@@ -120,7 +120,7 @@ export const checkCreditAmount$ = command(
           total:
             sql`COALESCE(SUM(GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)), 0)::bigint`
               .mapWith(pgInt8ToBigIntDecoder)
-              .as("total"),
+              .as("reserved_total"),
         })
         .from(browserSessions)
         .where(
@@ -191,7 +191,7 @@ export const checkManagedCredits$ = command(
         .select({
           total: sql`COALESCE(${sum(creditExpiresRecord.remaining)}, 0)::bigint`
             .mapWith(pgInt8ToBigIntDecoder)
-            .as("total"),
+            .as("expired_total"),
         })
         .from(creditExpiresRecord)
         .where(
@@ -208,7 +208,7 @@ export const checkManagedCredits$ = command(
           total:
             sql`COALESCE(SUM(GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)), 0)::bigint`
               .mapWith(pgInt8ToBigIntDecoder)
-              .as("total"),
+              .as("reserved_total"),
         })
         .from(browserSessions)
         .where(
