@@ -478,12 +478,22 @@ describe("workflow queue API", () => {
       }),
       [200],
     );
-    expect(queue.body.running).toBeNull();
+    expect(queue.body.running).toMatchObject({
+      runId: expect.any(String),
+    });
     expect(
       queue.body.pending.map((event) => {
         return event.automationId;
       }),
     ).toStrictEqual([automation.automationId]);
+    const messages = await wf.readThreadMessages(automation.threadId);
+    const claimedUserMessage = messages.find((message) => {
+      return (
+        message.content === "queued user message before manual Run now" &&
+        typeof message.runId === "string"
+      );
+    });
+    expect(claimedUserMessage?.runId).toBe(queue.body.running?.runId);
 
     await flushWaitUntilForTest();
   });

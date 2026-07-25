@@ -119,13 +119,41 @@ export async function postRunUserMessage(params: {
       createdAfter: inserted?.createdAt ?? nowDate(),
     });
   });
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.threadId}`,
-  );
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadRunCreated:${params.threadId}`,
-  );
-  await publishThreadListChanged(params.userId);
+  await publishRunUserMessageSignals(params.userId, params.threadId);
+}
+
+async function publishRunUserMessageSignals(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+  await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
+  await publishThreadListChanged(userId);
+}
+
+/**
+ * Finish the side effects for a user message inserted by a queue-first run
+ * claim. The claim and run rows already committed atomically; only a queued
+ * marker and realtime notifications remain.
+ */
+export async function finalizeClaimedRunUserMessage(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly runStatus: string;
+  readonly runGroupId?: string;
+  readonly createdAt: Date;
+}): Promise<void> {
+  if (params.runStatus === "queued") {
+    await params.db.transaction(async (tx): Promise<void> => {
+      await appendQueuedRunAssistantMarker(tx, {
+        chatThreadId: params.threadId,
+        runId: params.runId,
+        runGroupId: params.runGroupId,
+        createdAfter: params.createdAt,
+      });
+    });
+  }
+  await publishRunUserMessageSignals(params.userId, params.threadId);
 }

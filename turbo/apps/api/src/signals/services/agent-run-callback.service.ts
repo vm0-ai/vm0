@@ -149,8 +149,8 @@ const dispatchInternalCallback$ = command(
           handleChatInternalCallback$,
           {
             callback: input.envelope,
-            drainThreadQueue: (chatThreadId, inputSignal, timing) => {
-              return set(
+            drainThreadQueue: async (chatThreadId, inputSignal, timing) => {
+              await set(
                 drainChatThreadQueueForThread$,
                 {
                   chatThreadId,

@@ -27,6 +27,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-messages";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -287,19 +288,19 @@ describe("workflow queue", () => {
 
     const first = await postWorkflowWebhook(automation, "first");
     const firstRunId = expectAcceptedRunId(first);
-    // Runner execution secrets still use one data key; callback persistence no
-    // longer adds a second key for the internal workflow callback.
-    expect(kms.generateDataKeyCalls).toBe(1);
+    // Every workflow event is encrypted before admission; the launched run
+    // then uses a second data key for runner execution secrets.
+    expect(kms.generateDataKeyCalls).toBe(2);
 
     // The workflow is busy: the next two events are accepted into the queue
     // without creating runs.
     const secondApiStartTime = now() + 60_000;
     mockNow(secondApiStartTime);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
-    expect(kms.generateDataKeyCalls).toBe(2);
+    expect(kms.generateDataKeyCalls).toBe(3);
     mockNow(secondApiStartTime + 1000);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "third"));
-    expect(kms.generateDataKeyCalls).toBe(3);
+    expect(kms.generateDataKeyCalls).toBe(4);
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
@@ -346,12 +347,12 @@ describe("workflow queue", () => {
     const busyRunId = expectAcceptedRunId(
       await postWorkflowWebhook(webhookAutomation, "busy"),
     );
-    expect(kms.generateDataKeyCalls).toBe(1);
+    expect(kms.generateDataKeyCalls).toBe(2);
 
     // Two due ticks while busy: the second coalesces into the pending one.
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations();
-    expect(kms.generateDataKeyCalls).toBe(2);
+    expect(kms.generateDataKeyCalls).toBe(3);
     const updated = await accept(
       automationsClient().update({
         headers: authHeaders(),
@@ -469,7 +470,7 @@ describe("workflow queue", () => {
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
   });
 
-  it("starts directly when failed queue encryption becomes unnecessary", async () => {
+  it("requires queue persistence even when encryption finishes after the thread becomes idle", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const firstRunId = expectAcceptedRunId(
@@ -504,17 +505,13 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, firstRunId);
     releaseKms.resolve(undefined);
 
-    const secondRunId = expectAcceptedRunId(await secondRequest);
-    expect(kms.generateDataKeyCalls).toBe(2);
+    await expect(secondRequest).resolves.toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    expect(kms.generateDataKeyCalls).toBe(1);
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
-      secondRunId,
-    ]);
-
-    await completeRunThroughSandbox(scenario, secondRunId);
-    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      firstRunId,
-      secondRunId,
     ]);
   });
 
@@ -570,5 +567,64 @@ describe("workflow queue", () => {
     // The workflow event drains only after the user's run finishes.
     await completeRunThroughSandbox(scenario, userMessage.runId);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+  });
+
+  it("keeps the workflow event queued when a user message wins final admission", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    chatCallbacks.mockChatOutputEvents([
+      {
+        eventType: "assistant",
+        sequenceNumber: 0,
+        eventData: { message: { content: [{ type: "text", text: "done" }] } },
+      },
+    ]);
+    chatCallbacks.acceptChatObjectStorage();
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const workflowRequest = postWorkflowWebhook(automation, "workflow first");
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    const userRequest = chatMessagesClient().send({
+      headers: authHeaders(),
+      body: {
+        agentId: scenario.agentId,
+        threadId: automation.threadId,
+        prompt: "user wins final admission",
+      },
+    });
+    await expect
+      .poll(async () => {
+        const messages = await wf.readThreadMessages(automation.threadId);
+        return messages.some((message) => {
+          return message.content === "user wins final admission";
+        });
+      })
+      .toBe(true);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    admissionLock.release();
+    const [workflowResult, userResult] = await Promise.all([
+      workflowRequest,
+      accept(userRequest, [201]),
+    ]);
+    await admissionLock.done;
+
+    expectAcceptedWithoutRun(workflowResult);
+    if (!userResult.body.runId) {
+      throw new Error("Expected the user message to win final admission");
+    }
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
+
+    await completeRunThroughSandbox(scenario, userResult.body.runId);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(1);
   });
 });

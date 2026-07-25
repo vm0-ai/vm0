@@ -12,12 +12,17 @@ import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtim
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import {
-  claimNextWorkflowQueueEvent,
+  consumeWorkflowQueueEvent,
   decryptWorkflowQueueEventParams,
-  restoreWorkflowQueueEventAndPause,
-  type ClaimedWorkflowQueueEvent,
+  loadNextWorkflowQueueEvent,
+  pauseWorkflowQueueEventAfterRunFailure,
+  type PendingWorkflowQueueEvent,
 } from "./chat-message-queue.service";
-import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import {
+  launchQueuedWorkflowAutomation$,
+  type RunWorkflowAutomationResult,
+} from "./zero-workflow-automation-launch.service";
 
 const log = logger("ZeroWorkflowQueueDrain");
 
@@ -33,7 +38,7 @@ interface DequeueTarget {
 
 async function loadDequeueTarget(
   db: Db,
-  event: ClaimedWorkflowQueueEvent,
+  event: PendingWorkflowQueueEvent,
 ): Promise<DequeueTarget | null> {
   const [row] = await db
     .select({
@@ -58,41 +63,147 @@ async function loadDequeueTarget(
 
 /**
  * Advance the thread's workflow queue: as long as user queued messages always
- * win (enforced inside `claimNextWorkflowQueueEvent`), pop the oldest event
- * and turn it into a run. Events whose automation disappeared or can no longer
- * fire are consumed and skipped; a run-creation failure restores the event to
- * the queue head and pauses the queue so the backlog is preserved.
+ * win (enforced inside `loadNextWorkflowQueueEvent`), prepare the oldest event
+ * and turn it into a run. The final run persistence transaction consumes the
+ * event. Stale events are serialized and removed; a run-creation failure
+ * leaves the event in place and pauses the queue.
  */
+export interface WorkflowQueueDrainResult {
+  readonly eventId: string;
+  readonly result: RunWorkflowAutomationResult;
+}
+
+interface WorkflowEventLaunch {
+  readonly eventId: string;
+  readonly apiStartTime: number;
+  readonly timing: ApiDispatchTimingCollector;
+}
+
+interface DrainWorkflowQueueArgs {
+  readonly chatThreadId: string;
+  readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly workflowEventLaunch?: WorkflowEventLaunch;
+}
+
+const CONTINUE_DRAIN = Symbol("continue-workflow-queue-drain");
+type WorkflowQueueDrainStep =
+  | WorkflowQueueDrainResult
+  | null
+  | typeof CONTINUE_DRAIN;
+
+async function publishQueueChanged(
+  event: PendingWorkflowQueueEvent,
+  signal: AbortSignal,
+): Promise<void> {
+  await publishChatThreadWorkflowQueueChangedSafely(
+    event.userId,
+    event.chatThreadId,
+  );
+  signal.throwIfAborted();
+}
+
+async function consumeInvalidWorkflowEvent(
+  db: Db,
+  event: PendingWorkflowQueueEvent,
+  conflictMessage: string,
+  launchHint: WorkflowEventLaunch | undefined,
+  signal: AbortSignal,
+): Promise<WorkflowQueueDrainStep> {
+  const consumed = await consumeWorkflowQueueEvent(db, {
+    eventId: event.id,
+    chatThreadId: event.chatThreadId,
+  });
+  signal.throwIfAborted();
+  if (!consumed) {
+    return null;
+  }
+  await publishQueueChanged(event, signal);
+  if (launchHint?.eventId !== event.id) {
+    return CONTINUE_DRAIN;
+  }
+  return {
+    eventId: event.id,
+    result: { kind: "conflict", message: conflictMessage },
+  };
+}
+
+async function handleWorkflowLaunchResult(
+  db: Db,
+  event: PendingWorkflowQueueEvent,
+  result: RunWorkflowAutomationResult,
+  launchHint: WorkflowEventLaunch | undefined,
+  signal: AbortSignal,
+): Promise<WorkflowQueueDrainStep> {
+  if (result.kind === "ok" || result.kind === "enqueued") {
+    await publishQueueChanged(event, signal);
+    return { eventId: event.id, result };
+  }
+  if (result.kind === "conflict") {
+    log.debug("Consuming unfireable workflow queue event", {
+      eventId: event.id,
+      automationId: event.automationId,
+      message: result.message,
+    });
+    const consumed = await consumeWorkflowQueueEvent(db, {
+      eventId: event.id,
+      chatThreadId: event.chatThreadId,
+    });
+    signal.throwIfAborted();
+    if (!consumed) {
+      return null;
+    }
+    await publishQueueChanged(event, signal);
+    return launchHint ? { eventId: event.id, result } : CONTINUE_DRAIN;
+  }
+
+  await pauseWorkflowQueueEventAfterRunFailure(db, {
+    eventId: event.id,
+    chatThreadId: event.chatThreadId,
+    pauseReason: result.response.body.error.message,
+    pausedAt: nowDate(),
+  });
+  signal.throwIfAborted();
+  log.warn("Workflow queue paused after run creation failure", {
+    eventId: event.id,
+    chatThreadId: event.chatThreadId,
+    code: result.response.body.error.code,
+  });
+  await publishQueueChanged(event, signal);
+  return { eventId: event.id, result };
+}
+
 export const drainWorkflowQueueForThread$ = command(
   async (
     { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
-    },
+    args: DrainWorkflowQueueArgs,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<WorkflowQueueDrainResult | null> => {
     const db = set(writeDb$);
 
     for (let attempt = 0; attempt < MAX_DRAIN_ATTEMPTS; attempt++) {
-      const event = await claimNextWorkflowQueueEvent(db, args.chatThreadId);
+      const event = await loadNextWorkflowQueueEvent(db, args.chatThreadId);
       signal.throwIfAborted();
       if (!event) {
-        return;
+        return null;
       }
 
       const target = await loadDequeueTarget(db, event);
       signal.throwIfAborted();
       if (!target) {
-        log.debug("Dropping workflow queue event without automation", {
+        log.debug("Consuming workflow queue event without automation", {
           eventId: event.id,
           automationId: event.automationId,
         });
-        await publishChatThreadWorkflowQueueChangedSafely(
-          event.userId,
-          event.chatThreadId,
+        const step = await consumeInvalidWorkflowEvent(
+          db,
+          event,
+          "Workflow automation no longer exists",
+          args.workflowEventLaunch,
+          signal,
         );
-        signal.throwIfAborted();
+        if (step !== CONTINUE_DRAIN) {
+          return step;
+        }
         continue;
       }
 
@@ -102,73 +213,70 @@ export const drainWorkflowQueueForThread$ = command(
       );
       signal.throwIfAborted();
       if (!params) {
-        log.error("Dropping undecryptable workflow queue event", {
+        log.error("Consuming undecryptable workflow queue event", {
           eventId: event.id,
           automationId: event.automationId,
         });
+        const step = await consumeInvalidWorkflowEvent(
+          db,
+          event,
+          "Workflow queue event payload is unreadable",
+          args.workflowEventLaunch,
+          signal,
+        );
+        if (step !== CONTINUE_DRAIN) {
+          return step;
+        }
         continue;
       }
 
       const triggerSource = triggerSourceSchema.safeParse(event.triggerSource);
+      const launchHint =
+        args.workflowEventLaunch?.eventId === event.id
+          ? args.workflowEventLaunch
+          : undefined;
       const result = await set(
-        runWorkflowAutomationNow$,
+        launchQueuedWorkflowAutomation$,
         {
           due: {
             automation: target.automation,
             agentId: target.agentId,
             workflowName: target.workflowName,
             chatThreadId: event.chatThreadId,
+            allowClaimedOnceScheduleAutomation:
+              params.allowClaimedOnceScheduleAutomation,
           },
-          apiStartTime: now(),
+          queueEventId: event.id,
+          apiStartTime: launchHint?.apiStartTime ?? now(),
+          sessionId: params.sessionId,
           prompt: params.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: triggerSource.success ? triggerSource.data : undefined,
           appendSystemPrompt: params.appendSystemPrompt,
           callbacks: params.callbacks,
-          activePreviousRunPolicy: "allow",
+          // Rows written before queue-first ingress always dequeued with
+          // "allow"; new rows persist their caller policy explicitly.
+          activePreviousRunPolicy: params.activePreviousRunPolicy ?? "allow",
           recordLastRunId: params.recordLastRunId,
           recordLastRunAt: params.recordLastRunAt,
-          bypassWorkflowQueue: true,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+          timing: launchHint?.timing,
         },
         signal,
       );
       signal.throwIfAborted();
 
-      if (result.kind === "ok" || result.kind === "enqueued") {
-        await publishChatThreadWorkflowQueueChangedSafely(
-          event.userId,
-          event.chatThreadId,
-        );
-        signal.throwIfAborted();
-        return;
-      }
-      if (result.kind === "conflict") {
-        log.debug("Skipping unfireable workflow queue event", {
-          eventId: event.id,
-          automationId: event.automationId,
-          message: result.message,
-        });
-        continue;
-      }
-
-      await restoreWorkflowQueueEventAndPause(db, {
+      const step = await handleWorkflowLaunchResult(
+        db,
         event,
-        pauseReason: result.response.body.error.message,
-        pausedAt: nowDate(),
-      });
-      signal.throwIfAborted();
-      log.warn("Workflow queue paused after run creation failure", {
-        eventId: event.id,
-        chatThreadId: event.chatThreadId,
-        code: result.response.body.error.code,
-      });
-      await publishChatThreadWorkflowQueueChangedSafely(
-        event.userId,
-        event.chatThreadId,
+        result,
+        launchHint,
+        signal,
       );
-      signal.throwIfAborted();
-      return;
+      if (step !== CONTINUE_DRAIN) {
+        return step;
+      }
     }
+    return null;
   },
 );

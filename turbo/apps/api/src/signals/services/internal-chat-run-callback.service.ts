@@ -591,6 +591,7 @@ function buildQueuedCreateZeroRunArgs(
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
     queueFirstAssociation: {
+      kind: "user_message" as const,
       threadId: input.threadId,
       messageId: input.queuedMessage.id,
     },

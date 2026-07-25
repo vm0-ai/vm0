@@ -3168,6 +3168,7 @@ const createNormalChatRun$ = command(
           {
             ...createRunArgs,
             queueFirstAssociation: {
+              kind: "user_message",
               threadId: prepared.thread.threadId,
               messageId: queueFirstMessageId,
             },
