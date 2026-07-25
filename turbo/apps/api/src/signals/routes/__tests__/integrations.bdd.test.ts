@@ -1369,7 +1369,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(context.mocks.slack.fetchFile).toHaveBeenCalledTimes(2);
   });
 
-  it("promotes legacy routes and deduplicates canonical Slack retries per event", async () => {
+  it("promotes legacy routes and keeps current and previous readers retry-safe", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -1484,6 +1484,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
       userId: actor.userId,
       backend: "canonical",
       chatThreadId: expect.any(String),
+      legacyCutoverEventId: eventId,
+      legacyCutoverMessageTs: threadTs,
     });
     expect(state.chat_ingress).toHaveLength(1);
     expect(state.chat_ingress[0]).toMatchObject({
@@ -1928,6 +1930,205 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const run2 = await runs.readRun(actor, run2Id);
     expect(run2.result?.agentSessionId).toBe(slackSessionId);
     expect(run2.result?.agentSessionId).not.toBe(webSessionId);
+
+    const promotedState = await integrations.readSlackTestState(teamId);
+    const promotedRouteId = promotedState.chat_thread_routes[0]?.id;
+    if (!promotedRouteId) {
+      throw new Error("Expected promoted Slack route identity");
+    }
+    await integrations.admitSlackEventThroughPreviousReader({
+      actor,
+      teamId,
+      routeId: promotedRouteId,
+      eventId: legacyRetryEventId,
+      payload: legacyRetryBody,
+      isRetry: true,
+    });
+    const compatibilityState = await integrations.readSlackTestState(teamId);
+    expect(compatibilityState.chat_ingress).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          routeId: promotedRouteId,
+          eventId: legacyRetryEventId,
+          status: "ignored",
+          retryCount: 1,
+        }),
+      ]),
+    );
+    expect(
+      compatibilityState.recent_runs.some((run) => {
+        return run.promptPreview?.includes("ignore this pre-cutover retry");
+      }),
+    ).toBeFalsy();
+  });
+
+  it("admits a later promoted-route retry after its first ingress insert fails", async () => {
+    const actor = bdd.user();
+    const blockerActor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    await runs.grantProEntitlement(blockerActor);
+    await runs.ensureOrgModelProvider(blockerActor);
+    const slackUserId = uniqueSlackUserId();
+    const blockerSlackUserId = uniqueSlackUserId();
+    const targetInstallation = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    const blockerInstallation = await integrations.installSlackWorkspace(
+      blockerActor,
+      {
+        installerSlackUserId: blockerSlackUserId,
+      },
+    );
+    const channelId = "C_BDD_CANONICAL_RETRY_RECOVERY";
+    const threadTs = "3100.000100";
+    const legacyRetryBody = JSON.stringify({
+      type: "event_callback",
+      team_id: targetInstallation.teamId,
+      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
+      event: {
+        type: "app_mention",
+        user: slackUserId,
+        text: "seed the legacy route only",
+        ts: threadTs,
+        channel: channelId,
+        channel_type: "channel",
+      },
+    });
+    await integrations.requestSlackEvent(
+      legacyRetryBody,
+      {
+        ...integrations.signedSlackIngressHeaders(legacyRetryBody),
+        "x-slack-retry-num": "1",
+      },
+      [200],
+    );
+
+    const cutoverEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const cutoverBody = JSON.stringify({
+      type: "event_callback",
+      team_id: targetInstallation.teamId,
+      event_id: cutoverEventId,
+      event: {
+        type: "app_mention",
+        user: slackUserId,
+        text: `<@${targetInstallation.botUserId}> promote this route`,
+        ts: "3100.000200",
+        thread_ts: threadTs,
+        channel: channelId,
+        channel_type: "channel",
+      },
+    });
+    await integrations.requestSlackEvent(
+      cutoverBody,
+      integrations.signedSlackIngressHeaders(cutoverBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const recoveredEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const blockerBody = JSON.stringify({
+      type: "event_callback",
+      team_id: blockerInstallation.teamId,
+      event_id: recoveredEventId,
+      event: {
+        type: "app_mention",
+        user: blockerSlackUserId,
+        text: `<@${blockerInstallation.botUserId}> reserve this event id`,
+        ts: "4100.000100",
+        channel: "C_BDD_CANONICAL_RETRY_BLOCKER",
+        channel_type: "channel",
+      },
+    });
+    await integrations.requestSlackEvent(
+      blockerBody,
+      integrations.signedSlackIngressHeaders(blockerBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const recoveredBody = JSON.stringify({
+      type: "event_callback",
+      team_id: targetInstallation.teamId,
+      event_id: recoveredEventId,
+      event: {
+        type: "app_mention",
+        user: slackUserId,
+        text: `<@${targetInstallation.botUserId}> recover this event after admission conflict`,
+        ts: "3100.000300",
+        thread_ts: threadTs,
+        channel: channelId,
+        channel_type: "channel",
+      },
+    });
+    await integrations.requestSlackEvent(
+      recoveredBody,
+      integrations.signedSlackIngressHeaders(recoveredBody),
+      [500],
+    );
+    let targetState = await integrations.readSlackTestState(
+      targetInstallation.teamId,
+    );
+    expect(
+      targetState.chat_ingress.some((ingress) => {
+        return ingress.eventId === recoveredEventId;
+      }),
+    ).toBeFalsy();
+
+    await integrations.deleteSlackTestState(blockerInstallation.teamId);
+    await integrations.requestSlackEvent(
+      recoveredBody,
+      {
+        ...integrations.signedSlackIngressHeaders(recoveredBody),
+        "x-slack-retry-num": "1",
+      },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    targetState = await integrations.readSlackTestState(
+      targetInstallation.teamId,
+    );
+    expect(targetState.chat_ingress).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventId: cutoverEventId,
+          status: "processed",
+        }),
+        expect.objectContaining({
+          eventId: recoveredEventId,
+          payload: recoveredBody,
+          status: "processed",
+          retryCount: 1,
+        }),
+      ]),
+    );
+    expect(targetState.chat_message_queue).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemType: "slack_user_message",
+          triggerSource: "slack",
+        }),
+      ]),
+    );
+    const recoveredThreadId = targetState.chat_thread_routes[0]?.chatThreadId;
+    if (!recoveredThreadId) {
+      throw new Error("Expected recovered Slack route to own a chat thread");
+    }
+    expect(
+      (await chat.listThreadMessages(actor, recoveredThreadId)).messages,
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: "recover this event after admission conflict",
+        }),
+      ]),
+    );
   });
 
   it("keeps Slack retries on sticky legacy routes out of canonical ingress", async () => {

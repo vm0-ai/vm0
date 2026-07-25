@@ -38,6 +38,7 @@ describe("slackChatThreadRoutes schema", () => {
     expect(columns.get("backend")).toBeTruthy();
     expect(columns.get("chat_thread_id")).toBeFalsy();
     expect(columns.get("legacy_cutover_event_id")).toBeFalsy();
+    expect(columns.get("legacy_cutover_message_ts")).toBeFalsy();
     expect(
       config.foreignKeys.map((foreignKey) => {
         return foreignKey.reference().foreignTable;

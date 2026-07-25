@@ -148,7 +148,7 @@ type SlackIngressPath =
   | "/api/zero/slack/commands"
   | "/api/zero/slack/events"
   | "/api/zero/slack/interactive";
-type SlackIngressStatus = 200 | 400 | 401 | 503;
+type SlackIngressStatus = 200 | 400 | 401 | 500 | 503;
 type SlackDownloadStatus = 200 | 400 | 401 | 404 | 413 | 502;
 type AgentPhoneWebhookStatus = 200 | 400 | 401 | 404;
 type TelegramWebhookStatus = 200 | 400 | 401 | 404;
@@ -388,6 +388,9 @@ async function requestRawSlackIngress(
     }
     case 401: {
       return { status: 401, ...result };
+    }
+    case 500: {
+      return { status: 500, ...result };
     }
     case 503: {
       return { status: 503, ...result };
@@ -1055,6 +1058,41 @@ export function createBddIntegrationApi(context: TestContext) {
       return response.body;
     },
 
+    async admitSlackEventThroughPreviousReader(args: {
+      readonly actor: ApiTestUser;
+      readonly teamId: string;
+      readonly routeId: string;
+      readonly eventId: string;
+      readonly payload: string;
+      readonly isRetry: boolean;
+    }): Promise<void> {
+      if (!args.actor.orgId) {
+        throw new Error("Expected previous-reader actor to belong to an org");
+      }
+      const client = setupApp({ context })(testSlackStateContract);
+      await accept(
+        client.post({
+          body: {
+            team_id: args.teamId,
+            org_id: args.actor.orgId,
+            vm0_user_id: args.actor.userId,
+            previous_reader_ingress: {
+              route_id: args.routeId,
+              event_id: args.eventId,
+              payload: args.payload,
+              is_retry: args.isRetry,
+            },
+          },
+        }),
+        [200],
+      );
+    },
+
+    async deleteSlackTestState(teamId: string): Promise<void> {
+      const client = setupApp({ context })(testSlackStateContract);
+      await accept(client.delete({ query: { team_id: teamId } }), [200]);
+    },
+
     async readUserModelPreference(actor: ApiTestUser) {
       const client = setupApp({ context })(zeroUserModelPreferenceContract);
       const response = await accept(
@@ -1207,7 +1245,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestSlackEvent(
       body: string,
       headers: SlackSignatureHeaders,
-      statuses: readonly (200 | 400 | 401 | 503)[],
+      statuses: readonly SlackIngressStatus[],
     ) {
       return await accept(
         requestRawSlackIngress(

@@ -821,6 +821,7 @@ async function resolveExistingSlackRouteAdmission(
     >;
     readonly routeKey: Parameters<typeof findSlackChatThreadRoute>[1];
     readonly eventId: string;
+    readonly messageTs: string;
     readonly isRetry: boolean;
   },
 ): Promise<SlackAgentRouteAdmission | null> {
@@ -830,7 +831,9 @@ async function resolveExistingSlackRouteAdmission(
       !(await canonicalSlackChatRetryIsAdmissible(db, {
         routeId: args.existingRoute.id,
         legacyCutoverEventId: args.existingRoute.legacyCutoverEventId,
+        legacyCutoverMessageTs: args.existingRoute.legacyCutoverMessageTs,
         eventId: args.eventId,
+        eventMessageTs: args.messageTs,
       }))
     ) {
       return { kind: "ignored" };
@@ -920,6 +923,7 @@ const resolveSlackAgentRouteAdmission$ = command(
         existingRoute,
         routeKey,
         eventId: args.eventId,
+        messageTs: args.messageTs,
         isRetry: args.isRetry,
       },
     );
@@ -971,6 +975,7 @@ const resolveSlackAgentRouteAdmission$ = command(
       agentComposeId: effectiveCompose.composeId,
       selectedModel: modelRoute?.selectedModel ?? null,
       cutoverEventId: args.eventId,
+      cutoverMessageTs: args.messageTs,
       currentTime: nowDate(),
     });
     signal.throwIfAborted();
@@ -2609,10 +2614,15 @@ export const handleZeroSlackEvents$ = command(
             success: true,
             isRetry: Boolean(retryNum),
             retryNum: retryNum ?? null,
-            outcome: ingress.inserted ? "accepted" : "deduplicated",
+            outcome:
+              ingress.status === "ignored"
+                ? "legacy_cutover_ignored"
+                : ingress.inserted
+                  ? "accepted"
+                  : "deduplicated",
             status: ingress.status,
           });
-          if (ingress.status !== "processed") {
+          if (ingress.status !== "processed" && ingress.status !== "ignored") {
             // Admission is durable and already acknowledged to Slack. Keep the
             // processor alive if the request signal is cancelled afterward.
             const backgroundSignal = new AbortController().signal;

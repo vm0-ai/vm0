@@ -48,6 +48,13 @@ legacy Slack run, callback, session, and test paths.
   promotion. This preserves the old retry behavior during mixed-version
   deployment and prevents an originally legacy event from being executed again
   as canonical.
+- Promotion persists both the cutover event ID and its sortable Slack message
+  timestamp. Current readers reject pre-cutover retries before admission while
+  still admitting later canonical retries whose first insert failed.
+- A migration-installed ingress classifier is the receiver-first compatibility
+  boundary for draining API revisions. If an older reader admits a delayed
+  pre-cutover event after promotion, the database records it as `ignored`;
+  canonical processing cannot claim or execute that record.
 - Existing canonical routes remain unchanged.
 - Dormant legacy routes do not create empty Web Chat threads merely because the
   release was deployed.
@@ -69,9 +76,9 @@ legacy Slack run, callback, session, and test paths.
   unexpired legacy Computer Use authorization requests.
 - The legacy direct-run implementation is not selected for any new,
   non-retry event after route promotion is active.
-- Existing deployments already understand canonical route rows, so a draining
-  older API instance can continue processing a route after it has been
-  promoted.
+- Existing deployments already understand canonical route rows. The
+  migration-installed ingress classifier additionally makes their unconditional
+  canonical admission safe after a route has been promoted.
 
 ### User-facing commands and notices
 

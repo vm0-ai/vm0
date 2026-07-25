@@ -24,6 +24,7 @@ interface SlackChatThreadRouteBinding extends SlackChatThreadRouteKey {
   readonly backend: SlackChatThreadRouteBackend;
   readonly chatThreadId: string | null;
   readonly legacyCutoverEventId: string | null;
+  readonly legacyCutoverMessageTs: string | null;
 }
 
 interface CanonicalSlackChatThreadRouteBinding extends SlackChatThreadRouteBinding {
@@ -54,6 +55,7 @@ async function loadSlackChatThreadRoute(
       backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
       legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
+      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
     })
     .from(slackChatThreadRoutes)
     .where(slackChatThreadRouteWhere(key))
@@ -124,6 +126,7 @@ export async function ensureLegacySlackChatThreadRoute(
       backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
       legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
+      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
     });
   return route ?? (await requireSlackChatThreadRoute(db, args));
 }
@@ -135,6 +138,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
     readonly cutoverEventId: string;
+    readonly cutoverMessageTs: string;
     readonly currentTime: Date;
   },
 ): Promise<CanonicalSlackChatThreadRouteBinding> {
@@ -170,6 +174,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
       legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
+      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
     };
     const [route] = existing
       ? await tx
@@ -178,6 +183,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
             backend: "canonical",
             chatThreadId: thread.id,
             legacyCutoverEventId: args.cutoverEventId,
+            legacyCutoverMessageTs: args.cutoverMessageTs,
           })
           .where(
             and(
@@ -214,6 +220,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
           backend: "canonical",
           chatThreadId: thread.id,
           legacyCutoverEventId: args.cutoverEventId,
+          legacyCutoverMessageTs: args.cutoverMessageTs,
         })
         .where(
           and(
@@ -256,17 +263,42 @@ export async function ensureCanonicalSlackChatThreadRoute(
   });
 }
 
+function slackMessageTimestampMicros(value: string | null): bigint | null {
+  if (value === null) {
+    return null;
+  }
+  const match = /^([0-9]+)[.]([0-9]{1,6})$/u.exec(value);
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+  return BigInt(match[1]) * 1_000_000n + BigInt(match[2].padEnd(6, "0"));
+}
+
 export async function canonicalSlackChatRetryIsAdmissible(
   db: Db,
   args: {
     readonly routeId: string;
     readonly legacyCutoverEventId: string | null;
+    readonly legacyCutoverMessageTs: string | null;
     readonly eventId: string;
+    readonly eventMessageTs: string;
   },
 ): Promise<boolean> {
   if (
     args.legacyCutoverEventId === null ||
     args.legacyCutoverEventId === args.eventId
+  ) {
+    return true;
+  }
+
+  const cutoverMicros = slackMessageTimestampMicros(
+    args.legacyCutoverMessageTs,
+  );
+  const eventMicros = slackMessageTimestampMicros(args.eventMessageTs);
+  if (
+    cutoverMicros !== null &&
+    eventMicros !== null &&
+    eventMicros > cutoverMicros
   ) {
     return true;
   }
