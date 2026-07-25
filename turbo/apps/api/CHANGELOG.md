@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.318.0](https://github.com/vm0-ai/vm0/compare/api-v1.317.0...api-v1.318.0) (2026-07-25)
+
+
+### Features
+
+* add claude opus 5 to new organization defaults ([#22955](https://github.com/vm0-ai/vm0/issues/22955)) ([70cb3ba](https://github.com/vm0-ai/vm0/commit/70cb3bac4954f0b89df4bd30725ec00adc0b2eb7))
+* **api:** force app.vm0.ai clients to upgrade to v0.631.1 ([#22950](https://github.com/vm0-ai/vm0/issues/22950)) ([866e468](https://github.com/vm0-ai/vm0/commit/866e468e0219a517c76041c700a3104a4973ca1f))
+* **api:** prepare external connector catalog cutover ([#22920](https://github.com/vm0-ai/vm0/issues/22920)) ([f92abc3](https://github.com/vm0-ai/vm0/commit/f92abc3a1103418f92f382e4c2ebba7edfa0a340))
+
+
+### Bug Fixes
+
+* **core:** limit default seed skills to execution essentials ([#22948](https://github.com/vm0-ai/vm0/issues/22948)) ([2c9aa24](https://github.com/vm0-ai/vm0/commit/2c9aa24d1f2effa0af92d08d992d3987df142aaf))
+
+
+### Refactoring
+
+* **chat:** trim thread detail and drop legacy mail draft marker ([#22949](https://github.com/vm0-ai/vm0/issues/22949)) ([bcda14a](https://github.com/vm0-ai/vm0/commit/bcda14abbf7b135ed7a2ef8485c07f3240ae0a17))
+* **db:** remove legacy model observation storage ([#22907](https://github.com/vm0-ai/vm0/issues/22907)) ([ee4895e](https://github.com/vm0-ai/vm0/commit/ee4895e77f921cccbfd44c422763652120e2de82))
+* reduce fallback slop in people search ([#22954](https://github.com/vm0-ai/vm0/issues/22954)) ([68e832c](https://github.com/vm0-ai/vm0/commit/68e832cbd913353fb0b235684f967bacf5006130))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.227.0
+    * @vm0/core bumped to 8.464.0
+    * @vm0/db bumped to 1.137.0
+
 ## [1.317.0](https://github.com/vm0-ai/vm0/compare/api-v1.316.0...api-v1.317.0) (2026-07-24)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.632.0](https://github.com/vm0-ai/vm0/compare/app-v0.631.1...app-v0.632.0) (2026-07-25)
+
+
+### Features
+
+* add claude opus 5 to new organization defaults ([#22955](https://github.com/vm0-ai/vm0/issues/22955)) ([70cb3ba](https://github.com/vm0-ai/vm0/commit/70cb3bac4954f0b89df4bd30725ec00adc0b2eb7))
+
+
+### Refactoring
+
+* **chat:** trim thread detail and drop legacy mail draft marker ([#22949](https://github.com/vm0-ai/vm0/issues/22949)) ([bcda14a](https://github.com/vm0-ai/vm0/commit/bcda14abbf7b135ed7a2ef8485c07f3240ae0a17))
+* **platform:** remove tiptap render ref bridge ([#22891](https://github.com/vm0-ai/vm0/issues/22891)) ([ed84da6](https://github.com/vm0-ai/vm0/commit/ed84da6020457bd13c2bb29e60ac8a9529198764))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.227.0
+    * @vm0/core bumped to 8.464.0
+
 ## [0.631.1](https://github.com/vm0-ai/vm0/compare/app-v0.631.0...app-v0.631.1) (2026-07-24)
 
 
