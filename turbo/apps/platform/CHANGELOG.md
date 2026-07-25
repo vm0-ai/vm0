@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.636.0](https://github.com/vm0-ai/vm0/compare/app-v0.635.2...app-v0.636.0) (2026-07-25)
+
+
+### Features
+
+* add the artifact catalog behind a per-org feature switch ([#23030](https://github.com/vm0-ai/vm0/issues/23030)) ([6faf025](https://github.com/vm0-ai/vm0/commit/6faf0253b7ed7e522660b028faa2a62372bd90b4))
+
+
+### Bug Fixes
+
+* **platform:** preserve chat views across thread and agent switches ([#23055](https://github.com/vm0-ai/vm0/issues/23055)) ([bbc2db0](https://github.com/vm0-ai/vm0/commit/bbc2db0ae393aa33ab07b6c5a0d171b6dcf02eb2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.0
+    * @vm0/core bumped to 8.467.1
+
 ## [0.635.2](https://github.com/vm0-ai/vm0/compare/app-v0.635.1...app-v0.635.2) (2026-07-25)
 
 
