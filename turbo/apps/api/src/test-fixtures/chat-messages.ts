@@ -61,6 +61,29 @@ export async function setWorkflowQueueEventCreatedAtFixture(args: {
 }
 
 /**
+ * Move one exact queued web message into historical state without waiting for
+ * real time to pass. Product APIs cannot construct an already-stale queue item.
+ */
+export async function setQueuedUserMessageCreatedAtFixture(args: {
+  readonly messageId: string;
+  readonly createdAt: Date;
+}): Promise<void> {
+  const updated = await db()
+    .update(chatMessageQueue)
+    .set({ createdAt: args.createdAt })
+    .where(
+      and(
+        eq(chatMessageQueue.chatMessageId, args.messageId),
+        eq(chatMessageQueue.itemType, "user_message"),
+      ),
+    )
+    .returning({ id: chatMessageQueue.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one queued user message to become historical");
+  }
+}
+
+/**
  * Complete one claimed run without dispatching its terminal callbacks. This
  * reproduces the missed-callback state that the stale queue sweep recovers.
  */

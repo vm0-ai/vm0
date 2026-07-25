@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   DecryptCommand,
@@ -33,6 +33,7 @@ import {
   completeRunWithoutCallbacksFixture,
   holdOrgAdmissionLockFixture,
   rewriteWorkflowQueueEventAsPreviousVersionFixture,
+  setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-messages";
 
@@ -429,6 +430,48 @@ describe("workflow queue", () => {
     expect(recovered.body.pending).toHaveLength(0);
     expect(recovered.body.running?.runId).toStrictEqual(expect.any(String));
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+  });
+
+  it("recovers a stale user message after its terminal callback is missed", async () => {
+    mockNow(Date.UTC(2020, 0, 1));
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstRunId = expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+    );
+    const messageId = randomUUID();
+    const queued = await accept(
+      chatMessagesClient().send({
+        headers: authHeaders(),
+        body: {
+          agentId: scenario.agentId,
+          threadId: automation.threadId,
+          prompt: "stale user message",
+          clientMessageId: messageId,
+        },
+      }),
+      [201],
+    );
+    expect(queued.body.runId).toBeNull();
+    await setQueuedUserMessageCreatedAtFixture({
+      messageId,
+      createdAt: new Date("2019-12-31T23:54:00.000Z"),
+    });
+
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    await runsApi.claimRunnerJob(firstRunId);
+    await completeRunWithoutCallbacksFixture({ runId: firstRunId });
+
+    await cleanupSandboxes();
+
+    const messages = await wf.readThreadMessages(automation.threadId);
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        content: "stale user message",
+        revokesMessageId: messageId,
+        runId: expect.any(String),
+      }),
+    );
   });
 
   it("queues webhook events behind the active run and drains one per completion", async () => {
