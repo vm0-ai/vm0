@@ -2793,9 +2793,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
     bdd.acceptAgentStorageWrites();
     integrations.configureSlackAppMocks();
     const actor = bdd.user();
-    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
-    const hiddenDefaultId = await bdd.bootstrapLimitedFreeOnboarding(member, {
-      displayName: "BDD Hidden Default",
+    const formerAdmin = bdd.user({ orgId: actor.orgId });
+    // Limited-free onboarding is admin-only. A later role downgrade leaves the
+    // former admin's private agent configured as an inaccessible org default.
+    const hiddenDefaultId = await bdd.bootstrapLimitedFreeOnboarding(
+      formerAdmin,
+      {
+        displayName: "BDD Hidden Default",
+      },
+    );
+    const member = bdd.user({
+      userId: formerAdmin.userId,
+      orgId: actor.orgId,
+      orgRole: "org:member",
     });
     await bdd.updateAgentMetadata(member, hiddenDefaultId, {
       visibility: "private",
@@ -3615,7 +3625,7 @@ describe("INT-02: Telegram integration", () => {
         id: OFFICIAL_TELEGRAM_BOT_ID,
         kind: "official",
         tokenStatus: "unknown",
-        official: { configured: false },
+        official: expect.objectContaining({ configured: false }),
       }),
     );
 
