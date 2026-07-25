@@ -6,6 +6,7 @@ use guest_agent::cli;
 use guest_agent::complete;
 use guest_agent::control;
 use guest_agent::env;
+use guest_agent::error::AgentError;
 use guest_agent::failure_diagnostics;
 use guest_agent::heartbeat;
 use guest_agent::http::HttpClient;
@@ -19,7 +20,9 @@ use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
-use guest_contracts::diagnostics::{CliTerminationReason, FailureClass, FailureDiagnostic};
+use guest_contracts::diagnostics::{
+    CliTerminationReason, FailureClass, FailureDiagnostic, FailureReason,
+};
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
@@ -31,6 +34,11 @@ use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+fn checkpoint_failure_reason(error: &AgentError) -> Option<FailureReason> {
+    matches!(error, AgentError::CheckpointHistoryTooLarge { .. })
+        .then_some(FailureReason::SessionHistoryLimit)
+}
 
 #[tokio::main]
 async fn main() {
@@ -658,12 +666,15 @@ async fn complete_execution(
                     &msg,
                 );
                 if !wrote_failure_diagnostic {
-                    let diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
+                    let mut diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
                         config,
                         FailureClass::CheckpointFailed,
                     )
-                    .with_cli_exit_code(cli_exit_code)
-                    .with_session_history_status(
+                    .with_cli_exit_code(cli_exit_code);
+                    if let Some(reason) = checkpoint_failure_reason(&e) {
+                        diagnostic = diagnostic.with_failure_reason(reason);
+                    }
+                    let diagnostic = diagnostic.with_session_history_status(
                         failure_diagnostics::diagnostic_session_history_status_for_config(
                             config,
                             runtime_paths,
@@ -806,6 +817,26 @@ mod tests {
     use std::sync::LazyLock;
 
     static TEST_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn checkpoint_history_limit_errors_have_a_stable_failure_reason() {
+        assert_eq!(
+            checkpoint_failure_reason(&AgentError::CheckpointHistoryTooLarge { max_bytes: 1 }),
+            Some(FailureReason::SessionHistoryLimit)
+        );
+        assert_eq!(
+            checkpoint_failure_reason(&AgentError::Checkpoint(
+                "Session history exceeds maximum size of 134217728 bytes".to_string(),
+            )),
+            None
+        );
+        assert_eq!(
+            checkpoint_failure_reason(&AgentError::Checkpoint(
+                "artifact upload failed".to_string()
+            )),
+            None
+        );
+    }
     static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
     static MAIN_TEST_RUNTIME_ROOT: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
         let timestamp_nanos = std::time::SystemTime::now()
