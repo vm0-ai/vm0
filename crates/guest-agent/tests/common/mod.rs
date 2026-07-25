@@ -21,6 +21,7 @@ mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
@@ -528,37 +529,106 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
         .and_then(|n| n.to_str())
         .ok_or_else(|| "profile dir name".to_string())?;
 
-    let mut cmd = std::process::Command::new("cargo");
-    cmd.args(["build", "-p", package, "--quiet"])
-        .arg("--target-dir")
-        .arg(target_dir);
-    // Cargo profile → output dir mapping:
-    //   --release            → target_dir/release
-    //   --profile <name>     → target_dir/<name>
-    //   (default / dev)      → target_dir/debug
-    // So pick the flag that lands the artifact beside our test binary.
-    match profile_dir_name {
-        "debug" => {}
-        "release" => {
-            cmd.arg("--release");
-        }
-        other => {
-            cmd.args(["--profile", other]);
-        }
-    }
-
-    let status = cmd
-        .status()
-        .map_err(|e| format!("invoke cargo build: {e}"))?;
-    if !status.success() {
-        return Err(format!("cargo build -p {package} failed"));
-    }
-
     let mock = target_profile_dir.join(binary);
-    if !mock.exists() {
-        return Err(format!("mock binary not found at {}", mock.display()));
+    let workspace_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "guest-agent workspace directory".to_string())?;
+    let package_dir = workspace_dir.join(package);
+    let fingerprint = mock_fingerprint(&package_dir, profile_dir_name)?;
+    let marker = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.fingerprint"));
+    let lock = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.lock"));
+
+    while std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock)
+        .is_err()
+    {
+        if std::fs::metadata(&lock)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > Duration::from_secs(600))
+        {
+            let _ = std::fs::remove_file(&lock);
+            continue;
+        }
+        std::thread::sleep(Duration::from_millis(25));
     }
-    Ok(mock)
+
+    let result = (|| {
+        if mock.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&fingerprint) {
+            return Ok(mock.clone());
+        }
+
+        let mut cmd = std::process::Command::new("cargo");
+        cmd.args(["build", "-p", package, "--quiet"])
+            .arg("--target-dir")
+            .arg(target_dir);
+        // Cargo profile → output dir mapping:
+        //   --release            → target_dir/release
+        //   --profile <name>     → target_dir/<name>
+        //   (default / dev)      → target_dir/debug
+        // So pick the flag that lands the artifact beside our test binary.
+        match profile_dir_name {
+            "debug" => {}
+            "release" => {
+                cmd.arg("--release");
+            }
+            other => {
+                cmd.args(["--profile", other]);
+            }
+        }
+
+        let status = cmd
+            .status()
+            .map_err(|e| format!("invoke cargo build: {e}"))?;
+        if !status.success() {
+            return Err(format!("cargo build -p {package} failed"));
+        }
+        if !mock.exists() {
+            return Err(format!("mock binary not found at {}", mock.display()));
+        }
+        std::fs::write(&marker, fingerprint).map_err(|e| format!("write mock fingerprint: {e}"))?;
+        Ok(mock.clone())
+    })();
+    let _ = std::fs::remove_file(lock);
+    result
+}
+
+fn mock_fingerprint(package_dir: &Path, profile: &str) -> Result<String, String> {
+    let mut files = Vec::new();
+    collect_files(package_dir, &mut files)?;
+    files.sort();
+    let mut hasher = Sha256::new();
+    hasher.update(profile.as_bytes());
+    for path in files {
+        hasher.update(
+            path.strip_prefix(package_dir)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .as_bytes(),
+        );
+        hasher.update(std::fs::read(&path).map_err(|e| format!("read mock source: {e}"))?);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| format!("read mock package: {e}"))? {
+        let path = entry
+            .map_err(|e| format!("read mock package entry: {e}"))?
+            .path();
+        if path.file_name().is_some_and(|name| name == "target") {
+            continue;
+        }
+        if path.is_dir() {
+            collect_files(&path, files)?;
+        } else {
+            files.push(path);
+        }
+    }
+    Ok(())
 }
 
 /// Test-specific values for the experimental Codex app-server backend env.
