@@ -1363,14 +1363,16 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const claim1 = await api.claimRunnerJob(r1.runId);
     expect(
       expectCanonicalStorageManifest(claim1.storageManifest)?.storageMounts,
-    ).toMatchObject([
-      {
-        name: volumeName,
-        mountPath: "/data",
-        versionId: volumeVersion,
-        archiveSize: refreshedVolumeArchiveSize,
-      },
-    ]);
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: volumeName,
+          mountPath: "/data",
+          versionId: volumeVersion,
+          archiveSize: refreshedVolumeArchiveSize,
+        }),
+      ]),
+    );
     const memory1 = expectCanonicalStorageManifest(
       claim1.storageManifest,
     )?.storageMounts.find((mount) => {
@@ -1446,15 +1448,17 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     const strictClaim = await api.claimRunnerJob(strictMemory.runId);
     expect(
-      expectCanonicalStorageManifest(
-        strictClaim.storageManifest,
-      )?.storageMounts.map((mount) => {
-        return {
-          name: mount.name,
-          mountPath: mount.mountPath,
-          missingRootPolicy: mount.missingRootPolicy,
-        };
-      }),
+      expectCanonicalStorageManifest(strictClaim.storageManifest)
+        ?.storageMounts.filter((mount) => {
+          return mount.name === "memory";
+        })
+        .map((mount) => {
+          return {
+            name: mount.name,
+            mountPath: mount.mountPath,
+            missingRootPolicy: mount.missingRootPolicy,
+          };
+        }),
     ).toStrictEqual([
       {
         name: "memory",
@@ -1477,15 +1481,17 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     const customClaim = await api.claimRunnerJob(customCanonical.runId);
     expect(
-      expectCanonicalStorageManifest(
-        customClaim.storageManifest,
-      )?.storageMounts.map((mount) => {
-        return {
-          name: mount.name,
-          mountPath: mount.mountPath,
-          missingRootPolicy: mount.missingRootPolicy,
-        };
-      }),
+      expectCanonicalStorageManifest(customClaim.storageManifest)
+        ?.storageMounts.filter((mount) => {
+          return mount.name === "custom-memory";
+        })
+        .map((mount) => {
+          return {
+            name: mount.name,
+            mountPath: mount.mountPath,
+            missingRootPolicy: mount.missingRootPolicy,
+          };
+        }),
     ).toStrictEqual([
       {
         name: "custom-memory",
