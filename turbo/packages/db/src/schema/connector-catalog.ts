@@ -62,6 +62,9 @@ export const connectorCatalogSyncState = pgTable(
     lastAttemptOutcome: varchar("last_attempt_outcome", {
       length: 32,
     }).$type<ConnectorCatalogAttemptOutcome>(),
+    // lastAttemptMetadataRevision and lastRejectedCandidateFingerprint remain
+    // for #23001 rollback only. Runtime code must not use them; #23007 removes
+    // both physical columns.
     lastAttemptMetadataRevision: integer("last_attempt_metadata_revision"),
     lastAttemptReusedCachedRejection: boolean(
       "last_attempt_reused_cached_rejection",
@@ -135,15 +138,17 @@ export const connectorCatalogSyncState = pgTable(
         )`,
       ),
       check(
-        "connector_catalog_sync_state_attempt_metadata_complete",
+        "connector_catalog_sync_state_attempt_cache_reuse_complete",
         sql`(
-          ${table.lastAttemptMetadataRevision} IS NULL
+          ${table.lastAttemptOutcome} IS NULL
           AND ${table.lastAttemptReusedCachedRejection} IS NULL
         ) OR (
-          ${table.lastAttemptMetadataRevision} IS NOT NULL
-          AND ${table.lastAttemptMetadataRevision} >= 0
-          AND ${table.lastAttemptMetadataRevision} <= ${table.revision}
+          ${table.lastAttemptOutcome} IS NOT NULL
           AND ${table.lastAttemptReusedCachedRejection} IS NOT NULL
+          AND (
+            ${table.lastAttemptReusedCachedRejection} = FALSE
+            OR ${table.lastAttemptOutcome} = 'rejected'
+          )
         )`,
       ),
       check(
@@ -180,14 +185,13 @@ export const connectorCatalogSyncState = pgTable(
       check(
         "connector_catalog_sync_state_rejection_authority_complete",
         sql`(
-          ${table.lastRejectedBackendVersion} IS NULL
+          ${table.lastRejectedFailureCode} IS NULL
+          AND ${table.lastRejectedBackendVersion} IS NULL
           AND ${table.lastRejectedBuildCommitSha} IS NULL
-          AND ${table.lastRejectedCandidateFingerprint} IS NULL
         ) OR (
-          ${table.lastRejectedBackendVersion} IS NOT NULL
+          ${table.lastRejectedFailureCode} IS NOT NULL
+          AND ${table.lastRejectedBackendVersion} IS NOT NULL
           AND ${table.lastRejectedBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
-          AND ${table.lastRejectedCandidateFingerprint} IS NOT NULL
-          AND ${table.lastRejectedCandidateFingerprint} ~ '^sha256:[a-f0-9]{64}$'
           AND (
             ${table.lastRejectedBuildCommitSha} IS NULL
             OR ${table.lastRejectedBuildCommitSha} ~ '^[a-f0-9]{40}$'

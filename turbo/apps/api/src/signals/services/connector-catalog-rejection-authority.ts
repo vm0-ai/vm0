@@ -1,14 +1,5 @@
-import { createHash } from "node:crypto";
-
 const CORE_SEMVER_REGEX =
   /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
-
-export interface ConnectorCatalogRejectedCandidateIdentity {
-  readonly catalogVersion: string | null;
-  readonly catalogKey: string | null;
-  readonly catalogDigest: string | null;
-  readonly pointerEtag: string | null;
-}
 
 export interface ConnectorCatalogValidatorIdentity {
   readonly backendVersion: string;
@@ -17,9 +8,8 @@ export interface ConnectorCatalogValidatorIdentity {
 }
 
 export interface ConnectorCatalogRejectionAuthority {
-  readonly backendVersion: string | null;
+  readonly backendVersion: string;
   readonly buildCommitSha: string | null;
-  readonly candidateFingerprint: string | null;
 }
 
 interface CoreSemVer {
@@ -65,42 +55,10 @@ export function createConnectorCatalogValidatorIdentity(
   return identity;
 }
 
-export function connectorCatalogRejectedCandidateFingerprint(
-  candidate: ConnectorCatalogRejectedCandidateIdentity,
-): string {
-  const encoded = JSON.stringify([
-    candidate.catalogVersion,
-    candidate.catalogKey,
-    candidate.catalogDigest,
-    candidate.pointerEtag,
-  ]);
-  return `sha256:${createHash("sha256").update(encoded).digest("hex")}`;
-}
-
-export function connectorCatalogAttemptReusedCachedRejection(args: {
-  readonly revision: number;
-  readonly metadataRevision: number | null;
-  readonly reusedCachedRejection: boolean | null;
-}): boolean | null {
-  return args.metadataRevision === args.revision
-    ? args.reusedCachedRejection
-    : null;
-}
-
 export function connectorCatalogRejectionIsReusable(args: {
-  readonly candidate: ConnectorCatalogRejectedCandidateIdentity;
   readonly authority: ConnectorCatalogRejectionAuthority;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }): boolean {
-  if (
-    args.authority.backendVersion === null ||
-    args.authority.candidateFingerprint === null ||
-    args.authority.candidateFingerprint !==
-      connectorCatalogRejectedCandidateFingerprint(args.candidate)
-  ) {
-    return false;
-  }
-
   const versionOrder = compareCoreSemVer(
     args.authority.backendVersion,
     args.validator.backendVersion,

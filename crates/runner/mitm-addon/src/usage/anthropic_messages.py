@@ -16,6 +16,7 @@ from .sse import SseUsageScanner
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 _SseUsageParseErrorCallback = Callable[[str, str], None]
+AnthropicMessagesLifecycleCallback = Callable[[str, str | None], None]
 
 _MODEL_JSON_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
@@ -28,6 +29,7 @@ _MODEL_JSON_SCALAR_FIELDS = {
 
 _ANTHROPIC_SSE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024),
+    ("content_block", "type"): ScalarField("string", max_bytes=1024),
     ("message", "id"): ScalarField("string", max_bytes=1024),
     ("message", "model"): ScalarField("string", max_bytes=1024),
     **{
@@ -60,6 +62,7 @@ def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, 
 
 def create_anthropic_messages_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
+    on_lifecycle_event: AnthropicMessagesLifecycleCallback | None = None,
 ) -> tuple[SseUsageScanner, dict]:
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
@@ -80,7 +83,11 @@ def create_anthropic_messages_sse_usage_extractor(
     """
     usage: dict = {}
     parser = SseUsageScanner(
-        _AnthropicMessagesSseUsageHandler(usage, on_parse_error=on_parse_error),
+        _AnthropicMessagesSseUsageHandler(
+            usage,
+            on_parse_error=on_parse_error,
+            on_lifecycle_event=on_lifecycle_event,
+        ),
         # Anthropic-shaped streams can omit SSE event names and rely on JSON
         # "type" fields to classify message_start/message_delta payloads.
         capture_data_without_event=True,
@@ -94,13 +101,17 @@ class _AnthropicMessagesSseUsageHandler:
         usage: dict,
         *,
         on_parse_error: _SseUsageParseErrorCallback | None = None,
+        on_lifecycle_event: AnthropicMessagesLifecycleCallback | None = None,
     ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
         self._on_parse_error = on_parse_error
+        self._on_lifecycle_event = on_lifecycle_event
 
     def should_capture_event(self, event_name: str | None) -> bool:
-        return event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS
+        return event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS or (
+            event_name == "content_block_start" and self._on_lifecycle_event is not None
+        )
 
     def on_event_start(self, event_name: str | None) -> None:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_ANTHROPIC_SSE_SCALAR_FIELDS)
@@ -134,11 +145,10 @@ class _AnthropicMessagesSseUsageHandler:
                 self._on_parse_error(event_type, result.error)
             return
 
+        data_type = result.values.get(("type",))
         event_type = event_name
-        if event_type is None:
-            data_type = result.values.get(("type",))
-            if isinstance(data_type, str):
-                event_type = data_type
+        if event_type is None and isinstance(data_type, str):
+            event_type = data_type
 
         if event_type == "message_start":
             model = result.values.get(("message", "model"))
@@ -150,6 +160,19 @@ class _AnthropicMessagesSseUsageHandler:
             _store_selected_usage_values(result.values, self._usage, ("message", "usage"))
         elif event_type == "message_delta":
             _store_selected_usage_values(result.values, self._usage, ("usage",))
+
+        if self._on_lifecycle_event is None:
+            return
+        if isinstance(data_type, str) and event_name is not None and data_type != event_name:
+            return
+        if event_type == "message_start":
+            self._on_lifecycle_event(event_type, None)
+        elif event_type == "content_block_start":
+            block_type = result.values.get(("content_block", "type"))
+            self._on_lifecycle_event(
+                event_type,
+                block_type if isinstance(block_type, str) else None,
+            )
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._extractor = None

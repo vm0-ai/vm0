@@ -4779,22 +4779,29 @@
     {
       "idx": 682,
       "version": "7",
-      "when": 1784979723300,
-      "tag": "0682_cloudy_hercules",
+      "when": 1784982608570,
+      "tag": "0682_lethal_queen_noir",
       "breakpoints": true
     },
     {
       "idx": 683,
       "version": "7",
-      "when": 1784979723301,
-      "tag": "0683_backfill_artifact_catalog",
+      "when": 1784989210135,
+      "tag": "0683_artifact_catalog",
       "breakpoints": true
     },
     {
       "idx": 684,
       "version": "7",
-      "when": 1784979723302,
-      "tag": "0684_cleanup_artifact_registry",
+      "when": 1784989223506,
+      "tag": "0684_backfill_artifact_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 685,
+      "version": "7",
+      "when": 1784989233156,
+      "tag": "0685_cleanup_artifact_registry",
       "breakpoints": true
     }
   ]
