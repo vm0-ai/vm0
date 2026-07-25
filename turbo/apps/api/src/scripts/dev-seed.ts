@@ -338,6 +338,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.cache_creation", usd(6.25), 1_000_000],
   ]),
+  ...usageGroup("model", "claude-opus-5", [
+    ["tokens.input", usd(5), 1_000_000],
+    ["tokens.output", usd(25), 1_000_000],
+    ["tokens.cache_read", usd(0.5), 1_000_000],
+    ["tokens.cache_creation", usd(6.25), 1_000_000],
+  ]),
   ...usageGroup("model", "claude-opus-4-8", [
     ["tokens.input", usd(5), 1_000_000],
     ["tokens.output", usd(25), 1_000_000],

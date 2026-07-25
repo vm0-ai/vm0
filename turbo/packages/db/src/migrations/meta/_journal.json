@@ -4712,6 +4712,13 @@
       "when": 1784903241958,
       "tag": "0672_bouncy_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 673,
+      "version": "7",
+      "when": 1784940295284,
+      "tag": "0673_add_claude_opus_5_managed_data",
+      "breakpoints": true
     }
   ]
 }

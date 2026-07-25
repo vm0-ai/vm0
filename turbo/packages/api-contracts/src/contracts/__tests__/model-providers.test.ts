@@ -88,6 +88,7 @@ describe("model-first canonical catalog", () => {
   it("exposes the curated flat model list only", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
       "claude-fable-5",
+      "claude-opus-5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -139,6 +140,9 @@ describe("model-first canonical catalog", () => {
       true,
     );
     expect(supportedRunModelSchema.safeParse("claude-fable-5").success).toBe(
+      true,
+    );
+    expect(supportedRunModelSchema.safeParse("claude-opus-5").success).toBe(
       true,
     );
     expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
@@ -258,6 +262,10 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-fable-5")).toBe(
       true,
     );
+    expect(isLimitedFree1RestrictedRunModel("claude-opus-5")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("anthropic/claude-opus-5")).toBe(
+      true,
+    );
     expect(isLimitedFree1RestrictedRunModel("claude-opus-4-8")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-opus-4.8")).toBe(
       true,
@@ -280,6 +288,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("surfaces display labels for canonical models", () => {
+    expect(getCanonicalModelDisplayName("claude-opus-5")).toBe("Claude Opus 5");
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
     );
@@ -313,8 +322,12 @@ describe("model-first canonical catalog", () => {
     expect(normalizeRunModelId("anthropic/claude-fable-5")).toBe(
       "claude-fable-5",
     );
+    expect(normalizeRunModelId("anthropic/claude-opus-5")).toBe(
+      "claude-opus-5",
+    );
     expect(normalizeRunModelId("custom/model")).toBe("custom/model");
     expect(isSupportedRunModel("claude-fable-5")).toBe(true);
+    expect(isSupportedRunModel("claude-opus-5")).toBe(true);
     expect(isSupportedRunModel("glm-5.2")).toBe(true);
     expect(isSupportedRunModel("glm-5.1")).toBe(true);
     expect(isSupportedRunModel("mimo-v2.5")).toBe(true);
@@ -348,6 +361,20 @@ describe("model-first canonical catalog", () => {
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("anthropic/claude-fable-5")).toEqual([
+      "vm0",
+      "claude-code-oauth-token",
+      "anthropic-api-key",
+      "openrouter-api-key",
+      "vercel-ai-gateway",
+    ]);
+    expect(getProvidersForModel("claude-opus-5")).toEqual([
+      "vm0",
+      "claude-code-oauth-token",
+      "anthropic-api-key",
+      "openrouter-api-key",
+      "vercel-ai-gateway",
+    ]);
+    expect(getProvidersForModel("anthropic/claude-opus-5")).toEqual([
       "vm0",
       "claude-code-oauth-token",
       "anthropic-api-key",
@@ -458,6 +485,9 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("anthropic/claude-opus-4.8", "vm0")).toBe(
       true,
     );
+    expect(isModelSupportedByProvider("anthropic/claude-opus-5", "vm0")).toBe(
+      true,
+    );
     expect(isModelSupportedByProvider("MiniMax-M3", "minimax-api-key")).toBe(
       true,
     );
@@ -508,6 +538,15 @@ describe("model-first canonical catalog", () => {
     expect(
       getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-8"),
     ).toBe("claude-opus-4-8");
+    expect(getProviderRuntimeModel("anthropic-api-key", "claude-opus-5")).toBe(
+      "claude-opus-5",
+    );
+    expect(getProviderRuntimeModel("openrouter-api-key", "claude-opus-5")).toBe(
+      "anthropic/claude-opus-5",
+    );
+    expect(getProviderRuntimeModel("vercel-ai-gateway", "claude-opus-5")).toBe(
+      "anthropic/claude-opus-5",
+    );
     expect(
       getProviderRuntimeModel("anthropic-api-key", "claude-sonnet-5"),
     ).toBe("claude-sonnet-5");
@@ -553,7 +592,7 @@ describe("model-first canonical catalog", () => {
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-fable-5",
-      "claude-opus-4-8",
+      "claude-opus-5",
       "claude-sonnet-5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
@@ -586,6 +625,7 @@ describe("model-first canonical catalog", () => {
     expect(VM0_MODEL_PRICE_TIER).toEqual(
       expect.objectContaining({
         "claude-fable-5": "$$$$",
+        "claude-opus-5": "$$$",
         "gpt-5.6-sol": "$$$",
         "gpt-5.6-terra": "$$",
         "gpt-5.6-luna": "$",
@@ -603,6 +643,7 @@ describe("model-first canonical catalog", () => {
     );
     expect(getVm0ModelPriceTier("vm0-model")).toBeUndefined();
     expect(getVm0ModelPriceTier("claude-fable-5")).toBe("$$$$");
+    expect(getVm0ModelPriceTier("claude-opus-5")).toBe("$$$");
     expect(getVm0ModelPriceTier("gpt-5.6-sol")).toBe("$$$");
     expect(getVm0ModelPriceTier("gpt-5.6-terra")).toBe("$$");
     expect(getVm0ModelPriceTier("gpt-5.6-luna")).toBe("$");
@@ -726,6 +767,7 @@ describe("model selection for Anthropic-native providers", () => {
     (type) => {
       const models = getModels(type);
       expect(models).toContain("claude-fable-5");
+      expect(models).toContain("claude-opus-5");
       expect(models).toContain("claude-sonnet-5");
       expect(models).toContain("claude-sonnet-4-6");
       expect(models).toContain("claude-opus-4-6");
@@ -765,6 +807,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
   it("openrouter-api-key exposes OpenRouter-managed VM0 models after GLM", () => {
     expect(getModels("openrouter-api-key")).toEqual([
       "anthropic/claude-fable-5",
+      "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
       "anthropic/claude-sonnet-5",
@@ -781,7 +824,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
   });
 
   it.each(["openrouter-api-key", "vercel-ai-gateway"] as const)(
-    "%s supports Claude Fable 5",
+    "%s supports current Anthropic models",
     (type) => {
       expect(getModels(type)).toContain("anthropic/claude-fable-5");
       expect(isModelSupportedByProvider("anthropic/claude-fable-5", type)).toBe(
@@ -789,6 +832,13 @@ describe("model selection for Claude-compatible gateway providers", () => {
       );
       expect(getProviderRuntimeModel(type, "claude-fable-5")).toBe(
         "anthropic/claude-fable-5",
+      );
+      expect(getModels(type)).toContain("anthropic/claude-opus-5");
+      expect(isModelSupportedByProvider("anthropic/claude-opus-5", type)).toBe(
+        true,
+      );
+      expect(getProviderRuntimeModel(type, "claude-opus-5")).toBe(
+        "anthropic/claude-opus-5",
       );
     },
   );
@@ -820,6 +870,7 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels();
     expect(models).not.toContain("vm0-model");
     expect(models).toContain("claude-fable-5");
+    expect(models).toContain("claude-opus-5");
     expect(models).toContain("claude-opus-4-8");
     expect(models).toContain("kimi-k3");
     expect(models).toContain("kimi-k2.7-code");
@@ -846,6 +897,7 @@ describe("getVm0VisibleModels", () => {
 describe("normalizeVm0ModelId", () => {
   it.each([
     ["anthropic/claude-fable-5", "claude-fable-5"],
+    ["anthropic/claude-opus-5", "claude-opus-5"],
     ["anthropic/claude-opus-4.8", "claude-opus-4-8"],
     ["anthropic/claude-sonnet-5", "claude-sonnet-5"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
@@ -867,6 +919,8 @@ describe("model image input support", () => {
   it.each([
     "claude-fable-5",
     "anthropic/claude-fable-5",
+    "claude-opus-5",
+    "anthropic/claude-opus-5",
     "claude-sonnet-4-6",
     "claude-sonnet-5",
     "anthropic/claude-sonnet-5",

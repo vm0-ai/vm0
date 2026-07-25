@@ -6,6 +6,7 @@
  */
 export const SUPPORTED_RUN_MODELS = [
   "claude-fable-5",
+  "claude-opus-5",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
@@ -38,6 +39,7 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   Record<SupportedRunModel, Vm0ModelPriceTier>
 >({
   "claude-fable-5": "$$$$",
+  "claude-opus-5": "$$$",
   "gpt-5.6-sol": "$$$",
   "gpt-5.6-terra": "$$",
   "gpt-5.6-luna": "$",
