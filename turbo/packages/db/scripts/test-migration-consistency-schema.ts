@@ -997,6 +997,23 @@ async function validateConnectorCatalogRolloutGuardContraction(): Promise<void> 
             'sha256:${"a".repeat(64)}'
           ),
           (
+            'invalid-provenance-without-attempt',
+            1,
+            1,
+            NULL,
+            NULL,
+            1,
+            FALSE,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL
+          ),
+          (
             'invalid-missing-attempt-provenance',
             1,
             1,
@@ -1065,6 +1082,14 @@ async function validateConnectorCatalogRolloutGuardContraction(): Promise<void> 
             'sha256:${"d".repeat(64)}'
           )
       `);
+
+      await expectMigrationConstraintRejected(client, {
+        constraintName: attemptConstraint,
+        migrationIndex: 682,
+      });
+      await client.query(
+        `DELETE FROM "connector_catalog_sync_state" WHERE "source_id" = 'invalid-provenance-without-attempt'`,
+      );
 
       await expectMigrationConstraintRejected(client, {
         constraintName: attemptConstraint,
