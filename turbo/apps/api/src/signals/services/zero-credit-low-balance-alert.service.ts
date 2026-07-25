@@ -225,14 +225,7 @@ async function suppressedEmailKeys(
   const rows = await db
     .select({ emailAddress: emailSuppressions.emailAddress })
     .from(emailSuppressions)
-    .where(
-      sql`lower(${emailSuppressions.emailAddress}) IN (${sql.join(
-        lowerEmails.map((email) => {
-          return sql`${email}`;
-        }),
-        sql`, `,
-      )})`,
-    );
+    .where(inArray(sql`lower(${emailSuppressions.emailAddress})`, lowerEmails));
 
   return new Set(
     rows.map((row) => {
