@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.323.0](https://github.com/vm0-ai/vm0/compare/api-v1.322.2...api-v1.323.0) (2026-07-25)
+
+
+### Features
+
+* add the artifact catalog behind a per-org feature switch ([#23030](https://github.com/vm0-ai/vm0/issues/23030)) ([6faf025](https://github.com/vm0-ai/vm0/commit/6faf0253b7ed7e522660b028faa2a62372bd90b4))
+* **api:** graduate canonical slack ingress ([#23033](https://github.com/vm0-ai/vm0/issues/23033)) ([68ae6bd](https://github.com/vm0-ai/vm0/commit/68ae6bd2e310da3bfeb926f22a20b11c70909822))
+
+
+### Bug Fixes
+
+* stabilize workflow queue stale-sweep admission barrier ([#23065](https://github.com/vm0-ai/vm0/issues/23065)) ([5dd31a5](https://github.com/vm0-ai/vm0/commit/5dd31a58e19c4b691a6a19bc6b1223cb615d63fc))
+
+
+### Refactoring
+
+* reduce fallback slop in workflow schedules ([#23066](https://github.com/vm0-ai/vm0/issues/23066)) ([f498c76](https://github.com/vm0-ai/vm0/commit/f498c76b392dc5d08ef3770450ce75ace23aa3f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.0
+    * @vm0/core bumped to 8.467.1
+    * @vm0/db bumped to 1.141.0
+
 ## [1.322.2](https://github.com/vm0-ai/vm0/compare/api-v1.322.1...api-v1.322.2) (2026-07-25)
 
 
