@@ -8,6 +8,7 @@ import {
 import {
   CHAT_AUTOMATIONS_QUERY_PARAM,
   clearArtifactSidebarParams,
+  clearBrowserSessionSidebarParams,
   clearChatAutomationSidebarParams,
   clearMailDraftSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
@@ -34,6 +35,7 @@ export const openHeaderAutomationSidebar$ = command(
     params.set(CHAT_AUTOMATIONS_QUERY_PARAM, threadId);
     clearArtifactSidebarParams(params);
     clearMailDraftSidebarParams(params);
+    clearBrowserSessionSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );

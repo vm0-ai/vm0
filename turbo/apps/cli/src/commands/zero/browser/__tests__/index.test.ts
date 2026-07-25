@@ -50,12 +50,13 @@ function browser(status: "active" | "suspended" = "active") {
         ? "https://live.browser-use.com/?wss=secret-live-token"
         : null,
     proxyCountryCode: null,
-    timeoutMinutes: 30,
+    timeoutMinutes: 240,
     maxCredits: 500,
     grossCredits: 0,
     creditsCharged: 0,
+    idleExpiresAt: status === "active" ? "2026-07-24T10:10:00.000Z" : null,
     suspendedAt: status === "suspended" ? "2026-07-24T10:05:00.000Z" : null,
-    suspensionReason: status === "suspended" ? ("run_end" as const) : null,
+    suspensionReason: status === "suspended" ? ("idle" as const) : null,
     createdAt: "2026-07-24T10:00:00.000Z",
     updatedAt: "2026-07-24T10:00:00.000Z",
   } as const;
@@ -98,12 +99,12 @@ describe("zero browser command", () => {
     await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
-  it("exposes only resume, new, status, and view lifecycle commands", () => {
+  it("exposes only use, lease, resume, new, status, and view lifecycle commands", () => {
     expect(
       zeroBrowserCommand.commands.map((command) => {
         return command.name();
       }),
-    ).toStrictEqual(["resume", "new", "status", "view"]);
+    ).toStrictEqual(["use", "lease", "resume", "new", "status", "view"]);
   });
 
   it("creates a fresh browser and passes its CDP URL directly to agent-browser", async () => {
@@ -134,7 +135,6 @@ describe("zero browser command", () => {
     expect(requestBody).toStrictEqual({
       name: "booking",
       proxyCountryCode: null,
-      timeoutMinutes: 30,
       maxCredits: 500,
     });
     expect(authorization).toBe("Bearer test-zero-token");
@@ -150,11 +150,36 @@ describe("zero browser command", () => {
     expect(output).not.toContain(CDP_URL);
   });
 
-  it("resumes the thread browser without exposing a stop endpoint", async () => {
-    let resumeRequests = 0;
+  it("opens the thread browser, reports its reclaim time, and hides connection secrets", async () => {
+    let useRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/zero/browsers/resume", () => {
-        resumeRequests += 1;
+      http.post("http://localhost:3000/api/zero/browsers/use", () => {
+        useRequests += 1;
+        return HttpResponse.json(
+          { browser: browser("active"), cdpUrl: CDP_URL },
+          { status: 200 },
+        );
+      }),
+    );
+
+    await zeroBrowserCommand.parseAsync(["node", "cli", "use"]);
+
+    expect(useRequests).toBe(1);
+    expect(spawnSyncMock).toHaveBeenCalledWith(
+      "agent-browser",
+      ["--session", "zero-browser", "connect", CDP_URL],
+      { stdio: "ignore" },
+    );
+    const output = consoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("2026-07-24T10:10:00.000Z");
+    expect(output).not.toContain(CDP_URL);
+  });
+
+  it("keeps resume as a compatibility alias of use", async () => {
+    let useRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/zero/browsers/use", () => {
+        useRequests += 1;
         return HttpResponse.json(
           { browser: browser("active"), cdpUrl: CDP_URL },
           { status: 200 },
@@ -164,12 +189,39 @@ describe("zero browser command", () => {
 
     await zeroBrowserCommand.parseAsync(["node", "cli", "resume"]);
 
-    expect(resumeRequests).toBe(1);
+    expect(useRequests).toBe(1);
     expect(spawnSyncMock).toHaveBeenCalledWith(
       "agent-browser",
       ["--session", "zero-browser", "connect", CDP_URL],
       { stdio: "ignore" },
     );
+  });
+
+  it("extends the lease by a fixed window and reports the new reclaim time", async () => {
+    let leaseRequests = 0;
+    let leaseBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/browsers/lease",
+        async ({ request }) => {
+          leaseRequests += 1;
+          leaseBody = await request.json();
+          return HttpResponse.json(
+            { browser: browser("active") },
+            { status: 200 },
+          );
+        },
+      ),
+    );
+
+    await zeroBrowserCommand.parseAsync(["node", "cli", "lease"]);
+
+    expect(leaseRequests).toBe(1);
+    // The lease is not parameterizable: every call buys the same fixed window.
+    expect(leaseBody).toStrictEqual({});
+    expect(spawnSyncMock).not.toHaveBeenCalled();
+    const output = consoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("2026-07-24T10:10:00.000Z");
   });
 
   it("keeps provider connection URLs out of JSON output", async () => {

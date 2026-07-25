@@ -819,10 +819,14 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: ZeroRunRequest,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
+      extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
         runApp(context)(zeroRunsMainContract).create({
-          headers: authenticate(context, actor),
+          headers: {
+            ...authenticate(context, actor),
+            ...extraHeaders,
+          },
           body,
         }),
         statuses,

@@ -34,6 +34,7 @@ import {
   ARTIFACT_INBOX_QUERY_PARAM,
   ARTIFACT_QUERY_PARAM,
   clearArtifactSidebarParams,
+  clearBrowserSessionSidebarParams,
   clearChatAutomationSidebarParams,
   clearMailDraftSidebarParams,
   PRESENTATION_EDITOR_QUERY_PARAM,
@@ -329,6 +330,7 @@ function setArtifactPreviewParams(
   }
   clearChatAutomationSidebarParams(params);
   clearMailDraftSidebarParams(params);
+  clearBrowserSessionSidebarParams(params);
 }
 
 export const openArtifactSidebarPreview$ = command(
@@ -375,6 +377,7 @@ export const openPresentationEditor$ = command(({ get, set }, url: string) => {
   params.delete(ARTIFACT_HTML_EDIT_PARAM);
   clearChatAutomationSidebarParams(params);
   clearMailDraftSidebarParams(params);
+  clearBrowserSessionSidebarParams(params);
   set(updateSearchParams$, params);
 });
 
@@ -401,6 +404,7 @@ export const openArtifactInbox$ = command(({ get, set }, threadId: string) => {
   params.delete(ARTIFACT_HTML_EDIT_PARAM);
   clearChatAutomationSidebarParams(params);
   clearMailDraftSidebarParams(params);
+  clearBrowserSessionSidebarParams(params);
   set(internalArtifactInboxSection$, "all");
   set(internalArtifactInboxQuery$, "");
   set(internalArtifactInboxSearchOpen$, false);
@@ -434,6 +438,7 @@ export const openArtifactFromInbox$ = command(
     params.delete(ARTIFACT_HTML_EDIT_PARAM);
     clearChatAutomationSidebarParams(params);
     clearMailDraftSidebarParams(params);
+    clearBrowserSessionSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );
@@ -445,6 +450,7 @@ export const navigateArtifactSidebarImage$ = command(
     params.delete(ARTIFACT_HTML_EDIT_PARAM);
     clearChatAutomationSidebarParams(params);
     clearMailDraftSidebarParams(params);
+    clearBrowserSessionSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );

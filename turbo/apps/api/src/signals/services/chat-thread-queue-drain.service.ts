@@ -9,7 +9,11 @@ import {
   drainQueuedUserMessagesForThread$,
   type ChatCallbackPreCreateTimingCollector,
 } from "./internal-chat-run-callback.service";
-import { drainWorkflowQueueForThread$ } from "./zero-workflow-queue-drain.service";
+import {
+  drainWorkflowQueueForThread$,
+  type WorkflowQueueDrainResult,
+} from "./zero-workflow-queue-drain.service";
+import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 
@@ -17,6 +21,11 @@ interface DrainChatThreadQueueInput {
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
+  readonly workflowEventLaunch?: {
+    readonly eventId: string;
+    readonly apiStartTime: number;
+    readonly timing: ApiDispatchTimingCollector;
+  };
 }
 
 /**
@@ -35,18 +44,21 @@ export const drainChatThreadQueueForThread$ = command(
     { set },
     input: DrainChatThreadQueueInput,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<WorkflowQueueDrainResult | null> => {
     await set(
       drainQueuedUserMessagesForThread$,
       { chatThreadId: input.chatThreadId, timing: input.timing },
       signal,
     );
     signal.throwIfAborted();
-    await set(
+    return await set(
       drainWorkflowQueueForThread$,
       {
         chatThreadId: input.chatThreadId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+        ...(input.workflowEventLaunch
+          ? { workflowEventLaunch: input.workflowEventLaunch }
+          : {}),
       },
       signal,
     );

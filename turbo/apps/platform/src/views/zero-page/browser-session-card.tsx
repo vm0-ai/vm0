@@ -1,100 +1,121 @@
 import {
-  IconArrowsDiagonal,
   IconBrowser,
-  IconCoins,
+  IconChevronRight,
   IconLoader2,
-  IconPlayerPause,
 } from "@tabler/icons-react";
+import type { ZeroBrowserStatus } from "@vm0/api-contracts/contracts/zero-browser";
 import { cn } from "@vm0/ui";
-import { useLastLoadable } from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
+import {
+  currentBrowserSessionId$,
+  openBrowserSessionSidebar$,
+} from "../../signals/zero-page/browser-session-sidebar.ts";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
-  readonly fullPage?: boolean;
 }
 
-function statusLabel(status: string): string {
-  return status === "active"
-    ? "Live"
-    : status === "suspended"
-      ? "Suspended"
-      : `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+function statusLabel(status: ZeroBrowserStatus): string {
+  switch (status) {
+    case "active": {
+      return "Live";
+    }
+    case "suspended": {
+      return "Suspended";
+    }
+    case "creating":
+    case "resuming": {
+      return "Starting";
+    }
+    case "stopping": {
+      return "Stopping";
+    }
+    case "error": {
+      return "Error";
+    }
+  }
 }
 
-function BrowserSessionSkeleton({ fullPage }: { readonly fullPage: boolean }) {
+function BrowserSessionCardSkeleton() {
   return (
-    <div
-      className={cn(
-        "flex w-full items-center justify-center rounded-[var(--zero-card-radius)] border border-border/70 bg-card",
-        fullPage ? "h-full min-h-[480px]" : "aspect-video max-w-3xl",
-      )}
-    >
-      <IconLoader2 className="animate-spin text-muted-foreground" size={20} />
+    <div className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
+        <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
+      </span>
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="h-4 w-2/3 rounded bg-muted/70" />
+        <div className="h-3 w-1/3 rounded bg-muted/60" />
+      </div>
     </div>
   );
 }
 
-function BrowserSessionUnavailable({
-  fullPage,
-}: {
-  readonly fullPage: boolean;
-}) {
+function BrowserSessionUnavailable() {
   return (
     <div
-      className={cn(
-        "flex w-full flex-col items-center justify-center gap-2 rounded-[var(--zero-card-radius)] border border-border/70 bg-card text-center",
-        fullPage ? "h-full min-h-[480px]" : "min-h-48 max-w-3xl",
-      )}
+      data-browser-session-card
+      data-browser-session-status="unavailable"
+      className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
     >
-      <IconBrowser size={26} className="text-muted-foreground" />
-      <p className="text-sm font-medium text-foreground">Browser unavailable</p>
-      <p className="text-xs text-muted-foreground">
-        This browser does not belong to this chat or has been removed.
-      </p>
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
+        <IconBrowser size={22} className="text-muted-foreground" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium leading-5 text-foreground">
+          Browser unavailable
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          This browser does not belong to this chat or has been removed.
+        </span>
+      </span>
     </div>
   );
 }
 
-export function BrowserSessionCard({
-  signals,
-  fullPage = false,
-}: BrowserSessionCardProps) {
+// A fixed-height entry point. The live view is heavy and resizes as pages load,
+// so it lives in the right sidebar instead of inside the message stream.
+export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
   const sessionLoadable = useLastLoadable(signals.session$);
+  const selectedBrowserId = useGet(currentBrowserSessionId$);
+  const openSidebar = useSet(openBrowserSessionSidebar$);
 
   if (sessionLoadable.state === "loading") {
-    return <BrowserSessionSkeleton fullPage={fullPage} />;
+    return <BrowserSessionCardSkeleton />;
   }
   if (sessionLoadable.state === "hasError" || sessionLoadable.data === null) {
-    return <BrowserSessionUnavailable fullPage={fullPage} />;
+    return <BrowserSessionUnavailable />;
   }
 
   const session = sessionLoadable.data;
-  const liveUrl = session.status === "active" ? session.liveUrl : null;
-  const active = liveUrl !== null;
+  const selected = selectedBrowserId === signals.browserId;
   return (
-    <section
+    <button
+      type="button"
+      aria-label={`Open ${session.name} browser`}
       data-browser-session-card
       data-browser-session-status={session.status}
+      onClick={() => {
+        openSidebar(signals.browserId);
+      }}
       className={cn(
-        "flex w-full min-w-0 flex-col overflow-hidden rounded-[var(--zero-card-radius)] border border-border/70 bg-card shadow-sm",
-        fullPage ? "h-full min-h-[480px]" : "max-w-3xl",
+        "flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        selected ? "border-ring/60 bg-muted/20" : "border-border/70",
       )}
     >
-      <header className="flex min-h-12 items-center gap-3 border-b border-border/60 px-3.5 py-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
-          <IconBrowser size={17} className="text-foreground" />
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
+        <IconBrowser size={22} className="text-foreground" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium leading-5 text-foreground">
+          {session.name}
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {session.name}
-          </span>
-          <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-            <IconCoins size={12} />
-            {session.creditsCharged} credits charged
-          </span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          {session.creditsCharged} credits charged
         </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5 self-center">
         <span
           className={cn(
             "rounded-full px-2 py-1 text-[11px] font-medium",
@@ -109,48 +130,8 @@ export function BrowserSessionCard({
         >
           {statusLabel(session.status)}
         </span>
-        {!fullPage ? (
-          <a
-            href={signals.href}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={`Open ${session.name} browser in a new page`}
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <IconArrowsDiagonal size={16} />
-          </a>
-        ) : null}
-      </header>
-
-      {active ? (
-        <iframe
-          src={liveUrl}
-          title={`Live browser: ${session.name}`}
-          referrerPolicy="no-referrer"
-          allow="autoplay; clipboard-read; clipboard-write; fullscreen"
-          className={cn(
-            "w-full flex-1 border-0 bg-background",
-            fullPage ? "min-h-0" : "aspect-video min-h-[320px]",
-          )}
-        />
-      ) : (
-        <div
-          className={cn(
-            "flex flex-1 flex-col items-center justify-center gap-2 bg-muted/20 px-6 text-center",
-            fullPage ? "min-h-[420px]" : "min-h-[240px]",
-          )}
-        >
-          <IconPlayerPause size={26} className="text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">
-            Browser {statusLabel(session.status).toLowerCase()}
-          </p>
-          <p className="max-w-md text-xs leading-5 text-muted-foreground">
-            {session.status === "suspended"
-              ? "Run zero browser resume in the next run to restore this browser profile."
-              : "This browser is no longer accepting live connections."}
-          </p>
-        </div>
-      )}
-    </section>
+        <IconChevronRight size={16} className="text-muted-foreground" />
+      </span>
+    </button>
   );
 }
