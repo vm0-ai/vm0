@@ -166,7 +166,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);

@@ -492,8 +492,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show plan-upgrade guidance in Zero CLI help and render billing plan links as rich chat cards.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
