@@ -1,5 +1,5 @@
 {
-  "id": "1b072f21-3796-4c41-9d75-1d1cb213ed16",
+  "id": "0c7d197d-af7b-4fa1-96e9-1919742046f5",
   "prevId": "6e00fe23-0650-4f54-8a44-54ca2908b5ec",
   "version": "7",
   "dialect": "postgresql",
@@ -5502,12 +5502,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_attempt_metadata_revision": {
-          "name": "last_attempt_metadata_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_attempt_reused_cached_rejection": {
           "name": "last_attempt_reused_cached_rejection",
           "type": "boolean",
@@ -5565,12 +5559,6 @@
         "last_rejected_build_commit_sha": {
           "name": "last_rejected_build_commit_sha",
           "type": "varchar(40)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_rejected_candidate_fingerprint": {
-          "name": "last_rejected_candidate_fingerprint",
-          "type": "varchar(71)",
           "primaryKey": false,
           "notNull": false
         }
@@ -15469,12 +15457,6 @@
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "legacy_cutover_event_id": {
-          "name": "legacy_cutover_event_id",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

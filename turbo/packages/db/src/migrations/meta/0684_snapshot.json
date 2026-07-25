@@ -1,6 +1,6 @@
 {
-  "id": "49907267-98d6-4da2-b928-4d47194d66c3",
-  "prevId": "1b072f21-3796-4c41-9d75-1d1cb213ed16",
+  "id": "deedb074-23fe-46f0-9529-cde2b214cf4d",
+  "prevId": "0c7d197d-af7b-4fa1-96e9-1919742046f5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5502,12 +5502,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_attempt_metadata_revision": {
-          "name": "last_attempt_metadata_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_attempt_reused_cached_rejection": {
           "name": "last_attempt_reused_cached_rejection",
           "type": "boolean",
@@ -5565,12 +5559,6 @@
         "last_rejected_build_commit_sha": {
           "name": "last_rejected_build_commit_sha",
           "type": "varchar(40)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_rejected_candidate_fingerprint": {
-          "name": "last_rejected_candidate_fingerprint",
-          "type": "varchar(71)",
           "primaryKey": false,
           "notNull": false
         }
