@@ -66,7 +66,10 @@ interface MercuryRefreshResult {
 
 /**
  * Build Mercury OAuth authorization URL.
- * Requests the read scope for account access and offline_access for a refresh token.
+ * Requests every scope Mercury registered for our client: openid for the
+ * authenticated user's identity, read for accounts and transactions, and
+ * offline_access for a refresh token. Mercury grants read-only access only,
+ * so there is no write scope to request.
  */
 export function buildMercuryAuthorizationUrl(
   authCodeGrant: ConnectorAuthCodeGrantConfig,

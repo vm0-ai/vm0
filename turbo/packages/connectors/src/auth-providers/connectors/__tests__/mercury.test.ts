@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("connector/providers/mercury", () => {
   describe("buildMercuryAuthorizationUrl", () => {
-    it("builds a production URL with read and offline_access scopes", () => {
+    it("builds a production URL requesting every granted scope", () => {
       const url = buildMercuryAuthorizationUrl(
         authCodeGrant(),
         "test-client-id",
@@ -45,7 +45,7 @@ describe("connector/providers/mercury", () => {
       );
       expect(url).toContain("response_type=code");
       expect(url).toContain("state=test-state");
-      expect(url).toContain("scope=read+offline_access");
+      expect(url).toContain("scope=openid+read+offline_access");
     });
 
     it("builds a sandbox URL when MERCURY_OAUTH_ENVIRONMENT is sandbox", () => {
@@ -77,7 +77,7 @@ describe("connector/providers/mercury", () => {
             access_token: "mercury-access-token",
             refresh_token: "mercury-refresh-token",
             expires_in: 3600,
-            scope: "read offline_access",
+            scope: "openid read offline_access",
           });
         },
       );
@@ -104,7 +104,7 @@ describe("connector/providers/mercury", () => {
       expect(result.accessToken).toBe("mercury-access-token");
       expect(result.refreshToken).toBe("mercury-refresh-token");
       expect(result.expiresIn).toBe(3600);
-      expect(result.scopes).toEqual(["read", "offline_access"]);
+      expect(result.scopes).toEqual(["openid", "read", "offline_access"]);
       expect(result.userInfo.id).toBe("account-123");
       expect(result.userInfo.username).toBe("Max & Zoe, Inc.");
     });
@@ -116,7 +116,7 @@ describe("connector/providers/mercury", () => {
         () => {
           return HttpResponse.json({
             access_token: "sandbox-access-token",
-            scope: "read offline_access",
+            scope: "openid read offline_access",
           });
         },
       );
