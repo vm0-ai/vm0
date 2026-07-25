@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.256.0](https://github.com/vm0-ai/vm0/compare/cli-v9.255.0...cli-v9.256.0) (2026-07-25)
+
+
+### Features
+
+* **billing:** enable plan upgrade guidance globally ([#23019](https://github.com/vm0-ai/vm0/issues/23019)) ([4f6feb6](https://github.com/vm0-ai/vm0/commit/4f6feb654f4c3a0b908786e481f91cbbb235ebb9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.229.1
+    * @vm0/core bumped to 8.466.0
+
 ## [9.255.0](https://github.com/vm0-ai/vm0/compare/cli-v9.254.2...cli-v9.255.0) (2026-07-25)
 
 

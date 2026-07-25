@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.2...guest-agent-v0.56.3) (2026-07-25)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify oversized session history failures ([#23020](https://github.com/vm0-ai/vm0/issues/23020)) ([13b74f3](https://github.com/vm0-ai/vm0/commit/13b74f3d501b1e2f3be539969d3a9eb3479c7d3e))
+
 ## [0.56.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.1...guest-agent-v0.56.2) (2026-07-25)
 
 

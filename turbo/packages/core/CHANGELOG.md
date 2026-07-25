@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.466.0](https://github.com/vm0-ai/vm0/compare/core-v8.465.0...core-v8.466.0) (2026-07-25)
+
+
+### Features
+
+* **billing:** enable plan upgrade guidance globally ([#23019](https://github.com/vm0-ai/vm0/issues/23019)) ([4f6feb6](https://github.com/vm0-ai/vm0/commit/4f6feb654f4c3a0b908786e481f91cbbb235ebb9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.1
+
 ## [8.465.0](https://github.com/vm0-ai/vm0/compare/core-v8.464.1...core-v8.465.0) (2026-07-25)
 
 

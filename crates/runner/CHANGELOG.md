@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.148.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.0...runner-rs-v0.148.1) (2026-07-25)
+
+
+### Bug Fixes
+
+* **mitm-addon:** reject null host policy fields ([#23013](https://github.com/vm0-ai/vm0/issues/23013)) ([8178a3f](https://github.com/vm0-ai/vm0/commit/8178a3f642924f3d64cc7ca68abab78819767219))
+* **runner:** reject forbidden provider host characters ([#23015](https://github.com/vm0-ai/vm0/issues/23015)) ([a0397d6](https://github.com/vm0-ai/vm0/commit/a0397d65a2642c4910411b62c349e0c042ee8815))
+
+
+### Documentation
+
+* **mitm-addon:** fix proxy registry source reference ([#23012](https://github.com/vm0-ai/vm0/issues/23012)) ([6b074eb](https://github.com/vm0-ai/vm0/commit/6b074ebc62a6c1bba9c0c99c4f672b13f5633655))
+* **python:** clarify path pattern validation boundary ([#23011](https://github.com/vm0-ai/vm0/issues/23011)) ([4d10854](https://github.com/vm0-ai/vm0/commit/4d10854f7b48c206a5db084d5035eeb8817b75ca))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid zstd frame-tail copies ([#23016](https://github.com/vm0-ai/vm0/issues/23016)) ([fe0c95f](https://github.com/vm0-ai/vm0/commit/fe0c95ffa070d194c7a617096958a986cb7c4aaf))
+
 ## [0.148.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.19...runner-rs-v0.148.0) (2026-07-25)
 
 
