@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
   webhookModelUsageObservationContract,
-  webhookModelUsageObservationV2Contract,
   webhookTelemetryContract,
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
@@ -246,12 +245,12 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const modelUsageObservationV2Body$ = bodyResultOf(
-  webhookModelUsageObservationV2Contract.send,
+const modelUsageObservationBody$ = bodyResultOf(
+  webhookModelUsageObservationContract.send,
 );
-const modelUsageObservationV2$ = command(
+const modelUsageObservation$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const bodyResult = await get(modelUsageObservationV2Body$);
+    const bodyResult = await get(modelUsageObservationBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -431,11 +430,7 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   },
   {
     route: webhookModelUsageObservationContract.send,
-    handler: modelUsageObservationV2$,
-  },
-  {
-    route: webhookModelUsageObservationV2Contract.send,
-    handler: modelUsageObservationV2$,
+    handler: modelUsageObservation$,
   },
   {
     route: webhookTelemetryContract.send,

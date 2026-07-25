@@ -4733,6 +4733,13 @@
       "when": 1784950319642,
       "tag": "0675_add_model_usage_observation_compatibility_view",
       "breakpoints": true
+    },
+    {
+      "idx": 676,
+      "version": "7",
+      "when": 1784955986223,
+      "tag": "0676_drop_model_usage_observation_compatibility_view",
+      "breakpoints": true
     }
   ]
 }

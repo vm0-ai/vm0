@@ -10,7 +10,7 @@ import {
   webhookCompleteContract,
   webhookEventsContract,
   webhookHeartbeatContract,
-  webhookModelUsageObservationV2Contract,
+  webhookModelUsageObservationContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookStripeContract,
@@ -55,7 +55,7 @@ type AgentUsageEventBody = z.infer<
   (typeof webhookUsageEventContract.send)["body"]
 >;
 type AgentModelUsageObservationV2Body = z.infer<
-  (typeof webhookModelUsageObservationV2Contract.send)["body"]
+  (typeof webhookModelUsageObservationContract.send)["body"]
 >;
 type AgentStoragePrepareBody = z.infer<
   (typeof webhookStoragesPrepareContract.prepare)["body"]
@@ -729,7 +729,7 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookModelUsageObservationV2Contract).send({
+        setupApp({ context })(webhookModelUsageObservationContract).send({
           headers,
           body,
         }),
@@ -743,7 +743,7 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookModelUsageObservationV2Contract).send({
+        setupApp({ context })(webhookModelUsageObservationContract).send({
           headers,
           body: body as AgentModelUsageObservationV2Body,
         }),
