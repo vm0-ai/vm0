@@ -110,7 +110,11 @@ export function createBrowserSessionSignals(
   // The card state is loaded once. Only the panel follows the live session,
   // because only the panel can act on it.
   const session$ = computed(async (get) => {
-    return await fetchBrowserSession(get(zeroClient$), target, get(pageSignal$));
+    return await fetchBrowserSession(
+      get(zeroClient$),
+      target,
+      get(pageSignal$),
+    );
   });
 
   const panelReloadVersion$ = state(0);
@@ -122,11 +126,7 @@ export function createBrowserSessionSignals(
       get(panelReloadVersion$);
       const override = get(panelOverride$);
       return override === undefined
-        ? await fetchBrowserSession(
-            get(zeroClient$),
-            target,
-            get(pageSignal$),
-          )
+        ? await fetchBrowserSession(get(zeroClient$), target, get(pageSignal$))
         : override;
     },
   );

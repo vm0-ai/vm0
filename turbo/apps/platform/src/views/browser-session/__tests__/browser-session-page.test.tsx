@@ -5,7 +5,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -92,11 +95,15 @@ describe("browser session page", () => {
       path: `/browsers/${browserId}`,
     });
 
-    const resume = await screen.findByRole("button", {
-      name: "Resume browser",
+    const resume = await waitFor(() => {
+      const button = queryAllByRoleFast("button").find((candidate) => {
+        return candidate.textContent === "Resume browser";
+      });
+      expect(button).toBeDefined();
+      return button;
     });
     expect(getRequests).toBeGreaterThan(0);
-    resume.click();
+    resume?.click();
 
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
