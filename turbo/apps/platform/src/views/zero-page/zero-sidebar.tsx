@@ -35,7 +35,6 @@ import {
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { defaultAgentName$ } from "../../signals/agent.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import {
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
@@ -134,14 +133,6 @@ const FOOTER_NAV = [
     iconImg: slackIcon,
   },
 ] as const satisfies readonly FooterNavItem[];
-
-// Leaf component: subscribes to currentChatAgentId$ so ZeroSidebar doesn't re-render on agent changes.
-// useLastResolved keeps the previously-resolved agent ID during re-loads, preventing unnecessary
-// remounts of ChatThreadsSection that would cause the chat list to flash.
-function ChatThreadsSectionWithKey() {
-  const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  return <ChatThreadsSection key={currentChatAgentId} />;
-}
 
 // Shared subscription hooks. Each sibling component pulls its own state from
 // signals via these instead of receiving anything from a parent through props.
@@ -485,7 +476,7 @@ function ExpandedSidebarSections() {
   return (
     <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
       <PinnedAgentListSection />
-      <ChatThreadsSectionWithKey />
+      <ChatThreadsSection />
     </div>
   );
 }
@@ -827,7 +818,7 @@ function ChatListColumn() {
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pt-1">
         <PinnedAgentListSection layout="horizontal" />
-        <ChatThreadsSectionWithKey />
+        <ChatThreadsSection />
       </div>
       <div className="px-2 pb-2">
         <SidebarUpgradeCard />
