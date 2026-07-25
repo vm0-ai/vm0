@@ -1122,7 +1122,11 @@ export function createBddIntegrationApi(context: TestContext) {
 
     mockSlackRunResultOutput(text: string): void {
       context.mocks.axiom.query.mockResolvedValueOnce([
-        { eventType: "result", eventData: { result: text } },
+        {
+          eventType: "result",
+          sequenceNumber: 0,
+          eventData: { result: text },
+        },
       ]);
     },
 
@@ -1130,6 +1134,7 @@ export function createBddIntegrationApi(context: TestContext) {
       context.mocks.axiom.query.mockResolvedValueOnce([
         {
           eventType: "item.completed",
+          sequenceNumber: 0,
           eventData: { item: { type: "agent_message", text } },
         },
       ]);

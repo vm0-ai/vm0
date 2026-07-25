@@ -11,6 +11,7 @@ import { db$ } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
+import { handleChatInternalCallback$ } from "./internal-chat-run-callback.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
 import { handleSlackOrgInternalCallback$ } from "./internal-slack-org-run-callback.service";
 import { handleTeamsOrgInternalCallback$ } from "./internal-teams-org-run-callback.service";
@@ -82,11 +83,15 @@ export const dispatchProgressCallbacks$ = command(
           status: "progress" as const,
           payload: callback.payload,
         };
-        if (
-          internalKind === "chat" ||
-          internalKind === "slack:chat" ||
-          internalKind === "feishu:chat"
-        ) {
+        if (internalKind === "chat") {
+          await set(
+            handleChatInternalCallback$,
+            { callback: progressCallback },
+            signal,
+          );
+          return;
+        }
+        if (internalKind === "slack:chat" || internalKind === "feishu:chat") {
           return;
         }
         if (internalKind === "agentphone") {

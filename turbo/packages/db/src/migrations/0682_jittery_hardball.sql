@@ -1,0 +1,1 @@
+ALTER TABLE "slack_chat_thread_routes" ADD COLUMN "legacy_cutover_event_id" text;

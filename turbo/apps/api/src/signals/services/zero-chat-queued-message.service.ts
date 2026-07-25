@@ -20,6 +20,7 @@ import {
   insertChatMessage,
   updateChatMessage,
 } from "./zero-chat-message.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
@@ -523,5 +524,101 @@ export async function discardUnclaimedUserMessage(
     if (!tombstone) {
       throw new Error("Failed to append discarded user message tombstone");
     }
+  });
+}
+
+/**
+ * Consume the current queue head without a run and append canonical user and
+ * assistant replacements that explain a permanent integration admission
+ * failure.
+ */
+export async function failQueuedUserMessage(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+    readonly assistantContent: string;
+    readonly errorMarker: string;
+    readonly currentTime: Date;
+  },
+): Promise<{ readonly assistantMessageId: string } | null> {
+  return await db.transaction(async (tx) => {
+    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
+      return null;
+    }
+    if (
+      (await loadNextUnclaimedQueuedUserMessageId(tx, args.threadId)) !==
+      args.messageId
+    ) {
+      return null;
+    }
+
+    const [queued] = await tx
+      .select({
+        content: chatMessages.content,
+        structuredPrompt: chatMessages.structuredPrompt,
+        attachFiles: chatMessages.attachFiles,
+        attachFileMetadata: chatMessages.attachFileMetadata,
+        generationTemplate: chatMessages.generationTemplate,
+      })
+      .from(chatMessageQueue)
+      .innerJoin(
+        chatMessages,
+        eq(chatMessages.id, chatMessageQueue.chatMessageId),
+      )
+      .where(
+        and(
+          inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
+          eq(chatMessageQueue.chatThreadId, args.threadId),
+          eq(chatMessageQueue.chatMessageId, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+          eq(chatMessages.role, "user"),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!queued) {
+      return null;
+    }
+
+    const replacement = await updateChatMessage(tx, args.messageId, {
+      chatThreadId: args.threadId,
+      role: "user",
+      content: queued.content,
+      structuredPrompt: queued.structuredPrompt,
+      attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
+      attachFileMetadata: queued.attachFileMetadata
+        ? [...queued.attachFileMetadata]
+        : null,
+      generationTemplate: queued.generationTemplate,
+      runId: null,
+      error: args.errorMarker,
+      createdAt: args.currentTime,
+    });
+    if (!replacement) {
+      return null;
+    }
+    if (
+      !(await deleteUserMessageQueueItem(tx, {
+        threadId: args.threadId,
+        messageId: args.messageId,
+      }))
+    ) {
+      throw new Error("Failed integration queue item disappeared");
+    }
+
+    const assistant = await insertChatMessage(tx, {
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: args.assistantContent,
+      runId: null,
+      error: args.errorMarker,
+      createdAt: new Date(args.currentTime.getTime() + 1),
+    });
+    if (!assistant) {
+      throw new Error("Failed to append integration admission error");
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId, assistant.createdAt);
+    return { assistantMessageId: assistant.id };
   });
 }

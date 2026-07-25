@@ -43,6 +43,12 @@ export const slackChatThreadRoutes = pgTable(
       },
       { onDelete: "cascade" },
     ),
+    /**
+     * The first canonical event that promoted a legacy route. A nullable
+     * marker distinguishes late retries of pre-cutover legacy events from a
+     * retry of the event that performed the promotion.
+     */
+    legacyCutoverEventId: text("legacy_cutover_event_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
