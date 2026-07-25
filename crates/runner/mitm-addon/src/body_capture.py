@@ -29,6 +29,7 @@ _TEXT_APPLICATION_SUBTYPES = frozenset(
 )
 
 _HTTP_FIELD_NAME_PATTERN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+# RFC 6838 section 4.2 limits registered media type names to 127 ASCII characters.
 _MEDIA_TYPE_NAME_PATTERN = re.compile(r"[0-9A-Za-z][!#$&+\-.^_0-9A-Za-z]{0,126}")
 _HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
 _HTTP_OPTIONAL_WHITESPACE_PATTERN = r"[ \t]*"
