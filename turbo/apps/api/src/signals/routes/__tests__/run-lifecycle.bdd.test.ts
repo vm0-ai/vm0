@@ -8398,6 +8398,50 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 });
 
 describe("RUN-03: user-runner protocol and runner authentication", () => {
+  it("passes a valid preview bypass header or cookie into the run environment", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const previewBypass = "bdd-preview-bypass";
+    const requests = [
+      {
+        prompt: "preview bypass from header",
+        headers: { "x-vercel-protection-bypass": previewBypass },
+      },
+      {
+        prompt: "preview bypass from cookie",
+        headers: {
+          cookie: `other=value; x-vercel-protection-bypass=${previewBypass}`,
+        },
+      },
+    ] as const;
+
+    for (const request of requests) {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", previewBypass);
+      const created = await api.requestCreateRun(
+        actor,
+        {
+          agentId,
+          prompt: request.prompt,
+          modelProvider: "anthropic-api-key",
+        },
+        [201],
+        request.headers,
+      );
+      mockEnv("ENV", "development");
+
+      expect(created.status).toBe(201);
+      if (created.status !== 201) {
+        throw new Error("Expected preview run creation to succeed");
+      }
+      const claim = await api.claimRunnerJob(created.body.runId);
+      expect(claim.environment).toMatchObject({
+        VERCEL_AUTOMATION_BYPASS_SECRET: previewBypass,
+      });
+      await api.requestCancelRun(actor, created.body.runId, [200]);
+    }
+  });
+
   it("accepts previous runner telemetry", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();

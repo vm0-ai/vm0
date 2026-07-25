@@ -21,6 +21,12 @@ import { matchedRoutes } from "hono/route";
 import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
 import { flushLogs, logger } from "./lib/log";
+import {
+  cookieHeaderValue,
+  previewAutomationBypassSecret,
+  requestHasPreviewAutomationBypassHeaderOrCookie,
+  VERCEL_PROTECTION_BYPASS_HEADER,
+} from "./lib/preview-automation-bypass";
 import { now } from "./lib/time";
 import { isSupportedWebClientVersion } from "./lib/web-client-compatibility";
 import { waitUntil } from "./signals/context/wait-until";
@@ -41,8 +47,6 @@ import {
 const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
-const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
-const VERCEL_PROTECTION_BYPASS_COOKIE = VERCEL_PROTECTION_BYPASS_HEADER;
 const PREVIEW_AUTOMATION_BYPASS_ERROR = "Preview automation bypass required";
 const BYPASS_FINGERPRINT_LENGTH = 12;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
@@ -302,67 +306,17 @@ function requestHeader(context: Context, name: string): string | undefined {
   return presentHeaderValue(context.req.raw.headers.get(name));
 }
 
-function previewAutomationBypassSecret(): string | undefined {
-  if (env("ENV") !== "preview") {
-    return undefined;
-  }
-  return env("VERCEL_AUTOMATION_BYPASS_SECRET");
-}
-
-function unquoteCookieValue(value: string): string {
-  return value.startsWith('"') && value.endsWith('"')
-    ? value.slice(1, -1)
-    : value;
-}
-
-function safeDecodeURIComponent(value: string): string {
-  const result = safeSync(() => {
-    return decodeURIComponent(value);
-  });
-  return "ok" in result ? result.ok : value;
-}
-
-function cookieHeaderValue(
-  cookieHeader: string | undefined,
-  name: string,
-): string | undefined {
-  for (const cookie of cookieHeader?.split(";") ?? []) {
-    const separatorIndex = cookie.indexOf("=");
-    if (separatorIndex === -1) {
-      continue;
-    }
-    const key = cookie.slice(0, separatorIndex).trim();
-    if (key !== name) {
-      continue;
-    }
-    return unquoteCookieValue(cookie.slice(separatorIndex + 1).trim());
-  }
-  return undefined;
-}
-
-function cookieHeaderHasBypassSecret(
-  cookieHeader: string | undefined,
-  secret: string,
-): boolean {
-  const value = cookieHeaderValue(
-    cookieHeader,
-    VERCEL_PROTECTION_BYPASS_COOKIE,
-  );
-  return value === secret || safeDecodeURIComponent(value ?? "") === secret;
-}
-
 function requestHasPreviewAutomationBypass(
   context: Context,
   secret: string,
 ): boolean {
-  if (requestHeader(context, VERCEL_PROTECTION_BYPASS_HEADER) === secret) {
+  if (
+    requestHasPreviewAutomationBypassHeaderOrCookie(context.req.raw, secret)
+  ) {
     return true;
   }
   const url = safeUrlParse(context.req.url);
-  if (url?.searchParams.get(VERCEL_PROTECTION_BYPASS_HEADER) === secret) {
-    return true;
-  }
-  return cookieHeaderHasBypassSecret(requestHeader(context, "cookie"), secret);
+  return url?.searchParams.get(VERCEL_PROTECTION_BYPASS_HEADER) === secret;
 }
 
 function isCorsPreflightRequest(context: Context): boolean {
@@ -408,7 +362,7 @@ function previewAutomationBypassDebug(context: Context, secret: string) {
     cookie: bypassFingerprint(
       cookieHeaderValue(
         requestHeader(context, "cookie"),
-        VERCEL_PROTECTION_BYPASS_COOKIE,
+        VERCEL_PROTECTION_BYPASS_HEADER,
       ),
     ),
     cookieHeaderPresent: Boolean(requestHeader(context, "cookie")),
