@@ -42,6 +42,7 @@ const webhooksApi = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
+const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
@@ -293,7 +294,43 @@ async function executeDueWorkflowAutomations(): Promise<void> {
   expect(response.status).toBe(200);
 }
 
+async function cleanupSandboxes(): Promise<void> {
+  const response = await createApp({ signal: context.signal }).request(
+    CRON_CLEANUP_SANDBOXES_ROUTE,
+    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+  );
+  expect(response.status).toBe(200);
+}
+
 describe("workflow queue", () => {
+  it("does not let the stale sweep race a newly admitted workflow event", async () => {
+    mockNow(Date.UTC(2020, 0, 1));
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const workflowRequest = postWorkflowWebhook(automation, "fresh event");
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    await cleanupSandboxes();
+    await expect(admissionLock.waiterCount()).resolves.toBe(1);
+
+    admissionLock.release();
+    const result = await workflowRequest;
+    await admissionLock.done;
+    const runId = expectAcceptedRunId(result);
+    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
+      runId,
+    ]);
+  });
+
   it("queues webhook events behind the active run and drains one per completion", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);

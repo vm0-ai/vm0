@@ -3,8 +3,9 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
+import { nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import { pendingChatThreadQueueThreadIds } from "./chat-message-queue.service";
+import { staleChatThreadQueueThreadIds } from "./chat-message-queue.service";
 import {
   drainQueuedUserMessagesForThread$,
   type ChatCallbackPreCreateTimingCollector,
@@ -16,6 +17,7 @@ import {
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
+const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
 
 interface DrainChatThreadQueueInput {
   readonly chatThreadId: string;
@@ -104,10 +106,10 @@ export const drainStaleChatThreadQueues$ = command(
     signal: AbortSignal,
   ): Promise<number> => {
     const db = set(writeDb$);
-    const threadIds = await pendingChatThreadQueueThreadIds(
-      db,
-      DRAIN_SWEEP_LIMIT,
-    );
+    const threadIds = await staleChatThreadQueueThreadIds(db, {
+      staleBefore: new Date(nowDate().getTime() - STALE_QUEUE_ITEM_AGE_MS),
+      limit: DRAIN_SWEEP_LIMIT,
+    });
     signal.throwIfAborted();
     for (const chatThreadId of threadIds) {
       await set(
