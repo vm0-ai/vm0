@@ -17,7 +17,7 @@ const browserUseLiveUrlSchema = z.url().refine((value) => {
 const browserUseCdpUrlSchema = z.url().refine((value) => {
   const url = new URL(value);
   return (
-    url.protocol === "wss:" &&
+    url.protocol === "https:" &&
     (url.hostname === "browser-use.com" ||
       url.hostname.endsWith(".browser-use.com"))
   );

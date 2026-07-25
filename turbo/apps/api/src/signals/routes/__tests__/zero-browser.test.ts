@@ -4,6 +4,7 @@ import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron"
 import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { z } from "zod";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -54,20 +55,19 @@ function providerBrowser(
   return {
     id,
     status,
-    timeoutAt: "2026-07-24T11:00:00.000Z",
-    startedAt: "2026-07-24T10:00:00.000Z",
     liveUrl:
       status === "active"
         ? "https://live.browser-use.com/?wss=provider-live-token"
         : null,
-    cdpUrl:
-      status === "active"
-        ? "wss://connect.browser-use.com/?token=provider-cdp-token"
-        : null,
-    finishedAt: status === "stopped" ? "2026-07-24T10:10:00.000Z" : null,
+    cdpUrl: status === "active" ? `https://${id}.cdp.browser-use.com/` : null,
+    timeoutAt: "2026-07-24T11:00:00.000000Z",
+    startedAt: "2026-07-24T10:00:00.000000Z",
+    finishedAt: status === "stopped" ? "2026-07-24T10:10:00.000000Z" : null,
     proxyUsedMb: args.proxyCost === "0.1" ? "20" : "0",
     proxyCost: args.proxyCost ?? "0",
-    browserCost: args.browserCost ?? "0",
+    browserCost: args.browserCost ?? "0.0003333333333333333333333333333",
+    agentSessionId: null,
+    recordingUrl: null,
   };
 }
 
@@ -186,10 +186,10 @@ describe("zero browser route", () => {
         expect(request.headers.get("x-browser-use-api-key")).toBe(
           "test-browser-use-key",
         );
-        const body = await request.json();
-        expect(body).toMatchObject({
-          name: expect.stringMatching(/^vm0-browser-profile-[0-9a-f-]{36}$/u),
-        });
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        expect(body.name).toMatch(/^vm0-browser-profile-[0-9a-f-]{36}$/u);
         profileCreates += 1;
         if (profileCreates > 1) {
           return HttpResponse.json(
@@ -202,10 +202,12 @@ describe("zero browser route", () => {
         return HttpResponse.json(
           {
             id: profileId,
-            createdAt: "2026-07-24T10:00:00.000Z",
-            updatedAt: "2026-07-24T10:00:00.000Z",
-            userId: "test-user",
-            name: "test-profile",
+            userId: null,
+            name: body.name,
+            lastUsedAt: null,
+            createdAt: "2026-07-24T10:00:00.000000Z",
+            updatedAt: "2026-07-24T10:00:00.000000Z",
+            cookieDomains: null,
           },
           { status: 201 },
         );
@@ -290,7 +292,9 @@ describe("zero browser route", () => {
       maxCredits: 150,
       viewerUrl: `https://app.vm0.ai/browsers/${created.body.browser.id}`,
     });
-    expect(created.body.cdpUrl).toContain("provider-cdp-token");
+    expect(created.body.cdpUrl).toMatch(
+      /^https:\/\/[0-9a-f-]{36}\.cdp\.browser-use\.com\/$/u,
+    );
     expect(createdInOtherThread.body.browser).toMatchObject({
       name: "research",
       status: "active",
@@ -448,24 +452,33 @@ describe("zero browser route", () => {
     });
     expect(missing.status).toBe(404);
     expect(providerCreateBodies).toStrictEqual([
-      expect.objectContaining({
+      {
         profileId,
         proxyCountryCode: null,
         timeout: 30,
+        browserScreenWidth: 1440,
+        browserScreenHeight: 900,
+        allowResizing: false,
         enableRecording: false,
-      }),
-      expect.objectContaining({
+      },
+      {
         profileId,
         proxyCountryCode: null,
         timeout: 30,
+        browserScreenWidth: 1440,
+        browserScreenHeight: 900,
+        allowResizing: false,
         enableRecording: false,
-      }),
-      expect.objectContaining({
+      },
+      {
         profileId,
         proxyCountryCode: null,
         timeout: 30,
+        browserScreenWidth: 1440,
+        browserScreenHeight: 900,
+        allowResizing: false,
         enableRecording: false,
-      }),
+      },
     ]);
 
     const reconciled = await accept(
