@@ -3035,11 +3035,11 @@ async function validateModelObservationContractCleanup(): Promise<void> {
         activeKeyPresent: boolean;
         legacyColumnsAbsent: boolean;
         legacyKeyAbsent: boolean;
-        legacyTableAbsent: boolean;
+        compatibilityViewAbsent: boolean;
       }>(`
         SELECT
-          to_regclass('public.model_usage_observation') IS NULL
-            AS "legacyTableAbsent",
+          to_regclass('public.compact_model_usage_observation') IS NULL
+            AS "compatibilityViewAbsent",
           NOT EXISTS (
             SELECT 1
             FROM information_schema.columns
@@ -3070,7 +3070,7 @@ async function validateModelObservationContractCleanup(): Promise<void> {
       `);
       assert.deepEqual(contractState.rows, [
         {
-          legacyTableAbsent: true,
+          compatibilityViewAbsent: true,
           legacyColumnsAbsent: true,
           legacyKeyAbsent: true,
           activeKeyPresent: true,
