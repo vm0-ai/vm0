@@ -149,7 +149,11 @@ export const browserSessionInstances = pgTable(
     // reconciler reclaims it once the lease expires. updatedAt cannot carry
     // this because the reconciler bumps updatedAt on every healthy pass.
     lastTouchedAt: timestamp("last_touched_at").defaultNow().notNull(),
-    idleExpiresAt: timestamp("idle_expires_at").defaultNow().notNull(),
+    // The default grants a full lease window so rows inserted by an API version
+    // that predates this column are not reclaimed the moment they are created.
+    idleExpiresAt: timestamp("idle_expires_at")
+      .default(sql`now() + interval '10 minutes'`)
+      .notNull(),
     stopRequestedAt: timestamp("stop_requested_at"),
     finishedAt: timestamp("finished_at"),
     settledAt: timestamp("settled_at"),

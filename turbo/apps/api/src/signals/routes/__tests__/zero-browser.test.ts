@@ -386,7 +386,10 @@ describe("zero browser route", () => {
     expect(profileCreates).toBe(1);
     expect(deletedProfiles).toStrictEqual([]);
 
-    // A terminal run leaves its browser live so the user can keep using it.
+    // A terminal run leaves its browser live so the user can keep using it, and
+    // restarts the idle lease from the end of the run. The clock moves first so
+    // the refreshed deadline cannot be confused with the one create wrote.
+    mockNow(STARTED_AT_MS + 2 * MINUTE_MS);
     await webhooks.requestAgentComplete(
       {
         runId: first.runId,
@@ -415,8 +418,7 @@ describe("zero browser route", () => {
     );
     expect(stillLive.body.browser).toMatchObject({
       status: "active",
-      // The terminal callback restarts the lease from the end of the run.
-      idleExpiresAt: isoAt(10 * MINUTE_MS),
+      idleExpiresAt: isoAt(12 * MINUTE_MS),
     });
 
     // Nobody can reach a deleted thread's browser, so the reconciler reclaims
@@ -709,6 +711,7 @@ describe("zero browser route", () => {
 
     // The run ends without stopping the browser, and the thread's next message
     // starts a run right away instead of waiting for browser cleanup.
+    mockNow(STARTED_AT_MS + 3 * MINUTE_MS);
     await webhooks.requestAgentComplete(
       { runId: first.runId, exitCode: 0 },
       first.claim.sandboxHeaders,
@@ -716,6 +719,18 @@ describe("zero browser route", () => {
     );
     await flushWaitUntilForTest();
     expect(providerStops).toBe(0);
+    const released = await accept(
+      client().get({
+        headers: first.claim.browserHeaders,
+        params: { browserId },
+        query: { chatThreadId: first.threadId },
+      }),
+      [200],
+    );
+    expect(released.body.browser).toMatchObject({
+      status: "active",
+      idleExpiresAt: isoAt(13 * MINUTE_MS),
+    });
 
     await runs.heartbeatRunner(runnerGroup);
     mockNow(STARTED_AT_MS + 5 * MINUTE_MS);
@@ -888,5 +903,108 @@ describe("zero browser route", () => {
       settled: 0,
       errors: 0,
     });
+  }, 120_000);
+
+  it("refuses a viewer action aimed at a browser the thread already replaced", async () => {
+    const { routeMocks, runs, chat, actor, agent } =
+      await setupBrowserScenario();
+    const first = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Open a managed browser",
+    );
+
+    const providerIds = [randomUUID(), randomUUID()] as const;
+    let providerCreates = 0;
+    let providerStops = 0;
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+        const id = providerIds[providerCreates];
+        providerCreates += 1;
+        if (!id) {
+          return HttpResponse.json(
+            { error: "unexpected browser create" },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json(providerBrowser(id), { status: 201 });
+      }),
+      http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(providerBrowser(String(params.id)));
+      }),
+      http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        providerStops += 1;
+        return HttpResponse.json(
+          providerBrowser(String(params.id), { status: "stopped" }),
+        );
+      }),
+    );
+
+    const superseded = await accept(
+      client().use({ headers: first.claim.browserHeaders, body: {} }),
+      [200],
+    );
+
+    // Reclaim the first browser, then open a second one in the same thread so
+    // the older card points at a browser that is no longer the current one.
+    mockNow(STARTED_AT_MS + 11 * MINUTE_MS);
+    await reconcileBrowsers();
+    expect(providerStops).toBe(1);
+    const replacement = await accept(
+      client().create({
+        headers: first.claim.browserHeaders,
+        body: { name: "replacement", proxyCountryCode: null, maxCredits: 100 },
+      }),
+      [201],
+    );
+    expect(replacement.body.browser.id).not.toBe(superseded.body.browser.id);
+    expect(providerCreates).toBe(2);
+
+    // Move the clock so a lease the refused request touched would be visible.
+    mockNow(STARTED_AT_MS + 13 * MINUTE_MS);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const staleResume = await createApp({ signal: context.signal }).request(
+      `/api/zero/browsers/${superseded.body.browser.id}/resume`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
+        },
+        body: "{}",
+      },
+    );
+    expect(staleResume.status).toBe(409);
+    await expect(staleResume.json()).resolves.toMatchObject({
+      error: { code: "BROWSER_CHANGED" },
+    });
+    const liveAfterStaleResume = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { browserId: replacement.body.browser.id },
+        query: { chatThreadId: first.threadId },
+      }),
+      [200],
+    );
+    // The refused request must not have leased or re-owned the live browser.
+    expect(liveAfterStaleResume.body.browser.idleExpiresAt).toBe(
+      replacement.body.browser.idleExpiresAt,
+    );
+    expect(providerCreates).toBe(2);
+
+    await chat.deleteThread(actor, first.threadId);
+    await flushWaitUntilForTest();
+    await reconcileBrowsers();
+    expect(providerStops).toBe(2);
   }, 120_000);
 });

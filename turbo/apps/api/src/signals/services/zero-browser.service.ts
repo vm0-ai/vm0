@@ -1643,69 +1643,67 @@ async function claimBrowserForResume(
   });
 }
 
-// Create, reuse, or resume the thread's browser. A live provider instance is
-// reused across runs and its lease restarts; a suspended one is restarted from
-// the saved profile, which restores cookies and storage but not the old tabs.
-const openBrowserForContext$ = command(
+type ReuseLiveBrowser =
+  | { readonly kind: "resume"; readonly browser: BrowserSessionRow }
+  | {
+      readonly kind: "connection";
+      readonly result: BrowserServiceResult<BrowserConnection>;
+    };
+
+// Attach to the thread's live provider instance when it still has one, taking it
+// over from whichever run opened it. Returns "resume" when the instance is gone
+// and the logical browser has to be restarted instead.
+const reuseLiveThreadBrowser$ = command(
   async (
     { set },
     args: {
       readonly context: BrowserRunContext;
-      readonly expectedBrowserId?: string;
+      readonly current: BrowserSessionRow;
+    },
+    signal: AbortSignal,
+  ): Promise<ReuseLiveBrowser> => {
+    const db = set(writeDb$);
+    const owned = await loadOwnedThreadBrowser(db, args.context.chatThreadId);
+    signal.throwIfAborted();
+    if (!owned) {
+      return { kind: "resume", browser: args.current };
+    }
+    if (owned.status !== "active") {
+      return {
+        kind: "connection",
+        result: ["creating", "resuming"].includes(owned.status)
+          ? conflict(
+              "The managed browser is already starting",
+              "BROWSER_STARTING",
+            )
+          : conflict(
+              "Zero is still reclaiming this thread's previous managed browser; retry in a moment",
+              "BROWSER_STOPPING",
+            ),
+      };
+    }
+    const inspected = await set(
+      inspectActiveConnection$,
+      { browser: owned, context: args.context },
+      signal,
+    );
+    return inspected.kind === "resume"
+      ? { kind: "resume", browser: inspected.browser }
+      : { kind: "connection", result: inspected };
+  },
+);
+
+const resumeSuspendedBrowser$ = command(
+  async (
+    { set },
+    args: {
+      readonly context: BrowserRunContext;
+      readonly current: BrowserSessionRow;
     },
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserConnection>> => {
     const db = set(writeDb$);
-    const { context } = args;
-
-    let current = await loadCurrentBrowser(db, context);
-    signal.throwIfAborted();
-    if (!current) {
-      return args.expectedBrowserId
-        ? notFound()
-        : await set(
-            createBrowserForContext$,
-            {
-              context,
-              input: {
-                name: "browser",
-                proxyCountryCode: null,
-                maxCredits: ZERO_BROWSER_DEFAULT_MAX_CREDITS,
-              },
-            },
-            signal,
-          );
-    }
-
-    const owned = await loadOwnedThreadBrowser(db, context.chatThreadId);
-    signal.throwIfAborted();
-    if (owned?.status === "active") {
-      const inspected = await set(
-        inspectActiveConnection$,
-        { browser: owned, context },
-        signal,
-      );
-      if (inspected.kind !== "resume") {
-        return inspected;
-      }
-      current = inspected.browser;
-    } else if (owned) {
-      return ["creating", "resuming"].includes(owned.status)
-        ? conflict(
-            "The managed browser is already starting",
-            "BROWSER_STARTING",
-          )
-        : conflict(
-            "Zero is still reclaiming this thread's previous managed browser; retry in a moment",
-            "BROWSER_STOPPING",
-          );
-    }
-    if (args.expectedBrowserId && current.id !== args.expectedBrowserId) {
-      return conflict(
-        "This chat thread has a newer managed browser; use that one instead",
-        "BROWSER_CHANGED",
-      );
-    }
+    const { context, current } = args;
 
     const remainingCredits = current.maxCredits - current.grossCredits;
     if (remainingCredits <= 0) {
@@ -1781,6 +1779,64 @@ const openBrowserForContext$ = command(
     }
     signal.throwIfAborted();
     return connection;
+  },
+);
+
+// Create, reuse, or resume the thread's browser. A live provider instance is
+// reused across runs and its lease restarts; a suspended one is restarted from
+// the saved profile, which restores cookies and storage but not the old tabs.
+const openBrowserForContext$ = command(
+  async (
+    { set },
+    args: {
+      readonly context: BrowserRunContext;
+      readonly expectedBrowserId?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<BrowserConnection>> => {
+    const db = set(writeDb$);
+    const { context } = args;
+
+    const current = await loadCurrentBrowser(db, context);
+    signal.throwIfAborted();
+    if (!current) {
+      return args.expectedBrowserId
+        ? notFound()
+        : await set(
+            createBrowserForContext$,
+            {
+              context,
+              input: {
+                name: "browser",
+                proxyCountryCode: null,
+                maxCredits: ZERO_BROWSER_DEFAULT_MAX_CREDITS,
+              },
+            },
+            signal,
+          );
+    }
+    // A viewer acts on the browser it is looking at. Refuse before touching any
+    // provider instance or lease when the thread already moved to a newer one.
+    if (args.expectedBrowserId && current.id !== args.expectedBrowserId) {
+      return conflict(
+        "This chat thread has a newer managed browser; use that one instead",
+        "BROWSER_CHANGED",
+      );
+    }
+
+    const reused = await set(
+      reuseLiveThreadBrowser$,
+      { context, current },
+      signal,
+    );
+    signal.throwIfAborted();
+    return reused.kind === "connection"
+      ? reused.result
+      : await set(
+          resumeSuspendedBrowser$,
+          { context, current: reused.browser },
+          signal,
+        );
   },
 );
 

@@ -1,5 +1,5 @@
 {
-  "id": "9f01ef47-47cf-4725-aa37-02acbfbf466d",
+  "id": "6b0e61b2-1ca9-4ea3-9d33-a4b7c32dbd1a",
   "prevId": "ec3be2cc-d085-46a8-9b35-2be6cf3baa64",
   "version": "7",
   "dialect": "postgresql",
@@ -2578,7 +2578,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "now() + interval '10 minutes'"
         },
         "stop_requested_at": {
           "name": "stop_requested_at",
