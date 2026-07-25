@@ -44,7 +44,11 @@ import {
   type BrowserUseSession,
 } from "./browser-use.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
-import { checkCreditAmount$ } from "./zero-managed-usage.service";
+import {
+  checkCreditAmount$,
+  checkCreditAmountForLockedOrg,
+} from "./zero-managed-usage.service";
+import { lockUsageAllowanceOrg } from "./usage-allowance.service";
 
 const BROWSER_USAGE_KIND = "browser";
 const BROWSER_USAGE_PROVIDER = "browser-use";
@@ -1103,9 +1107,12 @@ async function claimFreshBrowser(
     readonly browserId: string;
     readonly browserProfileId: string;
   },
+  signal: AbortSignal,
 ): Promise<BrowserServiceResult<BrowserSessionRow>> {
   return await db.transaction(async (tx) => {
+    await lockUsageAllowanceOrg(tx, context.orgId);
     await lockBrowserThread(tx, context.chatThreadId);
+    signal.throwIfAborted();
     const [owned, activeCount, run] = await Promise.all([
       tx
         .select({ id: browserSessions.id })
@@ -1139,6 +1146,21 @@ async function claimFreshBrowser(
       return conflict(
         "This chat thread already has an active managed browser",
         "BROWSER_THREAD_ACTIVE",
+      );
+    }
+    const creditError = await checkCreditAmountForLockedOrg(
+      tx,
+      {
+        orgId: context.orgId,
+        requiredCredits: args.maxCredits,
+      },
+      signal,
+    );
+    if (creditError) {
+      return serviceError(
+        creditError.status,
+        creditError.body.error.code,
+        creditError.body.error.message,
       );
     }
     if ((activeCount[0]?.count ?? 0) >= MAX_ACTIVE_BROWSER_SESSIONS_PER_ORG) {
@@ -1206,11 +1228,16 @@ export const createZeroBrowser$ = command(
     if (profile.kind === "error") {
       return profile;
     }
-    const claimed = await claimFreshBrowser(db, context.value, {
-      ...args.input,
-      browserId: randomUUID(),
-      browserProfileId: profile.value.id,
-    });
+    const claimed = await claimFreshBrowser(
+      db,
+      context.value,
+      {
+        ...args.input,
+        browserId: randomUUID(),
+        browserProfileId: profile.value.id,
+      },
+      signal,
+    );
     signal.throwIfAborted();
     if (claimed.kind === "error") {
       return claimed;
@@ -1331,16 +1358,34 @@ type ResumeClaim =
 async function claimBrowserForResume(
   db: Db,
   context: BrowserRunContext,
-  expectedBrowserId: string,
-  browserProfileId: string,
+  args: {
+    readonly expectedBrowserId: string;
+    readonly browserProfileId: string;
+    readonly requiredCredits: number;
+  },
+  signal: AbortSignal,
 ): Promise<ResumeClaim> {
   return await db.transaction(async (tx) => {
+    await lockUsageAllowanceOrg(tx, context.orgId);
     await lockBrowserThread(tx, context.chatThreadId);
-    const [run] = await tx
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, context.runId))
-      .limit(1);
+    signal.throwIfAborted();
+    const [runs, activeCounts] = await Promise.all([
+      tx
+        .select({ status: agentRuns.status })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, context.runId))
+        .limit(1),
+      tx
+        .select({ count: count() })
+        .from(browserSessions)
+        .where(
+          and(
+            eq(browserSessions.orgId, context.orgId),
+            inArray(browserSessions.status, [...OWNED_BROWSER_STATUSES]),
+          ),
+        ),
+    ]);
+    const [run] = runs;
     if (!run || isTerminalRunStatus(run.status)) {
       return conflict("The chat run already ended", "BROWSER_RUN_ENDED");
     }
@@ -1363,12 +1408,11 @@ async function claimBrowserForResume(
         "BROWSER_PREVIOUS_RUN_CLEANUP",
       );
     }
-
     const current = await loadCurrentBrowser(tx, context);
     if (
       !current ||
-      current.id !== expectedBrowserId ||
-      current.browserProfileId !== browserProfileId
+      current.id !== args.expectedBrowserId ||
+      current.browserProfileId !== args.browserProfileId
     ) {
       return { kind: "missing" };
     }
@@ -1376,6 +1420,27 @@ async function claimBrowserForResume(
       return conflict(
         "The managed browser reached its credit budget; create a new browser",
         "BROWSER_BUDGET_REACHED",
+      );
+    }
+    const creditError = await checkCreditAmountForLockedOrg(
+      tx,
+      {
+        orgId: context.orgId,
+        requiredCredits: args.requiredCredits,
+      },
+      signal,
+    );
+    if (creditError) {
+      return serviceError(
+        creditError.status,
+        creditError.body.error.code,
+        creditError.body.error.message,
+      );
+    }
+    if ((activeCounts[0]?.count ?? 0) >= MAX_ACTIVE_BROWSER_SESSIONS_PER_ORG) {
+      return conflict(
+        `This organization already has ${MAX_ACTIVE_BROWSER_SESSIONS_PER_ORG} active managed browsers`,
+        "BROWSER_CONCURRENCY_LIMIT",
       );
     }
     const [claimed] = await tx
@@ -1469,8 +1534,12 @@ export const resumeZeroBrowser$ = command(
     const claim = await claimBrowserForResume(
       db,
       context.value,
-      current.id,
-      current.browserProfileId,
+      {
+        expectedBrowserId: current.id,
+        browserProfileId: current.browserProfileId,
+        requiredCredits: remainingCredits,
+      },
+      signal,
     );
     signal.throwIfAborted();
     if (claim.kind === "error") {

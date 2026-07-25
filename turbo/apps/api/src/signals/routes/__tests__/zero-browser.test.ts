@@ -1,22 +1,22 @@
 import { randomUUID } from "node:crypto";
 
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
-import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
+import {
+  zeroBrowserContract,
+  type ZeroBrowserCreateRequest,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
-import { accept, testContext } from "../../../__tests__/test-context";
-import { setupAppWithRoutes } from "../../../__tests__/test-app";
+import { createApp } from "../../../app-factory";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createDeferredPromise } from "../../utils";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { cronBrowserReconcileRoutes } from "../cron-browser-reconcile";
-import { zeroBrowserRoutes } from "../zero-browser";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -31,16 +31,28 @@ const CRON_SECRET = "test-browser-reconcile-secret";
 const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
 
 function client() {
-  return setupAppWithRoutes({ context, routes: zeroBrowserRoutes })(
-    zeroBrowserContract,
-  );
+  return setupApp({ context })(zeroBrowserContract);
 }
 
 function cronClient() {
-  return setupAppWithRoutes({
-    context,
-    routes: cronBrowserReconcileRoutes,
-  })(cronBrowserReconcileContract);
+  return setupApp({ context })(cronBrowserReconcileContract);
+}
+
+async function requestBrowserCreate(
+  headers: Readonly<Record<string, string>>,
+  body: ZeroBrowserCreateRequest,
+): Promise<Response> {
+  return await createApp({ signal: context.signal }).request(
+    "/api/zero/browsers",
+    {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 function providerBrowser(
@@ -161,9 +173,38 @@ describe("zero browser route", () => {
     }
     const otherThreadRunId = otherThread.body.runId;
     const otherThreadClaim = await claimChatRun(runs, actor, otherThreadRunId);
+    async function createCandidate(prompt: string) {
+      const sentCandidate = await chat.requestSendMessage(
+        actor,
+        {
+          agentId: agent.agentId,
+          prompt,
+        },
+        [201],
+      );
+      if (sentCandidate.status !== 201 || sentCandidate.body.runId === null) {
+        throw new Error("Expected a browser admission candidate run");
+      }
+      return {
+        runId: sentCandidate.body.runId,
+        browserHeaders: {
+          authorization: `Bearer ${runs.zeroTokenForRunWithCapabilities(
+            actor,
+            sentCandidate.body.runId,
+            ["browser:read", "browser:write"],
+          )}`,
+        },
+      };
+    }
 
     const profileId = randomUUID();
-    const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
+    const providerIds = [
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+    ] as const;
     const providerCreateBodies: unknown[] = [];
     const deletedProfiles: string[] = [];
     const profileCreateStarted = createDeferredPromise<void>(context.signal);
@@ -237,17 +278,16 @@ describe("zero browser route", () => {
           await expect(request.json()).resolves.toStrictEqual({
             action: "stop",
           });
-          const stopIndex = providerStops;
           providerStops += 1;
           const providerId = String(params.id);
-          if (stopIndex === 0) {
+          if (providerId === providerIds[0]) {
             if (!firstStopStarted.settled()) {
               firstStopStarted.resolve(undefined);
             }
             await releaseFirstStop.promise;
           }
           return HttpResponse.json(
-            stopIndex === 0
+            providerId === providerIds[0]
               ? providerBrowser(providerId, {
                   status: "stopped",
                   browserCost: "0.00333",
@@ -306,18 +346,16 @@ describe("zero browser route", () => {
     expect(providerCreates).toBe(2);
     expect(deletedProfiles).toStrictEqual([]);
 
-    const copiedToAnotherThread = await createAppWithRoutes({
+    const copiedToAnotherThread = await createApp({
       signal: context.signal,
-      routes: zeroBrowserRoutes,
     }).request(
       `/api/zero/browsers/${created.body.browser.id}?chatThreadId=${randomUUID()}`,
       { headers: firstClaim.browserHeaders },
     );
     expect(copiedToAnotherThread.status).toBe(404);
 
-    const duplicateNew = await createAppWithRoutes({
+    const duplicateNew = await createApp({
       signal: context.signal,
-      routes: zeroBrowserRoutes,
     }).request("/api/zero/browsers", {
       method: "POST",
       headers: {
@@ -338,6 +376,104 @@ describe("zero browser route", () => {
     expect(providerCreates).toBe(2);
     expect(profileCreates).toBe(1);
     expect(deletedProfiles).toStrictEqual([]);
+
+    const creditCandidates = await Promise.all([
+      createCandidate("Race for the last browser credit reservation A"),
+      createCandidate("Race for the last browser credit reservation B"),
+    ]);
+    const creditAdmissionResults = await Promise.all(
+      creditCandidates.map((candidate) => {
+        return requestBrowserCreate(candidate.browserHeaders, {
+          name: "credit-race",
+          proxyCountryCode: null,
+          timeoutMinutes: 30,
+          maxCredits: 19_700,
+        });
+      }),
+    );
+    expect(
+      creditAdmissionResults
+        .map((result) => {
+          return result.status;
+        })
+        .sort(),
+    ).toStrictEqual([201, 402]);
+    const creditRejection = creditAdmissionResults.find((result) => {
+      return result.status === 402;
+    });
+    if (!creditRejection) {
+      throw new Error("Expected one browser credit admission rejection");
+    }
+    await expect(creditRejection.json()).resolves.toMatchObject({
+      error: { code: "INSUFFICIENT_CREDITS" },
+    });
+    const creditWinnerIndex = creditAdmissionResults.findIndex((result) => {
+      return result.status === 201;
+    });
+    if (creditWinnerIndex === -1) {
+      throw new Error("Expected one browser credit admission winner");
+    }
+    const creditWinner = creditCandidates[creditWinnerIndex];
+    const creditLoser = creditCandidates[creditWinnerIndex === 0 ? 1 : 0];
+    if (!creditWinner || !creditLoser) {
+      throw new Error("Expected both browser credit admission candidates");
+    }
+    expect(providerCreates).toBe(3);
+
+    await runs.requestCancelRun(actor, creditWinner.runId, [200]);
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(1);
+
+    const concurrencyCandidate = await createCandidate(
+      "Race for the last browser concurrency slot",
+    );
+    const concurrencyCandidates = [creditLoser, concurrencyCandidate] as const;
+    const concurrencyAdmissionResults = await Promise.all(
+      concurrencyCandidates.map((candidate) => {
+        return requestBrowserCreate(candidate.browserHeaders, {
+          name: "concurrency-race",
+          proxyCountryCode: null,
+          timeoutMinutes: 30,
+          maxCredits: 100,
+        });
+      }),
+    );
+    expect(
+      concurrencyAdmissionResults
+        .map((result) => {
+          return result.status;
+        })
+        .sort(),
+    ).toStrictEqual([201, 409]);
+    const concurrencyRejection = concurrencyAdmissionResults.find((result) => {
+      return result.status === 409;
+    });
+    if (!concurrencyRejection) {
+      throw new Error("Expected one browser concurrency admission rejection");
+    }
+    await expect(concurrencyRejection.json()).resolves.toMatchObject({
+      error: { code: "BROWSER_CONCURRENCY_LIMIT" },
+    });
+    const concurrencyWinnerIndex = concurrencyAdmissionResults.findIndex(
+      (result) => {
+        return result.status === 201;
+      },
+    );
+    if (concurrencyWinnerIndex === -1) {
+      throw new Error("Expected one browser concurrency admission winner");
+    }
+    const concurrencyWinner = concurrencyCandidates[concurrencyWinnerIndex];
+    const concurrencyLoser =
+      concurrencyCandidates[concurrencyWinnerIndex === 0 ? 1 : 0];
+    if (!concurrencyWinner || !concurrencyLoser) {
+      throw new Error("Expected both browser concurrency candidates");
+    }
+    expect(providerCreates).toBe(4);
+
+    await runs.requestCancelRun(actor, concurrencyWinner.runId, [200]);
+    await runs.requestCancelRun(actor, concurrencyLoser.runId, [200]);
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(2);
 
     await webhooks.requestAgentComplete(
       {
@@ -380,7 +516,7 @@ describe("zero browser route", () => {
       grossCredits: 124,
       suspensionReason: "run_end",
     });
-    expect(providerStops).toBe(1);
+    expect(providerStops).toBe(3);
 
     const runList = await runs.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
@@ -405,7 +541,7 @@ describe("zero browser route", () => {
       status: "active",
       grossCredits: 124,
     });
-    expect(providerCreates).toBe(3);
+    expect(providerCreates).toBe(5);
 
     const otherStillActive = await accept(
       client().get({
@@ -429,21 +565,20 @@ describe("zero browser route", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(2);
+    expect(providerStops).toBe(4);
 
     await chat.deleteThread(actor, sent.body.threadId);
     await flushWaitUntilForTest();
 
-    const hiddenAfterThreadDelete = await createAppWithRoutes({
+    const hiddenAfterThreadDelete = await createApp({
       signal: context.signal,
-      routes: zeroBrowserRoutes,
     }).request(
       `/api/zero/browsers/${created.body.browser.id}?chatThreadId=${sent.body.threadId}`,
       { headers: followupClaim.browserHeaders },
     );
     expect(hiddenAfterThreadDelete.status).toBe(404);
 
-    expect(providerStops).toBe(3);
+    expect(providerStops).toBe(5);
 
     const missing = await client().get({
       headers: followupClaim.browserHeaders,
@@ -451,35 +586,19 @@ describe("zero browser route", () => {
       query: { chatThreadId: sent.body.threadId },
     });
     expect(missing.status).toBe(404);
-    expect(providerCreateBodies).toStrictEqual([
-      {
-        profileId,
-        proxyCountryCode: null,
-        timeout: 30,
-        browserScreenWidth: 1440,
-        browserScreenHeight: 900,
-        allowResizing: false,
-        enableRecording: false,
-      },
-      {
-        profileId,
-        proxyCountryCode: null,
-        timeout: 30,
-        browserScreenWidth: 1440,
-        browserScreenHeight: 900,
-        allowResizing: false,
-        enableRecording: false,
-      },
-      {
-        profileId,
-        proxyCountryCode: null,
-        timeout: 30,
-        browserScreenWidth: 1440,
-        browserScreenHeight: 900,
-        allowResizing: false,
-        enableRecording: false,
-      },
-    ]);
+    expect(providerCreateBodies).toStrictEqual(
+      Array.from({ length: 5 }, () => {
+        return {
+          profileId,
+          proxyCountryCode: null,
+          timeout: 30,
+          browserScreenWidth: 1440,
+          browserScreenHeight: 900,
+          allowResizing: false,
+          enableRecording: false,
+        };
+      }),
+    );
 
     const reconciled = await accept(
       cronClient().reconcile({
@@ -493,6 +612,6 @@ describe("zero browser route", () => {
       settled: 0,
       errors: 0,
     });
-    expect(providerStops).toBe(3);
-  }, 90_000);
+    expect(providerStops).toBe(5);
+  }, 120_000);
 });
