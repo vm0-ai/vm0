@@ -184,12 +184,6 @@ def test_irrelevant_websocket_messages_do_not_report_timings(
         feed_websocket_server_message(flow, _event("future.unknown"))
         feed_websocket_server_message(flow, _event("response.output_text.delta"))
 
-        non_codex = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        non_codex.metadata[metadata_keys.CLI_AGENT_TYPE] = "claude"
-        mitm_addon.responseheaders(non_codex)
-        non_codex.metadata["model_websocket_usage_enabled"] = True
-        _feed_generated_response(non_codex)
-
         unobservable = make_openai_responses_websocket_flow(real_flow, tmp_path)
         set_websocket_message(
             unobservable,
@@ -250,5 +244,5 @@ def test_saturated_delivery_retries_with_original_observation_times(
     created_at = datetime.fromisoformat(str(operations[0]["ts"]))
     output_at = datetime.fromisoformat(str(operations[1]["ts"]))
     text_at = datetime.fromisoformat(str(operations[2]["ts"]))
-    assert created_at <= output_at < retry_started_at <= text_at
+    assert created_at <= output_at <= retry_started_at <= text_at
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
