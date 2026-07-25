@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.2...runner-rs-v0.148.3) (2026-07-25)
+
+
+### Performance Improvements
+
+* **runner:** instrument claude output lifecycle timings ([#23044](https://github.com/vm0-ai/vm0/issues/23044)) ([9220364](https://github.com/vm0-ai/vm0/commit/92203640174897f8558880e3dca974c2ca489bb1))
+
 ## [0.148.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.1...runner-rs-v0.148.2) (2026-07-25)
 
 
