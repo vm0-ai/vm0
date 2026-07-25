@@ -22,6 +22,7 @@ const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
 interface DrainChatThreadQueueInput {
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly queueItemCreatedBefore?: Date;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
   readonly workflowEventLaunch?: {
     readonly eventId: string;
@@ -49,7 +50,11 @@ export const drainChatThreadQueueForThread$ = command(
   ): Promise<WorkflowQueueDrainResult | null> => {
     await set(
       drainQueuedUserMessagesForThread$,
-      { chatThreadId: input.chatThreadId, timing: input.timing },
+      {
+        chatThreadId: input.chatThreadId,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
+        timing: input.timing,
+      },
       signal,
     );
     signal.throwIfAborted();
@@ -58,6 +63,7 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
         ...(input.workflowEventLaunch
           ? { workflowEventLaunch: input.workflowEventLaunch }
           : {}),
@@ -106,8 +112,9 @@ export const drainStaleChatThreadQueues$ = command(
     signal: AbortSignal,
   ): Promise<number> => {
     const db = set(writeDb$);
+    const staleBefore = new Date(nowDate().getTime() - STALE_QUEUE_ITEM_AGE_MS);
     const threadIds = await staleChatThreadQueueThreadIds(db, {
-      staleBefore: new Date(nowDate().getTime() - STALE_QUEUE_ITEM_AGE_MS),
+      staleBefore,
       limit: DRAIN_SWEEP_LIMIT,
     });
     signal.throwIfAborted();
@@ -117,6 +124,7 @@ export const drainStaleChatThreadQueues$ = command(
         {
           chatThreadId,
           dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+          queueItemCreatedBefore: staleBefore,
         },
         signal,
       );

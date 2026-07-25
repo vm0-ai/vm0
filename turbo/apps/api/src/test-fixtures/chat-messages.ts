@@ -36,6 +36,29 @@ const previousWorkflowQueueEventParamsSchema = z.object({
 });
 
 /**
+ * Move one exact workflow event into historical state without waiting for real
+ * time to pass. Product APIs cannot construct an already-stale queue item.
+ */
+export async function setWorkflowQueueEventCreatedAtFixture(args: {
+  readonly eventId: string;
+  readonly createdAt: Date;
+}): Promise<void> {
+  const updated = await db()
+    .update(chatMessageQueue)
+    .set({ createdAt: args.createdAt })
+    .where(
+      and(
+        eq(chatMessageQueue.id, args.eventId),
+        eq(chatMessageQueue.itemType, "workflow_event"),
+      ),
+    )
+    .returning({ id: chatMessageQueue.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one workflow queue event to become historical");
+  }
+}
+
+/**
  * Rewrites one current workflow event to the persisted shape and automation
  * state produced by the previous API version.
  *

@@ -32,6 +32,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   holdOrgAdmissionLockFixture,
   rewriteWorkflowQueueEventAsPreviousVersionFixture,
+  setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-messages";
 
 const context = testContext();
@@ -329,6 +330,60 @@ describe("workflow queue", () => {
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       runId,
     ]);
+  });
+
+  it("does not let the stale sweep drain a fresh user message ahead of a stale workflow event", async () => {
+    mockNow(Date.UTC(2020, 0, 1));
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const workflowRequest = postWorkflowWebhook(automation, "stale event");
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+    const queued = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    const event = queued.body.pending[0];
+    if (!event) {
+      throw new Error("Expected a pending workflow event");
+    }
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: event.id,
+      createdAt: new Date("2019-12-31T23:54:00.000Z"),
+    });
+
+    const userRequest = chatMessagesClient().send({
+      headers: authHeaders(),
+      body: {
+        agentId: scenario.agentId,
+        threadId: automation.threadId,
+        prompt: "fresh user message",
+      },
+    });
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    await cleanupSandboxes();
+    await expect(admissionLock.waiterCount()).resolves.toBe(2);
+
+    admissionLock.release();
+    const [workflowResult, userResult] = await Promise.all([
+      workflowRequest,
+      accept(userRequest, [201]),
+    ]);
+    await admissionLock.done;
+    expect(workflowResult.status).toBe(200);
+    expect(userResult.status).toBe(201);
   });
 
   it("queues webhook events behind the active run and drains one per completion", async () => {

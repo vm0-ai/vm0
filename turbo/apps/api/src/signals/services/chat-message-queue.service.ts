@@ -272,6 +272,7 @@ export interface PendingWorkflowQueueEvent {
 export async function loadNextWorkflowQueueEvent(
   db: Db,
   chatThreadId: string,
+  queueItemCreatedBefore?: Date,
 ): Promise<PendingWorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(chatThreadId));
@@ -303,6 +304,9 @@ export async function loadNextWorkflowQueueEvent(
         and(
           eq(chatMessageQueue.chatThreadId, chatThreadId),
           eq(chatMessageQueue.itemType, "workflow_event"),
+          queueItemCreatedBefore
+            ? lt(chatMessageQueue.createdAt, queueItemCreatedBefore)
+            : undefined,
         ),
       )
       .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
