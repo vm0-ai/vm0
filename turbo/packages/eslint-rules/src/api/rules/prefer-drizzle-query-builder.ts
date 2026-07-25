@@ -121,6 +121,17 @@ interface CompleteSqlStatement {
   readonly tokens: readonly SqlToken[];
 }
 
+interface ComposedSqlTemplate {
+  readonly expandedFactory: boolean;
+  readonly expressions: readonly TSESTree.Expression[];
+  readonly source: string;
+}
+
+interface RelationMatch {
+  readonly cursor: number;
+  readonly endToken: SqlToken;
+}
+
 const RESULT_FIELD_ARGUMENT = new Map<string, number>([
   ["returning", 0],
   ["select", 0],
@@ -240,6 +251,36 @@ const UNSUPPORTED_UPDATE_PREDICATE_KEYWORDS = new Set([
 ]);
 
 const UNSUPPORTED_UPSERT_ASSIGNMENT_KEYWORDS = new Set(["RETURNING", "WHERE"]);
+
+const BUILDER_SELECT_CLAUSE_KEYWORDS = new Set([
+  "GROUP",
+  "LIMIT",
+  "ORDER",
+  "WHERE",
+]);
+
+const BUILDER_SELECT_JOIN_KEYWORDS = new Set(["INNER", "JOIN", "LEFT"]);
+
+const UNSUPPORTED_BUILDER_SELECT_KEYWORDS = new Set([
+  "CROSS",
+  "DISTINCT",
+  "EXCEPT",
+  "FETCH",
+  "FOR",
+  "FULL",
+  "HAVING",
+  "INTERSECT",
+  "INTO",
+  "LATERAL",
+  "MERGE",
+  "NATURAL",
+  "OFFSET",
+  "QUALIFY",
+  "RETURNING",
+  "RIGHT",
+  "USING",
+  "WINDOW",
+]);
 
 const SIMPLE_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_$]*$/u;
 const SIMPLE_OR_QUOTED_IDENTIFIER_PATTERN =
@@ -436,6 +477,421 @@ function completeSqlStatement(
     hasTrailingSemicolon,
     tokens: statementTokens,
   };
+}
+
+function isBuilderSelectBoundary(token: SqlToken | undefined): boolean {
+  return (
+    token?.kind === "word" &&
+    (BUILDER_SELECT_CLAUSE_KEYWORDS.has(token.value) ||
+      BUILDER_SELECT_JOIN_KEYWORDS.has(token.value))
+  );
+}
+
+function builderSelectRelationMatch(
+  syntaxSource: string,
+  tokens: readonly SqlToken[],
+  start: number,
+): RelationMatch | undefined {
+  const relation = tokens[start];
+  if (
+    relation === undefined ||
+    (relation.kind !== "expression" && relation.kind !== "word")
+  ) {
+    return undefined;
+  }
+
+  let cursor = start + 1;
+  let endToken = relation;
+  const possibleAsKeyword = tokens[cursor];
+  if (isWord(possibleAsKeyword, "AS")) {
+    const alias = tokens[cursor + 1];
+    if (
+      possibleAsKeyword === undefined ||
+      alias?.kind !== "word" ||
+      !onlyWhitespaceBetween(syntaxSource, endToken, possibleAsKeyword) ||
+      !onlyWhitespaceBetween(syntaxSource, possibleAsKeyword, alias)
+    ) {
+      return undefined;
+    }
+    cursor += 2;
+    endToken = alias;
+  } else {
+    const possibleAlias = tokens[cursor];
+    if (
+      possibleAlias?.kind === "word" &&
+      !isBuilderSelectBoundary(possibleAlias)
+    ) {
+      if (!onlyWhitespaceBetween(syntaxSource, endToken, possibleAlias)) {
+        return undefined;
+      }
+      cursor += 1;
+      endToken = possibleAlias;
+    }
+  }
+
+  return { cursor, endToken };
+}
+
+function builderSelectClauseEnd(
+  tokens: readonly SqlToken[],
+  start: number,
+): number {
+  let cursor = start;
+  while (cursor < tokens.length && !isBuilderSelectBoundary(tokens[cursor])) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+/**
+ * Recognizes only read-only SELECT graphs whose statement-level structure is
+ * directly represented by Drizzle's select, join, predicate, grouping,
+ * ordering, limit, and unionAll builders. Expressions may remain SQL leaves.
+ */
+function builderReadSelectMatch(
+  syntaxSource: string,
+  allowUnionAll: boolean,
+): boolean {
+  const statement = completeSqlStatement(syntaxSource);
+  if (statement === undefined) {
+    return false;
+  }
+  const tokens = statement.tokens;
+  const compoundIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "UNION") ||
+      isWord(token, "INTERSECT") ||
+      isWord(token, "EXCEPT")
+      ? [index]
+      : [];
+  });
+  if (!allowUnionAll && compoundIndexes.length > 0) {
+    return false;
+  }
+
+  const arms: Array<{
+    readonly end: number;
+    readonly tokens: readonly SqlToken[];
+  }> = [];
+  let armStart = 0;
+  for (const compoundIndex of compoundIndexes) {
+    const compoundKeyword = tokens[compoundIndex];
+    const allKeyword = tokens[compoundIndex + 1];
+    if (
+      compoundKeyword === undefined ||
+      allKeyword === undefined ||
+      !isWord(compoundKeyword, "UNION") ||
+      !isWord(allKeyword, "ALL") ||
+      !onlyWhitespaceBetween(syntaxSource, compoundKeyword, allKeyword)
+    ) {
+      return false;
+    }
+    arms.push({
+      end: compoundKeyword.start,
+      tokens: tokens.slice(armStart, compoundIndex),
+    });
+    armStart = compoundIndex + 2;
+  }
+  arms.push({
+    end: statement.end,
+    tokens: tokens.slice(armStart),
+  });
+
+  return arms.every((arm) => {
+    const armTokens = arm.tokens;
+    const selectKeyword = armTokens[0];
+    if (
+      selectKeyword === undefined ||
+      !isWord(selectKeyword, "SELECT") ||
+      armTokens.some((token) => {
+        return (
+          token.kind === "word" &&
+          UNSUPPORTED_BUILDER_SELECT_KEYWORDS.has(token.value)
+        );
+      })
+    ) {
+      return false;
+    }
+
+    const fromIndexes = armTokens.flatMap((token, index) => {
+      return isWord(token, "FROM") ? [index] : [];
+    });
+    const fromIndex = fromIndexes.length === 1 ? fromIndexes[0] : undefined;
+    const fromKeyword =
+      fromIndex === undefined ? undefined : armTokens[fromIndex];
+    if (
+      fromIndex === undefined ||
+      fromIndex <= 1 ||
+      fromKeyword === undefined ||
+      syntaxSource.slice(selectKeyword.end, fromKeyword.start).trim() === ""
+    ) {
+      return false;
+    }
+
+    const source = builderSelectRelationMatch(
+      syntaxSource,
+      armTokens,
+      fromIndex + 1,
+    );
+    if (
+      source === undefined ||
+      !onlyWhitespaceBetween(
+        syntaxSource,
+        fromKeyword,
+        armTokens[fromIndex + 1],
+      )
+    ) {
+      return false;
+    }
+    let cursor = source.cursor;
+    let previousToken = source.endToken;
+
+    while (
+      isWord(armTokens[cursor], "INNER") ||
+      isWord(armTokens[cursor], "LEFT") ||
+      isWord(armTokens[cursor], "JOIN")
+    ) {
+      const joinStart = armTokens[cursor];
+      if (
+        joinStart === undefined ||
+        !onlyWhitespaceBetween(syntaxSource, previousToken, joinStart)
+      ) {
+        return false;
+      }
+
+      let joinKeyword = joinStart;
+      if (isWord(joinStart, "INNER") || isWord(joinStart, "LEFT")) {
+        cursor += 1;
+        let prefixEnd = joinStart;
+        if (isWord(joinStart, "LEFT") && isWord(armTokens[cursor], "OUTER")) {
+          const outerKeyword = armTokens[cursor];
+          if (
+            outerKeyword === undefined ||
+            !onlyWhitespaceBetween(syntaxSource, prefixEnd, outerKeyword)
+          ) {
+            return false;
+          }
+          prefixEnd = outerKeyword;
+          cursor += 1;
+        }
+        joinKeyword = armTokens[cursor];
+        if (
+          joinKeyword === undefined ||
+          !isWord(joinKeyword, "JOIN") ||
+          !onlyWhitespaceBetween(syntaxSource, prefixEnd, joinKeyword)
+        ) {
+          return false;
+        }
+      }
+      cursor += 1;
+
+      const joined = builderSelectRelationMatch(
+        syntaxSource,
+        armTokens,
+        cursor,
+      );
+      if (
+        joined === undefined ||
+        !onlyWhitespaceBetween(syntaxSource, joinKeyword, armTokens[cursor])
+      ) {
+        return false;
+      }
+      cursor = joined.cursor;
+      const onKeyword = armTokens[cursor];
+      if (
+        onKeyword === undefined ||
+        !isWord(onKeyword, "ON") ||
+        !onlyWhitespaceBetween(syntaxSource, joined.endToken, onKeyword)
+      ) {
+        return false;
+      }
+      cursor += 1;
+      const conditionEnd = builderSelectClauseEnd(armTokens, cursor);
+      const conditionEndOffset =
+        conditionEnd === armTokens.length
+          ? arm.end
+          : armTokens[conditionEnd]?.start;
+      if (
+        conditionEndOffset === undefined ||
+        syntaxSource.slice(onKeyword.end, conditionEndOffset).trim() === ""
+      ) {
+        return false;
+      }
+      cursor = conditionEnd;
+      previousToken = armTokens[cursor - 1] ?? onKeyword;
+    }
+
+    if (isWord(armTokens[cursor], "WHERE")) {
+      const whereKeyword = armTokens[cursor];
+      if (
+        whereKeyword === undefined ||
+        !onlyWhitespaceBetween(syntaxSource, previousToken, whereKeyword)
+      ) {
+        return false;
+      }
+      cursor += 1;
+      const predicateEnd = builderSelectClauseEnd(armTokens, cursor);
+      const predicateEndOffset =
+        predicateEnd === armTokens.length
+          ? arm.end
+          : armTokens[predicateEnd]?.start;
+      if (
+        predicateEndOffset === undefined ||
+        syntaxSource.slice(whereKeyword.end, predicateEndOffset).trim() === ""
+      ) {
+        return false;
+      }
+      cursor = predicateEnd;
+      previousToken = armTokens[cursor - 1] ?? whereKeyword;
+    }
+
+    if (isWord(armTokens[cursor], "GROUP")) {
+      const groupKeyword = armTokens[cursor];
+      const byKeyword = armTokens[cursor + 1];
+      if (
+        groupKeyword === undefined ||
+        byKeyword === undefined ||
+        !isWord(byKeyword, "BY") ||
+        !onlyWhitespaceBetween(syntaxSource, previousToken, groupKeyword) ||
+        !onlyWhitespaceBetween(syntaxSource, groupKeyword, byKeyword)
+      ) {
+        return false;
+      }
+      cursor += 2;
+      const groupingEnd = builderSelectClauseEnd(armTokens, cursor);
+      const groupingEndOffset =
+        groupingEnd === armTokens.length
+          ? arm.end
+          : armTokens[groupingEnd]?.start;
+      if (
+        groupingEndOffset === undefined ||
+        syntaxSource.slice(byKeyword.end, groupingEndOffset).trim() === ""
+      ) {
+        return false;
+      }
+      cursor = groupingEnd;
+      previousToken = armTokens[cursor - 1] ?? byKeyword;
+    }
+
+    if (isWord(armTokens[cursor], "ORDER")) {
+      const orderKeyword = armTokens[cursor];
+      const byKeyword = armTokens[cursor + 1];
+      if (
+        orderKeyword === undefined ||
+        byKeyword === undefined ||
+        !isWord(byKeyword, "BY") ||
+        !onlyWhitespaceBetween(syntaxSource, previousToken, orderKeyword) ||
+        !onlyWhitespaceBetween(syntaxSource, orderKeyword, byKeyword)
+      ) {
+        return false;
+      }
+      cursor += 2;
+      const orderingEnd = builderSelectClauseEnd(armTokens, cursor);
+      const orderingEndOffset =
+        orderingEnd === armTokens.length
+          ? arm.end
+          : armTokens[orderingEnd]?.start;
+      if (
+        orderingEndOffset === undefined ||
+        syntaxSource.slice(byKeyword.end, orderingEndOffset).trim() === ""
+      ) {
+        return false;
+      }
+      cursor = orderingEnd;
+      previousToken = armTokens[cursor - 1] ?? byKeyword;
+    }
+
+    if (isWord(armTokens[cursor], "LIMIT")) {
+      const limitKeyword = armTokens[cursor];
+      const limitValue = armTokens[cursor + 1];
+      if (
+        limitKeyword === undefined ||
+        limitValue === undefined ||
+        (limitValue.kind !== "expression" && limitValue.kind !== "number") ||
+        cursor + 2 !== armTokens.length ||
+        !onlyWhitespaceBetween(syntaxSource, previousToken, limitKeyword) ||
+        !onlyWhitespaceBetween(syntaxSource, limitKeyword, limitValue) ||
+        syntaxSource.slice(limitValue.end, arm.end).trim() !== ""
+      ) {
+        return false;
+      }
+      return true;
+    }
+
+    return (
+      cursor === armTokens.length &&
+      syntaxSource.slice(previousToken.end, arm.end).trim() === ""
+    );
+  });
+}
+
+/**
+ * Recognizes a complete local-helper-composed WITH query only when every CTE
+ * is a read-only builder-owned SELECT and the final graph is a SELECT or
+ * UNION ALL. Unsupported CTE modifiers and data-modifying bodies fail closed.
+ */
+function completeBuilderCteSelectMatch(syntaxSource: string): boolean {
+  const statement = completeSqlStatement(syntaxSource);
+  if (statement === undefined) {
+    return false;
+  }
+  const tokens = statement.tokens;
+  const withKeyword = tokens[0];
+  if (withKeyword === undefined || !isWord(withKeyword, "WITH")) {
+    return false;
+  }
+
+  const cteNames = new Set<string>();
+  let cursor = 1;
+  let previousToken = withKeyword;
+  while (cursor < tokens.length && !isWord(tokens[cursor], "SELECT")) {
+    const name = tokens[cursor];
+    const asKeyword = tokens[cursor + 1];
+    const open = tokens[cursor + 2];
+    const close = tokens[cursor + 3];
+    if (
+      name?.kind !== "word" ||
+      asKeyword === undefined ||
+      open === undefined ||
+      close === undefined ||
+      !isWord(asKeyword, "AS") ||
+      !isPunctuation(open, "(") ||
+      !isPunctuation(close, ")") ||
+      cteNames.has(name.value) ||
+      !onlyWhitespaceBetween(syntaxSource, previousToken, name) ||
+      !onlyWhitespaceBetween(syntaxSource, name, asKeyword) ||
+      !onlyWhitespaceBetween(syntaxSource, asKeyword, open) ||
+      !builderReadSelectMatch(syntaxSource.slice(open.end, close.start), false)
+    ) {
+      return false;
+    }
+    cteNames.add(name.value);
+    cursor += 4;
+
+    const separator = tokens[cursor];
+    if (!isPunctuation(separator, ",")) {
+      previousToken = close;
+      break;
+    }
+    if (!onlyWhitespaceBetween(syntaxSource, close, separator)) {
+      return false;
+    }
+    previousToken = separator;
+    cursor += 1;
+  }
+
+  const selectKeyword = tokens[cursor];
+  if (
+    cteNames.size === 0 ||
+    selectKeyword === undefined ||
+    !isWord(selectKeyword, "SELECT") ||
+    !onlyWhitespaceBetween(syntaxSource, previousToken, selectKeyword)
+  ) {
+    return false;
+  }
+  return builderReadSelectMatch(
+    syntaxSource.slice(selectKeyword.start, statement.end),
+    true,
+  );
 }
 
 const SCALAR_AGGREGATE_FUNCTIONS = new Set([
@@ -1960,7 +2416,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete schema-backed deletes, updates, upserts, selects, existence checks, locking selects, scalar CTE projections, and scalar result queries",
+        "Prefer Drizzle query builders for complete schema-backed deletes, updates, upserts, selects, existence checks, locking selects, composed read-only CTEs, scalar CTE projections, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -1982,6 +2438,8 @@ export const preferDrizzleQueryBuilder = createRule({
         "Use Drizzle $with(...), select().for(...), and update().from(...) builders for this complete locking CTE update.",
       scalarCteQueryBuilder:
         "Use Drizzle $with(...), select(), and joins for this complete scalar CTE projection.",
+      composedCteQueryBuilder:
+        "Use Drizzle $with(...), select(), joins, grouping, ordering, and set-operation builders for this complete locally composed read query.",
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
@@ -2440,6 +2898,162 @@ export const preferDrizzleQueryBuilder = createRule({
       return services.tsNodeToESTreeNodeMap.get(statement.expression);
     }
 
+    function hasOnlyDirectCallReferences(node: TSESTree.Identifier): boolean {
+      const variable = variableInScope(node);
+      return (
+        variable !== null &&
+        variable.references.every((reference) => {
+          if (reference.init === true) {
+            return true;
+          }
+          const identifier = reference.identifier;
+          if (identifier.type !== AST_NODE_TYPES.Identifier) {
+            return false;
+          }
+          const callee = outerTransparentExpression(identifier);
+          return (
+            callee.parent?.type === AST_NODE_TYPES.CallExpression &&
+            callee.parent.callee === callee
+          );
+        })
+      );
+    }
+
+    function localSqlFactoryTemplate(node: TSESTree.Expression): {
+      readonly declaration: Node;
+      readonly template: TSESTree.TaggedTemplateExpression;
+    } | null {
+      let call: TSESTree.Node = node;
+      let transparentCall = transparentExpression(call);
+      while (transparentCall !== null) {
+        call = transparentCall;
+        transparentCall = transparentExpression(call);
+      }
+      if (
+        call.type !== AST_NODE_TYPES.CallExpression ||
+        call.callee.type !== AST_NODE_TYPES.Identifier ||
+        call.arguments.some((argument) => {
+          return argument.type === AST_NODE_TYPES.SpreadElement;
+        }) ||
+        !hasOnlyDirectCallReferences(call.callee) ||
+        !isDrizzleWrapperType(checker, expressionType(call).type)
+      ) {
+        return null;
+      }
+
+      const tsCallee = services.esTreeNodeToTSNodeMap.get(call.callee);
+      const declaration = resolvedSymbol(
+        checker,
+        checker.getSymbolAtLocation(tsCallee),
+      )?.valueDeclaration;
+      if (
+        declaration === undefined ||
+        !isFunctionDeclaration(declaration) ||
+        declaration.getSourceFile() !== tsCallee.getSourceFile() ||
+        declaration.body === undefined ||
+        declaration.body.statements.length !== 1 ||
+        hasExportModifier(declaration)
+      ) {
+        return null;
+      }
+      const statement = declaration.body.statements[0];
+      if (
+        statement === undefined ||
+        !isReturnStatement(statement) ||
+        statement.expression === undefined
+      ) {
+        return null;
+      }
+
+      let returned = services.tsNodeToESTreeNodeMap.get(statement.expression);
+      let transparent = transparentExpression(returned);
+      while (transparent !== null) {
+        returned = transparent;
+        transparent = transparentExpression(returned);
+      }
+      return returned.type === AST_NODE_TYPES.TaggedTemplateExpression
+        ? { declaration, template: returned }
+        : null;
+    }
+
+    function composeSqlTemplate(
+      template: TSESTree.TaggedTemplateExpression,
+      activeFactories: Set<Node>,
+    ): ComposedSqlTemplate | null {
+      if (!isDrizzleSqlTag(checker, services, template.tag)) {
+        return null;
+      }
+      const firstQuasi = template.quasi.quasis[0];
+      if (firstQuasi === undefined) {
+        return null;
+      }
+
+      let source = quasiText(firstQuasi);
+      let expandedFactory = false;
+      const expressions: TSESTree.Expression[] = [];
+      for (
+        let index = 0;
+        index < template.quasi.expressions.length;
+        index += 1
+      ) {
+        const expression = template.quasi.expressions[index];
+        const followingQuasi = template.quasi.quasis[index + 1];
+        if (expression === undefined || followingQuasi === undefined) {
+          return null;
+        }
+
+        const factory = localSqlFactoryTemplate(expression);
+        if (factory !== null && !activeFactories.has(factory.declaration)) {
+          activeFactories.add(factory.declaration);
+          const nested = composeSqlTemplate(factory.template, activeFactories);
+          activeFactories.delete(factory.declaration);
+          if (nested !== null) {
+            source += nested.source;
+            expressions.push(...nested.expressions);
+            expandedFactory = true;
+          } else {
+            source += SQL_TEMPLATE_EXPRESSION_BOUNDARY;
+            expressions.push(expression);
+          }
+        } else {
+          source += SQL_TEMPLATE_EXPRESSION_BOUNDARY;
+          expressions.push(expression);
+        }
+        source += quasiText(followingQuasi);
+      }
+
+      return { expandedFactory, expressions, source };
+    }
+
+    function isComposedBuilderCteQuery(
+      query: TSESTree.TaggedTemplateExpression,
+    ): boolean {
+      const firstQuasi = query.quasi.quasis[0];
+      const firstExpression = query.quasi.expressions[0];
+      if (
+        firstQuasi === undefined ||
+        firstExpression === undefined ||
+        sqlCodeMask(quasiText(firstQuasi)).trim() !== "" ||
+        localSqlFactoryTemplate(firstExpression) === null
+      ) {
+        return false;
+      }
+
+      const composition = composeSqlTemplate(query, new Set<Node>());
+      return (
+        composition !== null &&
+        composition.expandedFactory &&
+        completeBuilderCteSelectMatch(sqlCodeMask(composition.source)) &&
+        composition.expressions.every((expression) => {
+          const type = expressionType(expression).type;
+          return (
+            isBoundScalarParameterType(type) ||
+            isDrizzleWrapperType(checker, type)
+          );
+        })
+      );
+    }
+
     function isDrizzleResultWrapper(node: TSESTree.CallExpression): boolean {
       if (
         node.callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -2724,6 +3338,13 @@ export const preferDrizzleQueryBuilder = createRule({
           .map(quasiText)
           .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
         const syntaxSource = sqlCodeMask(source);
+        if (isComposedBuilderCteQuery(query)) {
+          context.report({
+            node: query,
+            messageId: "composedCteQueryBuilder",
+          });
+          return;
+        }
         if (
           completeScalarCteProjectionMatch(syntaxSource) &&
           query.quasi.expressions.every((expression) => {
