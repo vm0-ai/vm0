@@ -12,7 +12,7 @@ use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
 
 const BOUNDED_COMMAND_KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
-const SERVICE_UNIT_STATE_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+const SYSTEMCTL_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
     if status.success() {
@@ -357,8 +357,7 @@ pub(super) async fn read_service_unit_state(
 ) -> RunnerResult<ServiceUnitState> {
     let svc = unit.service_name();
     let properties = ["LoadState", "ActiveState", "SubState", "Result"];
-    let output =
-        run_systemctl_show_bounded(svc, &properties, SERVICE_UNIT_STATE_QUERY_TIMEOUT).await?;
+    let output = run_systemctl_show_bounded(svc, &properties, SYSTEMCTL_QUERY_TIMEOUT).await?;
     service_unit_state_from_output(svc, &properties, &output)
 }
 
@@ -377,7 +376,7 @@ pub(super) async fn cat_unit_content(unit: &RunnerServiceUnit) -> RunnerResult<S
     let output = run_command_output_bounded(
         "systemctl",
         &["--no-pager", "cat", "--", svc],
-        SERVICE_UNIT_STATE_QUERY_TIMEOUT,
+        SYSTEMCTL_QUERY_TIMEOUT,
     )
     .await?;
     unit_content_from_systemctl_cat(svc, &output)
@@ -420,13 +419,7 @@ fn cleanup_unit_active_state_from_output(
 /// `enabled-runtime` state. This does not indicate whether the unit is active
 /// or whether it will remain enabled after a reboot.
 pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
-    let svc = unit.service_name();
-    let output = tokio::process::Command::new("systemctl")
-        .args(["is-enabled", svc])
-        .output()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("spawn systemctl is-enabled: {e}")))?;
-    unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
+    is_unit_enabled_bounded(unit, SYSTEMCTL_QUERY_TIMEOUT).await
 }
 
 /// Check whether systemd reports a unit file as enabled.
