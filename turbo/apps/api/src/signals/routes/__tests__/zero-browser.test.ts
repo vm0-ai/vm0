@@ -83,6 +83,14 @@ function providerBrowser(
   };
 }
 
+function providerSessionIdFromCdpUrl(cdpUrl: string): string {
+  const [providerSessionId] = new URL(cdpUrl).hostname.split(".");
+  if (!providerSessionId) {
+    throw new Error(`Unexpected provider CDP URL: ${cdpUrl}`);
+  }
+  return providerSessionId;
+}
+
 async function claimChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
@@ -219,6 +227,10 @@ describe("zero browser route", () => {
         releaseFirstStop.resolve(undefined);
       }
     });
+    // Both threads create their browser concurrently, so the provider session
+    // that belongs to the first thread is only known from its create response,
+    // never from the order the provider handed out sessions.
+    let firstThreadProviderSessionId: string | null = null;
     let profileCreates = 0;
     let providerCreates = 0;
     let providerStops = 0;
@@ -281,7 +293,7 @@ describe("zero browser route", () => {
           });
           providerStops += 1;
           const providerId = String(params.id);
-          if (providerId === providerIds[0]) {
+          if (providerId === firstThreadProviderSessionId) {
             if (!firstStopStarted.settled()) {
               firstStopStarted.resolve(undefined);
             }
@@ -295,7 +307,7 @@ describe("zero browser route", () => {
             }
           }
           return HttpResponse.json(
-            providerId === providerIds[0]
+            providerId === firstThreadProviderSessionId
               ? providerBrowser(providerId, {
                   status: "stopped",
                   browserCost: "0.00333",
@@ -342,6 +354,9 @@ describe("zero browser route", () => {
     });
     expect(created.body.cdpUrl).toMatch(
       /^https:\/\/[0-9a-f-]{36}\.cdp\.browser-use\.com\/$/u,
+    );
+    firstThreadProviderSessionId = providerSessionIdFromCdpUrl(
+      created.body.cdpUrl,
     );
     expect(createdInOtherThread.body.browser).toMatchObject({
       name: "research",
