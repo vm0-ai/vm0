@@ -926,9 +926,14 @@ describe("chat message action cards", () => {
       threadId: "c0000000-0000-4000-a000-000000000061",
       mailDraftId: "c0000000-0000-4000-a000-000000000062",
     });
-    let callbackAttempts = 0;
-    context.mocks.api(chatMessagesContract.send, ({ respond }) => {
-      callbackAttempts += 1;
+    // This case overrides the chat send route, so scenario.sentPrompts stays
+    // empty by construction; rejectedPrompts is what records the attempt.
+    const rejectedPrompts: {
+      prompt: string | undefined;
+      threadId: string | undefined;
+    }[] = [];
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      rejectedPrompts.push({ prompt: body.prompt, threadId: body.threadId });
       return respond(402, {
         error: {
           message: "Insufficient credits",
@@ -955,8 +960,44 @@ describe("chat message action cards", () => {
       expect(within(sidebar).getByText("Sent")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(callbackAttempts).toBe(1);
+      expect(rejectedPrompts).toStrictEqual([
+        { prompt: scenario.callbackPrompt, threadId: scenario.threadId },
+      ]);
     });
+    expect(screen.getByText("Insufficient credits")).toBeInTheDocument();
+  });
+
+  it("does not confirm or resume when the email fails to send", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailCallbackScenario({
+      threadId: "c0000000-0000-4000-a000-000000000081",
+      mailDraftId: "c0000000-0000-4000-a000-000000000082",
+    });
+    context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+      return respond(409, {
+        error: {
+          message: "This mail draft can no longer be sent",
+          code: "CONFLICT",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This mail draft can no longer be sent"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Email sent")).toBeNull();
     expect(scenario.sentPrompts).toStrictEqual([]);
   });
 
