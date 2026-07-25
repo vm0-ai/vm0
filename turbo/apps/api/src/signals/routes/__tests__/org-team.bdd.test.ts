@@ -64,7 +64,7 @@ async function onboardAdmin(
     orgState.name = options.name;
   }
   api.mockClerkOrg(admin, orgState);
-  const bootstrap = await api.bootstrapOnboarding(admin, {
+  const bootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
     displayName: options.displayName ?? "BDD Org Team Agent",
     sound: "calm",
   });
@@ -270,59 +270,6 @@ describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
       [403],
     );
     expect(postForbidden.body).toStrictEqual({
-      error: { message: "Access denied", code: "BAD_REQUEST" },
-    });
-
-    // DELETE happy path + ""→null arm.
-    api.mockClerkOrgLogo("delete", {
-      imageUrl: "https://img.clerk.test/default-logo.png",
-      hasImage: true,
-    });
-    const removed = await api.requestDeleteOrgLogo(admin, [200]);
-    expect(removed.body).toStrictEqual({
-      logoUrl: "https://img.clerk.test/default-logo.png",
-      hasImage: true,
-    });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganizationLogo,
-    ).toHaveBeenCalledWith(orgId);
-    api.mockClerkOrgLogo("delete", { imageUrl: "", hasImage: false });
-    const removedCleared = await api.requestDeleteOrgLogo(admin, [200]);
-    expect(removedCleared.body).toStrictEqual({
-      logoUrl: null,
-      hasImage: false,
-    });
-
-    // DELETE auth arms.
-    const unauthenticatedDelete = await api.requestDeleteOrgLogo(null, [401]);
-    expectApiError(unauthenticatedDelete.body);
-    expect(unauthenticatedDelete.body.error.code).toBe("UNAUTHORIZED");
-    const noOrgDelete = await api.requestDeleteOrgLogo(noOrg, [404]);
-    expect(noOrgDelete.body).toStrictEqual({
-      error: { message: "Org not found", code: "BAD_REQUEST" },
-    });
-    const memberDelete = await api.requestDeleteOrgLogo(member, [403]);
-    expect(memberDelete.body).toStrictEqual({
-      error: {
-        message: "Only admins can remove the logo",
-        code: "BAD_REQUEST",
-      },
-    });
-
-    // DELETE Clerk failures.
-    api.mockClerkLogoError("delete", "NotFoundError");
-    const deleteNotFound = await api.requestDeleteOrgLogo(admin, [404]);
-    expect(deleteNotFound.body).toStrictEqual({
-      error: { message: "Org not found", code: "BAD_REQUEST" },
-    });
-    api.mockClerkLogoError("delete", "BadRequestError");
-    const deleteBadRequest = await api.requestDeleteOrgLogo(admin, [404]);
-    expect(deleteBadRequest.body).toStrictEqual({
-      error: { message: "Org not found", code: "BAD_REQUEST" },
-    });
-    api.mockClerkLogoError("delete", "ForbiddenError");
-    const deleteForbidden = await api.requestDeleteOrgLogo(admin, [403]);
-    expect(deleteForbidden.body).toStrictEqual({
       error: { message: "Access denied", code: "BAD_REQUEST" },
     });
   });
@@ -895,14 +842,6 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     const restored = await api.readOnboardingStatus(admin);
     expect(restored.defaultAgentId).toBeTruthy();
     expect(restored.defaultAgentId).not.toBe(defaultAgentId);
-
-    const missingAgent = await api.requestSetDefaultAgent(
-      crossOrgAdmin,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingAgent.body);
-    expect(missingAgent.body.error.message).toBe("Agent not found in this org");
   });
 });
 

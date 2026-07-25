@@ -27,8 +27,6 @@ import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroInsightsContract,
-  zeroInsightsRangeContract,
-  type InsightsRangeResponse,
   type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
@@ -56,11 +54,7 @@ import {
   mockStripeClient,
 } from "../../../external/stripe-client";
 import { modelStatsContract } from "../../model-stats";
-import {
-  createBddApi,
-  type ApiTestUser,
-  type OnboardingBootstrapOptions,
-} from "./api-bdd";
+import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -285,17 +279,6 @@ export function createBillingMediaApi(context: TestContext) {
     configureBillingPrices,
     configureCampaign,
     configureMapsProvider,
-
-    async bootstrapOnboarding(
-      actor: ApiTestUser,
-      body: OnboardingBootstrapOptions,
-    ) {
-      const agentId = await createBddApi(context).bootstrapOnboarding(
-        actor,
-        body,
-      );
-      return { status: 200 as const, body: { agentId } };
-    },
 
     async readBillingStatus(
       actor: ApiTestUser,
@@ -547,17 +530,6 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({ context })(zeroInsightsContract);
       const response = await accept(
         client.get({ headers: authenticate(actor), query: { days: 7 } }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async readInsightsRange(
-      actor: ApiTestUser,
-    ): Promise<InsightsRangeResponse> {
-      const client = setupApp({ context })(zeroInsightsRangeContract);
-      const response = await accept(
-        client.get({ headers: authenticate(actor) }),
         [200],
       );
       return response.body;

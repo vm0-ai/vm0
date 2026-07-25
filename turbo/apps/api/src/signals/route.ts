@@ -94,7 +94,6 @@ import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-exter
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
-import { zeroDefaultAgentRoutes } from "./routes/zero-default-agent";
 import { zeroDeveloperSupportRoutes } from "./routes/zero-developer-support";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
@@ -163,7 +162,6 @@ import { zeroIntegrationsTelegramMessageRoutes } from "./routes/zero-integration
 import { zeroIntegrationsTelegramUploadCompleteRoutes } from "./routes/zero-integrations-telegram-upload-complete";
 import { zeroIntegrationsTelegramUploadInitRoutes } from "./routes/zero-integrations-telegram-upload-init";
 import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
-import { zeroSlackBrowserConnectRoutes } from "./routes/zero-slack-browser-connect";
 import { zeroSlackCommandsRoutes } from "./routes/zero-slack-commands";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
@@ -294,7 +292,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,
-  ...zeroDefaultAgentRoutes,
   ...zeroDeveloperSupportRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
@@ -347,7 +344,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroWorkflowAutomationsRoutes,
   ...zeroWorkflowQueueRoutes,
   ...integrationsGithubRoutes,
-  ...zeroSlackBrowserConnectRoutes,
   ...zeroSlackConnectRoutes,
   ...zeroSlackOauthRoutes,
   ...zeroSlackCommandsRoutes,

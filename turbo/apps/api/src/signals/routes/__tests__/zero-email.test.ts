@@ -59,9 +59,6 @@ async function emailOrg(): Promise<EmailOrgFixture> {
   runs.acceptStorageDownloads();
   runs.acceptTelemetryIngest();
 
-  await bdd.bootstrapOnboarding(actor, {
-    displayName: "BDD Email Agent",
-  });
   await runs.grantProEntitlement(actor);
   await runs.ensureOrgModelProvider(actor);
   await runs.heartbeatRunner(runnerGroup);

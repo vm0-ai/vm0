@@ -1618,9 +1618,8 @@ describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD pro-suspend admission agent",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
@@ -4304,38 +4303,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       installationId,
     });
     expect(reconnected.hostId).toBe(installed.hostId);
-
-    // A deleted sticky host is cleared on the next send without the field.
-    // (The actor has no credits, so sends stop at admission — host selection
-    // and sticky-host updates still happen first.)
-    const sticky = await cu.startComputerUseHost(actor);
-    const pinned = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "pin the host before deleting it",
-        computerUseHostId: sticky.hostId,
-      },
-      [201],
-    );
-    if (pinned.status !== 201) {
-      throw new Error("Expected the pinned send to be accepted");
-    }
-    expect(pinned.body.runId).toBeNull();
-    await cu.deleteComputerUseHost(actor, sticky.hostId);
-    await expect(
-      readThreadComputerUseHostId(actor, pinned.body.threadId),
-    ).resolves.toBeNull();
-    const clearedSend = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        threadId: pinned.body.threadId,
-        prompt: "send after the host vanished",
-      },
-      [201],
-    );
-    expect(clearedSend.body).toMatchObject({ threadId: pinned.body.threadId });
 
     // A valid sticky host remains usable for later non-explicit sends.
     const survivor = await cu.startComputerUseHost(actor);

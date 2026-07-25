@@ -1364,56 +1364,6 @@ export const listComputerUseHosts$ = command(
   },
 );
 
-export const deleteComputerUseHost$ = command(
-  async (
-    { set },
-    params: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly hostId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<
-    { readonly status: "deleted" } | { readonly status: "not_found" }
-  > => {
-    const db = set(writeDb$);
-    const now = nowDate();
-    const result = await db.transaction(async (tx) => {
-      const [host] = await tx
-        .update(computerUseHosts)
-        .set({ status: "offline", revokedAt: now, updatedAt: now })
-        .where(
-          and(
-            eq(computerUseHosts.id, params.hostId),
-            eq(computerUseHosts.orgId, params.orgId),
-            eq(computerUseHosts.userId, params.userId),
-            isNull(computerUseHosts.revokedAt),
-          ),
-        )
-        .returning({ id: computerUseHosts.id });
-      if (!host) {
-        return { status: "not_found" as const };
-      }
-      const threadBindingsCleared = await clearComputerUseHostThreadBindings({
-        tx,
-        userId: params.userId,
-        hostId: host.id,
-      });
-      return { status: "deleted" as const, threadBindingsCleared };
-    });
-    signal.throwIfAborted();
-    if (result.status === "deleted") {
-      await publishComputerUseHostsChanged(params.userId);
-      signal.throwIfAborted();
-      if (result.threadBindingsCleared) {
-        await publishThreadListChanged(params.userId);
-        signal.throwIfAborted();
-      }
-    }
-    return result;
-  },
-);
-
 export const createComputerUseCommand$ = command(
   async (
     { set },

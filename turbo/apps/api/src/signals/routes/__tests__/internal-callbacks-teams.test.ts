@@ -356,11 +356,12 @@ async function setupConnectedTeamsActor(
   authOrgApi.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
-  const agent = await authOrgApi.createAgent(actor, {
+  const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Teams callback agent",
+  });
+  await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
     visibility: "public",
   });
-  await authOrgApi.setDefaultAgent(actor, agent.agentId);
   await runsApi.grantProEntitlement(actor);
   await runsApi.ensureOrgModelProvider(actor);
   if (options.zeroDebug) {

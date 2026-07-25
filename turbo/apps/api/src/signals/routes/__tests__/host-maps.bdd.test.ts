@@ -539,7 +539,8 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(crossOrg.body.error.message).toBe("Hosted site not found");
 
     const third = await api.prepareHostedSite(actor, body);
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Host Suspended" });
+    const onboardingCompleted = await bdd.completeOnboarding(actor);
+    expect(onboardingCompleted.status).toBe(200);
     if (!actor.orgId) {
       throw new Error("Expected suspended host actor to have an org");
     }
@@ -1914,11 +1915,12 @@ describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through pu
     const unchanged = await billing.readBillingStatus(admin);
     expect(unchanged.credits).toBe(settled.credits);
 
-    // Onboarded-but-unentitled orgs are credit-gated before Google is called.
+    // Complete directly because reading onboarding status grants limited-free
+    // credits. Onboarded-but-unentitled orgs are gated before Google is called.
     const unentitled = bdd.user();
-    await billing.bootstrapOnboarding(unentitled, {
-      displayName: "BDD Maps No Credits",
-    });
+    const completed = await bdd.completeOnboarding(unentitled);
+    expect(completed.status).toBe(200);
+    expect((await billing.readBillingStatus(unentitled)).credits).toBe(0);
     const gatedSearch = await billing.requestMapsPlacesSearch(
       unentitled,
       { query: "coffee", limit: 3 },
