@@ -369,6 +369,14 @@ function firstAssistantMessageEventsForRun(
   });
 }
 
+function firstAssistantMessageEligibilityEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === "first_assistant_message_eligible";
+  });
+}
+
 function apiDispatchTimingEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -1530,6 +1538,18 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected the failed dispatch to still create a run");
     }
     expect(sent.body.status).toBe("failed");
+    await flushWaitUntilForTest();
+    expect(
+      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
+    ).toStrictEqual([
+      expect.objectContaining({
+        op_type: "first_assistant_message_eligible",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: sent.body.runId,
+      }),
+    ]);
 
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
@@ -1581,6 +1601,10 @@ describe("CHAT-02: dispatch failure", () => {
       threadId: sent.body.threadId,
       status: "failed",
     });
+    await flushWaitUntilForTest();
+    expect(
+      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
+    ).toHaveLength(1);
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: sent.body.runId }),

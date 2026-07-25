@@ -12,6 +12,20 @@ import { tapError } from "../utils";
 
 const L = logger("api:zero:chat-first-assistant-message-metric");
 
+export function recordFirstAssistantMessageEligibility(args: {
+  readonly runId: string;
+  readonly apiStartedAt: number;
+}): void {
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "first_assistant_message_eligible",
+    durationMs: 0,
+    success: true,
+    runId: args.runId,
+    timestamp: new Date(args.apiStartedAt).toISOString(),
+  });
+}
+
 async function recordFirstAssistantMessageAcknowledgement(args: {
   readonly db: Db;
   readonly runId: string;

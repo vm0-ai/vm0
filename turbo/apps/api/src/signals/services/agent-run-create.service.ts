@@ -189,6 +189,7 @@ import {
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
 } from "./zero-chat-queued-message.service";
+import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -5398,6 +5399,13 @@ async function commitFailedLaunch(args: {
     return committed;
   }
 
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.identity.runId,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
+  }
+
   await publishRunChangedForUserSafely(
     args.createArgs.userId,
     args.identity.runId,
@@ -6605,6 +6613,13 @@ async function committedAtomicLaunchResponse(args: {
     return args.committed.queueFirstClaim
       ? { ...response, queueFirstClaim: args.committed.queueFirstClaim }
       : response;
+  }
+
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.committed.run.id,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);

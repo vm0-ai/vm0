@@ -482,6 +482,10 @@ impl CliEventIngestor {
         }
     }
 
+    fn record_e2e_from_api_start_at(&self, op_name: &str, observed_at_ms: u64) {
+        timing::record_e2e_from_api_start_at(op_name, &self.api_start_time, observed_at_ms);
+    }
+
     async fn write_raw_line(log_file: &mut tokio::fs::File, raw_line: impl AsRef<[u8]>) {
         let _ = log_file.write_all(raw_line.as_ref()).await;
         let _ = log_file.write_all(b"\n").await;

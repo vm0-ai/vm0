@@ -1,6 +1,7 @@
 use crate::session;
 use serde_json::{Value, json};
 use std::io::{self, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 const LARGE_NOTIFICATION_MESSAGE_BYTES: usize = 17 * 1024 * 1024;
@@ -80,6 +81,49 @@ pub(super) fn turn_started_notification(thread_id: &str, turn_id: &str) -> Value
     })
 }
 
+pub(super) fn reasoning_item_started_notification(
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    started_at_ms: u64,
+) -> Value {
+    json!({
+        "method": "item/started",
+        "params": {
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "startedAtMs": started_at_ms,
+            "item": {
+                "id": item_id,
+                "type": "reasoning",
+                "summary": ["mock reasoning content must not enter timing telemetry"],
+                "content": []
+            }
+        }
+    })
+}
+
+pub(super) fn agent_message_item_started_notification(
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    started_at_ms: u64,
+) -> Value {
+    json!({
+        "method": "item/started",
+        "params": {
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "startedAtMs": started_at_ms,
+            "item": {
+                "id": item_id,
+                "type": "agentMessage",
+                "text": ""
+            }
+        }
+    })
+}
+
 fn assistant_item_completed_notification(thread_id: &str, turn_id: &str) -> Value {
     json!({
         "method": "item/completed",
@@ -141,6 +185,33 @@ pub(super) fn write_turn_notifications<W: Write>(
     turn_id: &str,
 ) -> io::Result<()> {
     write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
+    let started_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_millis();
+    let started_at_ms = u64::try_from(started_at_ms).map_err(io::Error::other)?;
+    for (index, offset_ms) in [0_u64, 1].into_iter().enumerate() {
+        write_json_line(
+            output,
+            &reasoning_item_started_notification(
+                thread_id,
+                turn_id,
+                &format!("mock-reasoning-item-{index}"),
+                started_at_ms + offset_ms,
+            ),
+        )?;
+    }
+    for (index, offset_ms) in [2_u64, 3].into_iter().enumerate() {
+        write_json_line(
+            output,
+            &agent_message_item_started_notification(
+                thread_id,
+                turn_id,
+                &format!("mock-agent-message-item-{index}"),
+                started_at_ms + offset_ms,
+            ),
+        )?;
+    }
     write_turn_completion_notifications(output, thread_id, turn_id)
 }
 
