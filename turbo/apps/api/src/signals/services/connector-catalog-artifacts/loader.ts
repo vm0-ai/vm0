@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/cron";
+import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import { z } from "zod";
 
 import { safeJsonParse, safeSync } from "../../utils";
