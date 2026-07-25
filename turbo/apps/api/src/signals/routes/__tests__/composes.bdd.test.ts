@@ -28,7 +28,7 @@ import {
  *   ambiguous-prefix 400 is API-constructible from the precomputed
  *   collision pair in api-bdd-composes.ts (unlike storage versions, where
  *   the same arm is recorded as a docs exception).
- * - Unreachable arms intentionally not exercised (see api.bdd.md):
+ * - The following arm is unreachable through public APIs:
  *   agent-composes-read.service `agentComposeVersionResolution` no-head 400
  *   ("Agent compose has no versions...") — every public write path sets a
  *   head version.
