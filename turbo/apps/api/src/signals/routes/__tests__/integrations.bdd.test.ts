@@ -2101,7 +2101,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run3Id = await pollSlackRun(runnerGroup);
     const claim3 = await runs.claimRunnerJob(run3Id);
-    expect(claim3.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
+    expect(claim3.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run2Id}`);
     await completeSlackTriggeredRun({
       runId: run3Id,
       sandboxToken: claim3.sandboxToken,
@@ -3299,6 +3299,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run3Id = await pollSlackRun(runnerGroup);
     const claim3 = await runs.claimRunnerJob(run3Id);
+    integrations.mockSlackRunResultOutput("SECOND_OPINION_OUTPUT");
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run3Id,
