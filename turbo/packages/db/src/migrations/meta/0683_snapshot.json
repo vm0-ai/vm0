@@ -1,6 +1,6 @@
 {
-  "id": "6e00fe23-0650-4f54-8a44-54ca2908b5ec",
-  "prevId": "6b0e61b2-1ca9-4ea3-9d33-a4b7c32dbd1a",
+  "id": "1b072f21-3796-4c41-9d75-1d1cb213ed16",
+  "prevId": "6e00fe23-0650-4f54-8a44-54ca2908b5ec",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -15469,6 +15469,12 @@
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legacy_cutover_event_id": {
+          "name": "legacy_cutover_event_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

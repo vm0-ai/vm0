@@ -1477,7 +1477,7 @@ mod tests {
         .with_failure_reason(FailureReason::ProviderStreamTimeout);
         let failure = executor::ExecutionFailure::new(
             1,
-            "API Error: Stream idle timeout - partial response received",
+            "API Error: Stream idle timeout - no chunks received",
             Some(diagnostic),
         );
 
@@ -1491,7 +1491,7 @@ mod tests {
         assert_field_eq(
             &event,
             "error",
-            "API Error: Stream idle timeout - partial response received",
+            "API Error: Stream idle timeout - no chunks received",
         );
         assert_field_eq(&event, "failure_reason", "provider_stream_timeout");
         assert_field_eq(&event, "failure_class", "cli_nonzero");
