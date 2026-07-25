@@ -42,6 +42,7 @@ from mitmproxy.addonmanager import Loader
 import auth_base_forwarder
 import body_capture
 import builtin_host_policy
+import codex_output_timing
 import connector_diagnostics
 import connector_intent
 import flow_metadata
@@ -1116,6 +1117,8 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         return
     if getattr(message, "from_client", False):
         return
+    if response_streaming.uses_openai_responses_usage_protocol(flow):
+        codex_output_timing.observe_server_event(flow, message.content)
     response_streaming.feed_model_websocket_usage(flow, message.content)
 
 
