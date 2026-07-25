@@ -23,6 +23,7 @@ RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-exec"
 SVC="${JOB_REF}-exec"
 UNIT="vm0-runner-${SVC}.service"
 GROUP="vm0/exec-${JOB_REF}"
+BEHAVIOR_DNS_DESTINATION="198.51.100.1"
 STARTUP_TIMEOUT_SECS=120
 STARTUP_LOG_LINES=300
 STARTUP_CURSOR=""
@@ -153,7 +154,7 @@ rule_packet_count() {
   '
 }
 
-link_fields() {
+link_identity_fields() {
   local expected_ifname=$1
   jq -er --arg expected_ifname "$expected_ifname" '
     if type == "array"
@@ -162,15 +163,7 @@ link_fields() {
     then
       [
         .[0].ifindex,
-        .[0].link_index,
-        .[0].stats64.rx.packets,
-        .[0].stats64.rx.bytes,
-        .[0].stats64.rx.errors,
-        .[0].stats64.rx.dropped,
-        .[0].stats64.tx.packets,
-        .[0].stats64.tx.bytes,
-        .[0].stats64.tx.errors,
-        .[0].stats64.tx.dropped
+        .[0].link_index
       ] | @tsv
     else
       error("expected exactly one link named \($expected_ifname)")
@@ -179,8 +172,8 @@ link_fields() {
 }
 
 send_udp_dns_query() {
-  local namespace=$1 source_ip=$2
-  sudo ip netns exec "$namespace" python3 - "$source_ip" <<'PY'
+  local namespace=$1 source_ip=$2 destination_ip=$3
+  sudo ip netns exec "$namespace" python3 - "$source_ip" "$destination_ip" <<'PY'
 import socket
 import sys
 
@@ -191,7 +184,7 @@ query = bytes.fromhex(
 )
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((sys.argv[1], 0))
-sock.sendto(query, ("192.0.2.1", 53))
+sock.sendto(query, (sys.argv[2], 53))
 sock.close()
 PY
 }
@@ -450,12 +443,25 @@ ATTACKER_DNS_DROP_RULE=$(printf '%s\n' "$FILTER_RULES" \
 [ "$(rule_value "$ATTACKER_DNS_DROP_RULE" -s)" = "$ATTACKER_CIDR" ] \
   || fail "DNS drop rule does not use the exact attacker peer"
 
+ATTACKER_DNS_RULE=$(printf '%s\n' "$NAT_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+[ -n "$ATTACKER_DNS_RULE" ] || fail "attacker DNS redirect not found"
+[ "$(rule_value "$ATTACKER_DNS_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "attacker DNS redirect is not bound to $ATTACKER_IF"
+[ "$(rule_value "$ATTACKER_DNS_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "attacker DNS redirect does not use the exact peer"
+
 VICTIM_DNS_RULE=$(printf '%s\n' "$NAT_RULES" \
   | grep -F -- "$VICTIM_NS" \
   | grep -F -- "-p udp" \
   | grep -F -- "--dport 53" \
   | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
   | head -n 1 || true)
+[ -n "$VICTIM_DNS_RULE" ] || fail "victim DNS redirect not found"
 [ "$(rule_value "$VICTIM_DNS_RULE" -i)" = "$VICTIM_IF" ] \
   || fail "victim DNS redirect is not bound to $VICTIM_IF"
 [ "$(rule_value "$VICTIM_DNS_RULE" -s)" = "$VICTIM_CIDR" ] \
@@ -469,66 +475,67 @@ ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
 ATTACKER_GUARD_BEFORE=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
 [ -n "$ATTACKER_GUARD_BEFORE" ] || fail "source guard counter missing"
 
-ATTACKER_NS_LINK_BEFORE=$(sudo ip -n "$ATTACKER_NS" -j -s \
+ATTACKER_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+ATTACKER_DNS_BEFORE=$(rule_packet_count "$ATTACKER_DNS_COUNTED")
+[ -n "$ATTACKER_DNS_BEFORE" ] || fail "attacker DNS redirect counter missing"
+
+ATTACKER_NS_LINK_BEFORE=$(sudo ip -n "$ATTACKER_NS" -j \
   link show dev veth0)
-ATTACKER_ROOT_LINK_BEFORE=$(sudo ip -j -s link show dev "$ATTACKER_IF")
+ATTACKER_ROOT_LINK_BEFORE=$(sudo ip -j link show dev "$ATTACKER_IF")
 IFS=$'\t' read -r \
   ATTACKER_NS_IFINDEX_BEFORE ATTACKER_NS_LINK_INDEX_BEFORE \
-  ATTACKER_NS_RX_PACKETS_BEFORE ATTACKER_NS_RX_BYTES_BEFORE \
-  ATTACKER_NS_RX_ERRORS_BEFORE ATTACKER_NS_RX_DROPPED_BEFORE \
-  ATTACKER_NS_TX_PACKETS_BEFORE ATTACKER_NS_TX_BYTES_BEFORE \
-  ATTACKER_NS_TX_ERRORS_BEFORE ATTACKER_NS_TX_DROPPED_BEFORE \
-  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_BEFORE" | link_fields veth0)"
+  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_BEFORE" \
+    | link_identity_fields veth0)"
 IFS=$'\t' read -r \
   ATTACKER_ROOT_IFINDEX_BEFORE ATTACKER_ROOT_LINK_INDEX_BEFORE \
-  ATTACKER_ROOT_RX_PACKETS_BEFORE ATTACKER_ROOT_RX_BYTES_BEFORE \
-  ATTACKER_ROOT_RX_ERRORS_BEFORE ATTACKER_ROOT_RX_DROPPED_BEFORE \
-  ATTACKER_ROOT_TX_PACKETS_BEFORE ATTACKER_ROOT_TX_BYTES_BEFORE \
-  ATTACKER_ROOT_TX_ERRORS_BEFORE ATTACKER_ROOT_TX_DROPPED_BEFORE \
   <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_BEFORE" \
-    | link_fields "$ATTACKER_IF")"
+    | link_identity_fields "$ATTACKER_IF")"
 [ "$ATTACKER_NS_IFINDEX_BEFORE" -eq "$ATTACKER_ROOT_LINK_INDEX_BEFORE" ] \
   && [ "$ATTACKER_NS_LINK_INDEX_BEFORE" -eq "$ATTACKER_ROOT_IFINDEX_BEFORE" ] \
   || fail "attacker veth peers do not have reciprocal identities"
 
-send_udp_dns_query "$ATTACKER_NS" "$ATTACKER_PEER"
+send_udp_dns_query \
+  "$ATTACKER_NS" "$ATTACKER_PEER" "$BEHAVIOR_DNS_DESTINATION"
 
+ATTACKER_DNS_AFTER=""
 for _ in $(seq 1 20); do
-  ATTACKER_NS_LINK_AFTER=$(sudo ip -n "$ATTACKER_NS" -j -s \
-    link show dev veth0)
-  ATTACKER_ROOT_LINK_AFTER=$(sudo ip -j -s link show dev "$ATTACKER_IF")
-  IFS=$'\t' read -r \
-    ATTACKER_NS_IFINDEX_AFTER ATTACKER_NS_LINK_INDEX_AFTER \
-    ATTACKER_NS_RX_PACKETS_AFTER ATTACKER_NS_RX_BYTES_AFTER \
-    ATTACKER_NS_RX_ERRORS_AFTER ATTACKER_NS_RX_DROPPED_AFTER \
-    ATTACKER_NS_TX_PACKETS_AFTER ATTACKER_NS_TX_BYTES_AFTER \
-    ATTACKER_NS_TX_ERRORS_AFTER ATTACKER_NS_TX_DROPPED_AFTER \
-    <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_AFTER" | link_fields veth0)"
-  IFS=$'\t' read -r \
-    ATTACKER_ROOT_IFINDEX_AFTER ATTACKER_ROOT_LINK_INDEX_AFTER \
-    ATTACKER_ROOT_RX_PACKETS_AFTER ATTACKER_ROOT_RX_BYTES_AFTER \
-    ATTACKER_ROOT_RX_ERRORS_AFTER ATTACKER_ROOT_RX_DROPPED_AFTER \
-    ATTACKER_ROOT_TX_PACKETS_AFTER ATTACKER_ROOT_TX_BYTES_AFTER \
-    ATTACKER_ROOT_TX_ERRORS_AFTER ATTACKER_ROOT_TX_DROPPED_AFTER \
-    <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_AFTER" \
-      | link_fields "$ATTACKER_IF")"
-
-  ATTACKER_NS_TX_PACKET_DELTA=$((ATTACKER_NS_TX_PACKETS_AFTER -
-    ATTACKER_NS_TX_PACKETS_BEFORE))
-  ATTACKER_NS_TX_BYTE_DELTA=$((ATTACKER_NS_TX_BYTES_AFTER -
-    ATTACKER_NS_TX_BYTES_BEFORE))
-  ATTACKER_ROOT_RX_PACKET_DELTA=$((ATTACKER_ROOT_RX_PACKETS_AFTER -
-    ATTACKER_ROOT_RX_PACKETS_BEFORE))
-  ATTACKER_ROOT_RX_BYTE_DELTA=$((ATTACKER_ROOT_RX_BYTES_AFTER -
-    ATTACKER_ROOT_RX_BYTES_BEFORE))
-  if [ "$ATTACKER_NS_TX_PACKET_DELTA" -gt 0 ] \
-    && [ "$ATTACKER_NS_TX_PACKET_DELTA" -eq "$ATTACKER_ROOT_RX_PACKET_DELTA" ] \
-    && [ "$ATTACKER_NS_TX_BYTE_DELTA" -gt 0 ] \
-    && [ "$ATTACKER_NS_TX_BYTE_DELTA" -eq "$ATTACKER_ROOT_RX_BYTE_DELTA" ]; then
+  ATTACKER_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+    | grep -F -- "$ATTACKER_NS" \
+    | grep -F -- "-p udp" \
+    | grep -F -- "--dport 53" \
+    | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+    | head -n 1 || true)
+  ATTACKER_DNS_AFTER=$(rule_packet_count "$ATTACKER_DNS_COUNTED")
+  if [ -n "$ATTACKER_DNS_AFTER" ] \
+    && [ "$ATTACKER_DNS_AFTER" -gt "$ATTACKER_DNS_BEFORE" ]; then
     break
   fi
   sleep 0.05
 done
+
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_AFTER_CONTROL=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+
+ATTACKER_NS_LINK_AFTER=$(sudo ip -n "$ATTACKER_NS" -j \
+  link show dev veth0)
+ATTACKER_ROOT_LINK_AFTER=$(sudo ip -j link show dev "$ATTACKER_IF")
+IFS=$'\t' read -r \
+  ATTACKER_NS_IFINDEX_AFTER ATTACKER_NS_LINK_INDEX_AFTER \
+  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_AFTER" \
+    | link_identity_fields veth0)"
+IFS=$'\t' read -r \
+  ATTACKER_ROOT_IFINDEX_AFTER ATTACKER_ROOT_LINK_INDEX_AFTER \
+  <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_AFTER" \
+    | link_identity_fields "$ATTACKER_IF")"
 [ "$ATTACKER_NS_IFINDEX_AFTER" -eq "$ATTACKER_NS_IFINDEX_BEFORE" ] \
   && [ "$ATTACKER_NS_LINK_INDEX_AFTER" -eq "$ATTACKER_NS_LINK_INDEX_BEFORE" ] \
   && [ "$ATTACKER_ROOT_IFINDEX_AFTER" -eq "$ATTACKER_ROOT_IFINDEX_BEFORE" ] \
@@ -538,26 +545,14 @@ done
   && [ "$ATTACKER_NS_LINK_INDEX_AFTER" -eq "$ATTACKER_ROOT_IFINDEX_AFTER" ] \
   || fail "attacker veth peers lost reciprocal identities"
 
-[ "$ATTACKER_NS_TX_PACKET_DELTA" -gt 0 ] \
-  && [ "$ATTACKER_NS_TX_PACKET_DELTA" -eq "$ATTACKER_ROOT_RX_PACKET_DELTA" ] \
-  || fail "control query did not produce matching namespace TX and root RX packets: namespace_tx=$ATTACKER_NS_TX_PACKET_DELTA root_rx=$ATTACKER_ROOT_RX_PACKET_DELTA"
-[ "$ATTACKER_NS_TX_BYTE_DELTA" -gt 0 ] \
-  && [ "$ATTACKER_NS_TX_BYTE_DELTA" -eq "$ATTACKER_ROOT_RX_BYTE_DELTA" ] \
-  || fail "control query did not produce matching namespace TX and root RX bytes: namespace_tx=$ATTACKER_NS_TX_BYTE_DELTA root_rx=$ATTACKER_ROOT_RX_BYTE_DELTA"
-[ "$ATTACKER_NS_TX_ERRORS_AFTER" -eq "$ATTACKER_NS_TX_ERRORS_BEFORE" ] \
-  && [ "$ATTACKER_NS_TX_DROPPED_AFTER" -eq "$ATTACKER_NS_TX_DROPPED_BEFORE" ] \
-  && [ "$ATTACKER_ROOT_RX_ERRORS_AFTER" -eq "$ATTACKER_ROOT_RX_ERRORS_BEFORE" ] \
-  && [ "$ATTACKER_ROOT_RX_DROPPED_AFTER" -eq "$ATTACKER_ROOT_RX_DROPPED_BEFORE" ] \
-  || fail "control query incremented veth error or drop counters"
-
-ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
-  | grep -F -- "$ATTACKER_NS" \
-  | grep -F -- "-A PREROUTING" \
-  | grep -F -- "-j DROP" \
-  | head -n 1 || true)
-ATTACKER_GUARD_AFTER_CONTROL=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+[ -n "$ATTACKER_GUARD_AFTER_CONTROL" ] \
+  || fail "source guard counter missing after control query"
 [ "$ATTACKER_GUARD_AFTER_CONTROL" -eq "$ATTACKER_GUARD_BEFORE" ] \
   || fail "source guard rejected the namespace's assigned peer"
+[ -n "$ATTACKER_DNS_AFTER" ] \
+  || fail "attacker DNS redirect counter missing after control query"
+[ "$ATTACKER_DNS_AFTER" -gt "$ATTACKER_DNS_BEFORE" ] \
+  || fail "control query did not reach the attacker DNS redirect: before=$ATTACKER_DNS_BEFORE after=$ATTACKER_DNS_AFTER"
 
 VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
   | grep -F -- "$VICTIM_NS" \
@@ -572,7 +567,8 @@ SPOOF_NS=$ATTACKER_NS
 SPOOF_IP=$VICTIM_PEER
 sudo ip -n "$SPOOF_NS" address add "${SPOOF_IP}/32" dev veth0 \
   || fail "failed to add forged victim source to attacker namespace"
-send_udp_dns_query "$SPOOF_NS" "$SPOOF_IP"
+send_udp_dns_query \
+  "$SPOOF_NS" "$SPOOF_IP" "$BEHAVIOR_DNS_DESTINATION"
 
 ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
   | grep -F -- "$ATTACKER_NS" \
@@ -589,6 +585,10 @@ VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
 VICTIM_DNS_AFTER=$(rule_packet_count "$VICTIM_DNS_COUNTED")
 cleanup_spoof_address
 
+[ -n "$ATTACKER_GUARD_AFTER_SPOOF" ] \
+  || fail "source guard counter missing after forged query"
+[ -n "$VICTIM_DNS_AFTER" ] \
+  || fail "victim DNS redirect counter missing after forged query"
 [ "$ATTACKER_GUARD_AFTER_SPOOF" -gt "$ATTACKER_GUARD_AFTER_CONTROL" ] \
   || fail "source guard did not reject the forged victim source"
 [ "$VICTIM_DNS_AFTER" -eq "$VICTIM_DNS_BEFORE" ] \
