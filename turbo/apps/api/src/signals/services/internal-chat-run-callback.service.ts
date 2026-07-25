@@ -2582,6 +2582,7 @@ async function autoSendQueuedMessageForThread(args: {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly agentId: string;
+  readonly queueItemCreatedBefore?: Date;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
   readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
@@ -2594,7 +2595,11 @@ async function autoSendQueuedMessageForThread(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
     "nested",
     () => {
-      return loadNextUnclaimedQueuedUserMessage(args.db, threadId);
+      return loadNextUnclaimedQueuedUserMessage(
+        args.db,
+        threadId,
+        args.queueItemCreatedBefore,
+      );
     },
   );
   if (!queuedMessage) {
@@ -3567,6 +3572,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
+      readonly queueItemCreatedBefore?: Date;
       readonly timing?: ChatCallbackPreCreateTimingCollector;
     },
     signal: AbortSignal,
@@ -3602,6 +3608,7 @@ export const drainQueuedUserMessagesForThread$ = command(
       chatThreadId: args.chatThreadId,
       userId: thread.userId,
       agentId: thread.agentId,
+      queueItemCreatedBefore: args.queueItemCreatedBefore,
       timing: args.timing ?? new ChatCallbackPreCreateTimingCollector(),
       getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
       signal,

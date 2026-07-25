@@ -521,6 +521,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description: "Show the Zero Browser command in the Zero CLI.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",

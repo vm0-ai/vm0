@@ -7,7 +7,7 @@ import {
   type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -185,6 +185,7 @@ export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
 export async function loadNextUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
+  queueItemCreatedBefore?: Date,
 ): Promise<QueuedUserMessage | null> {
   const [message] = await db
     .select({
@@ -211,7 +212,14 @@ export async function loadNextUnclaimedQueuedUserMessage(
       eq(chatMessages.id, chatMessageQueue.chatMessageId),
     )
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-    .where(unclaimedQueuedUserMessageCondition(threadId))
+    .where(
+      and(
+        unclaimedQueuedUserMessageCondition(threadId),
+        queueItemCreatedBefore
+          ? lt(chatMessageQueue.createdAt, queueItemCreatedBefore)
+          : undefined,
+      ),
+    )
     .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
     .limit(1);
 

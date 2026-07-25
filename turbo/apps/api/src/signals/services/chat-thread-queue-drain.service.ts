@@ -3,8 +3,9 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
+import { nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import { pendingChatThreadQueueThreadIds } from "./chat-message-queue.service";
+import { staleChatThreadQueueThreadIds } from "./chat-message-queue.service";
 import {
   drainQueuedUserMessagesForThread$,
   type ChatCallbackPreCreateTimingCollector,
@@ -16,10 +17,12 @@ import {
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
+const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
 
 interface DrainChatThreadQueueInput {
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly queueItemCreatedBefore?: Date;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
   readonly workflowEventLaunch?: {
     readonly eventId: string;
@@ -47,7 +50,11 @@ export const drainChatThreadQueueForThread$ = command(
   ): Promise<WorkflowQueueDrainResult | null> => {
     await set(
       drainQueuedUserMessagesForThread$,
-      { chatThreadId: input.chatThreadId, timing: input.timing },
+      {
+        chatThreadId: input.chatThreadId,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
+        timing: input.timing,
+      },
       signal,
     );
     signal.throwIfAborted();
@@ -56,6 +63,7 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
         ...(input.workflowEventLaunch
           ? { workflowEventLaunch: input.workflowEventLaunch }
           : {}),
@@ -104,10 +112,11 @@ export const drainStaleChatThreadQueues$ = command(
     signal: AbortSignal,
   ): Promise<number> => {
     const db = set(writeDb$);
-    const threadIds = await pendingChatThreadQueueThreadIds(
-      db,
-      DRAIN_SWEEP_LIMIT,
-    );
+    const staleBefore = new Date(nowDate().getTime() - STALE_QUEUE_ITEM_AGE_MS);
+    const threadIds = await staleChatThreadQueueThreadIds(db, {
+      staleBefore,
+      limit: DRAIN_SWEEP_LIMIT,
+    });
     signal.throwIfAborted();
     for (const chatThreadId of threadIds) {
       await set(
@@ -115,6 +124,7 @@ export const drainStaleChatThreadQueues$ = command(
         {
           chatThreadId,
           dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+          queueItemCreatedBefore: staleBefore,
         },
         signal,
       );
