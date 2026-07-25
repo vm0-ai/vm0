@@ -99,7 +99,7 @@ describe("withErrorHandler", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should hide default-disabled plan upgrade guidance for PRO_REQUIRED", async () => {
+  it("should show globally enabled plan upgrade guidance for PRO_REQUIRED", async () => {
     const handler = withErrorHandler(async () => {
       throw new ApiRequestError(
         "Built-in video generation requires a paid plan",
@@ -116,8 +116,8 @@ describe("withErrorHandler", () => {
       })
       .join("\n");
     expect(output).toContain("Paid plan required");
-    expect(output).not.toContain("Return the plan upgrade link");
-    expect(output).not.toContain("zero upgrade pro");
+    expect(output).toContain("Return the plan upgrade link");
+    expect(output).toContain("zero upgrade pro");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
