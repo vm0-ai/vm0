@@ -47,6 +47,19 @@ async function transitiveBlockedWaiterCount(
   return rows[0]?.waiterCount ?? 0;
 }
 
+async function directBlockedWaiterCount(holderPid: number): Promise<number> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      SELECT ${count()}::int AS "waiterCount"
+      FROM pg_stat_activity AS activity
+      WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+    `,
+    waiterCountRowSchema,
+  );
+  return rows[0]?.waiterCount ?? 0;
+}
+
 function bddVm0ApiKeyFilter(vendor: string, model: string) {
   const [fakePrefix, devSeedPrefix] = VM0_BDD_API_KEY_PREFIXES;
   return and(
@@ -217,6 +230,7 @@ export async function holdChatMessageQueueItemFixture(args: {
 }): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
+  readonly directBlockedWaiterCount: () => Promise<number>;
   readonly blockedWaiterCount: () => Promise<number>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
@@ -260,6 +274,9 @@ export async function holdChatMessageQueueItemFixture(args: {
       }
     },
     done,
+    directBlockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(holderPid);
     },
