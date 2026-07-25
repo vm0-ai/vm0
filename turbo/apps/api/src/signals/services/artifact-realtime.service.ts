@@ -12,9 +12,12 @@ import { publishUserSignal } from "../external/realtime";
  * always sort to the head.
  */
 export async function publishArtifactCatalogChanged(
-  authorUserId: string,
+  authorUserIds: readonly string[],
 ): Promise<void> {
-  await publishUserSignal([authorUserId], "artifactCatalogChanged");
+  await publishUserSignal(
+    [...new Set(authorUserIds)],
+    "artifactCatalogChanged",
+  );
 }
 
 export async function publishArtifactsChangedForRun(

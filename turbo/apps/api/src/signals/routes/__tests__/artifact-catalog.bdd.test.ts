@@ -47,6 +47,7 @@ async function catalogActor(
   displayName: string,
   actor: ApiTestUser = bdd.user(),
   switches: Readonly<Partial<Record<FeatureSwitchKey, boolean>>> = {},
+  options: { readonly bootstrapOrg?: boolean } = {},
 ): Promise<CatalogActor> {
   chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
@@ -54,8 +55,10 @@ async function catalogActor(
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   chatCallbacks.disableVapid();
   const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(actor);
-  await api.ensureOrgModelProvider(actor);
+  if (options.bootstrapOrg !== false) {
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+  }
   if (!actor.orgId) {
     throw new Error("Expected artifact catalog test actor to have an org");
   }
@@ -215,7 +218,44 @@ async function publishHostedSite(args: {
   return { url: prepared.url, siteId: prepared.siteId };
 }
 
-function fileWriteToken(owner: CatalogActor, runId: string): string {
+async function publishHostedSiteFromDirectRun(args: {
+  readonly owner: CatalogActor;
+  readonly site: string;
+  readonly artifactKind?: "hosted-site" | "presentation-html";
+  readonly runId?: string;
+}): Promise<{
+  readonly url: string;
+  readonly siteId: string;
+  readonly runId: string;
+}> {
+  const runId =
+    args.runId ??
+    (
+      await api.createDirectRun(args.owner.actor, {
+        agentComposeId: args.owner.agentId,
+        prompt: `publish ${args.site}`,
+        modelProviderType: "anthropic-api-key",
+        triggerSource: "workflow-schedule",
+        vars: { ZERO_AGENT_ID: args.owner.agentId },
+        secrets: { ZERO_TOKEN: "bdd-artifact-catalog-token" },
+      })
+    ).runId;
+  const bearer = `Bearer ${scopedZeroToken(args.owner, runId, ["host:write"])}`;
+  const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
+    site: args.site,
+    artifactKind: args.artifactKind ?? "hosted-site",
+    spaFallback: false,
+    files: [hostedTextFile("/index.html", `<main>${args.site}</main>`)],
+  });
+  await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
+  return { url: prepared.url, siteId: prepared.siteId, runId };
+}
+
+function scopedZeroToken(
+  owner: CatalogActor,
+  runId: string,
+  capabilities: readonly ("file:write" | "host:write")[],
+): string {
   if (!owner.actor.orgId) {
     throw new Error("Expected artifact catalog actor to have an org");
   }
@@ -225,7 +265,7 @@ function fileWriteToken(owner: CatalogActor, runId: string): string {
     userId: owner.actor.userId,
     orgId: owner.actor.orgId,
     runId,
-    capabilities: ["file:write"],
+    capabilities,
     iat: seconds,
     exp: seconds + 60,
   });
@@ -445,6 +485,71 @@ describe("GET /api/zero/artifacts/catalog", () => {
     ]);
   }, 180_000);
 
+  it("transfers one hosted artifact across same-org member redeploys", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const firstOwner = await catalogActor(
+      "Artifact catalog first org member",
+      bdd.user({ orgId, orgRole: "org:admin" }),
+      {
+        [FeatureSwitchKey.HostedArtifactVersions]: true,
+      },
+    );
+    const secondOwner = await catalogActor(
+      "Artifact catalog second org member",
+      bdd.user({ orgId, orgRole: "org:member" }),
+      {
+        [FeatureSwitchKey.HostedArtifactVersions]: true,
+      },
+      { bootstrapOrg: false },
+    );
+    const site = `catalog-shared-${randomUUID().slice(0, 8)}`;
+    const firstDeployment = await publishHostedSiteFromDirectRun({
+      owner: firstOwner,
+      site,
+    });
+    const secondDeployment = await publishHostedSiteFromDirectRun({
+      owner: secondOwner,
+      site,
+    });
+
+    expect(secondDeployment.siteId).toBe(firstDeployment.siteId);
+    await expect(
+      chat.listArtifactCatalog(firstOwner.actor),
+    ).resolves.toStrictEqual({
+      artifacts: [],
+      nextCursor: null,
+    });
+    const secondCatalog = await chat.listArtifactCatalog(secondOwner.actor);
+    expect(secondCatalog.artifacts).toStrictEqual([
+      expect.objectContaining({
+        kind: "hosted-site",
+        title: site,
+      }),
+    ]);
+
+    const presentation = await publishHostedSiteFromDirectRun({
+      owner: firstOwner,
+      site,
+      artifactKind: "presentation-html",
+      runId: firstDeployment.runId,
+    });
+
+    expect(presentation.siteId).toBe(firstDeployment.siteId);
+    await expect(
+      chat.listArtifactCatalog(secondOwner.actor),
+    ).resolves.toStrictEqual({
+      artifacts: [],
+      nextCursor: null,
+    });
+    const finalCatalog = await chat.listArtifactCatalog(firstOwner.actor);
+    expect(finalCatalog.artifacts).toStrictEqual([
+      expect.objectContaining({
+        kind: "presentation",
+        title: site,
+      }),
+    ]);
+  }, 180_000);
+
   it("filters by kind without leaking other kinds", async () => {
     const owner = await catalogActor("Artifact catalog filter owner");
     await uploadFile({
@@ -529,7 +634,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
       128,
     );
     await chat.completeUploadWithBearer(
-      `Bearer ${fileWriteToken(owner, run.runId)}`,
+      `Bearer ${scopedZeroToken(owner, run.runId, ["file:write"])}`,
       { id: fileId, contentType: "text/plain" },
       [200],
     );
