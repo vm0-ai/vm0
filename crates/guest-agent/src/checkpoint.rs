@@ -970,11 +970,13 @@ fn analyze_decoded_session_history_reader(
             break;
         }
 
-        raw_size = raw_size
-            .checked_add(bytes_read as u64)
-            .ok_or(AgentError::CheckpointHistoryTooLarge { max_bytes })?;
+        raw_size = raw_size.checked_add(bytes_read as u64).ok_or(
+            session_history::session_history_exceeds_max_error(max_bytes),
+        )?;
         if raw_size > max_bytes {
-            return Err(AgentError::CheckpointHistoryTooLarge { max_bytes });
+            return Err(session_history::session_history_exceeds_max_error(
+                max_bytes,
+            ));
         }
         hasher.update(&line);
         if line.iter().any(|byte| !byte.is_ascii_whitespace()) {
@@ -1271,6 +1273,19 @@ mod tests {
     use tokio::net::{TcpListener, TcpStream};
 
     const REQUEST_OVERLAP_TIMEOUT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn zstd_checkpoint_analysis_returns_typed_history_limit_error() {
+        let encoded = zstd_session_history(b"{}\n").unwrap();
+        let error = match analyze_zstd_session_history(&encoded, 1, false) {
+            Ok(_) => panic!("expected zstd history to exceed the decoded limit"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            AgentError::CheckpointHistoryTooLarge { max_bytes: 1 }
+        ));
+    }
 
     async fn start_artifact_checkpoint_test_server(
         artifact_count: usize,

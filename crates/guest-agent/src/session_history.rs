@@ -109,7 +109,7 @@ pub(crate) fn read_session_history_from_payload_bounded(
     read_session_history_from_payload_impl(payload, Some(max_bytes))
 }
 
-fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
+pub(crate) fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
     AgentError::CheckpointHistoryTooLarge { max_bytes }
 }
 
@@ -894,13 +894,12 @@ mod tests {
     }
 
     fn assert_over_limit(error: AgentError, max_bytes: u64) {
-        let message = error.to_string();
-        assert!(
-            message.contains(&format!(
-                "Session history exceeds maximum size of {max_bytes} bytes"
-            )),
-            "expected over-limit error for cap {max_bytes}, got: {message}"
-        );
+        match error {
+            AgentError::CheckpointHistoryTooLarge {
+                max_bytes: actual_max_bytes,
+            } => assert_eq!(actual_max_bytes, max_bytes),
+            other => panic!("expected typed over-limit error, got: {other}"),
+        }
     }
 
     #[test]
