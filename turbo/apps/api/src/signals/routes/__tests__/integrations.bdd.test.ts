@@ -543,22 +543,26 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       error: "Invalid JSON payload",
     });
 
-    const eventCallbackBody = (event: unknown) => {
+    const eventCallbackBody = (event: unknown, eventId?: string) => {
       return JSON.stringify({
         type: "event_callback",
         team_id: "TBDD_EVENT",
+        ...(eventId ? { event_id: eventId } : {}),
         event,
       });
     };
 
-    const retryBody = eventCallbackBody({
-      type: "app_mention",
-      user: "UBDD_EVENT",
-      text: "@Zero retry",
-      ts: "1710000000.000200",
-      channel: "CBDD_EVENT",
-      channel_type: "channel",
-    });
+    const retryBody = eventCallbackBody(
+      {
+        type: "app_mention",
+        user: "UBDD_EVENT",
+        text: "@Zero retry",
+        ts: "1710000000.000200",
+        channel: "CBDD_EVENT",
+        channel_type: "channel",
+      },
+      "EvBDD_RETRY_BOUNDARY",
+    );
     const retried = await integrations.requestSlackEvent(
       retryBody,
       {
@@ -2097,7 +2101,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run3Id = await pollSlackRun(runnerGroup);
     const claim3 = await runs.claimRunnerJob(run3Id);
-    expect(claim3.resumeSession?.sessionId).toBe(session1);
+    expect(claim3.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     await completeSlackTriggeredRun({
       runId: run3Id,
       sandboxToken: claim3.sandboxToken,
