@@ -134,27 +134,27 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
   it("authorizes a manual-grant connector for the current default agent when no agent is requested", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
-    const agent = await authOrgApi.createAgent(actor, {
+    authOrgApi.acceptAgentStorageWrites();
+    const { body } = await authOrgApi.bootstrapOnboarding(actor, {
       displayName: "Default Connector Agent",
     });
-    await authOrgApi.setDefaultAgent(actor, agent.agentId);
 
     await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
       OPENAI_TOKEN: "default-agent-token",
     });
 
     await expect(
-      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+      authOrgApi.readEnabledConnectorTypes(actor, body.agentId),
     ).resolves.toContain("openai");
   });
 
   it("keeps the previous manual-grant request shape connection-only during rollout", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
-    const agent = await authOrgApi.createAgent(actor, {
+    authOrgApi.acceptAgentStorageWrites();
+    const { body } = await authOrgApi.bootstrapOnboarding(actor, {
       displayName: "Legacy Connector Agent",
     });
-    await authOrgApi.setDefaultAgent(actor, agent.agentId);
 
     const response = await connectorsApi.requestManualGrant(
       actor,
@@ -165,7 +165,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     );
     expect(response.status).toBe(200);
     await expect(
-      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+      authOrgApi.readEnabledConnectorTypes(actor, body.agentId),
     ).resolves.not.toContain("openai");
   });
 

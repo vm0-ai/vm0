@@ -97,9 +97,3 @@ export function isNotFoundResponse(
 ): value is HttpResponseLike<404> {
   return isHttpResponse(value, 404);
 }
-
-export function isConflictResponse(
-  value: unknown,
-): value is HttpResponseLike<409> {
-  return isHttpResponse(value, 409);
-}

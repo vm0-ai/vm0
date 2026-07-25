@@ -523,9 +523,6 @@ describe("BILL-02: usage, insights, attribution, and model stats reads", () => {
     expect(insights.totalCredits).toBe(0);
     expect(insights.totalRuns).toBe(0);
 
-    const insightsRange = await api.readInsightsRange(admin);
-    expect(insightsRange.totalDays).toBeGreaterThanOrEqual(0);
-
     const modelRankings = await api.readModelRankings();
     expect(modelRankings.body.period).toBe("week");
     expect(Array.isArray(modelRankings.body.rows)).toBeTruthy();

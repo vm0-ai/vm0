@@ -696,43 +696,6 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     expect(invalidPayload.body).toStrictEqual({ error: "Invalid payload" });
   });
 
-  it("keeps Slack browser-connect redirect boundaries visible through APIs", async () => {
-    const admin = integrations.user();
-
-    const unauthenticated = await integrations.requestSlackBrowserConnect(
-      null,
-      {
-        w: "TBDD",
-        u: "UBDD",
-      },
-      [307],
-    );
-    expect(unauthenticated.headers.get("location") ?? "").toContain(
-      "/sign-in?redirect_url=",
-    );
-
-    const invalidLink = await integrations.requestSlackBrowserConnect(
-      admin,
-      {},
-      [307],
-    );
-    expect(invalidLink.headers.get("location") ?? "").toContain(
-      "/settings/slack?error=Invalid%20connect%20link.",
-    );
-
-    const missingWorkspace = await integrations.requestSlackBrowserConnect(
-      admin,
-      {
-        w: "TBDD",
-        u: "UBDD",
-      },
-      [307],
-    );
-    expect(missingWorkspace.headers.get("location") ?? "").toContain(
-      "Workspace%20not%20found.",
-    );
-  });
-
   it("keeps Slack org and user connect status boundaries visible through APIs", async () => {
     const admin = integrations.user();
 
@@ -2401,13 +2364,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(context.mocks.slack.views.open).not.toHaveBeenCalled();
 
     // Deleting the org default agent clears orgMetadata.defaultAgentId at the
-    // DB level (FK onDelete: "set null"), and the default-agent PUT validates
-    // zeroAgents membership, so resolveEffectiveCompose's "not_found" status
-    // ("configured agent could not be found" notice) is unreachable through
-    // public APIs. The deleted-default journey lands on the "not_configured"
-    // status's "No agent is configured" notice, delivered through the DM
-    // postMessage branch here instead of the channel ephemeral. The
-    // "not_accessible" status is covered by the hidden-private-default
+    // DB level (FK onDelete: "set null"), and active onboarding flows only
+    // configure existing agents, so resolveEffectiveCompose's "not_found"
+    // status ("configured agent could not be found" notice) is unreachable
+    // through public APIs. The deleted-default journey lands on the
+    // "not_configured" status's "No agent is configured" notice, delivered
+    // through the DM postMessage branch here instead of the channel ephemeral.
+    // The "not_accessible" status is covered by the hidden-private-default
     // journey in this describe.
     const onboarded = bdd.user();
     await bdd.bootstrapOnboarding(onboarded, {
@@ -2831,14 +2794,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
     integrations.configureSlackAppMocks();
     const actor = bdd.user();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
-    const hiddenDefault = await bdd.createAgent(member, {
+    const hiddenDefaultId = await bdd.bootstrapOnboarding(member, {
       displayName: "BDD Hidden Default",
+    });
+    await bdd.updateAgentMetadata(member, hiddenDefaultId, {
       visibility: "private",
     });
     const visiblePublic = await bdd.createAgent(member, {
       displayName: "BDD Visible Public",
     });
-    await integrations.setDefaultAgent(actor, hiddenDefault.agentId);
     const slackUserId = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
@@ -2857,7 +2821,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const commandModal = latestSlackModal();
     expect(commandModal.optionValues).not.toContain("__org_default__");
     expect(commandModal.optionValues).toContain(visiblePublic.agentId);
-    expect(commandModal.optionValues).not.toContain(hiddenDefault.agentId);
+    expect(commandModal.optionValues).not.toContain(hiddenDefaultId);
     expect(commandModal.optionLabels).not.toContainEqual(
       expect.stringContaining("Use org default"),
     );
@@ -2886,7 +2850,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const homeModal = latestSlackModal();
     expect(homeModal.optionValues).not.toContain("__org_default__");
     expect(homeModal.optionValues).toContain(visiblePublic.agentId);
-    expect(homeModal.optionValues).not.toContain(hiddenDefault.agentId);
+    expect(homeModal.optionValues).not.toContain(hiddenDefaultId);
 
     await integrations.postSlackEvent(teamId, {
       type: "message",
@@ -3503,30 +3467,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
 });
 
 describe("INT-02: Telegram integration", () => {
-  it("keeps unauthenticated, missing bot, unlinked bot, and missing upload errors visible through APIs", async () => {
+  it("keeps unlinked bot and missing upload errors visible through APIs", async () => {
     const actor = integrations.user();
     const missingBotId = "999999999";
-
-    const unauthorized = await integrations.requestReadTelegramBot(
-      null,
-      missingBotId,
-      [401],
-    );
-    expect(unauthorized.body).toMatchObject({
-      error: { code: "UNAUTHORIZED" },
-    });
-
-    const missingBot = await integrations.requestReadTelegramBot(
-      actor,
-      missingBotId,
-      [404],
-    );
-    expect(missingBot.body).toStrictEqual({
-      error: {
-        message: "Telegram bot not found",
-        code: "NOT_FOUND",
-      },
-    });
 
     const linkStatus = await integrations.readTelegramLinkStatus(
       actor,
@@ -3667,17 +3610,14 @@ describe("INT-02: Telegram integration", () => {
       }),
     );
 
-    const officialStatus = await integrations.requestReadTelegramBot(
-      actor,
-      OFFICIAL_TELEGRAM_BOT_ID,
-      [200],
+    expect(initialList.body.bots).toContainEqual(
+      expect.objectContaining({
+        id: OFFICIAL_TELEGRAM_BOT_ID,
+        kind: "official",
+        tokenStatus: "unknown",
+        official: { configured: false },
+      }),
     );
-    expect(officialStatus.body).toMatchObject({
-      id: OFFICIAL_TELEGRAM_BOT_ID,
-      kind: "official",
-      tokenStatus: "unknown",
-      official: { configured: false },
-    });
 
     const officialUpdateWithoutAgent =
       await integrations.requestUpdateTelegramBot(
@@ -4048,13 +3988,14 @@ describe("INT-02: Telegram integration", () => {
     );
     expect(disconnected.status).toBe(204);
 
-    const afterDisconnect = await integrations.requestReadTelegramBot(
+    const afterDisconnect = await integrations.requestListTelegramIntegrations(
       actor,
-      botId,
-      [404],
+      [200],
     );
     expect(afterDisconnect.body).toMatchObject({
-      error: { code: "NOT_FOUND" },
+      bots: expect.not.arrayContaining([
+        expect.objectContaining({ id: botId }),
+      ]),
     });
   });
 

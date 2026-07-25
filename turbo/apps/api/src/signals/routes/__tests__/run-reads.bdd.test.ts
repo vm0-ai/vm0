@@ -186,7 +186,7 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     const unauthenticated = [
       (await reads.requestListAgentRuns(null, {}, [401])).body,
       (await reads.requestReadAgentRun(null, missingId, [401])).body,
-      (await reads.requestReadAgentRunQueue(null, [401])).body,
+      (await api.requestReadRunQueue(null, [401])).body,
       (await reads.requestCancelAgentRun(null, missingId, [401])).body,
       (await reads.requestReadSession(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
@@ -205,7 +205,7 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     const orgless = bdd.user({ orgId: null });
     const orglessUnauthorized = [
       (await reads.requestListAgentRuns(orgless, {}, [401])).body,
-      (await reads.requestReadAgentRunQueue(orgless, [401])).body,
+      (await api.requestReadRunQueue(orgless, [401])).body,
       (await reads.requestCancelAgentRun(orgless, missingId, [401])).body,
       (await reads.requestListLogs(orgless, {}, [401])).body,
       (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
@@ -438,7 +438,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     // auth-me refreshes the caller's user-cache email, which the queue
     // surfaces for owner entries.
     await bdd.readMe(actor);
-    const agentQueue = await reads.requestReadAgentRunQueue(actor, [200]);
+    const agentQueue = await api.readRunQueue(actor);
     expect(agentQueue.body.concurrency).toMatchObject({
       tier: "pro",
       limit: 2,
@@ -509,7 +509,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     await api.requestCancelRun(actor, runA.runId, [200]);
     await api.requestCancelRun(member, runM.runId, [200]);
 
-    const drained = await reads.requestReadAgentRunQueue(actor, [200]);
+    const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
     expect(drained.body.queue).toStrictEqual([]);
   });

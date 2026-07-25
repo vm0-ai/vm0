@@ -461,15 +461,18 @@ describe("Feishu integration", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const defaultAgent = await authOrgApi.createAgent(actor, {
+    const defaultAgentBootstrap = await authOrgApi.bootstrapOnboarding(actor, {
       displayName: "Feishu default agent",
-      visibility: "public",
     });
+    const defaultAgent = await authOrgApi.updateAgentMetadata(
+      actor,
+      defaultAgentBootstrap.body.agentId,
+      { visibility: "public" },
+    );
     const alternateAgent = await authOrgApi.createAgent(actor, {
       displayName: "Feishu alternate agent",
       visibility: "public",
     });
-    await authOrgApi.setDefaultAgent(actor, defaultAgent.agentId);
     const installationDefaultAgent = options.useAlternateInstallationDefault
       ? alternateAgent
       : defaultAgent;

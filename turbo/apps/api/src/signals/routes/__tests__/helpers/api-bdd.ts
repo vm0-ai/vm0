@@ -6,30 +6,23 @@ import {
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@vm0/api-contracts/contracts/onboarding";
-import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import {
-  zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   type ZeroAgentMetadataRequest,
   type ZeroAgentRequest,
   type ZeroAgentResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
-import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
 import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -37,7 +30,6 @@ import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
-const DEFAULT_ONBOARDING_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -167,27 +159,6 @@ export function createBddApi(context: TestContext) {
     })(zeroAgentsByIdContract);
   }
 
-  function agentInstructionsClient() {
-    return setupAppWithRoutes({
-      context,
-      routes: zeroAgentInstructionsRoutes,
-    })(zeroAgentInstructionsContract);
-  }
-
-  function modelProvidersClient() {
-    return setupAppWithRoutes({
-      context,
-      routes: zeroModelProvidersRoutes,
-    })(zeroModelProvidersMainContract);
-  }
-
-  function defaultAgentClient() {
-    return setupAppWithRoutes({
-      context,
-      routes: zeroDefaultAgentRoutes,
-    })(orgDefaultAgentContract);
-  }
-
   function user(options: ApiTestUserOptions = {}): ApiTestUser {
     return createUser(options);
   }
@@ -284,7 +255,7 @@ export function createBddApi(context: TestContext) {
       );
     },
 
-    async bootstrapLimitedFreeOnboarding(
+    async bootstrapOnboarding(
       nextUser: ApiTestUser,
       options: OnboardingBootstrapOptions,
     ): Promise<string> {
@@ -343,96 +314,6 @@ export function createBddApi(context: TestContext) {
       }
 
       return status.defaultAgentId;
-    },
-
-    async bootstrapOnboarding(
-      nextUser: ApiTestUser,
-      options: OnboardingBootstrapOptions,
-    ): Promise<string> {
-      const headers = authenticate(nextUser);
-      const listed = await accept(
-        agentsClient().list({ headers: zeroAgentReadHeaders(nextUser) }),
-        [200],
-      );
-      const existingAgent = listed.body[0];
-      let agentId = existingAgent?.agentId;
-
-      if (!agentId) {
-        await accept(
-          modelProvidersClient().upsert({
-            headers,
-            body: { type: "vm0" },
-          }),
-          [200, 201],
-        );
-
-        const created = await accept(
-          agentsClient().create({
-            headers,
-            body: {
-              displayName: options.displayName,
-              ...(options.sound === undefined ? {} : { sound: options.sound }),
-              avatarUrl:
-                options.avatarUrl ?? DEFAULT_ONBOARDING_AGENT_AVATAR_URL,
-            },
-          }),
-          [201],
-        );
-        agentId = created.body.agentId;
-
-        await accept(
-          agentInstructionsClient().update({
-            params: { id: agentId },
-            headers,
-            body: { content: SEED_INSTRUCTIONS },
-          }),
-          [200],
-        );
-      }
-
-      const defaultResponse = await accept(
-        defaultAgentClient().setDefaultAgent({
-          query: {},
-          headers,
-          body: { agentId },
-        }),
-        [200, 409],
-      );
-      if (defaultResponse.status === 409) {
-        const statusResponse = await accept(
-          onboardingStatusClient().getStatus({ headers }),
-          [200],
-        );
-        if (!statusResponse.body.defaultAgentId) {
-          throw new Error("Expected the configured default agent to exist");
-        }
-        agentId = statusResponse.body.defaultAgentId;
-      }
-
-      if (options.timezone !== undefined) {
-        await accept(
-          userPreferencesClient().update({
-            headers,
-            body: { timezone: options.timezone },
-          }),
-          [200],
-        );
-      }
-
-      const completed = await accept(
-        onboardingCompleteClient().complete({
-          headers,
-          body: {},
-        }),
-        [200, 403],
-      );
-      if (completed.status !== 200) {
-        throw new Error(
-          `Expected onboarding completion to succeed, got ${completed.status}`,
-        );
-      }
-
-      return agentId;
     },
 
     async requestReadOrg(
@@ -537,21 +418,6 @@ export function createBddApi(context: TestContext) {
           params: { id: agentId },
           headers: authenticate(nextUser),
           body,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async setDefaultAgent(
-      nextUser: ApiTestUser,
-      agentId: string | null,
-    ): Promise<{ readonly agentId: string | null }> {
-      const response = await accept(
-        defaultAgentClient().setDefaultAgent({
-          query: {},
-          headers: authenticate(nextUser),
-          body: { agentId },
         }),
         [200],
       );

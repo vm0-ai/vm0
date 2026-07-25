@@ -123,12 +123,10 @@ export {
   type NetworkLogsResponse,
   type SearchResult,
   type LogsSearchResponse,
-  runsQueueContract,
   queueEntrySchema,
   runningTaskSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
-  type RunsQueueContract,
   type QueueEntry,
   type RunningTask,
   type ConcurrencyInfo,
@@ -252,11 +250,9 @@ export {
   cliAuthDeviceContract,
   cliAuthTokenContract,
   cliAuthApproveContract,
-  cliAuthOrgContract,
   type CliAuthDeviceContract,
   type CliAuthTokenContract,
   type CliAuthApproveContract,
-  type CliAuthOrgContract,
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
 export {
@@ -490,13 +486,11 @@ export {
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgDefaultAgentContract,
   orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
   isOrgTier,
-  type OrgDefaultAgentContract,
   type OrgResponse,
   type UpdateOrgRequest,
   type OrgTier,
@@ -1514,12 +1508,6 @@ export {
   type ZeroSlackInteractiveContract,
 } from "./zero-slack-interactive";
 export {
-  zeroSlackBrowserConnectContract,
-  zeroSlackBrowserConnectQuerySchema,
-  type ZeroSlackBrowserConnectContract,
-  type ZeroSlackBrowserConnectQuery,
-} from "./zero-slack-browser-connect";
-export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,
   zeroSlackOauthConnectQuerySchema,
@@ -1586,7 +1574,6 @@ export {
   type ComputerUseCommandResult,
   type ComputerUseCommandStatus,
   type ComputerUseHost,
-  type ComputerUseHostDeleteResponse,
   type ComputerUseHostListResponse,
   type ComputerUsePluginCommandKind,
   type ComputerUseReadCommandKind,
@@ -1627,11 +1614,8 @@ export {
 } from "./zero-computer-use-plugins";
 export {
   zeroInsightsContract,
-  zeroInsightsRangeContract,
   type ZeroInsightsContract,
-  type ZeroInsightsRangeContract,
   type InsightsResponse,
-  type InsightsRangeResponse,
   type DayInsight,
 } from "./zero-insights";
 export {

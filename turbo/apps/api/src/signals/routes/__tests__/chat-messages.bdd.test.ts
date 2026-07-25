@@ -4293,38 +4293,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     expect(reconnected.hostId).toBe(installed.hostId);
 
-    // A deleted sticky host is cleared on the next send without the field.
-    // (The actor has no credits, so sends stop at admission — host selection
-    // and sticky-host updates still happen first.)
-    const sticky = await cu.startComputerUseHost(actor);
-    const pinned = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "pin the host before deleting it",
-        computerUseHostId: sticky.hostId,
-      },
-      [201],
-    );
-    if (pinned.status !== 201) {
-      throw new Error("Expected the pinned send to be accepted");
-    }
-    expect(pinned.body.runId).toBeNull();
-    await cu.deleteComputerUseHost(actor, sticky.hostId);
-    await expect(
-      readThreadComputerUseHostId(actor, pinned.body.threadId),
-    ).resolves.toBeNull();
-    const clearedSend = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        threadId: pinned.body.threadId,
-        prompt: "send after the host vanished",
-      },
-      [201],
-    );
-    expect(clearedSend.body).toMatchObject({ threadId: pinned.body.threadId });
-
     // A valid sticky host remains usable for later non-explicit sends.
     const survivor = await cu.startComputerUseHost(actor);
     const survivorThread = await chat.requestSendMessage(

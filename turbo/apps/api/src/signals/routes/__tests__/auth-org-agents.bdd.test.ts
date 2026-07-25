@@ -167,13 +167,6 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       }),
     ).toBeTruthy();
 
-    const selected = await api.requestSetDefaultAgent(
-      admin,
-      created.agentId,
-      [409],
-    );
-    expectApiError(selected.body);
-    expect(selected.body.error.code).toBe("CONFLICT");
     const selectedStatus = await api.readOnboardingStatus(admin);
     expect(selectedStatus.defaultAgentId).toBe(defaultAgentId);
 
@@ -785,14 +778,6 @@ describe("AGENT-01 and AGENT-02", () => {
     );
     expectApiError(crossOrgRead.body);
     expect(crossOrgRead.body.error.code).toBe("NOT_FOUND");
-
-    const memberDefault = await api.requestSetDefaultAgent(
-      member,
-      publicAgent.agentId,
-      [403],
-    );
-    expectApiError(memberDefault.body);
-    expect(memberDefault.body.error.code).toBe("FORBIDDEN");
 
     const connectorSlug = slug("bdd-connector");
     const connector = await api.createCustomConnector(admin, {

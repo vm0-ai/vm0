@@ -36,15 +36,10 @@ import {
   type GithubOauthInstallQuery,
 } from "@vm0/api-contracts/contracts/github-oauth";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import {
-  zeroSlackBrowserConnectContract,
-  type ZeroSlackBrowserConnectQuery,
-} from "@vm0/api-contracts/contracts/zero-slack-browser-connect";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
@@ -756,21 +751,6 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
-    async requestSlackBrowserConnect(
-      actor: ApiTestUser | null,
-      query: ZeroSlackBrowserConnectQuery,
-      statuses: readonly 307[],
-    ) {
-      const client = setupApp({ context })(zeroSlackBrowserConnectContract);
-      return await accept(
-        client.connect({
-          extraHeaders: extraHeaders(authenticate(context, routeMocks, actor)),
-          query,
-        }),
-        statuses,
-      );
-    },
-
     async requestSlackOauthInstall(
       query: {
         readonly orgId?: string;
@@ -1098,18 +1078,6 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
-    async setDefaultAgent(actor: ApiTestUser, agentId: string): Promise<void> {
-      const client = setupApp({ context })(orgDefaultAgentContract);
-      await accept(
-        client.setDefaultAgent({
-          headers: authenticate(context, routeMocks, actor),
-          query: {},
-          body: { agentId },
-        }),
-        [200],
-      );
-    },
-
     async configureSlackRunModelPolicies(actor: ApiTestUser): Promise<void> {
       const providers = setupApp({ context })(zeroModelProvidersMainContract);
       const anthropic = await accept(
@@ -1304,21 +1272,6 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({ context })(zeroSlackOauthContract);
       return await accept(client.callback({ query }), statuses);
-    },
-
-    async requestReadTelegramBot(
-      actor: ApiTestUser | null,
-      botId: string,
-      statuses: readonly (200 | 401 | 404)[],
-    ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
-      return await accept(
-        client.getBot({
-          headers: authenticate(context, routeMocks, actor),
-          params: { botId },
-        }),
-        statuses,
-      );
     },
 
     async requestListTelegramIntegrations(
