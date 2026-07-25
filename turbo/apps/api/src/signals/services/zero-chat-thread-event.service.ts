@@ -14,10 +14,6 @@ import {
 import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
 
 import type { Db, ReadonlyDb } from "../external/db";
-import {
-  excludeCanonicalSlackChatThreads,
-  hiddenCanonicalSlackChatThreadIds,
-} from "./canonical-slack-web-visibility.service";
 
 type ChatThreadEventDb = Pick<Db, "insert" | "select">;
 const CHAT_THREAD_EVENTS_PAGE_SIZE = 1000;
@@ -80,7 +76,6 @@ export async function getChatThreadSnapshot(
   args: {
     readonly userId: string;
     readonly orgId: string;
-    readonly includeCanonicalSlackThreads?: boolean;
   },
 ): Promise<{
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
@@ -100,15 +95,9 @@ export async function getChatThreadSnapshot(
     )
     .limit(1);
 
-  const hiddenThreadIds = args.includeCanonicalSlackThreads
-    ? new Set<string>()
-    : await hiddenCanonicalSlackChatThreadIds(db, args.userId);
   return {
     chatThreads:
-      snapshot?.chatThreads.flatMap((thread) => {
-        if (hiddenThreadIds.has(thread.id)) {
-          return [];
-        }
+      snapshot?.chatThreads.map((thread) => {
         return {
           ...thread,
           selectedModel: thread.selectedModel ?? null,
@@ -158,7 +147,6 @@ export async function getChatThreadEventsSince(
     readonly userId: string;
     readonly orgId: string;
     readonly sinceEventId?: string;
-    readonly includeCanonicalSlackThreads?: boolean;
   },
 ): Promise<
   | {
@@ -203,12 +191,6 @@ export async function getChatThreadEventsSince(
               gt(pageChatThreadEvent.id, cursorChatThreadEvent.id),
             ),
           ),
-          args.includeCanonicalSlackThreads
-            ? undefined
-            : excludeCanonicalSlackChatThreads(
-                db,
-                pageChatThreadEvent.chatThreadId,
-              ),
         ),
       )
       .where(
@@ -244,12 +226,6 @@ export async function getChatThreadEventsSince(
         and(
           eq(chatThreadEvents.userId, args.userId),
           eq(chatThreadEvents.orgId, args.orgId),
-          args.includeCanonicalSlackThreads
-            ? undefined
-            : excludeCanonicalSlackChatThreads(
-                db,
-                chatThreadEvents.chatThreadId,
-              ),
         ),
       )
       .orderBy(asc(chatThreadEvents.createdAt), asc(chatThreadEvents.id))
