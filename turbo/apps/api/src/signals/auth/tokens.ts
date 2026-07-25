@@ -4,7 +4,6 @@ import {
   ZERO_CAPABILITIES,
   ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   isFeatureEnabled,
@@ -300,21 +299,12 @@ export function generateZeroToken(
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
   options?: {
     readonly computerUseHostId?: string;
-    readonly triggerSource?: TriggerSource;
   },
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
     if (capability === "computer-use:write" && !options?.computerUseHostId) {
-      continue;
-    }
-    // Workflow-event runs are autonomous and must not create, edit, pause,
-    // resume, or clear goals. They can still report terminal agent results.
-    if (
-      capability === "goal:user-control:write" &&
-      options?.triggerSource === "workflow-event"
-    ) {
       continue;
     }
     if (

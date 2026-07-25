@@ -794,9 +794,10 @@ fn secure_regular_private_file(file: &File, path: &Path) -> io::Result<()> {
 #[cfg(unix)]
 /// Create or truncate a runtime-private file.
 ///
-/// On Unix, missing parent directories are created with private permissions,
-/// symlinked parent components are rejected, and private permissions are
-/// enforced on the final parent directory.
+/// On Unix, missing parent directories are created with `0700` permissions, an
+/// existing final parent directory is tightened to `0700`, and `..` or
+/// symlinked parent components are rejected. The final path must be a regular
+/// file rather than a symlink, and its permissions are tightened to `0600`.
 pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
     open_private_file(path.as_ref(), false)
 }
@@ -804,7 +805,8 @@ pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
 #[cfg(not(unix))]
 /// Create or truncate a runtime-private file.
 ///
-/// Missing parent directories are created before the file is opened.
+/// On non-Unix targets, parent directories are created and the file is created
+/// or truncated without claiming equivalent permission or symlink guarantees.
 pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
     let path = path.as_ref();
     ensure_parent_dir(path)?;
@@ -842,19 +844,21 @@ fn private_append_options() -> OpenOptions {
 }
 
 #[cfg(unix)]
-/// Open a runtime-private file for append.
+/// Open a runtime-private file for append, creating it if it is missing.
 ///
-/// On Unix, missing parent directories are created with private permissions,
-/// symlinked parent components are rejected, and private permissions are
-/// enforced on the final parent directory.
+/// On Unix, missing parent directories are created with `0700` permissions, an
+/// existing final parent directory is tightened to `0700`, and `..` or
+/// symlinked parent components are rejected. The final path must be a regular
+/// file rather than a symlink, and its permissions are tightened to `0600`.
 pub fn open_private_append(path: impl AsRef<Path>) -> io::Result<File> {
     open_private_file(path.as_ref(), true)
 }
 
 #[cfg(not(unix))]
-/// Open a runtime-private file for append.
+/// Open a runtime-private file for append, creating it if it is missing.
 ///
-/// Missing parent directories are created before the file is opened.
+/// On non-Unix targets, missing parent directories are created without
+/// claiming equivalent permission or symlink guarantees.
 pub fn open_private_append(path: impl AsRef<Path>) -> io::Result<File> {
     let path = path.as_ref();
     ensure_parent_dir(path)?;

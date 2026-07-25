@@ -248,7 +248,7 @@ describe("auth tokens", () => {
     });
   });
 
-  it("grants goal capabilities by default", () => {
+  it("grants all goal capabilities", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
 
     expect(verifyZeroToken(defaultToken)?.capabilities).toContain("goal:read");
@@ -257,36 +257,6 @@ describe("auth tokens", () => {
     );
     expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
       "goal:user-control:write",
-    );
-  });
-
-  it("excludes user-control goal writes for workflow-event runs but keeps agent result writes", () => {
-    const userDrivenToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      {},
-      { triggerSource: "web" },
-    );
-    const continuationToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      {},
-      { triggerSource: "workflow-event" },
-    );
-
-    expect(verifyZeroToken(userDrivenToken)?.capabilities).toContain(
-      "goal:user-control:write",
-    );
-    expect(verifyZeroToken(continuationToken)?.capabilities).not.toContain(
-      "goal:user-control:write",
-    );
-    expect(verifyZeroToken(continuationToken)?.capabilities).toContain(
-      "goal:read",
-    );
-    expect(verifyZeroToken(continuationToken)?.capabilities).toContain(
-      "goal:agent-result:write",
     );
   });
 
