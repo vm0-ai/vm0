@@ -52,14 +52,9 @@ function testActors() {
   return { api, admin, member };
 }
 
-async function completeVisibleOnboarding(
-  api: ReturnType<typeof createBillingMediaApi>,
-  admin: ApiTestUser,
-): Promise<void> {
-  await api.bootstrapLimitedFreeOnboarding(admin, {
-    displayName: "BDD Billing Media Agent",
-    sound: "calm",
-  });
+async function completeVisibleOnboarding(admin: ApiTestUser): Promise<void> {
+  const completed = await createBddApi(context).completeOnboarding(admin);
+  expect(completed.status).toBe(200);
 }
 
 function checkoutUrls() {
@@ -83,7 +78,7 @@ function pcmFormData(): FormData {
 describe("BILL-01: billing status and Stripe-backed actions through public API", () => {
   it("chains status, checkout, portal, invoices, redeem, and admin errors without hidden DB state", async () => {
     const { api, admin, member } = testActors();
-    await completeVisibleOnboarding(api, admin);
+    await completeVisibleOnboarding(admin);
 
     const initialStatus = await api.readBillingStatus(admin);
     expect(initialStatus).toMatchObject({
@@ -282,7 +277,7 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
 
   it("grants Stripe checkout and invoice credits idempotently through webhook-visible billing status", async () => {
     const { api, admin } = testActors();
-    await completeVisibleOnboarding(api, admin);
+    await completeVisibleOnboarding(admin);
     if (!admin.orgId) {
       throw new Error("Expected billing webhook test user to have an org");
     }
@@ -466,7 +461,7 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
 describe("BILL-02: usage, insights, attribution, and model stats reads", () => {
   it("chains empty scoped usage, insights, rankings, and attribution through visible APIs", async () => {
     const { api, admin, member } = testActors();
-    await completeVisibleOnboarding(api, admin);
+    await completeVisibleOnboarding(admin);
 
     const personalUsage = await api.readUsage(admin);
     expect(personalUsage.body.summary).toStrictEqual({
@@ -547,7 +542,7 @@ describe("BILL-02: usage, insights, attribution, and model stats reads", () => {
 describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status APIs", () => {
   it("queues and completes an image generation through Stripe credits, Fal webhook, and status GET", async () => {
     const { api, admin } = testActors();
-    await completeVisibleOnboarding(api, admin);
+    await completeVisibleOnboarding(admin);
     if (!admin.orgId) {
       throw new Error("Expected media generation test user to have an org");
     }
@@ -675,7 +670,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
 
   it("queues and completes a video generation through Stripe credits, BytePlus callback, and status GET", async () => {
     const { api, admin } = testActors();
-    await completeVisibleOnboarding(api, admin);
+    await completeVisibleOnboarding(admin);
     if (!admin.orgId) {
       throw new Error("Expected video generation test user to have an org");
     }
@@ -829,7 +824,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
 
   it("chains media quota, generation gates, TTS, and status reads through API-visible state", async () => {
     const { api, admin } = testActors();
-    await completeVisibleOnboarding(api, admin);
+    await completeVisibleOnboarding(admin);
     if (!admin.orgId) {
       throw new Error("Expected media quota test user to have an org");
     }
@@ -1261,7 +1256,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
 describe("BILL-02: maps and banking visible boundaries", () => {
   it("covers maps provider/pricing errors and banking credential gating through public routes", async () => {
     const { api, admin } = testActors();
-    await completeVisibleOnboarding(api, admin);
+    await completeVisibleOnboarding(admin);
 
     const missingMapsProvider = await api.requestMapsGeocode(
       admin,

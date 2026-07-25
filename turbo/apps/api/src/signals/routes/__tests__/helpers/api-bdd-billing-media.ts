@@ -54,11 +54,7 @@ import {
   mockStripeClient,
 } from "../../../external/stripe-client";
 import { modelStatsContract } from "../../model-stats";
-import {
-  createBddApi,
-  type ApiTestUser,
-  type OnboardingBootstrapOptions,
-} from "./api-bdd";
+import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -283,16 +279,6 @@ export function createBillingMediaApi(context: TestContext) {
     configureBillingPrices,
     configureCampaign,
     configureMapsProvider,
-
-    async bootstrapLimitedFreeOnboarding(
-      actor: ApiTestUser,
-      body: OnboardingBootstrapOptions,
-    ) {
-      const agentId = await createBddApi(
-        context,
-      ).bootstrapLimitedFreeOnboarding(actor, body);
-      return { status: 200 as const, body: { agentId } };
-    },
 
     async readBillingStatus(
       actor: ApiTestUser,

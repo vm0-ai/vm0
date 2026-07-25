@@ -54,9 +54,8 @@ async function prepareFreeWeatherActor(actor: ApiTestUser): Promise<void> {
   if (!actor.orgId) {
     throw new Error("Zero Weather test actor must belong to an organization");
   }
-  await createBddApi(context).bootstrapLimitedFreeOnboarding(actor, {
-    displayName: "Zero Weather Test",
-  });
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
   await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
   await seedUsagePricingRows([
     {

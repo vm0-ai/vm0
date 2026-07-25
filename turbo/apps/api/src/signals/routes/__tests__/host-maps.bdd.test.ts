@@ -539,9 +539,8 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(crossOrg.body.error.message).toBe("Hosted site not found");
 
     const third = await api.prepareHostedSite(actor, body);
-    await bdd.bootstrapLimitedFreeOnboarding(actor, {
-      displayName: "BDD Host Suspended",
-    });
+    const onboardingCompleted = await bdd.completeOnboarding(actor);
+    expect(onboardingCompleted.status).toBe(200);
     if (!actor.orgId) {
       throw new Error("Expected suspended host actor to have an org");
     }

@@ -1618,9 +1618,8 @@ describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await bdd.bootstrapLimitedFreeOnboarding(actor, {
-      displayName: "BDD pro-suspend admission agent",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });

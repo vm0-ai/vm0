@@ -238,9 +238,8 @@ describe("POST /api/zero/uploads/complete", () => {
 
   it("rejects suspended orgs before completing the upload", async () => {
     const actor = bdd.user();
-    await bdd.bootstrapLimitedFreeOnboarding(actor, {
-      displayName: "BDD suspended upload completion",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     await seedOrgMetadata({
       orgId: requireOrgId(actor),
       tier: "pro-suspend",

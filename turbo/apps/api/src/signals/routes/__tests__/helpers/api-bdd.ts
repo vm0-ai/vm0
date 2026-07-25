@@ -255,6 +255,19 @@ export function createBddApi(context: TestContext) {
       );
     },
 
+    async updateUserTimezone(
+      nextUser: ApiTestUser,
+      timezone: string,
+    ): Promise<void> {
+      await accept(
+        userPreferencesClient().update({
+          headers: authenticate(nextUser),
+          body: { timezone },
+        }),
+        [200],
+      );
+    },
+
     async bootstrapLimitedFreeOnboarding(
       nextUser: ApiTestUser,
       options: OnboardingBootstrapOptions,
