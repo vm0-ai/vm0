@@ -264,6 +264,14 @@ function membershipRightBoundary(quasi: string): boolean {
   );
 }
 
+function lowerCallStart(quasi: string): number | undefined {
+  const match = /\bLOWER\s*\(\s*$/i.exec(quasi);
+  if (match === null || hasSqlIdentifierPrefix(quasi, match.index)) {
+    return undefined;
+  }
+  return match.index;
+}
+
 function hasOrderingLeftBoundary(quasi: string): boolean {
   const prefix = quasi.trimEnd();
   return (
@@ -1205,6 +1213,11 @@ export const preferDrizzleApis = createRule({
       );
     }
 
+    function isInlineParameterListSqlJoin(node: TSESTree.Expression): boolean {
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      return isExpression(tsNode) && isParameterListSqlJoin(tsNode);
+    }
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
@@ -1299,6 +1312,29 @@ export const preferDrizzleApis = createRule({
             data: { helper: existence.helper },
           });
           return;
+        }
+        for (let index = 0; index < expressions.length - 1; index += 1) {
+          const columnNode = expressions[index];
+          const valuesNode = expressions[index + 1];
+          if (columnNode === undefined || valuesNode === undefined) {
+            continue;
+          }
+          const prefix = syntaxQuasis[index] ?? "";
+          const lowerStart = lowerCallStart(prefix);
+          if (
+            lowerStart !== undefined &&
+            hasPredicateLeftBoundary(prefix.slice(0, lowerStart)) &&
+            /^\s*\)\s+IN\s*\(\s*$/i.test(syntaxQuasis[index + 1] ?? "") &&
+            membershipRightBoundary(syntaxQuasis[index + 2] ?? "") &&
+            isDrizzleColumnType(
+              checker,
+              expressionType(columnNode).type,
+              expressionType(columnNode).location,
+            ) &&
+            isInlineParameterListSqlJoin(valuesNode)
+          ) {
+            report(columnNode, "inArray");
+          }
         }
         for (let index = 0; index < expressions.length - 1; index += 1) {
           const leftNode = expressions[index];

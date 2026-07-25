@@ -140,6 +140,79 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
+        import { eq, sql as query } from "drizzle-orm";
+        const names = ["one", "two"];
+        const nameList = query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        );
+        const subquery = query\`SELECT \${users.name} FROM \${users}\`;
+        function nameSqlList() {
+          return query.join(
+            names.map((name) => query\`\${name}\`),
+            query\`, \`,
+          );
+        }
+        const otherSql = {
+          join(values: string[]) {
+            return query.join(
+              values.map((value) => query\`\${value}\`),
+              query\`, \`,
+            );
+          },
+        };
+        function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+          return { strings, values };
+        }
+        sql.join = (values: unknown[], separator: unknown) => ({
+          values,
+          separator,
+        });
+        const condition = eq(users.id, 1);
+        sql\`lower(\${users.name}) IN (\${sql.join(
+          names.map((name) => sql\`\${name}\`),
+          sql\`, \`,
+        )})\`;
+        query\`upper(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) NOT IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) IN (\${nameList})\`;
+        query\`lower(\${users.name}) IN (\${nameSqlList()})\`;
+        query\`lower(\${users.name}) IN (\${otherSql.join(names)})\`;
+        query\`lower(\${users.name}) IN (\${subquery})\`;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name.toUpperCase()}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`; \`,
+        )})\`;
+        query\`SELECT lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )}) FROM \${users}\`;
+        query\`prefix_lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )}) IS TRUE\`;
+        query\`lower(\${condition}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
         import { and, eq, isNotNull, or, sql } from "drizzle-orm";
         const selected = db
           .select({ id: users.id })
@@ -295,6 +368,19 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "emptyFragment" },
         { messageId: "emptyFragment" },
       ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const names = ["one", "two"];
+        sql\`lower(\${users.name}) IN (\${sql.join(
+          names.map((name) => {
+            return sql\`\${name}\`;
+          }),
+          sql\`, \`,
+        )})\`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "inArray" } }],
     },
     {
       code: `${drizzlePreamble}
@@ -682,6 +768,32 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "max" } },
         { messageId: "typedApi", data: { helper: "or" } },
         { messageId: "typedApi", data: { helper: "arrayContains" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql as query } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        const names = ["one", "two"];
+        const condition = eq(users.id, 1);
+        const tag = drizzle.sql;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        drizzle.sql\`WHERE LOWER (\${users.name}) in (\${drizzle.sql.join(
+          names.map((name) => drizzle.sql\`\${name}\`),
+          drizzle.sql\`, \`,
+        )}) AND \${condition}\`;
+        tag\`NOT lower(\${users.name}) IN (\${tag.join(
+          names.map((name) => tag\`\${name}\`),
+          tag\`, \`,
+        )})\`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "inArray" } },
       ],
     },
     {
