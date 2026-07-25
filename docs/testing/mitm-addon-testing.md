@@ -94,18 +94,18 @@ tests must not resolve a different mitmproxy version from production.
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `test_addon_configuration.py`                           | Addon option registration and configuration updates                                                                  |
 | `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
-| `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                     |
+| `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                    |
 | `test_request_handler_passthrough.py`                   | Request pass-through, auto-allow, and browser user-agent passthrough decisions                                       |
 | `test_request_handler_authority_validation.py`          | HTTPS authority validation before firewall auth                                                                      |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
 | `test_request_handler_public_destination.py`            | Request-hook public destination validation and revalidation                                                          |
 | `test_request_handler_connector_diagnostics.py`         | Request-hook connector diagnostics and inactive built-in connector diagnostics                                       |
 | `test_request_handler_auth_base_body.py`                | Request-hook auth-base body admission and cleanup                                                                    |
-| `test_request_headers_streaming.py`                     | Requestheaders stream installation, body framing, buffering, and probe cleanup                                        |
+| `test_request_headers_streaming.py`                     | Requestheaders stream installation, body framing, buffering, and probe cleanup                                       |
 | `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
-| `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                             |
+| `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                            |
 | `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
-| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                 |
+| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                |
 | `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
 | `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |
 | `test_response_handler_connector_diagnostics.py`        | Response-hook connector diagnostic replacement and streaming lifecycle                                               |
@@ -120,7 +120,11 @@ tests must not resolve a different mitmproxy version from production.
 | `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
 | `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
 | `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |
-| `test_registry_builtin_cache.py`                        | Registry built-in firewall resolution and compiled-core cache behavior                                               |
+| `test_registry_builtin_catalog_resolution.py`           | Built-in catalog resolution and resolver contracts                                                                   |
+| `test_registry_builtin_snapshot.py`                     | Built-in catalog snapshot identity and invalidation                                                                  |
+| `test_registry_builtin_catalog_validation.py`           | Built-in catalog payload and file-trust validation                                                                   |
+| `test_registry_builtin_core_cache.py`                   | Compiled built-in core reuse, scoping, pruning, and lifecycle                                                        |
+| `test_registry_inline_firewalls.py`                     | Inline registry firewall behavior outside the built-in catalog cache                                                 |
 | `test_registry_builtin_base_url_vars.py`                | Registry built-in base URL variable resolution and validation                                                        |
 | `test_registry_context_state.py`                        | Registry compiled context reload, unavailable-state, and malformed-shape behavior                                    |
 | `test_matching_path.py`                                 | Low-level firewall path matching                                                                                     |

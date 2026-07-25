@@ -1,0 +1,255 @@
+"""Tests for built-in registry catalog payload and trust validation."""
+
+import pytest
+
+import registry
+from tests.registry_builtin_helpers import cache_firewall, write_catalog_cache
+from tests.registry_helpers import (
+    assert_invalid_builtin_vm,
+    builtin_vm,
+    write_multi_vm_registry,
+    write_trusted_catalog_cache_text,
+)
+
+
+def _assert_invalid_builtin_vm_with_cache(
+    *,
+    registry_path,
+    cache_path,
+    mitm_ctx,
+    expected_message: str,
+) -> None:
+    with mitm_ctx(
+        registry_path=str(registry_path),
+        builtin_firewall_catalog_cache_path=str(cache_path),
+    ):
+        invalid_vm = assert_invalid_builtin_vm(registry_path)
+
+    assert expected_message in invalid_vm.message
+
+
+def _assert_cache_firewall_is_invalid(
+    tmp_path,
+    mitm_ctx,
+    firewall: dict,
+    *,
+    expected_message: str = "catalog cache unavailable: cache_invalid",
+    cache_mode: int | None = None,
+) -> None:
+    registry_path = tmp_path / "registry.json"
+    cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+    write_catalog_cache(
+        cache_path,
+        digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        version="catalog-a",
+        firewalls={"fallback": firewall},
+    )
+    if cache_mode is not None:
+        cache_path.chmod(cache_mode)
+    write_multi_vm_registry(
+        registry_path,
+        {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+    )
+
+    _assert_invalid_builtin_vm_with_cache(
+        registry_path=registry_path,
+        cache_path=cache_path,
+        mitm_ctx=mitm_ctx,
+        expected_message=expected_message,
+    )
+
+
+class TestRegistryBuiltinCatalogValidation:
+    def test_runner_catalog_cache_accepts_valid_template_base(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {
+                "10.200.0.1": builtin_vm(
+                    "run-template",
+                    "templated",
+                    {"TENANT": "acme"},
+                )
+            },
+        )
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={
+                "templated": {
+                    "name": "templated",
+                    "apis": [
+                        {
+                            "base": "https://${{ vars.TENANT }}.example.com",
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                }
+            },
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
+
+    def test_malformed_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_trusted_catalog_cache_text(cache_path, '{"schemaVersion":1}')
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+        )
+
+        _assert_invalid_builtin_vm_with_cache(
+            registry_path=registry_path,
+            cache_path=cache_path,
+            mitm_ctx=mitm_ctx,
+            expected_message="catalog cache unavailable: cache_invalid",
+        )
+
+    def test_empty_api_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": {"name": "fallback", "apis": []}},
+        )
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+        )
+
+        _assert_invalid_builtin_vm_with_cache(
+            registry_path=registry_path,
+            cache_path=cache_path,
+            mitm_ctx=mitm_ctx,
+            expected_message="catalog cache unavailable: cache_invalid",
+        )
+
+    def test_malformed_static_base_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["base"] = "not-a-url"
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://api.example.com/a/../admin",
+            "https://api.example.com/%252e%252e/admin",
+            "https://api.example.com/..;version=1/admin",
+            "https://api.example.com/%255cadmin",
+            "https://api.example.com/v1/../{org}",
+            "https://${{ vars.TENANT }}.example.com/v1/../items",
+            "${{ vars.API_BASE_URL }}/v1/%2e%2e/items",
+        ],
+    )
+    def test_unsafe_base_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx, base):
+        firewall = cache_firewall("fallback", base)
+        firewall["apis"][0].pop("hostPolicy")
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_malformed_parameterized_base_runner_catalog_cache_fails_closed(
+        self, tmp_path, mitm_ctx
+    ):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["base"] = "https://api.{tenant+}.example.com"
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_malformed_template_base_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["base"] = "https://${{ secrets.TENANT }}.example.com"
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_malformed_template_parameter_base_runner_catalog_cache_fails_closed(
+        self, tmp_path, mitm_ctx
+    ):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["base"] = "https://${{ vars.TENANT }}.{tenant+}.example.com"
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_non_ascii_template_variable_runner_catalog_cache_fails_closed(
+        self, tmp_path, mitm_ctx
+    ):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["base"] = "https://${{ vars.\u00e9 }}.example.com"
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_malformed_auth_base_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["auth"] = {"base": "http://auth.example.com"}
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_world_writable_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+
+        _assert_cache_firewall_is_invalid(
+            tmp_path,
+            mitm_ctx,
+            firewall,
+            expected_message="catalog cache unavailable: cache_untrusted",
+            cache_mode=0o666,
+        )
+
+    def test_world_writable_runner_catalog_cache_reports_untrusted(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": cache_firewall("fallback", "https://cache.example.com")},
+        )
+        cache_path.chmod(0o666)
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+        )
+
+        _assert_invalid_builtin_vm_with_cache(
+            registry_path=registry_path,
+            cache_path=cache_path,
+            mitm_ctx=mitm_ctx,
+            expected_message="catalog cache unavailable: cache_untrusted",
+        )
+
+    def test_malformed_aws_sigv4_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        del firewall["apis"][0]["auth"]["awsSigv4"]["secretAccessKey"]
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_malformed_host_policy_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["hostPolicy"] = {
+            "kind": "providerOwned",
+            "exactHosts": ["127.0.0.1"],
+        }
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_malformed_permission_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["permissions"][0]["rules"] = []
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_malformed_rule_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["permissions"][0]["rules"] = ["GET /items/{path+}/tail"]
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
