@@ -5,7 +5,7 @@ import {
   type ConnectorCatalogCompatibilityReason,
   type ConnectorCatalogFilteredAuthMethod,
   type ConnectorCatalogFilteringStatus,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import {
   CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS,
   getConnectorAuthProviderRegistrationCapabilities,

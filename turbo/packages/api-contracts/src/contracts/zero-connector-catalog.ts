@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
+import { connectorCatalogDiagnosticsSchema } from "./connector-catalog-diagnostics";
 import {
   connectorAuthMethodIdSchema,
   connectorRefSchema,
@@ -259,6 +260,18 @@ export const zeroConnectorCatalogContract = c.router({
       503: apiErrorSchema,
     },
     summary: "List public connector catalog metadata with connection status",
+  },
+  diagnostics: {
+    method: "GET",
+    path: "/api/zero/connector-catalog/diagnostics",
+    headers: authHeadersSchema,
+    responses: {
+      200: connectorCatalogDiagnosticsSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Read connector catalog diagnostics",
   },
   get: {
     method: "GET",
