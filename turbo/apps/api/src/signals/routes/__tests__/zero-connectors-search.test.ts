@@ -133,20 +133,36 @@ describe("GET /api/zero/connectors/search", () => {
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
       client.search({
-        query: { keyword: "slack" },
+        query: { keyword: "permission behavior" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
 
-    expect(response.body.connectors.length).toBeGreaterThan(0);
-    for (const connector of response.body.connectors) {
-      const matchesLabel = connector.label.toLowerCase().includes("slack");
-      const matchesDescription = connector.description
-        .toLowerCase()
-        .includes("slack");
-      expect(matchesLabel || matchesDescription).toBeTruthy();
-    }
+    expect(
+      response.body.connectors.map((connector) => {
+        return connector.id;
+      }),
+    ).toStrictEqual(["slack"]);
+  });
+
+  it("filters connectors by keyword matching tags", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const response = await accept(
+      client.search({
+        query: { keyword: "llm" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.connectors.map((connector) => {
+        return connector.id;
+      }),
+    ).toStrictEqual(["openai"]);
   });
 
   it("returns empty array for non-matching keyword", async () => {
