@@ -766,6 +766,98 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     expect(lifecycleMarker?.attachFiles).toBeUndefined();
   }, 20_000);
 
+  it("keeps a canonical Slack delivery failed when file info has no permalink", async () => {
+    const { orgId, userId, runId } = await seedRunScoped();
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
+    const operationId = randomUUID();
+    const token = zeroToken({ userId, orgId, runId });
+    const fileId = "F-MISSING-PERMALINK";
+    context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
+      ok: true,
+      upload_url: "https://files.slack.com/upload/v1/missing-permalink",
+      file_id: fileId,
+    });
+    context.mocks.slack.files.info.mockResolvedValue({
+      ok: true,
+      file: {
+        id: fileId,
+        name: "report.csv",
+        title: "Slack Report",
+        mimetype: "text/csv",
+        filetype: "csv",
+        size: 42,
+      },
+    });
+
+    const initClient = setupApp({ context })(
+      integrationsSlackUploadInitContract,
+    );
+    const initialized = await accept(
+      initClient.init({
+        body: {
+          filename: "report.csv",
+          length: 42,
+          canonical: {
+            operationId,
+            contentType: "text/csv",
+            checksumSha256: "c".repeat(64),
+            channel: "C123",
+          },
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    if (!("kind" in initialized.body)) {
+      throw new Error("Expected canonical Slack upload initialization");
+    }
+    const canonicalAssetId = initialized.body.assetId;
+    objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: `artifacts/${userId}/${canonicalAssetId}/report.csv`,
+      size: 42,
+      body: Buffer.alloc(42, "a"),
+    });
+
+    const materializeClient = setupApp({ context })(
+      integrationsSlackUploadMaterializeContract,
+    );
+    const materialized = await accept(
+      materializeClient.materialize({
+        body: { assetId: canonicalAssetId, operationId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(materialized.body.delivery).toMatchObject({
+      status: "pending",
+      fileId,
+    });
+
+    const completeClient = setupApp({ context })(
+      integrationsSlackUploadCompleteContract,
+    );
+    const completed = await accept(
+      completeClient.complete({
+        body: {
+          fileId,
+          channel: "C123",
+          canonicalAssetId,
+          operationId,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(completed.body).toMatchObject({
+      fileId,
+      assetId: canonicalAssetId,
+      permalink: "",
+      deliveryStatus: "failed",
+      deliveryError: "Slack file info did not include a permalink",
+    });
+  });
+
   it("keeps one Slack delivery authoritative across concurrent retries", async () => {
     const { orgId, userId, runId } = await seedRunScoped();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
