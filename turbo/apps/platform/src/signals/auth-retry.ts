@@ -10,11 +10,16 @@
 import { command, computed, state } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
 import { now } from "../lib/time.ts";
-import { detach, Reason } from "./utils";
+import { detach, Reason, settle } from "./utils";
 
 export type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
 
 const AUTH_TRANSITION_REDIRECT_SUPPRESSION_MS = 30_000;
+
+type FreshTokenResult =
+  | { readonly status: "refreshed"; readonly token: string }
+  | { readonly status: "unavailable" }
+  | { readonly status: "offline" };
 
 const unauthorizedRedirectSuppressionUntilState$ = state(0);
 
@@ -39,9 +44,10 @@ function isUnauthorizedRedirectSuppressed(suppressionUntil: number): boolean {
 }
 
 /**
- * Force-refresh the Clerk session token. Returns the new token only if it
- * is non-null and differs from `staleToken`; otherwise returns `null` to
- * signal "no retry should be attempted".
+ * Force-refresh the Clerk session token. Clerk performs bounded transient
+ * retries internally. Once those retries determine the browser is offline,
+ * preserve the session and let the next API action retry after connectivity
+ * returns instead of redirecting to sign-in.
  *
  * Concurrent 401s may each trigger their own refresh, but Clerk's FAPI
  * internally dedups in-flight token requests, so the extra traffic is
@@ -50,15 +56,27 @@ function isUnauthorizedRedirectSuppressed(suppressionUntil: number): boolean {
 export async function fetchFreshToken(
   clerk: ClerkLike,
   staleToken: string | null,
-): Promise<string | null> {
+): Promise<FreshTokenResult> {
   if (!clerk.session) {
-    return null;
+    return { status: "unavailable" };
   }
-  const freshToken = await clerk.session.getToken({ skipCache: true });
-  if (!freshToken || freshToken === staleToken) {
-    return null;
+  const tokenResult = await settle(clerk.session.getToken({ skipCache: true }));
+  if (!tokenResult.ok) {
+    const { error } = tokenResult;
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "clerk_offline"
+    ) {
+      return { status: "offline" };
+    }
+    throw error;
   }
-  return freshToken;
+  if (!tokenResult.value || tokenResult.value === staleToken) {
+    return { status: "unavailable" };
+  }
+  return { status: "refreshed", token: tokenResult.value };
 }
 
 export function handleUnauthorizedRedirect(

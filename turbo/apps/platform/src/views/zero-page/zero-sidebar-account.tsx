@@ -634,11 +634,14 @@ export function AccountDropdown({
     detach(
       clerk?.setActive({
         session: sessionId,
-        beforeEmit: () => {
+        navigate: ({ session, decorateUrl }) => {
           // Navigate to "/" rather than reloading the current URL: the new
           // account may not have access to the current route (e.g. an org
           // scoped chat/agent id), which would otherwise render as 404.
-          window.location.href = "/";
+          const destination = session.currentTask
+            ? `/sign-in/tasks/${session.currentTask.key}`
+            : "/";
+          window.location.href = decorateUrl(destination);
         },
       }),
       Reason.DomCallback,

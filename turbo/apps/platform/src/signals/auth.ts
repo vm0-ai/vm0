@@ -27,6 +27,7 @@ type AllowedAuthRedirectOrigin = string | RegExp;
 export interface ClerkSatelliteConfig {
   readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
   readonly isSatellite: true;
+  readonly satelliteAutoSync: true;
 }
 
 const AD_ATTRIBUTION_PARAMS = [
@@ -93,6 +94,7 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
   return {
     domain: PRODUCTION_SATELLITE_HOSTNAME,
     isSatellite: true,
+    satelliteAutoSync: true,
   };
 }
 
@@ -298,16 +300,20 @@ export const clerk$ = computed(async () => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
 
-  // Dynamic import: @clerk/clerk-js is a 2.8MB webpack monolith (53%
-  // Web3/Solana/Coinbase code we don't use) that cannot be tree-shaken.
-  // Moving it to a separate async chunk avoids blocking initial JS parsing.
+  // Clerk JS remains a large browser bundle. Keeping it in a separate async
+  // chunk avoids blocking initial JavaScript parsing.
   const { Clerk } = await import("@clerk/clerk-js");
 
   const clerkInstance = satelliteConfig
     ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
     : new Clerk(publishableKey);
   await clerkInstance.load({
-    ...(satelliteConfig ? { isSatellite: true } : {}),
+    ...(satelliteConfig
+      ? {
+          isSatellite: true,
+          satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+        }
+      : {}),
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),

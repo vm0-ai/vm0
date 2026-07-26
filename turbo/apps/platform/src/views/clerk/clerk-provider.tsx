@@ -2,7 +2,7 @@ import {
   ClerkProvider as BaseClerkProvider,
   GoogleOneTap,
   type ClerkProviderProps as BaseClerkProviderProps,
-} from "@clerk/clerk-react";
+} from "@clerk/react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";

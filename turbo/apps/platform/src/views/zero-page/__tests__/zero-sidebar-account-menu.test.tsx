@@ -844,6 +844,56 @@ describe("zero sidebar account menu", () => {
     });
   });
 
+  it("keeps the session active when a token refresh detects offline state", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+
+    let modelProviderRequests = 0;
+    let forcedTokenRefreshes = 0;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      ({ respond }) => {
+        modelProviderRequests += 1;
+        return respond(401, {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      if (options?.skipCache) {
+        forcedTokenRefreshes += 1;
+        return Promise.reject(
+          Object.assign(new Error("Clerk is offline"), {
+            code: "clerk_offline",
+          }),
+        );
+      }
+      return Promise.resolve("test-token");
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    await waitFor(() => {
+      expect(modelProviderRequests).toBe(1);
+      expect(forcedTokenRefreshes).toBe(1);
+    });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
   it("suppresses global sign-in redirects during add-account auth transitions", async () => {
     mockNow(new Date("2026-01-01T00:00:00.000Z"));
     mockAdminAccountSidebar();

@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
-    "@clerk/backend": "^3.4.13",
+    "@clerk/backend": "^3.13.1",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/core": "workspace:*",
     "drizzle-orm": "^0.45.2",

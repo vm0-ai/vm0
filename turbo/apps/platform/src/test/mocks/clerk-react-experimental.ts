@@ -1,4 +1,4 @@
-// Mock for @clerk/clerk-react/experimental
+// Mock for @clerk/react/experimental
 export function SubscriptionDetailsButton() {
   return null;
 }
