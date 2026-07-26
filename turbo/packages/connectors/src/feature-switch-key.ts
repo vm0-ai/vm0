@@ -58,6 +58,7 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   WorkdayConnector = "workdayConnector",
   CodexFastMode = "codexFastMode",
+  CodexSessionPruning = "codexSessionPruning",
   ClaudeSessionPruning = "claudeSessionPruning",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",

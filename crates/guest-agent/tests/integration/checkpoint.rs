@@ -23,6 +23,14 @@ fn set_claude_session_pruning(runtime: &mut guest_agent::run_context::GuestRunti
         .insert("claudeSessionPruning".to_string(), enabled);
 }
 
+fn set_codex_session_pruning(runtime: &mut guest_agent::run_context::GuestRuntime, enabled: bool) {
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    runtime
+        .config
+        .feature_flags
+        .insert("codexSessionPruning".to_string(), enabled);
+}
+
 fn session_file_paths() -> (String, String) {
     let paths = shared_guest_paths();
     (
@@ -161,6 +169,139 @@ fn write_prunable_claude_history(session_id: &str) -> Result<(tempfile::TempDir,
     Ok((history_dir, candidate))
 }
 
+fn write_prunable_codex_history(
+    session_id: &str,
+) -> Result<(tempfile::TempDir, std::path::PathBuf, Vec<u8>), String> {
+    let history_dir =
+        tempfile::tempdir().map_err(|error| format!("create Codex history dir: {error}"))?;
+    let day_dir = history_dir
+        .path()
+        .join(".codex")
+        .join("sessions")
+        .join("2026")
+        .join("07")
+        .join("26");
+    std::fs::create_dir_all(&day_dir)
+        .map_err(|error| format!("create Codex session directory: {error}"))?;
+    let history_path = day_dir.join(format!("rollout-{session_id}.jsonl"));
+
+    let line = |record_type: &str, payload: serde_json::Value| -> Result<Vec<u8>, String> {
+        let mut bytes = serde_json::to_vec(&json!({
+            "timestamp": "2026-07-26T00:00:00Z",
+            "type": record_type,
+            "payload": payload,
+        }))
+        .map_err(|error| format!("encode Codex history: {error}"))?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    };
+    let canonical = line(
+        "session_meta",
+        json!({
+            "id": session_id,
+            "session_id": session_id,
+            "timestamp": "2026-07-26T00:00:00Z",
+            "cwd": guest_agent::paths::CANONICAL_WORKING_DIR,
+            "originator": "codex",
+            "cli_version": "0.144.6",
+            "source": "cli",
+            "history_mode": "legacy",
+        }),
+    )?;
+    let turn_id = "compact-turn";
+    let retained_records = [
+        line(
+            "event_msg",
+            json!({
+                "type": "task_started",
+                "turn_id": turn_id,
+                "model_context_window": 258400,
+                "collaboration_mode_kind": "default",
+            }),
+        )?,
+        line(
+            "event_msg",
+            json!({
+                "type": "user_message",
+                "message": "compact this thread",
+                "images": [],
+                "local_images": [],
+                "audio": [],
+                "local_audio": [],
+                "text_elements": [],
+            }),
+        )?,
+        line(
+            "turn_context",
+            json!({
+                "turn_id": turn_id,
+                "cwd": guest_agent::paths::CANONICAL_WORKING_DIR,
+                "approval_policy": {"granular": {"sandbox_approval": true}},
+                "sandbox_policy": {"type": "read_only"},
+                "model": "gpt-test",
+                "summary": "auto",
+            }),
+        )?,
+        line(
+            "compacted",
+            json!({
+                "message": "retained summary",
+                "replacement_history": [{
+                    "type": "message",
+                    "role": "user",
+                    "content": [{
+                        "type": "input_text",
+                        "text": "retained summary",
+                    }],
+                }],
+                "window_number": 1,
+                "first_window_id": "019c0000-0000-7000-8000-000000000001",
+                "window_id": "019c0000-0000-7000-8000-000000000002",
+            }),
+        )?,
+        line(
+            "world_state",
+            json!({"full": true, "state": {"working_directory": "/workspace"}}),
+        )?,
+        line(
+            "event_msg",
+            json!({
+                "type": "task_complete",
+                "turn_id": turn_id,
+                "last_agent_message": "retained summary",
+            }),
+        )?,
+    ];
+    let candidate = std::iter::once(canonical.clone())
+        .chain(retained_records.iter().cloned())
+        .flatten()
+        .collect::<Vec<_>>();
+
+    let mut history_file = std::fs::File::create(&history_path)
+        .map_err(|error| format!("create Codex history: {error}"))?;
+    history_file
+        .write_all(&canonical)
+        .map_err(|error| format!("write canonical Codex history: {error}"))?;
+    history_file
+        .set_len(api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES + 1)
+        .map_err(|error| format!("size Codex history: {error}"))?;
+    history_file
+        .seek(SeekFrom::End(0))
+        .and_then(|_| history_file.write_all(b"\n"))
+        .and_then(|()| {
+            for record in retained_records {
+                history_file.write_all(&record)?;
+            }
+            history_file.flush()
+        })
+        .map_err(|error| format!("write retained Codex history: {error}"))?;
+
+    let (session_id_file, _) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, session_id)
+        .map_err(|error| format!("write Codex session id: {error}"))?;
+    Ok((history_dir, history_path, candidate))
+}
+
 fn zstd_session_history_for_test(history: &[u8]) -> std::io::Result<Vec<u8>> {
     zstd::stream::encode_all(history, 3)
 }
@@ -271,6 +412,90 @@ async fn success_checkpoint_preserves_oversized_claude_history_when_pruning_disa
 }
 
 #[tokio::test]
+async fn success_checkpoint_preserves_oversized_codex_history_when_pruning_disabled() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_codex_session_pruning(&mut runtime, false);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, history_path, _) = write_prunable_codex_history(session_id).unwrap();
+    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Session history exceeds maximum size"),
+        "disabled Codex pruning must retain the original hard-limit behavior: {error}"
+    );
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn success_checkpoint_preserves_small_codex_history_when_pruning_enabled() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_codex_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
+    std::fs::write(&history_path, &history).unwrap();
+    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+
+    let history_hash = hex::encode(Sha256::digest(&history));
+    let history_size = history.len();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
+            .json_body_includes(r#"{"encoding":"identity"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true}));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-unpruned-codex"}));
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::read(&history_path).unwrap(), history);
+}
+
+#[tokio::test]
 async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -355,6 +580,97 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
     assert_eq!(
         std::path::Path::new(&identity.history_marker_payload),
         history_path
+    );
+}
+
+#[tokio::test]
+async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_codex_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, history_path, candidate) = write_prunable_codex_history(session_id).unwrap();
+    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let history_hash = hex::encode(Sha256::digest(&candidate));
+    let history_size = candidate.len();
+    let upload_url = server.url("/test/pruned-codex-history-upload");
+    let prepare_history_path = history_path.clone();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
+            .json_body_includes(r#"{"encoding":"identity"}"#);
+        then.respond_with(move |_| {
+            if std::fs::metadata(&prepare_history_path)
+                .is_ok_and(|metadata| metadata.len() == source_size)
+            {
+                json_http_response(
+                    200,
+                    json!({
+                        "presignedUrl": upload_url.clone(),
+                        "existing": false,
+                    }),
+                )
+            } else {
+                http_status(500)
+            }
+        });
+    });
+    let upload_len = history_size.to_string();
+    let upload_body = candidate.clone();
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/pruned-codex-history-upload")
+            .header("Content-Type", "application/octet-stream");
+        then.respond_with(move |request| {
+            upload_validation_response(request, &upload_body, &upload_len)
+        });
+    });
+    let checkpoint_history_path = history_path.clone();
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#))
+            .json_body_includes(r#"{"cliAgentType":"codex"}"#)
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.respond_with(move |_| {
+            if std::fs::metadata(&checkpoint_history_path)
+                .is_ok_and(|metadata| metadata.len() == source_size)
+            {
+                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-codex"}))
+            } else {
+                http_status(500)
+            }
+        });
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::read(&history_path).unwrap(), candidate);
+
+    let identity_bytes =
+        std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
+    let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
+    assert_eq!(identity.framework, FinalSessionHistoryFramework::Codex);
+    assert_eq!(identity.history_size_bytes, history_size as u64);
+    assert_eq!(identity.history_hash, history_hash);
+    assert!(
+        identity.history_marker_payload.contains(session_id),
+        "Codex identity must retain the marker for the original thread"
     );
 }
 
@@ -1368,6 +1684,45 @@ async fn recovery_checkpoint_does_not_prune_eligible_claude_history() {
             .to_string()
             .contains("Session history line 1 is not valid JSON"),
         "recovery checkpoint should validate the original history: {error}"
+    );
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn recovery_checkpoint_does_not_prune_eligible_codex_history() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_codex_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, history_path, _) = write_prunable_codex_history(session_id).unwrap();
+    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let error = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Session history exceeds maximum size"),
+        "recovery checkpoint must retain the original Codex hard-limit behavior: {error}"
     );
     assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
     assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
