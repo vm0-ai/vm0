@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, exists, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, or, sql, type SQL } from "drizzle-orm";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -115,10 +115,10 @@ async function userCanAccessArtifactUrl(
   const rows = await executeRawRows(
     db,
     sql`
-      SELECT (
-        ${uploadedArtifactAccessCondition(db, args)}
-        OR ${attachedArtifactAccessCondition(db, args)}
-      ) AS "canAccess"
+      SELECT ${or(
+        uploadedArtifactAccessCondition(db, args),
+        attachedArtifactAccessCondition(db, args),
+      )} AS "canAccess"
     `,
     artifactAccessRowSchema,
   );
