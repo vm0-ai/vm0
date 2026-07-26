@@ -306,6 +306,8 @@ describe("chat lifecycle", () => {
     const sidebar = screen.getByTestId("automation-sidebar");
     expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
     expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Status")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Active")).toBeInTheDocument();
     expect(within(sidebar).getAllByText("Schedule").length).toBeGreaterThan(0);
     expect(within(sidebar).getByText("Every 1 minute")).toBeInTheDocument();
     expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
@@ -373,6 +375,22 @@ describe("chat lifecycle", () => {
     expect(within(sidebar).getByText("View")).toBeInTheDocument();
     expect(within(sidebar).getByText("Run now")).toBeInTheDocument();
     expect(within(sidebar).queryByText("Edit")).not.toBeInTheDocument();
+  });
+
+  it("shows a disabled workflow automation status in the sidebar", async () => {
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
+        id: "e0000001-0000-4000-a000-000000000007",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        enabled: false,
+        workflow: {
+          displayName: "Nightly sync",
+        },
+      }),
+    );
+
+    expect(within(sidebar).getByText("Disabled")).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("switch")).not.toBeInTheDocument();
   });
 
   it("updates a schedule workflow automation from the sidebar", async () => {
@@ -960,6 +978,96 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("keeps a paused latest workflow run group collapsed by default", async () => {
+    const threadId = "thread-paused-workflow-run-group";
+    const runGroupId = "f0000001-0000-4000-a000-00000000074b";
+    const workflowPrompt = "/daily-workflow";
+    const workflowSnapshot = {
+      name: "daily-workflow",
+      displayName: "Daily workflow",
+      description: "Daily workflow summary",
+    };
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Paused workflow run group",
+      chatMessages: [
+        {
+          id: "msg-paused-workflow-user-1",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000074c",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-paused-workflow-assistant-1",
+          role: "assistant",
+          content: "First workflow result",
+          runId: "f0000001-0000-4000-a000-00000000074c",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-paused-workflow-user-2",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000074d",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-paused-workflow-assistant-2",
+          role: "assistant",
+          content: "Run cancelled",
+          error: "Run cancelled",
+          runId: "f0000001-0000-4000-a000-00000000074d",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("First workflow result"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "1 run for Daily workflow summary",
+      );
+    });
+
+    fireEvent.click(buttonByLabel("Expand grouped run history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First workflow result")).toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Collapse grouped run history")).toHaveTextContent(
+        "1 run for Daily workflow summary",
+      );
+    });
+  });
+
   it("renders workflow automation user messages with the workflow title and brief", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";
@@ -1317,6 +1425,132 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       text: `Review [Roadmap](/chats/${referencedThreadId}) now`,
       attachments: [secondAttachment, firstAttachment],
       structuredPrompt,
+    });
+  });
+
+  it("restores a copied structured template when pasting into the composer", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    const threadId = "structured-template-copy-paste";
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const generationTemplate = {
+      type: "illustration" as const,
+      selection: {
+        illustrationStyleId: style.illustrationStyleId,
+      },
+    };
+    const messageText = "Create a matching illustration";
+    const structuredPrompt = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "template" as const,
+          titleSnapshot: style.title,
+          template: generationTemplate,
+        },
+        { type: "text" as const, text: messageText },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-structured-template-copy-paste",
+          role: "user",
+          content: "invalidate",
+          structuredPrompt,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(messageText)).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Copy message"));
+
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const html = await readClipboardItemText(item, "text/html");
+    const plainText = await readClipboardItemText(item, "text/plain");
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/html"
+            ? html
+            : type === "text/plain"
+              ? plainText
+              : "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent(messageText);
+      expect(
+        screen.getByLabelText(`Remove template ${style.title}`),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("does not restore a copied structured template when the switch is off", async () => {
+    const threadId = "structured-template-paste-disabled";
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const messageText = "Paste without restoring the template";
+    const payload = {
+      text: messageText,
+      attachments: [],
+      structuredPrompt: {
+        version: 1 as const,
+        parts: [
+          {
+            type: "template" as const,
+            titleSnapshot: style.title,
+            template: {
+              type: "illustration" as const,
+              selection: {
+                illustrationStyleId: style.illustrationStyleId,
+              },
+            },
+          },
+          { type: "text" as const, text: messageText },
+        ],
+      },
+    };
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return `<div data-vm0-chat-message="${encodeURIComponent(
+              JSON.stringify(payload),
+            )}"></div>`;
+          }
+          return type === "text/plain" ? messageText : "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent(messageText);
+      expect(
+        screen.queryByLabelText(`Remove template ${style.title}`),
+      ).not.toBeInTheDocument();
     });
   });
 });

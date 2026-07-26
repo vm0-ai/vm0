@@ -28,7 +28,7 @@ export type AttachmentLightboxState =
       url: string;
       filename?: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     }
@@ -37,7 +37,7 @@ export type AttachmentLightboxState =
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     }
@@ -46,7 +46,7 @@ export type AttachmentLightboxState =
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     };
@@ -104,7 +104,7 @@ export const openImageLightbox$ = command(
           url: string;
           filename?: string;
           artifact?: AttachmentArtifactMetadata;
-          editAvailable?: boolean;
+          shareAvailable?: boolean;
           showSizeInSubtitle?: boolean;
           splitViewAvailable?: boolean;
         },
@@ -135,7 +135,7 @@ export const navigateImageLightbox$ = command(
       url: string;
       filename?: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },
@@ -152,7 +152,7 @@ export const openDocumentLightbox$ = command(
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },
@@ -173,7 +173,7 @@ export const openVideoLightbox$ = command(
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },
@@ -194,7 +194,7 @@ export const openAudioLightbox$ = command(
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
+      shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     },

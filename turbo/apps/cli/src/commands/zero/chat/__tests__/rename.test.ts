@@ -15,7 +15,9 @@ import { server } from "../../../../mocks/server";
 import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
+const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/rename`;
+const OTHER_RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/rename`;
 
 describe("zero chat rename command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -94,6 +96,36 @@ describe("zero chat rename command", () => {
     );
   });
 
+  it("renames --thread instead of the current chat thread", async () => {
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    server.use(
+      http.post(OTHER_RENAME_URL, async ({ request }) => {
+        await expect(request.json()).resolves.toStrictEqual({
+          title: "Other thread",
+        });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync([
+      "node",
+      "cli",
+      "rename",
+      "--thread",
+      OTHER_THREAD_ID,
+      "Other",
+      "thread",
+      "--json",
+    ]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      {
+        threadId: OTHER_THREAD_ID,
+        title: "Other thread",
+      },
+    );
+  });
+
   it("rejects whitespace-only titles before calling the API", async () => {
     await expect(async () => {
       await zeroChatCommand.parseAsync(["node", "cli", "rename", "   "]);
@@ -119,7 +151,7 @@ describe("zero chat rename command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("ZERO_CHAT_THREAD_ID is not set");
-    expect(stderr).toContain("Run this command from a Zero web chat thread.");
+    expect(stderr).toContain("Pass --thread <thread-id>");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

@@ -42,6 +42,7 @@ from mitmproxy.addonmanager import Loader
 import auth_base_forwarder
 import body_capture
 import builtin_host_policy
+import codex_output_timing
 import connector_diagnostics
 import connector_intent
 import flow_metadata
@@ -144,7 +145,8 @@ def load(loader: Loader) -> None:
         typespec=str,
         # This default is a placeholder shown in `mitmdump --help`; the runner
         # always passes `--set vm0_proxy_registry_path=<per-runner path>` (see
-        # crates/runner/src/proxy.rs:362), so the default is never used in
+        # `proxy::process::spawn_mitmdump` in
+        # `crates/runner/src/proxy/process.rs`), so the default is never used in
         # production. Computed via tempfile.gettempdir() so that standalone
         # debugging works on platforms where /tmp is not the system temp dir.
         default=str(Path(tempfile.gettempdir()) / "proxy-registry.json"),
@@ -292,9 +294,10 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
         except AuthorityValidationError:
             return
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
-        if upstream_admission.api_hostname_matches(
+        if upstream_admission.api_destination_matches(
             api_url,
             trusted_authority.host,
+            trusted_authority.port,
         ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
             classification = _classify_request_for_flow(
                 flow,
@@ -1115,6 +1118,8 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         return
     if getattr(message, "from_client", False):
         return
+    if response_streaming.uses_openai_responses_usage_protocol(flow):
+        codex_output_timing.observe_server_event(flow, message.content)
     response_streaming.feed_model_websocket_usage(flow, message.content)
 
 
@@ -1196,6 +1201,7 @@ def _release_terminal_flow_state(
         terminal_usage.release_model_websocket_terminal_state(flow)
     request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
+    flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
     connector_diagnostics.release_flow_state(flow)

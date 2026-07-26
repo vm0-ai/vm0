@@ -3079,6 +3079,62 @@ async fn run_in_sandbox_records_invalid_final_identity_metadata_reason() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_records_oversized_final_identity_metadata_reason() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let ctx = minimal_context();
+    let session_id = "sess-oversized-final-123";
+    let history = br#"{"type":"init"}"#;
+    let (metadata_path, _) = final_identity_runtime_paths(&ctx);
+    let mut metadata =
+        final_identity_metadata_bytes(session_id, history, claude_history_path(session_id));
+    let oversized_metadata_len = FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES as usize + 1;
+    assert!(metadata.len() < oversized_metadata_len);
+    metadata.resize(oversized_metadata_len, b' ');
+    serde_json::from_slice::<serde_json::Value>(&metadata).unwrap();
+    sandbox.push_read_file_result(Ok(Some(metadata)));
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert!(result.reusable_session_identity.is_none());
+    let read_calls = sandbox.read_file_calls();
+    assert_eq!(read_calls.len(), 1);
+    assert_eq!(read_calls[0].path, metadata_path);
+    assert_eq!(
+        read_calls[0].max_bytes,
+        FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action(
+        &ops,
+        "session_history_identity_finalize_unverifiable_metadata",
+    );
+    assert!(
+        ops.iter().all(|op| {
+            op.0 != "session_history_identity_finalize_invalid_metadata"
+                && op.0 != "session_history_identity_finalized"
+        }),
+        "oversized metadata should not record invalid or finalized identity telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
 async fn run_in_sandbox_records_large_final_identity_metadata() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

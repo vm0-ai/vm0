@@ -7,6 +7,7 @@ const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
 
 interface StructuredUserMessageProjection {
   readonly agentPrompt: string;
+  readonly displayText: string;
   readonly legacyContent: string;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly hasTextContent: boolean;
@@ -41,7 +42,9 @@ export function projectStructuredUserMessage(
   document: UserMessageDocument,
 ): StructuredUserMessageProjection {
   const promptBlocks: string[] = [];
+  const displayBlocks: string[] = [];
   let inlinePrompt = "";
+  let inlineDisplayText = "";
   let legacyContent = "";
   let generationTemplate: GenerationTemplateRequest | undefined;
   let hasFile = false;
@@ -51,11 +54,16 @@ export function projectStructuredUserMessage(
       promptBlocks.push(inlinePrompt);
       inlinePrompt = "";
     }
+    if (inlineDisplayText.length > 0) {
+      displayBlocks.push(inlineDisplayText);
+      inlineDisplayText = "";
+    }
   };
 
   for (const part of document.parts) {
     if (part.type === "text") {
       inlinePrompt += part.text;
+      inlineDisplayText += part.text;
       legacyContent += part.text;
       continue;
     }
@@ -65,23 +73,27 @@ export function projectStructuredUserMessage(
         part.titleSnapshot,
       );
       inlinePrompt += serialized;
+      inlineDisplayText += `[Chat thread: ${part.titleSnapshot}]`;
       legacyContent += serialized;
       continue;
     }
     if (part.type === "file") {
       flushInlinePrompt();
       promptBlocks.push(webFilePrompt(part));
+      displayBlocks.push(`[File: ${part.filenameSnapshot}]`);
       hasFile = true;
       continue;
     }
     flushInlinePrompt();
     promptBlocks.push(generationTemplatePrompt(part));
+    displayBlocks.push(`[Template: ${part.titleSnapshot}]`);
     generationTemplate ??= part.template;
   }
   flushInlinePrompt();
 
   return {
     agentPrompt: promptBlocks.join("\n\n"),
+    displayText: displayBlocks.join("\n\n"),
     legacyContent:
       legacyContent.length > 0 || !hasFile
         ? legacyContent

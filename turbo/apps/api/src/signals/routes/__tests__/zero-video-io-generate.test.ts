@@ -542,7 +542,7 @@ describe("POST /api/zero/video-io/generate", () => {
       await expect(response.json()).resolves.toStrictEqual({
         error: {
           message:
-            "Built-in video generation requires Pro, Team, or Custom workspace access. Return `pro_required` as the assistant error marker so the app can show the paid plan upgrade card. Do not retry video generation until the workspace upgrades.",
+            "Built-in video generation requires Pro, Team, or Custom workspace access.",
           code: "PRO_REQUIRED",
         },
       });

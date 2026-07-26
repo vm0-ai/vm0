@@ -47,6 +47,7 @@ export const triggerSourceSchema = z.enum([
   "web",
   "slack",
   "teams",
+  "feishu",
   "email",
   "telegram",
   "agentphone",

@@ -11,7 +11,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-web-search";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -40,7 +39,6 @@ import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -107,9 +105,8 @@ async function rawWebSearchRequest(
 }
 
 async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
-  await createBddApi(context).bootstrapOnboarding(actor, {
-    displayName: "Zero Web Search Test",
-  });
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
 }
 
 async function setActorCredits(
@@ -127,25 +124,6 @@ async function setActorCredits(
 async function fundActor(actor: ApiTestUser): Promise<void> {
   await bootstrapOnboarding(actor);
   await setActorCredits(actor, 1000);
-}
-
-async function webSearchEnabledActor(): Promise<ApiTestUser> {
-  const actor = createBddApi(context).user();
-  if (!actor.orgId) {
-    throw new Error(
-      "Zero Web Search test actor must belong to an organization",
-    );
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    {
-      userId: actor.userId,
-      orgId: actor.orgId,
-      ...(actor.orgRole ? { orgRole: actor.orgRole } : {}),
-    },
-    { [FeatureSwitchKey.ZeroWebSearch]: true },
-  );
-  return actor;
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -201,30 +179,6 @@ function providerResponse() {
 }
 
 describe("zero web-search route", () => {
-  it("rejects requests when the feature switch is disabled", async () => {
-    const actor = createBddApi(context).user();
-    let providerRequests = 0;
-    configureProvider();
-    server.use(
-      http.post(PERPLEXITY_SEARCH_URL, () => {
-        providerRequests += 1;
-        return HttpResponse.json(providerResponse());
-      }),
-    );
-
-    const response = await accept(
-      client()(zeroWebSearchContract).search({
-        headers: authenticate(actor),
-        body: defaultRequest(),
-      }),
-      [403],
-    );
-
-    expectApiError(response.body);
-    expect(response.body.error.message).toBe("Zero Web Search is not enabled");
-    expect(providerRequests).toBe(0);
-  });
-
   it("rejects zero tokens without web-search:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
@@ -259,7 +213,7 @@ describe("zero web-search route", () => {
   });
 
   it("accepts agent tokens and attributes usage to their run", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error(
         "Zero Web Search test actor must belong to an organization",
@@ -338,7 +292,7 @@ describe("zero web-search route", () => {
   });
 
   it("rejects invalid filters before calling Perplexity", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
     server.use(
@@ -359,7 +313,7 @@ describe("zero web-search route", () => {
   });
 
   it("rejects requests when the provider is not configured", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     mockEnv("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN", undefined);
 
     const response = await accept(
@@ -375,7 +329,7 @@ describe("zero web-search route", () => {
   });
 
   it("returns missing pricing before calling Perplexity", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
     await fundActor(actor);
@@ -405,7 +359,7 @@ describe("zero web-search route", () => {
   });
 
   it("returns insufficient credits before calling Perplexity", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
     await seedWebSearchPricing();
@@ -432,7 +386,7 @@ describe("zero web-search route", () => {
   });
 
   it("uses allowance for runless searches when org credits are exhausted", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error(
         "Zero Web Search test actor must belong to an organization",
@@ -487,7 +441,7 @@ describe("zero web-search route", () => {
   });
 
   it("translates filtered searches and records successful usage", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     let requestBody: unknown;
     let authorization: string | null = null;
     configureProvider();
@@ -548,7 +502,7 @@ describe("zero web-search route", () => {
   });
 
   it("bills valid empty results", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -574,7 +528,7 @@ describe("zero web-search route", () => {
   });
 
   it("truncates valid text under field and total output bounds", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -618,7 +572,7 @@ describe("zero web-search route", () => {
   });
 
   it("neutralizes provider control characters in returned text", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -697,7 +651,7 @@ describe("zero web-search route", () => {
       "PERPLEXITY_INVALID_RESPONSE",
     ],
   ])("rejects %s without recording usage", async (_name, body, code) => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -723,7 +677,7 @@ describe("zero web-search route", () => {
   });
 
   it("maps and bounds provider errors without recording usage", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -756,7 +710,7 @@ describe("zero web-search route", () => {
   });
 
   it("maps provider rate limiting without recording usage", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -782,7 +736,7 @@ describe("zero web-search route", () => {
   });
 
   it("maps provider transport timeouts without recording usage", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -813,7 +767,7 @@ describe("zero web-search route", () => {
   });
 
   it("rejects an empty successful provider body without recording usage", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -839,7 +793,7 @@ describe("zero web-search route", () => {
   });
 
   it("rejects declared oversized responses before reading or billing", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -869,7 +823,7 @@ describe("zero web-search route", () => {
   });
 
   it("rejects streamed oversized responses with dishonest lengths", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -906,7 +860,7 @@ describe("zero web-search route", () => {
   });
 
   it("accepts a streamed response without a declared length and bills it", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -938,7 +892,7 @@ describe("zero web-search route", () => {
   });
 
   it("accepts an exact-size streamed response and bills it", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);
@@ -978,7 +932,7 @@ describe("zero web-search route", () => {
   });
 
   it("does not record usage when the client aborts during provider work", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     const controller = new AbortController();
     const abortError = new Error("client disconnected during provider work");
     abortError.name = "AbortError";
@@ -1013,7 +967,7 @@ describe("zero web-search route", () => {
   });
 
   it("records usage when the client disconnects after provider success", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     const controller = new AbortController();
     const abortError = new Error("client disconnected after provider success");
     abortError.name = "AbortError";
@@ -1055,7 +1009,7 @@ describe("zero web-search route", () => {
   });
 
   it("records both concurrent successful searches", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
     await seedWebSearchPricing();
@@ -1094,7 +1048,7 @@ describe("zero web-search route", () => {
   });
 
   it("does not return success when usage processing fails", async () => {
-    const actor = await webSearchEnabledActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedWebSearchPricing();
     await fundActor(actor);

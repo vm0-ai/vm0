@@ -1,9 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import {
-  zeroEmailInboundContract,
-  zeroEmailTriggerCallbackContract,
-} from "@vm0/api-contracts/contracts/zero-email";
+import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
@@ -57,7 +54,7 @@ type AgentTelemetryBody = z.infer<
 type AgentUsageEventBody = z.infer<
   (typeof webhookUsageEventContract.send)["body"]
 >;
-type AgentModelUsageObservationBody = z.infer<
+type AgentModelUsageObservationV2Body = z.infer<
   (typeof webhookModelUsageObservationContract.send)["body"]
 >;
 type AgentStoragePrepareBody = z.infer<
@@ -66,10 +63,6 @@ type AgentStoragePrepareBody = z.infer<
 type AgentStorageCommitBody = z.infer<
   (typeof webhookStoragesCommitContract.commit)["body"]
 >;
-type EmailTriggerCallbackBody = z.infer<
-  (typeof zeroEmailTriggerCallbackContract.post)["body"]
->;
-
 interface Vm0SignatureHeaders {
   readonly "x-vm0-signature": string;
   readonly "x-vm0-timestamp": string;
@@ -388,19 +381,6 @@ export function createWebhookCallbackApi(context: TestContext) {
       return await accept(
         setupApp({ context })(zeroEmailInboundContract).post({
           headers,
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestEmailTriggerCallback(
-      body: EmailTriggerCallbackBody,
-      statuses: readonly (200 | 400 | 401 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(zeroEmailTriggerCallbackContract).post({
-          headers: {},
           body,
         }),
         statuses,
@@ -743,8 +723,8 @@ export function createWebhookCallbackApi(context: TestContext) {
       );
     },
 
-    async requestAgentModelUsageObservation(
-      body: AgentModelUsageObservationBody,
+    async requestAgentModelUsageObservationV2(
+      body: AgentModelUsageObservationV2Body,
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
@@ -757,7 +737,7 @@ export function createWebhookCallbackApi(context: TestContext) {
       );
     },
 
-    async requestAgentModelUsageObservationUnchecked(
+    async requestAgentModelUsageObservationV2Unchecked(
       body: unknown,
       headers: SandboxWebhookHeaders,
       statuses: readonly (400 | 401 | 404 | 500)[],
@@ -765,7 +745,7 @@ export function createWebhookCallbackApi(context: TestContext) {
       return await accept(
         setupApp({ context })(webhookModelUsageObservationContract).send({
           headers,
-          body: body as AgentModelUsageObservationBody,
+          body: body as AgentModelUsageObservationV2Body,
         }),
         statuses,
       );

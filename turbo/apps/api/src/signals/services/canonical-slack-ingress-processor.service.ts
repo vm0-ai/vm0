@@ -10,6 +10,7 @@ import { logger } from "../../lib/log";
 import {
   enrichMessageContent,
   fetchConversationContexts,
+  formatCurrentMessageFiles,
   type SlackFile,
 } from "../../lib/slack-webhook-context";
 import { nowDate } from "../external/time";
@@ -26,6 +27,11 @@ import {
 } from "../external/slack-message-client";
 import { settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import {
+  attachCanonicalAssetsToMessage,
+  materializeCanonicalSlackInputAssets$,
+  type CanonicalSlackInputAsset,
+} from "./canonical-asset.service";
 import {
   canonicalSlackThreadStatusTargetForIngress,
   clearCanonicalSlackThreadStatusIfIdle,
@@ -118,6 +124,32 @@ function buildSlackSystemPrompt(args: {
 
 function stripBotMention(text: string, botUserId: string): string {
   return text.replaceAll(`<@${botUserId}>`, "").trim();
+}
+
+function canonicalSlackFilesPrompt(
+  files: readonly SlackFile[] | undefined,
+  assets: readonly CanonicalSlackInputAsset[],
+): string {
+  if (!files || files.length === 0) {
+    return "";
+  }
+  const assetByPosition = new Map(
+    assets.map((asset) => {
+      return [asset.position, asset] as const;
+    }),
+  );
+  return files
+    .flatMap((file, position) => {
+      const asset = assetByPosition.get(position);
+      if (asset?.status === "ready") {
+        return [
+          `[Web file] ${asset.filename} (${asset.contentType})\n   [ID] ${asset.assetId}`,
+        ];
+      }
+      return [formatCurrentMessageFiles([file])];
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function claimIngress(db: Db, ingressId: string, currentTime: Date) {
@@ -277,99 +309,36 @@ async function setCanonicalSlackThinkingStatus(args: {
   );
 }
 
-async function persistClaimedCanonicalSlackIngress(
+type ClaimedCanonicalSlackIngress = NonNullable<
+  Awaited<ReturnType<typeof loadClaimedIngress>>
+>;
+
+async function persistCanonicalSlackMessage(
   db: Db,
-  ingressId: string,
+  args: {
+    readonly ingress: ClaimedCanonicalSlackIngress;
+    readonly chatThreadId: string;
+    readonly orgId: string;
+    readonly displayContent: string;
+    readonly messagePermalink: string | null;
+    readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
+    readonly encryptedParams: Awaited<
+      ReturnType<typeof encryptQueuedUserMessageRunParams>
+    >;
+  },
   signal: AbortSignal,
-): Promise<PersistedCanonicalSlackIngress> {
-  const ingress = await loadClaimedIngress(db, ingressId);
-  signal.throwIfAborted();
-  if (!ingress?.chatThreadId || !ingress.orgId) {
-    throw new Error("Canonical Slack ingress route is incomplete");
-  }
-  const chatThreadId = ingress.chatThreadId;
-  const orgId = ingress.orgId;
-  const event = requireMatchingEvent(ingress.payload, ingress);
-  const featureContext = await loadUserFeatureSwitchContext(
-    db,
-    orgId,
-    ingress.userId,
-  );
-  signal.throwIfAborted();
-  const botToken = await decryptPersistentSecretValue(
-    ingress.encryptedBotToken,
-    featureContext,
-  );
-  signal.throwIfAborted();
-  const client = createSlackClient(botToken);
-  await setCanonicalSlackThinkingStatus({
-    client,
-    ingressId,
-    channelId: ingress.channelId,
-    threadTs: ingress.threadTs,
-  });
-  signal.throwIfAborted();
-  const userInfoResolver = createSlackUserInfoResolver(client);
-  const messageContent = stripBotMention(event.text, ingress.botUserId);
-  const [enriched, context, permalinkResult] = await Promise.all([
-    enrichMessageContent({
-      messageContent,
-      files: event.files,
-      client,
-      userId: event.user,
-      userInfoResolver,
-    }),
-    fetchConversationContexts(
-      client,
-      event.channel,
-      event.thread_ts,
-      event.ts,
-      { userInfoResolver },
-    ),
-    getMessagePermalink(client, event.channel, event.ts),
-  ]);
-  signal.throwIfAborted();
-  const messagePermalink =
-    permalinkResult.kind === "ok" ? permalinkResult.permalink : null;
-  if (permalinkResult.kind === "slack_error") {
-    L.warn("Failed to resolve canonical Slack message permalink", {
-      ingressId,
-      error: permalinkResult.error,
-    });
-  }
-
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt: enriched.prompt,
-      appendSystemPrompt: buildSlackSystemPrompt({
-        botUserId: ingress.botUserId,
-        channelId: ingress.channelId,
-        channelType: slackChannelType(event),
-        threadTs: ingress.threadTs,
-        executionContext: context.executionContext,
-      }),
-      slackDelivery: {
-        channelId: ingress.channelId,
-        threadTs: ingress.threadTs,
-      },
-      userInfoExtras: enriched.userInfoExtras,
-    },
-    { orgId, userId: ingress.userId },
-  );
-  signal.throwIfAborted();
-
+): Promise<void> {
   await db.transaction(async (tx) => {
     const inserted = await insertChatMessage(
       tx,
       {
-        id: ingress.ingressId,
-        chatThreadId,
+        id: args.ingress.ingressId,
+        chatThreadId: args.chatThreadId,
         role: "user",
-        content: enriched.displayContent,
+        content: args.displayContent,
         runId: null,
-        slackMessagePermalink: messagePermalink,
-        createdAt: ingress.createdAt,
+        slackMessagePermalink: args.messagePermalink,
+        createdAt: args.ingress.createdAt,
       },
       "id",
     );
@@ -377,20 +346,25 @@ async function persistClaimedCanonicalSlackIngress(
     if (!inserted) {
       throw new Error("Canonical Slack ingress message already exists");
     }
+    await attachCanonicalAssetsToMessage(
+      tx,
+      args.ingress.ingressId,
+      args.canonicalAssets,
+    );
     await enqueueUserMessageQueueItem(tx, {
-      orgId,
-      userId: ingress.userId,
-      chatThreadId,
-      chatMessageId: ingress.ingressId,
+      orgId: args.orgId,
+      userId: args.ingress.userId,
+      chatThreadId: args.chatThreadId,
+      chatMessageId: args.ingress.ingressId,
       triggerSource: "slack",
-      encryptedParams,
+      encryptedParams: args.encryptedParams,
     });
     signal.throwIfAborted();
     await touchChatThreadLastMessageAt(
       tx,
-      chatThreadId,
-      ingress.createdAt,
-      ingress.ingressId,
+      args.chatThreadId,
+      args.ingress.createdAt,
+      args.ingress.ingressId,
     );
     signal.throwIfAborted();
     await tx
@@ -398,15 +372,137 @@ async function persistClaimedCanonicalSlackIngress(
       .set({ status: "processed", lastError: null, updatedAt: nowDate() })
       .where(
         and(
-          eq(slackChatIngress.id, ingress.ingressId),
+          eq(slackChatIngress.id, args.ingress.ingressId),
           eq(slackChatIngress.status, "processing"),
         ),
       );
     signal.throwIfAborted();
   });
-  signal.throwIfAborted();
-  return persistedCanonicalSlackIngress(ingress, chatThreadId);
 }
+
+const persistClaimedCanonicalSlackIngress$ = command(
+  async (
+    { set },
+    ingressId: string,
+    signal: AbortSignal,
+  ): Promise<PersistedCanonicalSlackIngress> => {
+    const db = set(writeDb$);
+    const ingress = await loadClaimedIngress(db, ingressId);
+    signal.throwIfAborted();
+    if (!ingress?.chatThreadId || !ingress.orgId) {
+      throw new Error("Canonical Slack ingress route is incomplete");
+    }
+    const chatThreadId = ingress.chatThreadId;
+    const orgId = ingress.orgId;
+    const event = requireMatchingEvent(ingress.payload, ingress);
+    const featureContext = await loadUserFeatureSwitchContext(
+      db,
+      orgId,
+      ingress.userId,
+    );
+    signal.throwIfAborted();
+    const botToken = await decryptPersistentSecretValue(
+      ingress.encryptedBotToken,
+      featureContext,
+    );
+    signal.throwIfAborted();
+    const client = createSlackClient(botToken);
+    await setCanonicalSlackThinkingStatus({
+      client,
+      ingressId,
+      channelId: ingress.channelId,
+      threadTs: ingress.threadTs,
+    });
+    signal.throwIfAborted();
+    const userInfoResolver = createSlackUserInfoResolver(client);
+    const messageContent = stripBotMention(event.text, ingress.botUserId);
+    const canonicalAssets = await set(
+      materializeCanonicalSlackInputAssets$,
+      {
+        userId: ingress.userId,
+        orgId,
+        chatThreadId,
+        workspaceId: ingress.workspaceId,
+        channelId: ingress.channelId,
+        messageTs: event.ts,
+        botToken,
+        files: event.files ?? [],
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    const [enriched, context, permalinkResult] = await Promise.all([
+      enrichMessageContent({
+        messageContent,
+        files: undefined,
+        client,
+        userId: event.user,
+        userInfoResolver,
+      }),
+      fetchConversationContexts(
+        client,
+        event.channel,
+        event.thread_ts,
+        event.ts,
+        { userInfoResolver },
+      ),
+      getMessagePermalink(client, event.channel, event.ts),
+    ]);
+    signal.throwIfAborted();
+    const messagePermalink =
+      permalinkResult.kind === "ok" ? permalinkResult.permalink : null;
+    if (permalinkResult.kind === "slack_error") {
+      L.warn("Failed to resolve canonical Slack message permalink", {
+        ingressId,
+        error: permalinkResult.error,
+      });
+    }
+    const canonicalFilesPrompt = canonicalSlackFilesPrompt(
+      event.files,
+      canonicalAssets,
+    );
+    const agentPrompt = [enriched.prompt, canonicalFilesPrompt]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const encryptedParams = await encryptQueuedUserMessageRunParams(
+      {
+        version: 1,
+        prompt: agentPrompt,
+        appendSystemPrompt: buildSlackSystemPrompt({
+          botUserId: ingress.botUserId,
+          channelId: ingress.channelId,
+          channelType: slackChannelType(event),
+          threadTs: ingress.threadTs,
+          executionContext: context.executionContext,
+        }),
+        slackDelivery: {
+          channelId: ingress.channelId,
+          threadTs: ingress.threadTs,
+        },
+        userInfoExtras: enriched.userInfoExtras,
+      },
+      { orgId, userId: ingress.userId },
+    );
+    signal.throwIfAborted();
+
+    await persistCanonicalSlackMessage(
+      db,
+      {
+        ingress,
+        chatThreadId,
+        orgId,
+        displayContent: enriched.displayContent,
+        messagePermalink,
+        canonicalAssets,
+        encryptedParams,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return persistedCanonicalSlackIngress(ingress, chatThreadId);
+  },
+);
 
 export const processCanonicalSlackIngress$ = command(
   async (
@@ -423,8 +519,8 @@ export const processCanonicalSlackIngress$ = command(
 
     const result = await settle(
       (async () => {
-        const ingress = await persistClaimedCanonicalSlackIngress(
-          db,
+        const ingress = await set(
+          persistClaimedCanonicalSlackIngress$,
           args.ingressId,
           signal,
         );

@@ -8,6 +8,8 @@ import type { Db } from "../external/db";
 import { insertChatMessage } from "./zero-chat-message.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
 /**
  * Goal state is published into the chat thread as assistant control messages so
  * the web client can fold the current goal state from the message stream
@@ -16,7 +18,7 @@ import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normaliz
  * them.
  */
 export async function appendGoalEventMarker(
-  tx: Pick<Db, "insert">,
+  tx: DbTransaction,
   args: {
     readonly chatThreadId: string;
     readonly event: ChatMessageGoalEvent;

@@ -22,13 +22,40 @@ const attachFileSchema = z.object({
   size: z.number(),
 });
 
+const assetMaterializationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("ready") }),
+  z.object({ status: z.literal("pending") }),
+  z.object({
+    status: z.literal("failed"),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      retryable: z.boolean(),
+    }),
+  }),
+]);
+
+const assetRefSchema = z.object({
+  id: z.string().uuid(),
+  classification: z.enum(["input", "published-output"]),
+  access: z.enum(["private", "published"]),
+  materialization: assetMaterializationSchema,
+  provenance: z
+    .object({
+      provider: z.string(),
+    })
+    .optional(),
+});
+
 /**
  * Attach file returned to the frontend with a resolved URL.
- * `url` is the public artifact CDN URL; consumers may render, cache, or share
- * it freely.
+ * Legacy attachments expose a public artifact URL. Canonical input assets use
+ * an authenticated same-origin URL and identify their durable asset through
+ * `assetRef`.
  */
 const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
+  assetRef: assetRefSchema.optional(),
 });
 
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
@@ -67,6 +94,7 @@ const artifactItemSchema = z.object({
   contentType: z.string(),
   size: z.number().default(0),
   url: z.string(),
+  assetRef: assetRefSchema.optional(),
   previewImageUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -139,21 +167,6 @@ const imageArtifactEditSnapshotSchema = z.object({
   updatedAt: z.string(),
 });
 
-const htmlArtifactEditSnapshotQuerySchema = z.object({
-  url: z.string().url(),
-});
-
-const htmlArtifactEditSnapshotUpsertSchema = z.object({
-  url: z.string().url(),
-  html: z.string().min(1),
-});
-
-const htmlArtifactEditSnapshotSchema = z.object({
-  artifactUrl: z.string().url(),
-  snapshotUrl: z.string().url(),
-  updatedAt: z.string(),
-});
-
 /**
  * Attachment metadata persisted in chat_threads.draft_attachments.
  *
@@ -188,6 +201,7 @@ const chatThreadUnreadAgentsSchema = z.object({
 
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
+const chatThreadServiceTierSchema = z.enum(["priority"]);
 
 const chatThreadSnapshotProjectionSchema = z.object({
   id: z.string().uuid(),
@@ -199,6 +213,8 @@ const chatThreadSnapshotProjectionSchema = z.object({
   pinnedAt: z.string().nullable(),
   renamedAt: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
+  serviceTier: chatThreadServiceTierSchema.nullable().default(null),
+  computerUseHostId: z.string().uuid().nullable().default(null),
 });
 
 const chatThreadEventSchema = z.object({
@@ -210,12 +226,16 @@ const chatThreadEventSchema = z.object({
     "pinned",
     "unpinned",
     "model_selection_updated",
+    "service_tier_updated",
+    "computer_use_host_updated",
     "sort_touched",
   ]),
   chatThreadId: z.string().uuid(),
   agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
+  serviceTier: chatThreadServiceTierSchema.nullable().default(null),
+  computerUseHostId: z.string().uuid().nullable().default(null),
   createdAt: z.string(),
 });
 
@@ -358,6 +378,7 @@ const pagedChatMessageBaseSchema = z.object({
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
   slackMessagePermalink: z.string().url().optional(),
+  feishuChatOpenUrl: z.string().url().optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   goalEvent: zeroGoalEventSchema.optional(),
@@ -372,6 +393,8 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  /** Server-assigned strict position within the chat thread. */
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),
@@ -416,8 +439,6 @@ const chatThreadDetailSchema = z.object({
    * is newer than this timestamp.
    */
   lastReadAt: z.string().nullable(),
-  computerUseHostId: z.string().uuid().nullable(),
-  codexServiceTier: codexServiceTierSchema.nullable(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -494,6 +515,7 @@ const chatThreadModelSelectionUpdateBodySchema = z.preprocess(
     model: selectedModelRequestSchema.nullable(),
     codexServiceTier: codexServiceTierSchema.nullable().optional(),
     eventId: chatThreadEventIdSchema.optional(),
+    serviceTierEventId: chatThreadEventIdSchema.optional(),
   }),
 );
 
@@ -554,6 +576,7 @@ export const chatThreadsContract = c.router({
         latestEventId: chatThreadEventIdSchema.nullable(),
       }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary:
       "Get the compacted chat thread snapshot for the caller's current organization.",
@@ -571,6 +594,7 @@ export const chatThreadsContract = c.router({
         hasMore: z.boolean(),
       }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       410: apiErrorSchema,
     },
     summary:
@@ -680,7 +704,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread detail",
+    summary: "Get chat thread read state",
   },
   patch: {
     method: "PATCH",
@@ -923,6 +947,7 @@ export const chatThreadComputerUseHostContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       computerUseHostId: z.string().uuid().nullable(),
+      eventId: chatThreadEventIdSchema.optional(),
     }),
     responses: {
       204: c.noBody(),
@@ -1015,6 +1040,7 @@ const chatSearchMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   createdAt: z.string(),
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable(),
   runId: z.string().nullable(),
 });
@@ -1071,11 +1097,12 @@ export const chatSearchContract = c.router({
 
 /**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using message UUID as sinceId / beforeId.
+ * Cursor-based pagination using the thread-scoped message sequence.
  *
  * Query params (mutually exclusive):
- *   sinceId  — forward pagination: messages strictly after this cursor
- *   beforeId — backward pagination: messages strictly before this cursor
+ *   sinceSeqId  — forward pagination: messages strictly after this cursor
+ *   beforeSeqId — backward pagination: messages strictly before this cursor
+ *   sinceId / beforeId — previous frontend UUID cursors retained during rollout
  *   (neither) — initial load anchored at the last user message
  *
  * Response includes `hasMore` for initial load and backward pagination so the
@@ -1088,6 +1115,10 @@ export const chatThreadMessagesContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      beforeSeqId: z.coerce.number().int().positive().optional(),
+      // Remove after browser clients from the pre-seqId release can no longer
+      // remain active against the current backend.
       sinceId: z.string().uuid().optional(),
       beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
@@ -1103,6 +1134,9 @@ export const chatThreadMessagesContract = c.router({
     },
     summary: "Get paginated chat messages for a thread",
   },
+  // Compatibility for already-open app-v0.627.3 browser clients. The next app
+  // no longer calls this route; remove it only after those clients can no
+  // longer reasonably remain active against the current backend.
   get: {
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/messages/:messageId",
@@ -1134,50 +1168,6 @@ export const chatThreadArtifactsContract = c.router({
     },
     summary: "List uploaded files associated with every run in a chat thread",
   },
-  getHtmlEditSnapshot: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: htmlArtifactEditSnapshotQuerySchema,
-    responses: {
-      200: z.object({ snapshot: htmlArtifactEditSnapshotSchema.nullable() }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get a resumable HTML artifact edit snapshot for a chat thread",
-  },
-  upsertHtmlEditSnapshot: {
-    method: "PUT",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    body: htmlArtifactEditSnapshotUpsertSchema,
-    responses: {
-      200: htmlArtifactEditSnapshotSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upsert a resumable HTML artifact edit snapshot for a chat thread",
-  },
-  deleteHtmlEditSnapshot: {
-    method: "DELETE",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: htmlArtifactEditSnapshotQuerySchema,
-    responses: {
-      204: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Delete a resumable HTML artifact edit snapshot for a chat thread",
-  },
   syncGoogleDrive: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/artifacts",
@@ -1200,28 +1190,6 @@ export const chatThreadArtifactsContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Sync a chat artifact file to the user's connected Google Drive",
-  },
-  uploadGoogleSlides: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:threadId/artifacts/google-slides",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
-    responses: {
-      200: z.object({
-        id: z.string(),
-        name: z.string(),
-        webViewLink: z.string().nullable(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary:
-      "Upload a presentation artifact to the user's Google Drive as a native Google Slides deck",
   },
 });
 
@@ -1375,10 +1343,10 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
+export type ChatThreadServiceTier = z.infer<typeof chatThreadServiceTierSchema>;
 export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
@@ -1434,6 +1402,7 @@ export type ChatMessageUsagePayload = z.infer<
 >;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
+export type AssetRef = z.infer<typeof assetRefSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<
   typeof chatThreadArtifactFileSchema
@@ -1452,7 +1421,4 @@ export type ImageArtifactEditSnapshot = z.infer<
 >;
 export type ImageArtifactEditSnapshotState = z.infer<
   typeof imageArtifactEditSnapshotStateSchema
->;
-export type HtmlArtifactEditSnapshot = z.infer<
-  typeof htmlArtifactEditSnapshotSchema
 >;

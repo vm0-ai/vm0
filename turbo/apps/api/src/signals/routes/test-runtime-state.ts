@@ -20,8 +20,8 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { storages } from "@vm0/db/schema/storage";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -37,10 +37,6 @@ import {
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
 import { createDeferredPromise, onRejection } from "../utils";
-import {
-  projectLegacyCheckpointStorage,
-  projectLegacyWritebackArtifacts,
-} from "../services/storage-legacy-projection.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -238,6 +234,39 @@ async function deleteVm0ManagedDefaultModelKey(
   signal.throwIfAborted();
 }
 
+async function clearRunApiStart(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [cleared] = await db
+    .update(zeroRuns)
+    .set({ apiStartedAt: null })
+    .where(eq(zeroRuns.id, runId))
+    .returning({ id: zeroRuns.id });
+  signal.throwIfAborted();
+  if (!cleared) {
+    throw new Error("Expected a Zero run timing row");
+  }
+}
+
+async function readRunApiStart(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const [run] = await db
+    .select({ apiStartedAt: zeroRuns.apiStartedAt })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new Error("Expected a Zero run timing row");
+  }
+  return run.apiStartedAt?.toISOString() ?? null;
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -279,73 +308,6 @@ async function removeRunCanonicalStorageState(
   signal.throwIfAborted();
 }
 
-async function removeSessionCanonicalStorageState(
-  db: Db,
-  sessionId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [session] = await db
-    .select({
-      artifacts: agentSessions.artifacts,
-      storageMounts: agentSessions.storageMounts,
-    })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!session) {
-    throw new Error("Agent session not found");
-  }
-  await db
-    .update(agentSessions)
-    .set({
-      artifacts:
-        session.storageMounts === null
-          ? session.artifacts
-          : [...projectLegacyWritebackArtifacts(session.storageMounts)],
-      storageMounts: null,
-    })
-    .where(eq(agentSessions.id, sessionId));
-  signal.throwIfAborted();
-}
-
-async function removeCheckpointCanonicalStorageState(
-  db: Db,
-  checkpointId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [checkpoint] = await db
-    .select({
-      storageMounts: checkpoints.storageMounts,
-    })
-    .from(checkpoints)
-    .where(eq(checkpoints.id, checkpointId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!checkpoint) {
-    throw new Error("Checkpoint not found");
-  }
-  const legacy =
-    checkpoint.storageMounts === null
-      ? null
-      : projectLegacyCheckpointStorage(checkpoint.storageMounts);
-  await db
-    .update(checkpoints)
-    .set({
-      ...(legacy === null
-        ? {}
-        : {
-            artifactSnapshots: legacy.artifactSnapshots
-              ? [...legacy.artifactSnapshots]
-              : null,
-            volumeVersionsSnapshot: legacy.volumeVersionsSnapshot,
-          }),
-      storageMounts: null,
-    })
-    .where(eq(checkpoints.id, checkpointId));
-  signal.throwIfAborted();
-}
-
 async function readStoragePersistenceState(
   db: Db,
   ids: {
@@ -358,7 +320,6 @@ async function readStoragePersistenceState(
   const [[run], [session], [checkpoint]] = await Promise.all([
     db
       .select({
-        additionalVolumes: agentRuns.additionalVolumes,
         storageMounts: agentRuns.storageMounts,
       })
       .from(agentRuns)
@@ -366,7 +327,6 @@ async function readStoragePersistenceState(
       .limit(1),
     db
       .select({
-        artifacts: agentSessions.artifacts,
         storageMounts: agentSessions.storageMounts,
       })
       .from(agentSessions)
@@ -374,8 +334,6 @@ async function readStoragePersistenceState(
       .limit(1),
     db
       .select({
-        artifactSnapshots: checkpoints.artifactSnapshots,
-        volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
         storageMounts: checkpoints.storageMounts,
       })
       .from(checkpoints)
@@ -388,25 +346,14 @@ async function readStoragePersistenceState(
   }
   return {
     run_canonical: run.storageMounts !== null,
-    run_legacy: (run.additionalVolumes?.length ?? 0) > 0,
     session_canonical: session.storageMounts !== null,
-    session_legacy: session.artifacts.length > 0,
     checkpoint_canonical: checkpoint.storageMounts !== null,
-    checkpoint_legacy_artifacts:
-      (checkpoint.artifactSnapshots?.length ?? 0) > 0,
-    checkpoint_legacy_volumes: checkpoint.volumeVersionsSnapshot !== null,
   };
 }
 
 type StorageStateAction = Extract<
   TestRuntimeStateActionBody,
-  {
-    action:
-      | "remove-run-canonical-storage-state"
-      | "remove-session-canonical-storage-state"
-      | "remove-checkpoint-canonical-storage-state"
-      | "delete-storage-row";
-  }
+  { action: "remove-run-canonical-storage-state" }
 >;
 
 type ReadStorageStateAction = Extract<
@@ -420,9 +367,6 @@ function isStorageStateAction(
 ): body is AnyStorageStateAction {
   switch (body.action) {
     case "remove-run-canonical-storage-state":
-    case "remove-session-canonical-storage-state":
-    case "remove-checkpoint-canonical-storage-state":
-    case "delete-storage-row":
     case "read-storage-persistence-state": {
       return true;
     }
@@ -437,28 +381,7 @@ async function mutateStorageState(
   body: StorageStateAction,
   signal: AbortSignal,
 ): Promise<void> {
-  switch (body.action) {
-    case "remove-run-canonical-storage-state": {
-      await removeRunCanonicalStorageState(db, body.run_id, signal);
-      return;
-    }
-    case "remove-session-canonical-storage-state": {
-      await removeSessionCanonicalStorageState(db, body.session_id, signal);
-      break;
-    }
-    case "remove-checkpoint-canonical-storage-state": {
-      await removeCheckpointCanonicalStorageState(
-        db,
-        body.checkpoint_id,
-        signal,
-      );
-      break;
-    }
-    case "delete-storage-row": {
-      await db.delete(storages).where(eq(storages.id, body.storage_id));
-      break;
-    }
-  }
+  await removeRunCanonicalStorageState(db, body.run_id, signal);
   signal.throwIfAborted();
 }
 
@@ -488,6 +411,76 @@ async function storageStateActionResponse(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+type TimingStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "clear-run-api-start" | "read-run-api-start" }
+>;
+
+function isTimingStateAction(
+  body: TestRuntimeStateActionBody,
+): body is TimingStateAction {
+  return (
+    body.action === "clear-run-api-start" ||
+    body.action === "read-run-api-start"
+  );
+}
+
+async function timingStateActionResponse(
+  db: Db,
+  body: TimingStateAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "clear-run-api-start": {
+      await clearRunApiStart(db, body.run_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-run-api-start": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          api_started_at: await readRunApiStart(db, body.run_id, signal),
+        },
+      };
+    }
+  }
+}
+
+type LegacyArtifactCatalogFileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-legacy-artifact-catalog-file" }
+>;
+
+async function insertLegacyArtifactCatalogFile(
+  db: Db,
+  body: LegacyArtifactCatalogFileAction,
+  signal: AbortSignal,
+) {
+  const [file] = await db
+    .insert(runUploadedFiles)
+    .values({
+      source: "web",
+      externalId: body.url,
+      userId: body.user_id,
+      orgId: body.org_id,
+      filename: body.filename,
+      contentType: "application/zip",
+      sizeBytes: 512,
+      url: body.url,
+      metadata: {},
+    })
+    .returning({ id: runUploadedFiles.id });
+  signal.throwIfAborted();
+  if (!file) {
+    throw new Error("Failed to insert a legacy artifact catalog file");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, file_id: file.id },
+  };
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -504,6 +497,12 @@ const postRuntimeStateAction$ = command(
     const db = set(writeDb$);
     if (isStorageStateAction(body)) {
       return await storageStateActionResponse(db, body, signal);
+    }
+    if (isTimingStateAction(body)) {
+      return await timingStateActionResponse(db, body, signal);
+    }
+    if (body.action === "insert-legacy-artifact-catalog-file") {
+      return await insertLegacyArtifactCatalogFile(db, body, signal);
     }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {

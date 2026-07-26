@@ -42,7 +42,6 @@ describe("runner claim response contract", () => {
       runId: "00000000-0000-4000-8000-000000020985",
       agentComposeVersionId:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      checkpointId: "11111111-1111-4111-8111-111111111111",
       experimentalProfile: "vm0/default",
       modelUsageProvider: "fixture-model",
     });
@@ -50,6 +49,16 @@ describe("runner claim response contract", () => {
 });
 
 describe("runner storage manifest contract", () => {
+  it("requires canonical mounts in stored execution contexts", () => {
+    expect(
+      storedExecutionContextSchema.shape.storageMounts.safeParse([]).success,
+    ).toBe(true);
+    expect(
+      storedExecutionContextSchema.shape.storageMounts.safeParse(undefined)
+        .success,
+    ).toBe(false);
+  });
+
   it("accepts canonical read-only and writeback mounts", () => {
     expect(
       storageMountEntrySchema.parse({
@@ -468,7 +477,6 @@ describe("runner resume session contract", () => {
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
-      checkpointId: null,
       historyGenerationRunId,
       historyGenerationAffinityProtectedUntil,
       sessionAffinityResource: "reusableSandbox",
@@ -513,7 +521,6 @@ describe("runner resume session contract", () => {
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
-      checkpointId: null,
       historyGenerationAffinityProtectedUntil: null,
     });
     expect(job.historyGenerationAffinityProtectedUntil).toBeNull();

@@ -2,6 +2,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageRecommendedFollowups,
+  type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
@@ -31,6 +32,7 @@ import {
 } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
+import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -72,6 +74,12 @@ interface ChatMessageForGeneration {
   readonly content: string;
 }
 
+interface ChatCompletionContextRow {
+  readonly role: string;
+  readonly content: string | null;
+  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+}
+
 type SelectDb = Pick<Db, "select">;
 
 export function isChatTitleGenerationConfigured(): boolean {
@@ -98,6 +106,36 @@ function completedConversationContextMessageCondition(db: SelectDb) {
       ) as SQL,
     ),
   ) as SQL;
+}
+
+function contextMessageContentCondition(structuredPromptEnabled: boolean): SQL {
+  return structuredPromptEnabled
+    ? (or(
+        isNotNull(chatMessages.content),
+        and(
+          eq(chatMessages.role, "user"),
+          isNotNull(chatMessages.structuredPrompt),
+        ),
+      ) as SQL)
+    : isNotNull(chatMessages.content);
+}
+
+function chatCompletionContextMessage(
+  row: ChatCompletionContextRow,
+  structuredPromptEnabled: boolean,
+): ChatCompletionContextMessage[] {
+  if (row.role !== "user" && row.role !== "assistant") {
+    return [];
+  }
+  if (structuredPromptEnabled && row.role === "user" && row.structuredPrompt) {
+    return [
+      {
+        role: row.role,
+        content: projectStructuredUserMessage(row.structuredPrompt).agentPrompt,
+      },
+    ];
+  }
+  return row.content === null ? [] : [{ role: row.role, content: row.content }];
 }
 
 function stripMarkdown(text: string): string {
@@ -195,11 +233,12 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
 async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
+  structuredPromptEnabled: boolean,
   options?: { readonly excludeRunId?: string },
 ): Promise<ChatCompletionContextMessage[]> {
   const filters = [
     eq(chatMessages.chatThreadId, threadId),
-    isNotNull(chatMessages.content),
+    contextMessageContentCondition(structuredPromptEnabled),
     inArray(chatMessages.role, ["user", "assistant"]),
     visibleChatMessageCondition(db),
     completedConversationContextMessageCondition(db),
@@ -219,23 +258,18 @@ async function getLatestTitleContextMessages(
     .select({
       role: chatMessages.role,
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
     .from(chatMessages)
     .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
     .where(and(...filters))
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .orderBy(desc(chatMessages.seqId))
     .limit(TITLE_PRIOR_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
-    if (
-      row.content === null ||
-      (row.role !== "user" && row.role !== "assistant")
-    ) {
-      return [];
-    }
-    return [{ role: row.role, content: row.content }];
+    return chatCompletionContextMessage(row, structuredPromptEnabled);
   });
 }
 
@@ -302,6 +336,7 @@ export async function generateAndPersistChatThreadTitle(args: {
   readonly orgId: string | null;
   readonly prompt: string;
   readonly includePriorRounds: boolean;
+  readonly structuredPromptEnabled: boolean;
 }): Promise<void> {
   await tapError(
     (async () => {
@@ -310,7 +345,11 @@ export async function generateAndPersistChatThreadTitle(args: {
       }
 
       const priorRounds = args.includePriorRounds
-        ? await getLatestTitleContextMessages(args.db, args.threadId)
+        ? await getLatestTitleContextMessages(
+            args.db,
+            args.threadId,
+            args.structuredPromptEnabled,
+          )
         : [];
       const title = await generateChatTitle({
         currentUserMessage: args.prompt,
@@ -343,6 +382,7 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
   readonly runId: string;
   readonly prompt: string;
   readonly currentAssistantReply: string | undefined;
+  readonly structuredPromptEnabled: boolean;
 }): Promise<void> {
   await tapError(
     (async () => {
@@ -353,6 +393,7 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
       const priorRounds = await getLatestTitleContextMessages(
         args.db,
         args.threadId,
+        args.structuredPromptEnabled,
         { excludeRunId: args.runId },
       );
       const title = await generateChatTitle({
@@ -414,11 +455,13 @@ function parseRecommendedFollowups(
 async function getLatestFollowupContextMessages(
   db: SelectDb,
   threadId: string,
+  structuredPromptEnabled: boolean,
 ): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
       role: chatMessages.role,
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
@@ -426,23 +469,17 @@ async function getLatestFollowupContextMessages(
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
-        isNotNull(chatMessages.content),
+        contextMessageContentCondition(structuredPromptEnabled),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(db),
         completedConversationContextMessageCondition(db),
       ),
     )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .orderBy(desc(chatMessages.seqId))
     .limit(FOLLOWUP_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
-    if (
-      row.content === null ||
-      (row.role !== "user" && row.role !== "assistant")
-    ) {
-      return [];
-    }
-    return [{ role: row.role, content: row.content }];
+    return chatCompletionContextMessage(row, structuredPromptEnabled);
   });
 }
 
@@ -489,8 +526,13 @@ async function generateRecommendedFollowups(
 export async function loadChatThreadRecommendedFollowupContext(args: {
   readonly db: SelectDb;
   readonly threadId: string;
+  readonly structuredPromptEnabled: boolean;
 }): Promise<ChatCompletionContextMessage[]> {
-  return await getLatestFollowupContextMessages(args.db, args.threadId);
+  return await getLatestFollowupContextMessages(
+    args.db,
+    args.threadId,
+    args.structuredPromptEnabled,
+  );
 }
 
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {

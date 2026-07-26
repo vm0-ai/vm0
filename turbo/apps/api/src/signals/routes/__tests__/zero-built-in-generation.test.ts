@@ -117,9 +117,8 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
   it("marks stale active jobs as failed when status is read", async () => {
     const currentTime = new Date("2026-05-15T12:00:00.000Z");
     const actor = createActor();
-    await billingApi.bootstrapOnboarding(actor, {
-      displayName: "BDD Built In Generation",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     await grantVisibleCredits(actor);
     const staleAt = new Date(currentTime.getTime() - 16 * 60 * 1000);
     const generationId = await createRunningImageGeneration(actor, staleAt);
@@ -156,9 +155,8 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
   it("leaves active jobs running before the timeout window", async () => {
     const currentTime = new Date("2026-05-15T12:00:00.000Z");
     const actor = createActor();
-    await billingApi.bootstrapOnboarding(actor, {
-      displayName: "BDD Built In Generation",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     await grantVisibleCredits(actor);
     const freshAt = new Date(currentTime.getTime() - 14 * 60 * 1000);
     const generationId = await createRunningImageGeneration(actor, freshAt);

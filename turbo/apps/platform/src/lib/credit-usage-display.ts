@@ -1,8 +1,24 @@
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 
-const CONNECTOR_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  scrape: "Web Fetch",
+  maps: "Maps",
+  "web-search": "Web Search",
+  finance: "Finance",
+  weather: "Weather",
+};
+
+// Chat usage keeps the managed usage kind, while Settings currently groups
+// these kinds under `other` and only retains the provider. Keep the provider
+// aliases here so both surfaces show the same product-facing capability name.
+const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   firecrawl: "Web Fetch",
+  "google-maps": "Maps",
+  openstreetmap: "Maps",
   perplexity: "Web Search",
+  apidojo: "Finance",
+  "google-weather": "Weather",
+  "google-air-quality": "Weather",
 };
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, string>> = {
@@ -75,21 +91,25 @@ export function getCreditUsageDisplayName(
   kind: string,
   provider: string,
 ): string {
+  const baseKind = usageKindBase(kind);
+  const managedKindDisplayName = MANAGED_USAGE_KIND_DISPLAY_NAMES[baseKind];
+  if (managedKindDisplayName) {
+    return managedKindDisplayName;
+  }
+
   if (!provider || provider === "unknown") {
     return formatUsageIdentifier(kind);
   }
 
   const normalizedProvider = provider.trim();
-  const baseKind = usageKindBase(kind);
-  if (baseKind === "connector") {
-    const connectorDisplayName = CONNECTOR_DISPLAY_NAMES[normalizedProvider];
-    if (connectorDisplayName) {
-      return connectorDisplayName;
-    }
-  }
-
   if (baseKind === "model" || baseKind === "image" || baseKind === "video") {
     return usageModelDisplayName(normalizedProvider);
+  }
+
+  const managedProviderDisplayName =
+    MANAGED_USAGE_PROVIDER_DISPLAY_NAMES[normalizedProvider];
+  if (managedProviderDisplayName) {
+    return managedProviderDisplayName;
   }
 
   return formatUsageIdentifier(normalizedProvider);

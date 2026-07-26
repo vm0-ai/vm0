@@ -7,7 +7,6 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -18,6 +17,10 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import {
+  insertChatMessage,
+  updateChatMessage,
+} from "../services/zero-chat-message.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -55,7 +58,6 @@ async function seedActiveRun(
       userId: fixture.userId,
       orgId: fixture.orgId,
       agentComposeId: fixture.composeId,
-      artifacts: [],
     })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
@@ -115,16 +117,15 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor thread");
   }
 
-  const [message] = await db
-    .insert(chatMessages)
-    .values({
+  const message = await db.transaction(async (tx) => {
+    return await insertChatMessage(tx, {
       chatThreadId: thread.id,
       role: "user",
       content: "orphan monitor fixture",
       runId: null,
       error: fixtureKind === "failed-message" ? "INSUFFICIENT_CREDITS" : null,
-    })
-    .returning({ id: chatMessages.id });
+    });
+  });
   signal.throwIfAborted();
   if (!message) {
     throw new Error("Failed to seed orphan monitor message");
@@ -139,12 +140,13 @@ async function seedFixture(
       chatMessageId: message.id,
     });
   } else if (fixtureKind === "revoked-message") {
-    await db.insert(chatMessages).values({
-      chatThreadId: thread.id,
-      role: "user",
-      content: "claimed orphan monitor fixture",
-      runId: randomUUID(),
-      revokesMessageId: message.id,
+    await db.transaction(async (tx) => {
+      await updateChatMessage(tx, message.id, {
+        chatThreadId: thread.id,
+        role: "user",
+        content: "claimed orphan monitor fixture",
+        runId: randomUUID(),
+      });
     });
   } else if (fixtureKind === "active-run") {
     await seedActiveRun(

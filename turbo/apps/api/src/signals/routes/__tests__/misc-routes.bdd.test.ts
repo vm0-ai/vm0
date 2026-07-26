@@ -71,10 +71,6 @@ describe("MISC-01: organization logo and profile-adjacent API boundaries", () =>
       logoUrl: "https://images.example.test/uploaded-logo.png",
       hasImage: true,
     });
-
-    api.setOrgLogoDelete({ imageUrl: null, hasImage: false });
-    const deleted = await api.deleteOrgLogo(admin, [200]);
-    expect(deleted.body).toStrictEqual({ logoUrl: null, hasImage: false });
   });
 });
 

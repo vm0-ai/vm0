@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
+  customType,
   foreignKey,
   integer,
   jsonb,
@@ -31,9 +33,16 @@ export const CONNECTOR_CATALOG_FAILURE_CODES = [
   "invalid-artifact",
   "public-leakage",
   "relationship-mismatch",
+  "invalid-compression",
 ] as const;
 export type ConnectorCatalogFailureCode =
   (typeof CONNECTOR_CATALOG_FAILURE_CODES)[number];
+
+const byteaColumn = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const connectorCatalogSyncState = pgTable(
   "connector_catalog_sync_state",
@@ -44,7 +53,8 @@ export const connectorCatalogSyncState = pgTable(
     lastObservedCatalogVersion: varchar("last_observed_catalog_version", {
       length: 255,
     }),
-    lastObservedIntegrityDigest: varchar("last_observed_integrity_digest", {
+    lastObservedCatalogKey: text("last_observed_catalog_key"),
+    lastObservedCatalogDigest: varchar("last_observed_catalog_digest", {
       length: 71,
     }),
     lastObservedPointerEtag: text("last_observed_pointer_etag"),
@@ -52,6 +62,9 @@ export const connectorCatalogSyncState = pgTable(
     lastAttemptOutcome: varchar("last_attempt_outcome", {
       length: 32,
     }).$type<ConnectorCatalogAttemptOutcome>(),
+    lastAttemptReusedCachedRejection: boolean(
+      "last_attempt_reused_cached_rejection",
+    ),
     lastSuccessAt: timestamp("last_success_at"),
     lastFailureCode: varchar("last_failure_code", {
       length: 64,
@@ -59,13 +72,20 @@ export const connectorCatalogSyncState = pgTable(
     lastRejectedCatalogVersion: varchar("last_rejected_catalog_version", {
       length: 255,
     }),
-    lastRejectedIntegrityDigest: varchar("last_rejected_integrity_digest", {
+    lastRejectedCatalogKey: text("last_rejected_catalog_key"),
+    lastRejectedCatalogDigest: varchar("last_rejected_catalog_digest", {
       length: 71,
     }),
     lastRejectedPointerEtag: text("last_rejected_pointer_etag"),
     lastRejectedFailureCode: varchar("last_rejected_failure_code", {
       length: 64,
     }).$type<ConnectorCatalogFailureCode>(),
+    lastRejectedBackendVersion: varchar("last_rejected_backend_version", {
+      length: 64,
+    }),
+    lastRejectedBuildCommitSha: varchar("last_rejected_build_commit_sha", {
+      length: 40,
+    }),
   },
   (table) => {
     return [
@@ -85,10 +105,12 @@ export const connectorCatalogSyncState = pgTable(
         "connector_catalog_sync_state_observed_identity_complete",
         sql`(
           ${table.lastObservedCatalogVersion} IS NULL
-          AND ${table.lastObservedIntegrityDigest} IS NULL
+          AND ${table.lastObservedCatalogKey} IS NULL
+          AND ${table.lastObservedCatalogDigest} IS NULL
         ) OR (
           ${table.lastObservedCatalogVersion} IS NOT NULL
-          AND ${table.lastObservedIntegrityDigest} IS NOT NULL
+          AND ${table.lastObservedCatalogKey} IS NOT NULL
+          AND ${table.lastObservedCatalogDigest} IS NOT NULL
         )`,
       ),
       check(
@@ -108,10 +130,25 @@ export const connectorCatalogSyncState = pgTable(
         )`,
       ),
       check(
+        "connector_catalog_sync_state_attempt_cache_reuse_complete",
+        sql`(
+          ${table.lastAttemptOutcome} IS NULL
+          AND ${table.lastAttemptReusedCachedRejection} IS NULL
+        ) OR (
+          ${table.lastAttemptOutcome} IS NOT NULL
+          AND ${table.lastAttemptReusedCachedRejection} IS NOT NULL
+          AND (
+            ${table.lastAttemptReusedCachedRejection} = FALSE
+            OR ${table.lastAttemptOutcome} = 'rejected'
+          )
+        )`,
+      ),
+      check(
         "connector_catalog_sync_state_rejected_candidate_complete",
         sql`(
           ${table.lastRejectedCatalogVersion} IS NULL
-          AND ${table.lastRejectedIntegrityDigest} IS NULL
+          AND ${table.lastRejectedCatalogKey} IS NULL
+          AND ${table.lastRejectedCatalogDigest} IS NULL
           AND ${table.lastRejectedPointerEtag} IS NULL
           AND ${table.lastRejectedFailureCode} IS NULL
         ) OR (
@@ -120,17 +157,36 @@ export const connectorCatalogSyncState = pgTable(
           AND (
             (
               ${table.lastRejectedCatalogVersion} IS NOT NULL
-              AND ${table.lastRejectedIntegrityDigest} IS NOT NULL
+              AND ${table.lastRejectedCatalogKey} IS NOT NULL
+              AND ${table.lastRejectedCatalogDigest} IS NOT NULL
             ) OR ${table.lastRejectedPointerEtag} IS NOT NULL
           )
           AND (
             (
               ${table.lastRejectedCatalogVersion} IS NULL
-              AND ${table.lastRejectedIntegrityDigest} IS NULL
+              AND ${table.lastRejectedCatalogKey} IS NULL
+              AND ${table.lastRejectedCatalogDigest} IS NULL
             ) OR (
               ${table.lastRejectedCatalogVersion} IS NOT NULL
-              AND ${table.lastRejectedIntegrityDigest} IS NOT NULL
+              AND ${table.lastRejectedCatalogKey} IS NOT NULL
+              AND ${table.lastRejectedCatalogDigest} IS NOT NULL
             )
+          )
+        )`,
+      ),
+      check(
+        "connector_catalog_sync_state_rejection_authority_complete",
+        sql`(
+          ${table.lastRejectedFailureCode} IS NULL
+          AND ${table.lastRejectedBackendVersion} IS NULL
+          AND ${table.lastRejectedBuildCommitSha} IS NULL
+        ) OR (
+          ${table.lastRejectedFailureCode} IS NOT NULL
+          AND ${table.lastRejectedBackendVersion} IS NOT NULL
+          AND ${table.lastRejectedBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
+          AND (
+            ${table.lastRejectedBuildCommitSha} IS NULL
+            OR ${table.lastRejectedBuildCommitSha} ~ '^[a-f0-9]{40}$'
           )
         )`,
       ),
@@ -144,23 +200,10 @@ export const connectorCatalogActiveSnapshot = pgTable(
     sourceId: varchar("source_id", { length: 64 }).notNull(),
     schemaVersion: integer("schema_version").notNull(),
     catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
-    integrityDigest: varchar("integrity_digest", { length: 71 }).notNull(),
-    publicCatalogDigest: varchar("public_catalog_digest", {
-      length: 71,
-    }).notNull(),
-    privateCatalogDigest: varchar("private_catalog_digest", {
-      length: 71,
-    }).notNull(),
-    privateFirewallsDigest: varchar("private_firewalls_digest", {
-      length: 71,
-    }).notNull(),
-    runnerFirewallsDigest: varchar("runner_firewalls_digest", {
-      length: 71,
-    }).notNull(),
-    publicCatalog: text("public_catalog").notNull(),
-    privateCatalog: text("private_catalog").notNull(),
-    privateFirewalls: text("private_firewalls").notNull(),
-    runnerFirewalls: text("runner_firewalls").notNull(),
+    catalogKey: text("catalog_key").notNull(),
+    catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
+    catalogRawSize: integer("catalog_raw_size").notNull(),
+    catalogGzip: byteaColumn("catalog_gzip").notNull(),
     activatedAt: timestamp("activated_at").notNull(),
   },
   (table) => {
@@ -181,6 +224,14 @@ export const connectorCatalogActiveSnapshot = pgTable(
         "connector_catalog_active_snapshot_schema_version_positive",
         sql`${table.schemaVersion} > 0`,
       ),
+      check(
+        "connector_catalog_active_snapshot_catalog_raw_size_positive",
+        sql`${table.catalogRawSize} > 0`,
+      ),
+      check(
+        "connector_catalog_active_snapshot_catalog_digest_valid",
+        sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
     ];
   },
 );
@@ -191,7 +242,7 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
     sourceId: varchar("source_id", { length: 64 }).notNull(),
     schemaVersion: integer("schema_version").notNull(),
     catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
-    integrityDigest: varchar("integrity_digest", { length: 71 }).notNull(),
+    catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
     executableCapabilityDigest: varchar("executable_capability_digest", {
       length: 71,
     }).notNull(),
@@ -208,7 +259,7 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
           table.sourceId,
           table.schemaVersion,
           table.catalogVersion,
-          table.integrityDigest,
+          table.catalogDigest,
           table.executableCapabilityDigest,
         ],
       }),
@@ -227,6 +278,10 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
       check(
         "connector_catalog_compatibility_evaluation_digest_valid",
         sql`${table.executableCapabilityDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+      check(
+        "connector_catalog_compatibility_catalog_digest_valid",
+        sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
       ),
     ];
   },

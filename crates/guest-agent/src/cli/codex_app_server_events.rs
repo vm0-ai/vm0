@@ -24,6 +24,21 @@ pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
 
 const MAX_GENERIC_COLLECTION_ITEMS: usize = 16;
 const MAX_GENERIC_OBJECT_FIELDS: usize = 24;
+const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CodexOutputItemKind {
+    Reasoning,
+    AgentMessage,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct CodexOutputItemStart {
+    pub(super) thread_id: String,
+    pub(super) turn_id: String,
+    pub(super) started_at_ms: u64,
+    pub(super) kind: CodexOutputItemKind,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TurnStatus {
@@ -89,6 +104,39 @@ pub(super) enum CodexAppServerEventError {
     MissingField { method: String, field: &'static str },
     #[error("codex app-server notification {method} has invalid field {field}")]
     InvalidField { method: String, field: &'static str },
+}
+
+pub(super) fn codex_output_item_start(
+    notification: &ServerNotification,
+) -> Result<Option<CodexOutputItemStart>, CodexAppServerEventError> {
+    if notification.method != "item/started" {
+        return Ok(None);
+    }
+
+    let params = required_params_object(notification)?;
+    let item = required_object_key(params, &notification.method, "item", "item")?;
+    let item_type = required_non_empty_string_key(item, &notification.method, "type", "item.type")?;
+    let kind = match item_type {
+        "reasoning" => CodexOutputItemKind::Reasoning,
+        "agentMessage" => CodexOutputItemKind::AgentMessage,
+        _ => return Ok(None),
+    };
+    let thread_id =
+        required_non_empty_string_key(params, &notification.method, "threadId", "threadId")?;
+    let turn_id = required_non_empty_string_key(params, &notification.method, "turnId", "turnId")?;
+    let started_at_ms = params
+        .get("startedAtMs")
+        .ok_or_else(|| missing_field(&notification.method, "startedAtMs"))?
+        .as_u64()
+        .filter(|value| *value >= MIN_EPOCH_MS_TIMESTAMP)
+        .ok_or_else(|| invalid_field_for_method(&notification.method, "startedAtMs"))?;
+
+    Ok(Some(CodexOutputItemStart {
+        thread_id: thread_id.to_string(),
+        turn_id: turn_id.to_string(),
+        started_at_ms,
+        kind,
+    }))
 }
 
 /// Convert a Codex app-server notification into the existing Codex JSONL event shape.
@@ -1672,6 +1720,56 @@ mod tests {
             .expect("ignored notification should not error");
             assert_eq!(result, None, "method {method}");
         }
+    }
+
+    #[test]
+    fn output_item_start_selects_reasoning_and_agent_message_only() {
+        for (item_type, expected_kind) in [
+            ("reasoning", Some(CodexOutputItemKind::Reasoning)),
+            ("agentMessage", Some(CodexOutputItemKind::AgentMessage)),
+            ("commandExecution", None),
+        ] {
+            let start = codex_output_item_start(&notification(
+                "item/started",
+                json!({
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "startedAtMs": 1_700_000_000_123_u64,
+                    "item": {
+                        "type": item_type
+                    }
+                }),
+            ))
+            .expect("valid item start should parse");
+
+            assert_eq!(start.map(|start| start.kind), expected_kind);
+        }
+    }
+
+    #[test]
+    fn output_item_start_rejects_non_epoch_timestamp() {
+        let error = codex_output_item_start(&notification(
+            "item/started",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "startedAtMs": 42,
+                "item": {
+                    "id": "item-1",
+                    "type": "agentMessage",
+                    "text": ""
+                }
+            }),
+        ))
+        .expect_err("non-epoch item start should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/started".to_string(),
+                field: "startedAtMs",
+            }
+        );
     }
 
     #[test]

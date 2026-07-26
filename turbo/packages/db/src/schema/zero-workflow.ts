@@ -152,6 +152,11 @@ export type ZeroWorkflowEventType =
   | "gmail-new-message"
   | "gmail-label-applied"
   | "github-label-applied"
+  | "github-deployment-status-created"
+  | "github-issue-comment-created"
+  | "github-pull-request-review-submitted"
+  | "github-workflow-job-completed"
+  | "github-workflow-run-completed"
   | "google-calendar-event-created"
   | "google-calendar-event-updated"
   | "google-calendar-event-cancelled"
@@ -235,7 +240,7 @@ export const zeroWorkflowAutomations = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-meet-transcript-generated', 'notion-child-page-created', 'notion-database-item-created', 'notion-page-content-updated', 'webhook-received')
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'github-deployment-status-created', 'github-issue-comment-created', 'github-pull-request-review-submitted', 'github-workflow-job-completed', 'github-workflow-run-completed', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-meet-transcript-generated', 'notion-child-page-created', 'notion-database-item-created', 'notion-page-content-updated', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL
@@ -326,12 +331,12 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
       ),
     githubDeliveryId: varchar("github_delivery_id", { length: 255 }).notNull(),
     repo: varchar("repo", { length: 255 }).notNull(),
-    subjectType: varchar("subject_type", { length: 32 }).notNull(),
-    subjectNumber: integer("subject_number").notNull(),
+    subjectType: varchar("subject_type", { length: 32 }),
+    subjectNumber: integer("subject_number"),
     action: varchar("action", { length: 64 }).notNull(),
     labelNameNormalized: varchar("label_name_normalized", {
       length: 255,
-    }).notNull(),
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

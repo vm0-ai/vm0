@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
 
+import {
+  githubDeploymentStateSchema,
+  githubPullRequestReviewStateSchema,
+  githubWorkflowRunConclusionSchema,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -38,6 +43,17 @@ import {
   type GitHubIssuesCallbackPayload,
 } from "./github-issues-callback-payload";
 import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
+import {
+  dispatchGithubWebhookAutomations$,
+  type GithubDeploymentStatusEventPayload,
+  type GithubIssueCommentEventPayload,
+  type GithubPullRequestReviewEventPayload,
+  type GithubWorkflowJobEventPayload,
+} from "./github-webhook-automation-event.service";
+import {
+  dispatchGithubWorkflowRunAutomations$,
+  type GithubWorkflowRunEventPayload,
+} from "./github-workflow-run-event.service";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
@@ -75,9 +91,11 @@ const gitHubCommentSchema = z.object({
   html_url: z.string().optional(),
   created_at: z.string().optional(),
   user: gitHubUserSchema,
+  author_association: z.string().optional(),
 });
 
 const gitHubRepositorySchema = z.object({
+  id: z.number().optional(),
   full_name: z.string(),
 });
 
@@ -103,6 +121,92 @@ export const gitHubIssueCommentEventSchema = z.object({
   sender: gitHubUserSchema,
 });
 
+export const gitHubWorkflowJobEventSchema: z.ZodType<GithubWorkflowJobEventPayload> =
+  z.object({
+    action: z.string(),
+    workflow_job: z.object({
+      id: z.number(),
+      run_id: z.number(),
+      workflow_name: z.string().nullable(),
+      head_branch: z.string().nullable(),
+      head_sha: z.string(),
+      run_url: z.string(),
+      run_attempt: z.number(),
+      name: z.string(),
+      status: z.string(),
+      conclusion: githubWorkflowRunConclusionSchema.nullable(),
+      html_url: z.string(),
+      labels: z.array(z.string()),
+      runner_id: z.number().nullable().default(null),
+      runner_name: z.string().nullable().default(null),
+      runner_group_id: z.number().nullable().default(null),
+      runner_group_name: z.string().nullable().default(null),
+    }),
+    repository: gitHubRepositorySchema,
+    installation: gitHubInstallationRefSchema,
+    sender: gitHubUserSchema,
+  });
+
+export const gitHubPullRequestReviewEventSchema: z.ZodType<GithubPullRequestReviewEventPayload> =
+  z.object({
+    action: z.string(),
+    review: z.object({
+      id: z.number(),
+      user: gitHubUserSchema,
+      state: githubPullRequestReviewStateSchema,
+      html_url: z.string(),
+      commit_id: z.string(),
+      submitted_at: z.string().nullable().default(null),
+      author_association: z.string(),
+    }),
+    pull_request: z.object({
+      number: z.number(),
+      title: z.string(),
+      html_url: z.string(),
+      draft: z.boolean(),
+      base: z.object({ ref: z.string() }),
+      head: z.object({ ref: z.string() }),
+    }),
+    repository: gitHubRepositorySchema,
+    installation: gitHubInstallationRefSchema,
+    sender: gitHubUserSchema,
+  });
+
+const gitHubAppReferenceSchema = z.object({
+  id: z.number(),
+  slug: z.string().nullable(),
+  name: z.string().nullable(),
+});
+
+export const gitHubDeploymentStatusEventSchema: z.ZodType<GithubDeploymentStatusEventPayload> =
+  z.object({
+    action: z.string(),
+    deployment_status: z.object({
+      id: z.number(),
+      state: githubDeploymentStateSchema,
+      environment: z.string().nullable().default(null),
+      environment_url: z.string().nullable().default(null),
+      log_url: z.string().nullable().default(null),
+      creator: gitHubUserSchema.nullable().default(null),
+    }),
+    deployment: z.object({
+      id: z.number(),
+      ref: z.string(),
+      sha: z.string(),
+      task: z.string(),
+      environment: z.string(),
+      production_environment: z.boolean(),
+      transient_environment: z.boolean(),
+      creator: gitHubUserSchema.nullable().default(null),
+      performed_via_github_app: gitHubAppReferenceSchema
+        .nullable()
+        .default(null),
+    }),
+    repository: gitHubRepositorySchema,
+    installation: gitHubInstallationRefSchema,
+    sender: gitHubUserSchema,
+  });
+
 export const gitHubPullRequestEventSchema = z.object({
   action: z.string(),
   pull_request: gitHubIssueSchema,
@@ -111,6 +215,34 @@ export const gitHubPullRequestEventSchema = z.object({
   installation: gitHubInstallationRefSchema,
   sender: gitHubUserSchema,
 });
+
+export const gitHubWorkflowRunEventSchema: z.ZodType<GithubWorkflowRunEventPayload> =
+  z.object({
+    action: z.string(),
+    workflow_run: z.object({
+      id: z.number(),
+      workflow_id: z.number(),
+      name: z.string().nullable(),
+      path: z.string(),
+      run_number: z.number(),
+      run_attempt: z.number(),
+      status: z.string(),
+      conclusion: githubWorkflowRunConclusionSchema.nullable(),
+      head_branch: z.string().nullable(),
+      head_sha: z.string(),
+      event: z.string(),
+      html_url: z.string(),
+      actor: gitHubUserSchema.nullable(),
+      triggering_actor: gitHubUserSchema.nullable(),
+      pull_requests: z.array(z.object({ number: z.number() })),
+    }),
+    repository: z.object({
+      id: z.number(),
+      full_name: z.string(),
+    }),
+    installation: gitHubInstallationRefSchema,
+    sender: gitHubUserSchema,
+  });
 
 const gitHubInstallationAccountSchema = z.object({
   id: z.number(),
@@ -1217,16 +1349,142 @@ export const handleGithubPullRequestEvent$ = command(
   },
 );
 
+export const handleGithubWorkflowRunEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly payload: GithubWorkflowRunEventPayload;
+      readonly deliveryId: string;
+      readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      dispatchGithubWorkflowRunAutomations$,
+      {
+        deliveryId: args.deliveryId,
+        payload: args.payload,
+        apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
+      },
+      signal,
+    );
+  },
+);
+
+export const handleGithubWorkflowJobEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly payload: GithubWorkflowJobEventPayload;
+      readonly deliveryId: string;
+      readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      dispatchGithubWebhookAutomations$,
+      {
+        deliveryId: args.deliveryId,
+        event: {
+          eventType: "github-workflow-job-completed",
+          webhookEvent: "workflow_job",
+          payload: args.payload,
+        },
+        apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
+      },
+      signal,
+    );
+  },
+);
+
+export const handleGithubPullRequestReviewEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly payload: GithubPullRequestReviewEventPayload;
+      readonly deliveryId: string;
+      readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      dispatchGithubWebhookAutomations$,
+      {
+        deliveryId: args.deliveryId,
+        event: {
+          eventType: "github-pull-request-review-submitted",
+          webhookEvent: "pull_request_review",
+          payload: args.payload,
+        },
+        apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
+      },
+      signal,
+    );
+  },
+);
+
+export const handleGithubDeploymentStatusEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly payload: GithubDeploymentStatusEventPayload;
+      readonly deliveryId: string;
+      readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      dispatchGithubWebhookAutomations$,
+      {
+        deliveryId: args.deliveryId,
+        event: {
+          eventType: "github-deployment-status-created",
+          webhookEvent: "deployment_status",
+          payload: args.payload,
+        },
+        apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
+      },
+      signal,
+    );
+  },
+);
+
 export const handleGithubIssueCommentEvent$ = command(
   async (
     { set },
     args: {
       readonly payload: GitHubIssueCommentEvent;
+      readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
     const { payload } = args;
+    await set(
+      dispatchGithubWebhookAutomations$,
+      {
+        deliveryId: args.deliveryId,
+        event: {
+          eventType: "github-issue-comment-created",
+          webhookEvent: "issue_comment",
+          payload: payload as GithubIssueCommentEventPayload,
+        },
+        apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
     if (payload.action !== "created") {
       L.debug("Ignoring GitHub issue_comment event", {
         action: payload.action,

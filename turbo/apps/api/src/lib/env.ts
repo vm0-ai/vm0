@@ -29,8 +29,11 @@ const SCHEMA = {
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
   BYTEPLUS_STT_API_KEY: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
+  ZERO_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
   ZERO_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
   ZERO_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
+  ZERO_FINANCE_APIDOJO_TOKEN: z.string().min(1).optional(),
+  ZERO_BROWSER_USE_API_KEY: z.string().min(1).optional(),
   STEAM_WEB_API_KEY: z.string().min(1).optional(),
   UNSPLASH_ACCESS_KEY: z.string().min(1).optional(),
   PEXELS_API_KEY: z.string().min(1).optional(),
@@ -42,14 +45,12 @@ const SCHEMA = {
   ENV: z.enum(["production", "preview", "development"]),
   VITEST: z.enum(["true", "false"]).default("false"),
   VM0_DEBUG: z.string().default(""),
-  CONNECTOR_CATALOG_SOURCE_MODE: z
-    .enum(["static", "shadow", "external"])
-    .default("static"),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   // Direct origin of the API backend for self-dispatched internal callbacks
   // (`/api/internal/**`). Optional; when unset, production defaults to the API
   // backend origin and other environments fall back to VM0_WEB_URL.
   VM0_API_BACKEND_URL: z.url().optional(),
+  FEISHU_CALLBACK_BASE_URL: z.url(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
   RESEND_API_KEY: z.string().min(1).optional(),

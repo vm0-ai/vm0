@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  zeroInsightsContract,
-  zeroInsightsRangeContract,
-} from "@vm0/api-contracts/contracts/zero-insights";
+import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -25,10 +22,6 @@ function authHeaders() {
 
 function apiClient() {
   return setupApp({ context })(zeroInsightsContract);
-}
-
-function apiRangeClient() {
-  return setupApp({ context })(zeroInsightsRangeContract);
 }
 
 describe("GET /api/zero/insights", () => {
@@ -66,39 +59,5 @@ describe("GET /api/zero/insights", () => {
     expect(response.body.totalCredits).toBe(0);
     expect(response.body.totalRuns).toBe(0);
     expect(response.body.lastUpdated).toBeNull();
-  });
-});
-
-describe("GET /api/zero/insights/range", () => {
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(apiRangeClient().get({ headers: {} }), [401]);
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      apiRangeClient().get({ headers: authHeaders() }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns nulls when no insights exist", async () => {
-    const fixture = newInsightsFixture();
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiRangeClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body.minDate).toBeNull();
-    expect(response.body.maxDate).toBeNull();
-    expect(response.body.totalDays).toBe(0);
   });
 });

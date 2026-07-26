@@ -25,6 +25,7 @@ const CODEX_SESSION_ID_COMPACT_UPPERCASE: &str = "019E9154C30470F0ADDE36EFB1BE17
 const CODEX_SESSION_ID_MIXED_CASE: &str = "019e9154C30470f0ADDE36efB1be1701";
 const CODEX_SESSION_ID_NO_DASHES: &str = "019e9154c30470f0adde36efb1be1701";
 const CODEX_CANONICAL_ROLLOUT_PATH: &str = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+const CODEX_EXISTING_ROLLOUT_PATH: &str = "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T04-01-04-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
 const CODEX_CANONICAL_ROLLOUT_SUFFIX: &str =
     "/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
 const CODEX_CANONICAL_ROLLOUT_FILENAME_SUFFIX: &str = "-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
@@ -170,8 +171,10 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(
         exec_calls[0]
             .cmd
-            .contains("find \"$root\" -mindepth 1 -print0")
+            .contains("find \"$root\" -mindepth 1 -printf '%y%p\\0'")
     );
+    assert!(exec_calls[0].cmd.contains("canonical_logical_path"));
+    assert!(exec_calls[0].cmd.contains("candidate_ambiguous"));
     assert!(
         exec_calls[0]
             .cmd

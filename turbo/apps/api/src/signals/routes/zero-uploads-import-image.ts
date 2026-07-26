@@ -216,6 +216,8 @@ async function readImportImageBytes(
   return Buffer.concat(chunks);
 }
 
+// Compatibility for browser bundles shipped before image editing was retired.
+// Remove this import path after the frontend rollout and rollback window complete.
 const importImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
   const bodyResult = await get(bodyResultOf(zeroUploadsContract.importImage));

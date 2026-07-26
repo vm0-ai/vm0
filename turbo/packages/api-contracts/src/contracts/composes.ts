@@ -49,6 +49,7 @@ export const ZERO_CAPABILITIES = [
   "github:read",
   "github:write",
   "slack:write",
+  "feishu:write",
   "teams:write",
   "phone:read",
   "phone:write",
@@ -62,9 +63,14 @@ export const ZERO_CAPABILITIES = [
   "billing:write",
   "banking:read",
   "maps:read",
+  "weather:read",
   "scrape:read",
+  "people-search:read",
   "web-search:read",
+  "finance:read",
   "computer-use:write",
+  "browser:read",
+  "browser:write",
   "file:read",
   "file:write",
   "host:read",
@@ -110,6 +116,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Send GitHub comments and files",
     },
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
+    "feishu:write": {
+      group: "Integrations",
+      label: "Send Feishu messages and files",
+    },
     "teams:write": {
       group: "Integrations",
       label: "Send Microsoft Teams messages and files",
@@ -153,17 +163,37 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Read enabled banking accounts",
     },
     "maps:read": { group: "Maps", label: "Use managed maps services" },
+    "weather:read": {
+      group: "Weather",
+      label: "Use managed weather and air quality services",
+    },
     "scrape:read": {
       group: "Scrape",
       label: "Use managed web scraping",
+    },
+    "people-search:read": {
+      group: "People Search",
+      label: "Use managed people search",
     },
     "web-search:read": {
       group: "Web Search",
       label: "Use managed web search",
     },
+    "finance:read": {
+      group: "Finance",
+      label: "Use managed finance services",
+    },
     "computer-use:write": {
       group: "Computer Use",
       label: "Control desktop apps",
+    },
+    "browser:read": {
+      group: "Browser",
+      label: "View managed browser sessions",
+    },
+    "browser:write": {
+      group: "Browser",
+      label: "Create and control managed browser sessions",
     },
     "file:read": { group: "Files", label: "Download uploaded files" },
     "file:write": { group: "Files", label: "Upload files" },

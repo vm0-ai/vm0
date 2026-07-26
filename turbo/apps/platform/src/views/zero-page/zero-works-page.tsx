@@ -46,6 +46,7 @@ import { now } from "../../lib/time.ts";
 import { AgentPhoneCard } from "./agentphone-card.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import { FeishuCard } from "./feishu-card.tsx";
 
 const slackIconImg = settingsIconAssetUrl("slack");
 const teamsIconImg = settingsIconAssetUrl("teams");
@@ -612,6 +613,7 @@ function TelegramCard() {
 export function ZeroWorksPage() {
   const features = useGet(featureSwitch$);
   const teamsEnabled = features[FeatureSwitchKey.TeamsIntegration] ?? false;
+  const feishuEnabled = features[FeatureSwitchKey.FeishuIntegration] ?? false;
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
@@ -635,6 +637,7 @@ export function ZeroWorksPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
           {teamsEnabled ? <TeamsCard displayName={displayName} /> : null}
+          {feishuEnabled ? <FeishuCard /> : null}
           <TelegramCard />
           <AgentPhoneCard />
         </div>

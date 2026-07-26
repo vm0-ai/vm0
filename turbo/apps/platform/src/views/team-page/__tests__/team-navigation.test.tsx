@@ -776,6 +776,8 @@ describe("team page navigation", () => {
             pinnedAt: thread.pinnedAt,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           };
         }),
         latestEventId: null,
@@ -790,14 +792,12 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(
       chatThreadMessagesContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { messages: [] });
         }
         return respond(200, {
@@ -808,6 +808,7 @@ describe("team page navigation", () => {
                     id: firstMessageId,
                     role: "user",
                     content: "First shortcut thread message",
+                    seqId: 1,
                     createdAt: "2026-06-01T00:02:00Z",
                   },
                 ]
@@ -816,23 +817,6 @@ describe("team page navigation", () => {
         });
       },
     );
-    context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
-      if (
-        params.threadId === firstThreadId &&
-        params.messageId === firstMessageId
-      ) {
-        return respond(200, {
-          id: firstMessageId,
-          role: "user",
-          content: "First shortcut thread message",
-          createdAt: "2026-06-01T00:02:00Z",
-        });
-      }
-      return respond(404, {
-        error: { message: "Message not found", code: "NOT_FOUND" },
-      });
-    });
-
     detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });
 
     await waitFor(() => {

@@ -92,9 +92,9 @@ function responseArtifacts(
 function checkpointStorageMounts(args: {
   readonly runStorageMounts: readonly PersistedStorageMount[] | null;
   readonly artifactSnapshots: CheckpointCreateBody["artifactSnapshots"];
-}): PersistedStorageMount[] | null {
-  if (!args.runStorageMounts) {
-    return null;
+}): PersistedStorageMount[] {
+  if (args.runStorageMounts === null) {
+    throw new Error("Agent run is missing canonical Storage mounts");
   }
   const snapshotsByIdentity = new Map(
     (args.artifactSnapshots ?? []).map((snapshot) => {
@@ -359,6 +359,11 @@ export const createAgentCheckpoint$ = command(
       );
     }
 
+    const storageMounts = checkpointStorageMounts({
+      runStorageMounts: run.storageMounts,
+      artifactSnapshots: input.body.artifactSnapshots,
+    });
+
     await db
       .insert(blobs)
       .values({
@@ -403,10 +408,6 @@ export const createAgentCheckpoint$ = command(
       ...(vars ? { vars } : {}),
       ...(run.secretNames ? { secretNames: run.secretNames } : {}),
     };
-    const storageMounts = checkpointStorageMounts({
-      runStorageMounts: run.storageMounts,
-      artifactSnapshots: input.body.artifactSnapshots,
-    });
 
     const checkpointFields = {
       conversationId: conversation.id,

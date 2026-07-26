@@ -1,15 +1,14 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
-use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use guest_mock_codex::{read_session_file, session_artifacts};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-use crate::support::{BIN, require_session_file, run};
+use crate::support::{BIN, ChildWaitOutcome, require_session_file, run, wait_child_with_timeout};
 
 const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -18,7 +17,7 @@ struct AppServerProcess {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
     stdout_rx: Receiver<Result<Option<Value>, String>>,
-    stdout_thread: Option<JoinHandle<()>>,
+    stdout_done_rx: Option<Receiver<()>>,
 }
 
 impl AppServerProcess {
@@ -85,18 +84,62 @@ impl AppServerProcess {
             .child
             .take()
             .ok_or_else(|| std::io::Error::other("app-server child already waited"))?;
-        let status = wait_child(child)?;
-        self.join_stdout_thread()?;
+        let stdout_deadline = Instant::now() + APP_SERVER_EXIT_TIMEOUT + APP_SERVER_EXIT_TIMEOUT;
+        let status = match wait_child_with_timeout(
+            child,
+            APP_SERVER_EXIT_TIMEOUT,
+            APP_SERVER_EXIT_TIMEOUT,
+        ) {
+            ChildWaitOutcome::Exited(status) | ChildWaitOutcome::TimedOut(status) => status,
+            ChildWaitOutcome::ReapTimedOut => {
+                self.detach_stdout_reader();
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "app-server child did not exit after SIGKILL",
+                ));
+            }
+            ChildWaitOutcome::KillFailed(error) => {
+                self.detach_stdout_reader();
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("failed to kill app-server child after timeout: {error}"),
+                ));
+            }
+            ChildWaitOutcome::ReapFailed(error) | ChildWaitOutcome::WaitFailed(error) => {
+                self.detach_stdout_reader();
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("wait for app-server child: {error}"),
+                ));
+            }
+        };
+        self.wait_for_stdout_reader_until(stdout_deadline)?;
         Ok(status.code().unwrap_or(-1))
     }
 
-    fn join_stdout_thread(&mut self) -> std::io::Result<()> {
-        if let Some(stdout_thread) = self.stdout_thread.take() {
-            stdout_thread
-                .join()
-                .map_err(|_| std::io::Error::other("app-server stdout reader panicked"))?;
+    fn wait_for_stdout_reader_until(&mut self, deadline: Instant) -> std::io::Result<()> {
+        if let Some(stdout_done_rx) = self.stdout_done_rx.take() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match stdout_done_rx.recv_timeout(remaining) {
+                Ok(()) => {}
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "app-server stdout reader did not finish before the output deadline",
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(std::io::Error::other(
+                        "app-server stdout reader exited without completion",
+                    ));
+                }
+            }
         }
         Ok(())
+    }
+
+    fn detach_stdout_reader(&mut self) {
+        self.stdout_done_rx.take();
     }
 }
 
@@ -114,47 +157,8 @@ impl Drop for AppServerProcess {
                 }
             }
         }
-        let _ = self.join_stdout_thread();
+        let _ = self.wait_for_stdout_reader_until(Instant::now() + APP_SERVER_EXIT_TIMEOUT);
     }
-}
-
-fn wait_child(mut child: Child) -> std::io::Result<ExitStatus> {
-    let pid = child.id();
-    let (tx, rx) = mpsc::channel();
-    let wait_thread = std::thread::spawn(move || {
-        let result = child.wait();
-        let _ = tx.send(result);
-    });
-
-    let status = match rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            // SAFETY: this is test cleanup for the child process spawned by this helper.
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
-            }
-            match rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT) {
-                Ok(result) => result,
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "app-server child did not exit after SIGKILL",
-                    ));
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
-                    "app-server child wait thread exited without status",
-                )),
-            }
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
-            "app-server child wait thread exited without status",
-        )),
-    };
-
-    wait_thread
-        .join()
-        .map_err(|_| std::io::Error::other("app-server child wait thread panicked"))?;
-    status
 }
 
 fn spawn_app_server(
@@ -198,14 +202,17 @@ fn spawn_app_server_with_env(
         )
     })?;
     let (stdout_tx, stdout_rx) = mpsc::channel();
-    let stdout_thread = std::thread::spawn(move || {
+    let (stdout_done_tx, stdout_done_rx) = mpsc::channel();
+    let _ = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
+        let mut reached_eof = true;
         for line in reader.lines() {
             let line = match line {
                 Ok(line) => line,
                 Err(error) => {
                     let _ = stdout_tx.send(Err(format!("read app-server stdout line: {error}")));
-                    return;
+                    reached_eof = false;
+                    break;
                 }
             };
             if line.trim().is_empty() {
@@ -215,16 +222,20 @@ fn spawn_app_server_with_env(
                 .map(Some)
                 .map_err(|error| format!("parse app-server stdout JSON: {error}; line={line:?}"));
             if stdout_tx.send(value).is_err() {
-                return;
+                reached_eof = false;
+                break;
             }
         }
-        let _ = stdout_tx.send(Ok(None));
+        if reached_eof {
+            let _ = stdout_tx.send(Ok(None));
+        }
+        let _ = stdout_done_tx.send(());
     });
     Ok(AppServerProcess {
         child: Some(child),
         stdin: Some(stdin),
         stdout_rx,
-        stdout_thread: Some(stdout_thread),
+        stdout_done_rx: Some(stdout_done_rx),
     })
 }
 
@@ -354,12 +365,29 @@ fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::R
     )?;
     assert_eq!(steered["result"]["turnId"], turn_id);
 
-    let turn_started_notification = server.read_required()?;
-    let item_completed_notification = server.read_required()?;
-    let turn_completed_notification = server.read_required()?;
-    assert_eq!(turn_started_notification["method"], "turn/started");
-    assert_eq!(item_completed_notification["method"], "item/completed");
-    assert_eq!(turn_completed_notification["method"], "turn/completed");
+    let mut notification_methods = Vec::new();
+    loop {
+        let notification = server.read_required()?;
+        let method = notification["method"]
+            .as_str()
+            .ok_or_else(|| std::io::Error::other("notification is missing method"))?;
+        notification_methods.push(method.to_string());
+        if method == "turn/completed" {
+            break;
+        }
+    }
+    assert_eq!(
+        notification_methods,
+        [
+            "turn/started",
+            "item/started",
+            "item/started",
+            "item/started",
+            "item/started",
+            "item/completed",
+            "turn/completed",
+        ]
+    );
 
     let session_path = require_session_file(dir.path())?;
     let events = read_session_file(&session_path)?;

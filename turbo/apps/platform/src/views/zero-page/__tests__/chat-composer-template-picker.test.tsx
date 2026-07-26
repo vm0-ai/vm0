@@ -313,6 +313,36 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("activates an embedded template control with Enter without sending the draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await selectTemplate(user, template);
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Keep this draft");
+
+    const removeTemplate = screen.getByLabelText(
+      `Remove template ${template.title}`,
+    );
+    removeTemplate.focus();
+    expect(removeTemplate).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+      expect(editor).toHaveTextContent("Keep this draft");
+    });
+  });
+
   it("keeps a selected template attached when replacing all prompt text", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
@@ -1896,6 +1926,108 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Queued message")).toHaveTextContent(
         "Queue a matching deck",
       );
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears a recalled template after queueing the message again", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const generationTemplate = {
+      type: "illustration",
+      selection: {
+        illustrationStyleId: template.illustrationStyleId,
+      },
+    } satisfies GenerationTemplateRequest;
+    let queuedGenerationTemplate: GenerationTemplateRequest | undefined;
+    let queuedStructuredTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-template-active-user",
+          role: "user",
+          content: "Start an active illustration run",
+          runId: "run-template-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-template-active-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-template-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-template-queued-user",
+          role: "user",
+          content: "invalidate",
+          runId: undefined,
+          structuredPrompt: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: template.title,
+                template: generationTemplate,
+              },
+              { type: "text", text: "Queue a recalled illustration" },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-template-active"],
+      onQueuedMessageAppend: (body) => {
+        queuedGenerationTemplate = body.generationTemplate;
+        const templatePart = body.structuredPrompt?.parts.find((part) => {
+          return part.type === "template";
+        });
+        queuedStructuredTemplate =
+          templatePart?.type === "template" ? templatePart.template : undefined;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "Queue a recalled illustration",
+      );
+    });
+
+    click(screen.getByLabelText("Remove queued message"));
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("Queue a recalled illustration");
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(composer);
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "Queue a recalled illustration",
+      );
+      expect(queuedGenerationTemplate).toStrictEqual(generationTemplate);
+      expect(queuedStructuredTemplate).toStrictEqual(generationTemplate);
       expect(screen.getByLabelText("Template")).toHaveAttribute(
         "aria-pressed",
         "false",

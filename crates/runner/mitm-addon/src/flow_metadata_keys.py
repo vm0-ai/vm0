@@ -61,6 +61,10 @@ Firewall and auth context
 - ``FIREWALL_AUTH_CACHE_KEY``: opaque typed auth cache key written by matched
   auth handling after the full auth input identity is known. Read by 401 cache
   invalidation; stores only a digest of auth inputs and sandbox token.
+- ``FIREWALL_AUTH_PROBE_FAILURE``: ``Exception`` caught by header-phase auth
+  probing after restoring the probe snapshot. Popped by request-phase auth
+  handling to produce the same local auth failure without resolving auth a
+  second time; removed by terminal cleanup when it was not consumed.
 - ``FIREWALL_NAME``: ``str`` firewall connector/model name. Read by logging,
   model-provider gates, and connector usage dispatch.
 - ``FIREWALL_PERMISSION``: ``str`` matched permission name or empty string.
@@ -191,6 +195,7 @@ TCP_START_MONOTONIC: Final = "tcp_start_monotonic"
 FIREWALL_BASE: Final = "firewall_base"
 FIREWALL_API_ID: Final = "firewall_api_id"
 FIREWALL_AUTH_CACHE_KEY: Final = "firewall_auth_cache_key"
+FIREWALL_AUTH_PROBE_FAILURE: Final = "firewall_auth_probe_failure"
 FIREWALL_NAME: Final = "firewall_name"
 FIREWALL_PERMISSION: Final = "firewall_permission"
 FIREWALL_RULE_MATCH: Final = "firewall_rule_match"

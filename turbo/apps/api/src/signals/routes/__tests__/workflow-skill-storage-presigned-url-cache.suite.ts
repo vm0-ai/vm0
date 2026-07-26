@@ -21,7 +21,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
-  expectLegacyStorageManifest,
+  expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "../test-workflow-skill-storage-presigned-url-cache-state";
@@ -295,12 +295,12 @@ async function createRunAndClaimWorkflowSkill(args: {
   });
   await api.heartbeatRunner(args.runnerGroup);
   const claim = await api.claimRunnerJob(run.runId);
-  const entry = expectLegacyStorageManifest(
+  const entry = expectCanonicalStorageManifest(
     claim.storageManifest,
-  )?.storages.find((storage) => {
-    return storage.vasStorageName === args.storageName;
+  )?.storageMounts.find((storage) => {
+    return storage.name === args.storageName;
   });
-  if (!entry) {
+  if (!entry?.archiveUrl) {
     throw new Error(
       `Missing workflow skill manifest entry ${args.storageName}`,
     );
@@ -308,7 +308,7 @@ async function createRunAndClaimWorkflowSkill(args: {
   return {
     runId: run.runId,
     archiveUrl: entry.archiveUrl,
-    versionId: entry.vasVersionId,
+    versionId: entry.versionId,
   };
 }
 
@@ -319,7 +319,7 @@ beforeEach(() => {
 });
 
 describe("workflow skill storage presigned URL cache", () => {
-  it("reuses cached workflow skill storage URLs across authorized runs", async () => {
+  it("reuses cached workflow skill storage URLs and throttles active touches", async () => {
     const fixture = await createWorkflowSkillRunFixture();
     await withCacheCleanup(fixture.objectKeyPrefix, async () => {
       mockUniquePresignedUrls();
@@ -332,7 +332,11 @@ describe("workflow skill storage presigned URL cache", () => {
         fixture.objectKeyPrefix,
       );
       expect(rowsAfterFirst).toHaveLength(1);
-      expect(rowsAfterFirst[0]).toMatchObject({
+      const rowAfterFirst = rowsAfterFirst[0];
+      if (!rowAfterFirst) {
+        throw new Error("Expected workflow skill cache row");
+      }
+      expect(rowAfterFirst).toMatchObject({
         bucket: BUCKET,
         resolved_org_id: fixture.actor.orgId,
         storage_version_id: first.versionId,
@@ -356,12 +360,22 @@ describe("workflow skill storage presigned URL cache", () => {
           storage_manifest_workflow_skill_presign_cache_hit_count_bucket: "0",
         }),
       );
+      const api = createRunsApi(context);
+      await api.requestCancelRun(fixture.actor, first.runId, [200]);
 
+      const touchedAt = new Date(
+        Date.parse(rowAfterFirst.last_requested_at) + 31 * 60 * 1000,
+      );
+      mockNow(touchedAt);
       const second = await createRunAndClaimWorkflowSkill({
         ...fixture,
         prompt: "reuse the workflow skill URL cache",
       });
       expect(second.archiveUrl).toBe(first.archiveUrl);
+      const [rowAfterTouch] = await readCacheRowsByObjectKeyPrefix(
+        fixture.objectKeyPrefix,
+      );
+      expect(rowAfterTouch?.last_requested_at).toBe(touchedAt.toISOString());
 
       const secondTiming = apiDispatchTimingEventsForRun(second.runId);
       expect(
@@ -387,9 +401,22 @@ describe("workflow skill storage presigned URL cache", () => {
         fixture.objectKeyPrefix,
         second.archiveUrl,
       ]);
-      const api = createRunsApi(context);
-      await api.requestCancelRun(fixture.actor, first.runId, [200]);
       await api.requestCancelRun(fixture.actor, second.runId, [200]);
+
+      mockNow(touchedAt.getTime() + 10 * 60 * 1000);
+      const third = await createRunAndClaimWorkflowSkill({
+        ...fixture,
+        prompt: "reuse the recently touched workflow skill URL cache",
+      });
+      expect(third.archiveUrl).toBe(first.archiveUrl);
+      const [rowWithinTouchInterval] = await readCacheRowsByObjectKeyPrefix(
+        fixture.objectKeyPrefix,
+      );
+      expect(rowWithinTouchInterval?.last_requested_at).toBe(
+        touchedAt.toISOString(),
+      );
+
+      await api.requestCancelRun(fixture.actor, third.runId, [200]);
     });
   });
 

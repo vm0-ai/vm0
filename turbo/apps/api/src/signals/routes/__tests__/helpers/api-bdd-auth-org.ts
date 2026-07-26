@@ -12,10 +12,9 @@ import {
   type ComposeResponse,
   agentComposeApiContentSchema,
 } from "@vm0/api-contracts/contracts/composes";
-import {
-  orgDefaultAgentContract,
-  type OrgResponse,
-  type UpdateOrgRequest,
+import type {
+  OrgResponse,
+  UpdateOrgRequest,
 } from "@vm0/api-contracts/contracts/orgs";
 import type {
   InviteOrgMemberRequest,
@@ -111,7 +110,6 @@ import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get"
 import { zeroCustomConnectorsPatchRoutes } from "../../zero-custom-connectors-patch";
 import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
-import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
@@ -197,7 +195,7 @@ interface BearerActor {
 
 type LogoUploadActor = ApiTestUser | BearerActor;
 
-type ClerkLogoOperation = "get" | "upload" | "delete";
+type ClerkLogoOperation = "get" | "upload";
 type ClerkLogoErrorName =
   | "NotFoundError"
   | "BadRequestError"
@@ -241,7 +239,6 @@ const authOrgRoutes = [
   ...zeroOrgLogoRoutes,
   ...zeroTeamRoutes,
   ...zeroAgentsRoutes,
-  ...zeroDefaultAgentRoutes,
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
@@ -494,10 +491,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     if (operation === "get") {
       return context.mocks.clerk.organizations.getOrganization;
     }
-    if (operation === "upload") {
-      return context.mocks.clerk.organizations.updateOrganizationLogo;
-    }
-    return context.mocks.clerk.organizations.deleteOrganizationLogo;
+    return context.mocks.clerk.organizations.updateOrganizationLogo;
   }
 
   async function rawJsonRequest(
@@ -665,19 +659,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async requestDeleteOrgLogo(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgLogoContract,
-      );
-      return await accept(
-        client.delete({ headers: authenticate(actor) }),
-        statuses,
-      );
-    },
-
     // Contract clients cannot send multipart bodies, so the logo upload goes
     // through the raw Hono app (requestRawSlackIngress precedent).
     async requestUploadOrgLogo(
@@ -811,7 +792,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
-    async bootstrapOnboarding(
+    async bootstrapLimitedFreeOnboarding(
       actor: ApiTestUser,
       body: OnboardingBootstrapOptions,
     ) {
@@ -1476,42 +1457,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.delete({
           params: { id: agentId },
           headers: authenticate(actor),
-        }),
-        statuses,
-      );
-    },
-
-    async setDefaultAgent(
-      actor: ApiTestUser,
-      agentId: string | null,
-    ): Promise<{ readonly agentId: string | null }> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        orgDefaultAgentContract,
-      );
-      const response = await accept(
-        client.setDefaultAgent({
-          headers: authenticate(actor),
-          query: {},
-          body: { agentId },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestSetDefaultAgent(
-      actor: ApiTestUser | null,
-      agentId: string | null,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        orgDefaultAgentContract,
-      );
-      return await accept(
-        client.setDefaultAgent({
-          headers: authenticate(actor),
-          query: {},
-          body: { agentId },
         }),
         statuses,
       );

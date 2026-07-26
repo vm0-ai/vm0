@@ -491,7 +491,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { messages: [] });
         }
         if (params.threadId === RUNNING_THREAD_ID) {
@@ -502,6 +502,7 @@ describe("chat lifecycle", () => {
                 role: "user",
                 content: "Active task prompt",
                 runId: "run-active",
+                seqId: 1,
                 createdAt: "2026-03-10T00:00:00Z",
               },
               {
@@ -509,6 +510,7 @@ describe("chat lifecycle", () => {
                 role: "assistant",
                 content: null,
                 runId: "run-active",
+                seqId: 2,
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],
@@ -520,12 +522,14 @@ describe("chat lifecycle", () => {
               id: "msg-completed-user",
               role: "user",
               content: "Done task",
+              seqId: 1,
               createdAt: "2026-03-10T00:00:00Z",
             },
             {
               id: "msg-completed-assistant",
               role: "assistant",
               content: "All done!",
+              seqId: 2,
               createdAt: "2026-03-10T00:00:01Z",
             },
           ],
@@ -535,8 +539,6 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {

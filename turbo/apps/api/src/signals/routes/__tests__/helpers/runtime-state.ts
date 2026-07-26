@@ -118,26 +118,6 @@ export async function removeRunCanonicalStorageState(
   });
 }
 
-export async function removeSessionCanonicalStorageState(
-  context: TestContext,
-  sessionId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "remove-session-canonical-storage-state",
-    session_id: sessionId,
-  });
-}
-
-export async function removeCheckpointCanonicalStorageState(
-  context: TestContext,
-  checkpointId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "remove-checkpoint-canonical-storage-state",
-    checkpoint_id: checkpointId,
-  });
-}
-
 export async function readStoragePersistenceState(
   context: TestContext,
   ids: {
@@ -156,16 +136,6 @@ export async function readStoragePersistenceState(
     throw new Error("readStoragePersistenceState missing storage_persistence");
   }
   return response.storage_persistence;
-}
-
-export async function deleteStorageRow(
-  context: TestContext,
-  storageId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "delete-storage-row",
-    storage_id: storageId,
-  });
 }
 
 export async function replaceCustomConnectorPrefixes(
@@ -223,4 +193,50 @@ export async function readRunUploadedFileSources(
     run_id: runId,
   });
   return response.uploaded_file_sources ?? [];
+}
+
+export async function clearRunApiStart(
+  context: TestContext,
+  runId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-run-api-start",
+    run_id: runId,
+  });
+}
+
+export async function readRunApiStart(
+  context: TestContext,
+  runId: string,
+): Promise<string | null> {
+  const response = await postAction(context, {
+    action: "read-run-api-start",
+    run_id: runId,
+  });
+  if (!("api_started_at" in response)) {
+    throw new Error("readRunApiStart missing api_started_at");
+  }
+  return response.api_started_at ?? null;
+}
+
+export async function insertLegacyArtifactCatalogFile(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly filename: string;
+    readonly url: string;
+  },
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "insert-legacy-artifact-catalog-file",
+    user_id: args.userId,
+    org_id: args.orgId,
+    filename: args.filename,
+    url: args.url,
+  });
+  if (!response.file_id) {
+    throw new Error("insertLegacyArtifactCatalogFile missing file_id");
+  }
+  return response.file_id;
 }

@@ -49,12 +49,42 @@ _AUTH_CONFIG: dict[str, object] = {
         pytest.param(
             {
                 "kind": "providerOwned",
+                "exactHosts": None,
+                "suffixes": ["example.com"],
+            },
+            "https://api.example.com",
+            "api.example.com",
+            id="null-exact-hosts",
+        ),
+        pytest.param(
+            {
+                "kind": "providerOwned",
+                "exactHosts": ["api.example.com"],
+                "suffixes": None,
+            },
+            "https://api.example.com",
+            "api.example.com",
+            id="null-suffixes",
+        ),
+        pytest.param(
+            {
+                "kind": "providerOwned",
                 "suffixes": ["example.com"],
                 "allowNonDefaultPort": "false",
             },
             "https://api.example.com",
             "api.example.com",
             id="invalid-boolean-type",
+        ),
+        pytest.param(
+            {
+                "kind": "providerOwned",
+                "suffixes": ["example.com"],
+                "allowNonDefaultPort": None,
+            },
+            "https://api.example.com",
+            "api.example.com",
+            id="null-allow-non-default-port",
         ),
         pytest.param(
             {"kind": "unsupported"},
@@ -68,6 +98,16 @@ _AUTH_CONFIG: dict[str, object] = {
             "api.example.com",
             id="non-object-policy",
         ),
+        *[
+            pytest.param(
+                {"kind": "providerOwned", field: [f"evil{character}host.example.com"]},
+                "https://api.example.com",
+                "api.example.com",
+                id=f"forbidden-{field}-{ord(character):x}",
+            )
+            for field in ("exactHosts", "suffixes")
+            for character in "<>^|"
+        ],
     ],
 )
 def test_malformed_policy_is_rejected_by_every_validation_stage(

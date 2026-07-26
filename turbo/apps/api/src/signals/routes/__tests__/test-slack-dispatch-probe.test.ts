@@ -749,7 +749,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     const zeroAuth = verifyZeroToken(zeroToken);
     expect(zeroAuth).toMatchObject({ computerUseHostId: host.hostId });
     expect(zeroAuth?.capabilities).toContain("computer-use:write");
-    await computerUseApi.deleteComputerUseHost(actor, host.hostId);
+    await computerUseApi.stopComputerUseHost(host.hostToken);
   });
 
   it("serializes synchronous dispatch errors as diagnostic 200 responses", async () => {

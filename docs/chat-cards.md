@@ -47,9 +47,15 @@ Current link-backed card patterns include:
 - `/connectors/custom/proposal?p=...`
 - `/agents/:agentId/permissions?...`
 - `/computer-use/authorize/:requestToken`
+- `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
+- `/browsers/:browserId`
 - platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
   site URLs that support an inline preview
+
+The rich billing-plan card is guarded by
+`FeatureSwitchKey.PlanUpgradeGuidance`. When the switch is disabled, the
+recognized URL remains a standard link instead of rendering the upgrade card.
 
 A path such as `/chats/:threadId` can use the same design when a chat-thread
 card is introduced: add an exact parser for the path, derive a canonical
@@ -264,6 +270,45 @@ The fixed-height card displays the Gmail identity, subject, sender, and
 `Draft`, `Sent`, or `Deleted` status. Draft and Sent cards open the shared right
 sidebar surface. Deleted cards retain their summary but are not interactive.
 
+### Provider-backed live resource: managed browser
+
+A managed-browser link matches `/browsers/:browserId`, where `browserId` is the
+vm0 logical browser UUID. The card never accepts a Browser Use `liveUrl` or CDP
+URL from message content. Instead, its thread-scoped computed reads the browser
+through the authenticated Zero Browser API and includes the current chat thread
+ID in that request. A copied card therefore cannot resolve a browser owned by a
+different thread.
+
+The fixed-height card shows the browser name, charged credits, and status, and
+opens the shared right sidebar surface. The live view lives in that sidebar and
+in the full-page route rather than in the message stream, because a live page
+resizes as it loads and would otherwise shift the transcript.
+
+A provider instance outlives the run that opened it. Every terminal run callback
+only extends the instance's idle lease, so the user can keep working in the same
+window and a later run in the same thread attaches to it with
+`zero browser use`. The reconciler reclaims and settles an instance once its
+lease expires, its budget is reached, its chat thread is deleted, or the
+provider ends it. While the sidebar or full-page viewer is open and its page is
+visible, it refreshes the lease on a timer; the CLI can do the same with
+`zero browser lease`. Each lease is a fixed window from now and cannot be
+stacked. The whole instance is billed to the run that last used it.
+
+Once an instance is reclaimed the card shows the suspended state and keeps the
+stable `/browsers/:browserId` link. The viewer's resume action, and
+`zero browser use` in a later run, start a new provider instance from the saved
+profile: cookies and storage come back, the previous pages and tabs do not.
+Logical browsers remain scoped to their chat threads, while every thread for the
+same user in the same organization uses one shared login profile. Multiple
+threads may run provider instances with that profile in parallel. The API
+serializes only the profile's first creation so concurrent first use still
+creates one provider profile.
+
+The same universal link also has an authenticated full-page route. The browser
+provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
+is never returned by the card read, lease, or resume endpoints, nor printed in
+CLI output.
+
 ## Adding a Card Type
 
 When adding a new link-backed card:
@@ -293,5 +338,10 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/mail-draft.ts`
+- `turbo/apps/platform/src/signals/chat-page/browser-session-block.ts`
+- `turbo/apps/platform/src/signals/chat-page/platform-action-url.ts`
 - `turbo/apps/platform/src/signals/chat-page/computer-use-authorization-block.ts`
+- `turbo/apps/platform/src/signals/chat-page/plan-upgrade-block.ts`
 - `turbo/apps/platform/src/views/zero-page/zero-chat-thread-page.tsx`
+- `turbo/apps/platform/src/views/zero-page/browser-session-card.tsx`
+- `turbo/apps/platform/src/views/browser-session/browser-session-page.tsx`

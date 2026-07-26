@@ -28,12 +28,21 @@ async function deductOrgCredits(
   orgId: string,
   amount: number,
 ): Promise<void> {
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-        VALUES (${orgId}, ${-amount}, now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits - ${amount}, updated_at = now()`,
-  );
+  await tx
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      credits: -amount,
+      createdAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        credits: sql`${orgMetadata.credits} - ${amount}`,
+        updatedAt: sql`now()`,
+      },
+    });
 }
 
 async function getOrgCredits(tx: WriteTx, orgId: string): Promise<number> {
@@ -159,7 +168,10 @@ function priceUsageEvents(
   );
   const pricedEvents: PricedUsageEvent[] = [];
   for (const record of records) {
-    if (record.kind === "model" && record.grossCredits !== null) {
+    if (
+      (record.kind === "model" || record.kind === "browser") &&
+      record.grossCredits !== null
+    ) {
       pricedEvents.push({
         record,
         grossCredits: record.grossCredits,
@@ -243,20 +255,23 @@ async function markUsageEventsProcessed(
   const billingErrors = outcomes.map((outcome) => {
     return outcome.billingError;
   });
-  await tx.execute(sql`
-    UPDATE ${usageEvent}
-    SET
-      "credits_charged" = settlement.credits_charged,
-      "status" = 'processed',
-      "processed_at" = ${nowDate()},
-      "billing_error" = settlement.billing_error
-    FROM unnest(
+  const settlementSource = sql`
+    unnest(
       ${sql.param(usageEventIds)}::uuid[],
       ${sql.param(creditsCharged)}::bigint[],
       ${sql.param(billingErrors)}::varchar(50)[]
     ) AS settlement(usage_event_id, credits_charged, billing_error)
-    WHERE ${usageEvent.id} = settlement.usage_event_id
-  `);
+  `;
+  await tx
+    .update(usageEvent)
+    .set({
+      creditsCharged: sql`settlement.credits_charged`,
+      status: "processed",
+      processedAt: nowDate(),
+      billingError: sql`settlement.billing_error`,
+    })
+    .from(settlementSource)
+    .where(eq(usageEvent.id, sql`settlement.usage_event_id`));
 }
 
 async function processOrgUsageEventsInTransaction(

@@ -1,11 +1,11 @@
 import { computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   eventDrivenChatThreads$,
   sidebarActiveThreadIds$,
 } from "../chat-page/chat-thread-event-sourcing.ts";
-import type { EventDrivenChatThread } from "../chat-page/chat-thread-event-replay.ts";
 import { sidebarUnreadThreadIds$ } from "../chat-page/sidebar-unread-threads.ts";
 import { chatListQuery$ } from "./zero-sidebar-state.ts";
 

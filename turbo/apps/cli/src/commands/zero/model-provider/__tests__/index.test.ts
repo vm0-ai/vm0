@@ -27,8 +27,8 @@ const MODEL_POLICIES_RESPONSE = {
     },
     {
       id: "00000000-0000-4000-8000-000000000002",
-      model: "gpt-5.4",
-      modelLabel: "GPT-5.4",
+      model: "gpt-5.6-luna",
+      modelLabel: "GPT 5.6 Luna",
       isDefault: false,
       defaultProviderType: "openai-api-key",
       credentialScope: "org",
@@ -93,7 +93,7 @@ describe("zero model-provider command", () => {
     expect(logCalls).toContain("Model Provider Routes:");
     expect(logCalls).toContain("Claude Sonnet 4.6");
     expect(logCalls).toContain("provider: built-in");
-    expect(logCalls).toContain("GPT-5.4");
+    expect(logCalls).toContain("GPT 5.6 Luna");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: subscription");

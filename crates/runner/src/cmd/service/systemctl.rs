@@ -12,7 +12,7 @@ use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
 
 const BOUNDED_COMMAND_KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
-const SERVICE_UNIT_STATE_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+const SYSTEMCTL_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
     if status.success() {
@@ -357,8 +357,7 @@ pub(super) async fn read_service_unit_state(
 ) -> RunnerResult<ServiceUnitState> {
     let svc = unit.service_name();
     let properties = ["LoadState", "ActiveState", "SubState", "Result"];
-    let output =
-        run_systemctl_show_bounded(svc, &properties, SERVICE_UNIT_STATE_QUERY_TIMEOUT).await?;
+    let output = run_systemctl_show_bounded(svc, &properties, SYSTEMCTL_QUERY_TIMEOUT).await?;
     service_unit_state_from_output(svc, &properties, &output)
 }
 
@@ -369,6 +368,18 @@ fn service_unit_state_from_output(
 ) -> RunnerResult<ServiceUnitState> {
     let values = parse_systemctl_show_output(svc, properties, output)?;
     service_unit_state_from_systemctl_show(svc, properties, &output.status, &values, &output.stderr)
+}
+
+/// Read the fragment and drop-ins selected by the running systemd manager.
+pub(super) async fn cat_unit_content(unit: &RunnerServiceUnit) -> RunnerResult<String> {
+    let svc = unit.service_name();
+    let output = run_command_output_bounded(
+        "systemctl",
+        &["--no-pager", "cat", "--", svc],
+        SYSTEMCTL_QUERY_TIMEOUT,
+    )
+    .await?;
+    unit_content_from_systemctl_cat(svc, &output)
 }
 
 /// Read the systemd ActiveState using cleanup semantics.
@@ -408,13 +419,7 @@ fn cleanup_unit_active_state_from_output(
 /// `enabled-runtime` state. This does not indicate whether the unit is active
 /// or whether it will remain enabled after a reboot.
 pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
-    let svc = unit.service_name();
-    let output = tokio::process::Command::new("systemctl")
-        .args(["is-enabled", svc])
-        .output()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("spawn systemctl is-enabled: {e}")))?;
-    unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
+    is_unit_enabled_bounded(unit, SYSTEMCTL_QUERY_TIMEOUT).await
 }
 
 /// Check whether systemd reports a unit file as enabled.
@@ -705,6 +710,38 @@ fn service_restart_policy_from_systemctl_show(
     Ok(restart)
 }
 
+fn unit_content_from_systemctl_cat(svc: &str, output: &Output) -> RunnerResult<String> {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if !output.status.success() {
+        return Err(systemctl_cat_status_error(svc, &output.status, stderr));
+    }
+    if !stderr.is_empty() {
+        return Err(RunnerError::Internal(format!(
+            "systemctl cat {svc} emitted stderr: {:?}",
+            status_field_preview(stderr)
+        )));
+    }
+
+    let stdout = std::str::from_utf8(&output.stdout).map_err(|e| {
+        RunnerError::Internal(format!(
+            "systemctl cat {svc} returned non-UTF-8 output: {e}"
+        ))
+    })?;
+    Ok(stdout.to_string())
+}
+
+fn systemctl_cat_status_error(svc: &str, status: &ExitStatus, stderr: &str) -> RunnerError {
+    if stderr.is_empty() {
+        RunnerError::Internal(format!("systemctl cat {svc} exited with {status}"))
+    } else {
+        RunnerError::Internal(format!(
+            "systemctl cat {svc} exited with {status}: stderr={:?}",
+            status_field_preview(stderr)
+        ))
+    }
+}
+
 fn unit_enabled_from_systemctl_is_enabled(
     svc: &str,
     status: &ExitStatus,
@@ -839,6 +876,68 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("timed out"));
+    }
+
+    #[test]
+    fn systemctl_cat_returns_successful_content() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"[Service]\nExecStart=/usr/bin/runner\n",
+            b"",
+        );
+
+        assert_eq!(
+            unit_content_from_systemctl_cat("vm0-runner-test.service", &output).unwrap(),
+            "[Service]\nExecStart=/usr/bin/runner\n"
+        );
+    }
+
+    #[test]
+    fn systemctl_cat_rejects_successful_stderr_with_bounded_diagnostic() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let stderr = "reload required ".repeat(20);
+        let output =
+            systemctl_show_output(ExitStatus::from_raw(0), b"[Service]\n", stderr.as_bytes());
+        let message =
+            unit_content_from_systemctl_cat("vm0-runner-test.service", &output).unwrap_err();
+        let message = message.to_string();
+
+        assert!(message.contains("emitted stderr"));
+        assert!(message.contains("[truncated]"));
+        assert!(message.len() < stderr.len());
+    }
+
+    #[test]
+    fn systemctl_cat_failure_does_not_expose_stdout() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0x100),
+            b"ExecStart=/usr/bin/runner --token should-not-appear",
+            b"failed to read selected unit",
+        );
+        let message =
+            unit_content_from_systemctl_cat("vm0-runner-test.service", &output).unwrap_err();
+        let message = message.to_string();
+
+        assert!(message.contains("failed to read selected unit"));
+        assert!(!message.contains("should-not-appear"));
+    }
+
+    #[test]
+    fn systemctl_cat_rejects_non_utf8_stdout_without_exposing_content() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = systemctl_show_output(ExitStatus::from_raw(0), b"secret\xffcontent", b"");
+        let message =
+            unit_content_from_systemctl_cat("vm0-runner-test.service", &output).unwrap_err();
+        let message = message.to_string();
+
+        assert!(message.contains("non-UTF-8 output"));
+        assert!(!message.contains("secret"));
     }
 
     #[cfg(target_os = "linux")]

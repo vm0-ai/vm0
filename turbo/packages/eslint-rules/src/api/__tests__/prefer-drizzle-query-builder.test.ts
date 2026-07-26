@@ -50,6 +50,7 @@ const schemaPreamble = `
   declare const rowSchema: never;
   declare const threadId: number;
   declare const excludedRunId: number;
+  declare const pageLimit: number;
 `;
 
 const structuredSelectionPreamble = `
@@ -69,6 +70,90 @@ const structuredSelectionPreamble = `
       messages: typeof messages;
     }>;
   declare const db: DrizzleDatabase;
+`;
+
+const deletePreamble = `
+  import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+
+  const cleanupRows = pgTable("cleanup_rows", {
+    id: integer("id").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      cleanupRows: typeof cleanupRows;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const cutoff: Date;
+`;
+
+const unnestUpdatePreamble = `
+  import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const allowanceWindows = pgTable("allowance_windows", {
+    id: text("id").primaryKey(),
+    consumedUnits: integer("consumed_units").notNull(),
+    updatedAt: timestamp("updated_at").notNull(),
+  });
+  const usageEvents = pgTable("usage_events", {
+    id: text("id").primaryKey(),
+    creditsCharged: integer("credits_charged"),
+    status: text("status").notNull(),
+    processedAt: timestamp("processed_at"),
+    billingError: text("billing_error"),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      allowanceWindows: typeof allowanceWindows;
+      usageEvents: typeof usageEvents;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const windowIds: readonly string[];
+  declare const unitDeltas: readonly number[];
+  declare const eventIds: readonly string[];
+  declare const creditsCharged: readonly number[];
+  declare const billingErrors: readonly (string | null)[];
+  declare const updatedAt: Date;
+`;
+
+const lockingCteUpdatePreamble = `
+  import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const cacheRows = pgTable("cache_rows", {
+    cacheKey: text("cache_key").primaryKey(),
+    lastRequestedAt: timestamp("last_requested_at").notNull(),
+  });
+  const cacheRowMetadata = pgTable("cache_row_metadata", {
+    cacheKey: text("cache_key").primaryKey(),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      cacheRows: typeof cacheRows;
+      cacheRowMetadata: typeof cacheRowMetadata;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const cacheKeys: readonly string[];
+  declare const cutoff: Date;
+  declare const issuedAt: Date;
+`;
+
+const upsertPreamble = `
+  import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const orgMetadata = pgTable("org_metadata", {
+    orgId: text("org_id").primaryKey(),
+    credits: integer("credits").notNull(),
+    tier: text("tier").notNull(),
+    createdAt: timestamp("created_at").notNull(),
+    updatedAt: timestamp("updated_at").notNull(),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      orgMetadata: typeof orgMetadata;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const orgId: string;
+  declare const amount: number;
 `;
 
 const scalarQuery = `
@@ -101,6 +186,47 @@ const directQuery = `
   \`
 `;
 
+const joinedHistoryQuery = `
+  sql\`
+    SELECT
+      \${runs.id} AS "rowId",
+      \${runs.threadId} AS "threadId",
+      COALESCE(\${runStates.status}, 'unknown') AS "status"
+    FROM \${runs}
+    INNER JOIN \${runStates}
+      ON \${eq(runStates.id, runs.id)}
+    LEFT JOIN \${callbacks}
+      ON \${callbacks.runId} = COALESCE(
+        \${runs.id},
+        (
+          SELECT \${callbacks.runId}
+          FROM \${callbacks}
+          WHERE \${eq(callbacks.runId, runs.id)}
+          ORDER BY \${callbacks.id}
+          LIMIT 1
+        )
+      )
+    WHERE \${eq(runs.threadId, threadId)}
+      AND \${eq(runs.id, excludedRunId)}
+    ORDER BY \${desc(runs.id)}, \${desc(runs.threadId)}
+    LIMIT \${pageLimit}
+  \`
+`;
+
+const joinedExistsQuery = `
+  sql\`
+    SELECT EXISTS (
+      SELECT 1
+      FROM \${runs}
+      INNER JOIN \${runStates}
+        ON \${eq(runStates.id, runs.id)}
+      WHERE \${eq(runs.threadId, threadId)}
+        AND \${eq(runs.id, excludedRunId)}
+      LIMIT 1
+    ) AS visible
+  \`
+`;
+
 const runnerLockingQuery = `
   sql\`
     SELECT
@@ -112,8 +238,601 @@ const runnerLockingQuery = `
   \`
 `;
 
+const creditAvailabilityQuery = `
+  sql\`
+    WITH org AS (
+      SELECT credits
+      FROM org_metadata
+      WHERE org_id = \${threadId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = \${threadId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired
+  \`
+`;
+
+const managedCreditAvailabilityQuery = `
+  sql\`
+    WITH pricing AS (
+      SELECT unit_price, unit_size
+      FROM usage_pricing
+      WHERE kind = \${threadId}
+        AND provider = \${threadId}
+        AND category = \${threadId}
+      LIMIT 1
+    ),
+    org AS (
+      SELECT credits
+      FROM org_metadata
+      WHERE org_id = \${threadId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = \${threadId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired,
+      (SELECT unit_price FROM pricing) AS unit_price,
+      (SELECT unit_size FROM pricing) AS unit_size
+  \`
+`;
+
+const composedReadCtePreamble = `
+  function usageCreditsExpr() {
+    return sql\`COALESCE(ue.credits_charged, 0)\`;
+  }
+
+  function usageRowsCte(userId: number) {
+    return sql\`
+      usage_rows AS (
+        SELECT
+          ue.run_id,
+          \${usageCreditsExpr()}::bigint AS credits
+        FROM usage_event ue
+        LEFT JOIN usage_allowance_allocations uaa
+          ON uaa.usage_event_id = ue.id
+        WHERE ue.user_id = \${userId}
+      )
+    \`;
+  }
+
+  function usageRowsWith(userId: number) {
+    return sql\`WITH \${usageRowsCte(userId)}\`;
+  }
+`;
+
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH RECURSIVE locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { eq, inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            INNER JOIN \${cacheRowMetadata}
+              ON \${eq(cacheRowMetadata.cacheKey, cacheRows.cacheKey)}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        const dynamicTable = sql.identifier("cache_rows");
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${dynamicTable}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${dynamicTable}
+          )
+          UPDATE \${dynamicTable}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows} NOWAIT
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          DELETE FROM \${cacheRows}
+          USING locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+          RETURNING \${cacheRows.cacheKey}
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql\`
+          UPDATE \${allowanceWindows}
+          SET
+            "consumed_units" = \${allowanceWindows.consumedUnits} + consumption.units_applied,
+            "updated_at" = \${updatedAt}
+          FROM unnest(
+            \${sql.param(windowIds)}::uuid[],
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`;
+        await db.execute(query);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          async execute(query: unknown) {
+            return query;
+          },
+        };
+        await fakeDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        function sql(
+          strings: TemplateStringsArray,
+          ...values: readonly unknown[]
+        ) {
+          return { strings, values };
+        }
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${windowIds}) AS consumption(window_id)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const notATable = sql\`allowance_windows\`;
+        await db.execute(sql\`
+          UPDATE \${notATable}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH changed AS (SELECT 1)
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+          RETURNING id
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true;
+          SELECT 1
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows} AS target
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE target.id = consumption.window_id
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = incoming.units_applied
+          FROM (VALUES (1)) AS incoming(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units[1] = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(unitDeltas)}::bigint[])
+            AS consumption(units_applied bigint)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`;
+        await db.execute(query);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          async execute(query: unknown) {
+            return query;
+          },
+        };
+        await fakeDb.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        function sql(
+          strings: TemplateStringsArray,
+          ...values: readonly unknown[]
+        ) {
+          return { strings, values };
+        }
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH expired AS (
+            SELECT id FROM cleanup_rows WHERE expires_at <= \${cutoff}
+          )
+          DELETE FROM cleanup_rows
+          WHERE id IN (SELECT id FROM expired)
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          USING other_rows
+          WHERE cleanup_rows.id = other_rows.id
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+          RETURNING id
+        \`);
+        await db.execute(sql\`
+          DELETE FROM ONLY cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows *
+          WHERE expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE CURRENT OF cleanup_cursor
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows AS target
+          WHERE target.expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM public.cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows, other_rows
+          WHERE cleanup_rows.id = other_rows.id
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff};
+          SELECT 1
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const notATable = sql\`cleanup_rows\`;
+        await db.execute(sql\`
+          DELETE FROM \${notATable}
+          WHERE \${eq(cleanupRows.id, 1)}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql\`
+          INSERT INTO org_metadata (
+            org_id,
+            credits,
+            created_at,
+            updated_at
+          )
+          VALUES (\${orgId}, \${amount}, now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = org_metadata.credits + \${amount},
+            updated_at = now()
+        \`;
+        await db.execute(query);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          async execute(query: unknown) {
+            return query;
+          },
+        };
+        await fakeDb.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        function sql(
+          strings: TemplateStringsArray,
+          ...values: readonly unknown[]
+        ) {
+          return { strings, values };
+        }
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH incoming AS (SELECT \${orgId} AS org_id)
+          INSERT INTO org_metadata (org_id, credits)
+          SELECT org_id, \${amount} FROM incoming
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          SELECT \${orgId}, \${amount}
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO public.org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata AS target (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = target.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO "org_metadata" ("org_id", "credits")
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT ("org_id")
+          DO UPDATE SET "credits" = "org_metadata"."credits" + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount}), ('other', \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata DEFAULT VALUES
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT ON CONSTRAINT org_metadata_pkey
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id) DO NOTHING
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (lower(org_id))
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (\${orgMetadata.orgId})
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id) WHERE org_id IS NOT NULL
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+          WHERE org_metadata.credits >= 0
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+          RETURNING org_id
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount};
+          SELECT 1
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        const notATable = sql\`org_metadata\`;
+        await db.execute(sql\`
+          INSERT INTO \${notATable} (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
     {
       code: `
         import { sql } from "drizzle-orm";
@@ -133,6 +852,13 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         import { executeRawRows } from "./other/db-raw-rows";
+        await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
+    {
+      code: `${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "@fake/lib/db-raw-rows";
         await executeRawRows(db, ${directQuery}, rowSchema);
       `,
     },
@@ -162,6 +888,378 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         }
         const eq = (...values: unknown[]) => values;
         await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const opaqueCte: SQL;
+
+        function recursiveRows(userId: number) {
+          return sql\`
+            WITH RECURSIVE rows AS (
+              SELECT run_id, user_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+              UNION ALL
+              SELECT usage_event.run_id, usage_event.user_id
+              FROM usage_event
+              INNER JOIN rows ON rows.run_id = usage_event.run_id
+            )
+          \`;
+        }
+        function materializedRows(userId: number) {
+          return sql\`
+            WITH rows AS MATERIALIZED (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+            )
+          \`;
+        }
+        function unionRows(userId: number) {
+          return sql\`
+            WITH rows AS (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+              UNION ALL
+              SELECT run_id
+              FROM archived_usage_event
+              WHERE user_id = \${userId}
+            )
+          \`;
+        }
+        function deletingRows(userId: number) {
+          return sql\`
+            WITH rows AS (
+              DELETE FROM usage_event
+              WHERE user_id = \${userId}
+              RETURNING run_id
+            )
+          \`;
+        }
+        function lockingRows(userId: number) {
+          return sql\`
+            WITH rows AS (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+              FOR UPDATE
+            )
+          \`;
+        }
+        function statefulRows(userId: number) {
+          const selectedUserId = userId;
+          return sql\`
+            WITH rows AS (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${selectedUserId}
+            )
+          \`;
+        }
+
+        await executeRawRows(
+          db,
+          sql\`\${recursiveRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${materializedRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${unionRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${deletingRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${lockingRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${statefulRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${opaqueCte} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT (
+              \${eq(runs.id, threadId)}
+              OR \${eq(runs.id, excludedRunId)}
+            ) AS allowed
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT clock_timestamp() AS database_time\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH visible_runs AS MATERIALIZED (
+              SELECT \${runs.id}
+              FROM \${runs}
+              WHERE \${eq(runs.threadId, threadId)}
+            )
+            SELECT id FROM visible_runs
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT count(*)
+              FROM \${runs}
+              INNER JOIN \${runStates}
+                ON \${eq(runStates.id, runs.id)}
+              WHERE \${eq(runs.threadId, threadId)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        const dynamicOrgTable = sql.identifier("org_metadata");
+        const groupedAggregate = sql\`GROUP BY org_id\`;
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              ORDER BY credits
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            pricing AS (
+              SELECT unit_price
+              FROM usage_pricing
+              WHERE kind = \${threadId}
+              LIMIT 1
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT unit_price FROM pricing) AS unit_price
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT org_id, SUM(remaining) AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+              GROUP BY org_id
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org WHERE credits > 0) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM \${dynamicOrgTable}
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS value,
+              (SELECT total FROM expired) AS value
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+              \${groupedAggregate}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expanded AS (
+              SELECT generate_series(
+                1,
+                COALESCE(SUM(remaining), 0)::integer + 2
+              ) AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expanded) AS total
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        const source = sql.identifier("runs");
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}, \${runs.threadId}
+            FROM \${source}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.threadId, threadId)}
+            ORDER BY \${runs.id}
+            LIMIT \${pageLimit}
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}, \${runs.threadId}
+            FROM \${runs}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.threadId, threadId)}
+            ORDER BY \${pageLimit}
+            LIMIT \${pageLimit}
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}, \${runs.threadId}
+            FROM \${runs}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.threadId, threadId)}
+            ORDER BY \${runs.id}
+            LIMIT \${String(pageLimit)}
+          \`,
+          rowSchema,
+        );
       `,
     },
     {
@@ -360,16 +1458,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         await executeRawRows(
           db,
           sql\`SELECT \${runs.id} FROM runs WHERE \${eq(runs.id, 1)} LIMIT 1\`,
-          rowSchema,
-        );
-      `,
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(
-          db,
-          sql\`SELECT \${runs.id} FROM \${runs} LEFT JOIN \${runStates} ON \${eq(runStates.id, runs.id)} WHERE \${eq(runs.id, 1)} LIMIT 1\`,
           rowSchema,
         );
       `,
@@ -648,9 +1736,431 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   ],
   invalid: [
     {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { inArray, lte, sql as query } from "drizzle-orm";
+        await db["execute"](query\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey} ASC
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key;
+        \`);
+      `,
+      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import * as drizzle from "drizzle-orm";
+        await db.execute(drizzle.sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${drizzle.inArray(cacheRows.cacheKey, cacheKeys)}
+              AND \${drizzle.lte(cacheRows.lastRequestedAt, cutoff)}
+            ORDER BY \${cacheRows.cacheKey} DESC
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${cacheRows.cacheKey} = locked.cache_key
+        \`);
+      `,
+      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET
+            "consumed_units" = \${allowanceWindows.consumedUnits} + consumption.units_applied,
+            "updated_at" = \${updatedAt}
+          FROM unnest(
+            \${sql.param(windowIds)}::uuid[],
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${usageEvents}
+          SET
+            "credits_charged" = settlement.credits_charged,
+            "status" = 'processed',
+            "processed_at" = \${updatedAt},
+            "billing_error" = settlement.billing_error
+          FROM unnest(
+            \${sql.param(eventIds)}::uuid[],
+            \${sql.param(creditsCharged)}::bigint[],
+            \${sql.param(billingErrors)}::varchar(50)[]
+          ) AS settlement(usage_event_id, credits_charged, billing_error)
+          WHERE \${usageEvents.id} = settlement.usage_event_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql as query } from "drizzle-orm";
+        await db.execute(query\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${query.param(windowIds)}::uuid[],
+            \${query.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id;
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import * as drizzle from "drizzle-orm";
+        await db["execute"](drizzle.sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${drizzle.sql.param(windowIds)}::uuid[],
+            \${drizzle.sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(window_id, units_applied)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { lte, sql } from "drizzle-orm";
+        const { rowCount } = await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${lte(cleanupRows.expiresAt, cutoff)}
+        \`);
+        void rowCount;
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { gte, inArray, lt, sql } from "drizzle-orm";
+        declare const windowStart: Date;
+        declare const windowEnd: Date;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${gte(cleanupRows.expiresAt, windowStart)}
+            AND \${lt(cleanupRows.expiresAt, windowEnd)}
+            AND \${inArray(cleanupRows.id, [1, 2])}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql as query } from "drizzle-orm";
+        await db.execute(query\`
+          DELETE FROM cleanup_rows
+          WHERE id IN (
+            SELECT id
+            FROM cleanup_rows
+            WHERE expires_at <= \${cutoff}
+              AND 'RETURNING ignored' = 'RETURNING ignored'
+              /* USING and DELETE FROM ignored */
+            ORDER BY expires_at
+            LIMIT \${1000}
+          );
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import * as drizzle from "drizzle-orm";
+        const { rowCount } = await db["execute"](drizzle.sql\`
+          DELETE FROM cleanup_rows
+          WHERE ctid IN (
+            SELECT ctid
+            FROM cleanup_rows
+            WHERE expires_at < \${cutoff}
+            LIMIT \${10_000}
+          )
+        \`);
+        void rowCount;
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql as query } from "drizzle-orm";
+        await db.execute(query\`
+          INSERT INTO org_metadata (
+            org_id,
+            credits,
+            tier,
+            created_at,
+            updated_at
+          )
+          VALUES (\${orgId}, \${amount}, 'free', now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = org_metadata.credits + \${amount},
+            updated_at = now(),
+            tier = 'free';
+        \`);
+      `,
+      errors: [{ messageId: "upsertQueryBuilder" }],
+    },
+    {
+      code: `${upsertPreamble}
+        import * as drizzle from "drizzle-orm";
+        await db["execute"](drizzle.sql\`
+          INSERT INTO \${orgMetadata} (org_id, credits, created_at, updated_at)
+          VALUES (\${orgId}, \${amount}, now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = COALESCE((
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${orgId}
+                AND 'RETURNING ignored' = 'RETURNING ignored'
+            ), 0) + \${amount},
+            updated_at = now()
+        \`);
+      `,
+      errors: [{ messageId: "upsertQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          ${creditAvailabilityQuery},
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "scalarCteQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          ${managedCreditAvailabilityQuery},
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "scalarCteQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        ${composedReadCtePreamble}
+
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)}
+            SELECT
+              date_trunc('day', ur.created_at) AS ts,
+              COALESCE(SUM(ur.credits), 0)::bigint AS credits
+            FROM usage_rows ur
+            LEFT JOIN zero_runs zr ON zr.id = ur.run_id
+            GROUP BY 1
+            ORDER BY 1
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)},
+            agent_totals AS (
+              SELECT
+                ar.agent_name,
+                COALESCE(SUM(ur.credits), 0)::bigint AS total_credits
+              FROM usage_rows ur
+              LEFT JOIN agent_runs ar ON ar.id = ur.run_id
+              GROUP BY 1
+              ORDER BY 2 DESC
+            ),
+            top_agents AS (
+              SELECT agent_name
+              FROM agent_totals
+              LIMIT 7
+            )
+            SELECT
+              ur.run_id,
+              COALESCE(SUM(ur.credits), 0)::bigint AS credits
+            FROM usage_rows ur
+            LEFT JOIN agent_runs ar ON ar.id = ur.run_id
+            WHERE ar.agent_name IN (SELECT agent_name FROM top_agents)
+            GROUP BY 1
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)}
+            SELECT
+              COALESCE(SUM(ur.credits), 0)::bigint AS grand_credits
+            FROM usage_rows ur
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)}
+            SELECT
+              zr.trigger_source AS source,
+              COALESCE(SUM(ur.credits), 0)::bigint AS credits
+            FROM usage_rows ur
+            LEFT JOIN zero_runs zr ON zr.id = ur.run_id
+            WHERE zr.trigger_source IN ('email', 'slack')
+            GROUP BY 1
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)},
+            ranked AS (
+              SELECT
+                ur.run_id,
+                COALESCE(SUM(ur.credits), 0)::bigint AS credits,
+                ROW_NUMBER() OVER (
+                  ORDER BY SUM(ur.credits) DESC NULLS LAST
+                ) AS rn
+              FROM usage_rows ur
+              GROUP BY ur.run_id
+            )
+            SELECT run_id, credits, rn
+            FROM ranked
+            WHERE rn <= 100
+            UNION ALL
+            SELECT NULL AS run_id, COALESCE(SUM(credits), 0), 101 AS rn
+            FROM ranked
+            WHERE rn > 100
+            ORDER BY rn
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)},
+            ranked AS (
+              SELECT
+                ur.run_id,
+                ROW_NUMBER() OVER (
+                  ORDER BY SUM(ur.credits) DESC NULLS LAST
+                ) AS rn
+              FROM usage_rows ur
+              GROUP BY ur.run_id
+            )
+            SELECT COUNT(*)::bigint AS count
+            FROM ranked
+            WHERE rn > 100
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+      ],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { desc, eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${joinedHistoryQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${joinedExistsQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "existsQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            LEFT OUTER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.id, threadId)}
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            WHERE \${eq(runs.id, threadId)}
+            ORDER BY \${runs.id}
+            FOR UPDATE OF \${runs}
+          \`,
+          rowSchema,
+        );
       `,
       errors: [{ messageId: "lockingQueryBuilder" }],
     },
@@ -693,47 +2203,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         );
       `,
       errors: [{ messageId: "lockingQueryBuilder" }],
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(db, ${directQuery}, rowSchema);
-      `,
-      errors: [{ messageId: "queryBuilder" }],
-    },
-    {
-      code: `${schemaPreamble}
-        import { eq, sql as query } from "drizzle-orm";
-        import { executeRawRows as decodeRows } from "./lib/db-raw-rows";
-        await decodeRows(
-          db,
-          query\`select \${runs.id} from \${runs} inner join \${runStates} on \${eq(runStates.id, runs.id)} where \${eq(runs.threadId, threadId)} and \${eq(runs.id, excludedRunId)} limit 1;\`,
-          rowSchema,
-        );
-      `,
-      errors: [{ messageId: "queryBuilder" }],
-    },
-    {
-      code: `${schemaPreamble}
-        import * as drizzle from "drizzle-orm";
-        import * as rawRows from "./lib/db-raw-rows";
-        await rawRows.executeRawRows(
-          db,
-          drizzle.sql\`
-            SELECT \${runs.id}
-            FROM \${runs}
-            INNER JOIN \${runStates}
-              ON \${drizzle.eq(runStates.id, runs.id)}
-            WHERE \${drizzle.eq(runs.threadId, threadId)}
-              AND $$ORDER BY ignored$$ = $$ORDER BY ignored$$
-              /* GROUP BY ignored /* nested ORDER BY */ */
-              AND (SELECT 1 FROM ignored ORDER BY ignored LIMIT 1) = 1
-            LIMIT 1
-          \`,
-          rowSchema,
-        );
-      `,
-      errors: [{ messageId: "queryBuilder" }],
     },
     {
       code: `${structuredSelectionPreamble}

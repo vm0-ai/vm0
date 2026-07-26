@@ -17,8 +17,8 @@ from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.x_flow_helpers import (
-    json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
+    json_body_that_exceeds_nesting_limit,
     make_x_pipeline_flow,
     make_x_stream_pipeline_flow,
 )
@@ -363,11 +363,11 @@ class TestXConnectorResponsePipeline:
     @pytest.mark.parametrize(
         "failed_line",
         [
-            pytest.param(json_body_that_exceeds_decoder_recursion(), id="decoder-recursion"),
+            pytest.param(json_body_that_exceeds_nesting_limit(), id="excessive-nesting"),
             pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
         ],
     )
-    def test_full_streaming_pipeline_continues_after_json_parser_failure(
+    def test_full_streaming_pipeline_continues_after_uninspectable_json_row(
         self, tmp_path, real_flow, mitm_ctx, headers, failed_line
     ):
         """A hostile NDJSON row must not stop later valid rows from billing."""
@@ -392,6 +392,38 @@ class TestXConnectorResponsePipeline:
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
         assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 1, "user.read": 1}
+
+    def test_full_streaming_pipeline_accepts_many_shallow_containers(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        """The nesting guard does not reject a wide but shallow NDJSON row."""
+        flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        callback(
+            json.dumps(
+                {
+                    "data": {"id": "1"},
+                    "matching_rules": [{} for _ in range(300)],
+                }
+            ).encode()
+            + b"\n"
+        )
+
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
+        assert state["lines_failed"] == 0
+        assert state["lines_parsed"] == 1
+        assert state["data_count"] == 1
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+
+        payloads = webhook.usage_events()
+        assert len(payloads) == 1
+        assert payloads[0]["category"] == "posts.read"
+        assert payloads[0]["quantity"] == 1
 
     def test_full_streaming_pipeline_bounds_unknown_include_categories(
         self, tmp_path, real_flow, mitm_ctx, headers

@@ -35,6 +35,10 @@ import {
 } from "../../../signals/workflows-page/workflows-signals.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-automations-page.tsx";
+import {
+  createDefaultMockGithubIntegration,
+  setMockGithubIntegration,
+} from "../../../mocks/handlers/api-integrations-github.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -896,6 +900,13 @@ function mockCreateWorkflowAutomation(
           eventConfig: body.eventConfig,
         });
       }
+      if (body.eventType === "github-workflow-run-completed") {
+        return respond(201, {
+          ...githubLabelWorkflowAutomation(),
+          eventType: "github-workflow-run-completed",
+          eventConfig: body.eventConfig,
+        });
+      }
       if (body.eventType === "google-calendar-event-created") {
         return respond(201, {
           ...googleCalendarWorkflowAutomation(),
@@ -981,6 +992,13 @@ function mockCreateWorkflowAutomation(
           },
         });
       }
+      if (body.eventConfig.provider === "github") {
+        return respond(201, {
+          ...gmailWorkflowAutomation(),
+          eventType: body.eventType,
+          eventConfig: body.eventConfig,
+        } as ZeroWorkflowAutomationSummary);
+      }
       return respond(201, {
         ...gmailWorkflowAutomation(),
         eventConfig: body.eventConfig,
@@ -1001,6 +1019,29 @@ function mockUpdateWorkflowAutomation(
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
         if (body.eventConfig.provider === "github") {
+          if (body.eventConfig.event === "workflow_run_completed") {
+            return respond(200, {
+              ...githubLabelWorkflowAutomation(),
+              id: params.id,
+              eventType: "github-workflow-run-completed",
+              eventConfig: body.eventConfig,
+            });
+          }
+          if (body.eventConfig.event !== "label_applied") {
+            return respond(200, {
+              ...githubLabelWorkflowAutomation(),
+              id: params.id,
+              eventType:
+                body.eventConfig.event === "workflow_job_completed"
+                  ? "github-workflow-job-completed"
+                  : body.eventConfig.event === "pull_request_review_submitted"
+                    ? "github-pull-request-review-submitted"
+                    : body.eventConfig.event === "deployment_status_created"
+                      ? "github-deployment-status-created"
+                      : "github-issue-comment-created",
+              eventConfig: body.eventConfig,
+            } as ZeroWorkflowAutomationSummary);
+          }
           return respond(200, {
             ...githubLabelWorkflowAutomation(),
             id: params.id,
@@ -1037,7 +1078,7 @@ function mockRunWorkflowAutomation(
     ({ params, respond }) => {
       onRun(params.id);
       return respond(201, {
-        runId: "workflow-automation-run-now",
+        runId: null,
         chatThreadId: AUTOMATION_RUN_THREAD_ID,
       });
     },
@@ -2188,7 +2229,7 @@ describe("workflow detail page", () => {
     expect(screen.getAllByText("Next")).toHaveLength(1);
   });
 
-  it("runs an automation immediately and navigates to the bound chat thread", async () => {
+  it("submits an automation run and navigates to the bound chat thread", async () => {
     const runAutomationIds: string[] = [];
     mockWorkflowApis([salesResearch()]);
     mockChatLifecycle(context, { threadId: AUTOMATION_RUN_THREAD_ID });
@@ -2319,6 +2360,136 @@ describe("workflow detail page", () => {
           provider: "gmail",
           event: "label_applied",
           labelName: "Support",
+        },
+      });
+    });
+  });
+
+  it("creates a GitHub workflow run automation with native filters", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowAutomation((body) => {
+      createBodies.push(body);
+    });
+    setMockGithubIntegration(createDefaultMockGithubIntegration());
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await fill(within(form).getByLabelText("Repositories"), "vm0-ai/vm0");
+    await fill(
+      within(form).getByLabelText("GitHub workflows"),
+      "Turbo, .github/workflows/turbo.yml",
+    );
+    await fill(within(form).getByLabelText("Branches"), "main");
+    await fill(within(form).getByLabelText("Triggering events"), "push");
+    await fill(within(form).getByLabelText("Actors"), "lancy");
+    click(within(form).getByLabelText("Failure"));
+    click(within(form).getByLabelText("Startup failure"));
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "github-workflow-run-completed",
+        eventConfig: {
+          provider: "github",
+          event: "workflow_run_completed",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            workflows: ["Turbo", ".github/workflows/turbo.yml"],
+            conclusions: ["failure", "startup_failure"],
+            branches: ["main"],
+            events: ["push"],
+            actors: ["lancy"],
+          },
+        },
+      });
+    });
+  });
+
+  it("hides new GitHub webhook creation entries when the feature is disabled", async () => {
+    mockWorkflowApis([salesResearch()]);
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GithubWebhookAutomations]: false,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    click(buttonByText("Integrations"));
+    expect(
+      screen.queryByText("GitHub issue comment created"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("creates a GitHub issue comment automation behind the feature switch", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowAutomation((body) => {
+      createBodies.push(body);
+    });
+    setMockGithubIntegration(createDefaultMockGithubIntegration());
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GithubWebhookAutomations]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub issue comment created/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub issue comment created automation",
+    });
+    await waitFor(() => {
+      expect(within(form).getByLabelText("Trusted authors")).toBeEnabled();
+    });
+    await fill(within(form).getByLabelText("Repositories"), "vm0-ai/vm0");
+    selectOptionByLabel("Subject", "Pull requests only", form);
+    fireEvent.change(within(form).getByLabelText("Trusted authors"), {
+      target: { value: "e7h4n, lancy" },
+    });
+    fireEvent.change(within(form).getByLabelText("Comment prefixes"), {
+      target: { value: "/verify, /deploy" },
+    });
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: {
+            repositories: ["vm0-ai/vm0"],
+            subject: "pull_requests",
+            trustedAuthors: ["e7h4n", "lancy"],
+            commentPrefixes: ["/verify", "/deploy"],
+          },
         },
       });
     });

@@ -26,7 +26,12 @@ from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
-from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
+from ...json_selective import (
+    JsonExtractionResult,
+    JsonSelectiveExtractor,
+    ScalarField,
+    json_nesting_within_limit,
+)
 from ...reporting_context import usage_reporting_context
 from ...underbilling import log_usage_underbilling
 from .response_parser import ConnectorResponseParser
@@ -400,6 +405,9 @@ class _NdjsonExtractor:
         line = raw_line.rstrip(b"\r")
         if not line:
             return  # keep-alive blank line
+        if not json_nesting_within_limit(line):
+            self.state["lines_failed"] += 1
+            return
         try:
             obj = json.loads(line)
         except (ValueError, RecursionError):
@@ -935,8 +943,9 @@ def _response_usage_context(flow: http.HTTPFlow) -> _ResponseUsageContext | None
     permission = flow_metadata.firewall_permission(flow.metadata)
     if not permission:
         return None
+    method = flow.request.method.upper()
     request_path = _strip_request_target_query(flow.request.path)
-    endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
+    endpoint_bucket = classify_bucket(permission, method, request_path)
     if endpoint_bucket is None:
         return None
     return _ResponseUsageContext(permission, request_path, endpoint_bucket)
@@ -974,13 +983,14 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         return
     firewall_name = flow_metadata.firewall_name(flow.metadata)
     permission = response_context.permission
+    method = flow.request.method.upper()
     # mitmproxy's ``flow.request.path`` is the raw request-target — it
     # includes the query string.  Strip it without parsing query params so
     # literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``) still
     # match requests that carry ``?max_results=10`` or similar.
     request_path = response_context.request_path
     endpoint_bucket = response_context.endpoint_bucket
-    if bucket_needs_body_refinement(endpoint_bucket, flow.request.method, request_path):
+    if bucket_needs_body_refinement(endpoint_bucket, method, request_path):
         request_body = billing_body.decode_request_body_for_billing(
             _request_body_for_billing_refinement(flow),
             flow.request.headers,
@@ -989,7 +999,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         )
         endpoint_bucket = refine_bucket_with_body(
             endpoint_bucket,
-            flow.request.method,
+            method,
             request_path,
             request_body,
         )
@@ -1001,7 +1011,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     req_meta.update(
         _parse_request_query_fallback_hints(original_url)
         if (
-            flow.request.method == "GET"
+            method == "GET"
             and not req_meta["is_count_endpoint"]
             and not resp_meta.get("body_parsed")
         )
@@ -1028,7 +1038,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         log_proxy_entry(proxy_log_path, "warn", message, **{**log_context, **extra})
 
     billable_counts = _compute_billable_counts(
-        flow.request.method, req_meta, resp_meta, endpoint_bucket, log_warn=_log_warn
+        method, req_meta, resp_meta, endpoint_bucket, log_warn=_log_warn
     )
 
     ndjson_lines_failed = resp_meta.get("ndjson_lines_failed", 0)
@@ -1051,11 +1061,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     missing_count_visibility = bool(req_meta.get("is_count_endpoint")) or (
         req_meta.get("request_ids_count") is None and req_meta.get("max_results") is None
     )
-    if (
-        flow.request.method == "GET"
-        and not resp_meta.get("body_parsed")
-        and missing_count_visibility
-    ):
+    if method == "GET" and not resp_meta.get("body_parsed") and missing_count_visibility:
         log_extra: dict[str, object] = {
             "body_truncated": bool(resp_meta.get("body_truncated")),
         }
@@ -1076,7 +1082,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         )
 
     if (
-        flow.request.method == "GET"
+        method == "GET"
         and req_meta.get("is_count_endpoint")
         and resp_meta.get("body_parsed")
         and _as_non_bool_int(resp_meta.get("response_total_tweet_count")) is None

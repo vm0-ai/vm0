@@ -1843,16 +1843,21 @@ touch "{}"
         let dir = tempfile::tempdir().unwrap();
         let locks = LockPaths::with_dir(dir.path().to_path_buf());
 
-        let (i0, hold0) = acquire_pool_lock(&locks).unwrap();
-        let (i1, _hold1) = acquire_pool_lock(&locks).unwrap();
-        assert_eq!(i0, 0);
-        assert_eq!(i1, 1);
+        let held_idx = 0;
+        let held = Flock::lock(
+            File::create(locks.netns_pool(held_idx)).unwrap(),
+            FlockArg::LockExclusiveNonblock,
+        )
+        .unwrap();
 
-        // Drop lock 0 → index 0 becomes available again.
-        drop(hold0);
+        let (available_idx, _available) = acquire_pool_lock(&locks).unwrap();
+        assert_eq!(available_idx, 1);
 
-        let (reused, _hold) = acquire_pool_lock(&locks).unwrap();
-        assert_eq!(reused, 0);
+        // Flock's explicit LOCK_UN makes release deterministic across forks.
+        drop(held);
+
+        let (reused_idx, _reused) = acquire_pool_lock(&locks).unwrap();
+        assert_eq!(reused_idx, held_idx);
     }
 
     #[test]
@@ -1877,10 +1882,10 @@ touch "{}"
         let dir = tempfile::tempdir().unwrap();
         let locks = LockPaths::with_dir(dir.path().to_path_buf());
 
-        // Create the lock file by acquiring then releasing — simulates a
-        // prior runner that exited.
-        let (idx, held) = acquire_pool_lock(&locks).unwrap();
-        drop(held);
+        let idx = 0;
+        // Construct the idle state directly. A close-only PoolIndexLock can be
+        // briefly retained by an unrelated concurrent fork.
+        File::create(locks.netns_pool(idx)).unwrap();
 
         let claimed = try_claim_idle_pool_lock(&locks, idx);
         assert!(claimed.is_some());

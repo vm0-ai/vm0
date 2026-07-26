@@ -1,7 +1,6 @@
 use super::super::*;
 use super::shared::{ExecControlLayout, set_byte_at, write_u16_at, write_u32_at};
 use super::{NONCE, assert_invalid_payload};
-use crate::payloads::exec_control::EXEC_CONTROL_MAX_PAYLOAD_BYTES;
 
 const MESSAGE_ID: &str = "message";
 const BODY: &[u8] = b"body";

@@ -123,6 +123,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.tier).toBe("limited-free-1");
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
+    expect(response.body.videoGenerationAllowed).toBeFalsy();
     expect(response.body.credits).toBe(100_000);
     expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();
@@ -283,6 +284,7 @@ describe("GET /api/zero/billing/status", () => {
       autoRechargeAllowed: false,
       supportByok: false,
       restrictedVm0Models: true,
+      videoGenerationAllowed: false,
       workflowWebhookAutomationAllowed: true,
     });
     mocks.clerk.session(userId, orgId);
@@ -300,6 +302,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
+    expect(response.body.videoGenerationAllowed).toBeFalsy();
     expect(response.body.workflowWebhookAutomationAllowed).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);
   });
@@ -596,15 +599,18 @@ describe("GET /api/zero/billing/status", () => {
       userId: `user_${randomUUID()}`,
       expiresRecordIds: [],
     };
-    await createBddApi(context).bootstrapOnboarding(
-      {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "org:admin",
-        email: `${fixture.userId}@example.test`,
-      },
-      { displayName: "Billing Status Test Agent" },
-    );
+    const completed = await createBddApi(context).completeOnboarding({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+      email: `${fixture.userId}@example.test`,
+    });
+    expect(completed.status).toBe(200);
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
     await setOnboardingPaymentPendingFixture({
       orgId: fixture.orgId,
       onboardingPaymentPending: true,

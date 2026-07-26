@@ -28,6 +28,7 @@ const resetSubscriberSignal$ = resetSignalScope();
 const USER_ID = "background-sync-user";
 const ORG_ID = "background-sync-org";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
+const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
 const FIRST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_MESSAGE_ID = "00000000-0000-4000-8000-000000000804";
@@ -36,12 +37,14 @@ function assistantMessage(
   id: string,
   content: string,
   createdAt: string,
+  seqId: number,
 ): PagedChatMessage {
   return {
     id,
     role: "assistant",
     content,
     createdAt,
+    seqId,
   };
 }
 
@@ -49,16 +52,19 @@ const firstCachedMessage = assistantMessage(
   FIRST_CACHED_MESSAGE_ID,
   "First cached message",
   "2026-07-23T10:01:00.000Z",
+  1,
 );
 const lastCachedMessage = assistantMessage(
   LAST_CACHED_MESSAGE_ID,
   "Last cached message",
   "2026-07-23T10:02:00.000Z",
+  2,
 );
 const newMessage = assistantMessage(
   NEW_MESSAGE_ID,
   "New remote message",
   "2026-07-23T10:03:00.000Z",
+  3,
 );
 
 function mockSignedInUser(): void {
@@ -98,24 +104,18 @@ describe("chat message background sync", () => {
     );
 
     const requests: {
-      readonly sinceId: string | undefined;
-      readonly beforeId: string | undefined;
+      readonly sinceSeqId: number | undefined;
+      readonly beforeSeqId: number | undefined;
     }[] = [];
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       requests.push({
-        sinceId: query.sinceId,
-        beforeId: query.beforeId,
+        sinceSeqId: query.sinceSeqId,
+        beforeSeqId: query.beforeSeqId,
       });
-      if (query.sinceId === LAST_CACHED_MESSAGE_ID) {
+      if (query.sinceSeqId === lastCachedMessage.seqId) {
         return respond(200, {
           messages: [newMessage],
           hasHistoryBefore: true,
-        });
-      }
-      if (query.sinceId === NEW_MESSAGE_ID) {
-        return respond(200, {
-          messages: [],
-          hasHistoryBefore: false,
         });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
@@ -149,9 +149,65 @@ describe("chat message background sync", () => {
       });
 
       expect(requests).toStrictEqual([
-        { sinceId: LAST_CACHED_MESSAGE_ID, beforeId: undefined },
-        { sinceId: NEW_MESSAGE_ID, beforeId: undefined },
+        { sinceSeqId: 2, beforeSeqId: undefined },
       ]);
+    } finally {
+      subscriber.abort(abortError("test done"));
+      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
+      appDb.close();
+    }
+  });
+
+  it("skips a delayed created event whose sequence is already cached", async () => {
+    mockSignedInUser();
+    const appDb = await context.store.get(chatIdb$);
+    await context.store.set(
+      writeIndexedDbChatMessages$,
+      THREAD_ID,
+      [firstCachedMessage, lastCachedMessage],
+      context.signal,
+    );
+
+    let cachedThreadRequests = 0;
+    const otherThreadRequested = context.mocks.deferred<void>();
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, respond }) => {
+        if (params.threadId === THREAD_ID) {
+          cachedThreadRequests += 1;
+        }
+        if (params.threadId === OTHER_THREAD_ID) {
+          otherThreadRequested.resolve();
+        }
+        return respond(200, {
+          messages: [],
+          hasHistoryBefore: false,
+        });
+      },
+    );
+
+    await context.store.set(setupRealtime$, context.signal);
+    const subscriber = context.store.set(
+      resetSubscriberSignal$,
+      context.signal,
+    );
+    const subscription = context.store.set(
+      setupChatMessageBackgroundSync$,
+      subscriber.signal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
+        syncThroughSeqId: lastCachedMessage.seqId,
+      });
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
+
+      await otherThreadRequested.promise;
+      expect(cachedThreadRequests).toBe(0);
     } finally {
       subscriber.abort(abortError("test done"));
       await expect(subscription).rejects.toMatchObject({ name: "AbortError" });

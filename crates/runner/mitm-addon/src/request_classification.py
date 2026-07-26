@@ -13,9 +13,8 @@ flow and must be popped by terminal, response/error, and final request paths so
 stale decisions cannot leak into later hook handling for the same flow.
 """
 
-import urllib.parse
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, TypeAlias
+from typing import Literal, Protocol
 
 from mitmproxy import http
 
@@ -63,7 +62,7 @@ _BROWSER_USER_AGENT_MARKERS = (
     " safari/",
 )
 
-StaleTlsAdmissionReason: TypeAlias = Literal[
+type StaleTlsAdmissionReason = Literal[
     "client_ip_missing",
     "client_ip_mismatch",
     "registry_entry_missing",
@@ -191,7 +190,9 @@ class Allow:
     kind: Literal["allow"] = field(init=False, default="allow")
 
 
-RequestClassification: TypeAlias = (
+# This must remain a runtime union because cached metadata is validated with
+# ``isinstance`` before it is returned to request handling.
+RequestClassification = (
     NoClientIp
     | PassThrough
     | RegistryUnavailable
@@ -351,9 +352,10 @@ def classify_request(
         port=trusted_authority.port,
     )
 
-    hostname = trusted_authority.host.lower()
-    if _api_hostname_matches(
-        api_url, hostname
+    if upstream_admission.api_destination_matches(
+        api_url,
+        trusted_authority.host,
+        trusted_authority.port,
     ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
         return ApiAllow(vm_info=vm_info)
 
@@ -544,16 +546,6 @@ def _store_trusted_authority_metadata(
         url=original_url,
         host=host,
         port=port,
-    )
-
-
-def _api_hostname_matches(api_url: str, hostname: str) -> bool:
-    if not api_url:
-        return False
-    parsed_api = urllib.parse.urlparse(api_url)
-    api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-    return bool(
-        api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
     )
 
 

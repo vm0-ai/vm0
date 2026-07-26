@@ -448,6 +448,48 @@ export const apiConnectorsHandlers = [
     });
   }),
 
+  mockApi(zeroConnectorCatalogContract.diagnostics, ({ respond }) => {
+    return respond(200, {
+      state: "stale",
+      active: {
+        catalogVersion: "2026-07-25.1",
+        catalogDigest: `sha256:${"a".repeat(64)}`,
+        activatedAt: "2026-07-25T01:00:00.000Z",
+      },
+      lastAttempt: {
+        at: "2026-07-25T02:00:00.000Z",
+        outcome: "rejected",
+        failureCode: "invalid-artifact",
+        reusedCachedRejection: true,
+      },
+      lastSuccessAt: "2026-07-25T02:00:00.000Z",
+      rejectedCandidate: {
+        catalogVersion: "2026-07-25.2",
+        catalogDigest: `sha256:${"c".repeat(64)}`,
+        failureCode: "invalid-artifact",
+        backendVersion: "1.319.0",
+      },
+      filtering: {
+        capabilityDigest: `sha256:${"b".repeat(64)}`,
+        evaluatedAt: "2026-07-25T01:00:00.000Z",
+        stale: false,
+        filteredAuthMethods: [
+          {
+            connectorRef: "github",
+            authMethodId: "oauth",
+            reasons: ["missing-revoke-provider"],
+          },
+        ],
+      },
+      credentialStorage: {
+        missingConnectorVersions: 1,
+        unownedConnectorSecrets: 2,
+        unownedConnectorVariables: 3,
+        unresolvedBridgeCredentials: 5,
+      },
+    });
+  }),
+
   mockApi(
     zeroConnectorCatalogContract.permissions,
     async ({ params, respond }) => {

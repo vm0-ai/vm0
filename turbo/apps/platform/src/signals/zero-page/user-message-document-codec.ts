@@ -9,10 +9,12 @@ import {
   type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
+import { formatFeedbackPrompt, type FeedbackItem } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
+const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export interface EditorDocumentContext {
   readonly generationTemplate?: GenerationTemplateRequest;
@@ -122,6 +124,84 @@ function appendFileParts(
   }
 }
 
+function feedbackItem(node: ProseMirrorNode): FeedbackItem | null {
+  const id: unknown = node.attrs.feedbackId;
+  const quote: unknown = node.attrs.quote;
+  if (typeof id !== "number" || typeof quote !== "string") {
+    return null;
+  }
+  let valid = true;
+  const note = node.textBetween(0, node.content.size, "\n", (leafNode) => {
+    if (leafNode.type.name === "hardBreak") {
+      return "\n";
+    }
+    if (leafNode.type.name !== CHAT_THREAD_MENTION_NODE_NAME) {
+      valid = false;
+      return "";
+    }
+    const part = chatThreadPart(leafNode);
+    if (!part || part.type !== "chat_thread") {
+      valid = false;
+      return "";
+    }
+    return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+  });
+  if (!valid) {
+    return null;
+  }
+  return {
+    id,
+    quote,
+    note,
+  };
+}
+
+function templateCount(document: ProseMirrorNode): number | null {
+  let count = 0;
+  for (let index = 0; index < document.childCount; index++) {
+    const nodeName = document.child(index).type.name;
+    if (nodeName === "paragraph" || nodeName === FEEDBACK_ITEM_NODE_NAME) {
+      continue;
+    }
+    if (nodeName !== TEMPLATE_ATTACHMENT_NODE_NAME) {
+      return null;
+    }
+    count += 1;
+  }
+  return count <= 1 ? count : null;
+}
+
+function appendFeedbackGroup(
+  document: ProseMirrorNode,
+  startIndex: number,
+  parts: UserMessagePart[],
+  prependSeparator: boolean,
+): { readonly nextIndex: number; readonly emitted: boolean } | null {
+  const items: FeedbackItem[] = [];
+  let index = startIndex;
+  while (index < document.childCount) {
+    const node = document.child(index);
+    if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
+      break;
+    }
+    const item = feedbackItem(node);
+    if (!item) {
+      return null;
+    }
+    if (item.note.trim().length > 0) {
+      items.push(item);
+    }
+    index += 1;
+  }
+  if (items.length > 0) {
+    if (prependSeparator) {
+      appendTextPart(parts, "\n\n");
+    }
+    appendTextPart(parts, formatFeedbackPrompt(items));
+  }
+  return { nextIndex: index, emitted: items.length > 0 };
+}
+
 /**
  * Converts the current composer snapshot into its editor-independent business
  * document. External files are normalized after the leading template chip and
@@ -138,24 +218,12 @@ export function editorDocToMessageDocument(
   const parts: UserMessagePart[] = [];
   const attachments = context.attachments ?? [];
   let filesAppended = false;
-  let templateCount = 0;
-  let paragraphCount = 0;
-  for (let index = 0; index < document.childCount; index++) {
-    const node = document.child(index);
-    if (node.type.name === "paragraph") {
-      paragraphCount += 1;
-      continue;
-    }
-    if (node.type.name !== TEMPLATE_ATTACHMENT_NODE_NAME) {
-      return null;
-    }
-    templateCount += 1;
-  }
-  if (templateCount > 1) {
+  const documentTemplateCount = templateCount(document);
+  if (documentTemplateCount === null) {
     return null;
   }
 
-  let paragraphIndex = 0;
+  let previousPromptSection: "paragraph" | "feedback" | null = null;
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
@@ -170,18 +238,37 @@ export function editorDocToMessageDocument(
       appendFileParts(parts, attachments);
       filesAppended = true;
     }
+    if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
+      const feedbackGroup = appendFeedbackGroup(
+        document,
+        index,
+        parts,
+        previousPromptSection !== null,
+      );
+      if (feedbackGroup === null) {
+        return null;
+      }
+      index = feedbackGroup.nextIndex - 1;
+      if (feedbackGroup.emitted) {
+        previousPromptSection = "feedback";
+      }
+      continue;
+    }
+    if (previousPromptSection !== null) {
+      appendTextPart(
+        parts,
+        previousPromptSection === "paragraph" ? "\n" : "\n\n",
+      );
+    }
     if (!appendParagraphParts(node, parts)) {
       return null;
     }
-    paragraphIndex += 1;
-    if (paragraphIndex < paragraphCount) {
-      appendTextPart(parts, "\n");
-    }
+    previousPromptSection = "paragraph";
   }
   if (!filesAppended) {
     appendFileParts(parts, attachments);
   }
-  if (templateCount === 0 && context.generationTemplate !== undefined) {
+  if (documentTemplateCount === 0 && context.generationTemplate !== undefined) {
     return null;
   }
 
@@ -335,4 +422,41 @@ export function messageDocumentToPrompt(value: unknown): string | null {
       return "";
     })
     .join("");
+}
+
+/** Serializes the business document into a compact human-readable label. */
+export function messageDocumentToDisplayText(value: unknown): string | null {
+  const parsed = userMessageDocumentSchema.safeParse(value);
+  if (!parsed.success) {
+    return null;
+  }
+
+  const blocks: string[] = [];
+  let inlineText = "";
+  const flushInlineText = () => {
+    if (inlineText.length > 0) {
+      blocks.push(inlineText);
+      inlineText = "";
+    }
+  };
+
+  for (const part of parsed.data.parts) {
+    if (part.type === "text") {
+      inlineText += part.text;
+      continue;
+    }
+    if (part.type === "chat_thread") {
+      inlineText += `[Chat thread: ${part.titleSnapshot}]`;
+      continue;
+    }
+
+    flushInlineText();
+    blocks.push(
+      part.type === "template"
+        ? `[Template: ${part.titleSnapshot}]`
+        : `[File: ${part.filenameSnapshot}]`,
+    );
+  }
+  flushInlineText();
+  return blocks.join("\n\n");
 }

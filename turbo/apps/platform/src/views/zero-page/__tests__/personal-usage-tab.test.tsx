@@ -23,12 +23,14 @@ function usageRows(): UsageRecordRow[] {
       tokens: 2200,
       breakdown: [
         {
-          kind: "connector",
+          kind: "other",
           credits: 980,
           providers: [
-            { provider: "firecrawl", credits: 300 },
-            { provider: "perplexity", credits: 300 },
-            { provider: "google-map", credits: 380 },
+            { provider: "firecrawl", credits: 180 },
+            { provider: "google-maps", credits: 200 },
+            { provider: "perplexity", credits: 200 },
+            { provider: "apidojo", credits: 200 },
+            { provider: "google-weather", credits: 200 },
           ],
         },
       ],
@@ -186,17 +188,21 @@ describe("personal usage settings", () => {
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
     expect(requestedRanges).toContain("today");
 
-    await user.hover(screen.getByTestId("usage-kind-segment-connector"));
+    await user.hover(screen.getByTestId("usage-kind-segment-other"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Web Fetch").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Maps").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Web Search").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.getAllByText("Google Map").length).toBeGreaterThanOrEqual(
-        1,
-      );
-      expect(screen.queryByText("google-map")).not.toBeInTheDocument();
+      expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
+      expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
+      expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
+      expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
+      expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
     });
 
     click(screen.getByText("Load more"));

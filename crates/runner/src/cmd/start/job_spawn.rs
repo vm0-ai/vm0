@@ -41,7 +41,7 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
 use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
-use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistration};
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::telemetry::JobTelemetry;
@@ -57,7 +57,7 @@ pub(super) struct JobProfile {
     pub(super) restore_guest_state: bool,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: SharedFactory,
-    pub(super) cancel: RunCancellationHandle,
+    pub(super) cancellation: RunCancellationRegistration,
 }
 
 /// Shared state passed to each spawned job task.
@@ -66,7 +66,6 @@ pub(super) struct SpawnContext {
     pub(super) exec_config: Arc<ExecutorConfig>,
     pub(super) idle_pool: SharedIdlePool,
     pub(super) status: Arc<StatusTracker>,
-    pub(super) cancel_tokens: SharedRunCancellationMap,
     pub(super) orphaned_active_runs: OrphanedActiveRuns,
     /// Current lifecycle parking permission. This is checked at job
     /// completion so soft-drain/resume races do not depend on a stale
@@ -489,7 +488,7 @@ impl DeferredUploadPhase {
 pub(super) fn spawn_job(
     request: SpawnJobRequest,
     ctx: &SpawnContext,
-    jobs: &mut JoinSet<Option<RunId>>,
+    jobs: &mut JoinSet<RunCancellationRegistration>,
 ) {
     let started_at = Instant::now();
     let SpawnJobRequest {
@@ -515,7 +514,8 @@ pub(super) fn spawn_job(
     let active_lease = job_profile.budget_lease;
     let profile_name = job_profile.profile_name;
     let factory = job_profile.factory;
-    let job_cancel = job_profile.cancel;
+    let cancellation = job_profile.cancellation;
+    let job_cancel = cancellation.handle();
     let params = executor::JobParams {
         profile_name: profile_name.clone(),
         vcpu,
@@ -543,7 +543,6 @@ pub(super) fn spawn_job(
     let cleanup_state = RunCleanupState::new();
     let cleanup_state_for_body = cleanup_state.clone();
     let cleanup_state_for_panic = cleanup_state.clone();
-    let cancel_tokens_for_panic = Arc::clone(&ctx.cancel_tokens);
     let status_for_panic = Arc::clone(&status);
     let idle_pool_for_panic = Arc::clone(&idle_pool);
     let orphaned_active_runs_for_panic = ctx.orphaned_active_runs.clone();
@@ -670,17 +669,15 @@ pub(super) fn spawn_job(
             .complete(completion_ready)
             .await;
             deferred_upload.flush(telemetry).await;
-
-            Some(run_id)
         };
 
         match AssertUnwindSafe(body).catch_unwind().await {
-            Ok(result) => result,
+            Ok(()) => cancellation,
             Err(payload) => {
                 let cleanup = cleanup_panicked_job(
                     run_id,
                     sandbox_id,
-                    cancel_tokens_for_panic,
+                    cancellation,
                     status_for_panic,
                     idle_pool_for_panic,
                     cleanup_state_for_panic,
@@ -931,13 +928,13 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
 pub(super) async fn cleanup_panicked_job(
     run_id: RunId,
     sandbox_id: SandboxId,
-    cancel_tokens: SharedRunCancellationMap,
+    cancellation: RunCancellationRegistration,
     status: Arc<StatusTracker>,
     idle_pool: SharedIdlePool,
     cleanup_state: RunCleanupState,
     orphaned_active_runs: OrphanedActiveRuns,
 ) {
-    cancel_tokens.lock().await.remove(&run_id);
+    cancellation.unregister().await;
     let ownership = OwnershipTransitions::new(status.as_ref());
     let run = RunSandbox::new(run_id, sandbox_id);
 
@@ -961,14 +958,13 @@ pub(super) async fn cleanup_panicked_job(
     }
 }
 
-/// Handle a completed job from the JoinSet, cleaning up cancel tokens.
+/// Handle a completed job from the JoinSet, removing its cancellation registration.
 pub(super) async fn handle_job_result(
-    result: Option<Result<Option<RunId>, tokio::task::JoinError>>,
-    cancel_tokens: &SharedRunCancellationMap,
+    result: Option<Result<RunCancellationRegistration, tokio::task::JoinError>>,
 ) {
     match result {
-        Some(Ok(Some(run_id))) => {
-            cancel_tokens.lock().await.remove(&run_id);
+        Some(Ok(cancellation)) => {
+            cancellation.unregister().await;
         }
         Some(Err(e)) => {
             error!(error = %e, "job task panicked");
@@ -980,7 +976,6 @@ pub(super) async fn handle_job_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -1007,6 +1002,7 @@ mod tests {
     use crate::provider::JobCandidate;
     use crate::resource_budget::ResourceBudget;
     use crate::restored_session_identity::RestoredSessionIdentity;
+    use crate::run_cancellation::RunCancellationRegistry;
     use crate::status::StatusTracker;
     use crate::types::HeartbeatState;
 
@@ -1481,7 +1477,7 @@ mod tests {
         .with_failure_reason(FailureReason::ProviderStreamTimeout);
         let failure = executor::ExecutionFailure::new(
             1,
-            "API Error: Stream idle timeout - partial response received",
+            "API Error: Stream idle timeout - no chunks received",
             Some(diagnostic),
         );
 
@@ -1495,7 +1491,7 @@ mod tests {
         assert_field_eq(
             &event,
             "error",
-            "API Error: Stream idle timeout - partial response received",
+            "API Error: Stream idle timeout - no chunks received",
         );
         assert_field_eq(&event, "failure_reason", "provider_stream_timeout");
         assert_field_eq(&event, "failure_class", "cli_nonzero");
@@ -1923,7 +1919,7 @@ mod tests {
         status_path: std::path::PathBuf,
         status: Arc<StatusTracker>,
         idle_pool: SharedIdlePool,
-        tokens: SharedRunCancellationMap,
+        tokens: RunCancellationRegistry,
         orphans: OrphanedActiveRuns,
         _dir: tempfile::TempDir,
     }
@@ -1938,8 +1934,7 @@ mod tests {
                     default_timeout: Duration::from_secs(300),
                     max_idle: 10,
                 })));
-            let tokens: SharedRunCancellationMap =
-                Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let tokens = RunCancellationRegistry::new();
             let orphans = OrphanedActiveRuns::new();
 
             Self {
@@ -1958,10 +1953,22 @@ mod tests {
             sandbox_id: SandboxId,
             cleanup_state: RunCleanupState,
         ) {
+            let cancellation = self.tokens.register(run_id).await.unwrap();
+            self.cleanup_with_registration(run_id, sandbox_id, cleanup_state, cancellation)
+                .await;
+        }
+
+        async fn cleanup_with_registration(
+            &self,
+            run_id: RunId,
+            sandbox_id: SandboxId,
+            cleanup_state: RunCleanupState,
+            cancellation: RunCancellationRegistration,
+        ) {
             cleanup_panicked_job(
                 run_id,
                 sandbox_id,
-                Arc::clone(&self.tokens),
+                cancellation,
                 Arc::clone(&self.status),
                 Arc::clone(&self.idle_pool),
                 cleanup_state,
@@ -1982,16 +1989,11 @@ mod tests {
             .status
             .remove_run_if_matching(run_id, sandbox_id)
             .await;
-        fixture
-            .tokens
-            .lock()
-            .await
-            .insert(run_id, RunCancellationHandle::new());
         cleanup_state.mark_status_removed();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
-        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.contains(run_id).await);
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
@@ -2005,16 +2007,10 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         fixture.status.add_run(run_id, sandbox_id).await;
         fixture
-            .tokens
-            .lock()
-            .await
-            .insert(run_id, RunCancellationHandle::new());
-
-        fixture
             .cleanup(run_id, sandbox_id, RunCleanupState::new())
             .await;
 
-        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.contains(run_id).await);
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert_eq!(active_runs, vec![run_id.to_string()]);
@@ -2028,16 +2024,11 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         fixture.status.add_run(run_id, sandbox_id).await;
-        fixture
-            .tokens
-            .lock()
-            .await
-            .insert(run_id, RunCancellationHandle::new());
         cleanup_state.mark_destroy_completed();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
-        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.contains(run_id).await);
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
@@ -2053,23 +2044,30 @@ mod tests {
         let current_sandbox_id = SandboxId::new_v4();
         fixture.status.add_run(run_id, completed_sandbox_id).await;
         fixture.status.add_run(run_id, current_sandbox_id).await;
-        fixture
-            .tokens
-            .lock()
-            .await
-            .insert(run_id, RunCancellationHandle::new());
+        let stale_cancellation = fixture.tokens.register(run_id).await.unwrap();
+        assert!(stale_cancellation.unregister().await);
+        let replacement_cancellation = fixture.tokens.register(run_id).await.unwrap();
         cleanup_state.mark_destroy_completed();
 
         fixture
-            .cleanup(run_id, completed_sandbox_id, cleanup_state)
+            .cleanup_with_registration(
+                run_id,
+                completed_sandbox_id,
+                cleanup_state,
+                stale_cancellation,
+            )
             .await;
 
-        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
+        assert!(
+            fixture.tokens.contains(run_id).await,
+            "stale panic cleanup must preserve the replacement registration",
+        );
         assert_eq!(
             status_active_run_records(&fixture.status_path).await,
             vec![(run_id.to_string(), current_sandbox_id.to_string())],
         );
         assert_eq!(fixture.orphans.len(), 0);
+        assert!(replacement_cancellation.unregister().await);
     }
 
     #[tokio::test]
@@ -2089,16 +2087,11 @@ mod tests {
             ParkResult::Parked
         ));
         fixture.status.add_run(run_id, sandbox_id).await;
-        fixture
-            .tokens
-            .lock()
-            .await
-            .insert(run_id, RunCancellationHandle::new());
         cleanup_state.mark_idle_pool_owned();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
-        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.contains(run_id).await);
         let (idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);

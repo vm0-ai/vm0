@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
@@ -19,6 +20,7 @@ function buildCommands(): Command[] {
     new Command("agent"),
     new Command("connector"),
     new Command("credit"),
+    new Command("upgrade"),
     new Command("logs"),
     new Command("chat"),
     new Command("resource"),
@@ -27,25 +29,32 @@ function buildCommands(): Command[] {
     new Command("secret"),
     new Command("github"),
     new Command("slack"),
+    new Command("feishu"),
     new Command("teams"),
     new Command("telegram"),
     new Command("phone"),
     new Command("variable"),
     new Command("whoami"),
+    new Command("browser"),
     new Command("generate"),
     new Command("web"),
     new Command("host"),
     new Command("maps"),
+    new Command("weather"),
     new Command("scrape"),
+    new Command("people-search"),
     new Command("web-search"),
+    new Command("finance"),
     new Command("banking"),
     new Command("goal"),
   ];
 }
 
-function buildProgram(): Command {
+function buildProgram(
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Command {
   const prog = new Command();
-  registerZeroCommands(prog, buildCommands());
+  registerZeroCommands(prog, buildCommands(), featureSwitchOverrides);
   return prog;
 }
 
@@ -71,6 +80,12 @@ function hiddenCommandNames(prog: Command): string[] {
     });
 }
 
+function registeredCommandNames(prog: Command): string[] {
+  return prog.commands.map((command) => {
+    return command.name();
+  });
+}
+
 describe("decodeZeroTokenPayload", () => {
   it("should decode payload from a valid zero-scoped token", () => {
     const token = buildZeroToken({
@@ -79,6 +94,9 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
       iat: 1000,
       exp: 2000,
     });
@@ -89,6 +107,9 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
       iat: 1000,
       exp: 2000,
     });
@@ -130,11 +151,13 @@ describe("registerZeroCommands", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should not hide any commands when ZERO_TOKEN is absent", () => {
+  it("should register globally enabled commands when ZERO_TOKEN is absent", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
     expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(registeredCommandNames(prog)).toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -150,6 +173,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
+      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -166,28 +190,34 @@ describe("registerZeroCommands", () => {
       "secret",
       "github",
       "slack",
+      "feishu",
       "teams",
       "telegram",
       "phone",
       "variable",
       "host",
       "maps",
+      "weather",
       "scrape",
+      "people-search",
       "web-search",
+      "finance",
       "banking",
       "goal",
     ]);
   });
 
-  it("should not hide any commands with malformed token (graceful fallback)", () => {
+  it("should keep default-disabled feature commands unregistered with malformed token", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(registeredCommandNames(prog)).toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
-  it("should not hide any commands when scope is not zero", () => {
+  it("should keep default-disabled feature commands unregistered outside zero scope", () => {
     const token = buildZeroToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -197,9 +227,11 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(registeredCommandNames(prog)).toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
-  it("should only show whoami when capabilities array is empty", () => {
+  it("should show globally enabled commands when capabilities array is empty", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: [],
@@ -211,6 +243,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -240,6 +273,34 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("web-search");
+  });
+
+  it("should show finance when finance:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["finance:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("finance");
+  });
+
+  it("should show people-search only with people-search:read capability", () => {
+    const hiddenToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["web-search:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", hiddenToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("people-search");
+
+    const visibleToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["people-search:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", visibleToken);
+    expect(visibleCommandNames(buildProgram())).toContain("people-search");
   });
 
   it("should show credit with either billing read or billing write capability", () => {
@@ -280,6 +341,18 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toContain("slack");
     expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show feishu when feishu:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["feishu:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+    expect(visibleCommandNames(prog)).toContain("feishu");
+    expect(hiddenCommandNames(prog)).not.toContain("feishu");
   });
 
   it("should show github when github:read capability is present", () => {
@@ -489,6 +562,31 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("maps");
   });
 
+  it("should show weather when weather:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["weather:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("weather");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide weather when weather:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("weather");
+  });
+
   it("should show banking when banking:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -556,7 +654,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide credit when billing capabilities are missing", () => {
+  it("should hide credit but keep globally enabled upgrade guidance when billing capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent:read"],
@@ -566,6 +664,50 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("credit");
+    expect(registeredCommandNames(prog)).toContain("upgrade");
+  });
+
+  it("should show upgrade guidance when its feature switch is enabled", () => {
+    vi.stubEnv("ZERO_TOKEN", undefined);
+
+    const prog = buildProgram({
+      [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+    });
+
+    expect(visibleCommandNames(prog)).toContain("upgrade");
+    expect(
+      buildZeroHelpText(undefined, {
+        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+      }),
+    ).toContain("Upgrade plan?");
+  });
+
+  it("should register browser only when its feature switch and capability are enabled", () => {
+    const disabledToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["browser:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: false,
+      },
+    });
+    vi.stubEnv("ZERO_TOKEN", disabledToken);
+
+    expect(registeredCommandNames(buildProgram())).not.toContain("browser");
+
+    const enabledToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["browser:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
+    });
+    vi.stubEnv("ZERO_TOKEN", enabledToken);
+
+    expect(visibleCommandNames(buildProgram())).toContain("browser");
   });
 
   it("should show billing help examples only for billing capabilities", () => {
@@ -584,11 +726,22 @@ describe("registerZeroCommands", () => {
       scope: "zero",
       capabilities: ["billing:read"],
     });
-    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token), {
+      [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+    });
 
     expect(help).toContain("Check credits?");
     expect(help).toContain("zero credit");
     expect(help).not.toContain("Buy credits?");
+    expect(help).toContain("Upgrade plan?");
+  });
+
+  it("should hide upgrade help when its feature switch is disabled", () => {
+    const help = buildZeroHelpText(undefined, {
+      [FeatureSwitchKey.PlanUpgradeGuidance]: false,
+    });
+
+    expect(help).not.toContain("Upgrade plan?");
   });
 
   it("should show only credit purchase help for billing write capability", () => {
@@ -635,6 +788,28 @@ describe("registerZeroCommands", () => {
     );
   });
 
+  it("should show the weather help example when weather:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["weather:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Check weather?",
+    );
+  });
+
+  it("should hide the weather help example when weather:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Check weather?",
+    );
+  });
+
   it("should show the scrape help example when scrape:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -654,6 +829,50 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Scrape a web page?",
+    );
+  });
+
+  it("should show the finance help example when finance:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["finance:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Get a market quote?",
+    );
+  });
+
+  it("should hide the finance help example when finance:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Get a market quote?",
+    );
+  });
+
+  it("should show the people-search help example when people-search:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["people-search:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Find a professional?",
+    );
+  });
+
+  it("should hide the people-search help example when people-search:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Find a professional?",
     );
   });
 
@@ -825,6 +1044,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "connector",
+      "upgrade",
       "resource",
       "whoami",
       "generate",

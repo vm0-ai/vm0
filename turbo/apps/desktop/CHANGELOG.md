@@ -1,5 +1,226 @@
 # Changelog
 
+## [0.28.41](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.40...desktop-v0.28.41) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.1
+
+## [0.28.40](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.39...desktop-v0.28.40) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.0
+
+## [0.28.39](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.38...desktop-v0.28.39) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.230.1
+
+## [0.28.38](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.37...desktop-v0.28.38) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.230.0
+
+## [0.28.37](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.36...desktop-v0.28.37) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.2
+
+## [0.28.36](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.35...desktop-v0.28.36) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.1
+
+## [0.28.35](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.34...desktop-v0.28.35) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.0
+
+## [0.28.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.33...desktop-v0.28.34) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.228.0
+
+## [0.28.33](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.32...desktop-v0.28.33) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.227.0
+
+## [0.28.32](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.31...desktop-v0.28.32) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.226.0
+
+## [0.28.31](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.30...desktop-v0.28.31) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.225.0
+
+## [0.28.30](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.29...desktop-v0.28.30) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.224.0
+
+## [0.28.29](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.28...desktop-v0.28.29) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.223.0
+
+## [0.28.28](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.27...desktop-v0.28.28) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.1
+
+## [0.28.27](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.26...desktop-v0.28.27) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.0
+
+## [0.28.26](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.25...desktop-v0.28.26) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.221.0
+
+## [0.28.25](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.24...desktop-v0.28.25) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.1
+
+## [0.28.24](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.23...desktop-v0.28.24) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.0
+
+## [0.28.23](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.22...desktop-v0.28.23) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.219.0
+
+## [0.28.22](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.21...desktop-v0.28.22) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.218.1
+
+## [0.28.21](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.20...desktop-v0.28.21) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.218.0
+
+## [0.28.20](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.19...desktop-v0.28.20) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.217.0
+
+## [0.28.19](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.18...desktop-v0.28.19) (2026-07-23)
+
+
+### Bug Fixes
+
+* **desktop:** retire intel mac downloads and builds ([#22711](https://github.com/vm0-ai/vm0/issues/22711)) ([b24adec](https://github.com/vm0-ai/vm0/commit/b24adec5910023d8a0feec76fb1428d3aad6d87c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.6
+
+## [0.28.18](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.17...desktop-v0.28.18) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.5
+
 ## [0.28.17](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.16...desktop-v0.28.17) (2026-07-23)
 
 

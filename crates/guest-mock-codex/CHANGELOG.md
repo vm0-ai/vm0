@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.13](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.12...guest-mock-codex-v0.6.13) (2026-07-25)
+
+
+### Performance Improvements
+
+* add first-output coverage and codex lifecycle timings ([#22946](https://github.com/vm0-ai/vm0/issues/22946)) ([12e1316](https://github.com/vm0-ai/vm0/commit/12e13160392117b0fbe950b51fb0edc986059b90))
+
+## [0.6.12](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.11...guest-mock-codex-v0.6.12) (2026-07-23)
+
+
+### Bug Fixes
+
+* **rust:** keep child ownership through test timeouts ([#22725](https://github.com/vm0-ai/vm0/issues/22725)) ([6e4de93](https://github.com/vm0-ai/vm0/commit/6e4de931a86ee553aad08e6c305ff32da8125da8))
+
 ## [0.6.11](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.10...guest-mock-codex-v0.6.11) (2026-07-21)
 
 

@@ -600,6 +600,22 @@ function createWorkflowAutomationSummaryForRequest(
     };
   }
   if (
+    body.eventType === "github-workflow-run-completed" ||
+    body.eventType === "github-workflow-job-completed" ||
+    body.eventType === "github-pull-request-review-submitted" ||
+    body.eventType === "github-deployment-status-created" ||
+    body.eventType === "github-issue-comment-created"
+  ) {
+    return {
+      ...base,
+      kind: "event",
+      eventType: body.eventType,
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    } as ZeroWorkflowAutomationSummary;
+  }
+  if (
     body.eventType === "google-calendar-event-created" ||
     body.eventType === "google-calendar-event-updated" ||
     body.eventType === "google-calendar-event-cancelled" ||

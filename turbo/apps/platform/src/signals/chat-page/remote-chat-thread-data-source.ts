@@ -1,4 +1,4 @@
-import { command, computed, state, type Command } from "ccstate";
+import { command, computed, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -8,13 +8,12 @@ import {
   chatThreadMessagesContract,
   chatMessagesContract,
   type ChatThreadEvent,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { threadCodexServiceTierFromSelection } from "./model-selection-request.ts";
-import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import {
   createDeferredPromise,
   onRejection,
@@ -32,11 +31,9 @@ import {
   optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
   AppendQueuedMessageArgs,
-  GetMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
@@ -48,21 +45,12 @@ import type {
 } from "./chat-thread-data-source.ts";
 
 const L = logger("ChatThread");
+export const CHAT_MESSAGES_PAGE_LIMIT = 50;
 
-type ChatRealtimeSubscription =
-  | {
-      readonly kind: "loop";
-      readonly topic: string;
-      readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
-    }
-  | {
-      readonly kind: "payload";
-      readonly topic: string;
-      readonly loopCommand$: Command<
-        Promise<boolean> | boolean,
-        [unknown, AbortSignal]
-      >;
-    };
+type ChatRealtimeSubscription = {
+  readonly topic: string;
+  readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+};
 
 const patchDraft$ = command(
   async (
@@ -94,17 +82,33 @@ const patchModelSelection$ = command(
     { threadId, modelSelection }: PatchModelSelectionArgs,
     signal: AbortSignal,
   ) => {
-    const eventId = crypto.randomUUID();
+    const modelSelectionEventId = crypto.randomUUID();
+    const serviceTierEventId = crypto.randomUUID();
     const threadMeta = get(chatThreadMetaMap$).get(threadId);
     if (threadMeta) {
+      const createdAt = nowDate().toISOString();
       set(registerOptimisticChatThreadEvent$, {
-        id: eventId,
+        id: modelSelectionEventId,
         kind: "model_selection_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
         title: null,
         selectedModel: modelSelection?.selectedModel ?? null,
-        createdAt: nowDate().toISOString(),
+        serviceTier: null,
+        computerUseHostId: null,
+        createdAt,
+      } satisfies ChatThreadEvent);
+      set(registerOptimisticChatThreadEvent$, {
+        id: serviceTierEventId,
+        kind: "service_tier_updated",
+        chatThreadId: threadId,
+        agentId: threadMeta.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier:
+          modelSelection?.codexServiceTier === "fast" ? "priority" : null,
+        computerUseHostId: null,
+        createdAt,
       } satisfies ChatThreadEvent);
     }
 
@@ -115,7 +119,8 @@ const patchModelSelection$ = command(
         body: {
           model: modelSelection?.selectedModel ?? null,
           codexServiceTier: threadCodexServiceTierFromSelection(modelSelection),
-          eventId,
+          eventId: modelSelectionEventId,
+          serviceTierEventId,
         },
         fetchOptions: { signal },
       }),
@@ -126,15 +131,30 @@ const patchModelSelection$ = command(
 
 const patchComputerUseHost$ = command(
   async (
-    { get },
+    { get, set },
     { threadId, computerUseHostId }: PatchComputerUseHostArgs,
     signal: AbortSignal,
   ) => {
+    const eventId = crypto.randomUUID();
+    const threadMeta = get(chatThreadMetaMap$).get(threadId);
+    if (threadMeta) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "computer_use_host_updated",
+        chatThreadId: threadId,
+        agentId: threadMeta.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId,
+        createdAt: nowDate().toISOString(),
+      } satisfies ChatThreadEvent);
+    }
     const client = get(zeroClient$)(chatThreadComputerUseHostContract);
     await accept(
       client.update({
         params: { id: threadId },
-        body: { computerUseHostId },
+        body: { computerUseHostId, eventId },
         fetchOptions: { signal },
       }),
       [204],
@@ -162,7 +182,7 @@ const appendQueuedMessage$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
+    await accept(
       client.send({
         body: {
           agentId,
@@ -183,15 +203,6 @@ const appendQueuedMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    return {
-      id: clientMessageId,
-      role: "user" as const,
-      content,
-      attachFiles: attachments ?? undefined,
-      generationTemplate,
-      ...(structuredPrompt ? { structuredPrompt } : {}),
-      createdAt: result.body.createdAt ?? nowDate().toISOString(),
-    };
   },
 );
 
@@ -202,7 +213,7 @@ const recallMessage$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
+    await accept(
       client.send({
         body: {
           agentId,
@@ -215,27 +226,20 @@ const recallMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    return {
-      id: clientMessageId,
-      role: "user" as const,
-      content: null,
-      revokesMessageId,
-      createdAt: result.body.createdAt ?? nowDate().toISOString(),
-    };
   },
 );
 
 export const listMessagesAfter$ = command(
   async (
     { get },
-    { threadId, sinceId }: ListMessagesAfterArgs,
+    { threadId, sinceSeqId }: ListMessagesAfterArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({
         params: { threadId },
-        query: { sinceId, limit: 50 },
+        query: { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
         fetchOptions: { signal },
       }),
       [200],
@@ -243,7 +247,7 @@ export const listMessagesAfter$ = command(
     signal.throwIfAborted();
     L.debug("listMessagesAfter$", {
       threadId,
-      sinceId,
+      sinceSeqId,
       count: result.body.messages.length,
       runMessages: result.body.messages.flatMap((m) => {
         if (m.role !== "assistant" || !m.runId) {
@@ -267,14 +271,14 @@ export const listMessagesAfter$ = command(
 export const listMessagesBefore$ = command(
   async (
     { get },
-    { threadId, beforeId }: ListMessagesBeforeArgs,
+    { threadId, beforeSeqId }: ListMessagesBeforeArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({
         params: { threadId },
-        query: { beforeId, limit: 50 },
+        query: { beforeSeqId, limit: 50 },
         fetchOptions: { signal },
       }),
       [200],
@@ -284,28 +288,6 @@ export const listMessagesBefore$ = command(
       messages: result.body.messages,
       hasHistoryBefore: result.body.hasHistoryBefore ?? false,
     };
-  },
-);
-
-const getMessage$ = command(
-  async (
-    { get },
-    { threadId, messageId }: GetMessageArgs,
-    signal: AbortSignal,
-  ): Promise<PagedChatMessage | null> => {
-    const client = get(zeroClient$)(chatThreadMessagesContract);
-    const result = await accept(
-      client.get({
-        params: { threadId, messageId },
-        fetchOptions: { signal },
-      }),
-      [200, 404],
-    );
-    signal.throwIfAborted();
-    if (result.status === 404) {
-      return null;
-    }
-    return result.body;
   },
 );
 
@@ -380,47 +362,18 @@ function createSubscribeRealtime() {
           const ready = createDeferredPromise<void>(subscriptionSignal);
           const subscriptions: ChatRealtimeSubscription[] = [
             {
-              kind: "loop",
-              topic: `chatThreadDetailChanged:${threadId}`,
-              loopCommand$: handlers.onThreadDetailChanged$,
-            },
-            {
-              kind: "loop",
-              topic: `chatThreadMessageCreated:${threadId}`,
-              loopCommand$: handlers.onMessageCreated$,
-            },
-            {
-              kind: "payload",
-              topic: `chatThreadMessageUpdated:${threadId}`,
-              loopCommand$: handlers.onMessageUpdated$,
-            },
-            {
-              kind: "loop",
-              topic: `chatThreadRunCreated:${threadId}`,
-              loopCommand$: handlers.onRunChanged$,
-            },
-            {
-              kind: "loop",
-              topic: `chatThreadRunUpdated:${threadId}`,
-              loopCommand$: handlers.onRunChanged$,
-            },
-            {
-              kind: "loop",
               topic: `chatThreadAutomationsChanged:${threadId}`,
               loopCommand$: handlers.onAutomationsChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadArtifactsChanged:${threadId}`,
               loopCommand$: handlers.onArtifactsChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadWorkflowsChanged:${threadId}`,
               loopCommand$: handlers.onWorkflowsChanged$,
             },
             {
-              kind: "loop",
               topic: `chatThreadWorkflowQueueChanged:${threadId}`,
               loopCommand$: handlers.onWorkflowQueueChanged$,
             },
@@ -437,27 +390,15 @@ function createSubscribeRealtime() {
           const startSubscription = async (
             subscription: ChatRealtimeSubscription,
           ) => {
-            if (subscription.kind === "loop") {
-              await set(
-                setAblyLoop$,
-                {
-                  topic: subscription.topic,
-                  loopCommand$: subscription.loopCommand$,
-                  options,
-                },
-                subscriptionSignal,
-              );
-            } else {
-              await set(
-                setAblyPayloadLoop$,
-                {
-                  topic: subscription.topic,
-                  loopCommand$: subscription.loopCommand$,
-                  options,
-                },
-                subscriptionSignal,
-              );
-            }
+            await set(
+              setAblyLoop$,
+              {
+                topic: subscription.topic,
+                loopCommand$: subscription.loopCommand$,
+                options,
+              },
+              subscriptionSignal,
+            );
             subscriptionSignal.throwIfAborted();
             if (ready.settled()) {
               return;
@@ -496,33 +437,9 @@ function createSubscribeRealtime() {
 }
 
 export function createRemoteChatThreadDataSource(threadId: string) {
-  const reloadCounter$ = state(0);
   const subscribeRealtime$ = createSubscribeRealtime();
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
-
-  const remoteThreadDetail$ = computed(
-    async (get): Promise<ChatThread | null> => {
-      if (get(optimisticCreateUnsettled$)) {
-        return null;
-      }
-      get(reloadCounter$);
-      const threadClient = get(zeroClient$)(chatThreadByIdContract);
-      const threadResult = await accept(
-        threadClient.get({ params: { id: threadId } }),
-        [200, 404],
-      );
-      if (threadResult.status === 404) {
-        return null;
-      }
-      const body = threadResult.body;
-      return {
-        lastReadAt: body.lastReadAt,
-        computerUseHostId: body.computerUseHostId ?? null,
-        codexServiceTier: body.codexServiceTier ?? null,
-      };
-    },
-  );
 
   const threadDraft$ = computed(async (get) => {
     if (get(optimisticCreateUnsettled$)) {
@@ -539,16 +456,8 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     return result.body;
   });
 
-  const reloadThread$ = command(({ set }) => {
-    set(reloadCounter$, (v) => {
-      return v + 1;
-    });
-  });
-
   return {
-    remoteThreadDetail$,
     threadDraft$,
-    reloadThread$,
     patchDraft$,
     patchModelSelection$,
     patchComputerUseHost$,
@@ -556,7 +465,6 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
-    getMessage$,
     cancelRuns$,
     markRead$,
     subscribeRealtime$,

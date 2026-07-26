@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
-  RUNNER_STORAGE_MOUNTS_CAPABILITY,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -12,7 +11,6 @@ import {
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
-  type StorageManifest,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -590,7 +588,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       appendSystemPrompt: agentRuns.appendSystemPrompt,
       agentComposeVersionId: agentRuns.agentComposeVersionId,
       vars: agentRuns.vars,
-      resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
       historyGenerationRunId:
@@ -662,7 +659,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         appendSystemPrompt: pendingJob.appendSystemPrompt,
         agentComposeVersionId: pendingJob.agentComposeVersionId,
         vars: (pendingJob.vars as Record<string, string>) ?? null,
-        checkpointId: pendingJob.resumedFromCheckpointId ?? null,
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
@@ -700,7 +696,6 @@ interface ClaimedRun {
   readonly appendSystemPrompt: string | null;
   readonly agentComposeVersionId: string | null;
   readonly vars: unknown;
-  readonly resumedFromCheckpointId: string | null;
 }
 
 interface ActiveRunNetworkPolicyScope {
@@ -770,7 +765,6 @@ async function getClaimableJob(
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
-        resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       },
     })
     .from(runnerJobQueue)
@@ -899,7 +893,7 @@ async function transitionClaimedJobToRunning(
           locked_job AS MATERIALIZED (
             SELECT
               ${runnerJobQueue.runId} AS "runId",
-              ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
+              ${lte(runnerJobQueue.expiresAt, sql`now()`)} AS "isExpired"
             FROM ${runnerJobQueue}
             INNER JOIN locked_run
               ON locked_run."id" = ${runnerJobQueue.runId}
@@ -928,9 +922,10 @@ async function transitionClaimedJobToRunning(
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
             CROSS JOIN claim_clock
-            WHERE
-              ${agentRuns.id} = locked_run."id"
-              AND ${agentRuns.status} = 'pending'
+            WHERE ${and(
+              eq(agentRuns.id, sql`locked_run."id"`),
+              eq(agentRuns.status, sql`'pending'`),
+            )}
             RETURNING
               ${agentRuns.id} AS "id",
               ${agentRuns.startedAt} AS "claimedAt"
@@ -938,17 +933,18 @@ async function transitionClaimedJobToRunning(
           deleted_job AS (
             DELETE FROM ${runnerJobQueue}
             USING locked_run, locked_job
-            WHERE
-              ${runnerJobQueue.runId} = locked_job."runId"
-              AND locked_job."runId" = locked_run."id"
-              AND (
+            WHERE ${and(
+              eq(runnerJobQueue.runId, sql`locked_job."runId"`),
+              sql`locked_job."runId" = locked_run."id"`,
+              sql`(
                 locked_run."status" <> 'pending'
                 OR EXISTS (
                   SELECT 1
                   FROM updated_run
                   WHERE updated_run."id" = locked_run."id"
                 )
-              )
+              )`,
+            )}
             RETURNING ${runnerJobQueue.runId} AS "runId"
           )
           SELECT
@@ -1483,7 +1479,6 @@ async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
-  readonly capabilities: readonly string[];
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly loadIdentityRepresentation: (
@@ -1566,11 +1561,12 @@ async function buildClaimResponseBody(args: {
           runVars: (args.run.vars as Record<string, string> | null) ?? null,
           connectorVars: args.storedContext.vars,
         }),
-        checkpointId: args.run.resumedFromCheckpointId ?? null,
-        storageManifest: storageManifestForRunner(
-          args.storedContext,
-          args.capabilities,
-        ),
+        storageManifest: {
+          storageMounts: args.storedContext.storageMounts.map((storedMount) => {
+            const { orgId: _orgId, userId: _userId, ...mount } = storedMount;
+            return mount;
+          }),
+        },
         resumeSession,
         sandboxToken,
         secretValues,
@@ -1581,24 +1577,6 @@ async function buildClaimResponseBody(args: {
   );
 }
 
-function storageManifestForRunner(
-  storedContext: StoredExecutionContext,
-  capabilities: readonly string[],
-): StorageManifest | null {
-  if (
-    storedContext.storageMounts !== undefined &&
-    capabilities.includes(RUNNER_STORAGE_MOUNTS_CAPABILITY)
-  ) {
-    return {
-      storageMounts: storedContext.storageMounts.map((storedMount) => {
-        const { orgId: _orgId, userId: _userId, ...mount } = storedMount;
-        return mount;
-      }),
-    };
-  }
-  return storedContext.storageManifest;
-}
-
 const buildClaimResponseBodyForClaim$ = command(
   async (
     { set },
@@ -1606,7 +1584,6 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly db: Db;
       readonly run: ClaimedRun;
       readonly storedContext: StoredExecutionContext;
-      readonly capabilities: readonly string[];
       readonly timing: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
     },
@@ -1615,7 +1592,6 @@ const buildClaimResponseBodyForClaim$ = command(
       db: args.db,
       run: args.run,
       storedContext: args.storedContext,
-      capabilities: args.capabilities,
       timing: args.timing,
       signal: args.signal,
       loadIdentityRepresentation(hash: string) {
@@ -2025,7 +2001,6 @@ const claimAuthorizedJob$ = command(
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
-      readonly capabilities: readonly string[];
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
@@ -2067,7 +2042,6 @@ const claimAuthorizedJob$ = command(
         db,
         run,
         storedContext,
-        capabilities: args.capabilities,
         timing: claimRouteTiming,
         signal,
       }),
@@ -2162,7 +2136,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     jobWithRun,
     telemetry: body.data.telemetry,
-    capabilities: body.data.capabilities ?? [],
     claimRequestStartedAtMs,
     claimRouteTiming,
     signal,

@@ -94,6 +94,7 @@ import type {
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  messageDocumentToDisplayText,
   messageDocumentToPrompt,
   type EditorDocumentSnapshot,
 } from "../../signals/zero-page/user-message-document-codec.ts";
@@ -133,9 +134,11 @@ import {
   publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
-import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
+import { BrowserSessionCard } from "./browser-session-card.tsx";
+import { BrowserSessionSidebar } from "./browser-session-sidebar.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -147,23 +150,30 @@ import {
   type ConnectorSignals,
   type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
+import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
 import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
+import { isCancelledAssistantMessage } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
-  runGroupExpandedKeys$,
+  runGroupExpansionOverrides$,
   toggleRunGroupExpanded$,
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
+import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
 import {
   emptyMailDraftSignalsById$,
   type MailDraftSignals,
 } from "../../signals/chat-page/mail-draft.ts";
+import {
+  emptyBrowserSessionSignalsById$,
+  type BrowserSessionSignals,
+} from "../../signals/chat-page/browser-session-block.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -191,10 +201,8 @@ import {
   type ArtifactInboxSection,
   type ArtifactRef,
   closeArtifact$,
-  closePresentationEditor$,
   currentArtifactInboxThreadId$,
   currentArtifactRef$,
-  currentPresentationEditorUrl$,
   openArtifactFromInbox$,
   openArtifactInbox$,
   setArtifactInboxQuery$,
@@ -222,6 +230,7 @@ import {
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
+import { currentBrowserSessionId$ } from "../../signals/zero-page/browser-session-sidebar.ts";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -277,7 +286,6 @@ import {
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
-import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
   useZeroChatComposer,
@@ -456,7 +464,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <AutomationMenuButton thread={thread} />
+        <AutomationMenuButton key={thread.threadId} thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
     </header>
@@ -800,7 +808,7 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function formatArtifactTime(value: string): string {
+function formatChatTimestamp(value: string): string {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -1459,7 +1467,7 @@ function ArtifactInboxRow({
           <span aria-hidden>·</span>
           <span>{formatBytes(file.size)}</span>
           <span aria-hidden>·</span>
-          <span>{formatArtifactTime(file.createdAt)}</span>
+          <span>{formatChatTimestamp(file.createdAt)}</span>
         </span>
       </span>
       <IconChevronRight
@@ -1639,7 +1647,7 @@ function ChatArtifactInboxSlot({
     return null;
   }
 
-  return <ChatArtifactInboxList thread={thread} />;
+  return <ChatArtifactInboxList key={thread.threadId} thread={thread} />;
 }
 
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
@@ -1757,6 +1765,10 @@ function headerWorkflowAutomationRows(
   automation: HeaderWorkflowAutomationEntry,
 ): readonly WorkflowAutomationCardRow[] {
   const rows: WorkflowAutomationCardRow[] = [
+    {
+      label: "Status",
+      value: automation.enabled ? "Active" : "Disabled",
+    },
     {
       label:
         automation.automation.kind === "schedule" ? "Schedule" : "Automation",
@@ -2464,15 +2476,9 @@ function ArtifactResizeHandle() {
 function ChatThreadArea({
   leftThread,
   rightThread,
-  activePresentationEditorUrl,
-  artifactFullscreen,
-  presentationEditor,
 }: {
   leftThread: ChatThreadSignals | null;
   rightThread: ChatThreadSignals | null;
-  activePresentationEditorUrl: string | null;
-  artifactFullscreen: boolean;
-  presentationEditor: ReactNode;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
   const setMainThreadKeyboardFocusRef = useSet(
@@ -2484,28 +2490,41 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {activePresentationEditorUrl ? (
-        !artifactFullscreen || typeof document === "undefined" ? (
-          presentationEditor
-        ) : null
-      ) : (
+      {leftThread && (
+        <ChatThread
+          thread={leftThread}
+          onFocusFallbackRef={setMainThreadKeyboardFocusRef}
+        />
+      )}
+      {rightThread && (
         <>
-          {leftThread && (
-            <ChatThread
-              key={leftThread.threadId}
-              thread={leftThread}
-              onFocusFallbackRef={setMainThreadKeyboardFocusRef}
-            />
-          )}
-          {rightThread && (
-            <>
-              <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-              <ChatThread key={rightThread.threadId} thread={rightThread} />
-            </>
-          )}
+          <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+          <ChatThread thread={rightThread} />
         </>
       )}
     </div>
+  );
+}
+
+function useSelectedBrowserSessionSignals(
+  leftThread: ChatThreadSignals | null,
+  rightThread: ChatThreadSignals | null,
+): BrowserSessionSignals | undefined {
+  const selectedBrowserId = useGet(currentBrowserSessionId$);
+  const leftBrowserSignalsById = useGet(
+    leftThread?.browserSessionCardSignalsById$ ??
+      emptyBrowserSessionSignalsById$,
+  );
+  const rightBrowserSignalsById = useGet(
+    rightThread?.browserSessionCardSignalsById$ ??
+      emptyBrowserSessionSignalsById$,
+  );
+  if (!selectedBrowserId) {
+    return undefined;
+  }
+  return (
+    leftBrowserSignalsById.get(selectedBrowserId) ??
+    rightBrowserSignalsById.get(selectedBrowserId)
   );
 }
 
@@ -2539,42 +2558,29 @@ export function ZeroChatThreadPage() {
   const automationPanelThread = [leftThread, rightThread].find((thread) => {
     return thread?.threadId === automationPanelThreadId;
   });
-  const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
   const selectedMailDraftSignals = useSelectedMailDraftSignals(
     leftThread,
     rightThread,
   );
-  const closePresentationEditor = useSet(closePresentationEditor$);
-  const artifactFullscreen = useGet(artifactFullscreen$);
-  const activePresentationEditorUrl = presentationEditorUrl;
+  const selectedBrowserSessionSignals = useSelectedBrowserSessionSignals(
+    leftThread,
+    rightThread,
+  );
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
   const automationPanelOpen = automationPanelThread !== undefined;
   const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
+  const browserPanelOpen = selectedBrowserSessionSignals !== undefined;
   const rightPanelOpen =
-    artifactPanelOpen || automationPanelOpen || mailDraftPanelOpen;
+    artifactPanelOpen ||
+    automationPanelOpen ||
+    mailDraftPanelOpen ||
+    browserPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
       useGet(artifactPanelWidth$),
       useGet(artifactPanelResizing$),
     );
-  const presentationEditor = activePresentationEditorUrl ? (
-    <div
-      data-testid="presentation-editor-container"
-      className={cn(
-        "flex min-w-0 overflow-hidden bg-background",
-        artifactFullscreen
-          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
-          : "h-full w-full flex-1",
-      )}
-    >
-      <PresentationHtmlEditor
-        url={activePresentationEditorUrl}
-        onClose={closePresentationEditor}
-      />
-    </div>
-  ) : null;
-
   return (
     <>
       {/* Keep the wrapper structure stable across right panel open/close so the
@@ -2595,13 +2601,7 @@ export function ZeroChatThreadPage() {
             rightPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
           )}
         >
-          <ChatThreadArea
-            leftThread={leftThread}
-            rightThread={rightThread}
-            activePresentationEditorUrl={activePresentationEditorUrl}
-            artifactFullscreen={artifactFullscreen}
-            presentationEditor={presentationEditor}
-          />
+          <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
         </div>
         {rightPanelOpen && <ArtifactResizeHandle />}
         <div
@@ -2614,10 +2614,15 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {selectedMailDraftSignals ? (
+          {selectedBrowserSessionSignals ? (
+            <BrowserSessionSidebar signals={selectedBrowserSessionSignals} />
+          ) : selectedMailDraftSignals ? (
             <MailDraftSidebar signals={selectedMailDraftSignals} />
           ) : automationPanelThread ? (
-            <HeaderAutomationSidebar thread={automationPanelThread} />
+            <HeaderAutomationSidebar
+              key={automationPanelThread.threadId}
+              thread={automationPanelThread}
+            />
           ) : artifactPanelOpen ? (
             <ChatArtifactInboxSlot
               artifactRef={artifactRef}
@@ -2628,11 +2633,6 @@ export function ZeroChatThreadPage() {
         </div>
       </div>
       {lightboxUrl && <AttachmentLightbox />}
-      {activePresentationEditorUrl &&
-        artifactFullscreen &&
-        typeof document !== "undefined" &&
-        presentationEditor &&
-        createPortal(presentationEditor, document.body)}
       <ChatConnectorActionConnectModal />
     </>
   );
@@ -2669,11 +2669,11 @@ function ChatThreadRenderedMessageGroups({
     }) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedMessagesForThinkingIndicator(renderedGroups);
-  const runGroupExpandedKeys = useGet(runGroupExpandedKeys$);
+  const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
   const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
   const runGroupFolding = buildRunGroupFolding(
     renderedActiveGroups,
-    runGroupExpandedKeys,
+    runGroupExpansionOverrides,
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
@@ -2688,7 +2688,6 @@ function ChatThreadRenderedMessageGroups({
       thread={thread}
       groups={visibleGroups}
       runGroupFolding={runGroupFolding}
-      runGroupExpandedKeys={runGroupExpandedKeys}
       onToggleRunGroup={toggleRunGroupExpanded}
       completedWorkFolding={completedWorkFolding}
       completedWorkExpandedKeys={completedWorkExpandedKeys}
@@ -2777,7 +2776,6 @@ function ChatThreadMessageGroups({
   thread,
   groups,
   runGroupFolding,
-  runGroupExpandedKeys,
   onToggleRunGroup,
   completedWorkFolding,
   completedWorkExpandedKeys,
@@ -2786,8 +2784,7 @@ function ChatThreadMessageGroups({
   thread: ChatThreadSignals;
   groups: readonly GroupedChatMessageGroup[];
   runGroupFolding: RunGroupFolding | null;
-  runGroupExpandedKeys: ReadonlySet<string>;
-  onToggleRunGroup: (key: string) => void;
+  onToggleRunGroup: (key: string, expanded: boolean) => void;
   completedWorkFolding: CompletedWorkFolding | null;
   completedWorkExpandedKeys: ReadonlySet<string>;
   onToggleCompletedWork: (key: string) => void;
@@ -2796,7 +2793,6 @@ function ChatThreadMessageGroups({
     resolveRunGroupFoldPlacements({
       groups,
       runGroupFolding,
-      runGroupExpandedKeys,
       onToggleRunGroup,
     });
 
@@ -2857,13 +2853,11 @@ interface RunGroupFoldControl {
 function resolveRunGroupFoldPlacements({
   groups,
   runGroupFolding,
-  runGroupExpandedKeys,
   onToggleRunGroup,
 }: {
   groups: readonly GroupedChatMessageGroup[];
   runGroupFolding: RunGroupFolding | null;
-  runGroupExpandedKeys: ReadonlySet<string>;
-  onToggleRunGroup: (key: string) => void;
+  onToggleRunGroup: (key: string, expanded: boolean) => void;
 }): {
   embeddedRunGroupFolds: Map<string, RunGroupFoldControl[]>;
   externalRunGroupFolds: Map<string, RunGroupFoldControl[]>;
@@ -2884,9 +2878,9 @@ function resolveRunGroupFoldPlacements({
     for (const fold of folds) {
       const control: RunGroupFoldControl = {
         fold,
-        expanded: runGroupExpandedKeys.has(fold.key),
+        expanded: fold.expanded,
         onToggle: () => {
-          onToggleRunGroup(fold.key);
+          onToggleRunGroup(fold.key, fold.expanded);
         },
       };
       const embeddedGroupId = control.expanded
@@ -3093,7 +3087,11 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
-    (Boolean(message.content) || Boolean(message.error))
+    (Boolean(message.content) ||
+      Boolean(message.error) ||
+      message.blocks.length > 0 ||
+      (message.runLifecycleEvent === undefined &&
+        Boolean(message.attachFiles?.length)))
   );
 }
 
@@ -3151,7 +3149,10 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
-    if (!terminatedRunIds.has(runId)) {
+    if (
+      !terminatedRunIds.has(runId) ||
+      runMessages.some(isCancelledAssistantMessage)
+    ) {
       visibleMessages.push(...runMessages);
       index = endIndex;
       continue;
@@ -3323,17 +3324,28 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
   });
 }
 
-function runGroupFoldSourceLabel(fold: RunGroupFold): string {
+function runGroupFoldSourceLabel(
+  fold: RunGroupFold,
+  structuredPromptEnabled: boolean,
+): string {
   const messages = runGroupFoldMessages(fold);
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
     return workflowLabel;
   }
-  const userMessage = messages.find((message) => {
-    return message.role === "user" && (message.content?.trim().length ?? 0) > 0;
-  });
-  const content = userMessage?.content?.trim();
-  return content ? normalizedInlineLabel(content) : "Automated run";
+  for (const message of messages) {
+    if (message.role !== "user") {
+      continue;
+    }
+    const content =
+      structuredPromptEnabled && message.structuredPrompt
+        ? messageDocumentToDisplayText(message.structuredPrompt)
+        : message.content;
+    if (content?.trim()) {
+      return normalizedInlineLabel(content);
+    }
+  }
+  return "Automated run";
 }
 
 function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
@@ -3416,14 +3428,17 @@ function verboseDurationLabelForRunGroupFold(
   return parts.join(" ");
 }
 
-function runGroupFoldLabel(fold: RunGroupFold): string {
+function runGroupFoldLabel(
+  fold: RunGroupFold,
+  structuredPromptEnabled: boolean,
+): string {
   if (isGoalRunGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
     return duration ? `${duration} for ${label}` : `Goal for ${label}`;
   }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
-  const sourceLabel = runGroupFoldSourceLabel(fold);
+  const sourceLabel = runGroupFoldSourceLabel(fold, structuredPromptEnabled);
   return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
 }
 
@@ -3435,7 +3450,11 @@ function RunGroupFoldRow({
   embedded?: boolean;
 }) {
   const { fold, expanded, onToggle } = control;
-  const label = runGroupFoldLabel(fold);
+  const featureSwitches = useGet(featureSwitch$);
+  const label = runGroupFoldLabel(
+    fold,
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false,
+  );
   const isGoal = isGoalRunGroupFold(fold);
   const Icon = isGoal ? IconTarget : IconPackage;
   return (
@@ -3528,10 +3547,50 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
         onScroll={handleScroll}
         className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
-        <ChatThreadMessagesMain thread={thread} />
+        <ChatThreadMessagesMain
+          key={`messages:${thread.threadId}`}
+          thread={thread}
+        />
       </div>
-      <ChatThreadSkeletonOverlay thread={thread} />
-      <ScrollToBottomButton thread={thread} />
+      <ChatThreadSkeletonOverlay
+        key={`skeleton:${thread.threadId}`}
+        thread={thread}
+      />
+      <ScrollToBottomButton
+        key={`scroll-button:${thread.threadId}`}
+        thread={thread}
+      />
+    </div>
+  );
+}
+
+function ChatHistoryBackfillProgress({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const featureSwitches = useGet(featureSwitch$);
+  const enabled =
+    featureSwitches[FeatureSwitchKey.ChatHistoryBackfillProgress] ?? false;
+  const progress = useLastResolved(thread.historyBackfillProgress$);
+  if (!enabled || progress === null || progress === undefined) {
+    return null;
+  }
+  const percent = Math.min(100, Math.max(0, progress * 100));
+  return (
+    <div
+      data-history-backfill-progress
+      role="progressbar"
+      aria-label="Loading message history"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+      className="h-0.5 w-full shrink-0 overflow-hidden"
+    >
+      <div
+        className="h-full bg-primary/60 transition-[width] duration-500 ease-out"
+        style={{ width: `${percent}%` }}
+      />
     </div>
   );
 }
@@ -3540,11 +3599,14 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   return (
     <>
       <ChatThreadHeader thread={thread} />
+      <ChatHistoryBackfillProgress key={thread.threadId} thread={thread} />
 
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
           <ChatThreadMessagesPane thread={thread} />
-          <ChatThreadComposer thread={thread} />
+          {/* Command loadables are hook-owned, so keep their identity boundary
+              narrower than the persistent thread and message owners. */}
+          <ChatThreadComposer key={thread.threadId} thread={thread} />
         </div>
       </div>
 
@@ -4044,7 +4106,7 @@ function useChatThreadComputerUse(
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
       : [];
-  const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
+  const storedComputerUseHostId = useGet(thread.computerUseHostId$);
   const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
   const selectedComputerUseHostId =
     computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0
@@ -4403,7 +4465,13 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const donePhrase = useLastResolved(thread.donePhrase$) ?? "Done";
-  const label = source ? "Keep going" : donePhrase;
+  const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
+  const label =
+    source && runFinishedAt
+      ? `Keep going · ${formatChatTimestamp(runFinishedAt)}`
+      : source
+        ? "Keep going"
+        : donePhrase;
 
   return (
     <div className="flex flex-col gap-2">
@@ -4708,8 +4776,14 @@ function BodyRenderBlockView({
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={block.signals} />;
     }
+    case "plan-upgrade": {
+      return <PlanUpgradeCard signals={block.signals} />;
+    }
     case "mail-draft": {
       return <MailDraftCard signals={block.signals} />;
+    }
+    case "browser-session": {
+      return <BrowserSessionCard signals={block.signals} />;
     }
     case "artifact": {
       const { signals } = block;
@@ -4763,6 +4837,7 @@ function BodyRenderBlockView({
 function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const pageSignal = useGet(pageSignal$);
   const available = useLastResolved(signals.available$) ?? false;
+  const connected = useLastResolved(signals.connected$) ?? false;
   const completeLoadable = useLoadable(signals.complete$);
   const complete =
     completeLoadable.state === "hasData" && completeLoadable.data;
@@ -4774,6 +4849,15 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   if (!available || !catalogItem) {
     return null;
   }
+  const reconnectRequired =
+    connectorCurrentConnectionStatus(catalogItem) === "reconnect-required";
+  const actionLabel = complete
+    ? "Authorized"
+    : reconnectRequired
+      ? "Reconnect"
+      : connected
+        ? "Authorize"
+        : "Connect";
 
   return (
     <div
@@ -4802,7 +4886,7 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {loading && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Authorize" : "Connect"}
+        {actionLabel}
       </button>
     </div>
   );
@@ -4876,6 +4960,49 @@ function ComputerUseAuthorizationCard({
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
       >
         Authorize
+        <IconArrowUpRight size={15} />
+      </a>
+    </div>
+  );
+}
+
+function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
+  const featureSwitches = useGet(featureSwitch$);
+  if (!featureSwitches[FeatureSwitchKey.PlanUpgradeGuidance]) {
+    return (
+      <Markdown
+        source={signals.fallbackMarkdown}
+        style={{ fontSize: "inherit", lineHeight: "inherit" }}
+      />
+    );
+  }
+
+  return (
+    <div
+      data-testid="plan-upgrade-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <IconCoins size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
+            Upgrade your workspace
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            Compare plans to unlock paid workspace features and additional
+            credits.
+          </div>
+        </div>
+      </div>
+      <a
+        href={signals.href}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      >
+        Compare plans
         <IconArrowUpRight size={15} />
       </a>
     </div>
@@ -5988,15 +6115,26 @@ function workflowMessageBody(
   );
 }
 
+interface ResolvedMessageAttachment {
+  readonly id: string | null;
+  readonly filename: string;
+  readonly url: string;
+  readonly contentType: string | undefined;
+  readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
+  readonly isImage: boolean;
+  readonly kind: ReturnType<typeof classifyChatAttachment>;
+}
+
 function resolveAttachments(
-  message: PagedChatMessage,
+  message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
-) {
+): ResolvedMessageAttachment[] {
   const source =
     message.attachFiles && message.attachFiles.length > 0
       ? message.attachFiles
       : parsed;
   return source.map((f) => {
+    const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
         ? f.contentType
@@ -6011,6 +6149,7 @@ function resolveAttachments(
       filename: f.filename,
       url: f.url,
       contentType,
+      ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
     };
@@ -6027,7 +6166,7 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function clipboardAttachmentsFromMessage(
-  message: PagedChatMessage,
+  message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
 ): ChatClipboardAttachment[] {
   const source =
@@ -6075,12 +6214,55 @@ function clipboardAttachmentsFromStructuredPrompt(
   });
 }
 
+function AttachmentMaterializationState({
+  attachment,
+}: {
+  attachment: ReturnType<typeof resolveAttachments>[number];
+}) {
+  const materialization = attachment.assetRef?.materialization;
+  if (!materialization || materialization.status === "ready") {
+    return null;
+  }
+  const pending = materialization.status === "pending";
+  const error =
+    materialization.status === "failed" ? materialization.error : undefined;
+  return (
+    <div
+      className="flex max-w-72 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
+      role={pending ? "status" : "alert"}
+      title={error?.message}
+    >
+      {pending ? (
+        <IconLoader2
+          aria-hidden="true"
+          className="size-4 shrink-0 animate-spin text-muted-foreground"
+        />
+      ) : (
+        <IconAlertCircle
+          aria-hidden="true"
+          className="size-4 shrink-0 text-destructive"
+        />
+      )}
+      <span className="min-w-0">
+        <span className="block truncate font-medium">
+          {attachment.filename}
+        </span>
+        <span className="block text-xs text-muted-foreground">
+          {pending ? "Importing attachment" : "Attachment unavailable"}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function UserMessageAttachments({
   attachments,
   onImageClick,
+  align = "end",
 }: {
   attachments: ReturnType<typeof resolveAttachments>;
   onImageClick: (url: string) => void;
+  align?: "start" | "end";
 }) {
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
@@ -6089,8 +6271,21 @@ function UserMessageAttachments({
   }
 
   return (
-    <div className="mb-2 flex max-w-[85%] flex-wrap justify-end gap-2">
+    <div
+      className={cn(
+        "flex max-w-[85%] flex-wrap gap-2",
+        align === "start" ? "mt-2 justify-start" : "mb-2 justify-end self-end",
+      )}
+    >
       {attachments.map((a) => {
+        if (a.assetRef && a.assetRef.materialization.status !== "ready") {
+          return (
+            <AttachmentMaterializationState
+              key={a.id ?? a.url}
+              attachment={a}
+            />
+          );
+        }
         if (a.isImage) {
           return (
             <ChatImagePreviewLink
@@ -6326,6 +6521,37 @@ function SlackUserMessageOrigin({
       <span className="shrink-0">Slack</span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">Open message</span>
+      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+    </a>
+  );
+}
+
+const feishuIconImg = settingsIconAssetUrl("lark");
+
+function FeishuUserMessageOrigin({
+  chatOpenUrl,
+}: {
+  chatOpenUrl: string | undefined;
+}) {
+  if (!chatOpenUrl) {
+    return null;
+  }
+  return (
+    <a
+      href={chatOpenUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open original chat in Feishu"
+      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+    >
+      <img
+        src={feishuIconImg}
+        alt=""
+        className="size-[15px] shrink-0 object-contain"
+      />
+      <span className="shrink-0">Feishu</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">Open chat</span>
       <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
     </a>
   );
@@ -6745,6 +6971,7 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
+          <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
           {structuredPrompt ? (
             <StructuredUserMessageContent
               document={structuredPrompt}
@@ -6888,6 +7115,7 @@ function PagedAssistantMessageItem({
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
+  const attachments = resolveAttachments(message, []);
 
   if (message.error) {
     return (
@@ -6902,7 +7130,7 @@ function PagedAssistantMessageItem({
     );
   }
 
-  if (message.content || message.blocks.length > 0) {
+  if (message.content || message.blocks.length > 0 || attachments.length > 0) {
     const { blocks } = message;
     return (
       <div
@@ -6918,6 +7146,11 @@ function PagedAssistantMessageItem({
             hardBreaks={false}
           />
         ) : null}
+        <UserMessageAttachments
+          attachments={attachments}
+          onImageClick={openLightbox}
+          align="start"
+        />
       </div>
     );
   }

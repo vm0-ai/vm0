@@ -28,6 +28,15 @@ class UsageEvent(_RequiredUsageEvent, total=False):
     billingUnitSize: int
 
 
+class ModelUsageObservation(TypedDict):
+    idempotencyKey: str
+    model: str
+    inputTokens: int
+    outputTokens: int
+    cacheReadInputTokens: int
+    cacheCreationInputTokens: int
+
+
 UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
 ResourceFieldName = Literal["provider", "model"]
 
@@ -59,9 +68,30 @@ class _AggregateBucket:
 
 
 @dataclass(frozen=True)
+class _ObservationAggregateKey:
+    run_id: str
+    model: str
+
+
+@dataclass
+class _ObservationAggregateBucket:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    source_event_count: int = 0
+
+
+@dataclass(frozen=True)
 class _BufferedSourceEvent:
     run_id: str
     event: UsageEvent
+
+
+@dataclass(frozen=True)
+class _BufferedSourceObservation:
+    run_id: str
+    observation: ModelUsageObservation
 
 
 @dataclass(frozen=True)

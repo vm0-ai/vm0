@@ -394,8 +394,6 @@ export function mockThread(options?: {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -411,6 +409,8 @@ export function mockThread(options?: {
           pinnedAt: null,
           renamedAt: null,
           selectedModel: options?.selectedModel ?? null,
+          serviceTier: null,
+          computerUseHostId: null,
         },
       ],
       latestEventId: null,
@@ -428,7 +428,7 @@ export function mockThread(options?: {
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceId || query.beforeId) {
+    if (query.sinceSeqId || query.beforeSeqId) {
       return respond(200, { messages: [], hasHistoryBefore: false });
     }
     return respond(200, {
@@ -459,6 +459,8 @@ export function mockComposerThreadSnapshot(
           pinnedAt: null,
           renamedAt: null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         };
       }),
       latestEventId: null,

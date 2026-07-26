@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
 use sandbox::SandboxError;
 use tracing::warn;
+
+use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceBaseline;
 
 /// Cloneable metadata for a network namespace.
 ///
@@ -17,6 +21,8 @@ pub struct NetnsInfo {
     pub(super) peer_ip: String,
     /// Process-local count of successful checkouts for this namespace.
     pub(super) attachment_generation: u64,
+    /// Last quiescent DNS evidence snapshot retained only in this process.
+    dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
 }
 
 impl NetnsInfo {
@@ -26,6 +32,7 @@ impl NetnsInfo {
             host_device,
             peer_ip,
             attachment_generation: 0,
+            dns_network_baseline: None,
         }
     }
 
@@ -111,8 +118,21 @@ impl NetnsLease {
         self.reuse_eligible = true;
     }
 
-    pub(super) fn reuse_eligible(&self) -> bool {
+    pub(crate) fn reuse_eligible(&self) -> bool {
         self.reuse_eligible
+    }
+
+    pub(crate) fn set_dns_network_baseline(
+        &mut self,
+        baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
+    ) {
+        self.info.dns_network_baseline = baseline;
+    }
+
+    pub(crate) fn take_dns_network_baseline(
+        &mut self,
+    ) -> Option<Arc<GuestDnsNetworkEvidenceBaseline>> {
+        self.info.dns_network_baseline.take()
     }
 
     pub(super) fn into_info(mut self) -> NetnsInfo {

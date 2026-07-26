@@ -87,6 +87,13 @@ async function waitForExpectation(
     .toBe(true);
 }
 
+async function completeOnboardingWithoutCredits(
+  actor: ApiTestUser,
+): Promise<void> {
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
+}
+
 function stripeEvent(args: {
   readonly type: string;
   readonly object: Record<string, unknown>;
@@ -643,7 +650,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const ignoredBody = JSON.stringify({ action: "ignored" });
     const ignored = await api.requestGithubWebhook(
       ignoredBody,
-      api.signedGithubWebhookHeaders(ignoredBody, "workflow_job"),
+      api.signedGithubWebhookHeaders(ignoredBody, "fork"),
       [200],
     );
     expect(ignored.body).toBe("OK");
@@ -1043,27 +1050,6 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
     );
     expect(invalidReplyResponse.body).toStrictEqual({ received: true });
   });
-
-  it("skips email automation callbacks while outbound email is not configured", async () => {
-    api.disableResendApiKey();
-
-    const response = await api.requestEmailTriggerCallback(
-      {
-        runId: randomUUID(),
-        status: "completed",
-        payload: {
-          senderEmail: "sender@example.test",
-          agentId: randomUUID(),
-          userId: `user_${randomUUID()}`,
-          inboundEmailId: `email_${randomUUID()}`,
-          replyToken: `reply_${randomUUID()}`,
-        },
-      },
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ success: true, skipped: true });
-  });
 });
 
 describe("WHCB-04: internal callback and event-consumer boundaries", () => {
@@ -1231,6 +1217,27 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
+    const mismatchedCompactModelUsage =
+      await api.requestAgentModelUsageObservationV2(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              inputTokens: 1,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+        mismatchedHeaders,
+        [401],
+      );
+    expectApiError(mismatchedCompactModelUsage.body);
+    expect(mismatchedCompactModelUsage.body.error.code).toBe("UNAUTHORIZED");
+
     const malformedTelemetryBody = await api.requestAgentTelemetryUnchecked(
       {},
       headers,
@@ -1269,42 +1276,47 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(missingUsageRun.body);
     expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
 
-    const malformedModelUsage =
-      await api.requestAgentModelUsageObservationUnchecked(
+    const malformedCompactModelUsage =
+      await api.requestAgentModelUsageObservationV2Unchecked(
         {
           runId,
           events: [
             {
               idempotencyKey: randomUUID(),
               model: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 0,
+              inputTokens: 0,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
             },
           ],
         },
         headers,
         [400],
       );
-    expectApiError(malformedModelUsage.body);
-    expect(malformedModelUsage.body.error.code).toBe("BAD_REQUEST");
+    expectApiError(malformedCompactModelUsage.body);
+    expect(malformedCompactModelUsage.body.error.code).toBe("BAD_REQUEST");
 
-    const missingModelUsageRun = await api.requestAgentModelUsageObservation(
-      {
-        runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 1,
-          },
-        ],
-      },
-      headers,
-      [404],
-    );
-    expectApiError(missingModelUsageRun.body);
-    expect(missingModelUsageRun.body.error.code).toBe("NOT_FOUND");
+    const missingCompactModelUsageRun =
+      await api.requestAgentModelUsageObservationV2(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              inputTokens: 1,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+        headers,
+        [404],
+      );
+    expectApiError(missingCompactModelUsageRun.body);
+    expect(missingCompactModelUsageRun.body.error.code).toBe("NOT_FOUND");
 
     const malformedTelemetryBucket = await api.requestAgentTelemetryUnchecked(
       {
@@ -1899,7 +1911,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
     context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Atom Grant" });
+    await completeOnboardingWithoutCredits(actor);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2410,7 +2422,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const grantExpiresAtUnix = epochSeconds(30);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Custom Grant" });
+    await completeOnboardingWithoutCredits(actor);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2556,12 +2568,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     ]);
   });
 
-  it("replays, expires, and auto-recharges subscription invoice credits", async () => {
+  it("replays and expires subscription invoice credits", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
-    const orgId = orgOf(actor);
     const granted = await runs.grantProEntitlement(actor);
 
     const baseline = await billing.readBillingStatus(actor);
@@ -2681,9 +2692,21 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     );
     expect(broken.body).toStrictEqual({ error: "Internal server error" });
     expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
+  });
 
-    // Concurrent auto-recharge invoices grant the sentinel exactly once.
-    const autoRechargeInvoice = {
+  it("atomically accumulates distinct auto-recharge invoices", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+
+    expect((await billing.readBillingStatus(actor)).credits).toBe(20_000);
+
+    // Concurrent auto-recharge invoices accumulate distinct grants while a
+    // duplicate delivery still grants exactly once.
+    const autoRechargeInvoiceA = {
       id: `in_bdd_auto_${randomUUID().slice(0, 8)}`,
       customer: granted.customerId,
       metadata: {
@@ -2693,26 +2716,37 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       },
       parent: null,
     };
+    const autoRechargeInvoiceB = {
+      ...autoRechargeInvoiceA,
+      id: `in_bdd_auto_${randomUUID().slice(0, 8)}`,
+    };
     await Promise.all([
       api.postStripeEvent(
-        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoice }),
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoiceA }),
         [200],
       ),
       api.postStripeEvent(
-        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoice }),
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoiceA }),
+        [200],
+      ),
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoiceB }),
         [200],
       ),
     ]);
     const final = await billing.readBillingStatus(actor);
-    expect(final.credits).toBe(65_000);
-    const autoGrant = final.creditGrants.find((grant) => {
+    expect(final.credits).toBe(30_000);
+    const autoGrants = final.creditGrants.filter((grant) => {
       return grant.source === "auto_recharge";
     });
-    expect(autoGrant?.amount).toBe(5000);
-    expect(autoGrant?.remaining).toBe(5000);
-    expect(
-      new Date(autoGrant?.expiresAt ?? "1970-01-01").getUTCFullYear(),
-    ).toBeGreaterThanOrEqual(2999);
+    expect(autoGrants).toHaveLength(2);
+    for (const autoGrant of autoGrants) {
+      expect(autoGrant.amount).toBe(5000);
+      expect(autoGrant.remaining).toBe(5000);
+      expect(
+        new Date(autoGrant.expiresAt).getUTCFullYear(),
+      ).toBeGreaterThanOrEqual(2999);
+    }
   });
 
   it("grants, refreshes, and clamps trial credits from trial-period invoices", async () => {
@@ -2721,7 +2755,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Trial Agent" });
+    await completeOnboardingWithoutCredits(actor);
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_trial_${suffix}`;
@@ -3429,7 +3463,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Binding Agent" });
+    await completeOnboardingWithoutCredits(actor);
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_bind_${suffix}`;
@@ -3656,7 +3690,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Credits Agent" });
+    await completeOnboardingWithoutCredits(actor);
     const baselineCredits = (await billing.readBillingStatus(actor)).credits;
 
     // A one-time checkout before payment settles grants nothing.
@@ -4497,7 +4531,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const updateCalls =
       context.mocks.stripe.subscriptions.update.mock.calls.length;
     const plainActor = bdd.user();
-    await bdd.bootstrapOnboarding(plainActor, {
+    await bdd.bootstrapLimitedFreeOnboarding(plainActor, {
       displayName: "BDD Plain Teardown",
     });
     api.verifyNextClerkWebhook({

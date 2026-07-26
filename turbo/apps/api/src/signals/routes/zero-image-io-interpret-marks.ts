@@ -23,6 +23,8 @@ const interpretMarksBody$ = bodyResultOf(
   zeroImageIoInterpretMarksContract.post,
 );
 
+// Compatibility for browser bundles shipped before image editing was retired.
+// Remove this route after the frontend rollout and rollback window complete.
 const postInterpretMarksInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);

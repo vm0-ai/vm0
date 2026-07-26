@@ -31,6 +31,12 @@ import {
   type PersistedAttachment,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  artifactCatalogContract,
+  type ArtifactCatalogKind,
+  type ArtifactDetail,
+  type ArtifactSummary,
+} from "@vm0/api-contracts/contracts/artifact-catalog";
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
@@ -61,6 +67,7 @@ import { storagesDownloadRoutes } from "../../storages-download";
 import { storagesListRoutes } from "../../storages-list";
 import { storagesPrepareRoutes } from "../../storages-prepare";
 import { zeroChatMessagesRoutes } from "../../zero-chat-messages";
+import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
 import { zeroArtifactsRoutes } from "../../zero-artifacts";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
@@ -76,7 +83,6 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-arti
 import { zeroHostRoutes } from "../../zero-host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
-import { zeroUploadsHtmlDomEditSnapshotRoutes } from "../../zero-uploads-html-dom-edit-snapshot";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 import type { ApiTestUser } from "./api-bdd";
@@ -158,6 +164,7 @@ type BddSendMessageBody =
       readonly computerUseHostId?: string | null;
       readonly clientMessageId?: string;
       readonly chatThreadSortEventId?: string;
+      readonly realAgentInPreview?: boolean;
       readonly revokesMessageId?: string;
     }
   | {
@@ -215,6 +222,7 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 const chatFilesRoutes = [
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
+  ...zeroArtifactCatalogRoutes,
   ...zeroArtifactsRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatThreadCreateRoutes,
@@ -230,7 +238,6 @@ const chatFilesRoutes = [
   ...zeroChatMessagesRoutes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsHtmlDomEditSnapshotRoutes,
   ...zeroHostRoutes,
   ...zeroModelPoliciesRoutes,
   ...storagesPrepareRoutes,
@@ -307,6 +314,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function artifactsClient() {
     return chatFilesApp(context)(artifactsContract);
+  }
+
+  function artifactCatalogClient() {
+    return chatFilesApp(context)(artifactCatalogContract);
   }
 
   function threadMarkReadClient() {
@@ -935,6 +946,8 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       query: {
+        readonly sinceSeqId?: number;
+        readonly beforeSeqId?: number;
         readonly sinceId?: string;
         readonly beforeId?: string;
         readonly limit?: number;
@@ -958,6 +971,8 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       query: {
+        readonly sinceSeqId?: number;
+        readonly beforeSeqId?: number;
         readonly sinceId?: string;
         readonly beforeId?: string;
         readonly limit?: number;
@@ -987,21 +1002,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async requestGetThreadMessage(
-      actor: ApiTestUser | null,
-      threadId: string,
-      messageId: string,
-      statuses: readonly (200 | 401 | 404)[],
-    ) {
-      return await accept(
-        threadMessagesClient().get({
-          headers: authenticate(context, actor),
-          params: { threadId, messageId },
-        }),
-        statuses,
-      );
     },
 
     async listThreadArtifacts(
@@ -1048,6 +1048,68 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async listArtifactCatalog(
+      actor: ApiTestUser,
+      query: {
+        readonly limit?: number;
+        readonly cursor?: string;
+        readonly kind?: ArtifactCatalogKind;
+      } = {},
+    ): Promise<{
+      readonly artifacts: readonly ArtifactSummary[];
+      readonly nextCursor: string | null;
+    }> {
+      const response = await accept(
+        artifactCatalogClient().list({
+          headers: authenticate(context, actor),
+          query,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestListArtifactCatalog(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403)[],
+    ) {
+      return await accept(
+        artifactCatalogClient().list({
+          headers: authenticate(context, actor),
+          query: {},
+        }),
+        statuses,
+      );
+    },
+
+    async getArtifactCatalogEntry(
+      actor: ApiTestUser,
+      artifactId: string,
+    ): Promise<ArtifactDetail> {
+      const response = await accept(
+        artifactCatalogClient().get({
+          headers: authenticate(context, actor),
+          params: { artifactId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestArtifactCatalogEntry(
+      actor: ApiTestUser | null,
+      artifactId: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        artifactCatalogClient().get({
+          headers: authenticate(context, actor),
+          params: { artifactId },
+        }),
+        statuses,
+      );
     },
 
     async listArtifactFavorites(
@@ -1204,24 +1266,6 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async requestUploadThreadArtifactGoogleSlidesFromUpload(
-      actor: ApiTestUser | null,
-      threadId: string,
-      uploadId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
-    ) {
-      const formData = new FormData();
-      formData.append("uploadId", uploadId);
-      return await accept(
-        threadArtifactsClient().uploadGoogleSlides({
-          headers: authenticate(context, actor),
-          params: { threadId },
-          body: formData,
-        }),
-        statuses,
-      );
-    },
-
     async requestSendMessage(
       actor: ApiTestUser | null,
       body: BddSendMessageBody,
@@ -1281,6 +1325,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.chatThreadSortEventId === undefined
                   ? {}
                   : { chatThreadSortEventId: body.chatThreadSortEventId }),
+                ...(body.realAgentInPreview === undefined
+                  ? {}
+                  : { realAgentInPreview: body.realAgentInPreview }),
                 ...(body.revokesMessageId === undefined
                   ? {}
                   : { revokesMessageId: body.revokesMessageId }),

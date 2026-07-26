@@ -795,11 +795,20 @@
         }, 4000);
       })();
     </script>
-    <script
-      src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
-      integrity="sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3"
-      crossorigin="anonymous"
-      defer
-    ></script>
+    <script>
+      (function () {
+        var hostname = window.location.hostname.toLowerCase();
+        if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
+
+        var instatusScript = document.createElement("script");
+        instatusScript.src =
+          "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
+        instatusScript.integrity =
+          "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
+        instatusScript.crossOrigin = "anonymous";
+        instatusScript.defer = true;
+        document.body.appendChild(instatusScript);
+      })();
+    </script>
   </body>
 </html>

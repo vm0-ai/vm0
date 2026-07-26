@@ -669,8 +669,10 @@ class TestErrorHandler:
         ] == [
             {
                 "model": "claude-sonnet-4-6",
-                "category": "tokens.input",
-                "quantity": 80,
+                "inputTokens": 80,
+                "outputTokens": 0,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0,
             }
         ]
         observation_key = observation_body["events"][0]["idempotencyKey"]

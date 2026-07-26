@@ -345,10 +345,10 @@ class ForwarderConcurrencyHarness:
         self,
         count: int,
         *,
-        timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+        wait_timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
     ) -> bool:
         """Wait until at least ``count`` workers reach the connection boundary."""
-        return await asyncio.to_thread(self._wait_started, count, timeout)
+        return await asyncio.to_thread(self._wait_started, count, wait_timeout)
 
     def _wait_started(self, count: int, timeout: float) -> bool:
         with self._condition:

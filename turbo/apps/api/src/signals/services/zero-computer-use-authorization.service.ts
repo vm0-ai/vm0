@@ -24,8 +24,10 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import { publishThreadListChanged } from "../external/realtime";
 import { slackOrgCallbackPayloadSchema } from "./slack-org-callback-payload";
 import { teamsOrgCallbackPayloadSchema } from "./teams-org-callback-payload";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import {
   computerUseHostIsOnline,
   listComputerUseHosts$,
@@ -423,25 +425,42 @@ async function teamsScopeExists(args: {
 async function applyChatAuthorizationScope(args: {
   readonly db: Db;
   readonly request: AuthorizationRequestRow;
+  readonly orgId: string;
   readonly userId: string;
   readonly computerUseHostId: string;
   readonly now: Date;
 }): Promise<boolean> {
-  const updated = await args.db
-    .update(chatThreads)
-    .set({
+  return await args.db.transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({
+        computerUseHostId: args.computerUseHostId,
+        updatedAt: args.now,
+      })
+      .where(
+        and(
+          eq(chatThreads.id, requiredChatThreadId(args.request)),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return false;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "computer_use_host_updated",
+      userId: args.userId,
+      orgId: args.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
       computerUseHostId: args.computerUseHostId,
-      updatedAt: args.now,
-    })
-    .where(
-      and(
-        eq(chatThreads.id, requiredChatThreadId(args.request)),
-        eq(chatThreads.userId, args.userId),
-      ),
-    )
-    .returning({ id: chatThreads.id });
-
-  return updated.length > 0;
+      createdAt: args.now,
+    });
+    return true;
+  });
 }
 
 async function applySlackAuthorizationScope(args: {
@@ -692,6 +711,7 @@ export const applyComputerUseAuthorizationRequest$ = command(
         ? await applyChatAuthorizationScope({
             db,
             request,
+            orgId: args.orgId,
             userId: args.userId,
             computerUseHostId: args.computerUseHostId,
             now,
@@ -726,6 +746,11 @@ export const applyComputerUseAuthorizationRequest$ = command(
       .set({ completedAt: now, updatedAt: now })
       .where(eq(computerUseAuthorizationRequests.id, request.id));
     signal.throwIfAborted();
+
+    if (request.source === "chat") {
+      await publishThreadListChanged(args.userId);
+      signal.throwIfAborted();
+    }
 
     return {
       status: "applied",

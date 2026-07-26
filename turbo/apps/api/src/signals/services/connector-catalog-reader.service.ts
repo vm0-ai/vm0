@@ -41,11 +41,8 @@ import {
   getFirewallPermissionSummary,
   loadFirewallPermissionMetadata,
 } from "@vm0/connectors/firewall-metadata";
-import { env } from "../../lib/env";
-import { logger } from "../../lib/log";
-import { waitUntil } from "../context/wait-until";
+import { isExternalConnectorCatalogEnabled } from "../../lib/connector-catalog-source-selection";
 import type { ReadonlyDb } from "../external/db";
-import { isAbortError, settle } from "../utils";
 import {
   getPublicDeviceAuthStartOptionDescriptors,
   getPublicManualGrantFieldDescriptors,
@@ -59,11 +56,8 @@ import {
   searchExternalConnectorCatalog,
   type ConnectorCatalogReferenceMetadata,
   type ConnectorCatalogStatusRead,
-  type ExternalConnectorCatalogDiagnostics,
   type ExternalConnectorCatalogRead,
 } from "./connector-catalog-external-reader.service";
-
-const log = logger("connector-catalog:shadow");
 
 export function isConnectorCatalogUnavailableError(error: unknown): boolean {
   return error instanceof ExternalConnectorCatalogUnavailableError;
@@ -547,332 +541,20 @@ async function getStaticPublicConnectorCatalogPermissionDetail(
   };
 }
 
-type ConnectorCatalogShadowOperation =
-  | "detail"
-  | "list"
-  | "permissions"
-  | "search"
-  | "status";
-
-interface ConnectorCatalogShadowItem {
-  readonly connectorRef: string;
-  readonly authMethodCount: number;
-  readonly value: unknown;
-}
-
-interface ConnectorCatalogShadowProjection {
-  readonly items: readonly ConnectorCatalogShadowItem[];
-  readonly metadata?: unknown;
-}
-
-function isApprovedStaticOnlyConnectorRef(connectorRef: string): boolean {
-  return connectorRef === "test-oauth" || connectorRef === "test-oauth-device";
-}
-
-function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => {
-      return canonicalValue(item);
-    });
-  }
-  if (typeof value !== "object" || value === null) {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => {
-        return left < right ? -1 : left > right ? 1 : 0;
-      })
-      .map(([key, entry]) => {
-        return [key, canonicalValue(entry)];
-      }),
-  );
-}
-
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalValue(value));
-}
-
-function normalizeProjectionItemOrder(
-  projection: ConnectorCatalogShadowProjection,
-): ConnectorCatalogShadowProjection {
-  return {
-    ...projection,
-    items: [...projection.items].sort((left, right) => {
-      return left.connectorRef < right.connectorRef
-        ? -1
-        : left.connectorRef > right.connectorRef
-          ? 1
-          : 0;
-    }),
-  };
-}
-
-function shadowItemMap(
-  projection: ConnectorCatalogShadowProjection,
-): ReadonlyMap<string, ConnectorCatalogShadowItem> {
-  return new Map(
-    projection.items.map((item) => {
-      return [item.connectorRef, item];
-    }),
-  );
-}
-
-function logShadowComparison(args: {
-  readonly operation: ConnectorCatalogShadowOperation;
-  readonly staticProjection: ConnectorCatalogShadowProjection;
-  readonly externalProjection: ConnectorCatalogShadowProjection;
-  readonly diagnostics: ExternalConnectorCatalogDiagnostics;
-}): void {
-  const staticItems = shadowItemMap(args.staticProjection);
-  const externalItems = shadowItemMap(args.externalProjection);
-  let approvedStaticOnlyConnectorCount = 0;
-  let staticOnlyConnectorCount = 0;
-  let externalOnlyConnectorCount = 0;
-  let semanticMismatchConnectorCount = 0;
-  for (const [connectorRef, item] of staticItems) {
-    const externalItem = externalItems.get(connectorRef);
-    if (!externalItem) {
-      if (isApprovedStaticOnlyConnectorRef(connectorRef)) {
-        approvedStaticOnlyConnectorCount += 1;
-      } else {
-        staticOnlyConnectorCount += 1;
-      }
-      continue;
-    }
-    if (canonicalJson(item.value) !== canonicalJson(externalItem.value)) {
-      semanticMismatchConnectorCount += 1;
-    }
-  }
-  for (const connectorRef of externalItems.keys()) {
-    if (!staticItems.has(connectorRef)) {
-      externalOnlyConnectorCount += 1;
-    }
-  }
-  const exactMatch =
-    canonicalJson(args.staticProjection) ===
-    canonicalJson(args.externalProjection);
-  const normalizedMatch =
-    canonicalJson(normalizeProjectionItemOrder(args.staticProjection)) ===
-    canonicalJson(normalizeProjectionItemOrder(args.externalProjection));
-  const staticAuthMethodCount = args.staticProjection.items.reduce(
-    (count, item) => {
-      return count + item.authMethodCount;
-    },
-    0,
-  );
-  const externalAuthMethodCount = args.externalProjection.items.reduce(
-    (count, item) => {
-      return count + item.authMethodCount;
-    },
-    0,
-  );
-
-  log.debug("Connector catalog shadow comparison completed", {
-    type: "connector_catalog_shadow_comparison",
-    operation: args.operation,
-    outcome: exactMatch ? "match" : "difference",
-    sourceId: args.diagnostics.sourceId,
-    schemaVersion: args.diagnostics.schemaVersion,
-    catalogVersion: args.diagnostics.catalogVersion,
-    integrityDigest: args.diagnostics.integrityDigest,
-    capabilityDigest: args.diagnostics.capabilityDigest,
-    rawConnectorCount: args.diagnostics.rawConnectorCount,
-    rawAuthMethodCount: args.diagnostics.rawAuthMethodCount,
-    compatibilityFilteredMethodCount:
-      args.diagnostics.compatibilityFilteredMethodCount,
-    compatibilityReasonCounts: args.diagnostics.compatibilityReasonCounts,
-    visibilityFilteredMethodCount:
-      args.diagnostics.visibilityFilteredMethodCount,
-    rolloutFilteredMethodCount: args.diagnostics.rolloutFilteredMethodCount,
-    surfacePolicyFilteredMethodCount:
-      args.diagnostics.surfacePolicyFilteredMethodCount,
-    removedConnectorCount: args.diagnostics.removedConnectorCount,
-    staticConnectorCount: staticItems.size,
-    externalConnectorCount: externalItems.size,
-    staticAuthMethodCount,
-    externalAuthMethodCount,
-    approvedStaticOnlyConnectorCount,
-    staticOnlyConnectorCount,
-    externalOnlyConnectorCount,
-    semanticMismatchConnectorCount,
-    metadataMismatch:
-      canonicalJson(args.staticProjection.metadata) !==
-      canonicalJson(args.externalProjection.metadata),
-    orderOnlyDifference: !exactMatch && normalizedMatch,
-  });
-}
-
-async function runShadowComparison<T>(args: {
-  readonly operation: ConnectorCatalogShadowOperation;
-  readonly staticProjection: ConnectorCatalogShadowProjection;
-  readonly externalRead: () => Promise<ExternalConnectorCatalogRead<T>>;
-  readonly project: (value: T) => ConnectorCatalogShadowProjection;
-}): Promise<void> {
-  const result = await settle(args.externalRead());
-  if (!result.ok) {
-    if (isAbortError(result.error)) {
-      throw result.error;
-    }
-    log.warn("Connector catalog shadow comparison unavailable", {
-      type: "connector_catalog_shadow_comparison",
-      operation: args.operation,
-      outcome:
-        result.error instanceof ExternalConnectorCatalogUnavailableError
-          ? "unavailable"
-          : "error",
-    });
-    return;
-  }
-  logShadowComparison({
-    operation: args.operation,
-    staticProjection: args.staticProjection,
-    externalProjection: args.project(result.value.value),
-    diagnostics: result.value.diagnostics,
-  });
-}
-
-function scheduleShadowComparison<T>(args: {
-  readonly operation: ConnectorCatalogShadowOperation;
-  readonly staticValue: T;
-  readonly externalRead: () => Promise<ExternalConnectorCatalogRead<T>>;
-  readonly project: (value: T) => ConnectorCatalogShadowProjection;
-}): void {
-  waitUntil(
-    runShadowComparison({
-      operation: args.operation,
-      staticProjection: args.project(args.staticValue),
-      externalRead: args.externalRead,
-      project: args.project,
-    }),
-  );
-}
-
 async function readSelectedCatalog<T>(args: {
-  readonly operation: ConnectorCatalogShadowOperation;
   readonly staticRead: () => Promise<T>;
   readonly externalRead: () => Promise<ExternalConnectorCatalogRead<T>>;
-  readonly project: (value: T) => ConnectorCatalogShadowProjection;
 }): Promise<T> {
-  const sourceMode = env("CONNECTOR_CATALOG_SOURCE_MODE");
-  if (sourceMode === "static") {
-    return await args.staticRead();
-  }
-  if (sourceMode === "external") {
+  if (isExternalConnectorCatalogEnabled()) {
     return (await args.externalRead()).value;
   }
-
-  const staticValue = await args.staticRead();
-  scheduleShadowComparison({
-    operation: args.operation,
-    staticValue,
-    externalRead: args.externalRead,
-    project: args.project,
-  });
-  return staticValue;
-}
-
-function itemShadowProjection(
-  connectors: readonly PublicConnectorCatalogItem[],
-  metadata: PublicConnectorCatalogListResponse["categoryMetadata"],
-): ConnectorCatalogShadowProjection {
-  return {
-    items: connectors.map((connector) => {
-      return {
-        connectorRef: connector.connectorRef,
-        authMethodCount: connector.authMethods.length,
-        value: connector,
-      };
-    }),
-    metadata,
-  };
-}
-
-function listShadowProjection(
-  value: PublicConnectorCatalogListResponse,
-): ConnectorCatalogShadowProjection {
-  return itemShadowProjection(value.connectors, value.categoryMetadata);
-}
-
-function statusShadowProjection(
-  value: ConnectorCatalogStatusRead,
-): ConnectorCatalogShadowProjection {
-  const projection = itemShadowProjection(
-    value.status.connectors.map((connector) => {
-      return {
-        connectorRef: connector.connectorRef,
-        label: connector.label,
-        description: connector.description,
-        icon: connector.icon,
-        category: connector.category,
-        generation: connector.generation,
-        tags: connector.tags,
-        authMethods: connector.authMethods,
-        permissionSummary: connector.permissionSummary,
-      };
-    }),
-    value.status.categoryMetadata,
-  );
-  return {
-    ...projection,
-    metadata: {
-      categoryMetadata: value.status.categoryMetadata,
-      referenceMetadata: value.referenceMetadata,
-    },
-  };
-}
-
-function detailShadowProjection(
-  value: PublicConnectorCatalogDetail | null,
-): ConnectorCatalogShadowProjection {
-  return {
-    items: value
-      ? [
-          {
-            connectorRef: value.connectorRef,
-            authMethodCount: value.authMethods.length,
-            value,
-          },
-        ]
-      : [],
-  };
-}
-
-function permissionShadowProjection(
-  value: PublicConnectorCatalogPermissionDetail | null,
-): ConnectorCatalogShadowProjection {
-  return {
-    items: value
-      ? [
-          {
-            connectorRef: value.connectorRef,
-            authMethodCount: 0,
-            value,
-          },
-        ]
-      : [],
-  };
-}
-
-function searchShadowProjection(
-  value: readonly ConnectorSearchItem[],
-): ConnectorCatalogShadowProjection {
-  return {
-    items: value.map((connector) => {
-      return {
-        connectorRef: connector.id,
-        authMethodCount: connector.authMethods.length,
-        value: connector,
-      };
-    }),
-  };
+  return await args.staticRead();
 }
 
 export async function searchConnectorCatalog(
   args: ConnectorCatalogSearchArgs,
 ): Promise<ConnectorSearchItem[]> {
   return await readSelectedCatalog({
-    operation: "search",
     staticRead: async () => {
       return await searchStaticConnectorCatalog(args);
     },
@@ -883,7 +565,6 @@ export async function searchConnectorCatalog(
         featureStates: args.featureStates,
       });
     },
-    project: searchShadowProjection,
   });
 }
 
@@ -891,7 +572,6 @@ export async function listPublicConnectorCatalog(
   args: ConnectorCatalogReadArgs,
 ): Promise<PublicConnectorCatalogListResponse> {
   return await readSelectedCatalog({
-    operation: "list",
     staticRead: async () => {
       return await listStaticPublicConnectorCatalog(args);
     },
@@ -901,7 +581,6 @@ export async function listPublicConnectorCatalog(
         featureStates: args.featureStates,
       });
     },
-    project: listShadowProjection,
   });
 }
 
@@ -912,7 +591,6 @@ export async function readPublicConnectorCatalogStatus(
   },
 ): Promise<ConnectorCatalogStatusRead> {
   return await readSelectedCatalog({
-    operation: "status",
     staticRead: async () => {
       return {
         status: await listStaticPublicConnectorCatalogStatus(args),
@@ -929,7 +607,6 @@ export async function readPublicConnectorCatalogStatus(
         referenceConnectorRefs: args.referenceConnectorRefs,
       });
     },
-    project: statusShadowProjection,
   });
 }
 
@@ -949,7 +626,6 @@ export async function getPublicConnectorCatalogDetail(
   args: ConnectorCatalogConnectorReadArgs,
 ): Promise<PublicConnectorCatalogDetail | null> {
   return await readSelectedCatalog({
-    operation: "detail",
     staticRead: async () => {
       return await getStaticPublicConnectorCatalogDetail(args);
     },
@@ -960,7 +636,6 @@ export async function getPublicConnectorCatalogDetail(
         featureStates: args.featureStates,
       });
     },
-    project: detailShadowProjection,
   });
 }
 
@@ -968,7 +643,6 @@ export async function getPublicConnectorCatalogPermissionDetail(
   args: ConnectorCatalogConnectorReadArgs,
 ): Promise<PublicConnectorCatalogPermissionDetail | null> {
   return await readSelectedCatalog({
-    operation: "permissions",
     staticRead: async () => {
       return await getStaticPublicConnectorCatalogPermissionDetail(args);
     },
@@ -979,6 +653,5 @@ export async function getPublicConnectorCatalogPermissionDetail(
         featureStates: args.featureStates,
       });
     },
-    project: permissionShadowProjection,
   });
 }

@@ -10,11 +10,13 @@ import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
+  connectorCurrentConnectionStatus,
   getConnectorStatusConnectLaunchMode,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
   setSelectedConnectorRef$,
 } from "../zero-page/settings/connectors.ts";
+import { resolvePlatformOriginForTarget } from "../api-base.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-ref.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
@@ -76,16 +78,16 @@ export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(setSelectedConnectorRef$, null);
 });
 
-const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
-
 export function parseConnectorAuthorizeUrl(
   value: string,
 ): ConnectorActionDescriptor | null {
-  if (!URL.canParse(value, CONNECTOR_AUTHORIZE_BASE_URL)) {
+  const appOrigin = window.location.origin;
+  const canonicalAppOrigin = resolvePlatformOriginForTarget("app");
+  if (!URL.canParse(value, appOrigin)) {
     return null;
   }
-  const url = new URL(value, CONNECTOR_AUTHORIZE_BASE_URL);
-  if (url.origin !== CONNECTOR_AUTHORIZE_BASE_URL) {
+  const url = new URL(value, appOrigin);
+  if (url.origin !== appOrigin && url.origin !== canonicalAppOrigin) {
     return null;
   }
 
@@ -110,10 +112,11 @@ export function parseConnectorAuthorizeUrl(
 export function parseCustomConnectorProposalUrl(
   value: string,
 ): CustomConnectorActionDescriptor | null {
-  if (!URL.canParse(value, CONNECTOR_AUTHORIZE_BASE_URL)) {
+  const appOrigin = window.location.origin;
+  if (!URL.canParse(value, appOrigin)) {
     return null;
   }
-  const url = new URL(value, CONNECTOR_AUTHORIZE_BASE_URL);
+  const url = new URL(value, appOrigin);
   if (url.pathname !== "/connectors/custom/proposal") {
     return null;
   }
@@ -155,56 +158,31 @@ function getDirectConnectMethod(connector: PublicConnectorCatalogStatusItem) {
   return null;
 }
 
-export function createConnectorSignals(
+type ConnectorActivationSignals = Pick<
+  ConnectorSignals,
+  "available$" | "catalogItem$" | "connected$"
+>;
+
+function createConnectorActivation(
   descriptor: ConnectorActionDescriptor,
-): ConnectorSignals {
-  const catalogItem$ = computed(async (get) => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef) ?? null;
-  });
-
-  const available$ = computed(async (get): Promise<boolean> => {
-    const catalogItem = await get(catalogItem$);
-    return catalogItem !== null;
-  });
-
-  const connected$ = computed(async (get): Promise<boolean> => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
-  });
-
-  const authorized$ = computed(async (get): Promise<boolean> => {
-    return await get(
-      isAgentConnectorAuthorized({
-        agentId: descriptor.agentId,
-        connectorRef: descriptor.connectorRef,
-      }),
-    );
-  });
-
-  const complete$ = computed(async (get): Promise<boolean> => {
-    const available = await get(available$);
-    if (!available) {
-      return false;
-    }
-
-    const [connected, authorized] = await Promise.all([
-      get(connected$),
-      get(authorized$),
-    ]);
-    return connected && authorized;
-  });
-
-  const activate$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const available = await get(available$);
+  signals: ConnectorActivationSignals,
+): ConnectorSignals["activate$"] {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const available = await get(signals.available$);
     signal.throwIfAborted();
     if (!available) {
       return;
     }
 
-    const connected = await get(connected$);
+    const [connected, catalogItem] = await Promise.all([
+      get(signals.connected$),
+      get(signals.catalogItem$),
+    ]);
     signal.throwIfAborted();
-    if (connected) {
+    const reconnectRequired =
+      catalogItem !== null &&
+      connectorCurrentConnectionStatus(catalogItem) === "reconnect-required";
+    if (connected && !reconnectRequired) {
       await set(
         authorizeDirectedConnector$,
         descriptor.connectorRef,
@@ -279,6 +257,59 @@ export function createConnectorSignals(
         signal,
       );
     }
+  });
+}
+
+export function createConnectorSignals(
+  descriptor: ConnectorActionDescriptor,
+): ConnectorSignals {
+  const catalogItem$ = computed(async (get) => {
+    const statusByRef = await get(connectorCatalogStatusByRef$);
+    return statusByRef.get(descriptor.connectorRef) ?? null;
+  });
+
+  const available$ = computed(async (get): Promise<boolean> => {
+    const catalogItem = await get(catalogItem$);
+    return catalogItem !== null;
+  });
+
+  const connected$ = computed(async (get): Promise<boolean> => {
+    const statusByRef = await get(connectorCatalogStatusByRef$);
+    return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
+  });
+
+  const authorized$ = computed(async (get): Promise<boolean> => {
+    return await get(
+      isAgentConnectorAuthorized({
+        agentId: descriptor.agentId,
+        connectorRef: descriptor.connectorRef,
+      }),
+    );
+  });
+
+  const complete$ = computed(async (get): Promise<boolean> => {
+    const available = await get(available$);
+    if (!available) {
+      return false;
+    }
+
+    const [connected, authorized, catalogItem] = await Promise.all([
+      get(connected$),
+      get(authorized$),
+      get(catalogItem$),
+    ]);
+    return (
+      connected &&
+      authorized &&
+      catalogItem !== null &&
+      connectorCurrentConnectionStatus(catalogItem) !== "reconnect-required"
+    );
+  });
+
+  const activate$ = createConnectorActivation(descriptor, {
+    available$,
+    catalogItem$,
+    connected$,
   });
 
   return {

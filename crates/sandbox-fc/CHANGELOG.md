@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.37.151](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.150...sandbox-fc-v0.37.151) (2026-07-25)
+
+## [0.37.150](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.149...sandbox-fc-v0.37.150) (2026-07-25)
+
+## [0.37.149](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.148...sandbox-fc-v0.37.149) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** classify dns readiness network boundary ([#22724](https://github.com/vm0-ai/vm0/issues/22724)) ([628b0c8](https://github.com/vm0-ai/vm0/commit/628b0c83a0f7da5f02452b962d976aac42475cc0))
+
+## [0.37.148](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.147...sandbox-fc-v0.37.148) (2026-07-23)
+
+
+### Performance Improvements
+
+* **runner:** preconnect one-shot nbd cow slots ([#22683](https://github.com/vm0-ai/vm0/issues/22683)) ([1d02f4a](https://github.com/vm0-ai/vm0/commit/1d02f4a9e5df3d981da9fbf99606bd10d31b1a16))
+
 ## [0.37.147](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.146...sandbox-fc-v0.37.147) (2026-07-23)
 
 ## [0.37.146](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.145...sandbox-fc-v0.37.146) (2026-07-23)

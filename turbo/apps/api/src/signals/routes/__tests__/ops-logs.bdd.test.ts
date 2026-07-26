@@ -4,19 +4,30 @@ import { gzipSync, zstdCompressSync } from "node:zlib";
 import AdmZip from "adm-zip";
 import { afterEach, describe, expect, it } from "vitest";
 
+import type {
+  GenerationTemplateRequest,
+  UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { modelStatsRoutes } from "../model-stats";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { commitMemoryVersion } from "./helpers/zero-memory";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*
@@ -24,7 +35,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
  *
  * This file is the SOLE OWNER of GET /api/cron/aggregate-model-stats:
  * the cron is a global sweep (window-scoped DELETE+reinsert over model_stat
- * plus an unconditional model_usage_observation retention delete), so calling
+ * plus an unconditional compact observation retention delete), so calling
  * it from any other test file would race this file's far-past observation
  * windows on the shared database — the same single-file-ownership rule as the
  * email drain / billing reconcile / screenshot cleanup crons (see the shared
@@ -60,6 +71,7 @@ async function entitledRunActor(): Promise<{
   const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
+  createMiscRoutesApi(context);
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
   api.configureRunnerGroup();
@@ -313,51 +325,69 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const baseTotal = baseline.body.totalTokens;
 
     mockNow(mainObservedAt);
-    const ingested = await webhooks.requestAgentModelUsageObservation(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.input",
-            quantity: 300,
-          },
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.output",
-            quantity: 200,
-          },
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.cache_read",
-            quantity: 40,
-          },
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.cache_creation",
-            quantity: 10,
-          },
-        ],
-      },
+    const compactIdempotencyKey = randomUUID();
+    const compactBody = {
+      runId: created.runId,
+      events: [
+        {
+          idempotencyKey: compactIdempotencyKey,
+          model,
+          inputTokens: 300,
+          outputTokens: 200,
+          cacheReadInputTokens: 40,
+          cacheCreationInputTokens: 10,
+        },
+      ],
+    };
+    const duplicateWithinRequest =
+      await webhooks.requestAgentModelUsageObservationV2Unchecked(
+        {
+          runId: created.runId,
+          events: [compactBody.events[0], compactBody.events[0]],
+        },
+        sandboxHeaders,
+        [400],
+      );
+    expect(duplicateWithinRequest.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+
+    const ingested = await webhooks.requestAgentModelUsageObservationV2(
+      compactBody,
       sandboxHeaders,
       [200],
     );
     expect(ingested.body).toStrictEqual({ success: true });
+    await webhooks.requestAgentModelUsageObservationV2(
+      compactBody,
+      sandboxHeaders,
+      [200],
+    );
+    await Promise.all([
+      webhooks.requestAgentModelUsageObservationV2(
+        compactBody,
+        sandboxHeaders,
+        [200],
+      ),
+      webhooks.requestAgentModelUsageObservationV2(
+        compactBody,
+        sandboxHeaders,
+        [200],
+      ),
+    ]);
 
     mockNow(previousObservedAt);
-    await webhooks.requestAgentModelUsageObservation(
+    await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model,
-            category: "tokens.input",
-            quantity: 80,
+            inputTokens: 80,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
@@ -389,15 +419,17 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     // Re-ingest into the already-aggregated hour: the window DELETE+reinsert
     // must surface the additional output tokens on the next aggregation.
     mockNow(mainObservedAt);
-    await webhooks.requestAgentModelUsageObservation(
+    await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model,
-            category: "tokens.output",
-            quantity: 50,
+            inputTokens: 0,
+            outputTokens: 50,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
@@ -435,6 +467,48 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 
     const fallback = await api.readModelRankings("unsupported");
     expect(fallback.body.period).toBe("week");
+
+    // A failed rebuild must roll back the window DELETE. 1,024 maximum safe
+    // integers still fit in PostgreSQL bigint; the 1,025th overflows SUM.
+    mockNow(mainObservedAt);
+    const overflowEvents = Array.from({ length: 1025 }, () => {
+      return {
+        idempotencyKey: randomUUID(),
+        model,
+        inputTokens: Number.MAX_SAFE_INTEGER,
+        outputTokens: 0,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      };
+    });
+    for (let offset = 0; offset < overflowEvents.length; offset += 100) {
+      await webhooks.requestAgentModelUsageObservationV2(
+        {
+          runId: created.runId,
+          events: overflowEvents.slice(offset, offset + 100),
+        },
+        sandboxHeaders,
+        [200],
+      );
+    }
+
+    mockNow(aggregateAt);
+    const aggregateApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: modelStatsRoutes,
+    });
+    const failedAggregate = await aggregateApp.request(
+      `${cronAggregateModelStatsContract.aggregate.path}?hours=24`,
+      {
+        headers: { authorization: "Bearer test-cron-secret" },
+      },
+    );
+    expect(failedAggregate.status).toBe(500);
+    await expect(failedAggregate.json()).resolves.toStrictEqual({
+      error: "Internal server error",
+    });
+    const afterFailedRebuild = await api.readModelRankings("today");
+    expect(afterFailedRebuild.body).toStrictEqual(reprocessed.body);
 
     // Retention: 33 days later the cron deletes every observation at or
     // before our day; the re-aggregation then empties the window's stats, so
@@ -612,6 +686,100 @@ describe("OPS-01: user data export", () => {
       nextExportAt: null,
     });
   });
+
+  it.each([
+    { projection: "structured", structuredPromptEnabled: true },
+    { projection: "legacy", structuredPromptEnabled: false },
+  ])(
+    "exports the $projection user-message projection",
+    async ({ structuredPromptEnabled }) => {
+      const api = createOpsLogsApi(context);
+      const chat = createChatFilesBddApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an org-scoped actor");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: actor.orgId },
+        { [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled },
+      );
+
+      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+      if (!style) {
+        throw new Error("Expected a registered illustration style");
+      }
+      const generationTemplate: GenerationTemplateRequest = {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      };
+      const structuredPrompt: UserMessageDocument = {
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: style.title,
+            template: generationTemplate,
+          },
+          { type: "text", text: "Export the structured request" },
+        ],
+      };
+      const sent = await chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          prompt: "stale export content",
+          generationTemplate,
+          structuredPrompt,
+        },
+        [201],
+      );
+      if (sent.status !== 201) {
+        throw new Error("Expected the structured message send to succeed");
+      }
+
+      const exportStartAt = Date.UTC(2026, 4, 12, 5, 30);
+      mockNow(exportStartAt);
+      context.mocks.s3.getSignedUrl.mockResolvedValue(
+        "https://r2.example.com/bdd-structured-export.zip?sig=test",
+      );
+      const started = await api.requestPostUserExport(actor, [202]);
+      const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
+      await waitForUserExportJobStatus(
+        api,
+        actor,
+        started.body.jobId,
+        "completed",
+      );
+
+      const messages = JSON.parse(
+        zipText(
+          exportZip(exportKey),
+          `conversations/chat-thread-${sent.body.threadId}.json`,
+        ),
+      ) as {
+        readonly role: string;
+        readonly content: string;
+        readonly structuredPrompt?: UserMessageDocument;
+      }[];
+      const expectedContent = structuredPromptEnabled
+        ? `[Template: ${style.title}]\n\nExport the structured request`
+        : "stale export content";
+      expect(messages[0]).toMatchObject({
+        role: "user",
+        content: expectedContent,
+        ...(structuredPromptEnabled ? { structuredPrompt } : {}),
+      });
+      expect(messages[0]?.content).not.toContain(
+        structuredPromptEnabled
+          ? "stale export content"
+          : "Export the structured request",
+      );
+      if (!structuredPromptEnabled) {
+        expect(messages[0]).not.toHaveProperty("structuredPrompt");
+      }
+    },
+  );
 
   it("exports only agent instruction files, workflow files, and memory files", async () => {
     const api = createOpsLogsApi(context);

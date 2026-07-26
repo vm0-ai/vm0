@@ -119,10 +119,10 @@ import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
-  parsePresentationEditDraft,
+  parsePresentationPreviewDraft,
   previewPresentationHtml,
-  type PresentationEditDraft,
-} from "./presentation-html-edit-protocol.ts";
+  type PresentationPreviewDraft,
+} from "./presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "./zero-attachment-url.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -169,7 +169,6 @@ import {
 } from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
-  ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
   ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
@@ -2351,7 +2350,7 @@ function presentationTemplateThemeCss(
 
 function themedPreviewPresentationHtml(params: {
   readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
   return previewPresentationHtml({
@@ -2363,7 +2362,7 @@ function themedPreviewPresentationHtml(params: {
 
 async function loadPresentationTemplateHtmlPreview(params: {
   readonly item: PresentationTemplateItem;
-}): Promise<PresentationEditDraft | null> {
+}): Promise<PresentationPreviewDraft | null> {
   const response = await fetch(
     readableAttachmentResourceUrl(params.item.embedUrl),
     {
@@ -2375,7 +2374,7 @@ async function loadPresentationTemplateHtmlPreview(params: {
     throw new Error(`Failed to load template HTML (${response.status})`);
   }
 
-  const draft = parsePresentationEditDraft(await response.text());
+  const draft = parsePresentationPreviewDraft(await response.text());
   return draft.slides.length > 0 ? draft : null;
 }
 
@@ -2425,7 +2424,7 @@ function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
 
 function createThemedPresentationPreviewUrl(params: {
   readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
   return URL.createObjectURL(
@@ -2444,7 +2443,7 @@ function createThemedPresentationPreviewUrl(params: {
 
 function createThemedPresentationPreviewHtml(params: {
   readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
   return themedPreviewPresentationHtml({
@@ -2502,7 +2501,7 @@ function getPresentationTemplateThumbnailThemeVariables(
 }
 
 function getPresentationTemplateThumbnailPreviewHtml(
-  draft: PresentationEditDraft,
+  draft: PresentationPreviewDraft,
   slideId: string,
 ): string {
   return previewPresentationHtml({
@@ -2611,7 +2610,7 @@ function PresentationTemplateShadowThumbnail({
   themeVariables,
   title,
 }: {
-  readonly draft: PresentationEditDraft | undefined;
+  readonly draft: PresentationPreviewDraft | undefined;
   readonly fallbackImage: string;
   readonly runtime: TemplatePreviewRuntime;
   readonly slideId: string | null;
@@ -2651,7 +2650,7 @@ function PresentationTemplateShadowThumbnail({
 }
 
 function createPresentationTemplateHtmlPreviewState(params: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -2689,7 +2688,7 @@ function createPresentationTemplateHtmlPreviewState(params: {
 }
 
 function createPresentationTemplateCardHtmlPreviewState(params: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -3173,7 +3172,7 @@ function setLoadedPresentationTemplateDetailPreview({
   selectedTheme,
   setDetailPreview,
 }: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -3277,7 +3276,7 @@ function TemplatePreviewPage({
   );
 
   const setLoadedDetailPreview = (params: {
-    readonly draft: PresentationEditDraft;
+    readonly draft: PresentationPreviewDraft;
     readonly index: number;
     readonly previousFrameUrl: string | null;
     readonly theme: PresentationTemplateThemeOption;
@@ -6026,9 +6025,6 @@ function ComputerUseDownloadDialog({
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
       : "checking";
-  const features = useGet(featureSwitch$);
-  const showIntelDownload =
-    features[FeatureSwitchKey.DesktopX64Download] ?? false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -6053,39 +6049,7 @@ function ComputerUseDownloadDialog({
           </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
-          {showIntelDownload ? (
-            <div className="flex flex-col items-center gap-3">
-              <Button asChild size="lg" className="w-full">
-                <a
-                  href={downloadUrl}
-                  aria-label="Download for Mac Apple Silicon"
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => {
-                    onOpenChange(false);
-                  }}
-                >
-                  <IconDownload size={16} stroke={1.5} />
-                  Download for Mac (Apple Silicon)
-                </a>
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                On an Intel Mac?{" "}
-                <a
-                  href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
-                  aria-label="Download for Mac Intel"
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => {
-                    onOpenChange(false);
-                  }}
-                  className="font-medium text-primary hover:underline"
-                >
-                  Download here
-                </a>
-              </p>
-            </div>
-          ) : downloadSupportStatus === "unsupported-intel-mac" ? (
+          {downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
               <IconAlertTriangle size={16} stroke={1.5} />
               {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
@@ -6480,6 +6444,71 @@ function toPersistedAttachments(
     });
 }
 
+function restoreChatClipboardPayload({
+  event,
+  structuredPromptEnabled,
+  visualAttachmentUnsupported,
+  insertPromptMarkdown,
+  restoreAttachments,
+  onTemplateChange,
+  onDraftChange,
+}: {
+  event: ComposerPasteEvent;
+  structuredPromptEnabled: boolean;
+  visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
+  insertPromptMarkdown: (value: string) => void;
+  restoreAttachments: (attachments: PersistedAttachment[]) => void;
+  onTemplateChange:
+    | ((value: GenerationTemplateRequest | undefined) => void)
+    | undefined;
+  onDraftChange: (() => void) | undefined;
+}): boolean {
+  if (!event.clipboardData) {
+    return false;
+  }
+  const payload = readChatMessageFromClipboard(event.clipboardData);
+  if (!payload) {
+    return false;
+  }
+  const structuredPrompt = structuredPromptEnabled
+    ? payload.structuredPrompt
+    : undefined;
+  const persistedAttachments = toPersistedAttachments(payload.attachments);
+  if (!structuredPrompt && persistedAttachments.length === 0) {
+    return false;
+  }
+  const allowedAttachments = visualAttachmentUnsupported
+    ? persistedAttachments.filter((attachment) => {
+        return !isVisualAttachment({
+          contentType: attachment.contentType,
+          filename: attachment.filename,
+        });
+      })
+    : persistedAttachments;
+  if (
+    visualAttachmentUnsupported &&
+    allowedAttachments.length < persistedAttachments.length
+  ) {
+    showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+  }
+
+  event.preventDefault();
+  if (payload.text) {
+    insertPromptMarkdown(payload.text);
+  }
+  const templatePart = structuredPrompt?.parts.find((part) => {
+    return part.type === "template";
+  });
+  if (templatePart?.type === "template") {
+    onTemplateChange?.(templatePart.template);
+  }
+  if (allowedAttachments.length > 0) {
+    restoreAttachments(allowedAttachments);
+  }
+  onDraftChange?.();
+  return true;
+}
+
 type KeyboardSendAction = "none" | "send" | "queue";
 
 function ComposerInputSlot({
@@ -6772,6 +6801,9 @@ export function useZeroChatComposer({
   const showAddDialog = useGet(composerConnectors.showAddDialog$);
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
+  const featureSwitches = useGet(featureSwitch$);
+  const structuredPromptEnabled =
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -6811,33 +6843,18 @@ export function useZeroChatComposer({
     if (!e.clipboardData) {
       return;
     }
-    const chatPayload = readChatMessageFromClipboard(e.clipboardData);
-    if (chatPayload && chatPayload.attachments.length > 0) {
-      const persistedAttachments = toPersistedAttachments(
-        chatPayload.attachments,
-      );
-      if (persistedAttachments.length > 0) {
-        const allowedAttachments = visualAttachmentUnsupported
-          ? persistedAttachments.filter((attachment) => {
-              return !isVisualAttachment({
-                contentType: attachment.contentType,
-                filename: attachment.filename,
-              });
-            })
-          : persistedAttachments;
-        if (allowedAttachments.length < persistedAttachments.length) {
-          showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
-        }
-        e.preventDefault();
-        if (chatPayload.text) {
-          insertPromptMarkdown(chatPayload.text);
-        }
-        if (allowedAttachments.length > 0) {
-          restoreAttachments(allowedAttachments);
-        }
-        onDraftChange?.();
-        return;
-      }
+    if (
+      restoreChatClipboardPayload({
+        event: e,
+        structuredPromptEnabled,
+        visualAttachmentUnsupported,
+        insertPromptMarkdown,
+        restoreAttachments,
+        onTemplateChange: templatePicker?.onChange,
+        onDraftChange,
+      })
+    ) {
+      return;
     }
 
     const items = e.clipboardData?.items;

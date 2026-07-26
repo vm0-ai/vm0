@@ -9,7 +9,12 @@ import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_current_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
-from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
+from tests.usage_buffer_helpers import (
+    RecordingEnqueue,
+    event,
+    flush_log_entries,
+    observation,
+)
 from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 
 
@@ -51,6 +56,30 @@ class _FalseyFlushOwnerLock(_InstrumentedFlushOwnerLock):
     def acquire(self, blocking: bool = True) -> bool:
         self.acquire_modes.append(blocking)
         return super().acquire(blocking)
+
+
+class _FailingRecordingTimer(RecordingTimer):
+    def start(self) -> None:
+        raise RuntimeError("can't start new thread")
+
+
+class _BlockingFailingRecordingTimer(_FailingRecordingTimer):
+    def __init__(
+        self,
+        delay: float,
+        callback: Callable[[], None],
+        *,
+        start_entered: threading.Event,
+        release_start: threading.Event,
+    ) -> None:
+        super().__init__(delay, callback)
+        self._start_entered = start_entered
+        self._release_start = release_start
+
+    def start(self) -> None:
+        self._start_entered.set()
+        assert self._release_start.wait(timeout=1), "timer start was not released"
+        super().start()
 
 
 def test_usage_buffer_test_injections_accept_falsey_timer_factory_and_lock(tmp_path):
@@ -647,7 +676,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
         "https://api.test/api/webhooks/agent/model-usage-observation",
         "token-a",
         "run-1",
-        [event(source_key="observation-source")],
+        [observation(source_key="observation-source", input_tokens=1)],
         proxy_log_path,
     )
     assert len(timers) == 1
@@ -710,6 +739,204 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
         reports=0,
         flush_request_id="priority-drained",
     )
+
+
+def test_failed_timer_start_allows_idempotent_replay_to_reschedule(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    enqueue = RecordingEnqueue()
+    timers: list[RecordingTimer] = []
+
+    def timer_factory(delay: float, callback: Callable[[], None]) -> RecordingTimer:
+        timer = (
+            _FailingRecordingTimer(delay, callback)
+            if not timers
+            else RecordingTimer(delay, callback)
+        )
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(
+        timer_enabled=True,
+        timer_factory=timer_factory,
+        enqueue_webhook=enqueue,
+    )
+    usage.set_pending_path(str(pending_path))
+    source_event = event(source_key="source-1", quantity=10)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [source_event],
+            proxy_log_path,
+        )
+
+    assert len(timers) == 1
+    assert timers[0].started is False
+    assert_current_pending(pending_path, flows=0, buffered=1, reports=0)
+
+    assert (
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [source_event],
+            proxy_log_path,
+        )
+        == 0
+    )
+
+    assert len(timers) == 2
+    assert timers[1].started is True
+    enqueue.assert_not_called()
+
+    timers[1].callback()
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["events"][0]["quantity"] == 10
+    assert_current_pending(pending_path, flows=0, buffered=0, reports=0)
+
+
+def test_failed_retained_retry_timer_allows_idempotent_replay_to_reschedule(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    enqueue = RecordingEnqueue(return_value=False)
+    timers: list[RecordingTimer] = []
+
+    def timer_factory(delay: float, callback: Callable[[], None]) -> RecordingTimer:
+        timer = (
+            _FailingRecordingTimer(delay, callback)
+            if len(timers) == 1
+            else RecordingTimer(delay, callback)
+        )
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(
+        timer_enabled=True,
+        timer_factory=timer_factory,
+        enqueue_webhook=enqueue,
+    )
+    usage.set_pending_path(str(pending_path))
+    source_event = event(source_key="source-1", quantity=10)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [source_event],
+        proxy_log_path,
+    )
+
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        timers[0].callback()
+
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
+    assert timers[1].started is False
+    assert_current_pending(pending_path, flows=0, buffered=1, reports=0)
+
+    enqueue.return_value = True
+    enqueue.clear()
+    assert (
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [source_event],
+            proxy_log_path,
+        )
+        == 0
+    )
+
+    assert len(timers) == 3
+    assert timers[2].started is True
+
+    timers[2].callback()
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["events"][0]["quantity"] == 10
+    assert_current_pending(pending_path, flows=0, buffered=0, reports=0)
+
+
+def test_failed_old_timer_start_does_not_clear_newer_timer(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    enqueue = RecordingEnqueue()
+    start_entered = threading.Event()
+    release_start = threading.Event()
+    timers: list[RecordingTimer] = []
+
+    def timer_factory(delay: float, callback: Callable[[], None]) -> RecordingTimer:
+        timer = (
+            _BlockingFailingRecordingTimer(
+                delay,
+                callback,
+                start_entered=start_entered,
+                release_start=release_start,
+            )
+            if not timers
+            else RecordingTimer(delay, callback)
+        )
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(
+        timer_enabled=True,
+        timer_factory=timer_factory,
+        enqueue_webhook=enqueue,
+    )
+    usage.set_pending_path(str(pending_path))
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+
+    def buffer_first_event() -> None:
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-1")],
+            proxy_log_path,
+        )
+
+    buffer_thread = ThreadUnderTest(target=buffer_first_event)
+    buffer_thread.start()
+    wait_for_event(start_entered, timeout=1, threads=[buffer_thread])
+
+    try:
+        assert usage.flush_usage_events(trigger="test") == 1
+        enqueue.clear()
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-2")],
+            proxy_log_path,
+        )
+        assert len(timers) == 2
+        assert timers[1].started is True
+    finally:
+        release_start.set()
+        buffer_thread.join(timeout=1)
+
+    assert buffer_thread.is_alive() is False
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        buffer_thread.raise_if_failed()
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-3")],
+        proxy_log_path,
+    )
+
+    assert len(timers) == 2
+
+    timers[1].callback()
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["events"][0]["quantity"] == 2
+    assert_current_pending(pending_path, flows=0, buffered=0, reports=0)
 
 
 def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):

@@ -7,6 +7,7 @@ from platform_api import get_api_url
 
 USAGE_EVENT_WEBHOOK_PATH = "/api/webhooks/agent/usage-event"
 MODEL_USAGE_OBSERVATION_WEBHOOK_PATH = "/api/webhooks/agent/model-usage-observation"
+AGENT_TELEMETRY_WEBHOOK_PATH = "/api/webhooks/agent/telemetry"
 
 
 class UsageReportingContext:
@@ -39,6 +40,9 @@ class UsageReportingContext:
 
     def model_usage_observation_url(self) -> str:
         return self._url_for(MODEL_USAGE_OBSERVATION_WEBHOOK_PATH)
+
+    def telemetry_url(self) -> str:
+        return self._url_for(AGENT_TELEMETRY_WEBHOOK_PATH)
 
 
 def usage_reporting_context(flow: http.HTTPFlow) -> UsageReportingContext:

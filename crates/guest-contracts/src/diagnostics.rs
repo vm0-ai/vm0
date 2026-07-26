@@ -416,6 +416,8 @@ impl FailureClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
+    /// The session history exceeded the checkpoint size limit.
+    SessionHistoryLimit,
     /// The provider account has insufficient credits.
     InsufficientCredits,
     /// The configured API key is invalid.
@@ -443,6 +445,7 @@ impl FailureReason {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::SessionHistoryLimit => "session_history_limit",
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
@@ -955,6 +958,30 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_session_history_limit_reason() {
+        assert_eq!(
+            FailureReason::SessionHistoryLimit.as_str(),
+            "session_history_limit"
+        );
+
+        for framework in [AgentFramework::Codex, AgentFramework::ClaudeCode] {
+            let diagnostic = FailureDiagnostic::new(
+                FailureClass::CheckpointFailed,
+                framework,
+                PromptMetadata::from_prompt("continue"),
+            )
+            .with_cli_exit_code(0)
+            .with_failure_reason(FailureReason::SessionHistoryLimit);
+
+            let json = serde_json::to_value(&diagnostic).unwrap();
+            assert_eq!(json["failureReason"], "session_history_limit");
+
+            let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+            assert_eq!(round_trip, diagnostic);
+        }
     }
 
     #[test]

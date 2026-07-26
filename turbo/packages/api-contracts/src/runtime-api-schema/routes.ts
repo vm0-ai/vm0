@@ -41,6 +41,11 @@ export interface RuntimeApiRouteBinding {
 
 export const runtimeApiRouteBindings = [
   {
+    id: "webhooks.agent.modelUsageObservation",
+    owner: "mitm-addon",
+    route: webhookModelUsageObservationContract.send,
+  },
+  {
     id: "runners.poll",
     owner: "runner",
     route: runnersPollContract.poll,

@@ -492,8 +492,8 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
-        // Multi-artifact snapshots validated by artifactSnapshotsSchema and
-        // persisted to checkpoints.artifact_snapshots.
+        // Multi-artifact snapshots are folded into canonical checkpoint mounts
+        // and projected back into the legacy response shape.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
@@ -944,40 +944,64 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-/**
- * Webhook model usage observation contract for
- * /api/webhooks/agent/model-usage-observation
- *
- * Receives model token observations from the sandbox for model usage statistics.
- * This endpoint is not a billing ledger input.
- */
-const modelUsageObservationCategorySchema = z.enum([
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-]);
-
 const webhookModelUsageObservationItemSchema = z
   .object({
     idempotencyKey: z.uuid(),
     model: z.string().min(1).max(255),
-    category: modelUsageObservationCategorySchema,
-    quantity: z.number().int().min(1),
+    inputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    outputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    cacheReadInputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    cacheCreationInputTokens: z
+      .number()
+      .int()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER),
   })
-  .strict();
+  .strict()
+  .refine(
+    (event) => {
+      return (
+        event.inputTokens > 0 ||
+        event.outputTokens > 0 ||
+        event.cacheReadInputTokens > 0 ||
+        event.cacheCreationInputTokens > 0
+      );
+    },
+    { message: "At least one token counter must be positive" },
+  );
 
+const webhookModelUsageObservationBodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    const idempotencyKeys = new Set<string>();
+    body.events.forEach((event, index) => {
+      if (idempotencyKeys.has(event.idempotencyKey)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["events", index, "idempotencyKey"],
+          message: "Idempotency keys must be unique within a request",
+        });
+      }
+      idempotencyKeys.add(event.idempotencyKey);
+    });
+  });
+
+/**
+ * Compact model usage observation contract for
+ * /api/webhooks/agent/model-usage-observation
+ *
+ * Each immutable event carries the four counters consumed by model rankings.
+ */
 export const webhookModelUsageObservationContract = c.router({
   send: {
     method: "POST",
     path: "/api/webhooks/agent/model-usage-observation",
     headers: authHeadersSchema,
-    body: z
-      .object({
-        runId: z.string().min(1, "runId is required"),
-        events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
-      })
-      .strict(),
+    body: webhookModelUsageObservationBodySchema,
     responses: {
       200: z.object({
         success: z.boolean(),
@@ -987,7 +1011,7 @@ export const webhookModelUsageObservationContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Receive model usage observation data from sandbox",
+    summary: "Receive compact model usage observation data from sandbox",
   },
 });
 

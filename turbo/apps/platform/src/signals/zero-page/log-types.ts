@@ -12,6 +12,7 @@ export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   web: "Web",
   slack: "Slack",
   teams: "Teams",
+  feishu: "Feishu",
   email: "Email",
   telegram: "Telegram",
   agentphone: "AgentPhone",

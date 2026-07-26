@@ -10,6 +10,7 @@ import matching
 _DYNAMIC_BASE_MARKERS: Final = ("{", "}")
 _DIAGNOSTIC_ANY_PERMISSION: Final = "__connector_diagnostic_any__"
 _DIAGNOSTIC_ANY_RULES: Final = ("ANY /", "ANY /{path+}")
+_DIAGNOSTIC_CANDIDATE_KEY: Final = "_diagnostic_candidate"
 _MODEL_PROVIDER_PREFIX: Final = "model-provider:"
 _REFERENCE_NAME_PATTERN: Final = re.compile(r"\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)")
 _SHARED_BASE_MIN_CANDIDATES: Final = 2
@@ -336,28 +337,12 @@ def _hint_status(
 def _candidate_from_match(
     match: matching.FirewallAllow,
 ) -> ConnectorDiagnosticCandidate | None:
-    api_entry = match.api_entry
-    env_names = api_entry.get("_diagnostic_env_names")
-    auth_header_names = api_entry.get("_diagnostic_auth_header_names")
-    auth_query_param_names = api_entry.get("_diagnostic_auth_query_param_names")
-    if (
-        not isinstance(env_names, tuple)
-        or not isinstance(auth_header_names, tuple)
-        or not isinstance(auth_query_param_names, tuple)
-    ):
+    candidate = match.api_entry.get(_DIAGNOSTIC_CANDIDATE_KEY)
+    if not isinstance(candidate, ConnectorDiagnosticCandidate):
         return None
-    base = match.api_entry.get("base")
-    if not isinstance(base, str):
+    if candidate.connector_type != match.name or candidate.base != match.api_entry.get("base"):
         return None
-
-    return ConnectorDiagnosticCandidate(
-        connector_type=match.name,
-        reason="not_configured_for_run",
-        env_names=env_names,
-        base=base,
-        auth_header_names=auth_header_names,
-        auth_query_param_names=auth_query_param_names,
-    )
+    return candidate
 
 
 def _cached_diagnostic_snapshot(
@@ -579,7 +564,11 @@ def project_diagnostic_catalog(firewalls: dict[str, dict]) -> DiagnosticCatalogP
             continue
 
         for api in raw_apis:
-            projected_api = _project_connector_api(api, shared_base_keys=shared_base_keys)
+            projected_api = _project_connector_api(
+                api,
+                connector_type=raw_name,
+                shared_base_keys=shared_base_keys,
+            )
             if projected_api is not None:
                 projected_apis.append(projected_api)
         if projected_apis:
@@ -595,6 +584,7 @@ def project_diagnostic_catalog(firewalls: dict[str, dict]) -> DiagnosticCatalogP
 def _project_connector_api(
     api: dict,
     *,
+    connector_type: str,
     shared_base_keys: frozenset[str],
 ) -> dict | None:
     raw_base = api.get("base")
@@ -609,12 +599,15 @@ def _project_connector_api(
     if not env_names:
         return None
 
-    projected = {
-        "base": raw_base,
-        "envNames": list(env_names),
-        "authHeaderNames": list(_auth_mapping_names(auth, "headers")),
-        "authQueryParamNames": list(_auth_mapping_names(auth, "query")),
-    }
+    candidate = ConnectorDiagnosticCandidate(
+        connector_type=connector_type,
+        reason="not_configured_for_run",
+        env_names=env_names,
+        base=raw_base,
+        auth_header_names=_auth_mapping_names(auth, "headers"),
+        auth_query_param_names=_auth_mapping_names(auth, "query"),
+    )
+    projected: dict[str, object] = {_DIAGNOSTIC_CANDIDATE_KEY: candidate}
     if base_key in shared_base_keys:
         permissions = _catalog_permissions(api.get("permissions"))
         if permissions:
@@ -634,21 +627,17 @@ def _project_model_provider_api(api: dict) -> dict | None:
     }
 
 
-def _projection_str_tuple(value: object) -> tuple[str, ...]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise TypeError("diagnostic projection string-list shape changed")
-    return tuple(value)
+def _projected_connector_candidate(api: dict) -> ConnectorDiagnosticCandidate:
+    candidate = api.get(_DIAGNOSTIC_CANDIDATE_KEY)
+    if not isinstance(candidate, ConnectorDiagnosticCandidate):
+        raise TypeError("diagnostic connector projection candidate shape changed")
+    return candidate
 
 
 def _diagnostic_firewall_from_projection(firewall: dict) -> dict | None:
     raw_name, raw_apis = _catalog_firewall_fields(firewall)
 
-    apis: list[dict] = []
-    for api in raw_apis:
-        diagnostic_api = _diagnostic_api_from_projection(api)
-        if diagnostic_api is not None:
-            apis.append(diagnostic_api)
-
+    apis = [_diagnostic_api_from_projection(api) for api in raw_apis]
     if not apis:
         return None
     return {"name": raw_name, "apis": apis}
@@ -689,19 +678,24 @@ def _model_provider_exclusion_firewall_from_projection(firewall: dict) -> dict |
     return {"name": raw_name, "apis": apis}
 
 
-def _diagnostic_api_from_projection(api: dict) -> dict | None:
-    raw_base = api.get("base")
-    if not isinstance(raw_base, str):
-        raise TypeError("diagnostic projection base shape changed")
-
+def _diagnostic_matcher_api(
+    candidate: ConnectorDiagnosticCandidate,
+    *,
+    permissions: list[dict],
+) -> dict:
     return {
-        "base": raw_base,
+        "base": candidate.base,
         "auth": {},
-        "permissions": _base_match_permissions(),
-        "_diagnostic_env_names": _projection_str_tuple(api.get("envNames")),
-        "_diagnostic_auth_header_names": _projection_str_tuple(api.get("authHeaderNames")),
-        "_diagnostic_auth_query_param_names": _projection_str_tuple(api.get("authQueryParamNames")),
+        "permissions": permissions,
+        _DIAGNOSTIC_CANDIDATE_KEY: candidate,
     }
+
+
+def _diagnostic_api_from_projection(api: dict) -> dict:
+    return _diagnostic_matcher_api(
+        _projected_connector_candidate(api),
+        permissions=_base_match_permissions(),
+    )
 
 
 def _route_aware_diagnostic_api_from_projection(
@@ -709,21 +703,15 @@ def _route_aware_diagnostic_api_from_projection(
     *,
     shared_base_keys: frozenset[str],
 ) -> dict | None:
-    raw_base = api.get("base")
-    if not isinstance(raw_base, str):
-        raise TypeError("diagnostic projection base shape changed")
-    base_key = _diagnostic_static_base_key(raw_base)
+    candidate = _projected_connector_candidate(api)
+    base_key = _diagnostic_static_base_key(candidate.base)
     if base_key is None or base_key not in shared_base_keys:
         return None
 
-    return {
-        "base": raw_base,
-        "auth": {},
-        "permissions": _catalog_permissions(api.get("permissions")),
-        "_diagnostic_env_names": _projection_str_tuple(api.get("envNames")),
-        "_diagnostic_auth_header_names": _projection_str_tuple(api.get("authHeaderNames")),
-        "_diagnostic_auth_query_param_names": _projection_str_tuple(api.get("authQueryParamNames")),
-    }
+    return _diagnostic_matcher_api(
+        candidate,
+        permissions=_catalog_permissions(api.get("permissions")),
+    )
 
 
 def _model_provider_exclusion_api_from_projection(api: dict) -> dict | None:

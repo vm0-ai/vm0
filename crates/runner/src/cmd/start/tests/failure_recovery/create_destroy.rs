@@ -78,7 +78,7 @@ async fn cancelled_job_not_parked() {
         mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -128,7 +128,7 @@ async fn create_failure_completes_and_cleans_run_state() {
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 

@@ -91,7 +91,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -116,6 +115,8 @@ import {
   notFound,
   providerUnavailable,
 } from "../../lib/error";
+import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypass";
+import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
@@ -150,7 +151,6 @@ import {
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorageManifest,
-  projectLegacyCheckpointStorageInputs,
   type PreparedAgentRunStorageManifest,
   StorageManifestBuildStats,
   type StorageManifestSource,
@@ -191,6 +191,7 @@ import {
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
 } from "./zero-chat-queued-message.service";
+import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -371,12 +372,8 @@ interface ResolvedCompose {
   readonly vars?: Record<string, string>;
   readonly volumeVersions?: Record<string, string>;
   readonly additionalVolumes?: readonly AdditionalVolume[];
-  readonly persistedStorageMounts?: {
-    readonly mounts: readonly PersistedStorageMount[];
-    readonly mode: "complete" | "writeback";
-  };
+  readonly persistedStorageMounts?: readonly PersistedStorageMount[];
   readonly agentSessionId?: string;
-  readonly resumedFromCheckpointId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
@@ -1138,9 +1135,7 @@ function artifactsForRun(args: {
   readonly framework: SupportedFramework;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
-  const isContinuation =
-    Boolean(args.resolved.agentSessionId) ||
-    Boolean(args.resolved.resumedFromCheckpointId);
+  const isContinuation = Boolean(args.resolved.agentSessionId);
   const composeContextArtifacts = isContinuation
     ? []
     : composeArtifacts(args.resolved.content);
@@ -3967,69 +3962,6 @@ async function buildPermissionManifest(args: {
   );
 }
 
-function parseVolumeVersionsSnapshot(
-  value: unknown,
-): Record<string, string> | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  if (
-    "versions" in value &&
-    typeof value.versions === "object" &&
-    value.versions !== null
-  ) {
-    return value.versions as Record<string, string>;
-  }
-  return value as Record<string, string>;
-}
-
-function parseAdditionalVolumeSnapshot(
-  value: unknown,
-): AdditionalVolume | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-  const candidate = value as {
-    readonly name?: unknown;
-    readonly versionId?: unknown;
-    readonly mountPath?: unknown;
-  };
-  if (
-    typeof candidate.name !== "string" ||
-    typeof candidate.versionId !== "string" ||
-    typeof candidate.mountPath !== "string"
-  ) {
-    return null;
-  }
-  return {
-    name: candidate.name,
-    version: candidate.versionId,
-    mountPath: candidate.mountPath,
-  };
-}
-
-function parseAdditionalVolumesSnapshot(
-  value: unknown,
-): readonly AdditionalVolume[] | undefined {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("additionalVolumes" in value)
-  ) {
-    return undefined;
-  }
-  const additionalVolumes = (value as { readonly additionalVolumes?: unknown })
-    .additionalVolumes;
-  if (!Array.isArray(additionalVolumes)) {
-    return undefined;
-  }
-  const parsed = additionalVolumes.flatMap((item) => {
-    const volume = parseAdditionalVolumeSnapshot(item);
-    return volume ? [volume] : [];
-  });
-  return parsed.length > 0 ? parsed : undefined;
-}
-
 async function checkRunConcurrencyLimit(
   tx: DbTransaction,
   orgId: string,
@@ -4257,18 +4189,17 @@ function resumeSessionFromSnapshot(
 }
 
 function resolvedSessionStorage(session: {
-  readonly artifacts: readonly ContextArtifact[] | null;
+  readonly id: string;
   readonly storageMounts: readonly PersistedStorageMount[] | null;
 }): Pick<ResolvedCompose, "artifacts" | "persistedStorageMounts"> {
-  if (!session.storageMounts) {
-    return { artifacts: session.artifacts ?? [] };
+  if (session.storageMounts === null) {
+    throw new Error(
+      `Agent session "${session.id}" is missing canonical Storage mounts`,
+    );
   }
   return {
     artifacts: projectLegacyWritebackArtifacts(session.storageMounts),
-    persistedStorageMounts: {
-      mounts: session.storageMounts,
-      mode: "writeback",
-    },
+    persistedStorageMounts: session.storageMounts,
   };
 }
 
@@ -4289,7 +4220,6 @@ function resolveBySessionId(
           .select({
             session: {
               id: agentSessions.id,
-              artifacts: agentSessions.artifacts,
               storageMounts: agentSessions.storageMounts,
             },
             compose: {
@@ -4395,143 +4325,6 @@ function resolveBySessionId(
   });
 }
 
-function resolveByCheckpointId(
-  db: Db,
-  checkpointId: string,
-  userId: string,
-  orgId: string,
-  timing?: ApiDispatchTimingCollector,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(
-    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [row] = await measureApiDispatchTiming(
-        timing,
-        "api_dispatch_resolve_compose_lookup_checkpoint",
-        "nested",
-        async () => {
-          return await db
-            .select({
-              snapshot: checkpoints.agentComposeSnapshot,
-              artifacts: checkpoints.artifactSnapshots,
-              volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
-              storageMounts: checkpoints.storageMounts,
-              conversationId: checkpoints.conversationId,
-              runUserId: agentRuns.userId,
-              runOrgId: agentRuns.orgId,
-            })
-            .from(checkpoints)
-            .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
-            .where(eq(checkpoints.id, checkpointId))
-            .limit(1);
-        },
-      );
-
-      if (!row || row.runUserId !== userId || row.runOrgId !== orgId) {
-        return notFound("Checkpoint not found");
-      }
-
-      const snapshot = row.snapshot as {
-        readonly agentComposeVersionId?: string;
-        readonly vars?: Record<string, string>;
-      };
-      if (!snapshot.agentComposeVersionId) {
-        return badRequestMessage(
-          "Invalid checkpoint: missing agentComposeVersionId",
-        );
-      }
-
-      const resolved = await lookupComposeByVersion(
-        db,
-        snapshot.agentComposeVersionId,
-        timing,
-      );
-      if (isRouteError(resolved)) {
-        return resolved;
-      }
-      const canonicalStorageInputs = row.storageMounts
-        ? projectLegacyCheckpointStorageInputs({
-            content: resolved.content,
-            vars: snapshot.vars,
-            mounts: row.storageMounts,
-          })
-        : null;
-
-      return {
-        ...resolved,
-        // Keep the legacy projection available for requests that explicitly
-        // override checkpoint Storage declarations. The canonical snapshot is
-        // used when there are no overrides.
-        artifacts: row.storageMounts
-          ? projectLegacyWritebackArtifacts(row.storageMounts)
-          : (row.artifacts ?? []),
-        ...(row.storageMounts
-          ? {
-              persistedStorageMounts: {
-                mounts: row.storageMounts,
-                mode: "complete" as const,
-              },
-            }
-          : {}),
-        vars: snapshot.vars ?? {},
-        volumeVersions: row.storageMounts
-          ? canonicalStorageInputs?.volumeVersions
-          : parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
-        additionalVolumes: row.storageMounts
-          ? canonicalStorageInputs?.additionalVolumes
-          : parseAdditionalVolumesSnapshot(row.volumeVersionsSnapshot),
-        resumedFromCheckpointId: checkpointId,
-        resumeSession: await measureApiDispatchTiming(
-          timing,
-          "api_dispatch_resolve_compose_load_resume_session",
-          "nested",
-          async () => {
-            return await get(loadResumeSession(db, row.conversationId, timing));
-          },
-        ),
-      };
-    },
-  );
-}
-
-function loadResumeSession(
-  db: Db,
-  conversationId: string,
-  timing?: ApiDispatchTimingCollector,
-): Computed<Promise<StoredExecutionContext["resumeSession"] | undefined>> {
-  return computed(
-    async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
-      const [conversation] = await db
-        .select({
-          runId: conversations.runId,
-          cliAgentSessionId: conversations.cliAgentSessionId,
-          cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-          cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-          sessionHistoryBlobEncoding: blobs.encoding,
-        })
-        .from(conversations)
-        .leftJoin(
-          blobs,
-          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
-        )
-        .where(eq(conversations.id, conversationId))
-        .limit(1);
-
-      if (!conversation) {
-        return undefined;
-      }
-
-      return await measureApiDispatchTiming(
-        timing,
-        "api_dispatch_resolve_compose_resolve_session_history",
-        "nested",
-        (): StoredExecutionContext["resumeSession"] | undefined => {
-          return resumeSessionFromSnapshot(conversation);
-        },
-      );
-    },
-  );
-}
-
 function resolveCompose(
   db: Db,
   body: CreateRunBody,
@@ -4541,25 +4334,6 @@ function resolveCompose(
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      if (body.checkpointId && body.sessionId) {
-        return badRequestMessage(
-          "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
-        );
-      }
-
-      if (body.checkpointId) {
-        const checkpointId = body.checkpointId;
-        return await measureApiDispatchTiming(
-          timing,
-          "api_dispatch_resolve_compose_by_checkpoint_id",
-          "nested",
-          async () => {
-            return await get(
-              resolveByCheckpointId(db, checkpointId, userId, orgId, timing),
-            );
-          },
-        );
-      }
       if (body.sessionId) {
         const sessionId = body.sessionId;
         return await measureApiDispatchTiming(
@@ -4590,7 +4364,7 @@ function resolveCompose(
       }
       if (!body.agentComposeId) {
         return badRequestMessage(
-          "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, checkpointId, or sessionId.",
+          "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, or sessionId.",
         );
       }
       const agentComposeId = body.agentComposeId;
@@ -4785,6 +4559,7 @@ async function insertZeroRunRecord(
     readonly zeroRunModelPin: ZeroRunModelPin | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly apiStartedAt: Date | null;
   },
 ): Promise<void> {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
@@ -4798,6 +4573,7 @@ async function insertZeroRunRecord(
     triggerAgentId: metadata.triggerAgentId ?? null,
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
+    apiStartedAt: args.apiStartedAt,
   });
 }
 
@@ -4817,6 +4593,7 @@ async function insertLaunchRunRows(
     readonly callbackRows: readonly AgentRunCallbackInsert[];
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly apiStartTime: number;
     readonly runnerGroup: string | undefined;
     readonly error: string | undefined;
   },
@@ -4827,7 +4604,6 @@ async function insertLaunchRunRows(
       userId: args.userId,
       orgId: args.orgId,
       agentComposeId: args.resolved.composeId,
-      artifacts: [],
       storageMounts: args.sessionStorageMounts
         ? [...args.sessionStorageMounts]
         : null,
@@ -4848,9 +4624,7 @@ async function insertLaunchRunRows(
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
     secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
-    additionalVolumes: null,
     storageMounts: args.runStorageMounts ? [...args.runStorageMounts] : null,
-    resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
     continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
     sessionId: args.identity.sessionId,
     lastHeartbeatAt: createdAt,
@@ -4867,6 +4641,7 @@ async function insertLaunchRunRows(
     zeroRunModelPin: args.zeroRunModelPin,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
+    apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   });
 
   if (args.callbackRows.length > 0) {
@@ -5390,14 +5165,9 @@ function buildRunnerJobPayload(
             args.run.id,
             args.orgId,
             featureSwitchOverrides,
-            {
-              ...(args.zeroTokenComputerUseHostId
-                ? { computerUseHostId: args.zeroTokenComputerUseHostId }
-                : {}),
-              ...(args.body.triggerSource
-                ? { triggerSource: args.body.triggerSource }
-                : {}),
-            },
+            args.zeroTokenComputerUseHostId
+              ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+              : undefined,
           ),
         )
       : args.body;
@@ -5610,6 +5380,7 @@ async function commitFailedLaunch(args: {
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
+        apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
         error: message,
       });
@@ -5623,6 +5394,13 @@ async function commitFailedLaunch(args: {
 
   if (committed.kind === "queue-first-claim-lost") {
     return committed;
+  }
+
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.identity.runId,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
   }
 
   await publishRunChangedForUserSafely(
@@ -5680,6 +5458,7 @@ async function insertAtomicLaunchRunRecord(args: {
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
+        apiStartTime: args.commit.createArgs.apiStartTime,
         runnerGroup: args.runnerGroup,
         error: undefined,
       });
@@ -6669,30 +6448,6 @@ function prepareRunOutputMetadata(args: {
   };
 }
 
-function resolvedForStorageCompatibility(args: {
-  readonly initialBody: CreateRunBody;
-  readonly resolved: ResolvedCompose;
-}): ResolvedCompose {
-  if (args.resolved.persistedStorageMounts?.mode !== "complete") {
-    return args.resolved;
-  }
-
-  const hasLegacyOverride =
-    (args.initialBody.artifacts?.length ?? 0) > 0 ||
-    args.initialBody.additionalVolumes !== undefined ||
-    args.initialBody.volumeVersions !== undefined;
-  if (!hasLegacyOverride) {
-    return args.resolved;
-  }
-
-  // resolveByCheckpointId reconstructs alias-keyed compose versions and
-  // additional-volume declarations from the canonical checkpoint snapshot,
-  // so explicit legacy overrides can stay on the compatibility reader.
-  const { persistedStorageMounts: _persistedStorageMounts, ...resolved } =
-    args.resolved;
-  return resolved;
-}
-
 function prepareRunContext(input: {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
@@ -6750,10 +6505,7 @@ function prepareRunContext(input: {
         return runtimeContext;
       }
       const body = bodyContext.body;
-      const resolved = resolvedForStorageCompatibility({
-        initialBody,
-        resolved: bodyContext.resolved,
-      });
+      const resolved = bodyContext.resolved;
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -6858,6 +6610,13 @@ async function committedAtomicLaunchResponse(args: {
     return args.committed.queueFirstClaim
       ? { ...response, queueFirstClaim: args.committed.queueFirstClaim }
       : response;
+  }
+
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.committed.run.id,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
@@ -7155,7 +6914,19 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
-    const { args, timing } = input;
+    // A preview request that passed the protection guard gives its sandbox CLI
+    // the same bypass through the existing user-environment channel.
+    const previewAutomationBypass = get(previewAutomationBypass$);
+    const args = previewAutomationBypass
+      ? {
+          ...input.args,
+          extraEnvironment: {
+            ...input.args.extraEnvironment,
+            [VERCEL_AUTOMATION_BYPASS_ENV]: previewAutomationBypass,
+          },
+        }
+      : input.args;
+    const { timing } = input;
     const db = set(writeDb$);
     if (input.checkOrgPlanStatusBeforeContext) {
       const tierGate = await timing.measure(

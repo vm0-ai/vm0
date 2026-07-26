@@ -199,8 +199,6 @@ function mockCurrentThreadDetail(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
 }
@@ -227,6 +225,8 @@ function mockSidebarThread(): void {
           pinnedAt: thread.pinnedAt,
           renamedAt: null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         },
       ],
       latestEventId: null,
@@ -244,6 +244,7 @@ function cachedChatMessages(): PagedChatMessage[] {
       role: "user",
       runId: RUN_ID,
       content: USER_MESSAGE,
+      seqId: 1,
       createdAt: "2026-03-10T00:00:01Z",
     },
     {
@@ -251,6 +252,7 @@ function cachedChatMessages(): PagedChatMessage[] {
       role: "assistant",
       runId: RUN_ID,
       content: ASSISTANT_MESSAGE,
+      seqId: 2,
       createdAt: "2026-03-10T00:00:02Z",
     },
     {
@@ -259,6 +261,7 @@ function cachedChatMessages(): PagedChatMessage[] {
       runId: RUN_ID,
       content: null,
       runLifecycleEvent: "completed",
+      seqId: 3,
       createdAt: "2026-03-10T00:00:03Z",
     },
   ];
@@ -283,6 +286,8 @@ function seedCachedThreadEvents({
           pinnedAt: null,
           renamedAt: null,
           selectedModel,
+          serviceTier: null,
+          computerUseHostId: null,
         },
       ],
     },
@@ -294,6 +299,8 @@ function seedCachedThreadEvents({
         agentId: AGENT_ID,
         title: THREAD_TITLE,
         selectedModel,
+        serviceTier: null,
+        computerUseHostId: null,
         createdAt: "2026-03-10T00:00:02Z",
       },
     ],
@@ -318,7 +325,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     let messageListRequests = 0;
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       messageListRequests += 1;
-      if (query.sinceId) {
+      if (query.sinceSeqId) {
         return respond(200, { messages: [] });
       }
       return respond(200, {
@@ -327,12 +334,14 @@ describe("zero chat thread IndexedDB fallback", () => {
             id: "00000000-0000-4000-8000-000000000101",
             role: "user",
             content: USER_MESSAGE,
+            seqId: 1,
             createdAt: "2026-03-10T00:00:01Z",
           },
           {
             id: "00000000-0000-4000-8000-000000000102",
             role: "assistant",
             content: ASSISTANT_MESSAGE,
+            seqId: 2,
             createdAt: "2026-03-10T00:00:02Z",
           },
         ],
@@ -499,9 +508,6 @@ describe("zero chat thread IndexedDB fallback", () => {
       messageListRequests += 1;
       return never();
     });
-    context.mocks.api(chatThreadMessagesContract.get, ({ never }) => {
-      return never();
-    });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ never }) => {
       return never();
     });
@@ -541,7 +547,7 @@ describe("zero chat thread IndexedDB fallback", () => {
       screen.findByText(ASSISTANT_MESSAGE),
     ).resolves.toBeInTheDocument();
     expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-    expect(threadDetailRequests).toBeGreaterThan(0);
+    expect(threadDetailRequests).toBe(0);
     expect(messageListRequests).toBeGreaterThan(0);
     expect(threadEventRequests).toBeGreaterThan(0);
   });

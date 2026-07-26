@@ -15,13 +15,10 @@ import {
   IconColumns2,
   IconFileMusic,
   IconPhoto,
-  IconPencil,
-  IconWand,
   IconLoader2,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
@@ -58,17 +55,7 @@ import {
   type AttachmentArtifactMetadata,
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import {
-  openArtifactSidebarHtmlEdit$,
-  openArtifactSidebarPreview$,
-  openPresentationEditor$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
-import { openArtifactImageEdit$ } from "../../signals/zero-page/zero-image-edit.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import {
-  presentationHtmlPreviewUrl,
-  presentationHtmlRefreshVersion$,
-} from "../../signals/zero-page/presentation-html-cache-bust.ts";
+import { openArtifactSidebarPreview$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   artifactPreviewUrlsMatch,
@@ -278,12 +265,10 @@ function LightboxBodyScrollLock() {
 function DialogIconButton({
   ariaLabel,
   children,
-  dataTestId,
   onClick,
 }: {
   ariaLabel: string;
   children: ReactNode;
-  dataTestId?: string;
   onClick: () => void;
 }) {
   return (
@@ -293,7 +278,6 @@ function DialogIconButton({
       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       aria-label={ariaLabel}
       title={ariaLabel}
-      data-testid={dataTestId}
     >
       {children}
     </button>
@@ -325,38 +309,6 @@ function ArtifactDialogFullscreenButton({
       ) : (
         <IconArrowsDiagonal size={18} stroke={1.8} />
       )}
-    </DialogIconButton>
-  );
-}
-
-function ArtifactDialogEditPresentationButton({
-  onClick,
-}: {
-  onClick: () => void;
-}) {
-  return (
-    <DialogIconButton ariaLabel="Edit presentation" onClick={onClick}>
-      <IconPencil size={18} stroke={1.8} />
-    </DialogIconButton>
-  );
-}
-
-function ArtifactDialogEditHtmlButton({ onClick }: { onClick: () => void }) {
-  return (
-    <DialogIconButton ariaLabel="Edit page" onClick={onClick}>
-      <IconPencil size={18} stroke={1.8} />
-    </DialogIconButton>
-  );
-}
-
-function ArtifactDialogEditImageButton({ onClick }: { onClick: () => void }) {
-  return (
-    <DialogIconButton
-      ariaLabel="Edit image"
-      dataTestId="image-edit-open"
-      onClick={onClick}
-    >
-      <IconWand size={18} stroke={1.8} />
     </DialogIconButton>
   );
 }
@@ -877,13 +829,7 @@ function ArtifactDialogHtmlBody({
   preview: AttachmentLightboxState;
 }) {
   const fullscreen = useGet(lightboxDialogFullscreen$);
-  const presentationHtmlRefreshVersion = useGet(
-    presentationHtmlRefreshVersion$,
-  );
-  const src = presentationHtmlPreviewUrl(
-    publicAttachmentUrl(preview.url),
-    presentationHtmlRefreshVersion,
-  );
+  const src = publicAttachmentUrl(preview.url);
   const isPresentationHtml =
     preview.artifact?.artifactKind === "presentation-html";
 
@@ -1083,29 +1029,12 @@ function ArtifactPreviewDialogActions({
   preview: AttachmentLightboxState;
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
-  const openArtifactSidebarHtmlEdit = useSet(openArtifactSidebarHtmlEdit$);
-  const openArtifactImageEdit = useSet(openArtifactImageEdit$);
   const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
-  const openPresentationEditor = useSet(openPresentationEditor$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const toggleLightboxDialogFullscreen = useSet(
     toggleLightboxDialogFullscreen$,
   );
-  const features = useGet(featureSwitch$);
-  const editAvailable = preview.editAvailable !== false;
-  const showPresentationEdit =
-    editAvailable &&
-    preview.kind === "html" &&
-    artifact?.artifactKind === "presentation-html";
-  const showHtmlEdit =
-    editAvailable &&
-    preview.kind === "html" &&
-    artifact?.artifactKind === "hosted-site" &&
-    Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
-  const showImageEdit =
-    editAvailable &&
-    preview.kind === "image" &&
-    Boolean(features?.[FeatureSwitchKey.ImageEditing]);
+  const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
@@ -1125,22 +1054,15 @@ function ArtifactPreviewDialogActions({
     openArtifactSidebarPreview(preview.url);
     closeLightboxWithDialogExit();
   };
-  const openHtmlEditInSplitView = () => {
-    openArtifactSidebarHtmlEdit({ fullscreen, url: preview.url });
-    closeLightboxWithDialogExit();
-  };
-  const openImageEditInSplitView = () => {
-    resetDialogImageZoom(fullscreen);
-    resetZoomableImageCanvasZoom(
-      zoomableArtifactImageKey("artifact-sidebar", preview.url, "sidebar"),
-    );
-    openArtifactImageEdit({ fullscreen, url: preview.url });
-    closeLightboxWithDialogExit();
-  };
-
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <ArtifactShareButton ariaLabel="Share" iconSize={18} url={preview.url} />
+      {showShare && (
+        <ArtifactShareButton
+          ariaLabel="Share"
+          iconSize={18}
+          url={preview.url}
+        />
+      )}
       <ArtifactDownloadMenu
         ariaLabel="Download options"
         artifactKind={artifact?.artifactKind}
@@ -1151,29 +1073,6 @@ function ArtifactPreviewDialogActions({
         url={preview.url}
       />
       <ArtifactActionSeparator />
-      {showPresentationEdit && (
-        <>
-          <ArtifactDialogEditPresentationButton
-            onClick={() => {
-              closeLightboxWithDialogExit();
-              openPresentationEditor(preview.url);
-            }}
-          />
-          <ArtifactActionSeparator />
-        </>
-      )}
-      {showHtmlEdit && (
-        <>
-          <ArtifactDialogEditHtmlButton onClick={openHtmlEditInSplitView} />
-          <ArtifactActionSeparator />
-        </>
-      )}
-      {showImageEdit && (
-        <>
-          <ArtifactDialogEditImageButton onClick={openImageEditInSplitView} />
-          <ArtifactActionSeparator />
-        </>
-      )}
       {showSplitView && (
         <ArtifactDialogSplitViewButton onClick={openInSplitView} />
       )}
@@ -1355,12 +1254,16 @@ export function FileAttachmentChip({
 
 export function PreviewableFileAttachmentChip({
   filename,
-  url,
   kind,
+  shareAvailable,
+  splitViewAvailable,
+  url,
 }: {
   filename: string;
-  url: string;
   kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+  shareAvailable?: boolean;
+  splitViewAvailable?: boolean;
+  url: string;
 }) {
   const openDocumentLightbox = useSet(openDocumentLightbox$);
 
@@ -1368,7 +1271,13 @@ export function PreviewableFileAttachmentChip({
     <button
       type="button"
       onClick={() => {
-        openDocumentLightbox({ kind, url, filename });
+        openDocumentLightbox({
+          kind,
+          url,
+          filename,
+          ...(shareAvailable === undefined ? {} : { shareAvailable }),
+          ...(splitViewAvailable === undefined ? {} : { splitViewAvailable }),
+        });
       }}
       title={filename}
       aria-label={`Open ${kind} preview for ${filename}`}
@@ -1386,10 +1295,14 @@ export function PreviewableFileAttachmentChip({
 export function PreviewableAudioAttachmentChip({
   contentType,
   filename,
+  shareAvailable,
+  splitViewAvailable,
   url,
 }: {
   contentType?: string;
   filename: string;
+  shareAvailable?: boolean;
+  splitViewAvailable?: boolean;
   url: string;
 }) {
   const openAudioLightbox = useSet(openAudioLightbox$);
@@ -1398,7 +1311,12 @@ export function PreviewableAudioAttachmentChip({
     <button
       type="button"
       onClick={() => {
-        openAudioLightbox({ url, filename });
+        openAudioLightbox({
+          url,
+          filename,
+          ...(shareAvailable === undefined ? {} : { shareAvailable }),
+          ...(splitViewAvailable === undefined ? {} : { splitViewAvailable }),
+        });
       }}
       title={filename}
       aria-label={`Open audio preview for ${filename}`}

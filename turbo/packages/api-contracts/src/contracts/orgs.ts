@@ -1,9 +1,5 @@
 import { z } from "zod";
-import { initContract, authHeadersSchema } from "./base";
-import { apiErrorSchema } from "./errors";
 import { orgRoleSchema } from "./org-members";
-
-const c = initContract();
 
 /**
  * Org tier values
@@ -66,37 +62,3 @@ export const updateOrgRequestSchema = z.object({
 });
 
 export type UpdateOrgRequest = z.infer<typeof updateOrgRequestSchema>;
-
-/**
- * Org default agent contract for /api/zero/default-agent
- */
-export const orgDefaultAgentContract = c.router({
-  /**
-   * PUT /api/zero/default-agent
-   * Set or unset the default agent for an org.
-   * Only org admins can perform this action.
-   * The agent must belong to the same org.
-   */
-  setDefaultAgent: {
-    method: "PUT",
-    path: "/api/zero/default-agent",
-    headers: authHeadersSchema,
-    query: z.object({}),
-    body: z.object({
-      agentId: z.uuid().nullable(),
-    }),
-    responses: {
-      200: z.object({
-        agentId: z.uuid().nullable(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Set or unset the default agent for an org",
-  },
-});
-
-export type OrgDefaultAgentContract = typeof orgDefaultAgentContract;

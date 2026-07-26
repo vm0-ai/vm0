@@ -18,6 +18,7 @@ import {
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -310,10 +311,7 @@ async function createGoalForRun(
   );
 }
 
-async function claimChatRun(
-  runnerGroup: string,
-  runId: string,
-): Promise<{ readonly authorization: string }> {
+async function claimChatRunJob(runnerGroup: string, runId: string) {
   await api.heartbeatRunner(runnerGroup);
   let claim: Awaited<ReturnType<typeof api.requestClaimRunnerJob>> | undefined;
   await expect
@@ -328,7 +326,15 @@ async function claimChatRun(
   if (!claim || claim.status !== 200) {
     throw new Error("Expected the chat run to be claimable");
   }
-  return { authorization: `Bearer ${claim.body.sandboxToken}` };
+  return claim.body;
+}
+
+async function claimChatRun(
+  runnerGroup: string,
+  runId: string,
+): Promise<{ readonly authorization: string }> {
+  const claim = await claimChatRunJob(runnerGroup, runId);
+  return { authorization: `Bearer ${claim.sandboxToken}` };
 }
 
 function cliAgentSessionIdForChatRun(runId: string): string {
@@ -597,6 +603,14 @@ function sandboxOperationEventsForRun(
     return events.filter((event): event is Record<string, unknown> => {
       return isRecord(event) && event.run_id === runId;
     });
+  });
+}
+
+function firstAssistantMessageEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === "api_to_first_assistant_message";
   });
 }
 
@@ -900,6 +914,8 @@ describe("CHAT-02: completed chat callback", () => {
     expect(claimed.id).not.toBe(queued.id);
     expect(claimed.revokesMessageId).toBe(queued.id);
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
+    // Exercise the temporary compatibility route used by already-open
+    // app-v0.627.3 browser clients.
     const original = await chat.getThreadMessage(
       actor,
       first.threadId,
@@ -970,6 +986,222 @@ describe("CHAT-02: completed chat callback", () => {
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
+
+  it("uses the dequeue API start when a queued message auto-sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "hold the thread while the next message queues",
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    const queuedAt = now() + 60_000;
+    const dequeuedAt = queuedAt + 1000;
+    const queuedPrompt = "measure from queued message dequeue";
+    mockNow(queuedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: queuedPrompt,
+    });
+
+    mockNow(dequeuedAt);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "finish the blocking run"),
+    ]);
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const afterAutoSend = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.content === queuedPrompt && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(afterAutoSend.messages).find((message) => {
+      return message.content === queuedPrompt && message.runId !== undefined;
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queued Web message to auto-send");
+    }
+
+    const acknowledgedAt = dequeuedAt + 7000;
+    const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
+    expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+    const secondHeaders = {
+      authorization: `Bearer ${secondClaim.sandboxToken}`,
+    };
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+    mockNow(acknowledgedAt);
+    await webhooks.requestAgentEvents(
+      {
+        runId: claimed.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_queued_first_output",
+              content: [{ type: "text", text: "Queued run real output" }],
+            },
+          },
+        ],
+      },
+      secondHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(firstAssistantMessageEventsForRun(claimed.runId)).toStrictEqual([
+      expect.objectContaining({
+        _time: new Date(acknowledgedAt).toISOString(),
+        duration_ms: acknowledgedAt - dequeuedAt,
+        run_id: claimed.runId,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
+
+  it.each([
+    { projection: "structured", structuredPromptEnabled: true },
+    { projection: "legacy", structuredPromptEnabled: false },
+  ])(
+    "uses $projection message semantics for title and recommended follow-up context",
+    async ({ structuredPromptEnabled }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      chatCallbacks.failIfChatCallbackRouteIsFetched();
+      if (!actor.orgId) {
+        throw new Error("Expected an org-scoped actor");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: actor.orgId },
+        { [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled },
+      );
+
+      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+      if (!style) {
+        throw new Error("Expected a registered illustration style");
+      }
+      const generationTemplate: GenerationTemplateRequest = {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      };
+      const firstStructuredPrompt: UserMessageDocument = {
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: style.title,
+            template: generationTemplate,
+          },
+          { type: "text", text: "first structured request" },
+        ],
+      };
+      const templatePrompt = `Select ${style.title} illustration template`;
+
+      const first = await startChatRun(actor, {
+        agentId,
+        prompt: "stale first legacy request",
+        generationTemplate,
+        structuredPrompt: firstStructuredPrompt,
+      });
+      const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "first structured answer"),
+      ]);
+      await completeChatRunOk(first.runId, firstHeaders, {
+        lastEventSequence: 0,
+      });
+      await flushWaitUntilForTest();
+
+      const titlePrompts: string[] = [];
+      const followupPrompts: string[] = [];
+      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+      chatCallbacks.mockOpenRouterCompletions((body) => {
+        const systemContent = body.messages[0]?.content ?? "";
+        if (systemContent.includes("Generate a short, descriptive title")) {
+          titlePrompts.push(body.messages[1]?.content ?? "");
+          return "Structured Context";
+        }
+        if (systemContent.includes("concise follow-up prompts")) {
+          followupPrompts.push(body.messages[1]?.content ?? "");
+          return JSON.stringify([
+            { prompt: "Continue the structured work", kind: "talk" },
+          ]);
+        }
+        return "Generated summary";
+      });
+
+      const second = await startChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "stale second legacy request",
+        structuredPrompt: {
+          version: 1,
+          parts: [{ type: "text", text: "second structured request" }],
+        },
+      });
+      await waitForThreadTitle(actor, first.threadId, "Structured Context");
+
+      const structuredContext = [
+        templatePrompt,
+        "first structured request",
+        "second structured request",
+      ];
+      const legacyContext = [
+        "stale first legacy request",
+        "stale second legacy request",
+      ];
+      const expectedContext = structuredPromptEnabled
+        ? structuredContext
+        : legacyContext;
+      const excludedContext = structuredPromptEnabled
+        ? legacyContext
+        : structuredContext;
+
+      expect(titlePrompts).toHaveLength(1);
+      for (const value of expectedContext) {
+        expect(titlePrompts[0]).toContain(value);
+      }
+      for (const value of excludedContext) {
+        expect(titlePrompts[0]).not.toContain(value);
+      }
+
+      const secondHeaders = await claimChatRun(runnerGroup, second.runId);
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "second structured answer"),
+      ]);
+      await completeChatRunOk(second.runId, secondHeaders, {
+        lastEventSequence: 0,
+      });
+      await flushWaitUntilForTest();
+
+      expect(followupPrompts).toHaveLength(1);
+      for (const value of expectedContext) {
+        expect(followupPrompts[0]).toContain(value);
+      }
+      expect(followupPrompts[0]).toContain("second structured answer");
+      for (const value of excludedContext) {
+        expect(followupPrompts[0]).not.toContain(value);
+      }
+    },
+    90_000,
+  );
 
   it("suppresses malformed recommended follow-up JSON instead of storing raw syntax lines", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -1152,13 +1384,16 @@ describe("CHAT-02: completed chat callback", () => {
       afterFollowups.messages,
       first.runId,
     )[0];
-    expect(followupMessage?.recommendedFollowups).toStrictEqual([
+    if (!followupMessage) {
+      throw new Error("Expected a recommended follow-up message");
+    }
+    expect(followupMessage.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
     await waitForChatThreadMessageCreatedPublish(first.threadId);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${first.threadId}`,
-      expect.anything(),
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${first.threadId}`,
+      { syncThroughSeqId: followupMessage.seqId },
     );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");
@@ -1753,6 +1988,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(eventBackedContents(messages.messages, silent.runId)).toHaveLength(
       0,
     );
+    await flushWaitUntilForTest();
+    expect(firstAssistantMessageEventsForRun(silent.runId)).toStrictEqual([]);
 
     const resultOnly = await startChatRun(actor, {
       agentId,
@@ -1799,6 +2036,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         },
       ),
     ).toStrictEqual(["Axiom result fallback answer"]);
+    await flushWaitUntilForTest();
+    expect(firstAssistantMessageEventsForRun(resultOnly.runId)).toHaveLength(1);
   }, 90_000);
 
   it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {
@@ -1837,10 +2076,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 
     expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${first.threadId}`,
-      expect.anything(),
-    );
     const progressMessages = await chat.listThreadMessages(
       actor,
       first.threadId,
@@ -3000,10 +3235,6 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     await chat.deleteThread(actor, run.threadId);
     await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${run.threadId}`,
-      expect.anything(),
-    );
     const deletedRead = await chat.requestReadThread(
       actor,
       run.threadId,

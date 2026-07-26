@@ -59,7 +59,7 @@ async function onboardAdmin(
     orgState.name = orgName;
   }
   api.mockClerkOrg(admin, orgState);
-  const bootstrap = await api.bootstrapOnboarding(admin, {
+  const bootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
     displayName: options.displayName ?? "BDD Default Agent",
     sound: "calm",
   });
@@ -123,7 +123,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expect(defaultAgent.displayName).toBe("BDD Default Agent");
     expect(defaultAgent.avatarUrl).toBe(DEFAULT_AGENT_AVATAR_URL);
 
-    const repeatedBootstrap = await api.bootstrapOnboarding(admin, {
+    const repeatedBootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
       displayName: "BDD Default Agent Repeated",
     });
     if (repeatedBootstrap.status !== 200) {
@@ -167,13 +167,6 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       }),
     ).toBeTruthy();
 
-    const selected = await api.requestSetDefaultAgent(
-      admin,
-      created.agentId,
-      [409],
-    );
-    expectApiError(selected.body);
-    expect(selected.body.error.code).toBe("CONFLICT");
     const selectedStatus = await api.readOnboardingStatus(admin);
     expect(selectedStatus.defaultAgentId).toBe(defaultAgentId);
 
@@ -785,14 +778,6 @@ describe("AGENT-01 and AGENT-02", () => {
     );
     expectApiError(crossOrgRead.body);
     expect(crossOrgRead.body.error.code).toBe("NOT_FOUND");
-
-    const memberDefault = await api.requestSetDefaultAgent(
-      member,
-      publicAgent.agentId,
-      [403],
-    );
-    expectApiError(memberDefault.body);
-    expect(memberDefault.body.error.code).toBe("FORBIDDEN");
 
     const connectorSlug = slug("bdd-connector");
     const connector = await api.createCustomConnector(admin, {

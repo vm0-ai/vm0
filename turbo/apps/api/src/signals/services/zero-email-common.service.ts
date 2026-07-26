@@ -1,20 +1,13 @@
-import crypto, { randomBytes } from "node:crypto";
+import crypto from "node:crypto";
 
 import type { createClerkClient } from "@clerk/backend";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
-import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { users } from "@vm0/db/schema/user";
-import { command, computed, type Computed } from "ccstate";
-import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { convert, type FormatCallback } from "html-to-text";
+import { command } from "ccstate";
+import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { Resend } from "resend";
 import { delay } from "signal-timers";
 import { Webhook } from "svix";
@@ -23,9 +16,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
-import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { writeDb$, type Db } from "../external/db";
-import { bestEffort, tapError } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -36,7 +27,6 @@ interface EmailOutboxDrainContext {
 }
 
 const log = logger("zero:email");
-const ORG_CACHE_TTL_MS = 60_000;
 const USER_CACHE_TTL_MS = 900_000;
 const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 1000;
@@ -57,58 +47,10 @@ function outboxDrainDelayMs(): number {
     : OUTBOX_DRAIN_DELAY_MS;
 }
 const OUTBOX_TTL_MS = 15 * 60 * 1000;
-const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
-const PRESIGNED_URL_EXPIRY = 3600;
-const R2_PATH_PREFIX = "email-attachments";
 export const CREDIT_LOW_BALANCE_EMAIL_SUBJECT =
   "Your credit balance is running low";
 
-export type HandlerResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly errorMessage: string };
-
-interface ReplyRecipients {
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-}
-
-interface ReceivedEmail {
-  readonly from: string;
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-  readonly replyTo: readonly string[];
-  readonly subject: string;
-  readonly text: string;
-  readonly html: string;
-  readonly headers: Record<string, string>;
-}
-
-interface ReceivedEmailAttachment {
-  readonly id: string;
-  readonly filename: string;
-  readonly size: number;
-  readonly contentType: string;
-  readonly contentDisposition: string;
-  readonly downloadUrl: string;
-}
-
 const emailTemplateSchema = z.discriminatedUnion("template", [
-  z.object({
-    template: z.literal("agent-reply"),
-    props: z.object({
-      agentName: z.string(),
-      output: z.string(),
-      logsUrl: z.string().optional(),
-      unsubscribeUrl: z.string().optional(),
-    }),
-  }),
-  z.object({
-    template: z.literal("inbound-error"),
-    props: z.object({
-      errorMessage: z.string(),
-      unsubscribeUrl: z.string().optional(),
-    }),
-  }),
   z.object({
     template: z.literal("data-export-ready"),
     props: z.object({
@@ -167,32 +109,7 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
   }),
 ]);
 
-const postSendActionSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("save_thread_session"),
-    userId: z.string(),
-    agentId: z.string(),
-    agentSessionId: z.string(),
-    replyToToken: z.string(),
-    orgId: z.string().optional(),
-  }),
-  z.object({
-    action: z.literal("update_thread_session"),
-    sessionId: z.string(),
-    agentSessionId: z.string().optional(),
-  }),
-]);
-
 export type EmailTemplate = z.output<typeof emailTemplateSchema>;
-type PostSendAction = z.output<typeof postSendActionSchema>;
-type SaveThreadSessionAction = Extract<
-  PostSendAction,
-  { readonly action: "save_thread_session" }
->;
-type UpdateThreadSessionAction = Extract<
-  PostSendAction,
-  { readonly action: "update_thread_session" }
->;
 
 const emailAddressesSchema = z.union([z.string(), z.array(z.string())]);
 const outboxRowSchema = z.object({
@@ -204,7 +121,6 @@ const outboxRowSchema = z.object({
   reply_to: z.string().nullable(),
   headers: z.record(z.string(), z.string()).nullable(),
   template: emailTemplateSchema,
-  post_send_action: postSendActionSchema.nullable(),
   attempts: z.int(),
 });
 type OutboxRow = z.output<typeof outboxRowSchema>;
@@ -219,27 +135,8 @@ function outboxRowSelection() {
     reply_to: emailOutbox.replyTo,
     headers: emailOutbox.headers,
     template: emailOutbox.template,
-    post_send_action: emailOutbox.postSendAction,
     attempts: emailOutbox.attempts,
   };
-}
-
-interface EnqueueEmailOptions {
-  readonly from: string;
-  readonly to: string | readonly string[];
-  readonly subject: string;
-  readonly template: EmailTemplate;
-  readonly cc?: string | readonly string[];
-  readonly replyTo?: string;
-  readonly headers?: Record<string, string>;
-  readonly threadAction?: PostSendAction;
-}
-
-interface OrgIdentity {
-  readonly orgId: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly createdBy?: string;
 }
 
 function getResendClient(): Resend {
@@ -250,15 +147,7 @@ function getResendClient(): Resend {
   return new Resend(apiKey);
 }
 
-export function isResendConfigured(): boolean {
-  return Boolean(env("RESEND_API_KEY"));
-}
-
-export function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
-}
-
-export function apiUrl(): string {
+function apiUrl(): string {
   return env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
 }
 
@@ -266,128 +155,12 @@ function appUrl(): string {
   return env("APP_URL");
 }
 
-export function buildIntegrationPrompt(): string {
-  return "# Current Integration\nYou are currently running inside: Email";
-}
-
-export function parseOrgEmailAddress(toAddress: string): string | null {
-  if (isReplyAddress(toAddress)) {
-    return null;
-  }
-  if (toAddress.includes("+") || toAddress.includes("/")) {
-    return null;
-  }
-  const match = toAddress.match(/^([a-z0-9][a-z0-9-]*)@/i);
-  return match?.[1] ? match[1].toLowerCase() : null;
-}
-
-export function isReplyAddress(toAddress: string): boolean {
-  return toAddress.toLowerCase().startsWith("reply+");
-}
-
-function emailDomain(address: string): string {
-  const atIndex = address.lastIndexOf("@");
-  return atIndex === -1 ? "" : address.slice(atIndex + 1).toLowerCase();
-}
-
-export function computeReplyRecipients(opts: {
-  readonly from: string;
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-  readonly replyTo: readonly string[];
-  readonly botDomain: string;
-}): ReplyRecipients {
-  const botDomainLower = opts.botDomain.toLowerCase();
-  const isBotAddress = (addr: string): boolean => {
-    return emailDomain(addr) === botDomainLower;
-  };
-  const primaryTarget = opts.replyTo.length > 0 ? opts.replyTo[0]! : opts.from;
-  const botInTo = opts.to.some(isBotAddress);
-  const otherToRecipients = opts.to.filter((addr) => {
-    return !isBotAddress(addr);
-  });
-
-  const replyToList =
-    botInTo && otherToRecipients.length > 0
-      ? [primaryTarget, ...otherToRecipients]
-      : [primaryTarget];
-  const replyCcList = [...opts.cc];
-
-  const dedup = (list: readonly string[]): string[] => {
-    const seen = new Set<string>();
-    return list.filter((addr) => {
-      const lower = addr.toLowerCase();
-      if (seen.has(lower)) {
-        return false;
-      }
-      seen.add(lower);
-      return true;
-    });
-  };
-
-  const to = dedup(
-    replyToList.filter((addr) => {
-      return !isBotAddress(addr);
-    }),
-  );
-  const toSet = new Set(
-    to.map((addr) => {
-      return addr.toLowerCase();
-    }),
-  );
-  const cc = dedup(
-    replyCcList.filter((addr) => {
-      return !isBotAddress(addr) && !toSet.has(addr.toLowerCase());
-    }),
-  );
-
-  return { to, cc };
-}
-
-export function generateReplyToken(sessionId: string): string {
-  const hmac = crypto
-    .createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(sessionId)
-    .digest("hex")
-    .slice(0, 16);
-  return `${sessionId}.${hmac}`;
-}
-
-export function verifyReplyToken(token: string): string | null {
-  const dotIndex = token.lastIndexOf(".");
-  if (dotIndex === -1) {
-    return null;
-  }
-
-  const sessionId = token.slice(0, dotIndex);
-  const providedHmac = token.slice(dotIndex + 1);
-  const expectedHmac = crypto
-    .createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(sessionId)
-    .digest("hex")
-    .slice(0, 16);
-
-  if (providedHmac.length !== expectedHmac.length) {
-    return null;
-  }
-  return crypto.timingSafeEqual(
-    Buffer.from(providedHmac),
-    Buffer.from(expectedHmac),
-  )
-    ? sessionId
-    : null;
-}
-
-export function getFromDomain(): string {
+function getFromDomain(): string {
   const domain = env("RESEND_FROM_DOMAIN");
   if (!domain) {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
   }
   return domain;
-}
-
-export function buildReplyToAddress(token: string): string {
-  return `reply+${token}@${getFromDomain()}`;
 }
 
 export function buildFromAddress(localPart: string): string {
@@ -459,31 +232,54 @@ function htmlParagraphs(value: string): string {
     .join("");
 }
 
+type MorningBriefEmailTemplate = Extract<
+  EmailTemplate,
+  { readonly template: "morning-brief" }
+>;
+
+const MORNING_BRIEF_LINK_STYLE = "color:#d94801;text-decoration:underline";
+const MORNING_BRIEF_FALLBACK_HEADLINE =
+  "Good morning. Here's your brief for today.";
+
+function renderMorningBriefTemplate(
+  template: MorningBriefEmailTemplate,
+): string {
+  const sections = template.props.sections
+    .map((section) => {
+      const items = section.items
+        .map((item, index) => {
+          const link = item.url
+            ? ` (<a href="${escapeHtml(item.url)}" style="${MORNING_BRIEF_LINK_STYLE}">view</a>)`
+            : "";
+          const detail = item.detail ? ` — ${escapeHtml(item.detail)}` : "";
+          const margin = index === section.items.length - 1 ? "0" : "0 0 9px";
+          return `<li style="margin:${margin}"><strong>${escapeHtml(
+            item.title,
+          )}</strong>${link}${detail}</li>`;
+        })
+        .join("");
+      return `<p style="margin:0 0 10px"><strong>${escapeHtml(
+        section.title,
+      )}</strong> (${section.items.length})</p><ul style="margin:0 0 22px;padding-left:22px">${items}</ul>`;
+    })
+    .join("");
+  const headline = template.props.headline ?? MORNING_BRIEF_FALLBACK_HEADLINE;
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background-color:#ffffff;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;mso-hide:all">${escapeHtml(
+    template.props.preheader,
+  )}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td align="left" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;text-align:left"><tr><td><p style="margin:0 0 1em">${escapeHtml(
+    headline,
+  )}</p><hr style="height:1px;margin:28px 0;border:0;background-color:#e4e6e8">${sections}<p style="margin:0 0 1em">Continue in Zero if you&rsquo;d like to ask a follow-up or turn any item into a task.</p><p style="margin:0"><a href="${escapeHtml(
+    template.props.continueUrl,
+  )}" style="${MORNING_BRIEF_LINK_STYLE};font-weight:600">Continue in Zero &rarr;</a></p><hr style="height:1px;margin:32px 0 24px;border:0;background-color:#e4e6e8"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ed4e01" style="width:40px;height:40px;border-radius:10px;color:#ffffff;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">0</td><td valign="middle" style="padding-left:12px;line-height:1.4"><div><strong>Zero</strong></div><div style="margin-top:3px;font-size:12px"><a href="${escapeHtml(
+    template.props.continueUrl,
+  )}" style="${MORNING_BRIEF_LINK_STYLE}">Open this brief</a> &middot; <a href="${escapeHtml(
+    template.props.manageUrl,
+  )}" style="${MORNING_BRIEF_LINK_STYLE}">Turn off Morning Brief</a></div></td></tr></table><div style="margin-top:16px;color:#737373;font-size:12px;line-height:1.45">From your &ldquo;Morning Brief&rdquo; routine</div></td></tr></table></td></tr></table></body></html>`;
+}
+
 function renderTemplate(template: EmailTemplate): string {
   switch (template.template) {
-    case "agent-reply": {
-      const logs = template.props.logsUrl
-        ? `<p><a href="${escapeHtml(template.props.logsUrl)}">View logs</a></p>`
-        : "";
-      const unsubscribe = template.props.unsubscribeUrl
-        ? `<p><a href="${escapeHtml(
-            template.props.unsubscribeUrl,
-          )}">Unsubscribe</a></p>`
-        : "";
-      return `<main><h1>${escapeHtml(
-        template.props.agentName,
-      )}</h1>${htmlParagraphs(template.props.output)}${logs}${unsubscribe}</main>`;
-    }
-    case "inbound-error": {
-      const unsubscribe = template.props.unsubscribeUrl
-        ? `<p><a href="${escapeHtml(
-            template.props.unsubscribeUrl,
-          )}">Unsubscribe</a></p>`
-        : "";
-      return `<main><h1>Email delivery failed</h1>${htmlParagraphs(
-        template.props.errorMessage,
-      )}${unsubscribe}</main>`;
-    }
     case "data-export-ready": {
       const unsubscribe = template.props.unsubscribeUrl
         ? `<p><a href="${escapeHtml(
@@ -514,34 +310,7 @@ function renderTemplate(template: EmailTemplate): string {
       )}</p></main>`;
     }
     case "morning-brief": {
-      const sections = template.props.sections
-        .map((section) => {
-          const items = section.items
-            .map((item) => {
-              const title = item.url
-                ? `<a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>`
-                : escapeHtml(item.title);
-              const detail = item.detail ? ` — ${escapeHtml(item.detail)}` : "";
-              return `<li>${title}${detail}</li>`;
-            })
-            .join("");
-          return `<h2>${escapeHtml(section.title)}</h2><ul>${items}</ul>`;
-        })
-        .join("");
-      const headline = template.props.headline
-        ? `<p>${escapeHtml(template.props.headline)}</p>`
-        : "";
-      // Hidden preheader keeps inbox previews generic; details only render
-      // once the email is opened.
-      return `<main><div style="display:none;max-height:0;overflow:hidden">${escapeHtml(
-        template.props.preheader,
-      )}</div><h1>Morning Briefing - ${escapeHtml(
-        template.props.dateLabel,
-      )}</h1>${headline}${sections}<p><a href="${escapeHtml(
-        template.props.continueUrl,
-      )}">Continue in Zero</a></p><p><a href="${escapeHtml(
-        template.props.manageUrl,
-      )}">Turn off Morning Brief</a></p></main>`;
+      return renderMorningBriefTemplate(template);
     }
     case "credit-low-balance": {
       const remainingCredits =
@@ -600,16 +369,6 @@ async function sendEmailDirect(options: {
   return { ok: true, resendId: data.id };
 }
 
-async function getMessageId(resendId: string): Promise<string | null> {
-  const { data, error } = await getResendClient().emails.get(resendId);
-  if (error || !data) {
-    return null;
-  }
-  return "message_id" in data && typeof data.message_id === "string"
-    ? data.message_id
-    : null;
-}
-
 async function findSuppressedAddress(
   tx: Transaction,
   addresses: readonly string[],
@@ -624,12 +383,7 @@ async function findSuppressedAddress(
     .select({ emailAddress: emailSuppressions.emailAddress })
     .from(emailSuppressions)
     .where(
-      sql`lower(${emailSuppressions.emailAddress}) IN (${sql.join(
-        lowerAddresses.map((address) => {
-          return sql`${address}`;
-        }),
-        sql`, `,
-      )})`,
+      inArray(sql`lower(${emailSuppressions.emailAddress})`, lowerAddresses),
     )
     .limit(1);
 
@@ -642,53 +396,6 @@ async function findSuppressedAddress(
       return address.toLowerCase() === matchedLower;
     }) ?? matchedLower
   );
-}
-
-type EmailThreadSessionDb = Pick<Db, "insert" | "update">;
-
-async function saveEmailThreadSession(
-  db: EmailThreadSessionDb,
-  action: SaveThreadSessionAction,
-  lastEmailMessageId: string | null,
-): Promise<void> {
-  await db.insert(emailThreadSessions).values({
-    userId: action.userId,
-    agentId: action.agentId,
-    agentSessionId: action.agentSessionId,
-    lastEmailMessageId,
-    replyToToken: action.replyToToken,
-    orgId: action.orgId ?? null,
-  });
-}
-
-async function updateEmailThreadSession(
-  db: EmailThreadSessionDb,
-  action: UpdateThreadSessionAction,
-  lastEmailMessageId: string | null,
-): Promise<void> {
-  await db
-    .update(emailThreadSessions)
-    .set({
-      ...(action.agentSessionId
-        ? { agentSessionId: action.agentSessionId }
-        : {}),
-      lastEmailMessageId,
-      updatedAt: nowDate(),
-    })
-    .where(eq(emailThreadSessions.id, action.sessionId));
-}
-
-async function executePostSendAction(
-  db: EmailThreadSessionDb,
-  action: PostSendAction,
-  resendId: string,
-): Promise<void> {
-  const messageId = await getMessageId(resendId);
-  if (action.action === "save_thread_session") {
-    await saveEmailThreadSession(db, action, messageId);
-    return;
-  }
-  await updateEmailThreadSession(db, action, messageId);
 }
 
 async function processOutboxItem(
@@ -753,24 +460,7 @@ async function processOutboxItem(
     .update(emailOutbox)
     .set({ status: "sent", resendId: result.resendId })
     .where(eq(emailOutbox.id, itemId));
-
-  const postSendAction = row.post_send_action;
-  if (postSendAction) {
-    await executePostSendAction(tx, postSendAction, result.resendId);
-  }
   return true;
-}
-
-async function drainById(db: Db, itemId: string): Promise<boolean> {
-  return await db.transaction(async (tx) => {
-    const [selectedRow] = await tx
-      .select(outboxRowSelection())
-      .from(emailOutbox)
-      .where(and(eq(emailOutbox.id, itemId), eq(emailOutbox.status, "pending")))
-      .for("update", { skipLocked: true });
-    const row = selectedRow ? outboxRowSchema.parse(selectedRow) : undefined;
-    return row ? await processOutboxItem(tx, row) : false;
-  });
 }
 
 async function drainNextOutboxItem(
@@ -857,274 +547,6 @@ export const cleanupExpiredEmailOutbox$ = command(
   },
 );
 
-export const enqueueEmail$ = command(
-  async (
-    { set },
-    options: EnqueueEmailOptions,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const [row] = await db
-      .insert(emailOutbox)
-      .values({
-        fromAddress: options.from,
-        toAddresses: options.to,
-        ccAddresses: options.cc ?? null,
-        subject: options.subject,
-        replyTo: options.replyTo ?? null,
-        headers: options.headers ?? null,
-        template: options.template,
-        postSendAction: options.threadAction ?? null,
-        status: "pending",
-        attempts: 0,
-      })
-      .returning({ id: emailOutbox.id });
-    signal.throwIfAborted();
-
-    if (!row) {
-      throw new Error("Failed to insert email outbox row");
-    }
-
-    await bestEffort(drainById(db, row.id), signal);
-    signal.throwIfAborted();
-  },
-);
-
-export async function getReceivedEmail(
-  emailId: string,
-): Promise<ReceivedEmail> {
-  const { data, error } = await getResendClient().emails.receiving.get(emailId);
-  if (error || !data) {
-    throw new Error(
-      `Failed to get received email: ${error?.message ?? "unknown"}`,
-    );
-  }
-  return {
-    from: data.from,
-    to: data.to,
-    cc: data.cc ?? [],
-    replyTo: data.reply_to ?? [],
-    subject: data.subject,
-    text: data.text ?? "",
-    html: data.html ?? "",
-    headers: data.headers ?? {},
-  };
-}
-
-async function getReceivedEmailAttachments(
-  emailId: string,
-): Promise<readonly ReceivedEmailAttachment[]> {
-  const { data, error } =
-    await getResendClient().emails.receiving.attachments.list({ emailId });
-  if (error || !data) {
-    throw new Error(
-      `Failed to list email attachments: ${error?.message ?? "unknown"}`,
-    );
-  }
-  return data.data.map((attachment) => {
-    return {
-      id: attachment.id,
-      filename: attachment.filename ?? `attachment-${attachment.id}`,
-      size: attachment.size,
-      contentType: attachment.content_type,
-      contentDisposition: attachment.content_disposition,
-      downloadUrl: attachment.download_url,
-    };
-  });
-}
-
-const inlineImageFormatter: FormatCallback = (
-  elem,
-  _walk,
-  builder,
-  formatOptions,
-) => {
-  const attribs = (elem.attribs ?? {}) as Record<string, string>;
-  const src = attribs.src ?? "";
-  const alt = attribs.alt ?? "";
-  if (src.startsWith("data:")) {
-    builder.addInline(alt ? `[inline image: ${alt}]` : "[inline image]");
-    return;
-  }
-  const brackets = formatOptions.linkBrackets ?? ["[", "]"];
-  const open = brackets ? brackets[0] : "";
-  const close = brackets ? brackets[1] : "";
-  const srcText = src ? `${open}${src}${close}` : "";
-  const text = alt && srcText ? `${alt} ${srcText}` : alt || srcText;
-  if (text) {
-    builder.addInline(text, { noWordTransform: true });
-  }
-};
-
-export function extractEmailBody(html: string, text: string): string {
-  return html
-    ? convert(html, {
-        formatters: { inlineImageFormatter },
-        selectors: [{ selector: "img", format: "inlineImageFormatter" }],
-      })
-    : text;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes}B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${Math.round(bytes / 1024)}KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function formatEmailAttachment(
-  attachment: ReceivedEmailAttachment,
-  presignedUrl: string,
-): string {
-  return [
-    `[attachment]: ${attachment.filename} (${attachment.contentType}, ${formatSize(
-      attachment.size,
-    )})`,
-    `   URL: ${presignedUrl}`,
-    `   To access this file: curl -sS -o /tmp/${attachment.filename} "${presignedUrl}" && read the downloaded file`,
-  ].join("\n");
-}
-
-function formatEmailAttachmentSkipped(
-  attachment: ReceivedEmailAttachment,
-  reason: string,
-): string {
-  return `[attachment]: ${attachment.filename} (${attachment.contentType}, ${formatSize(
-    attachment.size,
-  )}) - skipped: ${reason}`;
-}
-
-function downloadAndUploadEmailAttachment(
-  attachment: ReceivedEmailAttachment,
-  emailId: string,
-): Computed<Promise<string | null>> {
-  return computed(async (get): Promise<string | null> => {
-    if (attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
-      return null;
-    }
-
-    const buffer = await tapError(
-      (async (): Promise<Buffer | null> => {
-        const response = await fetch(attachment.downloadUrl);
-        if (!response.ok) {
-          return null;
-        }
-        return Buffer.from(await response.arrayBuffer());
-      })(),
-    );
-    if (!buffer) {
-      return null;
-    }
-
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const key = `${R2_PATH_PREFIX}/${emailId}/${attachment.id}-${attachment.filename}`;
-    await get(putS3Object(bucket, key, buffer, attachment.contentType));
-    return await get(
-      generatePresignedGetUrl(
-        bucket,
-        key,
-        PRESIGNED_URL_EXPIRY,
-        attachment.filename,
-      ),
-    );
-  });
-}
-
-export function processEmailAttachments(
-  emailId: string,
-): Computed<Promise<string>> {
-  return computed(async (get): Promise<string> => {
-    const attachments = await getReceivedEmailAttachments(emailId);
-    if (attachments.length === 0) {
-      return "";
-    }
-    const lines = await Promise.all(
-      attachments.map(async (attachment) => {
-        if (attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
-          return formatEmailAttachmentSkipped(attachment, "exceeds size limit");
-        }
-        const url = await get(
-          downloadAndUploadEmailAttachment(attachment, emailId),
-        );
-        return url
-          ? formatEmailAttachment(attachment, url)
-          : formatEmailAttachmentSkipped(attachment, "download failed");
-      }),
-    );
-    return lines.join("\n\n");
-  });
-}
-
-type AuthResult =
-  | "pass"
-  | "fail"
-  | "softfail"
-  | "neutral"
-  | "none"
-  | "temperror"
-  | "permerror"
-  | "policy"
-  | null;
-
-interface SenderVerification {
-  readonly verified: boolean;
-  readonly reason: string;
-  readonly details: {
-    readonly dmarc: AuthResult;
-    readonly dkim: AuthResult;
-    readonly spf: AuthResult;
-  };
-}
-
-const AUTH_RESULT_VALUES = [
-  "pass",
-  "fail",
-  "softfail",
-  "neutral",
-  "none",
-  "temperror",
-  "permerror",
-  "policy",
-] as const;
-
-function parseAuthResult(value: string | undefined): AuthResult {
-  return value && (AUTH_RESULT_VALUES as readonly string[]).includes(value)
-    ? (value as AuthResult)
-    : null;
-}
-
-export function verifySenderAuthenticity(
-  headers: Record<string, string>,
-): SenderVerification {
-  const headerKey = Object.keys(headers).find((key) => {
-    return key.toLowerCase() === "authentication-results";
-  });
-  if (!headerKey) {
-    return {
-      verified: false,
-      reason: "no authentication-results header found",
-      details: { dmarc: null, dkim: null, spf: null },
-    };
-  }
-
-  const lower = headers[headerKey]!.toLowerCase();
-  const details = {
-    dmarc: parseAuthResult(lower.match(/dmarc\s*=\s*(\w+)/)?.[1]),
-    dkim: parseAuthResult(lower.match(/dkim\s*=\s*(\w+)/)?.[1]),
-    spf: parseAuthResult(lower.match(/spf\s*=\s*(\w+)/)?.[1]),
-  };
-  return details.dmarc === "pass"
-    ? { verified: true, reason: "dmarc=pass", details }
-    : {
-        verified: false,
-        reason: `dmarc=${details.dmarc ?? "missing"}`,
-        details,
-      };
-}
-
 export function getSvixHeaders(headers: Headers): {
   readonly "svix-id": string;
   readonly "svix-timestamp": string;
@@ -1155,99 +577,6 @@ export function verifyResendWebhook(
     throw new Error("RESEND_WEBHOOK_SECRET is not configured");
   }
   return new Webhook(secret).verify(payload, headers);
-}
-
-export async function getOrgNameAndSlug(
-  db: Db,
-  clerk: ClerkClient,
-  orgId: string,
-): Promise<OrgIdentity> {
-  const [cached] = await db
-    .select()
-    .from(orgCache)
-    .where(eq(orgCache.orgId, orgId))
-    .limit(1);
-  if (cached && now() - cached.cachedAt.getTime() < ORG_CACHE_TTL_MS) {
-    return {
-      orgId,
-      slug: cached.slug,
-      name: cached.name,
-      createdBy: cached.createdBy ?? undefined,
-    };
-  }
-
-  const org = await clerk.organizations.getOrganization({
-    organizationId: orgId,
-  });
-  if (!org.slug) {
-    throw new Error(`Clerk organization ${orgId} has no slug`);
-  }
-  await db
-    .insert(orgCache)
-    .values({
-      orgId,
-      slug: org.slug,
-      name: org.name,
-      createdBy: org.createdBy ?? null,
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: orgCache.orgId,
-      set: {
-        slug: org.slug,
-        name: org.name,
-        createdBy: org.createdBy ?? null,
-        cachedAt: nowDate(),
-      },
-    });
-  return {
-    orgId,
-    slug: org.slug,
-    name: org.name,
-    createdBy: org.createdBy ?? undefined,
-  };
-}
-
-export async function getOrgIdBySlug(
-  db: Db,
-  clerk: ClerkClient,
-  slug: string,
-): Promise<string | null> {
-  const [cached] = await db
-    .select()
-    .from(orgCache)
-    .where(eq(orgCache.slug, slug))
-    .limit(1);
-  if (cached && now() - cached.cachedAt.getTime() < ORG_CACHE_TTL_MS) {
-    return cached.orgId;
-  }
-
-  const org = await tapError(clerk.organizations.getOrganization({ slug }));
-  if (!org) {
-    return null;
-  }
-  if (!org.slug) {
-    return null;
-  }
-  await db
-    .insert(orgCache)
-    .values({
-      orgId: org.id,
-      slug: org.slug,
-      name: org.name,
-      createdBy: org.createdBy ?? null,
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: orgCache.orgId,
-      set: {
-        slug: org.slug,
-        name: org.name,
-        createdBy: org.createdBy ?? null,
-        cachedAt: nowDate(),
-      },
-    });
-  return org.id;
 }
 
 export async function getUserEmail(
@@ -1347,51 +676,6 @@ export async function getUserIdByEmail(
   return user.id;
 }
 
-export async function userHasOrgMembership(
-  db: Db,
-  clerk: ClerkClient,
-  orgId: string,
-  userId: string,
-): Promise<boolean> {
-  const [cached] = await db
-    .select({ role: orgMembersCache.role, cachedAt: orgMembersCache.cachedAt })
-    .from(orgMembersCache)
-    .where(
-      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
-    )
-    .limit(1);
-  if (cached && now() - cached.cachedAt.getTime() < ORG_CACHE_TTL_MS) {
-    return true;
-  }
-
-  const memberships = await clerk.users.getOrganizationMembershipList({
-    userId,
-    limit: 100,
-  });
-  const membership = memberships.data.find((entry) => {
-    return entry.organization.id === orgId;
-  });
-  if (!membership) {
-    return false;
-  }
-  await db
-    .insert(orgMembersCache)
-    .values({
-      orgId,
-      userId,
-      role: membership.role === "org:admin" ? "admin" : "member",
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersCache.orgId, orgMembersCache.userId],
-      set: {
-        role: membership.role === "org:admin" ? "admin" : "member",
-        cachedAt: nowDate(),
-      },
-    });
-  return true;
-}
-
 export async function resolveDefaultAgent(
   db: Db,
   orgId: string,
@@ -1404,34 +688,6 @@ export async function resolveDefaultAgent(
   return row?.defaultAgentId ?? null;
 }
 
-export async function resolveEmailAuditLogsUrl(
-  db: Db,
-  opts: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly runId: string;
-  },
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ switches: userFeatureSwitches.switches })
-    .from(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, opts.orgId),
-        eq(userFeatureSwitches.userId, opts.userId),
-      ),
-    )
-    .limit(1);
-  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
-    orgId: opts.orgId,
-    userId: opts.userId,
-    overrides: row?.switches ?? {},
-  });
-  return enabled
-    ? `${appUrl()}/activities/${encodeURIComponent(opts.runId)}`
-    : undefined;
-}
-
 export async function unsubscribeUser(db: Db, userId: string): Promise<void> {
   await db
     .insert(users)
@@ -1440,27 +696,4 @@ export async function unsubscribeUser(db: Db, userId: string): Promise<void> {
       target: users.id,
       set: { emailUnsubscribed: true, updatedAt: nowDate() },
     });
-}
-
-export function completedOutputText(
-  status: "completed" | "failed" | "progress",
-  rawOutput: string | null | undefined,
-  error: string | undefined,
-): string {
-  if (status !== "completed") {
-    return error ?? "The agent run failed.";
-  }
-  if (!rawOutput) {
-    return "Task completed successfully.";
-  }
-  return rawOutput.length > 2000 ? `${rawOutput.slice(0, 2000)}...` : rawOutput;
-}
-
-export function extractAgentSessionId(result: unknown): string | undefined {
-  return result &&
-    typeof result === "object" &&
-    "agentSessionId" in result &&
-    typeof result.agentSessionId === "string"
-    ? result.agentSessionId
-    : undefined;
 }

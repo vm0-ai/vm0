@@ -59,6 +59,255 @@ export type IntegrationsSlackMessageContract =
   typeof integrationsSlackMessageContract;
 
 /**
+ * Integration Feishu message contract
+ * POST /api/zero/integrations/feishu/message
+ *
+ * Sends a Feishu message via an org-owned custom app.
+ * Requires `feishu:write` capability (via ZERO_TOKEN).
+ */
+const feishuCardSchema = z.record(z.string(), z.unknown());
+
+const sendFeishuMessageBodySchema = z
+  .object({
+    installationId: z.string().uuid().optional(),
+    chat: z.string().min(1, "Chat ID is required").optional(),
+    user: z.string().min(1, "Feishu open ID is required").optional(),
+    replyToMessageId: z.string().min(1, "Message ID is required").optional(),
+    replyInThread: z.boolean().optional(),
+    text: z.string().min(1, "Message text is required").optional(),
+    card: feishuCardSchema.optional(),
+  })
+  .refine(
+    (body) => {
+      return (
+        [body.chat, body.user, body.replyToMessageId].filter(Boolean).length ===
+        1
+      );
+    },
+    {
+      message: "Exactly one of chat, user, or replyToMessageId is required",
+      path: ["chat"],
+    },
+  )
+  .refine(
+    (body) => {
+      return Boolean(body.text) !== Boolean(body.card);
+    },
+    {
+      message: "Exactly one of text or card is required",
+      path: ["text"],
+    },
+  )
+  .refine(
+    (body) => {
+      return !body.replyInThread || Boolean(body.replyToMessageId);
+    },
+    {
+      message: "replyInThread requires replyToMessageId",
+      path: ["replyInThread"],
+    },
+  );
+
+export type SendFeishuMessageBody = z.infer<typeof sendFeishuMessageBodySchema>;
+
+const sendFeishuMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  messageId: z.string(),
+  chatId: z.string().nullable(),
+});
+
+export type SendFeishuMessageResponse = z.infer<
+  typeof sendFeishuMessageResponseSchema
+>;
+
+export const integrationsFeishuMessageContract = c.router({
+  sendMessage: {
+    method: "POST",
+    path: "/api/zero/integrations/feishu/message",
+    headers: authHeadersSchema,
+    body: sendFeishuMessageBodySchema,
+    responses: {
+      200: sendFeishuMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Send a Feishu message via an organization custom app",
+  },
+});
+
+export type IntegrationsFeishuMessageContract =
+  typeof integrationsFeishuMessageContract;
+
+export const FEISHU_FILE_UPLOAD_MAX_BYTES = 30 * 1024 * 1024;
+
+/**
+ * Integration Feishu message resource download contract.
+ * Requires `feishu:write` because Feishu currently uses one capability for
+ * bot-backed messaging and file access.
+ */
+const feishuResourceTypeSchema = z.enum(["file", "image"]);
+
+export type FeishuResourceType = z.infer<typeof feishuResourceTypeSchema>;
+
+export const integrationsFeishuDownloadFileContract = c.router({
+  download: {
+    method: "GET",
+    path: "/api/zero/integrations/feishu/download-file",
+    headers: authHeadersSchema,
+    query: z.object({
+      installation_id: z.string().uuid().optional(),
+      message_id: z.string().min(1, "Message ID is required"),
+      file_key: z.string().min(1, "File key is required"),
+      type: feishuResourceTypeSchema,
+    }),
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/octet-stream",
+        body: z.unknown(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Download a file from a Feishu message",
+  },
+});
+
+export type IntegrationsFeishuDownloadFileContract =
+  typeof integrationsFeishuDownloadFileContract;
+
+/**
+ * Integration Feishu file upload — init contract.
+ *
+ * The CLI uploads to temporary VM0 storage before the API forwards the bytes
+ * to Feishu with the organization bot's tenant token.
+ */
+const feishuUploadInitBodySchema = z.object({
+  filename: z.string().min(1, "Filename is required").max(255),
+  contentType: z.string().min(1, "Content type is required").max(200),
+  length: z
+    .number()
+    .int()
+    .positive("File length must be a positive integer")
+    .max(
+      FEISHU_FILE_UPLOAD_MAX_BYTES,
+      `File must not exceed ${FEISHU_FILE_UPLOAD_MAX_BYTES} bytes`,
+    ),
+});
+
+export type FeishuUploadInitBody = z.infer<typeof feishuUploadInitBodySchema>;
+
+const feishuUploadInitResponseSchema = z.object({
+  uploadId: z.string().uuid(),
+  uploadUrl: z.string(),
+  fileUrl: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number().int().nonnegative(),
+});
+
+export type FeishuUploadInitResponse = z.infer<
+  typeof feishuUploadInitResponseSchema
+>;
+
+export const integrationsFeishuUploadInitContract = c.router({
+  init: {
+    method: "POST",
+    path: "/api/zero/integrations/feishu/upload-file/init",
+    headers: authHeadersSchema,
+    body: feishuUploadInitBodySchema,
+    responses: {
+      200: feishuUploadInitResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Get a pre-signed upload URL for Feishu file delivery",
+  },
+});
+
+/**
+ * Integration Feishu file upload — complete contract.
+ *
+ * Uploads the stored bytes to Feishu and sends the resulting file key to one
+ * chat, user, or reply target.
+ */
+const feishuUploadCompleteBodySchema = z
+  .object({
+    uploadId: z.string().uuid("Upload ID must be a UUID"),
+    installationId: z.string().uuid().optional(),
+    chat: z.string().min(1, "Chat ID is required").optional(),
+    user: z.string().min(1, "Feishu open ID is required").optional(),
+    replyToMessageId: z.string().min(1, "Message ID is required").optional(),
+    replyInThread: z.boolean().optional(),
+    contentType: z.string().min(1).max(200).optional(),
+  })
+  .refine(
+    (body) => {
+      return (
+        [body.chat, body.user, body.replyToMessageId].filter(Boolean).length ===
+        1
+      );
+    },
+    {
+      message: "Exactly one of chat, user, or replyToMessageId is required",
+      path: ["chat"],
+    },
+  )
+  .refine(
+    (body) => {
+      return !body.replyInThread || Boolean(body.replyToMessageId);
+    },
+    {
+      message: "replyInThread requires replyToMessageId",
+      path: ["replyInThread"],
+    },
+  );
+
+export type FeishuUploadCompleteBody = z.infer<
+  typeof feishuUploadCompleteBodySchema
+>;
+
+const feishuUploadCompleteResponseSchema = z.object({
+  messageId: z.string(),
+  chatId: z.string().nullable(),
+  fileKey: z.string(),
+  filename: z.string(),
+  mimetype: z.string(),
+  size: z.number().int().nonnegative(),
+  url: z.string(),
+});
+
+export type FeishuUploadCompleteResponse = z.infer<
+  typeof feishuUploadCompleteResponseSchema
+>;
+
+export const integrationsFeishuUploadCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/integrations/feishu/upload-file/complete",
+    headers: authHeadersSchema,
+    body: feishuUploadCompleteBodySchema,
+    responses: {
+      200: feishuUploadCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Finalize Feishu file upload and send it to a conversation",
+  },
+});
+
+/**
  * Integration Telegram message contract
  * POST /api/zero/integrations/telegram/message
  *
@@ -339,14 +588,38 @@ export type IntegrationsTelegramBotListContract =
 const slackUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required"),
   length: z.number().int().positive("File length must be a positive integer"),
+  canonical: z
+    .object({
+      operationId: z.string().uuid(),
+      contentType: z.string().min(1).max(200),
+      checksumSha256: z.string().regex(/^[a-f0-9]{64}$/),
+      channel: z.string().min(1, "Channel ID is required"),
+      threadTs: z.string().optional(),
+      title: z.string().optional(),
+      initialComment: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type SlackUploadInitBody = z.infer<typeof slackUploadInitBodySchema>;
 
-const slackUploadInitResponseSchema = z.object({
+const directSlackUploadInitResponseSchema = z.object({
   uploadUrl: z.string(),
   fileId: z.string(),
 });
+
+const canonicalSlackUploadInitResponseSchema = z.object({
+  kind: z.literal("canonical"),
+  assetId: z.string().uuid(),
+  operationId: z.string().uuid(),
+  uploadUrl: z.string().url().optional(),
+  url: z.string().url(),
+});
+
+const slackUploadInitResponseSchema = z.union([
+  directSlackUploadInitResponseSchema,
+  canonicalSlackUploadInitResponseSchema,
+]);
 
 export type SlackUploadInitResponse = z.infer<
   typeof slackUploadInitResponseSchema
@@ -366,6 +639,57 @@ export const integrationsSlackUploadInitContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get a pre-signed Slack upload URL via org bot token",
+  },
+});
+
+const slackUploadMaterializeBodySchema = z.object({
+  assetId: z.string().uuid(),
+  operationId: z.string().uuid(),
+});
+
+const slackUploadMaterializeResponseSchema = z.object({
+  assetId: z.string().uuid(),
+  url: z.string().url(),
+  delivery: z.discriminatedUnion("status", [
+    z.object({
+      status: z.literal("pending"),
+      uploadUrl: z.string(),
+      fileId: z.string(),
+    }),
+    z.object({
+      status: z.literal("delivered"),
+      fileId: z.string(),
+      permalink: z.string(),
+    }),
+    z.object({
+      status: z.literal("failed"),
+      message: z.string(),
+      retryable: z.boolean(),
+    }),
+  ]),
+});
+
+export type SlackUploadMaterializeBody = z.infer<
+  typeof slackUploadMaterializeBodySchema
+>;
+export type SlackUploadMaterializeResponse = z.infer<
+  typeof slackUploadMaterializeResponseSchema
+>;
+
+export const integrationsSlackUploadMaterializeContract = c.router({
+  materialize: {
+    method: "POST",
+    path: "/api/zero/integrations/slack/upload-file/materialize",
+    headers: authHeadersSchema,
+    body: slackUploadMaterializeBodySchema,
+    responses: {
+      200: slackUploadMaterializeResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Materialize a canonical Slack publication before delivery",
   },
 });
 
@@ -789,6 +1113,9 @@ const slackUploadCompleteBodySchema = z.object({
   threadTs: z.string().optional(),
   title: z.string().optional(),
   initialComment: z.string().optional(),
+  canonicalAssetId: z.string().uuid().optional(),
+  operationId: z.string().uuid().optional(),
+  uploadError: z.string().max(2000).optional(),
 });
 
 export type SlackUploadCompleteBody = z.infer<
@@ -798,6 +1125,10 @@ export type SlackUploadCompleteBody = z.infer<
 const slackUploadCompleteResponseSchema = z.object({
   fileId: z.string(),
   permalink: z.string(),
+  assetId: z.string().uuid().optional(),
+  assetUrl: z.string().url().optional(),
+  deliveryStatus: z.enum(["delivered", "failed"]).optional(),
+  deliveryError: z.string().optional(),
 });
 
 export type SlackUploadCompleteResponse = z.infer<

@@ -24,6 +24,10 @@ from tests.model_provider_websocket_helpers import (
     openai_websocket_usage_frame,
     set_websocket_message,
 )
+from tests.usage_helpers import (
+    compact_observation_quantities,
+    compact_observation_rows,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -38,10 +42,12 @@ def _assert_usage_event_rows(
     resource_field: Literal["provider", "model"],
     expected_rows: list[tuple[str, str, int]],
 ) -> None:
-    actual_rows = [
-        (event[resource_field], event["category"], event["quantity"]) for event in events
-    ]
-    assert len(events) == len(expected_rows)
+    actual_rows = (
+        compact_observation_rows(events)
+        if resource_field == "model"
+        else [(event[resource_field], event["category"], event["quantity"]) for event in events]
+    )
+    assert len(actual_rows) == len(expected_rows)
     assert sorted(actual_rows) == sorted(expected_rows)
 
     idempotency_keys = [event["idempotencyKey"] for event in events]
@@ -385,11 +391,9 @@ class TestModelProviderWebSocketUsage:
             "tokens.cache_read": 20,
         }
         observation_events = webhook.model_usage_observation_events()
-        observations_by_category = {
-            event["category"]: event["quantity"] for event in observation_events
-        }
-        assert len(observation_events) == len(observations_by_category) == 3
-        assert len({event["idempotencyKey"] for event in observation_events}) == 3
+        observations_by_category = compact_observation_quantities(observation_events)
+        assert len(observation_events) == 2
+        assert len({event["idempotencyKey"] for event in observation_events}) == 2
         assert observations_by_category == by_category
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert model_provider_usage_sources(flow) == {}
@@ -742,10 +746,8 @@ class TestModelProviderWebSocketUsage:
             == 100
         )
         observation_events = webhook.model_usage_observation_events()
-        observations_by_category = {
-            event["category"]: event["quantity"] for event in observation_events
-        }
-        assert len(observation_events) == len(observations_by_category) == 4
+        observations_by_category = compact_observation_quantities(observation_events)
+        assert len(observation_events) == 1
         assert observations_by_category == by_category
         assert model_provider_usage_sources(flow) == {}
 

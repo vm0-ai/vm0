@@ -90,6 +90,8 @@ export interface UserInfo {
   readonly timezone: string | null;
   readonly slackDisplayName?: string;
   readonly slackUserId?: string;
+  readonly feishuDisplayName?: string;
+  readonly feishuOpenId?: string;
   readonly teamsUserDisplayName?: string;
   readonly teamsUserPrincipalName?: string;
   readonly teamsUserId?: string;
@@ -103,8 +105,9 @@ export interface UserInfo {
 export interface ZeroRunBootstrapContext extends AgentConnectorScope {
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly zeroWebSearchEnabled: boolean;
+  readonly zeroFinanceEnabled: boolean;
   readonly zeroMailEnabled: boolean;
+  readonly zeroPeopleSearchEnabled: boolean;
   readonly workflows: readonly RunWorkflowRef[];
   readonly permissionGrants: readonly FirewallPermissionGrant[];
   readonly triggerAgentId: string | undefined;
@@ -418,12 +421,16 @@ export function materializeZeroRunBootstrapContext(
   return {
     userInfo,
     featureSwitchContext,
-    zeroWebSearchEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroWebSearch,
+    zeroFinanceEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ZeroFinance,
       featureSwitchContext,
     ),
     zeroMailEnabled: isFeatureEnabled(
       FeatureSwitchKey.ZeroMail,
+      featureSwitchContext,
+    ),
+    zeroPeopleSearchEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ZeroPeopleSearch,
       featureSwitchContext,
     ),
     ...connectorScope,

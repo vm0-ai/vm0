@@ -4,7 +4,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -22,7 +21,6 @@ import {
   computerUsePermissions,
   buttonByText,
   linkByText,
-  linkByLabel,
   queryLinkByText,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
@@ -42,6 +40,7 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: "22222222-2222-4222-8222-222222222222",
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -145,7 +144,11 @@ describe("chat lifecycle", () => {
         "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+      ),
+    ).toBeInTheDocument();
     const downloadLink = await waitFor(() => {
       return linkByText("Download for macOS");
     });
@@ -178,53 +181,15 @@ describe("chat lifecycle", () => {
     await user.click(await screen.findByText("Connect my computer"));
 
     const requiredButton = await waitFor(() => {
-      return buttonByText("Requires Apple Silicon Mac");
+      return buttonByText("Requires an Apple silicon Mac");
     });
     expect(requiredButton).toBeDisabled();
-    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
-    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
-  });
-
-  it("shows Apple Silicon and Intel download links when x64 downloads are enabled", async () => {
-    mockMacUserAgentData("x86");
-    const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-download-x64";
-    mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
-      return respond(200, { hosts: [] });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.DesktopX64Download]: true },
-    });
-
-    await waitFor(() => {
-      return chatComposerTextarea();
-    });
-    await user.click(await screen.findByLabelText("Connectors"));
-    await user.click(await screen.findByText("Connect my computer"));
-
-    const appleSiliconDownload = await waitFor(() => {
-      return linkByLabel("Download for Mac Apple Silicon");
-    });
-    expect(appleSiliconDownload).toHaveAttribute(
-      "href",
-      expect.stringContaining(
-        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
-      ),
-    );
-    expect(linkByLabel("Download for Mac Intel")).toHaveAttribute(
-      "href",
-      expect.stringContaining(
-        "/api/zero/desktop/updates/stable/darwin/x64/dmg",
-      ),
-    );
-    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
     expect(
-      screen.queryByText("Requires Apple Silicon Mac"),
-    ).not.toBeInTheDocument();
+      screen.getByText(
+        "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
   });
 
   it("does not auto-select the only online Computer Use host", async () => {
@@ -441,6 +406,7 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -493,13 +459,23 @@ describe("chat lifecycle", () => {
 
   it("shows a saved offline Computer Use host selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-saved-offline-selection";
+    const threadId = "44444444-4444-4444-8444-444444444444";
     const hostId = "22222222-2222-4222-8222-222222222222";
-    mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycle(context, {
       threadId,
       threadTitle: "Computer Use",
       computerUseHostId: hostId,
     });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Computer Use",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
+      },
+    ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
@@ -623,6 +599,7 @@ describe("chat lifecycle", () => {
     const threadId = "voice-input-segment-thread";
     const draftPatches: unknown[] = [];
     const uploadedAudio: string[] = [];
+    const transcriptionRequested = context.mocks.deferred<void>();
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
     mockChatLifecycle(context, { threadId });
@@ -641,6 +618,7 @@ describe("chat lifecycle", () => {
       }
       uploadedAudio.push(await file.text());
       transcriptionCalls += 1;
+      transcriptionRequested.resolve(undefined);
       return new Response(JSON.stringify({ text: "First sentence" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -657,10 +635,15 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
+    // The silence-triggered segment upload reaching the server proves the
+    // capture rotated recorders instead of ending the session; recording may
+    // legitimately auto-stop moments later, so check the label now rather
+    // than after the transcription response renders.
+    await transcriptionRequested.promise;
+    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     await waitFor(() => {
       expect(composer).toHaveTextContent("First sentence");
     });
-    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     expect(transcriptionCalls).toBe(1);
     expect(uploadedAudio).toStrictEqual(["voice-1"]);
     await waitFor(() => {
