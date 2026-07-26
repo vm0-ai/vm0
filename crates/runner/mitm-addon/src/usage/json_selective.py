@@ -23,6 +23,7 @@ from typing import Literal, cast
 Path = tuple[str, ...]
 WildcardPath = tuple[str, ...]
 ScalarKind = Literal["string", "int"]
+ScalarOverflowPolicy = Literal["error", "discard"]
 _JsonStringScanner = Callable[[str, int, bool], tuple[str, int]]
 # `scanstring` is the stdlib JSON string scanner, but typeshed does not expose it.
 _SCAN_JSON_STRING = cast(_JsonStringScanner, vars(json.decoder)["scanstring"])
@@ -90,17 +91,25 @@ class ScalarField:
     """Selected scalar field configuration.
 
     ``kind`` must be ``"string"`` or ``"int"``. ``max_bytes`` is the capture
-    limit for the selected scalar token; exceeding it fails extraction with
-    ``"string limit exceeded"`` or ``"number limit exceeded"``.
+    limit for the selected scalar token. ``overflow_policy`` defaults to
+    ``"error"``, which fails extraction with ``"string limit exceeded"`` or
+    ``"number limit exceeded"``. Selected strings may use ``"discard"`` to
+    stop retaining an oversized optional observation while continuing to
+    validate the document.
     """
 
     kind: ScalarKind
     max_bytes: int = 4096
+    overflow_policy: ScalarOverflowPolicy = "error"
 
     def __post_init__(self) -> None:
         if self.kind not in ("string", "int"):
             raise ValueError("scalar field kind must be 'string' or 'int'")
         _validate_positive_int("scalar field max_bytes", self.max_bytes)
+        if self.overflow_policy not in ("error", "discard"):
+            raise ValueError("scalar field overflow_policy must be 'error' or 'discard'")
+        if self.kind != "string" and self.overflow_policy == "discard":
+            raise ValueError("scalar field overflow_policy 'discard' requires a string field")
 
 
 @dataclass
@@ -141,6 +150,7 @@ class _StringState:
     path: Path | None
     max_bytes: int
     raw: bytearray | None
+    overflow_policy: ScalarOverflowPolicy = "error"
     escape: bool = False
     has_escape: bool = False
     unicode_remaining: int = 0
@@ -176,9 +186,11 @@ class JsonSelectiveExtractor:
       ``"*"`` segment, recording counts by the concrete wildcard key.
     - ``object_presence_paths`` records exact paths where JSON objects appear.
 
-    Oversized selected scalars fail extraction. Oversized object keys are treated
-    as unknown keys instead, so selected descendants below that key cannot match.
-    Objects that are array elements do not match normal object-path observations.
+    Oversized selected scalars fail extraction by default. Selected strings with
+    ``overflow_policy="discard"`` instead drop that observation and continue
+    validation. Oversized object keys are treated as unknown keys, so selected
+    descendants below that key cannot match. Objects that are array elements do
+    not match normal object-path observations.
     """
 
     def __init__(
@@ -279,8 +291,8 @@ class JsonSelectiveExtractor:
         """Finalize the current document and return the extraction result.
 
         Call once after all chunks have been fed. If parsing is incomplete,
-        invalid, or a configured bound was exceeded, the returned result has
-        ``complete=False`` and empty observation containers.
+        invalid, or a strict configured bound was exceeded, the returned result
+        has ``complete=False`` and empty observation containers.
         """
         if not self._error and self._number is not None:
             self._finish_number()
@@ -418,6 +430,7 @@ class JsonSelectiveExtractor:
                     path=path,
                     max_bytes=field.max_bytes,
                     raw=bytearray(),
+                    overflow_policy=field.overflow_policy,
                 )
             else:
                 self._string = _StringState(
@@ -679,7 +692,7 @@ class JsonSelectiveExtractor:
             return
         state.raw.append(b)
         if len(state.raw) > state.max_bytes:
-            if state.role == "key":
+            if state.role == "key" or state.overflow_policy == "discard":
                 state.raw = None
                 return
             self._error = "string limit exceeded"

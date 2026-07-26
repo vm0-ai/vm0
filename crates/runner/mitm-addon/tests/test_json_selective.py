@@ -100,6 +100,16 @@ def test_rejects_bool_scalar_field_max_bytes():
         ScalarField("string", max_bytes=True)
 
 
+def test_rejects_invalid_scalar_field_overflow_policy():
+    with pytest.raises(ValueError, match="overflow_policy"):
+        ScalarField("string", overflow_policy=json.loads('"ignore"'))
+
+
+def test_rejects_discard_overflow_policy_for_integer_field():
+    with pytest.raises(ValueError, match="requires a string field"):
+        ScalarField("int", overflow_policy="discard")
+
+
 def test_rejects_invalid_scalar_field_config_value():
     with pytest.raises(TypeError, match="ScalarField"):
         JsonSelectiveExtractor(scalar_fields=json.loads('{"model": "string"}'))
@@ -564,6 +574,64 @@ def test_rejects_oversized_selected_string():
     assert result.complete is False
     assert result.error == "string limit exceeded"
     assert result.values == {}
+
+
+def test_discards_oversized_optional_selected_string_across_chunks():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={
+            ("type",): ScalarField("string", max_bytes=3, overflow_policy="discard"),
+            ("usage", "output_tokens"): ScalarField("int"),
+        }
+    )
+
+    extractor.feed(b'{"type":"abc')
+    extractor.feed(b'def","usage":{"output_tokens":7}}')
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "output_tokens"): 7}
+    assert extractor.observed_scalar_for_diagnostics(("type",)) is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        (rb'{"type":"abcd\x"}', "invalid string escape"),
+        (b'{"type":"abcd\xff"}', "invalid string"),
+    ],
+)
+def test_discarded_oversized_selected_string_still_validates_json(payload, error):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("type",): ScalarField("string", max_bytes=3, overflow_policy="discard")}
+    )
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == error
+    assert result.values == {}
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_type"),
+    [
+        (b'{"type":"ok","type":"long"}', None),
+        (b'{"type":"long","type":"ok"}', "ok"),
+    ],
+)
+def test_discarded_oversized_duplicate_selected_string_uses_last_value(payload, expected_type):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("type",): ScalarField("string", max_bytes=3, overflow_policy="discard")}
+    )
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is True
+    expected_values = {} if expected_type is None else {("type",): expected_type}
+    assert result.values == expected_values
+    assert extractor.observed_scalar_for_diagnostics(("type",)) == expected_type
 
 
 def test_selected_string_limit_counts_escape_bytes():
