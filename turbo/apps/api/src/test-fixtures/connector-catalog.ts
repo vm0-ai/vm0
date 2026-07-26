@@ -24,10 +24,11 @@ import {
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "../signals/services/connector-catalog-source";
-import rawConnectorCatalog from "./connector-catalog.json";
+import { API_TEST_CONNECTOR_CATALOG_ARTIFACT } from "./connector-catalog-artifact";
 
-export const API_TEST_CONNECTOR_CATALOG =
-  connectorCatalogArtifactSchema.parse(rawConnectorCatalog);
+export const API_TEST_CONNECTOR_CATALOG = connectorCatalogArtifactSchema.parse(
+  API_TEST_CONNECTOR_CATALOG_ARTIFACT,
+);
 
 validateConnectorCatalogArtifact(API_TEST_CONNECTOR_CATALOG);
 

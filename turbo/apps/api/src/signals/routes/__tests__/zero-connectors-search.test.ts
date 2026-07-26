@@ -251,64 +251,6 @@ describe("GET /api/zero/connectors/search", () => {
     expect(cloudflare?.authMethods).toStrictEqual(["oauth"]);
   });
 
-  it("matches Google Cloud connector tags without a feature switch", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "gcp" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const connector = response.body.connectors.find((candidate) => {
-      return candidate.id === "google-cloud";
-    });
-    expect(connector).toBeDefined();
-    expect(connector?.authMethods).toStrictEqual(["oauth"]);
-  });
-
-  it("shows Base44 as a connector without a feature switch", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "base44" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const connector = response.body.connectors.find((c) => {
-      return c.id === "base44";
-    });
-    expect(connector).toBeDefined();
-    expect(connector?.authMethods).toStrictEqual(["oauth"]);
-  });
-
-  it("shows Slock as a connector without a feature switch", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "slock" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const connector = response.body.connectors.find((c) => {
-      return c.id === "slock";
-    });
-    expect(connector).toBeDefined();
-    expect(connector?.authMethods).toStrictEqual(["oauth"]);
-  });
-
   it("shows ungated api-token while hiding feature-gated oauth", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
@@ -329,26 +271,6 @@ describe("GET /api/zero/connectors/search", () => {
     expect(neon?.authMethods).not.toContain("oauth");
   });
 
-  it("includes accepted connectors with at least one ungated auth method", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    for (const type of ["github", "openai", "steam"]) {
-      const found = response.body.connectors.find((c) => {
-        return c.id === type;
-      });
-      expect(found).toBeDefined();
-    }
-  });
-
   it("exposes openai as api-token only", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
@@ -366,24 +288,6 @@ describe("GET /api/zero/connectors/search", () => {
     });
     expect(openai).toBeDefined();
     expect(openai?.authMethods).toStrictEqual(["api-token"]);
-  });
-
-  it("hides zapier when its api-token auth method is feature-gated", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const zapier = response.body.connectors.find((c) => {
-      return c.id === "zapier";
-    });
-    expect(zapier).toBeUndefined();
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {

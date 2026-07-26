@@ -19,11 +19,10 @@ interface AuthenticatedFixture {
   readonly userId: string;
 }
 
-type ConnectorToCleanUp = "openai" | "atlassian" | "gitlab";
+type ConnectorToCleanUp = "openai" | "gitlab";
 
 const CONNECTOR_TYPES_TO_CLEAN_UP: readonly ConnectorToCleanUp[] = [
   "openai",
-  "atlassian",
   "gitlab",
 ];
 
@@ -48,25 +47,6 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
       body: {
         authMethod: "api-token",
         values: { OPENAI_TOKEN: "sk-test-token" },
-      },
-      headers: authHeaders(),
-    }),
-    [200],
-  );
-}
-
-async function connectAtlassian(fixture: AuthenticatedFixture): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context })(zeroConnectorManualGrantContract).connect({
-      params: { type: "atlassian" },
-      body: {
-        authMethod: "api-token",
-        values: {
-          ATLASSIAN_TOKEN: "atlassian-test-token",
-          ATLASSIAN_EMAIL: "test@example.com",
-          ATLASSIAN_DOMAIN: "example",
-        },
       },
       headers: authHeaders(),
     }),
@@ -195,17 +175,6 @@ describe("DELETE /api/zero/connectors/:type", () => {
     expect(readAfterDelete.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("deletes API-token connector state created through manual grant", async () => {
-    const fixture = await track(seedFixture());
-    await connectAtlassian(fixture);
-
-    const response = await deleteConnector(fixture, "atlassian", [204]);
-
-    expect(response.body).toBeUndefined();
-    const readAfterDelete = await readMissingConnector(fixture, "atlassian");
-    expect(readAfterDelete.body.error.code).toBe("NOT_FOUND");
-  });
-
   it("deletes optional API-token connector state created through manual grant", async () => {
     const fixture = await track(seedFixture());
     await connectGitlab(fixture);
@@ -219,12 +188,12 @@ describe("DELETE /api/zero/connectors/:type", () => {
 
   it("deletes only the requested connector type", async () => {
     const fixture = await track(seedFixture());
-    await connectAtlassian(fixture);
+    await connectOpenai(fixture);
     await connectGitlab(fixture);
 
-    await deleteConnector(fixture, "atlassian", [204]);
+    await deleteConnector(fixture, "openai", [204]);
 
-    const deleted = await readMissingConnector(fixture, "atlassian");
+    const deleted = await readMissingConnector(fixture, "openai");
     expect(deleted.body.error.code).toBe("NOT_FOUND");
     const preserved = await readExistingConnector(fixture, "gitlab");
     expect(preserved.body).toMatchObject({

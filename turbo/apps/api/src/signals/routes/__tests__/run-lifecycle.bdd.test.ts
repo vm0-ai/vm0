@@ -5704,11 +5704,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const runnerGroup = api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
 
-    await connectors.connectManualGrant(actor, "agora", "api-token", {
-      AGORA_CUSTOMER_ID: "agora-customer-id",
-      AGORA_CUSTOMER_SECRET: "agora-customer-secret",
-      AGORA_APP_ID: "agora-app-id",
-      AGORA_APP_CERTIFICATE: "agora-stored-certificate",
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-stored-token",
+      GITLAB_HOST: "gitlab.example.com",
     });
     const composeName = `bdd-compose-overrides-connector-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -5718,7 +5716,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
           framework: "claude-code",
           environment: {
             ANTHROPIC_API_KEY: "bdd-inline-key",
-            AGORA_APP_CERTIFICATE: "inline-agora-certificate",
+            GITLAB_TOKEN: "glpat-inline-token",
           },
         },
       },
@@ -5731,7 +5729,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
-      prompt: "use compose-overridden agora certificate",
+      prompt: "use compose-overridden gitlab token",
     });
     await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
@@ -5741,16 +5739,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
-    expect(claim.environment?.AGORA_CUSTOMER_ID).toBe(
-      connectorPlaceholder("agora", "AGORA_CUSTOMER_ID"),
-    );
-    expect(claim.environment?.AGORA_CUSTOMER_SECRET).toBe(
-      connectorPlaceholder("agora", "AGORA_CUSTOMER_SECRET"),
-    );
-    expect(claim.environment?.AGORA_APP_ID).toBe("agora-app-id");
-    expect(claim.environment?.AGORA_APP_CERTIFICATE).toBe(
-      "inline-agora-certificate",
-    );
+    expect(claim.environment?.GITLAB_TOKEN).toBe("glpat-inline-token");
+    expect(claim.environment?.GITLAB_HOST).toBe("gitlab.example.com");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -6314,12 +6304,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const authOrg = createAuthOrgAgentsBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    // axiom is enabled on the agent but never connected; a user secret with
+    // openai is enabled on the agent but never connected; a user secret with
     // the connector's token name must not impersonate the connector.
-    await api.enableAgentConnectors(actor, agentId, ["axiom"]);
+    await api.enableAgentConnectors(actor, agentId, ["openai"]);
     await authOrg.setSecret(actor, {
-      name: "AXIOM_TOKEN",
-      value: "xaat-plain-user-secret",
+      name: "OPENAI_TOKEN",
+      value: "sk-plain-user-secret",
     });
 
     const run = await api.createRun(actor, {
@@ -6330,10 +6320,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.environment).not.toHaveProperty("AXIOM_TOKEN");
+    expect(claim.environment).not.toHaveProperty("OPENAI_TOKEN");
     expect(
       claim.firewalls?.some((firewall) => {
-        return firewallEntryName(firewall) === "axiom";
+        return firewallEntryName(firewall) === "openai";
       }),
     ).toBeFalsy();
 

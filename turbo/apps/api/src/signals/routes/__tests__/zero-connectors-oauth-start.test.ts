@@ -59,27 +59,14 @@ function mockOAuthEnv(): void {
     "CLOUDFLARE_OAUTH_CLIENT_SECRET",
     "cloudflare-test-client-secret",
   );
-  mockOptionalEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-test-client-id");
-  mockOptionalEnv(
-    "DOCUSIGN_OAUTH_CLIENT_SECRET",
-    "docusign-test-client-secret",
-  );
-  mockOptionalEnv("DROPBOX_OAUTH_CLIENT_ID", "dropbox-test-client-id");
-  mockOptionalEnv("DROPBOX_OAUTH_CLIENT_SECRET", "dropbox-test-client-secret");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-test-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
   mockOptionalEnv("LINEAR_OAUTH_CLIENT_ID", "linear-test-client-id");
   mockOptionalEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-test-client-secret");
-  mockOptionalEnv("MERCURY_OAUTH_CLIENT_ID", "mercury-test-client-id");
-  mockOptionalEnv("MERCURY_OAUTH_CLIENT_SECRET", "mercury-test-client-secret");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
-  mockOptionalEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
-  mockOptionalEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
   mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
   mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
-  mockOptionalEnv("STRAVA_OAUTH_CLIENT_ID", "strava-test-client-id");
-  mockOptionalEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-test-client-secret");
   mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
   mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
 }
@@ -208,47 +195,6 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expectOauthState(authorizationUrl);
-  });
-
-  it("starts Google Cloud OAuth without a feature switch", async () => {
-    mockAuthenticatedSession();
-
-    const response = await requestOauthStart("google-cloud", {
-      headers: authHeaders(),
-      origin: API_ORIGIN,
-    });
-
-    expect(response.status).toBe(200);
-    const authorizationUrl = await authorizationUrlFromResponse(response);
-    const scopes = new Set(
-      authorizationUrl.searchParams.get("scope")?.split(" ") ?? [],
-    );
-    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
-      "https://accounts.google.com/o/oauth2/v2/auth",
-    );
-    expect(authorizationUrl.searchParams.get("client_id")).toBe(
-      "google-test-client-id",
-    );
-    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/connectors/google-cloud/callback`,
-    );
-    expect(scopes.has("openid")).toBeTruthy();
-    expect(
-      scopes.has("https://www.googleapis.com/auth/userinfo.email"),
-    ).toBeTruthy();
-    expect(
-      scopes.has("https://www.googleapis.com/auth/cloud-platform"),
-    ).toBeTruthy();
-    expect(
-      scopes.has("https://www.googleapis.com/auth/appengine.admin"),
-    ).toBeTruthy();
-    expect(
-      scopes.has("https://www.googleapis.com/auth/sqlservice.login"),
-    ).toBeTruthy();
-    expect(scopes.has("https://www.googleapis.com/auth/compute")).toBeTruthy();
-    expect(scopes.size).toBe(6);
-    expectOauthState(authorizationUrl);
-    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("starts YouTube OAuth without a feature switch", async () => {

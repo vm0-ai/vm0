@@ -325,7 +325,7 @@ describe("zero workflows", () => {
         connectorRef: "gmail",
         label: "Gmail",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+          url: "https://static.vm0.io/test-fixtures/connectors/gmail.svg",
           invertInDarkMode: false,
         },
         reason: "The workflow reads Gmail messages.",
@@ -335,8 +335,8 @@ describe("zero workflows", () => {
         connectorRef: "runtime",
         label: "Runtime",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/runtime-529df4ae1f3f.svg",
-          invertInDarkMode: true,
+          url: "https://static.vm0.io/test-fixtures/connectors/runtime.svg",
+          invertInDarkMode: false,
         },
         reason: "The workflow reads Runtime jobs.",
         status: "not-enabled-for-agent",
@@ -345,7 +345,7 @@ describe("zero workflows", () => {
         connectorRef: "gitlab",
         label: "GitLab",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gitlab-3f258ed8cb9a.svg",
+          url: "https://static.vm0.io/test-fixtures/connectors/gitlab.svg",
           invertInDarkMode: false,
         },
         reason: "The workflow reads GitLab projects.",
