@@ -11,6 +11,11 @@ use std::time::Duration;
 
 const PRODUCTION_PROMPT_BYTES: usize = 140_421;
 const RESUME_THREAD_ID: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
+    "analytics.enabled=false",
+    "features.plugins=false",
+    "features.apps=false",
+];
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -67,7 +72,7 @@ async fn fresh_and_resumed_codex_stdin_preserve_prompt_text_exactly() -> TestRes
 }
 
 #[tokio::test]
-async fn fresh_and_resumed_codex_disable_upstream_analytics() -> TestResult {
+async fn fresh_and_resumed_codex_apply_fixed_startup_policy() -> TestResult {
     let mock = common::build_and_locate_mock_codex()?;
     let root = tempfile::tempdir()?;
     let argv_path = root.path().join("codex-argv");
@@ -76,7 +81,7 @@ async fn fresh_and_resumed_codex_disable_upstream_analytics() -> TestResult {
 
     for resume in [false, true] {
         let run_id = format!(
-            "codex-analytics-{}",
+            "codex-startup-policy-{}",
             if resume { "resume" } else { "fresh" }
         );
         let runtime = build_runtime(root.path(), &recording_mock, &run_id, "hello", resume)?;
@@ -84,7 +89,7 @@ async fn fresh_and_resumed_codex_disable_upstream_analytics() -> TestResult {
         let result = execute_with_timeout(&runtime).await?;
 
         assert_eq!(result.exit_code, common::CLEAN_EXIT);
-        assert_analytics_disabled(&argv_path)?;
+        assert_fixed_startup_policy(&argv_path)?;
     }
 
     Ok(())
@@ -239,15 +244,17 @@ fn recording_codex(root: &Path, mock: &Path, argv_path: &Path) -> TestResult<Pat
     )
 }
 
-fn assert_analytics_disabled(argv_path: &Path) -> TestResult {
+fn assert_fixed_startup_policy(argv_path: &Path) -> TestResult {
     let args = std::fs::read_to_string(argv_path)?
         .lines()
         .map(str::to_string)
         .collect::<Vec<_>>();
-    assert!(
-        args.windows(2)
-            .any(|window| matches!(window, [flag, value] if flag == "-c" && value == "analytics.enabled=false")),
-        "Codex argv should disable upstream analytics: {args:?}"
-    );
+    for expected in CODEX_FIXED_STARTUP_CONFIGS {
+        assert!(
+            args.windows(2)
+                .any(|window| matches!(window, [flag, value] if flag == "-c" && value == expected)),
+            "Codex argv should include fixed startup config {expected:?}: {args:?}"
+        );
+    }
     Ok(())
 }

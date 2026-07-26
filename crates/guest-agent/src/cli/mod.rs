@@ -72,7 +72,11 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
-const CODEX_ANALYTICS_DISABLED_CONFIG: &str = "analytics.enabled=false";
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
+    "analytics.enabled=false",
+    "features.plugins=false",
+    "features.apps=false",
+];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
 /// Maximum retained bytes for one ordinary CLI stdout record before parsing.
 ///

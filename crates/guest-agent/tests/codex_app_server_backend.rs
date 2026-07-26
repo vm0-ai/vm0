@@ -12,6 +12,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
+    "analytics.enabled=false",
+    "features.plugins=false",
+    "features.apps=false",
+];
+
 #[tokio::test]
 async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_started()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -82,7 +88,7 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
     assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
     assert!(cli_result.failure_diagnostic.is_none());
     assert!(cli_result.last_event_sequence.is_none());
-    assert_app_server_analytics_disabled(&argv_path)?;
+    assert_app_server_fixed_startup_policy(&argv_path)?;
 
     let events = read_agent_log_events(&runtime.paths)?;
     assert_event_type_sequence(
@@ -266,25 +272,27 @@ fn recording_codex(root: &Path, mock: &Path, argv_path: &Path) -> Result<PathBuf
     Ok(path)
 }
 
-fn assert_app_server_analytics_disabled(argv_path: &Path) -> Result<(), std::io::Error> {
+fn assert_app_server_fixed_startup_policy(argv_path: &Path) -> Result<(), std::io::Error> {
     let args = std::fs::read_to_string(argv_path)?
         .lines()
         .map(str::to_string)
         .collect::<Vec<_>>();
-    let analytics_index = args
-        .windows(2)
-        .position(
-            |window| matches!(window, [flag, value] if flag == "-c" && value == "analytics.enabled=false"),
-        )
-        .ok_or_else(|| {
-            std::io::Error::other(format!(
-                "Codex app-server argv should disable upstream analytics: {args:?}"
-            ))
-        })?;
     let app_server_index = args
         .iter()
         .position(|arg| arg == "app-server")
         .ok_or_else(|| std::io::Error::other("Codex argv omitted app-server subcommand"))?;
-    assert!(analytics_index < app_server_index);
+    for expected in CODEX_FIXED_STARTUP_CONFIGS {
+        let config_index = args
+            .windows(2)
+            .position(|window| {
+                matches!(window, [flag, value] if flag == "-c" && value == expected)
+            })
+            .ok_or_else(|| {
+                std::io::Error::other(format!(
+                    "Codex app-server argv should include fixed startup config {expected:?}: {args:?}"
+                ))
+            })?;
+        assert!(config_index < app_server_index);
+    }
     Ok(())
 }
