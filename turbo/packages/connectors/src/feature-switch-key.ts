@@ -66,7 +66,6 @@ export enum FeatureSwitchKey {
   StructuredPrompt = "structuredPrompt",
 
   ZapierConnector = "zapierConnector",
-  HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   AgentUnreadIndicators = "agentUnreadIndicators",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
@@ -74,7 +73,6 @@ export enum FeatureSwitchKey {
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",
   FeishuIntegration = "feishuIntegration",
-  PresentationExport = "presentationExport",
   Artifacts = "artifacts",
   HostedArtifactVersions = "hostedArtifactVersions",
   VideoArtifactPosters = "videoArtifactPosters",

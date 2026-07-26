@@ -1,5 +1,3 @@
-import type { PresentationSpeakerNotesPatch } from "@vm0/api-contracts/contracts/zero-host";
-
 const EDITABLE_SELECTOR = '[data-vm0-editable="text"]';
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const SLIDE_SELECTORS = [
@@ -14,10 +12,7 @@ const SLIDE_SELECTORS = [
   ".slide",
   "section",
 ] as const;
-export const PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES = [
-  "active",
-  "is-active",
-] as const;
+const PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES = ["active", "is-active"] as const;
 const FALLBACK_EDITABLE_SELECTOR =
   "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,td,th,span,div";
 const UNSAFE_PREVIEW_URL_PROTOCOLS = [
@@ -35,23 +30,23 @@ const THEME_SWITCHER_SELECT_IDS = {
   palette: "swPal",
 } as const;
 
-export interface PresentationEditBlock {
+export interface PresentationPreviewBlock {
   readonly editId: string;
   readonly slideId: string;
   readonly tagName: string;
   readonly text: string;
 }
 
-export interface PresentationSlideDraft {
+export interface PresentationPreviewSlide {
   readonly id: string;
   readonly notes: string;
   readonly title: string;
 }
 
-export interface PresentationEditDraft {
-  readonly blocks: readonly PresentationEditBlock[];
+export interface PresentationPreviewDraft {
+  readonly blocks: readonly PresentationPreviewBlock[];
   readonly html: string;
-  readonly slides: readonly PresentationSlideDraft[];
+  readonly slides: readonly PresentationPreviewSlide[];
 }
 
 interface DeckMetadataSlide {
@@ -113,15 +108,6 @@ function parseDeckMetadata(doc: Document): DeckMetadata {
     kind: typeof parsed.kind === "string" ? parsed.kind : undefined,
     slides,
   };
-}
-
-function parseMutableDeckMetadata(doc: Document): Record<string, unknown> {
-  const script = deckMetadataScript(doc);
-  const parsed: unknown = JSON.parse(script.textContent);
-  if (!isRecord(parsed)) {
-    throw new Error("Invalid presentation deck metadata");
-  }
-  return { ...parsed };
 }
 
 function serializeDoc(doc: Document): string {
@@ -283,13 +269,13 @@ function selectEditableElements(slide: Element): Element[] {
   );
 }
 
-export function parsePresentationEditDraft(
+export function parsePresentationPreviewDraft(
   html: string,
-): PresentationEditDraft {
+): PresentationPreviewDraft {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const metadata = parseDeckMetadata(doc);
   const slideElements = selectSlideElements(doc);
-  const slides = slideElements.map((slide, index): PresentationSlideDraft => {
+  const slides = slideElements.map((slide, index): PresentationPreviewSlide => {
     const id = slideIdForElement(slide, index);
     return {
       id,
@@ -298,10 +284,10 @@ export function parsePresentationEditDraft(
     };
   });
   const blocks = slideElements.flatMap(
-    (slide, slideIndex): PresentationEditBlock[] => {
+    (slide, slideIndex): PresentationPreviewBlock[] => {
       const slideId = slideIdForElement(slide, slideIndex);
       return selectEditableElements(slide).map(
-        (editable, blockIndex): PresentationEditBlock => {
+        (editable, blockIndex): PresentationPreviewBlock => {
           const editId = ensureEditIdForElement(editable, blockIndex);
           return {
             editId,
@@ -314,22 +300,6 @@ export function parsePresentationEditDraft(
     },
   );
   return { blocks, html: serializeDoc(doc), slides };
-}
-
-function findSlide(doc: Document, slideId: string): Element | null {
-  return (
-    selectSlideElements(doc).find((slide, index) => {
-      return slideIdForElement(slide, index) === slideId;
-    }) ?? null
-  );
-}
-
-function findEditable(slide: Element, editId: string): Element | null {
-  return (
-    selectEditableElements(slide).find((editable, index) => {
-      return editIdForElement(editable, index) === editId;
-    }) ?? null
-  );
 }
 
 function isTransientPresentationEditorAttribute(name: string): boolean {
@@ -748,9 +718,7 @@ function materializedThemeCss(params: {
   `;
 }
 
-export function materializePresentationThemeSwitcherDefaults(
-  doc: Document,
-): void {
+function materializePresentationThemeSwitcherDefaults(doc: Document): void {
   const scriptText = Array.from(doc.querySelectorAll("script"))
     .map((script) => {
       return script.textContent ?? "";
@@ -767,74 +735,6 @@ export function materializePresentationThemeSwitcherDefaults(
     palette,
   });
   doc.head.append(style);
-}
-
-export function patchPresentationHtml(params: {
-  readonly blocks: readonly PresentationEditBlock[];
-  readonly html: string;
-  readonly slides: readonly PresentationSlideDraft[];
-}): string {
-  const doc = new DOMParser().parseFromString(params.html, "text/html");
-  for (const block of params.blocks) {
-    const slide = findSlide(doc, block.slideId);
-    const editable = slide ? findEditable(slide, block.editId) : null;
-    if (editable && editable.textContent !== block.text) {
-      editable.textContent = block.text;
-    }
-  }
-
-  const metadata = parseMutableDeckMetadata(doc);
-  const existingVersion =
-    typeof metadata.editProtocolVersion === "number" &&
-    Number.isFinite(metadata.editProtocolVersion)
-      ? metadata.editProtocolVersion
-      : undefined;
-  metadata.kind = "presentation-html";
-  metadata.editProtocolVersion = existingVersion ?? 1;
-  const metadataSlides = isRecord(metadata.slides)
-    ? { ...metadata.slides }
-    : {};
-  for (const slide of params.slides) {
-    const existingSlide = metadataSlides[slide.id];
-    metadataSlides[slide.id] = {
-      ...(isRecord(existingSlide) ? existingSlide : {}),
-      speakerNotes: slide.notes,
-    };
-  }
-  metadata.slides = metadataSlides;
-  deckMetadataScript(doc).textContent = JSON.stringify(metadata, null, 2);
-  return serializeDoc(doc);
-}
-
-export function applyPresentationSpeakerNotesPatch(params: {
-  readonly patch: PresentationSpeakerNotesPatch;
-  readonly slides: readonly PresentationSlideDraft[];
-}): {
-  readonly appliedCount: number;
-  readonly slides: readonly PresentationSlideDraft[];
-} {
-  const notesBySlideId = new Map<string, string>();
-  for (const item of params.patch.slides) {
-    const notes = item.speakerNotes.trim();
-    if (notes) {
-      notesBySlideId.set(item.slideId, notes);
-    }
-  }
-
-  let appliedCount = 0;
-  const slides = params.slides.map((slide) => {
-    if (slide.notes.trim()) {
-      return slide;
-    }
-    const notes = notesBySlideId.get(slide.id);
-    if (!notes) {
-      return slide;
-    }
-    appliedCount += 1;
-    return { ...slide, notes };
-  });
-
-  return { appliedCount, slides };
 }
 
 function appendPresentationPreviewStyle(previewDoc: Document): void {

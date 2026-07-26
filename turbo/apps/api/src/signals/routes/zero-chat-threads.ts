@@ -43,7 +43,6 @@ import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
 import { zeroChatThreadDraftGetRoutes } from "./zero-chat-threads-draft-get";
 import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
-import { zeroChatThreadsHtmlArtifactEditSnapshotRoutes } from "./zero-chat-threads-html-artifact-edit-snapshot";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
@@ -416,7 +415,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     route: chatThreadArtifactsContract.list,
     handler: authRoute({}, listChatThreadArtifactsInner$),
   },
-  ...zeroChatThreadsHtmlArtifactEditSnapshotRoutes,
   {
     route: chatThreadMessagesContract.list,
     handler: authRoute({}, listChatThreadMessagesInner$),

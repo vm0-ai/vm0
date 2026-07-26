@@ -167,21 +167,6 @@ const imageArtifactEditSnapshotSchema = z.object({
   updatedAt: z.string(),
 });
 
-const htmlArtifactEditSnapshotQuerySchema = z.object({
-  url: z.string().url(),
-});
-
-const htmlArtifactEditSnapshotUpsertSchema = z.object({
-  url: z.string().url(),
-  html: z.string().min(1),
-});
-
-const htmlArtifactEditSnapshotSchema = z.object({
-  artifactUrl: z.string().url(),
-  snapshotUrl: z.string().url(),
-  updatedAt: z.string(),
-});
-
 /**
  * Attachment metadata persisted in chat_threads.draft_attachments.
  *
@@ -1183,50 +1168,6 @@ export const chatThreadArtifactsContract = c.router({
     },
     summary: "List uploaded files associated with every run in a chat thread",
   },
-  getHtmlEditSnapshot: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: htmlArtifactEditSnapshotQuerySchema,
-    responses: {
-      200: z.object({ snapshot: htmlArtifactEditSnapshotSchema.nullable() }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get a resumable HTML artifact edit snapshot for a chat thread",
-  },
-  upsertHtmlEditSnapshot: {
-    method: "PUT",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    body: htmlArtifactEditSnapshotUpsertSchema,
-    responses: {
-      200: htmlArtifactEditSnapshotSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upsert a resumable HTML artifact edit snapshot for a chat thread",
-  },
-  deleteHtmlEditSnapshot: {
-    method: "DELETE",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: htmlArtifactEditSnapshotQuerySchema,
-    responses: {
-      204: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Delete a resumable HTML artifact edit snapshot for a chat thread",
-  },
   syncGoogleDrive: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/artifacts",
@@ -1249,28 +1190,6 @@ export const chatThreadArtifactsContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Sync a chat artifact file to the user's connected Google Drive",
-  },
-  uploadGoogleSlides: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:threadId/artifacts/google-slides",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
-    responses: {
-      200: z.object({
-        id: z.string(),
-        name: z.string(),
-        webViewLink: z.string().nullable(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary:
-      "Upload a presentation artifact to the user's Google Drive as a native Google Slides deck",
   },
 });
 
@@ -1424,7 +1343,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
@@ -1503,7 +1421,4 @@ export type ImageArtifactEditSnapshot = z.infer<
 >;
 export type ImageArtifactEditSnapshotState = z.infer<
   typeof imageArtifactEditSnapshotStateSchema
->;
-export type HtmlArtifactEditSnapshot = z.infer<
-  typeof htmlArtifactEditSnapshotSchema
 >;

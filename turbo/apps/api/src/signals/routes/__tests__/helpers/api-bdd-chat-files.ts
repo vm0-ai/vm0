@@ -83,7 +83,6 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-arti
 import { zeroHostRoutes } from "../../zero-host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
-import { zeroUploadsHtmlDomEditSnapshotRoutes } from "../../zero-uploads-html-dom-edit-snapshot";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 import type { ApiTestUser } from "./api-bdd";
@@ -239,7 +238,6 @@ const chatFilesRoutes = [
   ...zeroChatMessagesRoutes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsHtmlDomEditSnapshotRoutes,
   ...zeroHostRoutes,
   ...zeroModelPoliciesRoutes,
   ...storagesPrepareRoutes,
@@ -1263,24 +1261,6 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { threadId },
           body: body as { runId: string; fileId: string },
-        }),
-        statuses,
-      );
-    },
-
-    async requestUploadThreadArtifactGoogleSlidesFromUpload(
-      actor: ApiTestUser | null,
-      threadId: string,
-      uploadId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
-    ) {
-      const formData = new FormData();
-      formData.append("uploadId", uploadId);
-      return await accept(
-        threadArtifactsClient().uploadGoogleSlides({
-          headers: authenticate(context, actor),
-          params: { threadId },
-          body: formData,
         }),
         statuses,
       );

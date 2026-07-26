@@ -236,7 +236,6 @@ export const openArtifact$ = command(
 
     const preview = artifactDetailPreview(detail);
     const base = {
-      editAvailable: false,
       filename: preview.filename,
       showSizeInSubtitle: false,
       splitViewAvailable: false,

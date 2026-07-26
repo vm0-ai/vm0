@@ -119,10 +119,10 @@ import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
-  parsePresentationEditDraft,
+  parsePresentationPreviewDraft,
   previewPresentationHtml,
-  type PresentationEditDraft,
-} from "./presentation-html-edit-protocol.ts";
+  type PresentationPreviewDraft,
+} from "./presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "./zero-attachment-url.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -2350,7 +2350,7 @@ function presentationTemplateThemeCss(
 
 function themedPreviewPresentationHtml(params: {
   readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
   return previewPresentationHtml({
@@ -2362,7 +2362,7 @@ function themedPreviewPresentationHtml(params: {
 
 async function loadPresentationTemplateHtmlPreview(params: {
   readonly item: PresentationTemplateItem;
-}): Promise<PresentationEditDraft | null> {
+}): Promise<PresentationPreviewDraft | null> {
   const response = await fetch(
     readableAttachmentResourceUrl(params.item.embedUrl),
     {
@@ -2374,7 +2374,7 @@ async function loadPresentationTemplateHtmlPreview(params: {
     throw new Error(`Failed to load template HTML (${response.status})`);
   }
 
-  const draft = parsePresentationEditDraft(await response.text());
+  const draft = parsePresentationPreviewDraft(await response.text());
   return draft.slides.length > 0 ? draft : null;
 }
 
@@ -2424,7 +2424,7 @@ function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
 
 function createThemedPresentationPreviewUrl(params: {
   readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
   return URL.createObjectURL(
@@ -2443,7 +2443,7 @@ function createThemedPresentationPreviewUrl(params: {
 
 function createThemedPresentationPreviewHtml(params: {
   readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
   return themedPreviewPresentationHtml({
@@ -2501,7 +2501,7 @@ function getPresentationTemplateThumbnailThemeVariables(
 }
 
 function getPresentationTemplateThumbnailPreviewHtml(
-  draft: PresentationEditDraft,
+  draft: PresentationPreviewDraft,
   slideId: string,
 ): string {
   return previewPresentationHtml({
@@ -2610,7 +2610,7 @@ function PresentationTemplateShadowThumbnail({
   themeVariables,
   title,
 }: {
-  readonly draft: PresentationEditDraft | undefined;
+  readonly draft: PresentationPreviewDraft | undefined;
   readonly fallbackImage: string;
   readonly runtime: TemplatePreviewRuntime;
   readonly slideId: string | null;
@@ -2650,7 +2650,7 @@ function PresentationTemplateShadowThumbnail({
 }
 
 function createPresentationTemplateHtmlPreviewState(params: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -2688,7 +2688,7 @@ function createPresentationTemplateHtmlPreviewState(params: {
 }
 
 function createPresentationTemplateCardHtmlPreviewState(params: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -3172,7 +3172,7 @@ function setLoadedPresentationTemplateDetailPreview({
   selectedTheme,
   setDetailPreview,
 }: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -3276,7 +3276,7 @@ function TemplatePreviewPage({
   );
 
   const setLoadedDetailPreview = (params: {
-    readonly draft: PresentationEditDraft;
+    readonly draft: PresentationPreviewDraft;
     readonly index: number;
     readonly previousFrameUrl: string | null;
     readonly theme: PresentationTemplateThemeOption;
