@@ -3,10 +3,7 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  shouldUseStructuredPrompt,
-  type EditorDocumentSnapshot,
-} from "./user-message-document-codec.ts";
+import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 
 export interface DraftPersistencePayload {
   readonly content: string | null;
@@ -34,16 +31,17 @@ export function buildDraftPersistencePayload(
     attachments !== null;
 
   let structuredPrompt: UserMessageDocument | null = null;
-  if (source.editorDocument && hasStructuredDraft) {
-    const document = source.editorDocument.toMessageDocument({
+  if (
+    source.structuredPromptEnabled &&
+    source.editorDocument &&
+    hasStructuredDraft
+  ) {
+    structuredPrompt = source.editorDocument.toMessageDocument({
       generationTemplate: source.generationTemplate,
       attachments: source.attachments,
     });
-    if (source.structuredPromptEnabled && !document) {
+    if (!structuredPrompt) {
       throw new Error("Failed to serialize structured draft");
-    }
-    if (shouldUseStructuredPrompt(source.structuredPromptEnabled, document)) {
-      structuredPrompt = document;
     }
   }
 

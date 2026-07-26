@@ -331,7 +331,59 @@ describe("chat inline feedback", () => {
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
   });
 
-  it("restores queued inline feedback as a feedback card without the structured prompt rollout", async () => {
+  it("uses the legacy send path for feedback when structured prompts are disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000707";
+    const assistantReply = "The release summary needs a clearer owner.";
+    const sentMessages: RunCreateCapture[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Legacy feedback",
+      chatMessages: [
+        {
+          id: "msg-legacy-feedback-user",
+          role: "user",
+          content: "Review this release summary",
+          runId: "run-legacy-feedback",
+          createdAt: "2026-07-26T10:00:00Z",
+        },
+        {
+          id: "msg-legacy-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-legacy-feedback",
+          createdAt: "2026-07-26T10:00:01Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+    pastePlainText(await findFeedbackNote(), "Name the owner.");
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]?.prompt).toContain(
+      "Feedback on this part of your reply:",
+    );
+    expect(sentMessages[0]?.prompt).toContain(`> ${assistantReply}`);
+    expect(sentMessages[0]?.prompt).toContain("Name the owner.");
+    expect(sentMessages[0]).not.toHaveProperty("structuredPrompt");
+  });
+
+  it("restores queued inline feedback with the structured prompt rollout", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000706";
     const assistantReply = "The rollout plan needs a clearer owner.";
@@ -387,7 +439,7 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     click(await screen.findByLabelText("Template"));

@@ -1538,6 +1538,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
             },
           },
           { type: "text" as const, text: messageText },
+          {
+            type: "feedback" as const,
+            quote: "Structured quote stays hidden",
+            note: "Structured note stays hidden",
+          },
         ],
       },
     };
@@ -1569,6 +1574,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.queryByLabelText(`Remove template ${style.title}`),
       ).not.toBeInTheDocument();
+      expect(
+        composer.querySelector("[data-feedback-item]"),
+      ).not.toBeInTheDocument();
+      expect(composer).not.toHaveTextContent("Structured quote stays hidden");
+      expect(composer).not.toHaveTextContent("Structured note stays hidden");
     });
   });
 });

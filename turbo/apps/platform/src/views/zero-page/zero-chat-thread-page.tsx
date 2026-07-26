@@ -6738,10 +6738,14 @@ function StructuredUserMessagePart({
       </div>
     );
   }
-  const attachment = attachments.find((candidate) => {
-    return candidate.id === part.fileId;
-  });
-  return <StructuredFileReference part={part} attachment={attachment} />;
+  if (part.type === "file") {
+    const attachment = attachments.find((candidate) => {
+      return candidate.id === part.fileId;
+    });
+    return <StructuredFileReference part={part} attachment={attachment} />;
+  }
+  void (part satisfies never);
+  return null;
 }
 
 function StructuredUserMessage({

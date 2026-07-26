@@ -3113,23 +3113,19 @@ function structuredPromptForSend({
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PagedChatMessage["attachFiles"];
 }): UserMessageDocument | undefined {
+  if (!enabled) {
+    return undefined;
+  }
   const structuredPrompt = editorDocument
     ? editorDocument.toMessageDocument({
         generationTemplate,
         attachments,
       })
-    : enabled
-      ? textToMessageDocument(prompt)
-      : null;
+    : textToMessageDocument(prompt);
   if (!structuredPrompt) {
-    if (enabled) {
-      throw new Error("Failed to serialize structured prompt");
-    }
-    return undefined;
+    throw new Error("Failed to serialize structured prompt");
   }
-  return shouldUseStructuredPrompt(enabled, structuredPrompt)
-    ? structuredPrompt
-    : undefined;
+  return structuredPrompt;
 }
 
 function queueStructured(

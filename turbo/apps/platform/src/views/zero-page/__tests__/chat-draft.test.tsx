@@ -222,7 +222,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores an agent feedback draft without the structured prompt rollout", async () => {
+  it("restores an agent feedback draft with the structured prompt rollout", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000111";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
     const firstAttachment = {
@@ -279,7 +279,7 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -472,7 +472,7 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ONE_ID}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -531,7 +531,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores and persists structured feedback without the structured prompt rollout", async () => {
+  it("restores and persists feedback with the structured prompt rollout", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000104";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000105";
@@ -607,7 +607,7 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -701,7 +701,14 @@ describe("chat drafts", () => {
         draftContent: "legacy draft",
         draftStructuredPrompt: {
           version: 1,
-          parts: [{ type: "text", text: "structured draft" }],
+          parts: [
+            { type: "text", text: "structured draft" },
+            {
+              type: "feedback",
+              quote: "Structured quote stays hidden",
+              note: "Structured note stays hidden",
+            },
+          ],
         },
         draftAttachments: [legacyAttachment],
       });
@@ -721,6 +728,9 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(editor).toHaveTextContent("legacy draft");
       expect(editor).not.toHaveTextContent("structured draft");
+      expect(editor).not.toHaveTextContent("Structured quote stays hidden");
+      expect(editor).not.toHaveTextContent("Structured note stays hidden");
+      expect(editor.querySelector("[data-feedback-item]")).toBeNull();
       expect(screen.getByLabelText("Remove legacy.txt")).toBeInTheDocument();
     });
 

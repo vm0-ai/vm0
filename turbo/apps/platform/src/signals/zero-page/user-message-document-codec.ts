@@ -35,14 +35,7 @@ export function shouldUseStructuredPrompt(
   enabled: boolean,
   document: UserMessageDocument | null | undefined,
 ): document is UserMessageDocument {
-  return (
-    document !== null &&
-    document !== undefined &&
-    (enabled ||
-      document.parts.some((part) => {
-        return part.type === "feedback";
-      }))
-  );
+  return enabled && document !== null && document !== undefined;
 }
 
 export interface TextMessageTemplateSnapshot {

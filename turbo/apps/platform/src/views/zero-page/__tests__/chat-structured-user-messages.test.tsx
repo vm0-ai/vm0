@@ -179,7 +179,7 @@ describe("structured user messages", () => {
     expect(document.querySelector("[data-structured-user-message]")).toBeNull();
   });
 
-  it("renders structured feedback quotes as blockquotes without the structured prompt rollout", async () => {
+  it("uses legacy feedback content when the feature switch is disabled", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000745";
     mockChatLifecycle(context, {
       threadId,
@@ -188,7 +188,7 @@ describe("structured user messages", () => {
         {
           id: "00000000-0000-4000-8000-000000000745",
           role: "user",
-          content: "Flattened feedback stays hidden",
+          content: "Flattened **feedback** stays visible",
           runId: "d0000000-0000-4000-a000-000000000745",
           structuredPrompt: {
             version: 1,
@@ -211,21 +211,13 @@ describe("structured user messages", () => {
       featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
     });
 
-    const quote = await screen.findByText("Quoted reply passage");
-    expect(quote.tagName).toBe("BLOCKQUOTE");
-    expect(quote).toHaveAttribute("data-structured-feedback-quote");
-    expect(quote).toHaveClass(
-      "border-l-2",
-      "border-border",
-      "pl-3",
-      "text-muted-foreground",
-    );
+    const legacyFeedback = await screen.findByText("feedback");
+    expect(legacyFeedback.tagName).toBe("STRONG");
+    expect(screen.getByText("Flattened", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText("Quoted reply passage")).not.toBeInTheDocument();
     expect(
-      screen.getByText("Explain the complete result."),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("> Quoted reply passage"),
+      screen.queryByText("Explain the complete result."),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Flattened feedback stays hidden")).toBeNull();
+    expect(document.querySelector("[data-structured-user-message]")).toBeNull();
   });
 });
