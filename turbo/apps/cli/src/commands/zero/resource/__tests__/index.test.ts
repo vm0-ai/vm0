@@ -5,27 +5,27 @@ import { findRegistryResourceForPull } from "../index";
 
 const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
   "black-slabs":
-    "840a02ad6e9caac5abfa6abea991f7a0c71fdee16700011d64ad3af7013164cc",
+    "de6f78c5a524cf3959ca56af7a93ec5bca113555bbd1a5983eebf1bc353971d4",
   "blueprint-grid":
-    "8d02b52dfe72d8d0e59ba69e6ee9ffe3ae527c68e6cc89afe04264801c5c8d53",
+    "dec02c4fe156566272a92b7386cb032cec7e3a1250dd42429ca3e7f42374dc28",
   "coastal-hotel":
-    "b9e2ac6e12ee525ce8896b704071eebf439590700d95060c6db76c90d167a08e",
+    "09d239d7a0e1c27334f2c3c8da9e408174cece6bcc8a34342438598db739aa4e",
   "dot-matrix":
-    "823b02b5ac17d4899de867b99a9332912f6ace671cce8a72a91cff9426a661b3",
+    "0beb9b1bcb12ace6d3541df269a629af8e3b41c8f9d7e3c3fcfe069655cd9074",
   "frame-stack":
-    "c2a9d32dadbc0e00c3e29fe78eebe6525757b81e21d39eb25cbf34adb98e2322",
+    "7c4c13eaa22b4185607c6ac6a726dd931fe896b279b38a6267c0105f81214f8b",
   "frosted-scatter":
-    "a2a191134d56a33b90bfc0540c97a022f8f4b028d942ddcd482380ad5e9589ca",
+    "c67a7baf924ae4b57241e61527dd875d084e38040653a9bbcc659c13d2382cf9",
   "gallery-wall":
-    "0295121b12c8ded9a93efd3781e308020ffcb5b71b1f9fc682cac96cf4d5c14a",
+    "f6e41fb711b8c9317a425b463a9812e99f2aecb630d1acbfb77ef0965c2ba55f",
   "glass-bloom":
-    "48374e9ded67087f481b82d260a70438aa2fd9abc33367e4190fa5fb606214e4",
+    "713fbac57cf37a0ddd6d7e7d79a0b9f29f8fff7a0aa55bc741bc5dcd0e498d25",
   "serif-stack":
-    "9cb399465cb5c66ae7fb857986450ef154e7dc7c6e7c59a89281011933c55ab3",
+    "6d5d65fb21d6c5ec5627fe32fbfc55e80841a2343f2d91bf3ee3a0f62547766a",
   "sticker-pop":
-    "5802135c5f922d6ae3748d13468e6bc24549f70c946fdf109b34ff02de471b09",
+    "61954f4652e2cc86cd1016a537078ea050fe95735a7477e6bd56c91a0c0aec3b",
   "warm-cards":
-    "0973164b9b4e3811ab565430043f74a6fa0546ca6f215db64a1eb79bd14542e6",
+    "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
 };
 
 describe("zero resource pull registry resolver", () => {
