@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.324.0](https://github.com/vm0-ai/vm0/compare/api-v1.323.1...api-v1.324.0) (2026-07-26)
+
+
+### Features
+
+* **api:** enable external connector catalog ([#23064](https://github.com/vm0-ai/vm0/issues/23064)) ([8e802f2](https://github.com/vm0-ai/vm0/commit/8e802f29cdfe41dcb80cd57ad543b01a0298d6b6))
+
+
+### Bug Fixes
+
+* **api:** make artifact previews write-once and immutable ([#23079](https://github.com/vm0-ai/vm0/issues/23079)) ([41b3c2c](https://github.com/vm0-ai/vm0/commit/41b3c2c0533f49d9f68b4f13af23292d2a595d3b))
+* **api:** seed connector catalog for local development ([#23077](https://github.com/vm0-ai/vm0/issues/23077)) ([ef2c7f4](https://github.com/vm0-ai/vm0/commit/ef2c7f4ffbf881f6441557e17aa2b55977053de3))
+* trigger api and platform releases ([#23076](https://github.com/vm0-ai/vm0/issues/23076)) ([a005cfc](https://github.com/vm0-ai/vm0/commit/a005cfce2200944636124ab35be19702c879dba9))
+
+
+### Performance Improvements
+
+* resize artifact catalog thumbnails with cloudflare ([#23074](https://github.com/vm0-ai/vm0/issues/23074)) ([215532c](https://github.com/vm0-ai/vm0/commit/215532cead0823908f2e7a46148b6d4f9fa447f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.468.0
+    * @vm0/db bumped to 1.141.2
+
 ## [1.323.1](https://github.com/vm0-ai/vm0/compare/api-v1.323.0...api-v1.323.1) (2026-07-25)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.468.0](https://github.com/vm0-ai/vm0/compare/core-v8.467.2...core-v8.468.0) (2026-07-26)
+
+
+### Features
+
+* **api:** enable external connector catalog ([#23064](https://github.com/vm0-ai/vm0/issues/23064)) ([8e802f2](https://github.com/vm0-ai/vm0/commit/8e802f29cdfe41dcb80cd57ad543b01a0298d6b6))
+
 ## [8.467.2](https://github.com/vm0-ai/vm0/compare/core-v8.467.1...core-v8.467.2) (2026-07-25)
 
 
