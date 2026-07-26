@@ -65,6 +65,14 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`MAX(\${users.id} + 1) FILTER (WHERE \${users.id} > 0)\`;
         sql\`MAX(\${users.id}) OVER (ORDER BY id)\`;
         sql\`COUNT(\${users.id}) FILTER (WHERE (\${condition})) OVER (ORDER BY id)\`;
+        db.select({
+          value: sql\`SUM(\${users.id} ORDER BY \${users.name})\`.mapWith(
+            Number,
+          ),
+        }).from(users);
+        db.select({
+          value: sql\`SUM(VARIADIC \${users.tags})\`.mapWith(Number),
+        }).from(users);
         sql\`MAX(\${fragment})\`;
         sql\`SUM(\${users.id})\`;
         sql\`COUNT(\${users.id})\`;
@@ -589,6 +597,60 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select()
           .from(users)
           .where(sql\`COALESCE(\${column} = \${1}, FALSE)\`);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const statement = sql\`
+          DELETE FROM \${users}
+          WHERE \${users.id} = \${1}
+        \`;
+        await db.execute(statement);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const otherUsers = alias(users, "other_users");
+        const relation = sql\`
+          \${users}
+          INNER JOIN \${otherUsers} ON \${users.id} = \${otherUsers.id}
+        \`;
+        db.select().from(relation);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const selection = sql\`\${users.id} = \${1} AS matched\`;
+        db.select({ matched: selection }).from(users);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`
+          \${users.id} = \${1}
+          ORDER BY \${users.id}
+        \`;
+        db.select().from(users).where(predicate);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const ordering = sql\`\${users.id} DESC LIMIT 1\`;
+        db.select().from(users).orderBy(ordering);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .innerJoin(users, sql\`true ORDER BY \${users.id}\`);
       `,
     },
   ],
@@ -1445,6 +1507,18 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "sum" } },
         { messageId: "typedApi", data: { helper: "max" } },
       ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          value: sql\`SUM(
+            \${users.id}
+            ORDER BY \${users.name} DESC
+          )\`.mapWith(Number),
+        }).from(users);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "desc" } }],
     },
     {
       code: `${drizzlePreamble}
