@@ -219,9 +219,11 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await webhooks.requestAgentComplete({ runId, exitCode: 0 }, sandboxHeaders, [
-    200,
-  ]);
+  await webhooks.requestAgentComplete(
+    { runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
 }
 
 async function createHostedArtifact(args: {

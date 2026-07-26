@@ -219,11 +219,12 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(third.deploymentId).not.toBe(first.deploymentId);
     expect(third.artifactUrl).not.toBe(first.artifactUrl);
     expect(third.artifactUrl).not.toBe(second.artifactUrl);
-    expect(
-      capture.puts.map((put) => {
-        return put.key;
-      }),
-    ).toContain(`${versionPrefix}/3/index.html`);
+    expect(third.uploads).toStrictEqual([
+      {
+        path: "/index.html",
+        uploadUrl: "https://r2.example.com/hosted-sites/upload?sig=bdd",
+      },
+    ]);
 
     const history = await api.readHostedSiteDeployments(actor, site);
     expect(history).toMatchObject({
@@ -516,9 +517,11 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expectApiError(suspendedComplete.body);
     expect(suspendedComplete.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
-    const suspendedPrepare = await api.requestPrepareHostedSite(actor, body, [
-      402,
-    ]);
+    const suspendedPrepare = await api.requestPrepareHostedSite(
+      actor,
+      body,
+      [402],
+    );
     expectApiError(suspendedPrepare.body);
     expect(suspendedPrepare.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });

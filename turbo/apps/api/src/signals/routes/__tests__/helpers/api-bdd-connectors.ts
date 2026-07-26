@@ -1530,9 +1530,11 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: CreateCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
-      const response = await api.requestCreateCustomConnector(actor, body, [
-        201,
-      ]);
+      const response = await api.requestCreateCustomConnector(
+        actor,
+        body,
+        [201],
+      );
       expectStatus(response, 201);
       return response.body;
     },
@@ -1710,9 +1712,11 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
     ): Promise<readonly string[]> {
-      const response = await api.requestAgentCustomConnectors(actor, agentId, [
-        200,
-      ]);
+      const response = await api.requestAgentCustomConnectors(
+        actor,
+        agentId,
+        [200],
+      );
       expectStatus(response, 200);
       return response.body.enabledIds;
     },
