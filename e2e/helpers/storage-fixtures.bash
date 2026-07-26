@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Seed a mountable storage fixture through the legacy storage write API.
+# Seed a mountable Storage through the preview-only fixture API.
 #
 # Usage: seed_storage_fixture <volume|artifact> <name> <source-directory>
 seed_storage_fixture() (
@@ -11,14 +11,16 @@ seed_storage_fixture() (
         return 1
     fi
 
-    local storage_type="$1"
+    local legacy_kind="$1"
     local storage_name="$2"
     local source_directory="$3"
 
-    case "$storage_type" in
-        volume|artifact) ;;
+    local storage_owner
+    case "$legacy_kind" in
+        volume) storage_owner="organization" ;;
+        artifact) storage_owner="user" ;;
         *)
-            echo "# Unsupported storage fixture type: $storage_type" >&2
+            echo "# Unsupported storage fixture kind: $legacy_kind" >&2
             return 1
             ;;
     esac
@@ -63,12 +65,12 @@ seed_storage_fixture() (
 
     jq -n \
         --arg storageName "$storage_name" \
-        --arg storageType "$storage_type" \
+        --arg storageOwner "$storage_owner" \
         --slurpfile files "$files_json" \
-        '{storageName: $storageName, storageType: $storageType, files: $files[0]}' > "$prepare_payload"
+        '{storageName: $storageName, storageOwner: $storageOwner, files: $files[0]}' > "$prepare_payload"
 
     local prepare_response version_id existing
-    prepare_response="$(e2e_api_curl "/api/storages/prepare" -X POST --data-binary "@$prepare_payload")"
+    prepare_response="$(e2e_api_curl "/api/test/storage-fixture/prepare" -X POST --data-binary "@$prepare_payload")"
     version_id="$(jq -er '.versionId | select(length > 0)' <<< "$prepare_response")"
     existing="$(jq -r '.existing' <<< "$prepare_response")"
 
@@ -107,11 +109,11 @@ seed_storage_fixture() (
 
     jq -n \
         --arg storageName "$storage_name" \
-        --arg storageType "$storage_type" \
+        --arg storageOwner "$storage_owner" \
         --arg versionId "$version_id" \
         --slurpfile files "$files_json" \
-        '{storageName: $storageName, storageType: $storageType, versionId: $versionId, files: $files[0]}' > "$commit_payload"
+        '{storageName: $storageName, storageOwner: $storageOwner, versionId: $versionId, files: $files[0]}' > "$commit_payload"
 
-    e2e_api_curl "/api/storages/commit" -X POST --data-binary "@$commit_payload" >/dev/null
+    e2e_api_curl "/api/test/storage-fixture/commit" -X POST --data-binary "@$commit_payload" >/dev/null
     printf '%s\n' "$version_id"
 )

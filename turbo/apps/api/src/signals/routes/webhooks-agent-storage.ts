@@ -4,7 +4,6 @@ import {
   webhookStoragesPrepareContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 
-import { logger } from "../../lib/log";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
@@ -19,7 +18,6 @@ import {
 
 const prepareBody$ = bodyResultOf(webhookStoragesPrepareContract.prepare);
 const commitBody$ = bodyResultOf(webhookStoragesCommitContract.commit);
-const L = logger("webhooks-agent-storage");
 
 const prepareStorage$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(prepareBody$);
@@ -33,11 +31,6 @@ const prepareStorage$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!auth) {
     return unauthorizedRunMismatch;
   }
-  L.debug("Storage writeback request", {
-    storageWritebackOperation: "prepare",
-    storageWritebackProtocol: body.storageId ? "storage-id" : "legacy",
-  });
-
   return await set(
     prepareStorageUploadForAuth$,
     {
@@ -65,11 +58,6 @@ const commitStorage$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!auth) {
     return unauthorizedRunMismatch;
   }
-  L.debug("Storage writeback request", {
-    storageWritebackOperation: "commit",
-    storageWritebackProtocol: body.storageId ? "storage-id" : "legacy",
-  });
-
   return await set(
     commitStorageUploadForAuth$,
     {

@@ -31,7 +31,6 @@ const skillRowSchema = z.object({
 });
 
 const storageRowSchema = z.object({
-  type: z.string(),
   head_version_id: z.string().nullable(),
   size: z.number(),
   version_size: z.number().nullable(),

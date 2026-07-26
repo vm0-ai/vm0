@@ -145,24 +145,10 @@ export {
   type ZeroUserModelPreferenceContract,
 } from "./zero-user-model-preference";
 export {
-  storagesContract,
-  storageTypeSchema,
-  uploadStorageResponseSchema,
-  // Direct upload schemas (shared with webhooks)
   MAX_FILE_SIZE_BYTES,
   fileEntryWithHashSchema,
   storageChangesSchema,
   presignedUploadSchema,
-  // Direct upload contracts (CLI endpoints)
-  storagesPrepareContract,
-  storagesCommitContract,
-  storagesDownloadContract,
-  storagesListContract,
-  type StoragesContract,
-  type StoragesPrepareContract,
-  type StoragesCommitContract,
-  type StoragesDownloadContract,
-  type StoragesListContract,
 } from "./storages";
 export {
   registryResourceDownloadContract,
@@ -215,8 +201,6 @@ export {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
   webhookHeartbeatContract,
-  webhookStoragesContract,
-  webhookStoragesIncrementalContract,
   webhookTelemetryContract,
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
@@ -229,8 +213,6 @@ export {
   type WebhookCheckpointsContract,
   type WebhookCheckpointsPrepareHistoryContract,
   type WebhookHeartbeatContract,
-  type WebhookStoragesContract,
-  type WebhookStoragesIncrementalContract,
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,

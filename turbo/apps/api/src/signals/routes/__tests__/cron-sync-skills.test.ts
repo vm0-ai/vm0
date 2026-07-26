@@ -365,7 +365,6 @@ async function findSkillByUrl(url: string): Promise<{
 }
 
 async function findSystemStorageByName(name: string): Promise<{
-  readonly type: string;
   readonly headVersionId: string | null;
   readonly size: number;
   readonly versionSize: number | null;
@@ -477,7 +476,6 @@ describe("GET /api/cron/sync-skills", () => {
       throw new Error("Expected the alpha skill archive upload body");
     }
     expect(alphaStorage).toMatchObject({
-      type: "volume",
       headVersionId: expect.any(String),
       size: alphaVersion.size,
       versionSize: alphaVersion.size,

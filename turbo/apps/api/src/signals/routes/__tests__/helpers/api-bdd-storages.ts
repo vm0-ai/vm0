@@ -1,46 +1,32 @@
-import {
-  storagesCommitContract,
-  storagesDownloadContract,
-  storagesListContract,
-  storagesPrepareContract,
-} from "@vm0/api-contracts/contracts/storages";
-import type { z } from "zod";
+import type {
+  TestStorageStateActionBody,
+  TestStorageStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-storage-fixture";
 
-import { setupAppWithRoutes } from "../../../../__tests__/test-app";
-import { accept, type TestContext } from "../../../../__tests__/test-context";
-import { storagesCommitRoutes } from "../../storages-commit";
-import { storagesDownloadRoutes } from "../../storages-download";
-import { storagesListRoutes } from "../../storages-list";
-import { storagesPrepareRoutes } from "../../storages-prepare";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import type { TestContext } from "../../../../__tests__/test-context";
+import { testStorageStateRoutes } from "../../test-storage-fixture";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 
-type StorageType = "volume" | "artifact";
-
-interface AuthHeaders {
-  readonly authorization?: string;
-}
-
-interface BddStorageFileEntry {
-  readonly path: string;
-  readonly hash: string;
-  readonly size: number;
-}
+type StorageFixtureKind = "volume" | "artifact";
 
 interface BddStoragePrepareBody {
   readonly storageName: string;
-  readonly storageType: StorageType;
+  readonly storageType: StorageFixtureKind;
   readonly files: readonly BddStorageFileEntry[];
   readonly force?: boolean;
   readonly baseVersion?: string;
-  readonly changes?: z.infer<
-    typeof storagesPrepareContract.prepare.body
-  >["changes"];
+  readonly changes?: {
+    readonly added: readonly string[];
+    readonly modified: readonly string[];
+    readonly deleted: readonly string[];
+  };
 }
 
 interface BddStorageCommitBody {
   readonly storageName: string;
-  readonly storageType: StorageType;
+  readonly storageType: StorageFixtureKind;
   readonly versionId: string;
   readonly files: readonly BddStorageFileEntry[];
   readonly message?: string;
@@ -48,106 +34,58 @@ interface BddStorageCommitBody {
 
 interface BddStorageDownloadQuery {
   readonly name: string;
-  readonly type: StorageType;
+  readonly type: StorageFixtureKind;
   readonly version?: string;
 }
 
-type PrepareStatus = 200 | 400 | 401 | 403 | 404 | 413;
-type CommitStatus = 200 | 400 | 401 | 403 | 404 | 409;
-type ListStatus = 200 | 400 | 401 | 403 | 404;
-type DownloadStatus = 200 | 400 | 401 | 403 | 404;
+function requireOrgId(actor: ApiTestUser): string {
+  if (!actor.orgId) {
+    throw new Error("Storage fixture requires an org-scoped actor");
+  }
+  return actor.orgId;
+}
 
-type PrepareContractBody = z.infer<typeof storagesPrepareContract.prepare.body>;
-type CommitContractBody = z.infer<typeof storagesCommitContract.commit.body>;
-type ListContractQuery = z.infer<typeof storagesListContract.list.query>;
-type DownloadContractQuery = z.infer<
-  typeof storagesDownloadContract.download.query
->;
+function storageOwner(kind: StorageFixtureKind): "organization" | "user" {
+  return kind === "volume" ? "organization" : "user";
+}
 
-const storageRoutes = [
-  ...storagesPrepareRoutes,
-  ...storagesCommitRoutes,
-  ...storagesListRoutes,
-  ...storagesDownloadRoutes,
-] as const;
-
-function authenticate(
+function requestStorageState(
   context: TestContext,
-  actor: ApiTestUser | null,
-): AuthHeaders {
-  if (!actor) {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-    return {};
-  }
-  createZeroRouteMocks(context).clerk.session(
-    actor.userId,
-    actor.orgId,
-    actor.orgRole,
+  body: TestStorageStateActionBody,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testStorageStateRoutes,
+  });
+  return Promise.resolve(
+    app.request("/api/test/storage-fixture/action", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   );
-  return { authorization: "Bearer clerk-session" };
 }
 
-function bearerHeaders(token: string): AuthHeaders {
-  return { authorization: `Bearer ${token}` };
-}
-
-function downloadQuery(query: BddStorageDownloadQuery): DownloadContractQuery {
-  return {
-    name: query.name,
-    type: query.type,
-    ...(query.version === undefined ? {} : { version: query.version }),
-  };
-}
-
-function storageObjectNotFoundError(): Error {
-  const error = new Error("Not found") as Error & {
-    $metadata: { httpStatusCode: number };
-  };
-  error.name = "NotFound";
-  error.$metadata = { httpStatusCode: 404 };
-  return error;
-}
-
-function commandInput(command: unknown): Record<string, unknown> {
-  if (
-    typeof command === "object" &&
-    command !== null &&
-    "input" in command &&
-    typeof command.input === "object" &&
-    command.input !== null
-  ) {
-    return command.input as Record<string, unknown>;
+async function postAction(
+  context: TestContext,
+  body: TestStorageStateActionBody,
+): Promise<TestStorageStateActionResponse> {
+  const response = await requestStorageState(context, body);
+  if (!response.ok) {
+    throw new Error(
+      `Storage state action ${body.action} failed with ${response.status}`,
+    );
   }
-  return {};
+  return (await response.json()) as TestStorageStateActionResponse;
+}
+
+function fixtureFiles(files: readonly BddStorageFileEntry[]) {
+  return files.map((file) => {
+    return { ...file };
+  });
 }
 
 export function createStoragesBddApi(context: TestContext) {
-  function prepareClient() {
-    return setupAppWithRoutes({ context, routes: storageRoutes })(
-      storagesPrepareContract,
-    );
-  }
-
-  function commitClient() {
-    return setupAppWithRoutes({ context, routes: storageRoutes })(
-      storagesCommitContract,
-    );
-  }
-
-  function listClient() {
-    return setupAppWithRoutes({ context, routes: storageRoutes })(
-      storagesListContract,
-    );
-  }
-
-  function downloadClient() {
-    return setupAppWithRoutes({ context, routes: storageRoutes })(
-      storagesDownloadContract,
-    );
-  }
-
   return {
     mockStoragePresignedUrls(
       url = "https://r2.example.com/storages/presigned?sig=bdd",
@@ -167,149 +105,73 @@ export function createStoragesBddApi(context: TestContext) {
       });
     },
 
-    mockStorageObjectWithoutContentLengthOnce(): void {
-      context.mocks.s3.send.mockResolvedValueOnce({});
-    },
-
-    mockStorageObjectMissingOnce(): void {
-      context.mocks.s3.send.mockRejectedValueOnce(storageObjectNotFoundError());
-    },
-
-    /**
-     * S3 key of the most recent presigned-URL request — the one boundary
-     * assert kept for the provider download contract.
-     */
-    lastPresignedUrlKey(): unknown {
-      const command = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
-      return commandInput(command).Key;
-    },
-
     async prepareStorage(actor: ApiTestUser, body: BddStoragePrepareBody) {
-      const response = await accept(
-        prepareClient().prepare({
-          headers: authenticate(context, actor),
-          body: { ...body, files: [...body.files] },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestPrepareStorage(
-      actor: ApiTestUser | null,
-      body: unknown,
-      statuses: readonly PrepareStatus[],
-    ) {
-      return await accept(
-        prepareClient().prepare({
-          headers: authenticate(context, actor),
-          body: body as PrepareContractBody,
-        }),
-        statuses,
-      );
+      const response = await postAction(context, {
+        action: "prepare",
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        storageName: body.storageName,
+        storageOwner: storageOwner(body.storageType),
+        files: fixtureFiles(body.files),
+        force: body.force,
+        baseVersion: body.baseVersion,
+        changes: body.changes
+          ? {
+              added: [...body.changes.added],
+              modified: [...body.changes.modified],
+              deleted: [...body.changes.deleted],
+            }
+          : undefined,
+      });
+      if (!response.prepared) {
+        throw new Error("Storage prepare action returned no result");
+      }
+      return response.prepared;
     },
 
     async commitStorage(actor: ApiTestUser, body: BddStorageCommitBody) {
-      const response = await accept(
-        commitClient().commit({
-          headers: authenticate(context, actor),
-          body: { ...body, files: [...body.files] },
-        }),
-        [200],
-      );
-      return response.body;
+      const response = await postAction(context, {
+        action: "commit",
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        storageName: body.storageName,
+        storageOwner: storageOwner(body.storageType),
+        versionId: body.versionId,
+        files: fixtureFiles(body.files),
+        message: body.message,
+      });
+      if (!response.committed) {
+        throw new Error("Storage commit action returned no result");
+      }
+      return response.committed;
     },
 
-    async requestCommitStorage(
-      actor: ApiTestUser | null,
-      body: unknown,
-      statuses: readonly CommitStatus[],
-    ) {
-      return await accept(
-        commitClient().commit({
-          headers: authenticate(context, actor),
-          body: body as CommitContractBody,
-        }),
-        statuses,
-      );
-    },
-
-    async listStorages(actor: ApiTestUser, type: StorageType) {
-      const response = await accept(
-        listClient().list({
-          headers: authenticate(context, actor),
-          query: { type },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestListStorages(
-      actor: ApiTestUser | null,
-      query: unknown,
-      statuses: readonly ListStatus[],
-    ) {
-      return await accept(
-        listClient().list({
-          headers: authenticate(context, actor),
-          query: query as ListContractQuery,
-        }),
-        statuses,
-      );
-    },
-
-    async requestListStoragesWithBearer(
-      token: string,
-      type: StorageType,
-      statuses: readonly ListStatus[],
-    ) {
-      return await accept(
-        listClient().list({
-          headers: bearerHeaders(token),
-          query: { type },
-        }),
-        statuses,
-      );
+    async listStorages(actor: ApiTestUser, kind: StorageFixtureKind) {
+      const response = await postAction(context, {
+        action: "list",
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        storageOwner: storageOwner(kind),
+      });
+      if (!response.storages) {
+        throw new Error("Storage list action returned no result");
+      }
+      return response.storages;
     },
 
     async downloadStorage(actor: ApiTestUser, query: BddStorageDownloadQuery) {
-      const response = await accept(
-        downloadClient().download({
-          headers: authenticate(context, actor),
-          query: downloadQuery(query),
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestDownloadStorage(
-      actor: ApiTestUser | null,
-      query: unknown,
-      statuses: readonly DownloadStatus[],
-    ) {
-      return await accept(
-        downloadClient().download({
-          headers: authenticate(context, actor),
-          query: query as DownloadContractQuery,
-        }),
-        statuses,
-      );
-    },
-
-    async requestDownloadStorageWithBearer(
-      token: string,
-      query: BddStorageDownloadQuery,
-      statuses: readonly DownloadStatus[],
-    ) {
-      return await accept(
-        downloadClient().download({
-          headers: bearerHeaders(token),
-          query: downloadQuery(query),
-        }),
-        statuses,
-      );
+      const response = await postAction(context, {
+        action: "download",
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        storageName: query.name,
+        storageOwner: storageOwner(query.type),
+        versionId: query.version,
+      });
+      if (!response.download) {
+        throw new Error("Storage download action returned no result");
+      }
+      return response.download;
     },
   };
 }

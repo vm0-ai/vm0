@@ -47,12 +47,6 @@ import {
 } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
-  storagesCommitContract,
-  storagesDownloadContract,
-  storagesListContract,
-  storagesPrepareContract,
-} from "@vm0/api-contracts/contracts/storages";
-import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
   type HostedSitePrepareRequest,
@@ -67,10 +61,6 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { storagesCommitRoutes } from "../../storages-commit";
-import { storagesDownloadRoutes } from "../../storages-download";
-import { storagesListRoutes } from "../../storages-list";
-import { storagesPrepareRoutes } from "../../storages-prepare";
 import { zeroChatMessagesRoutes } from "../../zero-chat-messages";
 import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
 import { zeroArtifactsRoutes } from "../../zero-artifacts";
@@ -89,13 +79,9 @@ import { zeroHostRoutes } from "../../zero-host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
-import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 export { hostedTextFile } from "./api-bdd-host-files";
-export { storageTextFile } from "./api-bdd-storage-files";
-
-type StorageType = "volume" | "artifact";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -114,51 +100,6 @@ interface BddCompose {
   readonly action: "created" | "existing";
   readonly updatedAt: string;
 }
-
-interface BddStoragePrepareResponse {
-  readonly versionId: string;
-  readonly existing: boolean;
-  readonly uploads?: {
-    readonly archive: {
-      readonly key: string;
-      readonly presignedUrl: string;
-    };
-    readonly manifest: {
-      readonly key: string;
-      readonly presignedUrl: string;
-    };
-  };
-}
-
-interface BddStorageCommitResponse {
-  readonly success: true;
-  readonly versionId: string;
-  readonly storageName: string;
-  readonly size: number;
-  readonly fileCount: number;
-  readonly deduplicated?: boolean;
-}
-
-interface BddStorageListItem {
-  readonly name: string;
-  readonly size: number;
-  readonly fileCount: number;
-  readonly updatedAt: string;
-}
-
-type BddStorageDownloadResponse =
-  | {
-      readonly url: string;
-      readonly versionId: string;
-      readonly fileCount: number;
-      readonly size: number;
-    }
-  | {
-      readonly empty: true;
-      readonly versionId: string;
-      readonly fileCount: 0;
-      readonly size: 0;
-    };
 
 type BddSendMessageBody =
   | {
@@ -256,10 +197,6 @@ const chatFilesRoutes = [
   ...zeroUploadsCompleteRoutes,
   ...zeroHostRoutes,
   ...zeroModelPoliciesRoutes,
-  ...storagesPrepareRoutes,
-  ...storagesCommitRoutes,
-  ...storagesListRoutes,
-  ...storagesDownloadRoutes,
 ] as const;
 
 function chatFilesApp(context: TestContext) {
@@ -390,22 +327,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function hostClient() {
     return chatFilesApp(context)(zeroHostContract);
-  }
-
-  function storagePrepareClient() {
-    return chatFilesApp(context)(storagesPrepareContract);
-  }
-
-  function storageCommitClient() {
-    return chatFilesApp(context)(storagesCommitContract);
-  }
-
-  function storageListClient() {
-    return chatFilesApp(context)(storagesListContract);
-  }
-
-  function storageDownloadClient() {
-    return chatFilesApp(context)(storagesDownloadContract);
   }
 
   return {
@@ -1450,89 +1371,6 @@ export function createChatFilesBddApi(context: TestContext) {
         uploadsClient().complete({
           headers: bearerAuth(authorization),
           body,
-        }),
-        statuses,
-      );
-    },
-
-    async prepareStorage(
-      actor: ApiTestUser,
-      body: {
-        readonly storageName: string;
-        readonly storageType: StorageType;
-        readonly files: readonly BddStorageFileEntry[];
-        readonly force?: boolean;
-      },
-    ): Promise<BddStoragePrepareResponse> {
-      const response = await accept(
-        storagePrepareClient().prepare({
-          headers: authenticate(context, actor),
-          body: { ...body, files: [...body.files] },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async commitStorage(
-      actor: ApiTestUser,
-      body: {
-        readonly storageName: string;
-        readonly storageType: StorageType;
-        readonly versionId: string;
-        readonly files: readonly BddStorageFileEntry[];
-        readonly message?: string;
-      },
-    ): Promise<BddStorageCommitResponse> {
-      const response = await accept(
-        storageCommitClient().commit({
-          headers: authenticate(context, actor),
-          body: { ...body, files: [...body.files] },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async listStorages(
-      actor: ApiTestUser,
-      type: StorageType,
-    ): Promise<readonly BddStorageListItem[]> {
-      const response = await accept(
-        storageListClient().list({
-          headers: authenticate(context, actor),
-          query: { type },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async downloadStorage(
-      actor: ApiTestUser,
-      name: string,
-      type: StorageType,
-    ): Promise<BddStorageDownloadResponse> {
-      const response = await accept(
-        storageDownloadClient().download({
-          headers: authenticate(context, actor),
-          query: { name, type },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestDownloadStorage(
-      actor: ApiTestUser | null,
-      name: string,
-      type: StorageType,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
-    ) {
-      return await accept(
-        storageDownloadClient().download({
-          headers: authenticate(context, actor),
-          query: { name, type },
         }),
         statuses,
       );

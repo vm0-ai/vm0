@@ -1598,8 +1598,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     const mismatchedStoragePrepare = await api.requestAgentStoragePrepare(
       {
         runId,
-        storageName: "artifact-bdd",
-        storageType: "artifact",
+        storageId: randomUUID(),
         files: [{ path: "index.txt", hash, size: 5 }],
       },
       mismatchedHeaders,
@@ -1612,8 +1611,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
       await api.requestAgentStoragePrepareUnchecked(
         {
           runId,
-          storageName: "",
-          storageType: "artifact",
+          storageId: "",
           files: [{ path: "index.txt", hash, size: 5 }],
         },
         headers,
@@ -1625,8 +1623,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     const mismatchedStorageCommit = await api.requestAgentStorageCommit(
       {
         runId,
-        storageName: "artifact-bdd",
-        storageType: "artifact",
+        storageId: randomUUID(),
         versionId: randomUUID(),
         files: [{ path: "index.txt", hash, size: 5 }],
       },
@@ -1639,8 +1636,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     const malformedStorageCommit = await api.requestAgentStorageCommitUnchecked(
       {
         runId,
-        storageName: "artifact-bdd",
-        storageType: "artifact",
+        storageId: randomUUID(),
         versionId: "",
         files: [{ path: "index.txt", hash, size: 5 }],
       },
@@ -1726,61 +1722,11 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     expectApiError(missingHistoryRun.body);
     expect(missingHistoryRun.body.error.message).toBe("Agent run not found");
 
-    // New GuestAgent versions dual-send storageId with the legacy envelope.
-    // The API authorizes the id against this run's canonical writeback mounts.
-    const canonicalFiles = [
-      {
-        path: "MEMORY.md",
-        hash: createHash("sha256")
-          .update(`bdd canonical writeback ${run.runId}`)
-          .digest("hex"),
-        size: 512,
-      },
-    ];
-    const canonicalPrepared = await api.requestAgentStoragePrepare(
-      {
-        runId: run.runId,
-        storageId: writebackMount.storageId,
-        storageName: "ignored-legacy-name",
-        storageType: "volume",
-        parentVersionId: writebackMount.versionId,
-        files: canonicalFiles,
-      },
-      headers,
-      [200],
-    );
-    if (canonicalPrepared.status !== 200) {
-      throw new Error("Expected canonical storage prepare to succeed");
-    }
-    const canonicalCommitted = await api.requestAgentStorageCommit(
-      {
-        runId: run.runId,
-        storageId: writebackMount.storageId,
-        storageName: "ignored-legacy-name",
-        storageType: "volume",
-        versionId: canonicalPrepared.body.versionId,
-        parentVersionId: writebackMount.versionId,
-        files: canonicalFiles,
-      },
-      headers,
-      [200],
-    );
-    if (canonicalCommitted.status !== 200) {
-      throw new Error("Expected canonical storage commit to succeed");
-    }
-    expect(canonicalCommitted.body).toMatchObject({
-      success: true,
-      storageName: writebackMount.name,
-      fileCount: 1,
-    });
-
     const unmountedStorage = await api.requestAgentStoragePrepare(
       {
         runId: run.runId,
         storageId: randomUUID(),
-        storageName: writebackMount.name,
-        storageType: "artifact",
-        files: canonicalFiles,
+        files: [],
       },
       headers,
       [404],
@@ -1790,8 +1736,8 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       "Writeback storage not found",
     );
 
-    // Artifact writes land under the run organization's storage prefix.
-    const storageName = `bdd-sandbox-artifact-${randomUUID().slice(0, 8)}`;
+    // Canonical writes land under the run organization's Storage prefix.
+    const storageName = writebackMount.name;
     const files = [
       {
         path: "index.html",
@@ -1802,7 +1748,12 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       },
     ];
     const prepared = await api.requestAgentStoragePrepare(
-      { runId: run.runId, storageName, storageType: "artifact", files },
+      {
+        runId: run.runId,
+        storageId: writebackMount.storageId,
+        parentVersionId: writebackMount.versionId,
+        files,
+      },
       headers,
       [200],
     );
@@ -1821,10 +1772,9 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     const committed = await api.requestAgentStorageCommit(
       {
         runId: run.runId,
-        storageName,
-        storageType: "artifact",
+        storageId: writebackMount.storageId,
         versionId: prepared.body.versionId,
-        parentVersionId: "b".repeat(64),
+        parentVersionId: writebackMount.versionId,
         files,
         message: "bdd sandbox commit",
       },
@@ -1845,7 +1795,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     // Re-preparing identical content reuses the committed version without
     // new upload URLs.
     const reprepared = await api.requestAgentStoragePrepare(
-      { runId: run.runId, storageName, storageType: "artifact", files },
+      { runId: run.runId, storageId: writebackMount.storageId, files },
       headers,
       [200],
     );
@@ -1860,8 +1810,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     const mismatchedCommit = await api.requestAgentStorageCommit(
       {
         runId: run.runId,
-        storageName,
-        storageType: "artifact",
+        storageId: writebackMount.storageId,
         versionId: "f".repeat(64),
         files,
       },
@@ -1876,8 +1825,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     const oversized = await api.requestAgentStoragePrepare(
       {
         runId: run.runId,
-        storageName: `bdd-oversized-${randomUUID().slice(0, 8)}`,
-        storageType: "artifact",
+        storageId: writebackMount.storageId,
         files: [
           {
             path: "a.bin",
@@ -1893,8 +1841,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     expectApiError(oversized.body);
     expect(oversized.body.error.code).toBe("PAYLOAD_TOO_LARGE");
 
-    // The committed artifact is visible to the run owner through the public
-    // storage reads.
+    // The committed writeback is visible through fixture-only state reads.
     const listed = await storages.listStorages(actor, "artifact");
     expect(listed).toStrictEqual(
       expect.arrayContaining([

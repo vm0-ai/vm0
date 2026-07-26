@@ -195,10 +195,6 @@ import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
 import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
-import { storagesCommitRoutes } from "./routes/storages-commit";
-import { storagesDownloadRoutes } from "./routes/storages-download";
-import { storagesListRoutes } from "./routes/storages-list";
-import { storagesPrepareRoutes } from "./routes/storages-prepare";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -392,10 +388,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsImportImageRoutes,
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
-  ...storagesCommitRoutes,
-  ...storagesDownloadRoutes,
-  ...storagesListRoutes,
-  ...storagesPrepareRoutes,
   ...zeroUsageInsightRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,

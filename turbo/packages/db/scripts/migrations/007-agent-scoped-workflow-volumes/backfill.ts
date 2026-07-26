@@ -395,7 +395,6 @@ function lookupVolume(
         eq(storages.orgId, orgId),
         eq(storages.userId, VOLUME_ORG_USER_ID),
         eq(storages.name, storageName),
-        eq(storages.type, "volume"),
       ),
     )
     .limit(1)
@@ -764,7 +763,6 @@ async function deleteLegacyVolumes(
       and(
         eq(storages.orgId, orgId),
         eq(storages.userId, VOLUME_ORG_USER_ID),
-        eq(storages.type, "volume"),
       ),
     );
 

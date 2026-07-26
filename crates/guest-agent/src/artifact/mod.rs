@@ -47,8 +47,6 @@ pub(crate) struct CreateSnapshotRequest<'a> {
     pub(crate) mount_path: &'a str,
     pub(crate) files: Vec<FileEntry>,
     pub(crate) storage_id: &'a str,
-    pub(crate) storage_name: &'a str,
-    pub(crate) storage_type: &'a str,
     pub(crate) run_id: &'a str,
     pub(crate) message: &'a str,
     pub(crate) parent_version_id: &'a str,
@@ -58,8 +56,6 @@ struct SnapshotRequest<'a> {
     mount_path: &'a str,
     files: Arc<[FileEntry]>,
     storage_id: &'a str,
-    storage_name: &'a str,
-    storage_type: &'a str,
     run_id: &'a str,
     message: &'a str,
     parent_version_id: &'a str,
@@ -71,8 +67,6 @@ impl<'a> From<CreateSnapshotRequest<'a>> for SnapshotRequest<'a> {
             mount_path: request.mount_path,
             files: request.files.into(),
             storage_id: request.storage_id,
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
             run_id: request.run_id,
             message: request.message,
             parent_version_id: request.parent_version_id,
@@ -206,8 +200,8 @@ pub(crate) async fn create_snapshot(
     let request = SnapshotRequest::from(request);
     log_info!(
         LOG_TAG,
-        "Creating direct upload snapshot for '{}'",
-        request.storage_name
+        "Creating direct upload snapshot for Storage {}",
+        request.storage_id
     );
 
     let prep = prepare_snapshot_step(http, &request).await?;
@@ -253,8 +247,6 @@ async fn prepare_snapshot_step(
         PrepareSnapshotRequest {
             run_id: request.run_id,
             storage_id: request.storage_id,
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
             files: request.files.as_ref(),
             parent_version_id: request.parent_version_id,
         },
@@ -334,8 +326,6 @@ async fn commit_existing_snapshot(
         CommitSnapshotRequest {
             run_id: request.run_id,
             storage_id: request.storage_id,
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
             version_id,
             parent_version_id: request.parent_version_id,
             files: request.files.as_ref(),
@@ -475,8 +465,6 @@ async fn commit_uploaded_snapshot(
         CommitSnapshotRequest {
             run_id: request.run_id,
             storage_id: request.storage_id,
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
             version_id,
             parent_version_id: request.parent_version_id,
             files: request.files.as_ref(),
@@ -594,8 +582,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-id",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage",
-                    "storageType": "artifact",
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -610,8 +596,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-id",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage",
-                    "storageType": "artifact",
                     "versionId": "v-existing",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -632,8 +616,6 @@ mod tests {
                 mount_path: root.to_str().unwrap(),
                 files: files.clone(),
                 storage_id: SNAPSHOT_STORAGE_ID,
-                storage_name: "storage",
-                storage_type: "artifact",
                 run_id: "run-id",
                 message: "message",
                 parent_version_id: "parent-v1",
@@ -655,8 +637,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-id",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage",
-                    "storageType": "artifact",
                     "files": expected_files,
                 }));
             then.status(200).json_body(serde_json::json!({
@@ -678,8 +658,6 @@ mod tests {
                 mount_path: root.to_str().unwrap(),
                 files,
                 storage_id: SNAPSHOT_STORAGE_ID,
-                storage_name: "storage",
-                storage_type: "artifact",
                 run_id: "run-id",
                 message: "message",
                 parent_version_id: "",
@@ -722,8 +700,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-upload",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage-upload",
-                    "storageType": "artifact",
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -759,8 +735,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-upload",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage-upload",
-                    "storageType": "artifact",
                     "versionId": "v-uploaded",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -782,8 +756,6 @@ mod tests {
                 mount_path: root.to_str().unwrap(),
                 files,
                 storage_id: SNAPSHOT_STORAGE_ID,
-                storage_name: "storage-upload",
-                storage_type: "artifact",
                 run_id: "run-upload",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",
@@ -825,8 +797,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-upload-failed-commit",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage-upload-failed-commit",
-                    "storageType": "artifact",
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -862,8 +832,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-upload-failed-commit",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage-upload-failed-commit",
-                    "storageType": "artifact",
                     "versionId": "v-uploaded-failed-commit",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -872,7 +840,6 @@ mod tests {
             then.status(200).json_body(serde_json::json!({
                 "success": false,
                 "versionId": "v-uploaded-failed-commit",
-                "storageName": "storage-upload-failed-commit",
                 "size": total_size,
                 "fileCount": expected_files.len(),
             }));
@@ -885,8 +852,6 @@ mod tests {
                 mount_path: root.to_str().unwrap(),
                 files,
                 storage_id: SNAPSHOT_STORAGE_ID,
-                storage_name: "storage-upload-failed-commit",
-                storage_type: "artifact",
                 run_id: "run-upload-failed-commit",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",
@@ -928,8 +893,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-dedup-malformed-commit",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage-dedup-malformed-commit",
-                    "storageType": "artifact",
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -944,8 +907,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-dedup-malformed-commit",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage-dedup-malformed-commit",
-                    "storageType": "artifact",
                     "versionId": "v-dedup-malformed-commit",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -961,8 +922,6 @@ mod tests {
                 mount_path: root.to_str().unwrap(),
                 files,
                 storage_id: SNAPSHOT_STORAGE_ID,
-                storage_name: "storage-dedup-malformed-commit",
-                storage_type: "artifact",
                 run_id: "run-dedup-malformed-commit",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",
@@ -1000,8 +959,6 @@ mod tests {
                 .json_body(serde_json::json!({
                     "runId": "run-missing-uploads",
                     "storageId": SNAPSHOT_STORAGE_ID,
-                    "storageName": "storage-missing-uploads",
-                    "storageType": "artifact",
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -1024,8 +981,6 @@ mod tests {
                 mount_path: root.to_str().unwrap(),
                 files,
                 storage_id: SNAPSHOT_STORAGE_ID,
-                storage_name: "storage-missing-uploads",
-                storage_type: "artifact",
                 run_id: "run-missing-uploads",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",
