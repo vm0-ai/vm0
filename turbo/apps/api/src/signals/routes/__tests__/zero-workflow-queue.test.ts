@@ -33,7 +33,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
   holdOrgAdmissionLockFixture,
-  rewriteWorkflowQueueEventAsPreviousVersionFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-messages";
@@ -913,7 +912,7 @@ describe("workflow queue", () => {
     expect(resumed.body.running?.runId).toStrictEqual(expect.any(String));
   });
 
-  it("drains a previous-version queued one-time event through the canonical session", async () => {
+  it("drains a queued one-time event through the canonical session", async () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
@@ -953,16 +952,12 @@ describe("workflow queue", () => {
       }),
       [200],
     );
-    const previousEvent = queued.body.pending.find((event) => {
+    const queuedEvent = queued.body.pending.find((event) => {
       return event.automationId === created.body.id;
     });
-    if (!previousEvent) {
+    if (!queuedEvent) {
       throw new Error("Expected the claimed one-time event to remain queued");
     }
-    await rewriteWorkflowQueueEventAsPreviousVersionFixture({
-      eventId: previousEvent.id,
-      automationId: created.body.id,
-    });
 
     const busyBinding = await readThreadSessionBinding(
       context,
@@ -976,7 +971,7 @@ describe("workflow queue", () => {
     expect(runIds).toHaveLength(2);
     const drainedRunId = runIds[1];
     if (!drainedRunId) {
-      throw new Error("Expected the previous-version event to drain");
+      throw new Error("Expected the queued one-time event to drain");
     }
     const drainedBinding = await readThreadSessionBinding(
       context,

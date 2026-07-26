@@ -8,10 +8,8 @@ import {
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
-import { feishuOrgThreadSessions } from "@vm0/db/schema/feishu-org-thread-session";
 import { feishuUserAgentPreferences } from "@vm0/db/schema/feishu-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -42,7 +40,6 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -347,53 +344,6 @@ function sessionKey(message: FeishuInboundMessage): string {
   const threadKey =
     message.rootId ?? message.threadId ?? message.parentId ?? message.messageId;
   return `${message.chatId}:${threadKey}`;
-}
-
-async function resolveSession(args: {
-  readonly db: Db;
-  readonly connectionId: string;
-  readonly sessionKey: string;
-  readonly userId: string;
-  readonly agentId: string;
-  readonly modelRoute: IntegrationModelRoutePin | undefined;
-}): Promise<string | undefined> {
-  const [thread] = await args.db
-    .select({ agentSessionId: feishuOrgThreadSessions.agentSessionId })
-    .from(feishuOrgThreadSessions)
-    .where(
-      and(
-        eq(feishuOrgThreadSessions.connectionId, args.connectionId),
-        eq(feishuOrgThreadSessions.feishuChatId, args.sessionKey),
-      ),
-    )
-    .limit(1);
-  if (!thread?.agentSessionId) {
-    return undefined;
-  }
-  const [session] = await args.db
-    .select({ agentComposeId: agentSessions.agentComposeId })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, thread.agentSessionId),
-        eq(agentSessions.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  if (session?.agentComposeId !== args.agentId) {
-    return undefined;
-  }
-  if (
-    args.modelRoute &&
-    !(await canReuseIntegrationSessionForModelRoute({
-      db: args.db,
-      sessionId: thread.agentSessionId,
-      modelRoute: args.modelRoute,
-    }))
-  ) {
-    return undefined;
-  }
-  return thread.agentSessionId;
 }
 
 export function feishuPromptFile(args: {
@@ -1054,7 +1004,6 @@ const runFeishuAgent$ = command(
       readonly connection: FeishuDispatchConnection;
       readonly message: FeishuInboundMessage;
       readonly agent: FeishuAgent;
-      readonly sessionId: string | undefined;
       readonly sessionKey: string;
       readonly history: FeishuPromptContext;
       readonly modelRoute: IntegrationModelRoutePin | undefined;
@@ -1074,7 +1023,6 @@ const runFeishuAgent$ = command(
         body: {
           prompt: args.message.text,
           agentId: args.agent.id,
-          sessionId: args.sessionId,
           ...(args.modelRoute
             ? { modelProvider: args.modelRoute.modelProviderType }
             : {}),
@@ -1105,7 +1053,6 @@ const runFeishuAgent$ = command(
               connectionId: args.connection.id,
               sessionKey: args.sessionKey,
               agentId: args.agent.id,
-              existingSessionId: args.sessionId,
               reactionId: args.reactionId,
               replyInThread: args.message.chatType !== "p2p",
               files: [
@@ -1199,23 +1146,13 @@ const prepareFeishuRun$ = command(
       signal,
     );
     const key = sessionKey(args.message);
-    const [history, sessionId] = await Promise.all([
-      loadFeishuConversationHistory({
-        db: args.db,
-        message: args.message,
-        signal,
-      }),
-      resolveSession({
-        db: args.db,
-        connectionId: args.connection.id,
-        sessionKey: key,
-        userId: args.connection.vm0UserId,
-        agentId: args.agentId,
-        modelRoute,
-      }),
-    ]);
+    const history = await loadFeishuConversationHistory({
+      db: args.db,
+      message: args.message,
+      signal,
+    });
     signal.throwIfAborted();
-    return { modelRoute, key, history, sessionId };
+    return { modelRoute, key, history };
   },
 );
 
@@ -1299,7 +1236,6 @@ const dispatchConnectedFeishuMessage$ = command(
           connection: args.connection,
           message: args.message,
           agent: effectiveAgent.agent,
-          sessionId: prepared.sessionId,
           sessionKey: prepared.key,
           history: prepared.history,
           modelRoute: prepared.modelRoute,

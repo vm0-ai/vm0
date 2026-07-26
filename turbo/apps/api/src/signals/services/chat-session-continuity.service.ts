@@ -70,7 +70,7 @@ function chatSessionModelFamily(model: string): string {
   return modelName.split(/[-_.]/, 1)[0] ?? modelName;
 }
 
-export function shouldStartNewChatSession(args: {
+function shouldStartNewChatSession(args: {
   readonly latestModel: string | null | undefined;
   readonly nextModel: string | null;
   readonly latestModelProvider?: string | null;
@@ -252,43 +252,4 @@ export async function resolveChatThreadSession(args: {
       conversationId: historical.conversationId,
     },
   };
-}
-
-export async function canReuseChatSessionForModelRoute(args: {
-  readonly db: Db | ReadonlyDb;
-  readonly threadId: string;
-  readonly sessionId: string;
-  readonly nextModel: string | null;
-  readonly nextModelProvider: string | null | undefined;
-  readonly nextCliAgentType: string | null | undefined;
-}): Promise<boolean> {
-  const [previous] = await args.db
-    .select({
-      selectedModel: zeroRuns.selectedModel,
-      modelProvider: zeroRuns.modelProvider,
-      cliAgentType: conversations.cliAgentType,
-    })
-    .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, args.threadId),
-        sql`${agentRuns.result}->>'agentSessionId' = ${args.sessionId}`,
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(1);
-  return (
-    !previous ||
-    !shouldStartNewChatSession({
-      latestModel: previous.selectedModel,
-      nextModel: args.nextModel,
-      latestModelProvider: previous.modelProvider,
-      nextModelProvider: args.nextModelProvider,
-      latestCliAgentType: previous.cliAgentType,
-      nextCliAgentType: args.nextCliAgentType,
-    })
-  );
 }

@@ -79,7 +79,6 @@ type ModelContext =
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly apiStartTime: number;
-  readonly sessionId?: string;
   // Overrides the default `/<workflowName>` slash-command prompt.
   readonly prompt?: string;
   // Display-only source context surfaced through workflowSnapshot.triggerBrief.
@@ -525,7 +524,6 @@ export const launchQueuedWorkflowAutomation$ = command(
         body: {
           prompt: runInput.prompt,
           agentId,
-          ...(args.sessionId ? { sessionId: args.sessionId } : {}),
           ...(effectiveModelProvider
             ? { modelProvider: effectiveModelProvider }
             : {}),

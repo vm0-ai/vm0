@@ -29,7 +29,6 @@ const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
 
 const workflowQueueEventParamsWireSchema = z.object({
   version: z.literal(1),
-  sessionId: z.string().optional(),
   prompt: z.string().optional(),
   appendSystemPrompt: z.string().optional(),
   callbacks: z
@@ -43,7 +42,7 @@ const workflowQueueEventParamsWireSchema = z.object({
     .optional(),
   recordLastRunId: z.boolean().optional(),
   recordLastRunAt: z.boolean().optional(),
-  activePreviousRunPolicy: z.enum(["block", "allow"]).optional(),
+  activePreviousRunPolicy: z.enum(["block", "allow"]),
   allowClaimedOnceScheduleAutomation: z.boolean().optional(),
 });
 
@@ -55,7 +54,6 @@ const workflowQueueEventParamsWireSchema = z.object({
  */
 export interface WorkflowQueueEventParams {
   readonly version: 1;
-  readonly sessionId?: string;
   readonly prompt?: string;
   readonly appendSystemPrompt?: string;
   readonly callbacks?: readonly {
@@ -65,7 +63,7 @@ export interface WorkflowQueueEventParams {
   }[];
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
-  readonly activePreviousRunPolicy?: "block" | "allow";
+  readonly activePreviousRunPolicy: "block" | "allow";
   readonly allowClaimedOnceScheduleAutomation?: boolean;
 }
 
