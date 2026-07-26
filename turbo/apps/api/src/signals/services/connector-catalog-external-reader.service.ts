@@ -1,8 +1,4 @@
-import {
-  connectorCatalogFilteredAuthMethodsSchema,
-  type ConnectorCatalogCompatibilityReason,
-  type ConnectorCatalogFilteredAuthMethod,
-} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import { connectorCatalogFilteredAuthMethodsSchema } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -71,12 +67,6 @@ export interface AcceptedConnectorCatalogSnapshot {
   >;
   readonly privateMethodFacts: ReadonlyMap<string, PrivateAuthMethodFacts>;
   readonly filteredMethodKeys: ReadonlySet<string>;
-  readonly compatibilityReasonCounts: Readonly<
-    Partial<Record<ConnectorCatalogCompatibilityReason, number>>
-  >;
-  readonly rawConnectorCount: number;
-  readonly rawAuthMethodCount: number;
-  readonly compatibilityFilteredMethodCount: number;
 }
 
 interface PreparedExternalCatalogCache {
@@ -92,31 +82,9 @@ interface PreparedExternalCatalogCache {
   >;
 }
 
-interface RequestFilteringCounts {
-  readonly visibilityFilteredMethodCount: number;
-  readonly rolloutFilteredMethodCount: number;
-  readonly surfacePolicyFilteredMethodCount: number;
-  readonly removedConnectorCount: number;
-}
-
 interface EffectiveConnector {
   readonly connector: ConnectorCatalogArtifactConnector;
   readonly authMethods: readonly ConnectorCatalogAuthMethod[];
-}
-
-interface ExternalConnectorCatalogDiagnostics
-  extends ExternalCatalogIdentity, RequestFilteringCounts {
-  readonly rawConnectorCount: number;
-  readonly rawAuthMethodCount: number;
-  readonly compatibilityFilteredMethodCount: number;
-  readonly compatibilityReasonCounts: Readonly<
-    Partial<Record<ConnectorCatalogCompatibilityReason, number>>
-  >;
-}
-
-interface ExternalConnectorCatalogRead<T> {
-  readonly value: T;
-  readonly diagnostics: ExternalConnectorCatalogDiagnostics;
 }
 
 interface ExternalCatalogReadArgs {
@@ -221,19 +189,6 @@ function privateMethodFacts(
     }
   }
   return facts;
-}
-
-function compatibilityReasonCounts(
-  filteredAuthMethods: readonly ConnectorCatalogFilteredAuthMethod[],
-): Readonly<Partial<Record<ConnectorCatalogCompatibilityReason, number>>> {
-  const counts: Partial<Record<ConnectorCatalogCompatibilityReason, number>> =
-    {};
-  for (const filtered of filteredAuthMethods) {
-    for (const reason of filtered.reasons) {
-      counts[reason] = (counts[reason] ?? 0) + 1;
-    }
-  }
-  return counts;
 }
 
 function externalCatalogJoin() {
@@ -367,14 +322,6 @@ async function readCurrentCatalog(args: {
         return authMethodKey(filtered.connectorRef, filtered.authMethodId);
       }),
     ),
-    compatibilityReasonCounts: compatibilityReasonCounts(
-      filteredAuthMethods.data,
-    ),
-    rawConnectorCount: artifact.connectors.length,
-    rawAuthMethodCount: artifact.connectors.reduce((count, connector) => {
-      return count + connector.authMethods.length;
-    }, 0),
-    compatibilityFilteredMethodCount: filteredAuthMethods.data.length,
   };
 }
 
@@ -484,14 +431,8 @@ function featureSwitchEnabled(
 function effectiveConnectors(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly featureStates: ConnectorFeatureStates;
-}): {
-  readonly connectors: readonly EffectiveConnector[];
-  readonly counts: RequestFilteringCounts;
-} {
-  let visibilityFilteredMethodCount = 0;
-  let rolloutFilteredMethodCount = 0;
-  let removedConnectorCount = 0;
-  const connectors = args.catalog.artifact.connectors.flatMap((connector) => {
+}): readonly EffectiveConnector[] {
+  return args.catalog.artifact.connectors.flatMap((connector) => {
     const authMethods = connector.authMethods.filter((method) => {
       if (
         args.catalog.filteredMethodKeys.has(
@@ -501,46 +442,18 @@ function effectiveConnectors(args: {
         return false;
       }
       if (!method.visible) {
-        visibilityFilteredMethodCount += 1;
         return false;
       }
       if (!featureSwitchEnabled(method, args.featureStates)) {
-        rolloutFilteredMethodCount += 1;
         return false;
       }
       return true;
     });
     if (authMethods.length === 0) {
-      removedConnectorCount += 1;
       return [];
     }
     return [{ connector, authMethods }];
   });
-  return {
-    connectors,
-    counts: {
-      visibilityFilteredMethodCount,
-      rolloutFilteredMethodCount,
-      // Artifact schema v1 contains no managed grant, so current public
-      // surfaces have no additional method policy to apply here.
-      surfacePolicyFilteredMethodCount: 0,
-      removedConnectorCount,
-    },
-  };
-}
-
-function diagnostics(
-  catalog: AcceptedConnectorCatalogSnapshot,
-  counts: RequestFilteringCounts,
-): ExternalConnectorCatalogDiagnostics {
-  return {
-    ...catalog.identity,
-    ...counts,
-    rawConnectorCount: catalog.rawConnectorCount,
-    rawAuthMethodCount: catalog.rawAuthMethodCount,
-    compatibilityFilteredMethodCount: catalog.compatibilityFilteredMethodCount,
-    compatibilityReasonCounts: catalog.compatibilityReasonCounts,
-  };
 }
 
 function iconForCatalog(
@@ -691,7 +604,7 @@ export function listAcceptedConnectorCatalogAvailableRefs(args: {
     catalog: args.snapshot,
     featureStates: args.featureStates,
   })
-    .connectors.map((entry) => {
+    .map((entry) => {
       return entry.connector.connectorRef;
     })
     .sort();
@@ -875,34 +788,28 @@ function compactDefaultPolicy(
 
 export async function listExternalPublicConnectorCatalog(
   args: ExternalCatalogReadArgs,
-): Promise<ExternalConnectorCatalogRead<PublicConnectorCatalogListResponse>> {
+): Promise<PublicConnectorCatalogListResponse> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
-  const effective = effectiveConnectors({
+  const connectors = effectiveConnectors({
     catalog,
     featureStates: args.featureStates,
   });
   return {
-    value: {
-      connectors: effective.connectors.map(connectorCatalogItem),
-      categoryMetadata: categoryMetadataForConnectors(
-        catalog,
-        effective.connectors,
-      ),
-    },
-    diagnostics: diagnostics(catalog, effective.counts),
+    connectors: connectors.map(connectorCatalogItem),
+    categoryMetadata: categoryMetadataForConnectors(catalog, connectors),
   };
 }
 
 export async function searchExternalConnectorCatalog(
   args: ExternalCatalogSearchArgs,
-): Promise<ExternalConnectorCatalogRead<ConnectorSearchItem[]>> {
+): Promise<ConnectorSearchItem[]> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
   const effective = effectiveConnectors({
     catalog,
     featureStates: args.featureStates,
   });
   const keyword = args.keyword?.toLowerCase();
-  const connectors = effective.connectors.flatMap((entry) => {
+  return effective.flatMap((entry) => {
     const connector = entry.connector;
     if (
       keyword &&
@@ -925,32 +832,25 @@ export async function searchExternalConnectorCatalog(
       },
     ];
   });
-  return {
-    value: connectors,
-    diagnostics: diagnostics(catalog, effective.counts),
-  };
 }
 
 export async function getExternalPublicConnectorCatalogDetail(
   args: ExternalCatalogConnectorReadArgs,
-): Promise<ExternalConnectorCatalogRead<PublicConnectorCatalogDetail | null>> {
+): Promise<PublicConnectorCatalogDetail | null> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
   const effective = effectiveConnectors({
     catalog,
     featureStates: args.featureStates,
   });
-  const connector = effective.connectors.find((entry) => {
+  const connector = effective.find((entry) => {
     return entry.connector.connectorRef === args.connectorRef;
   });
-  return {
-    value: connector ? connectorCatalogDetail(connector) : null,
-    diagnostics: diagnostics(catalog, effective.counts),
-  };
+  return connector ? connectorCatalogDetail(connector) : null;
 }
 
 export async function listExternalPublicConnectorCatalogStatus(
   args: ExternalCatalogStatusArgs,
-): Promise<ExternalConnectorCatalogRead<ConnectorCatalogStatusRead>> {
+): Promise<ConnectorCatalogStatusRead> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
   const effective = effectiveConnectors({
     catalog,
@@ -961,7 +861,7 @@ export async function listExternalPublicConnectorCatalogStatus(
       return [connector.type, connector];
     }),
   );
-  const connectors = effective.connectors.map((entry) => {
+  const connectors = effective.map((entry) => {
     return connectorCatalogStatusItem({
       catalog,
       effective: entry,
@@ -969,64 +869,50 @@ export async function listExternalPublicConnectorCatalogStatus(
     });
   });
   return {
-    value: {
-      status: {
-        connectors,
-        categoryMetadata: categoryMetadataForConnectors(
-          catalog,
-          effective.connectors,
-        ),
-      },
-      referenceMetadata: referenceMetadataForCatalog(
-        catalog,
-        args.referenceConnectorRefs,
-      ),
+    status: {
+      connectors,
+      categoryMetadata: categoryMetadataForConnectors(catalog, effective),
     },
-    diagnostics: diagnostics(catalog, effective.counts),
+    referenceMetadata: referenceMetadataForCatalog(
+      catalog,
+      args.referenceConnectorRefs,
+    ),
   };
 }
 
 export async function getExternalPublicConnectorCatalogPermissionDetail(
   args: ExternalCatalogConnectorReadArgs,
-): Promise<
-  ExternalConnectorCatalogRead<PublicConnectorCatalogPermissionDetail | null>
-> {
+): Promise<PublicConnectorCatalogPermissionDetail | null> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
   const effective = effectiveConnectors({
     catalog,
     featureStates: args.featureStates,
   });
-  const entry = effective.connectors.find((connector) => {
+  const entry = effective.find((connector) => {
     return connector.connector.connectorRef === args.connectorRef;
   });
   if (!entry || entry.connector.firewall.kind === "none") {
-    return {
-      value: null,
-      diagnostics: diagnostics(catalog, effective.counts),
-    };
+    return null;
   }
   const firewall = entry.connector.firewall;
   const permissions = deriveConnectorCatalogFirewallPermissions(
     firewall.config.apis,
   );
   return {
-    value: {
-      connectorRef: entry.connector.connectorRef,
-      label: entry.connector.label,
-      icon: iconForCatalog(entry.connector),
-      permissionCount: permissions.length,
-      permissions: permissions.map((permission) => {
-        return { ...permission };
-      }),
-      categories:
-        firewall.categories === null
-          ? null
-          : {
-              categories: { ...firewall.categories.byPermission },
-              displayOrder: [...firewall.categories.displayOrder],
-            },
-      defaultPolicy: compactDefaultPolicy(entry.connector),
-    },
-    diagnostics: diagnostics(catalog, effective.counts),
+    connectorRef: entry.connector.connectorRef,
+    label: entry.connector.label,
+    icon: iconForCatalog(entry.connector),
+    permissionCount: permissions.length,
+    permissions: permissions.map((permission) => {
+      return { ...permission };
+    }),
+    categories:
+      firewall.categories === null
+        ? null
+        : {
+            categories: { ...firewall.categories.byPermission },
+            displayOrder: [...firewall.categories.displayOrder],
+          },
+    defaultPolicy: compactDefaultPolicy(entry.connector),
   };
 }

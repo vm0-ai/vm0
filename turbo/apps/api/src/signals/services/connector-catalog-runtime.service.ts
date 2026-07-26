@@ -51,10 +51,6 @@ import {
   type ConnectorServerFirewallCatalog,
 } from "./connector-server-firewall-catalog.service";
 
-export type ConnectorRuntimeSnapshotIdentity = {
-  readonly source: "external";
-} & ExternalCatalogIdentity;
-
 export interface ConnectorRuntimeMethod {
   readonly connectorRef: ConnectorRef;
   readonly authMethodId: ConnectorAuthMethodId;
@@ -73,7 +69,6 @@ export interface ConnectorRuntimeConnector {
 }
 
 export interface ConnectorRuntimeSnapshot {
-  readonly identity: ConnectorRuntimeSnapshotIdentity;
   readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
   readonly connectors: ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector>;
   readonly serverFirewalls: ConnectorServerFirewallCatalog;
@@ -519,7 +514,6 @@ function runtimeSnapshot(
     runtimeMethodsByRef,
   });
   return {
-    identity: { source: "external", ...acceptedSnapshot.identity },
     acceptedSnapshot,
     connectors,
     serverFirewalls,

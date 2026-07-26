@@ -39,15 +39,13 @@ interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
 export async function searchConnectorCatalog(
   args: ConnectorCatalogSearchArgs,
 ): Promise<ConnectorSearchItem[]> {
-  const read = await searchExternalConnectorCatalog(args);
-  return read.value;
+  return await searchExternalConnectorCatalog(args);
 }
 
 export async function listPublicConnectorCatalog(
   args: ConnectorCatalogReadArgs,
 ): Promise<PublicConnectorCatalogListResponse> {
-  const read = await listExternalPublicConnectorCatalog(args);
-  return read.value;
+  return await listExternalPublicConnectorCatalog(args);
 }
 
 export async function readPublicConnectorCatalogStatus(
@@ -56,8 +54,7 @@ export async function readPublicConnectorCatalogStatus(
     readonly referenceConnectorRefs: readonly string[];
   },
 ): Promise<ConnectorCatalogStatusRead> {
-  const read = await listExternalPublicConnectorCatalogStatus(args);
-  return read.value;
+  return await listExternalPublicConnectorCatalogStatus(args);
 }
 
 export async function listPublicConnectorCatalogStatus(
@@ -75,13 +72,11 @@ export async function listPublicConnectorCatalogStatus(
 export async function getPublicConnectorCatalogDetail(
   args: ConnectorCatalogConnectorReadArgs,
 ): Promise<PublicConnectorCatalogDetail | null> {
-  const read = await getExternalPublicConnectorCatalogDetail(args);
-  return read.value;
+  return await getExternalPublicConnectorCatalogDetail(args);
 }
 
 export async function getPublicConnectorCatalogPermissionDetail(
   args: ConnectorCatalogConnectorReadArgs,
 ): Promise<PublicConnectorCatalogPermissionDetail | null> {
-  const read = await getExternalPublicConnectorCatalogPermissionDetail(args);
-  return read.value;
+  return await getExternalPublicConnectorCatalogPermissionDetail(args);
 }
