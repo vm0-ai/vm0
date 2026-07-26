@@ -1,4 +1,4 @@
-import type { Block, KnownBlock, MarkdownBlock, View } from "@slack/web-api";
+import type { Block, KnownBlock, View } from "@slack/web-api";
 
 import { env } from "./env";
 
@@ -367,40 +367,6 @@ export function buildWelcomeMessage(agentName?: string): SlackBlocks {
     });
   }
 
-  return blocks;
-}
-
-const MARKDOWN_BLOCK_MAX_LENGTH = 12_000;
-
-function buildMarkdownMessage(content: string): SlackBlocks {
-  const truncationSuffix = "\n\n_(Message too long to view in Slack.)_";
-  const text =
-    content.length > MARKDOWN_BLOCK_MAX_LENGTH
-      ? content.slice(0, MARKDOWN_BLOCK_MAX_LENGTH - truncationSuffix.length) +
-        truncationSuffix
-      : content;
-  const block: MarkdownBlock = { type: "markdown", text };
-  return [block];
-}
-
-export function buildAgentResponseMessage(
-  content: string,
-  logsUrl?: string,
-  footerText?: string,
-): SlackBlocks {
-  const blocks: SlackBlocks = [...buildMarkdownMessage(content)];
-  if (logsUrl) {
-    blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: `:clipboard: <${logsUrl}|Audit>` }],
-    });
-  }
-  if (footerText) {
-    blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: footerText }],
-    });
-  }
   return blocks;
 }
 

@@ -195,43 +195,6 @@ wait_for_slack_run() {
     return 1
 }
 
-# Run the mention/DM handler synchronously against the dispatch-probe
-# endpoint and print the response. Use this as a diagnostic: if the real
-# events route succeeds but wait_for_slack_run never sees a run, this
-# endpoint surfaces the error that was swallowed by after().catch().
-# Usage: slack_dispatch_probe <team_id> <channel_id> <user_id> <text> <ts> [channel_type]
-slack_dispatch_probe() {
-    local team_id="$1" channel_id="$2" user_id="$3" text="$4" ts="$5"
-    local channel_type="${6:-channel}"
-    local body
-    body=$(jq -nc \
-        --arg team_id "$team_id" \
-        --arg channel_id "$channel_id" \
-        --arg user_id "$user_id" \
-        --arg message_text "$text" \
-        --arg message_ts "$ts" \
-        --arg channel_type "$channel_type" \
-        '{team_id: $team_id, channel_id: $channel_id, user_id: $user_id,
-          message_text: $message_text, message_ts: $message_ts,
-          channel_type: $channel_type}')
-    local -a bypass=()
-    _slack_test_endpoint_bypass_args bypass
-    local endpoint_base
-    endpoint_base="$(_slack_api_backend_url)"
-    endpoint_base="${endpoint_base%/}"
-    # The dispatch probe is API-authoritative. Hit the API preview alias
-    # directly so the diagnostic keeps exercising the handler without relying
-    # on external Next rewrites to preserve preview guard headers.
-    # --max-time bounds the probe so a hung handler doesn't eat the
-    # entire BATS budget. 60s is generous for a cold-started lambda
-    # doing DB + Clerk + mock calls.
-    curl -sS --max-time 60 -X POST \
-        -H "Content-Type: application/json" \
-        "${bypass[@]}" \
-        --data "$body" \
-        "$endpoint_base/api/test/slack-dispatch-probe"
-}
-
 # Poll test-state until a run reaches a terminal status or a timeout.
 # A run is considered terminal when its status is one of: completed,
 # succeeded, failed. Returns 0 on first matching run, 1 on timeout.

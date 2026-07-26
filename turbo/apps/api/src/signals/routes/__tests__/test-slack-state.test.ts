@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { http, HttpResponse } from "msw";
+import { createStore } from "ccstate";
 import type {
   TestSlackStateDeleteResponse,
   TestSlackStatePostResponse,
@@ -15,20 +15,16 @@ import { describe, expect, it } from "vitest";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { server } from "../../../mocks/server";
-import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
 import { testSlackStateRoutes } from "../test-slack-state";
-import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
 import { testTelegramStateRoutes } from "../test-telegram-state";
+import { seedRun$ } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
+const store = createStore();
 
 const SLACK_STATE_ROUTE = "/api/test/slack-state";
-const SLACK_DISPATCH_PROBE_ROUTE = "/api/test/slack-dispatch-probe";
 const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
-const TELEGRAM_DISPATCH_PROBE_ROUTE = "/api/test/telegram-dispatch-probe";
-const TELEGRAM_TEST_BOT_TOKEN = "123456:e2e-test-bot-token";
 
 interface SlackFixture {
   readonly teamId: string;
@@ -62,12 +58,7 @@ function uniqueNumericId(): string {
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: [
-      ...testSlackStateRoutes,
-      ...testSlackDispatchProbeRoutes,
-      ...testTelegramStateRoutes,
-      ...testTelegramDispatchProbeRoutes,
-    ],
+    routes: [...testSlackStateRoutes, ...testTelegramStateRoutes],
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -120,64 +111,6 @@ function mockTestUserMembership(userId: string, orgId: string): void {
       { createdAt: 10, organization: { id: orgId } },
     ],
   });
-}
-
-function configureSlackDispatchMocks(): void {
-  context.mocks.s3.send.mockResolvedValue({});
-  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-  mockEnv("APP_URL", "https://app.vm0.test");
-  mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
-  context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
-    ok: true,
-  });
-  context.mocks.slack.chat.postMessage.mockResolvedValue({
-    ok: true,
-    ts: "1710000000.000000",
-    channel: "C-test",
-  });
-  context.mocks.slack.chat.postEphemeral.mockResolvedValue({
-    ok: true,
-    message_ts: "1710000000.000001",
-  });
-  context.mocks.slack.conversations.history.mockResolvedValue({
-    ok: true,
-    messages: [],
-  });
-  context.mocks.slack.conversations.replies.mockResolvedValue({
-    ok: true,
-    messages: [],
-  });
-  context.mocks.slack.users.info.mockResolvedValue({
-    ok: true,
-    user: {
-      profile: {
-        display_name: "Slack User",
-        email: "slack@example.com",
-      },
-      tz: "UTC",
-    },
-  });
-}
-
-function mockTelegramTyping(): void {
-  server.use(
-    http.post(
-      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendChatAction`,
-      () => {
-        return HttpResponse.json({ ok: true, result: true });
-      },
-    ),
-    http.post(
-      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendMessage`,
-      () => {
-        return HttpResponse.json({
-          ok: true,
-          result: { message_id: 1, chat: { id: 900_100_200 } },
-        });
-      },
-    ),
-  );
 }
 
 async function deleteSlackFixture(fixture: SlackFixture): Promise<void> {
@@ -287,48 +220,38 @@ async function seedTelegramFixture(options: {
 async function dispatchSlackMessage(args: {
   readonly fixture: SlackFixture;
   readonly text: string;
-  readonly channelId?: string;
 }): Promise<void> {
-  configureSlackDispatchMocks();
-  const response = await requestApp(SLACK_DISPATCH_PROBE_ROUTE, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      team_id: args.fixture.teamId,
-      channel_id: args.channelId ?? "C-test",
-      user_id: args.fixture.slackUserId,
-      message_text: args.text,
-      message_ts: "1710000000.000000",
-      channel_type: "channel",
-    }),
-  });
-  expect(response.status).toBe(200);
-  await expect(readJson(response)).resolves.toStrictEqual({ ok: true });
+  if (!args.fixture.defaultAgentId) {
+    throw new Error("Expected Slack fixture to include a default agent");
+  }
+  await store.set(
+    seedRun$,
+    {
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      composeId: args.fixture.defaultAgentId,
+      triggerSource: "slack",
+      prompt: args.text,
+    },
+    context.signal,
+  );
 }
 
 async function dispatchTelegramMessage(args: {
   readonly fixture: TelegramFixture;
   readonly text: string;
 }): Promise<void> {
-  context.mocks.s3.send.mockResolvedValue({});
-  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-  mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
-  mockEnv("APP_URL", "http://localhost:3002");
-  mockTelegramTyping();
-  const response = await requestApp(TELEGRAM_DISPATCH_PROBE_ROUTE, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      bot_id: args.fixture.botId,
-      chat_id: "900100200",
-      telegram_user_id: args.fixture.telegramUserId,
-      message_text: args.text,
-      message_id: 501,
-    }),
-  });
-  expect(response.status).toBe(200);
-  await expect(readJson(response)).resolves.toStrictEqual({ ok: true });
+  await store.set(
+    seedRun$,
+    {
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      composeId: args.fixture.defaultAgentId,
+      triggerSource: "telegram",
+      prompt: args.text,
+    },
+    context.signal,
+  );
 }
 
 describe("GET /api/test/slack-state", () => {

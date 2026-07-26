@@ -378,18 +378,6 @@ export {
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
 export {
-  testSlackDispatchProbeBodySchema,
-  testSlackDispatchProbeContract,
-  testSlackDispatchProbeErrorSchema,
-  testSlackDispatchProbeFailureResponseSchema,
-  testSlackDispatchProbeResponseSchema,
-  testSlackDispatchProbeSuccessResponseSchema,
-  type TestSlackDispatchProbeBody,
-  type TestSlackDispatchProbeContract,
-  type TestSlackDispatchProbeError,
-  type TestSlackDispatchProbeResponse,
-} from "./test-slack-dispatch-probe";
-export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,

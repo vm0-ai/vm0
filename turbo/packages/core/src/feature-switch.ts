@@ -230,27 +230,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.CanonicalSlackIngress]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Route newly admitted per-user Slack threads through canonical chat ingress.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CanonicalSlackAssets]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Canonicalize direct Slack inputs and run-scoped Slack file publications.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroWeather]: {
     maintainer: "ethan@vm0.ai",
     description:

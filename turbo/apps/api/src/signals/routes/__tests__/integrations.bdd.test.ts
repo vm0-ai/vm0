@@ -1,7 +1,6 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -24,7 +23,6 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 helper gap:
@@ -1381,15 +1379,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected canonical Slack actor to belong to an org");
     }
     const orgId = actor.orgId;
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      {
-        [FeatureSwitchKey.CanonicalSlackIngress]: false,
-        [FeatureSwitchKey.CanonicalSlackWebVisibility]: false,
-        [FeatureSwitchKey.CanonicalSlackAssets]: false,
-      },
-    );
     const slackUserId = uniqueSlackUserId();
     const { teamId, botUserId } = await integrations.installSlackWorkspace(
       actor,

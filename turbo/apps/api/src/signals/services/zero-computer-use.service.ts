@@ -46,7 +46,6 @@ import {
   computerUseHosts,
 } from "@vm0/db/schema/computer-use-host";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 
 import { env } from "../../lib/env";
@@ -312,10 +311,6 @@ async function clearComputerUseHostThreadBindings(params: {
       createdAt: now,
     });
   }
-  await params.tx
-    .update(slackOrgThreadSessions)
-    .set({ computerUseHostId: null, updatedAt: now })
-    .where(eq(slackOrgThreadSessions.computerUseHostId, params.hostId));
   await params.tx
     .update(teamsOrgThreadSessions)
     .set({ computerUseHostId: null, updatedAt: now })
