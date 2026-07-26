@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.327.1](https://github.com/vm0-ai/vm0/compare/api-v1.327.0...api-v1.327.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **chat:** preserve feedback as structured message parts ([#22893](https://github.com/vm0-ai/vm0/issues/22893)) ([c23162f](https://github.com/vm0-ai/vm0/commit/c23162ff3e0e025378f1b3c47051c203cd84cbcc))
+
+
+### Refactoring
+
+* **api:** use settlement time for finalized usage reports ([#23137](https://github.com/vm0-ai/vm0/issues/23137)) ([f9360d0](https://github.com/vm0-ai/vm0/commit/f9360d0c979f063bc0b290c6874b37890edcf9f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.1
+    * @vm0/core bumped to 8.470.1
+    * @vm0/db bumped to 1.143.1
+
 ## [1.327.0](https://github.com/vm0-ai/vm0/compare/api-v1.326.1...api-v1.327.0) (2026-07-26)
 
 

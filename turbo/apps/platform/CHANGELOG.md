@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.638.1](https://github.com/vm0-ai/vm0/compare/app-v0.638.0...app-v0.638.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **chat:** preserve feedback as structured message parts ([#22893](https://github.com/vm0-ai/vm0/issues/22893)) ([c23162f](https://github.com/vm0-ai/vm0/commit/c23162ff3e0e025378f1b3c47051c203cd84cbcc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.1
+    * @vm0/core bumped to 8.470.1
+
 ## [0.638.0](https://github.com/vm0-ai/vm0/compare/app-v0.637.1...app-v0.638.0) (2026-07-26)
 
 
