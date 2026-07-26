@@ -144,27 +144,10 @@ impl ResolvedCodexSessionHistory {
     }
 
     pub(crate) fn into_checkpoint_source_bounded(
-        mut self,
+        self,
         max_bytes: u64,
     ) -> Result<SessionHistoryCheckpointSource, AgentError> {
-        self.file
-            .rewind()
-            .map_err(|error| read_history_error(&self.path, error))?;
-        if self.is_zstd {
-            let encoded_len = self
-                .file
-                .metadata()
-                .map_err(|error| read_history_error(&self.path, error))?
-                .len();
-            if encoded_len <= max_bytes {
-                let encoded = read_zstd_encoded_session_history(self.file, &self.path, max_bytes)?;
-                return Ok(SessionHistoryCheckpointSource::CodexZstd { encoded });
-            }
-        }
-
-        DecodedSessionHistoryReader::open(self.path, self.file)?
-            .read(Some(max_bytes))
-            .map(SessionHistoryCheckpointSource::Decoded)
+        read_open_codex_checkpoint_source_bounded(self.path, self.file, self.is_zstd, max_bytes)
     }
 }
 
@@ -199,20 +182,39 @@ pub(crate) fn read_session_history_checkpoint_source_from_payload_bounded(
     max_bytes: u64,
 ) -> Result<SessionHistoryCheckpointSource, AgentError> {
     match resolve_session_history_source(payload)? {
-        ResolvedSessionHistorySource::Codex(session) if session.is_zstd() => {
-            if session.encoded_len()? <= max_bytes {
-                let encoded = session.into_zstd_bytes(max_bytes)?;
-                Ok(SessionHistoryCheckpointSource::CodexZstd { encoded })
-            } else {
-                ResolvedSessionHistorySource::Codex(session)
-                    .read(Some(max_bytes))
-                    .map(SessionHistoryCheckpointSource::Decoded)
-            }
+        ResolvedSessionHistorySource::Codex(session) => {
+            let is_zstd = session.is_zstd();
+            let (path, file) = session.into_file()?;
+            read_open_codex_checkpoint_source_bounded(path, file, is_zstd, max_bytes)
         }
         source => source
             .read(Some(max_bytes))
             .map(SessionHistoryCheckpointSource::Decoded),
     }
+}
+
+fn read_open_codex_checkpoint_source_bounded(
+    path: PathBuf,
+    mut file: File,
+    is_zstd: bool,
+    max_bytes: u64,
+) -> Result<SessionHistoryCheckpointSource, AgentError> {
+    file.rewind()
+        .map_err(|error| read_history_error(&path, error))?;
+    if is_zstd {
+        let encoded_len = file
+            .metadata()
+            .map_err(|error| read_history_error(&path, error))?
+            .len();
+        if encoded_len <= max_bytes {
+            let encoded = read_zstd_encoded_session_history(file, &path, max_bytes)?;
+            return Ok(SessionHistoryCheckpointSource::CodexZstd { encoded });
+        }
+    }
+
+    DecodedSessionHistoryReader::open(path, file)?
+        .read(Some(max_bytes))
+        .map(SessionHistoryCheckpointSource::Decoded)
 }
 
 pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
