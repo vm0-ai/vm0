@@ -4922,6 +4922,34 @@ function recordQueuedRunEnqueueTelemetry(args: {
   }
 }
 
+function recordThreadSessionBindingTelemetry(args: {
+  readonly binding: ThreadSessionBindingWrite;
+  readonly runStatus: "pending" | "queued";
+}): void {
+  const result = safeSync(() => {
+    recordSandboxOperation({
+      sandboxType: "chat",
+      actionType: "chat_thread_session_binding_persisted",
+      durationMs: 0,
+      success: true,
+      runId: args.binding.agentSessionRunId,
+      dimensions: {
+        chat_thread_id: args.binding.chatThreadId,
+        agent_session_id: args.binding.agentSessionId,
+        agent_session_run_id: args.binding.agentSessionRunId,
+        binding_action: args.binding.action,
+        run_status: args.runStatus,
+      },
+    });
+  });
+  if ("error" in result) {
+    L.warn("Failed to record chat thread session binding telemetry", {
+      runId: args.binding.agentSessionRunId,
+      error: result.error,
+    });
+  }
+}
+
 async function publishQueueChangedSafely(args: {
   readonly orgId: string;
   readonly runId: string;
@@ -6651,11 +6679,8 @@ async function committedAtomicLaunchResponse(args: {
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
   if (args.committed.threadSessionBinding) {
-    L.debug("Chat thread session binding persisted", {
-      chatThreadId: args.committed.threadSessionBinding.chatThreadId,
-      agentSessionId: args.committed.threadSessionBinding.agentSessionId,
-      agentSessionRunId: args.committed.threadSessionBinding.agentSessionRunId,
-      bindingAction: args.committed.threadSessionBinding.action,
+    recordThreadSessionBindingTelemetry({
+      binding: args.committed.threadSessionBinding,
       runStatus: args.committed.kind,
     });
   }
