@@ -16,6 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-runtime-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -267,6 +268,36 @@ async function readRunApiStart(
   return run.apiStartedAt?.toISOString() ?? null;
 }
 
+async function readThreadSessionBinding(
+  db: Db,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<{
+  readonly agent_session_id: string | null;
+  readonly agent_session_run_id: string | null;
+  readonly run_session_id: string | null;
+}> {
+  const [thread] = await db
+    .select({
+      agentSessionId: chatThreads.agentSessionId,
+      agentSessionRunId: chatThreads.agentSessionRunId,
+      runSessionId: agentRuns.sessionId,
+    })
+    .from(chatThreads)
+    .leftJoin(agentRuns, eq(chatThreads.agentSessionRunId, agentRuns.id))
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!thread) {
+    throw new Error("Expected a chat thread session binding row");
+  }
+  return {
+    agent_session_id: thread.agentSessionId,
+    agent_session_run_id: thread.agentSessionRunId,
+    run_session_id: thread.runSessionId,
+  };
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -447,6 +478,29 @@ async function timingStateActionResponse(
   }
 }
 
+type ThreadSessionBindingAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-thread-session-binding" }
+>;
+
+async function threadSessionBindingActionResponse(
+  db: Db,
+  body: ThreadSessionBindingAction,
+  signal: AbortSignal,
+) {
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      thread_session_binding: await readThreadSessionBinding(
+        db,
+        body.thread_id,
+        signal,
+      ),
+    },
+  };
+}
+
 type LegacyArtifactCatalogFileAction = Extract<
   TestRuntimeStateActionBody,
   { action: "insert-legacy-artifact-catalog-file" }
@@ -500,6 +554,9 @@ const postRuntimeStateAction$ = command(
     }
     if (isTimingStateAction(body)) {
       return await timingStateActionResponse(db, body, signal);
+    }
+    if (body.action === "read-thread-session-binding") {
+      return await threadSessionBindingActionResponse(db, body, signal);
     }
     if (body.action === "insert-legacy-artifact-catalog-file") {
       return await insertLegacyArtifactCatalogFile(db, body, signal);

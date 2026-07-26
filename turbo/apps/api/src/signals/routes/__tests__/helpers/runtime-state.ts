@@ -219,6 +219,22 @@ export async function readRunApiStart(
   return response.api_started_at ?? null;
 }
 
+export async function readThreadSessionBinding(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["thread_session_binding"]>
+> {
+  const response = await postAction(context, {
+    action: "read-thread-session-binding",
+    thread_id: threadId,
+  });
+  if (!response.thread_session_binding) {
+    throw new Error("readThreadSessionBinding missing thread_session_binding");
+  }
+  return response.thread_session_binding;
+}
+
 export async function insertLegacyArtifactCatalogFile(
   context: TestContext,
   args: {

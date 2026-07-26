@@ -17,6 +17,7 @@ import type {
   ChatThreadDraftStructuredPrompt,
   ChatThreadGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-thread";
+import { agentRuns, agentSessions } from "./agent-run-session-conversation";
 
 /**
  * Chat Threads table
@@ -46,6 +47,26 @@ export const chatThreads = pgTable(
      * session context, so the prompt is only applied once.
      */
     sourceScheduleRunId: uuid("source_schedule_run_id"),
+    /**
+     * Canonical vm0 application session for runs admitted on this thread.
+     * Readers remain source-specific during the additive rollout stage.
+     */
+    agentSessionId: uuid("agent_session_id").references(
+      () => {
+        return agentSessions.id;
+      },
+      { onDelete: "set null" },
+    ),
+    /**
+     * Run whose final admission most recently established agentSessionId.
+     * Kept as provenance for rollout validation and future snapshot checks.
+     */
+    agentSessionRunId: uuid("agent_session_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
     /**
      * Draft text content for the thread's composer. Null when no draft is saved.
      * Persisted with local-first sync: local state takes precedence on first visit.

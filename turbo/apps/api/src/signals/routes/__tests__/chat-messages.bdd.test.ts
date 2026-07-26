@@ -53,6 +53,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   deleteVm0ManagedDefaultModelKey,
+  readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -803,6 +804,13 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(first.body.threadId).toBe(clientThreadId);
     expect(first.body.status).toBe("pending");
     const runId = first.body.runId;
+    const pendingBinding = await readThreadSessionBinding(
+      context,
+      clientThreadId,
+    );
+    expect(pendingBinding.agent_session_run_id).toBe(runId);
+    expect(pendingBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
+    expect(pendingBinding.run_session_id).toBe(pendingBinding.agent_session_id);
 
     const timingEvents = apiDispatchTimingEventsForRun(runId);
     expectApiDispatchActions(
@@ -1377,6 +1385,13 @@ describe("CHAT-02: org queue markers", () => {
       throw new Error("Expected the second send to create a queued run");
     }
     expect(queuedRun.body.status).toBe("queued");
+    const queuedBinding = await readThreadSessionBinding(
+      context,
+      queuedRun.body.threadId,
+    );
+    expect(queuedBinding.agent_session_run_id).toBe(queuedRun.body.runId);
+    expect(queuedBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
+    expect(queuedBinding.run_session_id).toBe(queuedBinding.agent_session_id);
 
     const queuedThread = queuedRun.body.threadId;
     const beforeDequeue = await waitForThreadMessages(
