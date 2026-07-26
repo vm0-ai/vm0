@@ -866,7 +866,20 @@ export const preferDrizzleApis = createRule({
     function registerStructuralOwnership(analysis: SqlAnalysis): void {
       for (const template of analysis.expandedTemplates) {
         structurallyOwnedTemplates.add(template);
-        if (analysis.ownsExpandedTemplates) {
+        // Expansion can cross into a shared alias or factory definition. A
+        // use-site finding replaces only templates in its own syntax subtree.
+        if (
+          analysis.findings.some((finding) => {
+            let current: TSESTree.Node | null | undefined = template;
+            while (current !== undefined && current !== null) {
+              if (current === finding.node) {
+                return true;
+              }
+              current = current.parent;
+            }
+            return false;
+          })
+        ) {
           structurallyWholeTemplates.add(template);
         }
       }

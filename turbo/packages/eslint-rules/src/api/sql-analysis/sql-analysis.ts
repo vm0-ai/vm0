@@ -35,9 +35,9 @@ export type SqlAnalysisFinding =
 export interface SqlAnalysis {
   readonly expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>;
   readonly findings: readonly SqlAnalysisFinding[];
+  readonly hasWholeReplacementBoundary: boolean;
   readonly isSimpleSelect: boolean;
   readonly isTruePredicate: boolean;
-  readonly ownsExpandedTemplates: boolean;
 }
 
 interface SqlMarker {
@@ -540,7 +540,7 @@ function classifyExpression(
         left.findings[0]?.node ??
         right.anchor ??
         right.findings[0]?.node,
-      findings: deduplicateFindings([...left.findings, ...right.findings]),
+      findings: [...left.findings, ...right.findings],
       isWholeReplacement: false,
     };
   }
@@ -581,11 +581,9 @@ function classifyExpression(
       children.find((child) => {
         return child.findings[0] !== undefined;
       })?.findings[0]?.node,
-    findings: deduplicateFindings(
-      children.flatMap((child) => {
-        return child.findings;
-      }),
-    ),
+    findings: children.flatMap((child) => {
+      return child.findings;
+    }),
     isWholeReplacement: false,
   };
 }
@@ -726,9 +724,23 @@ function isCompositionBoundary(
   );
 }
 
+function isWithinCompositionRoot(
+  node: TSESTree.Node,
+  root: TSESTree.Expression,
+): boolean {
+  let current: TSESTree.Node | null | undefined = node;
+  while (current !== undefined && current !== null) {
+    if (current === root) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
 function commonCompositionBoundaries(
   chunks: readonly SqlSourceChunk[],
-  preferCallBoundary: boolean,
+  root: TSESTree.Expression,
 ): TSESTree.Expression[] {
   const contributingChunks = chunks.filter((chunk) => {
     return chunk.kind === "expression" || chunk.text.trim() !== "";
@@ -737,11 +749,15 @@ function commonCompositionBoundaries(
   if (firstChunk === undefined) {
     return [];
   }
+  // A definition can feed multiple SQL contexts with different precedence.
+  // Keep replacement ownership at the current use site instead of changing the
+  // shared initializer or factory body.
   const commonBoundaries = [
     ...new Set(
       firstChunk.origins.filter((origin): origin is TSESTree.Expression => {
         return (
           isCompositionBoundary(origin) &&
+          isWithinCompositionRoot(origin, root) &&
           contributingChunks.every((chunk) => {
             return chunk.origins.includes(origin);
           })
@@ -749,24 +765,30 @@ function commonCompositionBoundaries(
       }),
     ),
   ];
-  const callBoundaries: TSESTree.Expression[] = preferCallBoundary
-    ? commonBoundaries.filter((boundary) => {
-        return boundary.type === AST_NODE_TYPES.CallExpression;
-      })
-    : [];
+  const callBoundaries = commonBoundaries.filter((boundary) => {
+    return boundary.type === AST_NODE_TYPES.CallExpression;
+  });
+  const identifierBoundaries = commonBoundaries.filter((boundary) => {
+    return boundary.type === AST_NODE_TYPES.Identifier;
+  });
+  const prioritizedBoundaries = new Set<TSESTree.Expression>([
+    ...callBoundaries,
+    ...identifierBoundaries,
+  ]);
   return [
     ...callBoundaries,
+    ...identifierBoundaries,
     ...[...commonBoundaries].reverse().filter((boundary) => {
-      return !callBoundaries.includes(boundary);
+      return !prioritizedBoundaries.has(boundary);
     }),
   ];
 }
 
 function commonCompositionBoundary(
   variant: SqlSourceVariant,
-  preferCallBoundary: boolean,
+  root: TSESTree.Expression,
 ): TSESTree.Expression | undefined {
-  return commonCompositionBoundaries(variant.chunks, preferCallBoundary)[0];
+  return commonCompositionBoundaries(variant.chunks, root)[0];
 }
 
 function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
@@ -780,7 +802,7 @@ function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
 function replacementBoundaryForFinding(
   finding: ClassifiedHelperFinding,
   variant: SqlSourceVariant,
-  variantCount: number,
+  root: TSESTree.Expression,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
 ): TSESTree.Expression | undefined {
@@ -789,7 +811,7 @@ function replacementBoundaryForFinding(
   // isolation before claiming that the helper can replace it.
   const candidates = commonCompositionBoundaries(
     [...finding.sourceChunks],
-    variantCount === 1,
+    root,
   );
   for (const candidate of candidates) {
     const candidateVariant = {
@@ -829,7 +851,6 @@ function analyzeParsed(
   hasLocalExpansion: boolean,
   parsed: ParsedSql,
   variant: SqlSourceVariant,
-  variantCount: number,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
 ): SqlAnalysis {
@@ -839,9 +860,9 @@ function analyzeParsed(
     return {
       expandedTemplates: new Set(),
       findings: [{ kind: "query-builder", node }],
+      hasWholeReplacementBoundary: true,
       isSimpleSelect: true,
       isTruePredicate: false,
-      ownsExpandedTemplates: true,
     };
   }
 
@@ -871,12 +892,12 @@ function analyzeParsed(
     predicateFinding?.kind === "helper" &&
     rootNeedsCompositionBoundary;
   const replacementBoundary = canReplaceRoot
-    ? commonCompositionBoundary(variant, variantCount === 1)
+    ? commonCompositionBoundary(variant, node)
     : undefined;
-  const ownsExpandedTemplates = replacementBoundary !== undefined;
+  const hasWholeReplacementBoundary = replacementBoundary !== undefined;
   const findings = deduplicateFindings(
     classifications.flatMap((classification) => {
-      if (ownsExpandedTemplates) {
+      if (hasWholeReplacementBoundary) {
         return classification.findings.map((finding) => {
           return publicFinding({
             ...finding,
@@ -891,7 +912,7 @@ function analyzeParsed(
         const boundary = replacementBoundaryForFinding(
           finding,
           variant,
-          variantCount,
+          node,
           checker,
           services,
         );
@@ -904,12 +925,12 @@ function analyzeParsed(
   return {
     expandedTemplates: new Set(),
     findings,
+    hasWholeReplacementBoundary,
     isSimpleSelect: false,
     isTruePredicate:
       context === "predicate" &&
       expression !== undefined &&
       isTrueConstant(expression),
-    ownsExpandedTemplates,
   };
 }
 
@@ -917,7 +938,7 @@ function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
   if (
     left.isSimpleSelect !== right.isSimpleSelect ||
     left.isTruePredicate !== right.isTruePredicate ||
-    left.ownsExpandedTemplates !== right.ownsExpandedTemplates ||
+    left.hasWholeReplacementBoundary !== right.hasWholeReplacementBoundary ||
     left.findings.length !== right.findings.length
   ) {
     return false;
@@ -939,9 +960,9 @@ function emptyAnalysis(
   return {
     expandedTemplates,
     findings: [],
+    hasWholeReplacementBoundary: false,
     isSimpleSelect: false,
     isTruePredicate: false,
-    ownsExpandedTemplates: false,
   };
 }
 
@@ -986,7 +1007,6 @@ export function analyzeSql(
           source.hasLocalExpansion,
           parsed,
           variant,
-          source.variants.length,
           checker,
           services,
         ),
@@ -1008,9 +1028,9 @@ export function analyzeSql(
             return variant.findings;
           }),
         ),
+        hasWholeReplacementBoundary: first.hasWholeReplacementBoundary,
         isSimpleSelect: first.isSimpleSelect,
         isTruePredicate: first.isTruePredicate,
-        ownsExpandedTemplates: first.ownsExpandedTemplates,
       };
     }
   }

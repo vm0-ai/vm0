@@ -629,7 +629,28 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         {
           messageId: "typedApi",
           data: { helper: "eq" },
-          line: 20,
+          line: 23,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`\${users.id} = \${1}\`;
+        db.select()
+          .from(users)
+          .where(sql\`unsupported(\${predicate}, \${predicate})\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 23,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 23,
         },
       ],
     },
@@ -692,6 +713,74 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           messageId: "typedApi",
           data: { helper: "not" },
           line: 26,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const predicate = sql.join(
+          [eq(users.id, 1), eq(users.name, "name")],
+          sql\` AND \`,
+        );
+        db.select().from(users).where(sql\`unsupported(\${predicate})\`);
+        db.select().from(users).having(sql\`NOT \${predicate}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 24,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 25,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const fragment = sql\`\${users.deletedAt} IS NOT NULL\`;
+        db.select()
+          .from(users)
+          .where(sql\`\${fragment} AND \${eq(users.id, 1)}\`);
+        db.select()
+          .from(users)
+          .having(sql\`COALESCE(\${fragment}, FALSE)\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "isNotNull" },
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select().from(users).where(sql\`unsupported(\${fragment})\`);
+        db.select().from(users).having(sql\`NOT \${fragment}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 24,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 25,
         },
       ],
     },
@@ -767,7 +856,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 20,
+          line: 24,
         },
       ],
     },
@@ -777,7 +866,18 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         const predicate = sql\`\${users.id} = \${1}\`;
         db.select().from(users).where(predicate).having(predicate);
       `,
-      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 21,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 21,
+        },
+      ],
     },
     {
       code: `${drizzlePreamble}
@@ -901,8 +1001,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           );
       `,
       errors: [
-        { messageId: "typedApi", data: { helper: "eq" } },
-        { messageId: "typedApi", data: { helper: "eq" } },
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 27,
+        },
       ],
     },
     {
