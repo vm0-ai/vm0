@@ -9125,6 +9125,65 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
 });
 
 describe("HOOK-01: callback authentication failures", () => {
+  it("leaves retired Slack org callbacks inert", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const prompt = `retired Slack org callback ${randomUUID()}`;
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+    await callbackStore.set(
+      seedAgentRunCallback$,
+      {
+        runId: created.runId,
+        internalKind: "slack:org",
+        payload: {},
+      },
+      context.signal,
+    );
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, created.runId)}`,
+    };
+
+    await webhooks.requestAgentHeartbeat(
+      { runId: created.runId },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await webhooks.requestAgentComplete(
+      { runId: created.runId, exitCode: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    await expect(
+      callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          prompt,
+        },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({
+        internalKind: "slack:org",
+        status: "pending",
+        attempts: 0,
+        lastError: null,
+      }),
+    ]);
+  });
+
   it("fails closed without authentication material on progress and completion", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);

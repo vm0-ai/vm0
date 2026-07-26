@@ -13,7 +13,6 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
 import { handleChatInternalCallback$ } from "./internal-chat-run-callback.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
-import { handleSlackOrgInternalCallback$ } from "./internal-slack-org-run-callback.service";
 import { handleTeamsOrgInternalCallback$ } from "./internal-teams-org-run-callback.service";
 import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
 
@@ -64,6 +63,7 @@ export const dispatchProgressCallbacks$ = command(
             notInArray(agentRunCallbacks.internalKind, [
               "slack:chat",
               "feishu:chat",
+              "slack:org",
             ]),
           ),
         ),
@@ -100,10 +100,6 @@ export const dispatchProgressCallbacks$ = command(
             progressCallback,
             signal,
           );
-          return;
-        }
-        if (internalKind === "slack:org") {
-          await set(handleSlackOrgInternalCallback$, progressCallback, signal);
           return;
         }
         if (internalKind === "teams:org") {

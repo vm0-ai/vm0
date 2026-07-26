@@ -72,19 +72,19 @@ interface SlackMessage {
   readonly blocks?: readonly SlackBlock[];
 }
 
-export type SlackConversationContextPhase =
+type SlackConversationContextPhase =
   | "replies"
   | "history"
   | "user_info"
   | "format";
 
-export type SlackConversationContextShape =
+type SlackConversationContextShape =
   | "dm_no_thread"
   | "channel_no_thread"
   | "dm_thread"
   | "channel_thread";
 
-export interface SlackConversationContextTelemetryDimensions {
+interface SlackConversationContextTelemetryDimensions {
   readonly slack_context_shape: SlackConversationContextShape;
   readonly slack_context_thread_message_count_bucket: string;
   readonly slack_context_channel_message_count_bucket: string;
@@ -92,7 +92,7 @@ export interface SlackConversationContextTelemetryDimensions {
   readonly slack_context_user_info_id_count_bucket: string;
 }
 
-export interface SlackConversationContextObserver {
+interface SlackConversationContextObserver {
   readonly measure: <T>(
     phase: SlackConversationContextPhase,
     operation: () => T | Promise<T>,

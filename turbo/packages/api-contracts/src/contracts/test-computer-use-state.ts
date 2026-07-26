@@ -21,13 +21,6 @@ export const testComputerUseStatePostResponseSchema = z.object({
   run_id: z.string(),
   session_id: z.string(),
   thread_id: z.string().nullable(),
-  slack: z
-    .object({
-      connection_id: z.string(),
-      channel_id: z.string(),
-      thread_ts: z.string(),
-    })
-    .nullable(),
   teams: z
     .object({
       connection_id: z.string(),

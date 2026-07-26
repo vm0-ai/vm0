@@ -13,9 +13,6 @@ import {
   computerUseAuthorizationRequests,
   computerUseHosts,
 } from "@vm0/db/schema/computer-use-host";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
@@ -25,7 +22,6 @@ import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { slackOrgCallbackPayloadSchema } from "./slack-org-callback-payload";
 import { teamsOrgCallbackPayloadSchema } from "./teams-org-callback-payload";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import {
@@ -44,12 +40,6 @@ type AuthorizationRequestScope =
   | {
       readonly source: "chat";
       readonly chatThreadId: string;
-    }
-  | {
-      readonly source: "slack";
-      readonly slackConnectionId: string;
-      readonly slackChannelId: string;
-      readonly slackThreadTs: string;
     }
   | {
       readonly source: "teams";
@@ -120,34 +110,6 @@ function authorizationUrl(requestToken: string): string {
   )}`;
 }
 
-async function loadSlackScope(args: {
-  readonly db: Db;
-  readonly runId: string;
-}): Promise<AuthorizationRequestScope | null> {
-  const [callback] = await args.db
-    .select({ payload: agentRunCallbacks.payload })
-    .from(agentRunCallbacks)
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, args.runId),
-        eq(agentRunCallbacks.internalKind, "slack:org"),
-      ),
-    )
-    .limit(1);
-
-  const payload = slackOrgCallbackPayloadSchema.safeParse(callback?.payload);
-  if (!payload.success) {
-    return null;
-  }
-
-  return {
-    source: "slack",
-    slackConnectionId: payload.data.connectionId,
-    slackChannelId: payload.data.channelId,
-    slackThreadTs: payload.data.threadTs,
-  };
-}
-
 async function loadTeamsScope(args: {
   readonly db: Db;
   readonly runId: string;
@@ -210,13 +172,6 @@ async function resolveRequestScope(args: {
 
   if (run.chatThreadId) {
     return { source: "chat", chatThreadId: run.chatThreadId };
-  }
-
-  if (run.triggerSource === "slack") {
-    return (
-      (await loadSlackScope({ db: args.db, runId: args.runId })) ??
-      "unsupported_context"
-    );
   }
 
   if (run.triggerSource === "teams") {
@@ -314,32 +269,6 @@ async function loadAuthorizedComputerUseHostId(args: {
   }
 
   if (
-    args.request.source === "slack" &&
-    args.request.slackConnectionId &&
-    args.request.slackChannelId &&
-    args.request.slackThreadTs
-  ) {
-    const [threadSession] = await args.db
-      .select({ computerUseHostId: slackOrgThreadSessions.computerUseHostId })
-      .from(slackOrgThreadSessions)
-      .where(
-        and(
-          eq(
-            slackOrgThreadSessions.connectionId,
-            args.request.slackConnectionId,
-          ),
-          eq(
-            slackOrgThreadSessions.slackChannelId,
-            args.request.slackChannelId,
-          ),
-          eq(slackOrgThreadSessions.slackThreadTs, args.request.slackThreadTs),
-        ),
-      )
-      .limit(1);
-    return threadSession?.computerUseHostId ?? null;
-  }
-
-  if (
     args.request.source === "teams" &&
     args.request.teamsConnectionId &&
     args.request.teamsConversationId &&
@@ -366,33 +295,6 @@ async function loadAuthorizedComputerUseHostId(args: {
   }
 
   return null;
-}
-
-async function slackScopeExists(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectionId: string;
-}): Promise<boolean> {
-  const [connection] = await args.db
-    .select({ id: slackOrgConnections.id })
-    .from(slackOrgConnections)
-    .innerJoin(
-      slackOrgInstallations,
-      eq(
-        slackOrgInstallations.slackWorkspaceId,
-        slackOrgConnections.slackWorkspaceId,
-      ),
-    )
-    .where(
-      and(
-        eq(slackOrgConnections.id, args.connectionId),
-        eq(slackOrgConnections.vm0UserId, args.userId),
-        eq(slackOrgInstallations.orgId, args.orgId),
-      ),
-    )
-    .limit(1);
-  return connection !== undefined;
 }
 
 async function teamsScopeExists(args: {
@@ -461,53 +363,6 @@ async function applyChatAuthorizationScope(args: {
     });
     return true;
   });
-}
-
-async function applySlackAuthorizationScope(args: {
-  readonly db: Db;
-  readonly request: AuthorizationRequestRow;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly computerUseHostId: string;
-  readonly now: Date;
-}): Promise<boolean> {
-  const connectionId = args.request.slackConnectionId;
-  if (
-    !connectionId ||
-    !args.request.slackChannelId ||
-    !args.request.slackThreadTs ||
-    !(await slackScopeExists({
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectionId,
-    }))
-  ) {
-    return false;
-  }
-
-  await args.db
-    .insert(slackOrgThreadSessions)
-    .values({
-      connectionId,
-      slackChannelId: args.request.slackChannelId,
-      slackThreadTs: args.request.slackThreadTs,
-      computerUseHostId: args.computerUseHostId,
-      updatedAt: args.now,
-    })
-    .onConflictDoUpdate({
-      target: [
-        slackOrgThreadSessions.connectionId,
-        slackOrgThreadSessions.slackChannelId,
-        slackOrgThreadSessions.slackThreadTs,
-      ],
-      set: {
-        computerUseHostId: args.computerUseHostId,
-        updatedAt: args.now,
-      },
-    });
-
-  return true;
 }
 
 async function applyTeamsAuthorizationScope(args: {
@@ -591,10 +446,6 @@ export const createComputerUseAuthorizationRequest$ = command(
       runId: args.runId,
       source: scope.source,
       chatThreadId: scope.source === "chat" ? scope.chatThreadId : null,
-      slackConnectionId:
-        scope.source === "slack" ? scope.slackConnectionId : null,
-      slackChannelId: scope.source === "slack" ? scope.slackChannelId : null,
-      slackThreadTs: scope.source === "slack" ? scope.slackThreadTs : null,
       teamsConnectionId:
         scope.source === "teams" ? scope.teamsConnectionId : null,
       teamsConversationId:
@@ -716,8 +567,8 @@ export const applyComputerUseAuthorizationRequest$ = command(
             computerUseHostId: args.computerUseHostId,
             now,
           })
-        : request.source === "slack"
-          ? await applySlackAuthorizationScope({
+        : request.source === "teams"
+          ? await applyTeamsAuthorizationScope({
               db,
               request,
               orgId: args.orgId,
@@ -725,16 +576,7 @@ export const applyComputerUseAuthorizationRequest$ = command(
               computerUseHostId: args.computerUseHostId,
               now,
             })
-          : request.source === "teams"
-            ? await applyTeamsAuthorizationScope({
-                db,
-                request,
-                orgId: args.orgId,
-                userId: args.userId,
-                computerUseHostId: args.computerUseHostId,
-                now,
-              })
-            : false;
+          : false;
     signal.throwIfAborted();
 
     if (!applied) {
