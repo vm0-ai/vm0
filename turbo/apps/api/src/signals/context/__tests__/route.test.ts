@@ -187,7 +187,7 @@ describe("honoSignalHandler", () => {
 
     const legacyResponse = await accept(
       client.structured({
-        headers: { [CLIENT_VERSION_HEADER]: "0.636.1" },
+        extraHeaders: { [CLIENT_VERSION_HEADER]: "0.636.1" },
       }),
       [200],
     );
@@ -201,7 +201,7 @@ describe("honoSignalHandler", () => {
     );
     const capableResponse = await accept(
       client.structured({
-        headers: { [CLIENT_VERSION_HEADER]: capableVersion },
+        extraHeaders: { [CLIENT_VERSION_HEADER]: capableVersion },
       }),
       [200],
     );
