@@ -30,7 +30,6 @@ function queueEventParams(
 ): WorkflowQueueEventParams {
   return {
     version: 1,
-    ...(args.sessionId ? { sessionId: args.sessionId } : {}),
     ...(args.prompt !== undefined ? { prompt: args.prompt } : {}),
     ...(args.appendSystemPrompt !== undefined
       ? { appendSystemPrompt: args.appendSystemPrompt }

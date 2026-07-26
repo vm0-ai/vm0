@@ -9,7 +9,6 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import {
@@ -19,7 +18,6 @@ import {
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
-import { conversations } from "@vm0/db/schema/conversation";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -123,7 +121,7 @@ import {
   chatThreadServiceTierFromCodex,
 } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
+import { resolveChatThreadSession } from "../services/chat-session-continuity.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { bestEffort, tapError } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -186,7 +184,6 @@ type ThreadModelPin = ModelFirstPin;
 
 interface ResolvedThread {
   readonly threadId: string;
-  readonly sessionId: string | undefined;
   readonly incompleteContext: string;
   readonly computerUseHostId: string | null;
   readonly isNewThread: boolean;
@@ -206,13 +203,6 @@ interface WebChatPriorRun {
   readonly status: string;
   readonly prompt: string;
   readonly messages: readonly WebChatPriorRunMessage[];
-}
-
-interface LatestThreadSession {
-  readonly sessionId: string;
-  readonly selectedModel: string | null;
-  readonly modelProvider: string | null;
-  readonly cliAgentType: string | null;
 }
 
 type ModelFirstProviderAdmission = Awaited<
@@ -584,18 +574,6 @@ function normalizeNormalSendBody(body: NormalSendBody):
   };
 }
 
-function hasAgentSessionId(
-  value: unknown,
-): value is { readonly agentSessionId: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "agentSessionId" in value &&
-    typeof (value as { readonly agentSessionId: unknown }).agentSessionId ===
-      "string"
-  );
-}
-
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
@@ -819,51 +797,6 @@ async function loadAgentForChatSend(
     .where(eq(zeroAgents.id, agentId))
     .limit(1);
   return agent;
-}
-
-async function latestSessionForThread(
-  db: Db,
-  threadId: string,
-): Promise<LatestThreadSession | undefined> {
-  const rows = await db
-    .select({
-      result: agentRuns.result,
-      selectedModel: zeroRuns.selectedModel,
-      modelProvider: zeroRuns.modelProvider,
-      cliAgentType: conversations.cliAgentType,
-    })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .leftJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
-    // Only web-source runs join the thread's session-continuity chain, so
-    // Workflow Automation runs never resume a web session and a later web turn
-    // never resumes an automated one. The 'web' filter (before .limit) is
-    // mirrored in latestSessionForThreadFromDb
-    // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
-    // (zero-goal-continuation.service.ts) — keep them in sync. This is a
-    // continuity filter ONLY; it must NOT be copied into the thread admission
-    // check.
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        eq(zeroRuns.triggerSource, "web"),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(5);
-
-  for (const row of rows) {
-    if (hasAgentSessionId(row.result)) {
-      return {
-        sessionId: row.result.agentSessionId,
-        selectedModel: row.selectedModel,
-        modelProvider: row.modelProvider,
-        cliAgentType: row.cliAgentType,
-      };
-    }
-  }
-  return undefined;
 }
 
 async function getLatestRunsByThreadId(
@@ -1475,7 +1408,6 @@ async function resolveThread(params: {
     return {
       thread: {
         threadId: thread.id,
-        sessionId: undefined,
         incompleteContext: "",
         computerUseHostId: null,
         isNewThread: !thread.clientThreadAlreadyExisted,
@@ -1526,27 +1458,30 @@ async function resolveThread(params: {
     };
   }
 
-  const [latestSession, incompleteContext] = await Promise.all([
-    latestSessionForThread(params.db, thread.id),
+  const [sessionResolution, incompleteContext] = await Promise.all([
+    resolveChatThreadSession({
+      db: params.db,
+      threadId: thread.id,
+      userId: params.userId,
+      orgId: params.orgId,
+      agentComposeId: params.agentId,
+      route: {
+        selectedModel: runConfiguration.modelPin.selectedModel,
+        modelProvider:
+          runConfiguration.providerAdmission.effectiveModelProvider ?? null,
+        cliAgentType: runConfiguration.providerAdmission.cliAgentType,
+      },
+    }),
     loadWebChatIncompleteContext(
       params.db,
       thread.id,
       params.structuredPromptEnabled,
     ),
   ]);
-  const startNewSession = shouldStartNewChatSession({
-    latestModel: latestSession?.selectedModel,
-    nextModel: runConfiguration.modelPin.selectedModel,
-    latestModelProvider: latestSession?.modelProvider,
-    nextModelProvider:
-      runConfiguration.providerAdmission.effectiveModelProvider,
-    latestCliAgentType: latestSession?.cliAgentType,
-    nextCliAgentType: runConfiguration.providerAdmission.cliAgentType,
-  });
+  const startNewSession = sessionResolution.action === "rotated";
   return {
     thread: {
       threadId: thread.id,
-      sessionId: startNewSession ? undefined : latestSession?.sessionId,
       incompleteContext: startNewSession ? "" : incompleteContext,
       computerUseHostId: thread.computerUseHostId,
       isNewThread: false,
@@ -3033,9 +2968,6 @@ function buildCreateZeroRunArgs(params: {
     body: {
       prompt: prepared.body.agentPrompt,
       agentId: args.body.agentId,
-      ...(prepared.thread.sessionId
-        ? { sessionId: prepared.thread.sessionId }
-        : {}),
       ...(providerAdmission.effectiveModelProvider
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),

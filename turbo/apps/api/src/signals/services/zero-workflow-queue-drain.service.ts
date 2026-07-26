@@ -17,7 +17,6 @@ import {
   loadNextWorkflowQueueEvent,
   pauseWorkflowQueueEventAfterRunFailure,
   type PendingWorkflowQueueEvent,
-  type WorkflowQueueEventParams,
 } from "./chat-message-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
@@ -85,29 +84,6 @@ interface DrainWorkflowQueueArgs {
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
   readonly workflowEventLaunch?: WorkflowEventLaunch;
-}
-
-function allowClaimedOnceScheduleAutomation(
-  target: DequeueTarget,
-  params: WorkflowQueueEventParams,
-): boolean | undefined {
-  if (params.allowClaimedOnceScheduleAutomation !== undefined) {
-    return params.allowClaimedOnceScheduleAutomation;
-  }
-
-  const automation = target.automation;
-  if (
-    automation.kind === "schedule" &&
-    automation.scheduleType === "once" &&
-    !automation.enabled &&
-    automation.nextRunAt === null &&
-    automation.lastRunAt !== null
-  ) {
-    // Previous writers disabled a claimed one-time automation before inserting
-    // its v1 queue payload, which did not carry the explicit claim marker.
-    return true;
-  }
-  return undefined;
 }
 
 const CONTINUE_DRAIN = Symbol("continue-workflow-queue-drain");
@@ -278,19 +254,16 @@ export const drainWorkflowQueueForThread$ = command(
             workflowName: target.workflowName,
             chatThreadId: event.chatThreadId,
             allowClaimedOnceScheduleAutomation:
-              allowClaimedOnceScheduleAutomation(target, params),
+              params.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
           apiStartTime: launchHint?.apiStartTime ?? now(),
-          sessionId: params.sessionId,
           prompt: params.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: triggerSource.success ? triggerSource.data : undefined,
           appendSystemPrompt: params.appendSystemPrompt,
           callbacks: params.callbacks,
-          // Rows written before queue-first ingress always dequeued with
-          // "allow"; new rows persist their caller policy explicitly.
-          activePreviousRunPolicy: params.activePreviousRunPolicy ?? "allow",
+          activePreviousRunPolicy: params.activePreviousRunPolicy,
           recordLastRunId: params.recordLastRunId,
           recordLastRunAt: params.recordLastRunAt,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,

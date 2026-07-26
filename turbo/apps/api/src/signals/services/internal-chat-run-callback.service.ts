@@ -7,7 +7,6 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
   chatMessages,
@@ -16,7 +15,6 @@ import {
   type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { conversations } from "@vm0/db/schema/conversation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -111,7 +109,7 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
-import { shouldStartNewChatSession } from "./chat-session-continuity.service";
+import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
@@ -366,13 +364,6 @@ interface PriorRun {
   readonly messages: readonly PriorRunMessage[];
 }
 
-interface LatestThreadSession {
-  readonly sessionId: string;
-  readonly selectedModel: string | null;
-  readonly modelProvider: string | null;
-  readonly cliAgentType: string | null;
-}
-
 interface AgentForAutoSend {
   readonly id: string;
   readonly orgId: string;
@@ -498,7 +489,6 @@ interface CreateQueuedChatRunInput {
   readonly userId: string;
   readonly agentId: string;
   readonly prompt: string;
-  readonly sessionId: string | null;
   readonly appendSystemPrompt: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
@@ -657,7 +647,6 @@ function buildQueuedCreateZeroRunArgs(
     body: {
       prompt: input.prompt,
       agentId: input.agentId,
-      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.effectiveModelProvider
         ? { modelProvider: input.effectiveModelProvider }
         : {}),
@@ -1880,74 +1869,6 @@ async function chatThreadForRunFromDb(
   };
 }
 
-function hasAgentSessionId(
-  value: unknown,
-): value is { readonly agentSessionId: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "agentSessionId" in value &&
-    typeof (value as { readonly agentSessionId: unknown }).agentSessionId ===
-      "string"
-  );
-}
-
-async function latestSessionForThreadFromDb(
-  db: Db,
-  threadId: string,
-  triggerSource: "web" | "slack" | "feishu",
-): Promise<LatestThreadSession | null> {
-  const rows = await db
-    .select({
-      result: agentRuns.result,
-      selectedModel: zeroRuns.selectedModel,
-      modelProvider: zeroRuns.modelProvider,
-      cliAgentType: conversations.cliAgentType,
-    })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .leftJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
-    // D7 session-continuity exclusion: Web and canonical Slack messages share
-    // the thread queue but keep independent source-specific session chains.
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        eq(zeroRuns.triggerSource, triggerSource),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(5);
-
-  for (const row of rows) {
-    if (hasAgentSessionId(row.result)) {
-      return {
-        sessionId: row.result.agentSessionId,
-        selectedModel: row.selectedModel,
-        modelProvider: row.modelProvider,
-        cliAgentType: row.cliAgentType,
-      };
-    }
-  }
-  return null;
-}
-
-function shouldStartNewSessionForQueuedMessage(params: {
-  readonly latestSession: LatestThreadSession | null;
-  readonly modelPin: ModelFirstPin;
-  readonly effectiveModelProvider: string | null | undefined;
-  readonly cliAgentType: string | null;
-}): boolean {
-  return shouldStartNewChatSession({
-    latestModel: params.latestSession?.selectedModel,
-    nextModel: params.modelPin.selectedModel,
-    latestModelProvider: params.latestSession?.modelProvider,
-    nextModelProvider: params.effectiveModelProvider,
-    latestCliAgentType: params.latestSession?.cliAgentType,
-    nextCliAgentType: params.cliAgentType,
-  });
-}
-
 async function loadAgentForAutoSend(
   db: Db,
   agentId: string,
@@ -2243,18 +2164,28 @@ interface CreateQueuedChatRunInputArgs {
   readonly timing?: ChatCallbackPreCreateTimingCollector;
 }
 
-function loadQueuedMessageSessionState(args: CreateQueuedChatRunInputArgs) {
+function loadQueuedMessageSessionState(
+  args: CreateQueuedChatRunInputArgs,
+  modelRoute: QueuedMessageModelRoute,
+) {
   return measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
     "nested",
     async () => {
-      const [latestSession, featureSwitchContext] = await Promise.all([
-        latestSessionForThreadFromDb(
-          args.db,
-          args.threadId,
-          args.queuedMessage.triggerSource,
-        ),
+      const [sessionResolution, featureSwitchContext] = await Promise.all([
+        resolveChatThreadSession({
+          db: args.db,
+          threadId: args.threadId,
+          userId: args.userId,
+          orgId: args.agent.orgId,
+          agentComposeId: args.agent.id,
+          route: {
+            selectedModel: modelRoute.modelPin.selectedModel,
+            modelProvider: modelRoute.effectiveModelProvider ?? null,
+            cliAgentType: modelRoute.cliAgentType,
+          },
+        }),
         loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
       ]);
       const structuredPromptEnabled = isFeatureEnabled(
@@ -2269,7 +2200,11 @@ function loadQueuedMessageSessionState(args: CreateQueuedChatRunInputArgs) {
               structuredPromptEnabled,
             )
           : "";
-      return [latestSession, incompleteContext, featureSwitchContext] as const;
+      return [
+        sessionResolution.action === "rotated",
+        incompleteContext,
+        featureSwitchContext,
+      ] as const;
     },
   );
 }
@@ -2350,8 +2285,8 @@ async function buildCreateQueuedChatRunInput(
   }
   const modelRoute = modelRouteResolution.route;
 
-  const [latestSession, loadedIncompleteContext, featureSwitchContext] =
-    await loadQueuedMessageSessionState(args);
+  const [startNewSession, loadedIncompleteContext, featureSwitchContext] =
+    await loadQueuedMessageSessionState(args, modelRoute);
   const structuredPromptEnabled = isFeatureEnabled(
     FeatureSwitchKey.StructuredPrompt,
     featureSwitchContext,
@@ -2360,12 +2295,6 @@ async function buildCreateQueuedChatRunInput(
     structuredPromptEnabled && args.queuedMessage.structuredPrompt
       ? projectStructuredUserMessage(args.queuedMessage.structuredPrompt)
       : undefined;
-  const startNewSession = shouldStartNewSessionForQueuedMessage({
-    latestSession,
-    modelPin: modelRoute.modelPin,
-    effectiveModelProvider: modelRoute.effectiveModelProvider,
-    cliAgentType: modelRoute.cliAgentType,
-  });
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2422,7 +2351,6 @@ async function buildCreateQueuedChatRunInput(
     userId: args.userId,
     agentId: args.agent.id,
     prompt,
-    sessionId: startNewSession ? null : (latestSession?.sessionId ?? null),
     appendSystemPrompt: buildAppendSystemPrompt(
       sourceParams?.appendSystemPrompt ?? buildWebChatPrompt(),
       incompleteContext,
