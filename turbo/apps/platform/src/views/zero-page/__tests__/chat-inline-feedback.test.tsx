@@ -322,7 +322,7 @@ describe("chat inline feedback", () => {
         {
           type: "feedback",
           quote: assistantReply,
-          note: "Make the dates explicit.",
+          note: [{ type: "text", text: "Make the dates explicit." }],
         },
       ],
     });
@@ -485,7 +485,12 @@ describe("chat inline feedback", () => {
         {
           type: "feedback",
           quote: assistantReply,
-          note: "Name the owner and explain the complete result.",
+          note: [
+            {
+              type: "text",
+              text: "Name the owner and explain the complete result.",
+            },
+          ],
         },
       ],
     });
@@ -602,7 +607,7 @@ describe("chat inline feedback", () => {
           {
             type: "feedback",
             quote: assistantReply,
-            note: "Rewrite this paragraph.",
+            note: [{ type: "text", text: "Rewrite this paragraph." }],
             source: {
               type: "mail",
               id: mailDraftId,

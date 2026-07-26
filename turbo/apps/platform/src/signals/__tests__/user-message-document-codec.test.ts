@@ -293,11 +293,22 @@ describe("user message document codec", () => {
       version: 1,
       parts: [
         { type: "text", text: "Before" },
-        { type: "feedback", quote: "First quote", note: "First note" },
+        {
+          type: "feedback",
+          quote: "First quote",
+          note: [{ type: "text", text: "First note" }],
+        },
         {
           type: "feedback",
           quote: "Second quote",
-          note: `Second note\n[Project Alpha](/chats/${THREAD_ID})`,
+          note: [
+            { type: "text", text: "Second note\n" },
+            {
+              type: "chat_thread",
+              threadId: THREAD_ID,
+              titleSnapshot: "Project Alpha",
+            },
+          ],
         },
         { type: "text", text: "After" },
       ],
@@ -377,7 +388,7 @@ describe("user message document codec", () => {
         {
           type: "feedback",
           quote: "Mail body",
-          note: "Rewrite this paragraph",
+          note: [{ type: "text", text: "Rewrite this paragraph" }],
           source: {
             type: "mail",
             id: "mail-draft-id",

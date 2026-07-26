@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   userMessageDocumentSchema,
+  type FeedbackNotePart,
   type GenerationTemplateRequest,
   type GenerationTemplateType,
   type PersistedAttachment,
@@ -10,10 +11,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
-import {
-  serializeChatThreadMention,
-  splitChatThreadMentionSegments,
-} from "./chat-thread-suggestion-domain.ts";
+import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
@@ -58,7 +56,9 @@ function appendTextPart(parts: UserMessagePart[], text: string): void {
   parts.push({ type: "text", text });
 }
 
-function chatThreadPart(node: ProseMirrorNode): UserMessagePart | null {
+function chatThreadPart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "chat_thread" }> | null {
   const threadId: unknown = node.attrs.threadId;
   const title: unknown = node.attrs.title;
   if (typeof threadId !== "string" || typeof title !== "string") {
@@ -172,23 +172,24 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
   if (typeof quote !== "string" || source === null) {
     return null;
   }
-  let valid = true;
-  const note = node.textBetween(0, node.content.size, "\n", (leafNode) => {
-    if (leafNode.type.name === "hardBreak") {
-      return "\n";
+  const note: UserMessagePart[] = [];
+  for (let index = 0; index < node.childCount; index++) {
+    const paragraph = node.child(index);
+    if (paragraph.type.name !== "paragraph") {
+      return null;
     }
-    if (leafNode.type.name !== CHAT_THREAD_MENTION_NODE_NAME) {
-      valid = false;
-      return "";
+    if (index > 0) {
+      appendTextPart(note, "\n");
     }
-    const part = chatThreadPart(leafNode);
-    if (!part || part.type !== "chat_thread") {
-      valid = false;
-      return "";
+    if (!appendParagraphParts(paragraph, note)) {
+      return null;
     }
-    return serializeChatThreadMention(part.threadId, part.titleSnapshot);
-  });
-  if (!valid) {
+  }
+  if (
+    !note.every((part): part is FeedbackNotePart => {
+      return part.type === "text" || part.type === "chat_thread";
+    })
+  ) {
     return null;
   }
   return {
@@ -230,7 +231,7 @@ function appendFeedbackGroup(
     if (!part || part.type !== "feedback") {
       return null;
     }
-    if (part.note.trim().length > 0) {
+    if (feedbackNoteToPrompt(part.note).trim().length > 0) {
       feedbackParts.push(part);
     }
     index += 1;
@@ -365,31 +366,73 @@ function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   } satisfies JSONContent;
 }
 
-function feedbackNoteContent(note: string): JSONContent[] {
-  return note.split("\n").map((line) => {
-    const inlineContent = splitChatThreadMentionSegments(line).map(
-      (segment) => {
-        return segment.type === "text"
-          ? { type: "text", text: segment.text }
-          : {
-              type: CHAT_THREAD_MENTION_NODE_NAME,
-              attrs: {
-                threadId: segment.threadId,
-                title: segment.title,
-              },
-            };
-      },
+function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
+  return note
+    .map((part) => {
+      return part.type === "text"
+        ? part.text
+        : serializeChatThreadMention(part.threadId, part.titleSnapshot);
+    })
+    .join("");
+}
+
+function feedbackNoteContent(note: readonly FeedbackNotePart[]): JSONContent[] {
+  const content: JSONContent[] = [];
+  let paragraphContent: JSONContent[] = [];
+  let trailingParagraph = false;
+  const flushParagraph = () => {
+    content.push(
+      paragraphContent.length > 0
+        ? { type: "paragraph", content: paragraphContent }
+        : { type: "paragraph" },
     );
-    return inlineContent.length > 0
-      ? { type: "paragraph", content: inlineContent }
-      : { type: "paragraph" };
-  });
+    paragraphContent = [];
+    trailingParagraph = false;
+  };
+
+  for (const part of note) {
+    if (part.type === "chat_thread") {
+      paragraphContent.push({
+        type: CHAT_THREAD_MENTION_NODE_NAME,
+        attrs: {
+          threadId: part.threadId,
+          title: part.titleSnapshot,
+        },
+      });
+      trailingParagraph = false;
+      continue;
+    }
+    const lines = part.text.split("\n");
+    for (const [index, line] of lines.entries()) {
+      if (line.length > 0) {
+        paragraphContent.push({ type: "text", text: line });
+        trailingParagraph = false;
+      }
+      if (index < lines.length - 1) {
+        flushParagraph();
+        trailingParagraph = true;
+      }
+    }
+  }
+
+  if (paragraphContent.length > 0 || trailingParagraph) {
+    flushParagraph();
+  }
+  return content.length > 0 ? content : [{ type: "paragraph" }];
 }
 
 function formattedFeedbackParts(
   parts: readonly Extract<UserMessagePart, { type: "feedback" }>[],
 ): string {
-  return formatFeedbackPrompt(parts);
+  return formatFeedbackPrompt(
+    parts.map((part) => {
+      return {
+        quote: part.quote,
+        note: feedbackNoteToPrompt(part.note),
+        ...(part.source ? { source: part.source } : {}),
+      };
+    }),
+  );
 }
 
 /**

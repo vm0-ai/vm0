@@ -1393,7 +1393,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         {
           type: "feedback" as const,
           quote: "The roadmap lacks dates",
-          note: "Add the launch milestones",
+          note: [{ type: "text" as const, text: "Add the launch milestones" }],
         },
       ],
     };
@@ -1461,7 +1461,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         {
           type: "feedback" as const,
           quote: feedbackQuote,
-          note: feedbackNote,
+          note: [{ type: "text" as const, text: feedbackNote }],
         },
       ],
     };
@@ -1530,12 +1530,12 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         {
           type: "feedback" as const,
           quote: "The release plan needs an owner",
-          note: "Name the owner",
+          note: [{ type: "text" as const, text: "Name the owner" }],
         },
         {
           type: "feedback" as const,
           quote: "The release plan needs dates",
-          note: "Add the milestones",
+          note: [{ type: "text" as const, text: "Add the milestones" }],
         },
       ],
     };
@@ -1616,7 +1616,12 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           {
             type: "feedback" as const,
             quote: "Structured quote stays hidden",
-            note: "Structured note stays hidden",
+            note: [
+              {
+                type: "text" as const,
+                text: "Structured note stays hidden",
+              },
+            ],
           },
         ],
       },

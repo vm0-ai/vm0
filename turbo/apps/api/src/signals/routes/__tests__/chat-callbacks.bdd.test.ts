@@ -2574,7 +2574,7 @@ describe("CHAT-02: auto-send after failures", () => {
         {
           type: "feedback",
           quote: "The failed response omitted the owner",
-          note: "Name the responsible owner",
+          note: [{ type: "text", text: "Name the responsible owner" }],
         },
       ],
     };

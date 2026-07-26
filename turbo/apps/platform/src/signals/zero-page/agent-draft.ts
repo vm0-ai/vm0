@@ -25,7 +25,6 @@ import {
 import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
-  shouldUseStructuredPrompt,
 } from "./user-message-document-codec.ts";
 
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
@@ -237,15 +236,12 @@ export const loadAgentDraft$ = command(
     signal.throwIfAborted();
 
     const features = get(featureSwitch$);
-    const structuredDraft = structuredAgentDraftState(result.body);
-    const restoredDraft =
-      structuredDraft &&
-      shouldUseStructuredPrompt(
-        features[FeatureSwitchKey.StructuredPrompt] ?? false,
-        structuredDraft.structuredPrompt,
-      )
-        ? structuredDraft
-        : legacyAgentDraftState(result.body);
+    const structuredPromptEnabled =
+      features[FeatureSwitchKey.StructuredPrompt] ?? false;
+    const restoredDraft = structuredPromptEnabled
+      ? (structuredAgentDraftState(result.body) ??
+        legacyAgentDraftState(result.body))
+      : legacyAgentDraftState(result.body);
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.structuredPrompt !== null ||

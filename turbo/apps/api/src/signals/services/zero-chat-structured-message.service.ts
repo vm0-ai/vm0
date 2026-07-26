@@ -1,4 +1,5 @@
 import type {
+  FeedbackNotePart,
   GenerationTemplateRequest,
   UserMessageDocument,
   UserMessagePart,
@@ -14,6 +15,16 @@ interface StructuredUserMessageProjection {
 function serializeChatThreadMention(threadId: string, title: string): string {
   const escapedTitle = title.replace(/[\\[\]]/g, String.raw`\$&`);
   return `[${escapedTitle}](/chats/${threadId})`;
+}
+
+function serializeFeedbackNote(parts: readonly FeedbackNotePart[]): string {
+  return parts
+    .map((part) => {
+      return part.type === "text"
+        ? part.text
+        : serializeChatThreadMention(part.threadId, part.titleSnapshot);
+    })
+    .join("");
 }
 
 function webFilePrompt(part: {
@@ -70,7 +81,7 @@ function formatFeedbackParts(
       commonMailSource === null && part.source?.type === "mail"
         ? `Source: ${mailSourceLabel(part.source)}\n\n`
         : "";
-    return `${source}${quoted}\n\n${part.note.trim()}`;
+    return `${source}${quoted}\n\n${serializeFeedbackNote(part.note).trim()}`;
   });
   const intro = commonMailSource
     ? parts.length === 1

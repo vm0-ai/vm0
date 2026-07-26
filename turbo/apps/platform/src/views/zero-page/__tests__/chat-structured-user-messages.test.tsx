@@ -179,6 +179,91 @@ describe("structured user messages", () => {
     expect(document.querySelector("[data-structured-user-message]")).toBeNull();
   });
 
+  it("groups structured feedback and highlights chat thread mentions in notes", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000746";
+    const referencedThreadId = "b0000000-0000-4000-a000-000000000747";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Structured feedback group",
+      chatMessages: [
+        {
+          id: "00000000-0000-4000-8000-000000000746",
+          role: "user",
+          content: "Legacy feedback stays hidden",
+          runId: "d0000000-0000-4000-a000-000000000746",
+          structuredPrompt: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Before feedback.\n" },
+              {
+                type: "feedback",
+                quote: "The plan needs an owner",
+                note: [
+                  { type: "text", text: "Name the owner in " },
+                  {
+                    type: "chat_thread",
+                    threadId: referencedThreadId,
+                    titleSnapshot: "Project Alpha",
+                  },
+                  { type: "text", text: "." },
+                ],
+              },
+              {
+                type: "feedback",
+                quote: "The plan needs milestones",
+                note: [
+                  { type: "text", text: "Add dates from " },
+                  {
+                    type: "chat_thread",
+                    threadId: referencedThreadId,
+                    titleSnapshot: "Project Alpha",
+                  },
+                  { type: "text", text: "." },
+                ],
+              },
+              { type: "text", text: "\nAfter feedback." },
+            ],
+          },
+          createdAt: "2026-07-26T10:03:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    const group = await waitFor(() => {
+      const element = document.querySelector(
+        "[data-structured-feedback-group]",
+      );
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    expect(
+      screen.getByText("Feedback on 2 parts of your reply:"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Feedback on this part of your reply:"),
+    ).not.toBeInTheDocument();
+    expect(
+      group.querySelectorAll("[data-structured-feedback-quote]"),
+    ).toHaveLength(2);
+    expect(
+      group.querySelectorAll("[data-structured-feedback-divider]"),
+    ).toHaveLength(1);
+    const links = group.querySelectorAll(
+      `a[aria-label="Open chat Project Alpha"]`,
+    );
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveAttribute("href", `/chats/${referencedThreadId}`);
+    expect(group).not.toHaveTextContent(`/chats/${referencedThreadId}`);
+    expect(screen.getByText("Before feedback.")).toBeInTheDocument();
+    expect(screen.getByText("After feedback.")).toBeInTheDocument();
+  });
+
   it("uses legacy feedback content when the feature switch is disabled", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000745";
     mockChatLifecycle(context, {
@@ -196,7 +281,7 @@ describe("structured user messages", () => {
               {
                 type: "feedback",
                 quote: "Quoted reply passage",
-                note: "Explain the complete result.",
+                note: [{ type: "text", text: "Explain the complete result." }],
               },
             ],
           },

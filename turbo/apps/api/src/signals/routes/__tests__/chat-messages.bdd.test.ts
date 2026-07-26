@@ -3390,7 +3390,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const feedbackPrompt =
       `Feedback on 2 parts of an email draft (mail draft ID: ${mailDraftId}):\n\n` +
       "> First quote\n\nClarify this point\n\n---\n\n" +
-      "> Second quote\n\nAdd supporting evidence";
+      `> Second quote\n\nAdd supporting evidence from [Roadmap](/chats/${referencedThreadId})`;
     const prompt =
       `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` + feedbackPrompt;
     const displayText = [
@@ -3423,7 +3423,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         {
           type: "feedback",
           quote: "First quote",
-          note: "Clarify this point",
+          note: [{ type: "text", text: "Clarify this point" }],
           source: {
             type: "mail",
             id: mailDraftId,
@@ -3433,7 +3433,14 @@ describe("CHAT-02: generation templates and attachments", () => {
         {
           type: "feedback",
           quote: "Second quote",
-          note: "Add supporting evidence",
+          note: [
+            { type: "text", text: "Add supporting evidence from " },
+            {
+              type: "chat_thread",
+              threadId: referencedThreadId,
+              titleSnapshot: "Roadmap",
+            },
+          ],
           source: {
             type: "mail",
             id: mailDraftId,
@@ -4017,7 +4024,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         {
           type: "feedback",
           quote: "Queued quote",
-          note: "Revise after the anchor completes",
+          note: [{ type: "text", text: "Revise after the anchor completes" }],
         },
       ],
     };

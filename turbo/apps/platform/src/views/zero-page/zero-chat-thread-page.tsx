@@ -88,6 +88,7 @@ import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatThreadArtifactFile,
   ChatMessageUsagePayload,
+  FeedbackNotePart,
   GenerationTemplateRequest,
   ResolvedAttachFile,
   UserMessageDocument,
@@ -6690,11 +6691,135 @@ function StructuredFileReference({
   );
 }
 
+function StructuredChatThreadReference({
+  threadId,
+  title,
+}: {
+  threadId: string;
+  title: string;
+}) {
+  return (
+    <Link
+      pathname={ROUTES.chat}
+      options={{ pathParams: { threadId } }}
+      aria-label={`Open chat ${title}`}
+      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} text-primary transition-colors hover:bg-foreground/10`}
+      title={title}
+    >
+      <IconMessageCircle size={14} stroke={1.8} className="shrink-0" />
+      <span className="min-w-0 truncate">{title}</span>
+    </Link>
+  );
+}
+
+function StructuredFeedbackNote({
+  note,
+}: {
+  note: readonly FeedbackNotePart[];
+}) {
+  const partOccurrences = new Map<string, number>();
+  return (
+    <div>
+      {note.map((part) => {
+        const identity = JSON.stringify(part);
+        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+        partOccurrences.set(identity, occurrence);
+        const key = `${identity}:${String(occurrence)}`;
+        if (part.type === "chat_thread") {
+          return (
+            <StructuredChatThreadReference
+              key={key}
+              threadId={part.threadId}
+              title={part.titleSnapshot}
+            />
+          );
+        }
+        return <span key={key}>{part.text}</span>;
+      })}
+    </div>
+  );
+}
+
+type StructuredFeedbackPart = Extract<UserMessagePart, { type: "feedback" }>;
+
+function equalFeedbackSources(
+  left: StructuredFeedbackPart["source"],
+  right: StructuredFeedbackPart["source"],
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return (
+    left.type === right.type &&
+    left.id === right.id &&
+    left.status === right.status &&
+    left.sentId === right.sentId
+  );
+}
+
+function structuredFeedbackHeading(
+  parts: readonly StructuredFeedbackPart[],
+): string {
+  const source = parts[0]?.source;
+  if (!source) {
+    return parts.length === 1
+      ? "Feedback on this part of your reply:"
+      : `Feedback on ${parts.length} parts of your reply:`;
+  }
+  const description =
+    source.status === "draft"
+      ? `an email draft (mail draft ID: ${source.id})`
+      : `a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""})`;
+  return parts.length === 1
+    ? `Feedback on this part of ${description}:`
+    : `Feedback on ${parts.length} parts of ${description}:`;
+}
+
+function StructuredFeedbackGroup({
+  parts,
+}: {
+  parts: readonly StructuredFeedbackPart[];
+}) {
+  const partOccurrences = new Map<string, number>();
+  let firstPart = true;
+  return (
+    <div data-structured-feedback-group="" className="space-y-3">
+      <div>{structuredFeedbackHeading(parts)}</div>
+      {parts.map((part) => {
+        const identity = JSON.stringify(part);
+        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+        partOccurrences.set(identity, occurrence);
+        const showDivider = !firstPart;
+        firstPart = false;
+        return (
+          <div key={`${identity}:${String(occurrence)}`} className="space-y-3">
+            {showDivider ? (
+              <div
+                data-structured-feedback-divider=""
+                className="border-t border-border"
+              />
+            ) : null}
+            <blockquote
+              data-structured-feedback-quote=""
+              className="border-l-2 border-border pl-3 text-muted-foreground"
+            >
+              {part.quote}
+            </blockquote>
+            <StructuredFeedbackNote note={part.note} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type StructuredStandalonePart = Exclude<UserMessagePart, { type: "feedback" }>;
+
 function StructuredUserMessagePart({
   part,
   attachments,
 }: {
-  part: UserMessagePart;
+  part: StructuredStandalonePart;
   attachments: readonly ResolvedAttachFile[];
 }): ReactNode {
   if (part.type === "text") {
@@ -6702,41 +6827,14 @@ function StructuredUserMessagePart({
   }
   if (part.type === "chat_thread") {
     return (
-      <Link
-        pathname={ROUTES.chat}
-        options={{ pathParams: { threadId: part.threadId } }}
-        aria-label={`Open chat ${part.titleSnapshot}`}
-        className={`${STRUCTURED_REFERENCE_CHIP_CLASS} text-primary transition-colors hover:bg-foreground/10`}
+      <StructuredChatThreadReference
+        threadId={part.threadId}
         title={part.titleSnapshot}
-      >
-        <IconMessageCircle size={14} stroke={1.8} className="shrink-0" />
-        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-      </Link>
+      />
     );
   }
   if (part.type === "template") {
     return <StructuredTemplateReference part={part} />;
-  }
-  if (part.type === "feedback") {
-    const source = part.source;
-    const heading =
-      source === undefined
-        ? "Feedback on this part of your reply:"
-        : source.status === "draft"
-          ? `Feedback on this part of an email draft (mail draft ID: ${source.id}):`
-          : `Feedback on this part of a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""}):`;
-    return (
-      <div className="space-y-3">
-        <div>{heading}</div>
-        <blockquote
-          data-structured-feedback-quote=""
-          className="border-l-2 border-border pl-3 text-muted-foreground"
-        >
-          {part.quote}
-        </blockquote>
-        <div>{part.note}</div>
-      </div>
-    );
   }
   if (part.type === "file") {
     const attachment = attachments.find((candidate) => {
@@ -6764,20 +6862,51 @@ function StructuredUserMessage({
   if (bodyParts.length === 0) {
     return null;
   }
+  const renderedParts: ReactNode[] = [];
+  let index = 0;
+  while (index < bodyParts.length) {
+    const part = bodyParts[index];
+    if (!part) {
+      break;
+    }
+    if (part.type === "feedback") {
+      const feedbackParts: StructuredFeedbackPart[] = [part];
+      let nextIndex = index + 1;
+      while (nextIndex < bodyParts.length) {
+        const candidate = bodyParts[nextIndex];
+        if (
+          candidate?.type !== "feedback" ||
+          !equalFeedbackSources(part.source, candidate.source)
+        ) {
+          break;
+        }
+        feedbackParts.push(candidate);
+        nextIndex += 1;
+      }
+      renderedParts.push(
+        <StructuredFeedbackGroup
+          key={`feedback:${String(index)}`}
+          parts={feedbackParts}
+        />,
+      );
+      index = nextIndex;
+      continue;
+    }
+    const identity = JSON.stringify(part);
+    const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+    partOccurrences.set(identity, occurrence);
+    renderedParts.push(
+      <StructuredUserMessagePart
+        key={`${identity}:${String(occurrence)}`}
+        part={part}
+        attachments={attachments}
+      />,
+    );
+    index += 1;
+  }
   return (
     <div data-structured-user-message="" className="whitespace-pre-wrap">
-      {bodyParts.map((part) => {
-        const identity = JSON.stringify(part);
-        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
-        partOccurrences.set(identity, occurrence);
-        return (
-          <StructuredUserMessagePart
-            key={`${identity}:${String(occurrence)}`}
-            part={part}
-            attachments={attachments}
-          />
-        );
-      })}
+      {renderedParts}
     </div>
   );
 }

@@ -53,7 +53,6 @@ import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  shouldUseStructuredPrompt,
   textToMessageDocument,
   type EditorDocumentSnapshot,
 } from "../zero-page/user-message-document-codec.ts";
@@ -95,9 +94,11 @@ function structuredPromptForNewThread(
   request: SendNewThreadMessageRequest,
   prepared: PreparedNewThreadPayload,
 ): UserMessageDocument | undefined {
+  if (!enabled) {
+    return undefined;
+  }
   const generationTemplate = request.generationTemplate;
   if (
-    enabled &&
     generationTemplate &&
     !request.editorDocument &&
     !request.generationTemplateTitleSnapshot
@@ -109,26 +110,19 @@ function structuredPromptForNewThread(
         generationTemplate,
         attachments: prepared.attachments,
       })
-    : enabled
-      ? textToMessageDocument(
-          prepared.prompt,
-          generationTemplate && request.generationTemplateTitleSnapshot
-            ? {
-                titleSnapshot: request.generationTemplateTitleSnapshot,
-                template: generationTemplate,
-              }
-            : undefined,
-        )
-      : null;
+    : textToMessageDocument(
+        prepared.prompt,
+        generationTemplate && request.generationTemplateTitleSnapshot
+          ? {
+              titleSnapshot: request.generationTemplateTitleSnapshot,
+              template: generationTemplate,
+            }
+          : undefined,
+      );
   if (!structuredPrompt) {
-    if (enabled) {
-      throw new Error("Failed to serialize structured prompt");
-    }
-    return undefined;
+    throw new Error("Failed to serialize structured prompt");
   }
-  return shouldUseStructuredPrompt(enabled, structuredPrompt)
-    ? structuredPrompt
-    : undefined;
+  return structuredPrompt;
 }
 
 function createNewThreadOptimisticMessageEntry({

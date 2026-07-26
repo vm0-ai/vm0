@@ -195,6 +195,18 @@ describe("chat drafts", () => {
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
         draftContent: `Resume the ${params.id} launch notes`,
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [
+            {
+              type: "feedback",
+              quote: "Structured agent quote stays hidden",
+              note: [
+                { type: "text", text: "Structured agent note stays hidden" },
+              ],
+            },
+          ],
+        },
         draftAttachments: [
           {
             id: "agent-draft-brief",
@@ -219,6 +231,13 @@ describe("chat drafts", () => {
       expect(
         screen.getByLabelText("Remove agent-brief.md"),
       ).toBeInTheDocument();
+      expect(textarea()).not.toHaveTextContent(
+        "Structured agent quote stays hidden",
+      );
+      expect(textarea()).not.toHaveTextContent(
+        "Structured agent note stays hidden",
+      );
+      expect(textarea().querySelector("[data-feedback-item]")).toBeNull();
     });
   });
 
@@ -268,7 +287,7 @@ describe("chat drafts", () => {
             {
               type: "feedback",
               quote: "The launch owner is unclear",
-              note: "Name the responsible team",
+              note: [{ type: "text", text: "Name the responsible team" }],
             },
           ],
         },
@@ -463,7 +482,13 @@ describe("chat drafts", () => {
         draftContent: `Feedback on this part of your reply:\n\n> ${quote}\n\n${note}`,
         draftStructuredPrompt: {
           version: 1,
-          parts: [{ type: "feedback", quote, note }],
+          parts: [
+            {
+              type: "feedback",
+              quote,
+              note: [{ type: "text", text: note }],
+            },
+          ],
         },
         draftAttachments: null,
       });
@@ -535,6 +560,7 @@ describe("chat drafts", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000104";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000105";
+    const feedbackReferencedThreadId = "b1000000-0000-4000-a000-000000000106";
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const draftPatches: Record<string, unknown>[] = [];
     const secondAttachment = {
@@ -592,7 +618,14 @@ describe("chat drafts", () => {
             {
               type: "feedback",
               quote: "The launch sequence is vague",
-              note: "Add the rollout dates",
+              note: [
+                { type: "text", text: "Add the rollout dates from " },
+                {
+                  type: "chat_thread",
+                  threadId: feedbackReferencedThreadId,
+                  titleSnapshot: "Release notes",
+                },
+              ],
             },
           ],
         },
@@ -623,7 +656,14 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
       const feedbackItem = editor.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent("The launch sequence is vague");
-      expect(feedbackItem).toHaveTextContent("Add the rollout dates");
+      expect(feedbackItem).toHaveTextContent(
+        "Add the rollout dates from Release notes",
+      );
+      expect(
+        feedbackItem?.querySelector(
+          `span[data-chat-thread-mention="${feedbackReferencedThreadId}"]`,
+        ),
+      ).toHaveTextContent("Release notes");
       expect(
         queryAllByRoleFast("button")
           .filter((button) => {
@@ -644,7 +684,8 @@ describe("chat drafts", () => {
         draftContent:
           `Review [Launch research](/chats/${referencedThreadId}) now\n\n` +
           "Feedback on this part of your reply:\n\n" +
-          "> The launch sequence is vague\n\nAdd the rollout dates",
+          "> The launch sequence is vague\n\n" +
+          `Add the rollout dates from [Release notes](/chats/${feedbackReferencedThreadId})`,
         draftStructuredPrompt: {
           version: 1,
           parts: [
@@ -669,7 +710,14 @@ describe("chat drafts", () => {
             {
               type: "feedback",
               quote: "The launch sequence is vague",
-              note: "Add the rollout dates",
+              note: [
+                { type: "text", text: "Add the rollout dates from " },
+                {
+                  type: "chat_thread",
+                  threadId: feedbackReferencedThreadId,
+                  titleSnapshot: "Release notes",
+                },
+              ],
             },
           ],
         },
@@ -706,7 +754,7 @@ describe("chat drafts", () => {
             {
               type: "feedback",
               quote: "Structured quote stays hidden",
-              note: "Structured note stays hidden",
+              note: [{ type: "text", text: "Structured note stays hidden" }],
             },
           ],
         },
