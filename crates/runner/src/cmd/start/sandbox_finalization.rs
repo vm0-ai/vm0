@@ -86,6 +86,7 @@ pub(super) struct FinalizeContext {
     pub(super) cli_agent_session_id: Option<String>,
     pub(super) discovered_cli_agent_session_id: Option<String>,
     pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
+    pub(super) checkpoint_history_diverged: bool,
     pub(super) source_ip: String,
     pub(super) network_log_session: Option<NetworkLogSession>,
     pub(super) workspace_image: Option<WorkspaceImageLease>,
@@ -125,6 +126,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         cli_agent_session_id,
         discovered_cli_agent_session_id,
         restored_session_identity,
+        checkpoint_history_diverged,
         source_ip,
         mut network_log_session,
         workspace_image,
@@ -160,22 +162,27 @@ pub(super) async fn finalize_sandbox_for_completion(
     let resolved_cli_agent_session_id = cli_agent_session_id
         .as_deref()
         .or(discovered_cli_agent_session_id.as_deref());
-    let parkable_cli_agent_session_id = if exit_code == 0 && !cancelled && parking_gate.is_open() {
-        resolved_cli_agent_session_id.map(str::to_owned)
-    } else {
+    let parkable_cli_agent_session_id =
+        if exit_code == 0 && !cancelled && !checkpoint_history_diverged && parking_gate.is_open() {
+            resolved_cli_agent_session_id.map(str::to_owned)
+        } else {
+            None
+        };
+    let workspace_promotion = if checkpoint_history_diverged {
         None
-    };
-    let workspace_promotion = workspace_image.and_then(|workspace_image| {
-        workspace_image.into_promotion_context(WorkspaceImagePromotionRequest {
-            run_id,
-            sandbox_id,
-            cli_agent_session_id_override: resolved_cli_agent_session_id,
-            restored_session_identity: restored_session_identity.as_ref(),
-            terminal_status,
-            completed_at: completed_at.clone(),
-            storage_fingerprints: storage_fingerprints.clone(),
+    } else {
+        workspace_image.and_then(|workspace_image| {
+            workspace_image.into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                cli_agent_session_id_override: resolved_cli_agent_session_id,
+                restored_session_identity: restored_session_identity.as_ref(),
+                terminal_status,
+                completed_at: completed_at.clone(),
+                storage_fingerprints: storage_fingerprints.clone(),
+            })
         })
-    });
+    };
     let workspace_promotion_session_id = workspace_promotion
         .as_ref()
         .map(|promotion| promotion.cli_agent_session_id().to_owned());
@@ -509,6 +516,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         let cleanup_reason = active_cleanup_reason(
             exit_code,
             cancelled,
+            checkpoint_history_diverged,
             parking_gate.is_open(),
             resolved_cli_agent_session_id,
         );
@@ -602,6 +610,7 @@ async fn close_network_log_session(
 fn active_cleanup_reason(
     exit_code: i32,
     cancelled: bool,
+    checkpoint_history_diverged: bool,
     parking_open: bool,
     resolved_cli_agent_session_id: Option<&str>,
 ) -> &'static str {
@@ -609,6 +618,8 @@ fn active_cleanup_reason(
         "cancelled"
     } else if exit_code != 0 {
         "nonzero_exit"
+    } else if checkpoint_history_diverged {
+        "checkpoint_history_diverged"
     } else if !parking_open {
         "parking_closed"
     } else if resolved_cli_agent_session_id.is_none() {
@@ -840,6 +851,7 @@ mod tests {
                 cli_agent_session_id: Some(session_id.into()),
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
+                checkpoint_history_diverged: false,
                 source_ip: "10.0.0.1".into(),
                 network_log_session: Some(network_log_session),
                 workspace_image: None,
@@ -1060,6 +1072,75 @@ mod tests {
         let cache_states = cache.held_session_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].session_id, "sess-reuse-rejected");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted
+        );
+    }
+
+    #[tokio::test]
+    async fn finalizer_destroys_divergent_history_without_parking_or_workspace_promotion() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let workspace_dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(workspace_dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let workspace_image = prepare_test_workspace_image_lease(
+            &paths,
+            &cache,
+            run_id,
+            sandbox_id,
+            "sess-divergent",
+        )
+        .await;
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-divergent",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.checkpoint_history_diverged = true;
+        context.cleanup_state = cleanup_state.clone();
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
+        let held_session_snapshot = context.held_session_snapshot.clone();
+
+        let completion_ready = finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        assert_eq!(completion_ready.result_for_test(), (0, None));
+        assert_eq!(overrides.park_call_count(), 0);
+        assert_eq!(overrides.unpark_call_count(), 0);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        assert!(cache.held_session_states().await.is_empty());
+        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        assert!(
+            held_session_snapshot
+                .current_held_session_states(Vec::new(), &active_sessions, None)
+                .is_empty()
+        );
         assert_eq!(
             cleanup_state.disposition(),
             RunCleanupDisposition::DestroyCompleted

@@ -14,6 +14,7 @@ futures-util.workspace = true
 process-control-ipc.workspace = true
 guest-contracts.workspace = true
 guest-common.workspace = true
+guest-session-prune.workspace = true
 http-body = "1"
 libc.workspace = true
 pin-project-lite = "0.2"

@@ -233,6 +233,9 @@ pub struct ExecuteOutcome {
     /// Used for first-run VM parking when `resume_session` is absent.
     pub discovered_cli_agent_session_id: Option<String>,
     pub restored_session_identity: Option<RestoredSessionIdentity>,
+    /// The committed checkpoint differs from the history still present in the
+    /// live sandbox, so the sandbox must not be reused or promoted.
+    pub checkpoint_history_diverged: bool,
 }
 
 impl ExecuteOutcome {
@@ -250,6 +253,7 @@ impl ExecuteOutcome {
             workspace_image,
             discovered_cli_agent_session_id: None,
             restored_session_identity: None,
+            checkpoint_history_diverged: false,
         }
     }
 
@@ -485,6 +489,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             workspace_image: None,
             discovered_cli_agent_session_id: None,
             restored_session_identity: None,
+            checkpoint_history_diverged: false,
         }
     } else {
         match execute_new_sandbox_with_prepared_notifier(
@@ -512,6 +517,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                 workspace_image: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
+                checkpoint_history_diverged: false,
             },
         }
     };

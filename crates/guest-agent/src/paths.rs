@@ -27,6 +27,7 @@ pub struct GuestPaths {
     session_history_path_file: String,
     event_error_flag: String,
     checkpoint_error_file: String,
+    checkpoint_history_diverged_file: String,
     final_session_history_identity_file: String,
     failure_diagnostic_file: String,
     system_log_file: String,
@@ -54,6 +55,9 @@ impl GuestPaths {
             )),
             checkpoint_error_file: path_to_string(
                 guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir),
+            ),
+            checkpoint_history_diverged_file: path_to_string(
+                guest_contracts::runtime_paths::checkpoint_history_diverged_file(&runtime_dir),
             ),
             final_session_history_identity_file: path_to_string(
                 guest_contracts::runtime_paths::final_session_history_identity_file(&runtime_dir),
@@ -134,6 +138,10 @@ impl GuestPaths {
 
     pub fn checkpoint_error_file(&self) -> &str {
         &self.checkpoint_error_file
+    }
+
+    pub fn checkpoint_history_diverged_file(&self) -> &str {
+        &self.checkpoint_history_diverged_file
     }
 
     pub fn final_session_history_identity_file(&self) -> &str {
@@ -221,6 +229,11 @@ mod tests {
         assert_eq!(
             paths.checkpoint_error_file(),
             guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir).to_string_lossy()
+        );
+        assert_eq!(
+            paths.checkpoint_history_diverged_file(),
+            guest_contracts::runtime_paths::checkpoint_history_diverged_file(&runtime_dir)
+                .to_string_lossy()
         );
         assert_eq!(
             paths.final_session_history_identity_file(),

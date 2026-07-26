@@ -5,6 +5,7 @@ members = [
     "api-contracts",
     "guest-agent",
     "guest-contracts",
+    "guest-session-prune",
     "process-control-ipc",
     "guest-common",
     "guest-download",
@@ -35,6 +36,7 @@ ably-subscriber = { path = "ably-subscriber" }
 api-contracts = { path = "api-contracts" }
 guest-agent = { path = "guest-agent" }
 guest-contracts = { path = "guest-contracts" }
+guest-session-prune = { path = "guest-session-prune" }
 process-control-ipc = { path = "process-control-ipc" }
 guest-common = { path = "guest-common" }
 guest-download = { path = "guest-download" }

@@ -20,7 +20,7 @@ use super::cli_framework::{
 use super::diagnostics::{
     AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log,
     collect_agent_abnormal_exit_diagnostics, copy_guest_logs, explicit_enospc_evidence,
-    read_guest_cli_agent_session_id,
+    read_guest_checkpoint_history_diverged, read_guest_cli_agent_session_id,
 };
 use super::session_id::{
     canonical_codex_thread_id, invalid_session_id_diagnostic_preview, is_valid_session_id,
@@ -1193,6 +1193,7 @@ pub(super) async fn execute_reused_sandbox(
                 workspace_image: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
+                checkpoint_history_diverged: false,
             };
         }
     };
@@ -1271,6 +1272,11 @@ pub(super) async fn execute_prepared_sandbox_run(
         .as_ref()
         .ok()
         .and_then(|result| result.reusable_session_identity.clone());
+    let successful_claude_run = result.as_ref().is_ok_and(|result| result.exit_code() == 0)
+        && matches!(
+            effective_cli_framework(&context.cli_agent_type),
+            EffectiveCliFramework::ClaudeCode
+        );
 
     let cleanup_result = post_job_cleanup(
         sandbox.as_ref(),
@@ -1317,6 +1323,8 @@ pub(super) async fn execute_prepared_sandbox_run(
         } else {
             None
         };
+    let checkpoint_history_diverged = successful_claude_run
+        && read_guest_checkpoint_history_diverged(sandbox.as_ref(), context.run_id).await;
 
     ExecuteOutcome {
         failure: agent_result.failure,
@@ -1326,6 +1334,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         workspace_image: None,
         discovered_cli_agent_session_id,
         restored_session_identity,
+        checkpoint_history_diverged,
     }
 }
 

@@ -5,11 +5,38 @@ use guest_contracts::diagnostics::{
 use sandbox_mock::MockSandbox;
 
 use super::super::super::diagnostics::{
-    read_guest_cli_agent_session_id, read_guest_error_file, read_guest_failure_diagnostic_file,
+    read_guest_checkpoint_history_diverged, read_guest_cli_agent_session_id, read_guest_error_file,
+    read_guest_failure_diagnostic_file,
 };
 use super::super::super::{SMALL_GUEST_FILE_MAX_BYTES, guest_runtime_path};
 use super::super::support::sandbox_read_file_error;
 use crate::ids::RunId;
+
+#[tokio::test]
+async fn checkpoint_history_divergence_marker_is_fail_safe() {
+    let missing = MockSandbox::new("missing");
+    missing.push_read_file_result(Ok(None));
+    assert!(!read_guest_checkpoint_history_diverged(&missing, RunId::nil()).await);
+    let calls = missing.read_file_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].path,
+        guest_runtime_path(
+            RunId::nil(),
+            guest_contracts::runtime_paths::checkpoint_history_diverged_file
+        )
+        .unwrap()
+    );
+    assert_eq!(calls[0].max_bytes, 1);
+
+    let present = MockSandbox::new("present");
+    present.push_read_file_result(Ok(Some(b"1".to_vec())));
+    assert!(read_guest_checkpoint_history_diverged(&present, RunId::nil()).await);
+
+    let unreadable = MockSandbox::new("unreadable");
+    unreadable.push_read_file_result(Err(sandbox_read_file_error("guest read failed")));
+    assert!(read_guest_checkpoint_history_diverged(&unreadable, RunId::nil()).await);
+}
 
 #[tokio::test]
 async fn read_guest_error_file_returns_content() {

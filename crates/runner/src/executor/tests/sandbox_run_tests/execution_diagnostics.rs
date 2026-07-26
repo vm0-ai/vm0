@@ -219,6 +219,44 @@ async fn execute_prepared_sandbox_run_logs_guest_session_id() {
     );
 }
 
+#[tokio::test]
+async fn execute_prepared_sandbox_run_reports_checkpoint_history_divergence() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let session_id = "sess-divergent-checkpoint";
+    overrides.push_wait_process_exit(ProcessExit::new(1, 0, Vec::new(), Vec::new()));
+    overrides.push_read_file_result(Ok(None));
+    overrides.push_read_file_result(Ok(Some(session_id.as_bytes().to_vec())));
+    overrides.push_read_file_result(Ok(Some(b"1".to_vec())));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let source_ip = sandbox.source_ip().to_string();
+    let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await;
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.checkpoint_history_diverged);
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_session_id_for_parking()
  {

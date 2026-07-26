@@ -219,6 +219,7 @@ impl ExecutorInvocation {
                         workspace_image: None,
                         discovered_cli_agent_session_id: None,
                         restored_session_identity: None,
+                        checkpoint_history_diverged: false,
                     },
                     exit_code,
                     err,
@@ -301,6 +302,7 @@ impl FinalizationPhase {
             workspace_image,
             discovered_cli_agent_session_id,
             restored_session_identity,
+            checkpoint_history_diverged,
         } = outcome;
         let has_restored_session_identity = restored_session_identity.is_some();
         let cleanup_state_after_finalize = cleanup_state.clone();
@@ -327,6 +329,7 @@ impl FinalizationPhase {
                 cli_agent_session_id,
                 discovered_cli_agent_session_id,
                 restored_session_identity,
+                checkpoint_history_diverged,
                 source_ip,
                 network_log_session,
                 workspace_image,
@@ -1214,6 +1217,7 @@ mod tests {
                 workspace_image: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity,
+                checkpoint_history_diverged: false,
             },
             exit_code: 0,
             err: None,

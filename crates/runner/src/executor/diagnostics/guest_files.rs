@@ -6,6 +6,43 @@ use super::super::session_id::{invalid_session_id_diagnostic_preview, is_valid_s
 use super::super::{SMALL_GUEST_FILE_MAX_BYTES, guest_runtime_path};
 use crate::ids::RunId;
 
+const CHECKPOINT_HISTORY_DIVERGENCE_MARKER_MAX_BYTES: u64 = 1;
+
+pub(in crate::executor) async fn read_guest_checkpoint_history_diverged(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+) -> bool {
+    let marker_path = match guest_runtime_path(
+        run_id,
+        guest_contracts::runtime_paths::checkpoint_history_diverged_file,
+    ) {
+        Ok(path) => path,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                error = %error,
+                "checkpoint history divergence marker path could not be resolved; disabling reuse"
+            );
+            return true;
+        }
+    };
+    match sandbox
+        .read_file(&marker_path, CHECKPOINT_HISTORY_DIVERGENCE_MARKER_MAX_BYTES)
+        .await
+    {
+        Ok(None) => false,
+        Ok(Some(_)) => true,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                error = %error,
+                "checkpoint history divergence marker read failed; disabling reuse"
+            );
+            true
+        }
+    }
+}
+
 pub(in crate::executor) async fn read_guest_error_file(
     sandbox: &dyn Sandbox,
     run_id: RunId,

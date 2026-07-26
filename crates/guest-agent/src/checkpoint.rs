@@ -24,6 +24,7 @@ use flate2::{Compression, write::GzEncoder};
 use futures_util::stream::{self, FuturesUnordered, StreamExt};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
+use guest_session_prune::{ClaudeHistorySelection, select_claude_compact_generation};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
@@ -34,6 +35,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const ARTIFACT_CHECKPOINT_CONCURRENCY: usize = 2;
 const SESSION_HISTORY_ZSTD_LEVEL: i32 = 3;
 const SESSION_HISTORY_COMPRESSION_MIN_BYTES: usize = SESSION_HISTORY_GZIP_MIN_BYTES as usize;
+const CHECKPOINT_HISTORY_DIVERGED_MARKER: &[u8] = b"1";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -291,6 +293,10 @@ impl CheckpointMode {
     fn validate_history(self) -> bool {
         matches!(self, Self::Recovery)
     }
+
+    fn can_prune_claude_history(self) -> bool {
+        matches!(self, Self::Success)
+    }
 }
 
 /// Log the message, record a failed `sandbox_op`, and build a matching
@@ -477,6 +483,7 @@ struct CheckpointInputs<'a> {
     artifact_entries: &'a [env::ArtifactEnv],
     session_id_file: Cow<'a, str>,
     session_history_path_file: Cow<'a, str>,
+    checkpoint_history_diverged_file: Cow<'a, str>,
     final_session_history_identity_file: Cow<'a, str>,
 }
 
@@ -489,6 +496,9 @@ impl<'a> CheckpointInputs<'a> {
             artifact_entries: &runtime.config.artifacts,
             session_id_file: Cow::Borrowed(runtime.paths.session_id_file()),
             session_history_path_file: Cow::Borrowed(runtime.paths.session_history_path_file()),
+            checkpoint_history_diverged_file: Cow::Borrowed(
+                runtime.paths.checkpoint_history_diverged_file(),
+            ),
             final_session_history_identity_file: Cow::Borrowed(
                 runtime.paths.final_session_history_identity_file(),
             ),
@@ -774,9 +784,68 @@ async fn create_recovery_checkpoint_with_inputs(
 
 fn prepare_session_history(
     mode: CheckpointMode,
+    framework: env::Framework,
+    cli_agent_session_id: &str,
     history_marker_payload: &str,
+    checkpoint_history_diverged_file: &str,
     history_read_start: std::time::Instant,
 ) -> Result<PreparedSessionHistory, AgentError> {
+    if mode.can_prune_claude_history()
+        && framework == env::Framework::ClaudeCode
+        && !session_history::is_codex_marker(history_marker_payload)
+    {
+        let prune_start = std::time::Instant::now();
+        match select_claude_compact_generation(history_marker_payload, cli_agent_session_id) {
+            Ok(ClaudeHistorySelection::Candidate(candidate)) => {
+                let source_size = candidate.source_size();
+                let candidate_size = candidate.candidate_size();
+                crate::paths::write_private(
+                    checkpoint_history_diverged_file,
+                    CHECKPOINT_HISTORY_DIVERGED_MARKER,
+                )
+                .map_err(|error| {
+                    fail(
+                        mode,
+                        "session_history_prune_marker",
+                        prune_start,
+                        format!("Failed to write checkpoint history divergence marker: {error}"),
+                    )
+                })?;
+                log_info!(
+                    LOG_TAG,
+                    "Selected Claude compact generation for checkpoint \
+                     (source_size={source_size}, candidate_size={candidate_size})"
+                );
+                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                return prepare_raw_session_history(
+                    mode,
+                    history_read_start,
+                    candidate.into_bytes(),
+                );
+            }
+            Ok(ClaudeHistorySelection::Ineligible(reason)) => {
+                log_info!(
+                    LOG_TAG,
+                    "Claude session history not eligible for pruning: {}",
+                    reason.as_str()
+                );
+                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+            }
+            Err(error) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Claude session history selector failed; using ordinary checkpoint path: {error}"
+                );
+                record_sandbox_op(
+                    "session_history_prune",
+                    prune_start.elapsed(),
+                    false,
+                    Some("selector_io"),
+                );
+            }
+        }
+    }
+
     let source = match session_history::read_session_history_checkpoint_source_from_payload_bounded(
         history_marker_payload,
         RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -1093,8 +1162,14 @@ async fn create_checkpoint_impl(
             ));
         }
     };
-    let prepared_history =
-        prepare_session_history(mode, &history_marker_payload, history_read_start)?;
+    let prepared_history = prepare_session_history(
+        mode,
+        inputs.framework,
+        &cli_agent_session_id,
+        &history_marker_payload,
+        inputs.checkpoint_history_diverged_file.as_ref(),
+        history_read_start,
+    )?;
     let PreparedSessionHistory {
         hash: history_hash,
         raw_size: history_size,
@@ -1429,6 +1504,7 @@ mod tests {
     fn cleanup_checkpoint_files(guest_paths: &crate::paths::GuestPaths) {
         let _ = std::fs::remove_file(guest_paths.session_id_file());
         let _ = std::fs::remove_file(guest_paths.session_history_path_file());
+        let _ = std::fs::remove_file(guest_paths.checkpoint_history_diverged_file());
     }
 
     fn http_status(status: u16) -> HttpMockResponse {
@@ -1847,6 +1923,7 @@ mod tests {
             artifact_entries: &entries,
             session_id_file: guest_paths.session_id_file().into(),
             session_history_path_file: guest_paths.session_history_path_file().into(),
+            checkpoint_history_diverged_file: guest_paths.checkpoint_history_diverged_file().into(),
             final_session_history_identity_file: guest_paths
                 .final_session_history_identity_file()
                 .into(),
@@ -1940,6 +2017,7 @@ mod tests {
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),
             session_history_path_file: guest_paths.session_history_path_file().into(),
+            checkpoint_history_diverged_file: guest_paths.checkpoint_history_diverged_file().into(),
             final_session_history_identity_file: guest_paths
                 .final_session_history_identity_file()
                 .into(),
@@ -2042,6 +2120,7 @@ mod tests {
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),
             session_history_path_file: guest_paths.session_history_path_file().into(),
+            checkpoint_history_diverged_file: guest_paths.checkpoint_history_diverged_file().into(),
             final_session_history_identity_file: guest_paths
                 .final_session_history_identity_file()
                 .into(),
