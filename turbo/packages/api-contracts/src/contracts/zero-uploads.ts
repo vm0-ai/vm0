@@ -108,6 +108,8 @@ export const zeroUploadsContract = c.router({
     summary: "Import a remote image into user artifact storage",
   },
   htmlDomEditSnapshot: {
+    // Compatibility for browser tabs loaded before HTML artifact editing was
+    // retired.
     method: "POST",
     path: "/api/zero/uploads/html-dom-edit-snapshot",
     headers: authHeadersSchema,

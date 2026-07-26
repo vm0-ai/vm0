@@ -8,6 +8,9 @@ import {
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 
+// Kept for the old-frontend/new-backend compatibility window after HTML
+// artifact editing was retired. Drop the table only after every backend
+// version that reads it has drained.
 export const htmlArtifactEditDrafts = pgTable(
   "html_artifact_edit_drafts",
   {

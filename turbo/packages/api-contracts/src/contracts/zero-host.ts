@@ -325,6 +325,8 @@ export const zeroHostContract = c.router({
     summary: "Generate speaker notes for an existing presentation HTML",
   },
   createHtmlEditDraft: {
+    // Compatibility for browser tabs loaded before HTML artifact editing was
+    // retired.
     method: "POST",
     path: "/api/zero/host/html-edit-draft",
     headers: authHeadersSchema,

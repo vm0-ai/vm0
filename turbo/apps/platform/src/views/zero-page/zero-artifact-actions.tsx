@@ -3,7 +3,6 @@ import {
   IconBrandGoogleDrive,
   IconDownload,
   IconLoader2,
-  IconPresentation,
   IconShare,
 } from "@tabler/icons-react";
 import {
@@ -18,7 +17,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
 import {
   zeroConnectorOauthStartContract,
@@ -27,7 +25,7 @@ import {
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { accept, ApiError } from "../../lib/accept.ts";
+import { accept } from "../../lib/accept.ts";
 import {
   OAUTH_API_BASE,
   zeroClient$,
@@ -37,9 +35,8 @@ import {
   connectorCatalogStatusByRef$,
   connectors$,
 } from "../../signals/external/connectors.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason, tapError, withCleanup } from "../../signals/utils.ts";
+import { detach, Reason, withCleanup } from "../../signals/utils.ts";
 import {
   artifactDownloadMenuOpenKey$,
   artifactDownloadPendingKey$,
@@ -52,7 +49,6 @@ import {
   syncArtifactFileToGoogleDrive,
   waitForGoogleDriveAuthorization$,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
-import { uploadPresentationToGoogleSlides$ } from "../../signals/chat-page/artifact-google-slides-upload.ts";
 import {
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
   type ConnectorCatalogBrowserAuthMethodDetail,
@@ -62,10 +58,6 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
-import {
-  buildPresentationHtmlPptxBlobFromUrl,
-  downloadPresentationHtmlPptx,
-} from "./presentation-html-pptx-download.ts";
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
@@ -254,61 +246,6 @@ function authorizeGoogleDriveAndRun(params: {
   description: string;
 }): void {
   runWhenGoogleDriveReady({ ...params, authorizeConnected: true });
-}
-
-async function downloadPresentationPptx(params: {
-  filename: string;
-  signal: AbortSignal;
-  url: string;
-}): Promise<void> {
-  await tapError(downloadPresentationHtmlPptx(params), (error) => {
-    if (!(error instanceof DOMException && error.name === "AbortError")) {
-      toast.error("PPTX download failed");
-    }
-  });
-}
-
-type UploadPresentationSlidesFn = (
-  params: {
-    readonly threadId: string;
-    readonly filename: string;
-    readonly blob: Blob;
-  },
-  signal: AbortSignal,
-) => Promise<{ readonly webViewLink: string | null }>;
-
-async function uploadPresentationToGoogleSlides(params: {
-  filename: string;
-  pageSignal: AbortSignal;
-  threadId: string;
-  upload: UploadPresentationSlidesFn;
-  url: string;
-}): Promise<void> {
-  const toastId = toast.loading("Uploading to Google Slides...");
-  await tapError(
-    (async () => {
-      const built = await buildPresentationHtmlPptxBlobFromUrl({
-        filename: params.filename,
-        signal: params.pageSignal,
-        url: params.url,
-      });
-      await params.upload(
-        {
-          threadId: params.threadId,
-          filename: built.filename,
-          blob: built.blob,
-        },
-        params.pageSignal,
-      );
-      toast.success("Uploaded to Google Slides", { id: toastId });
-    })(),
-    (error) => {
-      toast.dismiss(toastId);
-      if (!(error instanceof ApiError)) {
-        toast.error("Failed to upload to Google Slides");
-      }
-    },
-  );
 }
 
 function iconButtonClassName(className?: string): string {
@@ -578,99 +515,6 @@ function GoogleDriveMenuItem({
   );
 }
 
-function GoogleSlidesMenuItem({
-  closeMenu,
-  filename,
-  syncTarget,
-  threadId,
-  url,
-}: {
-  closeMenu: () => void;
-  filename: string;
-  syncTarget: ArtifactDownloadSyncTarget;
-  threadId: string;
-  url: string;
-}) {
-  const {
-    connectorListLoaded,
-    googleDriveAuthMethod,
-    googleDriveConnected,
-    googleDriveConnector,
-    googleDriveReady,
-  } = useGoogleDriveAvailability(syncTarget);
-  const createClient = useGet(zeroClient$);
-  const pageSignal = useGet(pageSignal$);
-  const upload = useSet(uploadPresentationToGoogleSlides$);
-  const waitForGoogleDriveAuthorization = useSet(
-    waitForGoogleDriveAuthorization$,
-  );
-  const run = () => {
-    return uploadPresentationToGoogleSlides({
-      filename,
-      pageSignal,
-      threadId,
-      upload,
-      url,
-    });
-  };
-
-  if (!connectorListLoaded) {
-    return (
-      <ArtifactDownloadMenuItem disabled>
-        <IconPresentation size={14} stroke={1.5} />
-        Connect Google Drive
-      </ArtifactDownloadMenuItem>
-    );
-  }
-
-  const connectOrUpload = () => {
-    closeMenu();
-    if (googleDriveReady) {
-      detach(run(), Reason.DomCallback, "presentation google slides upload");
-      return;
-    }
-    if (googleDriveConnected) {
-      authorizeGoogleDriveAndRun({
-        agentId: syncTarget.agentId,
-        pageSignal,
-        run,
-        waitForGoogleDriveAuthorization,
-        description: "presentation google slides authorize upload",
-      });
-      return;
-    }
-    if (!googleDriveConnector || !googleDriveAuthMethod) {
-      return;
-    }
-    startGoogleDriveConnectAndRun({
-      agentId: syncTarget.agentId,
-      authMethod: googleDriveAuthMethod,
-      connector: googleDriveConnector,
-      createClient,
-      pageSignal,
-      run,
-      waitForGoogleDriveAuthorization,
-      description: "presentation google slides connect upload",
-    });
-  };
-
-  const label = googleDriveReady
-    ? "Upload to Google Slides"
-    : "Connect Google Drive";
-  return (
-    <ArtifactDownloadMenuItem
-      disabled={
-        !googleDriveConnected &&
-        (!googleDriveConnector || !googleDriveAuthMethod)
-      }
-      onClick={connectOrUpload}
-    >
-      <IconPresentation size={14} stroke={1.5} />
-      {label}
-    </ArtifactDownloadMenuItem>
-  );
-}
-
 type ArtifactDownloadMenuProps = {
   align?: "center" | "end" | "start";
   ariaLabel?: string;
@@ -753,16 +597,6 @@ function startArtifactDownloadWithCleanup(params: {
   );
 }
 
-function shouldShowPresentationExport(
-  artifactKind: ChatThreadArtifactFile["artifactKind"] | undefined,
-  features: Record<string, boolean | undefined>,
-): boolean {
-  return (
-    artifactKind === "presentation-html" &&
-    (features[FeatureSwitchKey.PresentationExport] ?? false)
-  );
-}
-
 export function ArtifactDownloadMenu({
   align = "end",
   ariaLabel = "Download options",
@@ -782,14 +616,9 @@ export function ArtifactDownloadMenu({
   const startArtifactDownload = useSet(startArtifactDownload$);
   const finishArtifactDownload = useSet(finishArtifactDownload$);
   const pageSignal = useGet(pageSignal$);
-  const features = useGet(featureSwitch$);
   const open = openKey === `${menuInstanceKey}:${artifactDownloadKey}`;
   const downloadPending = pendingKey === artifactDownloadKey;
   const downloadName = artifactDownloadFilename(artifactKind, filename, url);
-  const showPresentationExport = shouldShowPresentationExport(
-    artifactKind,
-    features,
-  );
   return (
     <Popover
       modal={false}
@@ -852,36 +681,6 @@ export function ArtifactDownloadMenu({
           <IconDownload size={14} stroke={1.5} />
           Download
         </ArtifactDownloadMenuItem>
-        {showPresentationExport && (
-          <ArtifactDownloadMenuItem
-            onClick={() => {
-              startArtifactDownloadWithCleanup({
-                closeMenu,
-                description: "presentation html pptx download",
-                download: downloadPresentationPptx({
-                  filename: downloadName,
-                  signal: pageSignal,
-                  url,
-                }),
-                downloadKey: artifactDownloadKey,
-                finish: finishArtifactDownload,
-                start: startArtifactDownload,
-              });
-            }}
-          >
-            <IconDownload size={14} stroke={1.5} />
-            Download (.pptx)
-          </ArtifactDownloadMenuItem>
-        )}
-        {showPresentationExport && syncTarget && (
-          <GoogleSlidesMenuItem
-            closeMenu={closeMenu}
-            filename={downloadName}
-            syncTarget={syncTarget}
-            threadId={syncTarget.threadId}
-            url={url}
-          />
-        )}
         <GoogleDriveMenuItem closeMenu={closeMenu} syncTarget={syncTarget} />
       </PopoverContent>
     </Popover>

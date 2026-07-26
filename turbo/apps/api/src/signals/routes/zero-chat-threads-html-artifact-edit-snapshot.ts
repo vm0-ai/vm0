@@ -239,6 +239,9 @@ const deleteHtmlArtifactEditSnapshotInner$ = command(
   },
 );
 
+// Compatibility for browser tabs loaded before HTML artifact editing was
+// retired. Remove these routes after the previous frontend release can no
+// longer be active.
 export const zeroChatThreadsHtmlArtifactEditSnapshotRoutes: readonly RouteEntry[] =
   [
     {

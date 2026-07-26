@@ -1,12 +1,10 @@
 import type { ReactNode, Ref } from "react";
 import {
-  IconDownload,
   IconLoader2,
   IconPresentation,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
   cn,
@@ -24,7 +22,6 @@ import {
   zeroClient$,
   type ZeroClientFactory,
 } from "../../signals/api-client.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { createCurrentPresentationDraft } from "../../signals/zero-page/presentation-html-editor-draft.ts";
@@ -37,7 +34,6 @@ import {
   setPresentationEditorCloseDialogOpen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
-import { downloadPresentationHtmlStringPptx } from "./presentation-html-pptx-download.ts";
 import {
   applyPresentationSpeakerNotesPatch,
   parsePresentationEditDraft,
@@ -267,14 +263,12 @@ function editSignature(params: {
 function PresentationEditorHeader({
   busyRef,
   onClose,
-  onDownloadPptx,
   onGenerateSpeakerNotes,
   statusRef,
   title,
 }: {
   busyRef?: Ref<SVGSVGElement>;
   onClose: () => void;
-  onDownloadPptx: (() => void) | undefined;
   onGenerateSpeakerNotes: (() => void) | undefined;
   statusRef?: Ref<HTMLDivElement>;
   title: string;
@@ -300,19 +294,6 @@ function PresentationEditorHeader({
           <span>Presentation editor</span>
         </div>
       </div>
-      {onDownloadPptx && (
-        <button
-          type="button"
-          data-presentation-editor-action="true"
-          aria-label="Download edited PPTX"
-          title="Download edited PPTX"
-          onClick={onDownloadPptx}
-          className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:w-auto sm:px-2"
-        >
-          <IconDownload size={16} stroke={1.5} />
-          <span className="hidden sm:inline">PPTX</span>
-        </button>
-      )}
       <button
         type="button"
         data-presentation-editor-action="true"
@@ -362,7 +343,6 @@ function PresentationEditorShell({
     <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
       <PresentationEditorHeader
         onClose={onClose}
-        onDownloadPptx={undefined}
         onGenerateSpeakerNotes={undefined}
         title={title}
       />
@@ -619,23 +599,6 @@ function UnsupportedPresentation() {
     <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
       This presentation has no text nodes that can be edited.
     </div>
-  );
-}
-
-function downloadEditedPptx(params: {
-  baseUrl: string;
-  filename: string;
-  html: string;
-  signal: AbortSignal;
-}) {
-  detach(
-    tapError(downloadPresentationHtmlStringPptx(params), (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        toast.error("PPTX download failed");
-      }
-    }),
-    Reason.DomCallback,
-    "presentation html editor pptx download",
   );
 }
 
@@ -1224,48 +1187,14 @@ function PresentationEditorCloseDialog({
   );
 }
 
-function createEditedPptxDownloadAction(params: {
-  readonly controller: ReturnType<typeof createPresentationEditorController>;
-  readonly draft: EditorDraft;
-  readonly enabled: boolean;
-  readonly filename: string;
-  readonly pageSignal: AbortSignal;
-  readonly publishingRef: MutableValue<boolean>;
-}): (() => void) | undefined {
-  if (!params.enabled) {
-    return undefined;
-  }
-  return () => {
-    runEditorTaskIfIdle({
-      publishingRef: params.publishingRef,
-      reason: "presentation html editor pptx download after publish",
-      task: async () => {
-        if (!(await params.controller.ensureRedeployed())) {
-          return;
-        }
-        downloadEditedPptx({
-          baseUrl: params.draft.publicUrl,
-          filename: params.filename,
-          html: params.controller.buildEditedHtml(),
-          signal: params.pageSignal,
-        });
-      },
-    });
-  };
-}
-
 function PresentationEditorReady({
   draft,
-  filename,
   onClose,
-  presentationExportEnabled,
   sourceUrl,
   title,
 }: {
   draft: EditorDraft;
-  filename: string;
   onClose: (publishedUrl?: string) => void;
-  presentationExportEnabled: boolean;
   sourceUrl: string;
   title: string;
 }) {
@@ -1316,14 +1245,6 @@ function PresentationEditorReady({
     publishingRef,
     setCloseDialogOpen,
   });
-  const downloadPptx = createEditedPptxDownloadAction({
-    controller,
-    draft,
-    enabled: presentationExportEnabled,
-    filename,
-    pageSignal,
-    publishingRef,
-  });
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -1332,7 +1253,6 @@ function PresentationEditorReady({
           busyRef.current = node;
         }}
         onClose={closeActions.requestClose}
-        onDownloadPptx={downloadPptx}
         onGenerateSpeakerNotes={() => {
           runEditorTaskIfIdle({
             publishingRef,
@@ -1375,10 +1295,6 @@ export function PresentationHtmlEditor({
   const filename = attachmentFilenameFromUrl(url);
   const title = fallbackHtmlPreviewTitle(filename, url);
   const loadable = useLoadable(currentPresentationDraft$);
-  const features = useGet(featureSwitch$);
-  const presentationExportEnabled = Boolean(
-    features?.[FeatureSwitchKey.PresentationExport],
-  );
 
   if (loadable.state === "loading") {
     return <PresentationEditorLoading title={title} onClose={onClose} />;
@@ -1400,9 +1316,7 @@ export function PresentationHtmlEditor({
     <PresentationEditorReady
       key={url}
       draft={loadable.data}
-      filename={filename}
       onClose={onClose}
-      presentationExportEnabled={presentationExportEnabled}
       sourceUrl={url}
       title={title}
     />

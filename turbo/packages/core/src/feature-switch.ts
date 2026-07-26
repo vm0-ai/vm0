@@ -382,13 +382,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -450,13 +443,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PresentationExport]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

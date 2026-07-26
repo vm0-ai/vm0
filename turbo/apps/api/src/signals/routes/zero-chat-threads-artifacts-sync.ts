@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -17,7 +15,6 @@ import {
   syncArtifactToGoogleDrive$,
   uploadPresentationToGoogleSlides$,
 } from "../services/google-drive-artifact-sync.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -54,18 +51,6 @@ const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return result;
 });
 
-function googleSlidesUploadDisabled() {
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: "Google Slides upload is not available",
-        code: "FORBIDDEN" as const,
-      },
-    },
-  };
-}
-
 const presentationUploadIdSchema = z.string().uuid();
 
 function googleSlidesUploadSource(
@@ -81,23 +66,12 @@ function googleSlidesUploadSource(
   return badRequestMessage("No presentation upload ID provided");
 }
 
+// Compatibility for browser tabs loaded before presentation export was
+// retired. Remove this handler after the previous frontend release can no
+// longer be active.
 const uploadGoogleSlidesInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.PresentationExport, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return googleSlidesUploadDisabled();
-    }
-
     const params = get(
       pathParamsOf(chatThreadArtifactsContract.uploadGoogleSlides),
     );

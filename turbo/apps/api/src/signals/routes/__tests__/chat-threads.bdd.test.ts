@@ -55,7 +55,6 @@ import {
   generatedStripeSubscriptionId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
  * CHAT-01 / CHAT-03: chat thread lifecycle beyond the mutation chain that
@@ -2500,31 +2499,12 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     await completeChatRunOk(run.runId, sandboxHeaders);
   }, 120_000);
 
-  it("uploads a presentation to Google Slides behind a feature flag", async () => {
+  it("supports legacy presentation uploads to Google Slides", async () => {
     const { actor } = await entitledChatActor("Slides upload agent");
     const objectStore = chatCallbacks.acceptChatObjectStorage();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("entitled actor is missing an organization");
-    }
     const threadId = randomUUID();
-    // Gated off by default: the feature switch hides the endpoint.
-    const gated = await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-      actor,
-      threadId,
-      randomUUID(),
-      [403],
-    );
-    expectApiError(gated.body);
-    expect(gated.body.error.code).toBe("FORBIDDEN");
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.PresentationExport]: true },
-    );
-
-    // Enabled, but Google Drive is not connected yet.
+    // Browser tabs loaded before presentation export was retired can still
+    // finish an upload while the previous frontend release drains.
     const noDrive =
       await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
         actor,

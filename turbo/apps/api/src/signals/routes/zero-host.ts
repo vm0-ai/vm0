@@ -472,6 +472,9 @@ export const zeroHostRoutes: readonly RouteEntry[] = [
     ),
   },
   {
+    // Compatibility for browser tabs loaded before HTML artifact editing was
+    // retired. Remove after the previous frontend release can no longer be
+    // active.
     route: zeroHostContract.createHtmlEditDraft,
     handler: authRoute(
       {

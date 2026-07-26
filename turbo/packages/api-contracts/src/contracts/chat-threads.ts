@@ -1251,6 +1251,8 @@ export const chatThreadArtifactsContract = c.router({
     summary: "Sync a chat artifact file to the user's connected Google Drive",
   },
   uploadGoogleSlides: {
+    // Compatibility for browser tabs loaded before presentation export was
+    // retired.
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/artifacts/google-slides",
     headers: authHeadersSchema,

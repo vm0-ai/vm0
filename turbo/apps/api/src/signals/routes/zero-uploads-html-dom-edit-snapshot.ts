@@ -72,6 +72,9 @@ const uploadHtmlDomEditSnapshotInner$ = command(
   },
 );
 
+// Compatibility for browser tabs loaded before HTML artifact editing was
+// retired. Remove this route after the previous frontend release can no longer
+// be active.
 export const zeroUploadsHtmlDomEditSnapshotRoutes: readonly RouteEntry[] = [
   {
     route: zeroUploadsContract.htmlDomEditSnapshot,
