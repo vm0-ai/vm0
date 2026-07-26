@@ -107,6 +107,11 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import {
+  effectiveChatMessageStructuredPrompt,
+  effectiveChatThreadDraftStructuredPrompt,
+  splitStructuredMessage,
+} from "./zero-chat-structured-message-storage.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -280,7 +285,7 @@ const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
-  structuredPrompt: chatMessages.structuredPrompt,
+  structuredPrompt: effectiveChatMessageStructuredPrompt(),
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
@@ -478,7 +483,7 @@ function ownedChatThread(
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
-        draftStructuredPrompt: chatThreads.draftStructuredPrompt,
+        draftStructuredPrompt: effectiveChatThreadDraftStructuredPrompt(),
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         modelProviderId: chatThreads.modelProviderId,
@@ -1025,6 +1030,7 @@ export function zeroChatThreadDraftIds(args: {
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
             OR ${isNotNull(chatThreads.draftStructuredPrompt)}
+            OR ${isNotNull(chatThreads.draftStructuredPromptWithFeedback)}
             OR (
               ${isNotNull(chatThreads.draftAttachments)}
               AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
@@ -2359,12 +2365,17 @@ export const updateChatThreadDraft$ = command(
     signal: AbortSignal,
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
+    const persistedStructuredPrompt = splitStructuredMessage(
+      args.draftStructuredPrompt,
+    );
 
     const updated = await writeDb
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
-        draftStructuredPrompt: args.draftStructuredPrompt,
+        draftStructuredPrompt: persistedStructuredPrompt.structuredPrompt,
+        draftStructuredPromptWithFeedback:
+          persistedStructuredPrompt.structuredPromptWithFeedback,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

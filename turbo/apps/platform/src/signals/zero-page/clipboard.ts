@@ -2,7 +2,7 @@ import {
   userMessageDocumentSchema,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { jsonParseOr, throwIfAbort } from "../utils.ts";
+import { jsonParseOr, settle, throwIfAbort, withCleanup } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
 
@@ -143,23 +143,24 @@ function executeLegacyCopyCommand(): boolean {
   return Reflect.apply(command, document, ["copy"]) === true;
 }
 
-function runLegacyClipboardCopy(
+async function runLegacyClipboardCopy(
   prepare: () => void,
   cleanup: () => void,
-): boolean {
-  // eslint-disable-next-line no-restricted-syntax -- clipboard API requires try/catch for legacy execCommand fallback
-  try {
+): Promise<boolean> {
+  const execute = async (): Promise<boolean> => {
     prepare();
-    return executeLegacyCopyCommand();
-  } catch (error: unknown) {
-    throwIfAbort(error);
-    return false;
-  } finally {
-    cleanup();
-  }
+    const copied = executeLegacyCopyCommand();
+    await Promise.resolve();
+    return copied;
+  };
+  const result = await withCleanup(settle(execute()), cleanup);
+  return result.ok ? result.value : false;
 }
 
-function writeRichClipboardFallback(plainText: string, html: string): boolean {
+async function writeRichClipboardFallback(
+  plainText: string,
+  html: string,
+): Promise<boolean> {
   const body = document.body;
   if (!body) {
     return false;
@@ -196,7 +197,7 @@ function writeRichClipboardFallback(plainText: string, html: string): boolean {
     copied = true;
   };
   document.addEventListener("copy", handleCopy, { once: true });
-  const commandSucceeded = runLegacyClipboardCopy(
+  const commandSucceeded = await runLegacyClipboardCopy(
     () => {
       selection?.removeAllRanges();
       selection?.addRange(copyRange);
@@ -233,7 +234,7 @@ export async function writeToClipboard(text: string): Promise<boolean> {
     // gesture context is lost (e.g. after an async boundary). Fall back to
     // the legacy execCommand approach.
     let textarea: HTMLTextAreaElement | null = null;
-    return runLegacyClipboardCopy(
+    return await runLegacyClipboardCopy(
       () => {
         textarea = document.createElement("textarea");
         textarea.value = text;
@@ -259,7 +260,7 @@ export async function writeChatMessageToClipboard(
 
   const html = formatMessageHtml(payload);
   if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
-    if (writeRichClipboardFallback(plainText, html)) {
+    if (await writeRichClipboardFallback(plainText, html)) {
       return true;
     }
     return await writeToClipboard(plainText);
@@ -275,7 +276,7 @@ export async function writeChatMessageToClipboard(
     return true;
   } catch (error: unknown) {
     throwIfAbort(error);
-    if (writeRichClipboardFallback(plainText, html)) {
+    if (await writeRichClipboardFallback(plainText, html)) {
       return true;
     }
     return await writeToClipboard(plainText);

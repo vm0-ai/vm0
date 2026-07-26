@@ -100,6 +100,14 @@ export const chatMessages = pgTable(
     /** Stable business representation of rich user-message content. */
     structuredPrompt:
       jsonb("structured_prompt").$type<ChatMessageStructuredPrompt>(),
+    /**
+     * Full structured content for rollout-only parts that older API versions
+     * cannot decode. The legacy column remains a safe projection so an older
+     * API can continue reading messages during a rollback.
+     */
+    structuredPromptWithFeedback: jsonb(
+      "structured_prompt_with_feedback",
+    ).$type<ChatMessageStructuredPrompt>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */

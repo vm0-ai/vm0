@@ -8,6 +8,7 @@ import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
@@ -171,7 +172,7 @@ async function loadSelectedIncompleteRounds(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      structuredPrompt: effectiveChatMessageStructuredPrompt(),
       attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)

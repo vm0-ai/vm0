@@ -80,6 +80,11 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
           contentType: attachment.contentType,
         },
         { type: "text", text: "draft text" },
+        {
+          type: "feedback",
+          quote: "draft text",
+          note: [{ type: "text", text: "Tighten this draft." }],
+        },
       ],
     };
 
