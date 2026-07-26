@@ -27,7 +27,9 @@ export const storages = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Real userId for artifact/memory; VOLUME_ORG_USER_ID for volumes
     name: varchar("name", { length: 256 }).notNull(),
-    type: varchar("type", { length: 16 }).notNull().default("volume"),
+    // Nullable during the Storage identity contraction. New writers leave this
+    // unset; the column is removed after rollback-eligible API versions drain.
+    type: varchar("type", { length: 16 }),
     orgId: text("org_id").notNull(),
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),

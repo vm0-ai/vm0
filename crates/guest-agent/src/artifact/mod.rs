@@ -46,6 +46,7 @@ pub(crate) struct SnapshotResult {
 pub(crate) struct CreateSnapshotRequest<'a> {
     pub(crate) mount_path: &'a str,
     pub(crate) files: Vec<FileEntry>,
+    pub(crate) storage_id: &'a str,
     pub(crate) storage_name: &'a str,
     pub(crate) storage_type: &'a str,
     pub(crate) run_id: &'a str,
@@ -56,6 +57,7 @@ pub(crate) struct CreateSnapshotRequest<'a> {
 struct SnapshotRequest<'a> {
     mount_path: &'a str,
     files: Arc<[FileEntry]>,
+    storage_id: &'a str,
     storage_name: &'a str,
     storage_type: &'a str,
     run_id: &'a str,
@@ -68,6 +70,7 @@ impl<'a> From<CreateSnapshotRequest<'a>> for SnapshotRequest<'a> {
         Self {
             mount_path: request.mount_path,
             files: request.files.into(),
+            storage_id: request.storage_id,
             storage_name: request.storage_name,
             storage_type: request.storage_type,
             run_id: request.run_id,
@@ -249,6 +252,7 @@ async fn prepare_snapshot_step(
         http,
         PrepareSnapshotRequest {
             run_id: request.run_id,
+            storage_id: request.storage_id,
             storage_name: request.storage_name,
             storage_type: request.storage_type,
             files: request.files.as_ref(),
@@ -329,6 +333,7 @@ async fn commit_existing_snapshot(
         http,
         CommitSnapshotRequest {
             run_id: request.run_id,
+            storage_id: request.storage_id,
             storage_name: request.storage_name,
             storage_type: request.storage_type,
             version_id,
@@ -469,6 +474,7 @@ async fn commit_uploaded_snapshot(
         http,
         CommitSnapshotRequest {
             run_id: request.run_id,
+            storage_id: request.storage_id,
             storage_name: request.storage_name,
             storage_type: request.storage_type,
             version_id,
@@ -505,6 +511,7 @@ mod tests {
 
     static SNAPSHOT_MOCK_SERVER: LazyLock<httpmock::MockServer> =
         LazyLock::new(httpmock::MockServer::start);
+    const SNAPSHOT_STORAGE_ID: &str = "00000000-0000-4000-8000-000000000001";
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
@@ -586,6 +593,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-id",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage",
                     "storageType": "artifact",
                     "files": expected_files,
@@ -601,6 +609,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-id",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage",
                     "storageType": "artifact",
                     "versionId": "v-existing",
@@ -622,6 +631,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files: files.clone(),
+                storage_id: SNAPSHOT_STORAGE_ID,
                 storage_name: "storage",
                 storage_type: "artifact",
                 run_id: "run-id",
@@ -644,6 +654,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-id",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage",
                     "storageType": "artifact",
                     "files": expected_files,
@@ -666,6 +677,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
+                storage_id: SNAPSHOT_STORAGE_ID,
                 storage_name: "storage",
                 storage_type: "artifact",
                 run_id: "run-id",
@@ -709,6 +721,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-upload",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage-upload",
                     "storageType": "artifact",
                     "files": expected_files,
@@ -745,6 +758,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-upload",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage-upload",
                     "storageType": "artifact",
                     "versionId": "v-uploaded",
@@ -767,6 +781,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
+                storage_id: SNAPSHOT_STORAGE_ID,
                 storage_name: "storage-upload",
                 storage_type: "artifact",
                 run_id: "run-upload",
@@ -809,6 +824,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-upload-failed-commit",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage-upload-failed-commit",
                     "storageType": "artifact",
                     "files": expected_files,
@@ -845,6 +861,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-upload-failed-commit",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage-upload-failed-commit",
                     "storageType": "artifact",
                     "versionId": "v-uploaded-failed-commit",
@@ -867,6 +884,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
+                storage_id: SNAPSHOT_STORAGE_ID,
                 storage_name: "storage-upload-failed-commit",
                 storage_type: "artifact",
                 run_id: "run-upload-failed-commit",
@@ -909,6 +927,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-dedup-malformed-commit",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage-dedup-malformed-commit",
                     "storageType": "artifact",
                     "files": expected_files,
@@ -924,6 +943,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-dedup-malformed-commit",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage-dedup-malformed-commit",
                     "storageType": "artifact",
                     "versionId": "v-dedup-malformed-commit",
@@ -940,6 +960,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
+                storage_id: SNAPSHOT_STORAGE_ID,
                 storage_name: "storage-dedup-malformed-commit",
                 storage_type: "artifact",
                 run_id: "run-dedup-malformed-commit",
@@ -978,6 +999,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-missing-uploads",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "storageName": "storage-missing-uploads",
                     "storageType": "artifact",
                     "files": expected_files,
@@ -1001,6 +1023,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
+                storage_id: SNAPSHOT_STORAGE_ID,
                 storage_name: "storage-missing-uploads",
                 storage_type: "artifact",
                 run_id: "run-missing-uploads",

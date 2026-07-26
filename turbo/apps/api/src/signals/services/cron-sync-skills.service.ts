@@ -389,7 +389,6 @@ async function upsertSkillStorage(args: {
       orgId: SYSTEM_ORG_ID,
       userId: VOLUME_ORG_USER_ID,
       name: args.context.storageName,
-      type: "volume",
       s3Prefix: location.s3Prefix,
       size: args.context.totalSize,
       fileCount: args.context.files.length,
