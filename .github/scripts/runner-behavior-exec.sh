@@ -1071,6 +1071,7 @@ echo "--- Test: Codex compact-generation compatibility ---"
 CODEX_COMPACT_SMOKE=$(cat <<'PY'
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -1251,11 +1252,18 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         server_thread.start()
         root = Path(temp_root)
         port = server.server_port
+        current_codex = shutil.which("codex")
+        assert current_codex is not None, "bundled Codex is not on PATH"
+        current_version = subprocess.check_output(
+            [current_codex, "--version"],
+            text=True,
+        )
+        assert "0.145.0" in current_version
 
         seed_home = root / "seed" / ".codex"
         write_config(seed_home, port)
         run_codex(
-            "/usr/local/bin/codex",
+            current_codex,
             seed_home,
             seed_token,
         )
@@ -1347,7 +1355,7 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
 
         probe_reader(
             "current",
-            Path("/usr/local/bin/codex"),
+            Path(current_codex),
             root / "current",
             candidate_relative_path,
             candidate_bytes,
