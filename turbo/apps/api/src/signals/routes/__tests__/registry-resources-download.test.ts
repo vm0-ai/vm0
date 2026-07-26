@@ -150,7 +150,9 @@ describe("registry resource download", () => {
     for (const archive of v2Archives) {
       // The pinned digest must be the one the registry ships, otherwise the
       // version ids below would be resolved for an archive nobody pulls.
-      expect(findWebsiteTemplateResource(archive.id)?.source.archive).toEqual({
+      expect(
+        findWebsiteTemplateResource(archive.id)?.source.archive,
+      ).toStrictEqual({
         type: "tar.gz",
         sha256: archive.sha256,
       });
