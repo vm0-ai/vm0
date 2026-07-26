@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
 import {
   clerk$,
+  clerkUi$,
   getAllowedAuthRedirectOriginsForCurrentPage,
   resolveAppAuthUrl,
   resolveAppUrl,
@@ -22,8 +23,12 @@ interface ClerkProviderProps {
 
 export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const clerkLoadable = useLoadable(clerk$);
+  const clerkUiLoadable = useLoadable(clerkUi$);
 
-  if (clerkLoadable.state !== "hasData") {
+  if (
+    clerkLoadable.state !== "hasData" ||
+    clerkUiLoadable.state !== "hasData"
+  ) {
     return null;
   }
 
@@ -42,6 +47,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
     signUpUrl: resolveAppAuthUrl("/sign-up"),
+    ui: clerkUiLoadable.data,
   };
   const providerChildren = (
     <>

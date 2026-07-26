@@ -296,16 +296,27 @@ export function buildSignInRedirectUrl(
  *
  * Initializes the real Clerk SDK with the publishable key.
  */
+async function loadClerkUi() {
+  const { ui } = await import("@clerk/ui");
+  return ui;
+}
+
+export const clerkUi$ = computed(loadClerkUi);
+
 export const clerk$ = computed(async () => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
 
   // Clerk JS and its bundled UI remain large browser modules. Keeping them in
   // separate async chunks avoids blocking initial JavaScript parsing.
-  const [{ Clerk }, { ClerkUI }] = await Promise.all([
+  const [{ Clerk }, ui] = await Promise.all([
     import("@clerk/clerk-js"),
-    import("@clerk/ui/entry"),
+    loadClerkUi(),
   ]);
+  const { ClerkUI } = ui;
+  if (!ClerkUI) {
+    throw new Error("Clerk UI module did not provide its renderer");
+  }
 
   const clerkInstance = satelliteConfig
     ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
