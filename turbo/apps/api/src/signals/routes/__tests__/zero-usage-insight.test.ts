@@ -159,9 +159,9 @@ async function reportRunUsage(
   );
 }
 
-async function processPendingUsage(): Promise<void> {
+async function processPendingUsage(actor: ApiTestUser): Promise<void> {
   const billing = createBillingMediaApi(context);
-  await billing.processUsageEvents();
+  await billing.processOrgUsageEvents(actor);
 }
 
 /**
@@ -295,7 +295,7 @@ describe("GET /api/zero/usage/insight", () => {
       { kind: "model", category: "tokens.input", quantity: 1000, credits: 100 },
       { kind: "model", category: "tokens.output", quantity: 500, credits: 0 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
     authenticateInsightActor(actor);
 
     const response = await accept(
@@ -332,7 +332,7 @@ describe("GET /api/zero/usage/insight", () => {
         { kind: "connector", category: "call", quantity: 1, credits: 50 },
       ]);
     }
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -375,7 +375,7 @@ describe("GET /api/zero/usage/insight", () => {
         },
       ]);
     }
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -403,7 +403,7 @@ describe("GET /api/zero/usage/insight", () => {
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 10 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -427,7 +427,7 @@ describe("GET /api/zero/usage/insight", () => {
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 42 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
     const selectedDate = nowDate().toISOString().split("T")[0];
     expect(selectedDate).toBeDefined();
 
@@ -524,7 +524,7 @@ describe("GET /api/zero/usage/insight", () => {
       { kind: "model", category: "tokens.input", quantity: 999, credits: 999 },
       { kind: "connector", category: "tweet.read", quantity: 1, credits: 999 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -557,7 +557,7 @@ describe("GET /api/zero/usage/insight", () => {
         credits: 4,
       },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
     // Reported after processing and never settled: pending rows must stay
     // out of every total.
     await reportRunUsage(actor, runId, [
@@ -594,7 +594,7 @@ describe("GET /api/zero/usage/insight", () => {
       { kind: "connector", category: "tweet.read", quantity: 1, credits: 40 },
       { kind: "model", category: "tokens.output", quantity: 15, credits: 5 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -649,7 +649,7 @@ describe("GET /api/zero/usage/insight", () => {
     await reportRunUsage(actor, sent.body.runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 225 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
