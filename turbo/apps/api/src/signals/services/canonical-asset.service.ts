@@ -8,13 +8,8 @@ import {
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
 } from "@vm0/db/schema/run-uploaded-file";
-import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import type { SlackFile } from "../../lib/slack-webhook-context";
 import { env } from "../../lib/env";
@@ -40,21 +35,10 @@ import {
 import { settleIncludingAbort } from "../utils";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
-import { decryptPersistentSecretValue } from "./crypto.utils";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { sourceForRun } from "./run-uploaded-files.service";
 
 const CANONICAL_UPLOAD_URL_TTL_SECONDS = 3600;
 const SLACK_INPUT_IMPORT_TIMEOUT_MS = 10_000;
-const historicalSlackEventSchema = z.object({
-  type: z.literal("event_callback"),
-  team_id: z.string(),
-  event: z.object({
-    ts: z.string(),
-    channel: z.string(),
-    files: z.array(z.custom<SlackFile>()).optional(),
-  }),
-});
 
 export interface CanonicalSlackInputAsset {
   readonly assetId: string;
@@ -681,174 +665,6 @@ export async function attachCanonicalAssetsToMessage(
     )
     .onConflictDoNothing();
 }
-
-interface HistoricalCanonicalSlackAssetsArgs {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly chatThreadId: string;
-  readonly messageIds: readonly string[];
-}
-
-function loadHistoricalSlackRows(
-  db: Db,
-  args: HistoricalCanonicalSlackAssetsArgs,
-) {
-  return db
-    .select({
-      messageId: slackChatIngress.id,
-      payload: slackChatIngress.payload,
-      workspaceId: slackOrgConnections.slackWorkspaceId,
-      channelId: slackChatThreadRoutes.channelId,
-      encryptedBotToken: slackOrgInstallations.encryptedBotToken,
-    })
-    .from(slackChatIngress)
-    .innerJoin(
-      slackChatThreadRoutes,
-      eq(slackChatThreadRoutes.id, slackChatIngress.routeId),
-    )
-    .innerJoin(
-      slackOrgConnections,
-      eq(slackOrgConnections.id, slackChatThreadRoutes.connectionId),
-    )
-    .leftJoin(
-      slackOrgInstallations,
-      and(
-        eq(
-          slackOrgInstallations.slackWorkspaceId,
-          slackOrgConnections.slackWorkspaceId,
-        ),
-        eq(slackOrgInstallations.orgId, args.orgId),
-      ),
-    )
-    .where(
-      and(
-        inArray(slackChatIngress.id, [...args.messageIds]),
-        eq(slackChatThreadRoutes.chatThreadId, args.chatThreadId),
-        eq(slackChatThreadRoutes.userId, args.userId),
-        eq(slackChatThreadRoutes.backend, "canonical"),
-      ),
-    );
-}
-
-function loadHistoricalCanonicalAssetRefs(
-  db: Db,
-  args: HistoricalCanonicalSlackAssetsArgs,
-) {
-  return db
-    .select({
-      messageId: chatMessageAssetRefs.chatMessageId,
-      position: chatMessageAssetRefs.position,
-      status: runUploadedFiles.materializationStatus,
-      error: runUploadedFiles.materializationError,
-    })
-    .from(chatMessageAssetRefs)
-    .innerJoin(
-      runUploadedFiles,
-      eq(runUploadedFiles.id, chatMessageAssetRefs.assetId),
-    )
-    .where(
-      and(
-        inArray(chatMessageAssetRefs.chatMessageId, [...args.messageIds]),
-        eq(runUploadedFiles.userId, args.userId),
-        eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
-      ),
-    );
-}
-
-export const materializeHistoricalCanonicalSlackAssets$ = command(
-  async (
-    { set },
-    args: HistoricalCanonicalSlackAssetsArgs,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    if (args.messageIds.length === 0) {
-      return false;
-    }
-    const db = set(writeDb$);
-    const rows = await loadHistoricalSlackRows(db, args);
-    signal.throwIfAborted();
-    if (rows.length === 0) {
-      return false;
-    }
-    const refs = await loadHistoricalCanonicalAssetRefs(db, args);
-    signal.throwIfAborted();
-    const refByMessageAndPosition = new Map(
-      refs.map((ref) => {
-        return [`${ref.messageId}:${String(ref.position)}`, ref] as const;
-      }),
-    );
-
-    const featureContext = await loadUserFeatureSwitchContext(
-      db,
-      args.orgId,
-      args.userId,
-    );
-    signal.throwIfAborted();
-    const tokens = new Map<string, string>();
-    let materialized = false;
-    for (const row of rows) {
-      const parsed = historicalSlackEventSchema.parse(
-        JSON.parse(row.payload) as unknown,
-      );
-      const files = parsed.event.files ?? [];
-      if (files.length === 0) {
-        continue;
-      }
-      const needsMaterialization = files.some((_file, position) => {
-        const ref = refByMessageAndPosition.get(
-          `${row.messageId}:${String(position)}`,
-        );
-        return (
-          !ref ||
-          ref.status === "pending" ||
-          (ref.status === "failed" && ref.error?.retryable !== false)
-        );
-      });
-      if (!needsMaterialization) {
-        continue;
-      }
-      if (
-        parsed.team_id !== row.workspaceId ||
-        parsed.event.channel !== row.channelId
-      ) {
-        throw new Error(
-          "Historical canonical Slack payload does not match its route",
-        );
-      }
-      const encryptedBotToken = row.encryptedBotToken;
-      let botToken = encryptedBotToken
-        ? tokens.get(encryptedBotToken)
-        : undefined;
-      if (encryptedBotToken && !botToken) {
-        botToken = await decryptPersistentSecretValue(
-          encryptedBotToken,
-          featureContext,
-        );
-        tokens.set(encryptedBotToken, botToken);
-      }
-      signal.throwIfAborted();
-      const assets = await set(
-        materializeCanonicalSlackInputAssets$,
-        {
-          userId: args.userId,
-          orgId: args.orgId,
-          chatThreadId: args.chatThreadId,
-          workspaceId: row.workspaceId,
-          channelId: row.channelId,
-          messageTs: parsed.event.ts,
-          botToken,
-          files,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      await attachCanonicalAssetsToMessage(db, row.messageId, assets);
-      signal.throwIfAborted();
-      materialized ||= assets.length > 0;
-    }
-    return materialized;
-  },
-);
 
 interface PrepareCanonicalPublishedAssetArgs {
   readonly runId: string;

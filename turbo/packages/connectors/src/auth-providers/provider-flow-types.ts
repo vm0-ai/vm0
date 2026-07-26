@@ -1,28 +1,22 @@
 import type {
-  AuthCodeGrantConnectorType,
   ConnectorAuthCodeGrantConfig,
-  ConnectorAuthMethodIds,
-  ConnectorAuthCodeGrantAuthMethodId,
-  ConnectorDeviceAuthGrantAuthMethodId,
-  ConnectorExternalCodeGrantAuthMethodId,
   ConnectorExternalCodeGrantConfig,
   ConnectorOpenIdAuthGrantConfig,
-  ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthStartOptions,
-  ConnectorRevokeInputValues,
-  ConnectorType,
-  DeviceAuthGrantConnectorType,
-  ExternalCodeGrantConnectorType,
-  TokenRevokeConnectorType,
-} from "@vm0/connectors/connectors";
-import type {
-  ConnectorAuthClientForMethod,
-  ConnectorAuthClientIdentityForMethod,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-config";
 import type {
   ConnectorAuthProviderGrantResult,
   ConnectorAuthProviderGrantResultForMethod,
 } from "./grant-result";
+import type {
+  ConnectorAuthProviderAuthMethodId,
+  ConnectorAuthProviderAuthMethodIdByGrantKind,
+  ConnectorAuthProviderClientFor,
+  ConnectorAuthProviderClientIdentityFor,
+  ConnectorAuthProviderConnectorRef,
+  ConnectorAuthProviderConnectorRefByGrantKind,
+  ConnectorAuthProviderRevokeInputValuesFor,
+} from "./provider-capabilities";
 
 /**
  * Result from buildAuthUrl when PKCE is required.
@@ -107,11 +101,18 @@ export interface OAuthDeviceAuthCompleteResultBase {
 }
 
 export interface OAuthDeviceAuthCompleteResult<
-  T extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "device-auth"
+  >,
 > {
   readonly status: "complete";
-  readonly token: ConnectorAuthProviderGrantResultForMethod<T, Method>;
+  readonly token: ConnectorAuthProviderGrantResultForMethod<
+    ConnectorRef,
+    AuthMethodId
+  >;
 }
 
 export interface OAuthDeviceAuthDeniedResult {
@@ -146,45 +147,61 @@ export type OAuthDeviceAuthIncompleteResult = Exclude<
 >;
 
 export type OAuthDeviceAuthPollResult<
-  T extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "device-auth"
+  >,
 > =
   | OAuthDeviceAuthPendingResult
   | OAuthDeviceAuthSlowDownResult
-  | OAuthDeviceAuthCompleteResult<T, Method>
+  | OAuthDeviceAuthCompleteResult<ConnectorRef, AuthMethodId>
   | OAuthDeviceAuthDeniedResult
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;
 
 type ConnectorAuthMethodClientArgs<
-  T extends ConnectorType,
-  Method extends ConnectorAuthMethodIds<T>,
+  ConnectorRef extends ConnectorAuthProviderConnectorRef,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
 > = {
-  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+  readonly authClient: ConnectorAuthProviderClientFor<
+    ConnectorRef,
+    AuthMethodId
+  >;
 };
 
 type ConnectorAuthMethodClientIdentityArgs<
-  T extends ConnectorType,
-  Method extends ConnectorAuthMethodIds<T>,
+  ConnectorRef extends ConnectorAuthProviderConnectorRef,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
 > = {
-  readonly authClient: ConnectorAuthClientIdentityForMethod<T, Method>;
+  readonly authClient: ConnectorAuthProviderClientIdentityFor<
+    ConnectorRef,
+    AuthMethodId
+  >;
 };
 
 export type ConnectorAuthCodeAuthorizeArgs<
-  T extends AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
-    ConnectorAuthCodeGrantAuthMethodId<T>,
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "auth-code"
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "auth-code">,
 > = OAuthAuthorizeFlowArgs &
-  ConnectorAuthMethodClientIdentityArgs<T, Method> & {
+  ConnectorAuthMethodClientIdentityArgs<ConnectorRef, AuthMethodId> & {
     readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
 
 export type ConnectorAuthCodeExchangeArgs<
-  T extends AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
-    ConnectorAuthCodeGrantAuthMethodId<T>,
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "auth-code"
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "auth-code">,
 > = OAuthExchangeFlowArgs &
-  ConnectorAuthMethodClientArgs<T, Method> & {
+  ConnectorAuthMethodClientArgs<ConnectorRef, AuthMethodId> & {
     readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
 
@@ -197,40 +214,61 @@ export type ConnectorOpenIdVerifyArgs = OpenIdVerifyFlowArgs & {
 };
 
 export type ConnectorExternalCodeAuthorizationStartArgs<
-  T extends ExternalCodeGrantConnectorType,
-  Method extends ConnectorExternalCodeGrantAuthMethodId<T> =
-    ConnectorExternalCodeGrantAuthMethodId<T>,
-> = ConnectorAuthMethodClientIdentityArgs<T, Method> & {
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"external-code">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "external-code"
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "external-code"
+  >,
+> = ConnectorAuthMethodClientIdentityArgs<ConnectorRef, AuthMethodId> & {
   readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
 };
 
 export type ConnectorExternalCodeAuthorizationCompleteArgs<
-  T extends ExternalCodeGrantConnectorType,
-  Method extends ConnectorExternalCodeGrantAuthMethodId<T> =
-    ConnectorExternalCodeGrantAuthMethodId<T>,
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"external-code">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "external-code"
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "external-code"
+  >,
 > = ExternalCodeCompleteFlowArgs &
-  ConnectorAuthMethodClientArgs<T, Method> & {
+  ConnectorAuthMethodClientArgs<ConnectorRef, AuthMethodId> & {
     readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
   };
 
 export type ConnectorAuthProviderRevokeArgs<
-  T extends TokenRevokeConnectorType,
-  Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke"> =
-    ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
-> = ConnectorAuthMethodClientArgs<T, Method> & {
-  readonly inputs: ConnectorRevokeInputValues<T, Method>;
+  ConnectorRef extends ConnectorAuthProviderConnectorRef,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+> = ConnectorAuthMethodClientArgs<ConnectorRef, AuthMethodId> & {
+  readonly inputs: ConnectorAuthProviderRevokeInputValuesFor<
+    ConnectorRef,
+    AuthMethodId
+  >;
   readonly signal: AbortSignal;
 };
 
 export type ConnectorDeviceAuthorizationStartArgs<
-  T extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
-    ConnectorDeviceAuthGrantAuthMethodId<T>,
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "device-auth"
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "device-auth">,
 > = OAuthDeviceAuthStartFlowArgs &
-  ConnectorAuthMethodClientIdentityArgs<T, Method>;
+  ConnectorAuthMethodClientIdentityArgs<ConnectorRef, AuthMethodId>;
 
 export type ConnectorDeviceAuthorizationPollArgs<
-  T extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
-    ConnectorDeviceAuthGrantAuthMethodId<T>,
-> = OAuthDeviceAuthPollFlowArgs & ConnectorAuthMethodClientArgs<T, Method>;
+  ConnectorRef extends
+    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth">,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorRef,
+    "device-auth"
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "device-auth">,
+> = OAuthDeviceAuthPollFlowArgs &
+  ConnectorAuthMethodClientArgs<ConnectorRef, AuthMethodId>;

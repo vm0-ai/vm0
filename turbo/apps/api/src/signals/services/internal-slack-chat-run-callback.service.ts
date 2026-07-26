@@ -162,7 +162,6 @@ async function loadSlackChatDeliveryContext(args: {
         eq(slackChatThreadRoutes.channelId, payload.channelId),
         eq(slackChatThreadRoutes.threadTs, payload.threadTs),
         eq(slackChatThreadRoutes.userId, run.userId),
-        eq(slackChatThreadRoutes.backend, "canonical"),
         eq(slackOrgConnections.vm0UserId, run.userId),
         eq(slackOrgInstallations.orgId, run.orgId),
       ),
@@ -190,7 +189,7 @@ async function countCanonicalSlackMentioners(args: {
         eq(slackOrgConnections.slackWorkspaceId, args.workspaceId),
         eq(slackChatThreadRoutes.channelId, args.channelId),
         eq(slackChatThreadRoutes.threadTs, args.threadTs),
-        eq(slackChatThreadRoutes.backend, "canonical"),
+        isNotNull(slackChatThreadRoutes.chatThreadId),
       ),
     );
   return row?.count ?? 0;
@@ -356,7 +355,6 @@ export async function deliverSlackChatAdmissionFailure(args: {
           eq(slackChatThreadRoutes.channelId, args.channelId),
           eq(slackChatThreadRoutes.threadTs, args.threadTs),
           eq(slackChatThreadRoutes.userId, args.userId),
-          eq(slackChatThreadRoutes.backend, "canonical"),
           eq(slackOrgConnections.vm0UserId, args.userId),
           eq(slackOrgInstallations.orgId, args.orgId),
         ),

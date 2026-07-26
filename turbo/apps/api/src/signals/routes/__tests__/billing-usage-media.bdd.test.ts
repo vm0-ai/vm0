@@ -522,10 +522,10 @@ describe("BILL-02: usage, insights, attribution, and model stats reads", () => {
     expect(modelRankings.body.period).toBe("week");
     expect(Array.isArray(modelRankings.body.rows)).toBeTruthy();
 
-    context.mocks.clerk.users.updateUser.mockResolvedValue({});
+    context.mocks.clerk.users.updateUserMetadata.mockResolvedValue({});
     const attribution = await api.recordSignupAttribution(admin);
     expect(attribution.body).toStrictEqual({ recorded: true });
-    expect(context.mocks.clerk.users.updateUser).toHaveBeenCalledWith(
+    expect(context.mocks.clerk.users.updateUserMetadata).toHaveBeenCalledWith(
       admin.userId,
       expect.objectContaining({
         privateMetadata: expect.objectContaining({

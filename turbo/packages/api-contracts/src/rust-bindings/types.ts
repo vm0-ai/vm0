@@ -305,6 +305,9 @@ export const rustTypeBindings = [
         ],
         fields: {
           runId: ["Agent run identifier bound to the sandbox token."],
+          storageId: [
+            "Canonical Storage identifier authorized by the agent run.",
+          ],
           storageName: ["Storage name being prepared for upload."],
           storageType: ["Storage kind encoded by the TypeScript contract."],
           files: ["Content-addressed file list included in the upload."],
@@ -386,6 +389,9 @@ export const rustTypeBindings = [
         ],
         fields: {
           runId: ["Agent run identifier bound to the sandbox token."],
+          storageId: [
+            "Canonical Storage identifier authorized by the agent run.",
+          ],
           storageName: ["Storage name being committed."],
           storageType: ["Storage kind encoded by the TypeScript contract."],
           versionId: ["Storage version identifier being committed."],

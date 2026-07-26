@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.192.0",
+  "version": "1.193.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,6 +11,14 @@
     "./connector-utils": {
       "import": "./src/connector-utils.ts",
       "types": "./src/connector-utils.ts"
+    },
+    "./connector-auth-method": {
+      "import": "./src/connector-auth-method.ts",
+      "types": "./src/connector-auth-method.ts"
+    },
+    "./connector-config": {
+      "import": "./src/connector-config.ts",
+      "types": "./src/connector-config.ts"
     },
     "./connector-search": {
       "import": "./src/connector-search.ts",

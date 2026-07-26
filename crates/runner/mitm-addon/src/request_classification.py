@@ -242,22 +242,33 @@ def classification_for_request(
     api_url: str,
     tls_admission: TlsAdmissionView | None,
 ) -> RequestClassification:
-    """Return the classification the request hook should use.
+    """Return a classification valid for the current request state.
 
     The request hook reuses a header-phase cached classification when one was
-    intentionally carried forward. Otherwise, it classifies the request using
-    the current flow state.
+    intentionally carried forward. Cached firewall allows are revalidated
+    against the current runtime destination because the endpoint may have
+    changed between hooks. Otherwise, this classifies the current flow.
     """
 
     classification = cached_classification(flow)
-    if classification is not None:
-        return classification
-    return classify_request(
-        flow,
-        registry_path=registry_path,
-        api_url=api_url,
-        tls_admission=tls_admission,
-    )
+    if classification is None:
+        return classify_request(
+            flow,
+            registry_path=registry_path,
+            api_url=api_url,
+            tls_admission=tls_admission,
+        )
+    if isinstance(classification, FirewallAllow | FirewallPolicyAllow):
+        public_destination_denial = current_public_destination_denial(
+            flow,
+            classification.firewall_allow,
+        )
+        if public_destination_denial is not None:
+            return PublicDestinationDenied(
+                vm_info=classification.vm_info,
+                public_destination_denial=public_destination_denial,
+            )
+    return classification
 
 
 def classify_request(
@@ -459,11 +470,10 @@ def current_public_destination_denial(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
 ) -> PublicDestinationDenial | None:
-    """Revalidate a firewall allow against the current runtime destination.
+    """Revalidate a cached firewall allow against the current runtime destination.
 
-    This is required even when `requestheaders()` cached a `firewall_allow`,
-    because header-phase publicDestination checks may defer unresolved runtime
-    hostnames until the request phase can observe the final destination.
+    Header-phase publicDestination checks may defer unresolved runtime hostnames
+    until the request phase can observe the final destination.
     """
 
     trusted_authority_host = flow_metadata.trusted_authority_host(flow.metadata)

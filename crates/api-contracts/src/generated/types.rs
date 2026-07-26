@@ -187,6 +187,9 @@ pub mod webhooks {
                 pub struct Request {
                     /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
+                    /// Canonical Storage identifier authorized by the agent run.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pub storage_id: Option<String>,
                     /// Storage name being committed.
                     pub storage_name: String,
                     /// Storage kind encoded by the TypeScript contract.
@@ -243,6 +246,9 @@ pub mod webhooks {
                 pub struct Request {
                     /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
+                    /// Canonical Storage identifier authorized by the agent run.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pub storage_id: Option<String>,
                     /// Storage name being prepared for upload.
                     pub storage_name: String,
                     /// Storage kind encoded by the TypeScript contract.

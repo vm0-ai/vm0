@@ -1058,16 +1058,15 @@ export function createBddIntegrationApi(context: TestContext) {
       return response.body;
     },
 
-    async admitSlackEventThroughPreviousReader(args: {
+    async seedSlackRouteThroughPreviousWriter(args: {
       readonly actor: ApiTestUser;
       readonly teamId: string;
-      readonly routeId: string;
-      readonly eventId: string;
-      readonly payload: string;
-      readonly isRetry: boolean;
+      readonly connectionId: string;
+      readonly channelId: string;
+      readonly threadTs: string;
     }): Promise<void> {
       if (!args.actor.orgId) {
-        throw new Error("Expected previous-reader actor to belong to an org");
+        throw new Error("Expected previous-writer actor to belong to an org");
       }
       const client = setupApp({ context })(testSlackStateContract);
       await accept(
@@ -1076,11 +1075,10 @@ export function createBddIntegrationApi(context: TestContext) {
             team_id: args.teamId,
             org_id: args.actor.orgId,
             vm0_user_id: args.actor.userId,
-            previous_reader_ingress: {
-              route_id: args.routeId,
-              event_id: args.eventId,
-              payload: args.payload,
-              is_retry: args.isRetry,
+            previous_writer_route: {
+              connection_id: args.connectionId,
+              channel_id: args.channelId,
+              thread_ts: args.threadTs,
             },
           },
         }),

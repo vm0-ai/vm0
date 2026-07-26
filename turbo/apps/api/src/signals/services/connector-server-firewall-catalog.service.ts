@@ -4,8 +4,8 @@ import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identi
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-utils";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-auth-method";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import {
   createFirewallMetadataPolicyResolver,
   getFirewallPermissionSummary,

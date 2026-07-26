@@ -34,11 +34,6 @@ const completeRequestSchema = z.object({
   contentType: z.string().min(1).max(200).optional(),
 });
 
-const htmlDomEditSnapshotRequestSchema = z.object({
-  filename: z.string().min(1).max(255),
-  html: z.string().min(1),
-});
-
 const completeResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
@@ -106,21 +101,6 @@ export const zeroUploadsContract = c.router({
       502: apiErrorSchema,
     },
     summary: "Import a remote image into user artifact storage",
-  },
-  htmlDomEditSnapshot: {
-    method: "POST",
-    path: "/api/zero/uploads/html-dom-edit-snapshot",
-    headers: authHeadersSchema,
-    body: htmlDomEditSnapshotRequestSchema,
-    responses: {
-      200: completeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upload an HTML DOM edit snapshot",
   },
 });
 

@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.323.1",
+  "version": "1.326.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,7 +20,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
     "@axiomhq/js": "^1.5.0",
     "@axiomhq/logging": "^0.1.6",
-    "@clerk/backend": "^3.4.13",
+    "@clerk/backend": "^3.13.1",
     "@hono/node-server": "^2.0.10",
     "@hono/otel": "^1.1.1",
     "@opentelemetry/api": "^1.9.1",

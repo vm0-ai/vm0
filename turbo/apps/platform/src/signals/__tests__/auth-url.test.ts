@@ -108,6 +108,7 @@ describe("platform auth URLs", () => {
     expect(resolveClerkSatelliteConfig()).toStrictEqual({
       domain: "app.okou.ai",
       isSatellite: true,
+      satelliteAutoSync: true,
     });
     const allowedOrigins = getAllowedAuthRedirectOrigins();
     expect(
@@ -134,6 +135,7 @@ describe("platform auth URLs", () => {
     expect(resolveClerkSatelliteConfig()).toStrictEqual({
       domain: "app.okou.ai",
       isSatellite: true,
+      satelliteAutoSync: true,
     });
   });
 
@@ -213,6 +215,10 @@ describe("platform auth redirects", () => {
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
+      ui: expect.objectContaining({
+        ClerkUI: expect.any(Function),
+        version: "1.26.0",
+      }),
     });
   });
 
@@ -241,8 +247,13 @@ describe("platform auth redirects", () => {
     expect(mockedClerk.load).toHaveBeenCalledWith({
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       isSatellite: true,
+      satelliteAutoSync: true,
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
+      ui: expect.objectContaining({
+        ClerkUI: expect.any(Function),
+        version: "1.26.0",
+      }),
     });
   });
 });

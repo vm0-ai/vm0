@@ -71,6 +71,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-thread-session-binding"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("insert-legacy-artifact-catalog-file"),
     user_id: z.string(),
     org_id: z.string(),
@@ -87,6 +91,13 @@ export const testRuntimeStateActionResponseSchema = z.object({
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
   api_started_at: z.string().nullable().optional(),
+  thread_session_binding: z
+    .object({
+      agent_session_id: z.uuid().nullable(),
+      agent_session_run_id: z.uuid().nullable(),
+      run_session_id: z.uuid().nullable(),
+    })
+    .optional(),
   file_id: z.uuid().optional(),
   storage_persistence: z
     .object({

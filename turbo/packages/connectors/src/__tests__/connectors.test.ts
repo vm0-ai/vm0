@@ -87,16 +87,12 @@ import {
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
-  buildConnectorAuthCodeAuthorizationUrl,
   buildConnectorAuthCodeAuthorizationUrlWithMethod,
   buildConnectorOpenIdAuthAuthorizationUrlWithMethod,
   getConnectorAuthProviderRegistryCapabilities,
-  pollConnectorDeviceAuthorization,
-  refreshConnectorAuthProviderAccessToken,
+  pollConnectorDeviceAuthorizationWithMethod,
   refreshConnectorAuthProviderAccessTokenWithMethod,
-  revokeConnectorAuthMethodAccessToken,
   revokeConnectorAuthMethodAccessTokenWithMethod,
-  startConnectorDeviceAuthorization,
   startConnectorDeviceAuthorizationWithMethod,
   type ConnectorAuthProviderRegistryCapability,
 } from "../auth-providers/connector-auth";
@@ -114,6 +110,89 @@ import { loadRequiredConnectorFirewall } from "./firewall-test-helpers";
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
+}
+
+function testProviderMethodSelection(type: ConnectorType, authMethod: string) {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    throw new Error(`Missing test auth method ${type}:${authMethod}`);
+  }
+  return { connectorRef: type, authMethodId: authMethod, method };
+}
+
+function buildConnectorAuthCodeAuthorizationUrl(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly authClient: ConnectorAuthClient;
+  readonly redirectUri: string;
+  readonly state: string;
+}) {
+  return buildConnectorAuthCodeAuthorizationUrlWithMethod({
+    ...testProviderMethodSelection(args.type, args.authMethod),
+    authClient: args.authClient,
+    redirectUri: args.redirectUri,
+    state: args.state,
+  });
+}
+
+function startConnectorDeviceAuthorization(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly authClient: ConnectorAuthClient;
+  readonly options: Readonly<Record<string, string>>;
+}) {
+  return startConnectorDeviceAuthorizationWithMethod({
+    ...testProviderMethodSelection(args.type, args.authMethod),
+    authClient: args.authClient,
+    options: args.options,
+  });
+}
+
+function pollConnectorDeviceAuthorization(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly authClient: ConnectorAuthClient;
+  readonly deviceCode: string;
+  readonly pollState?: string;
+}) {
+  return pollConnectorDeviceAuthorizationWithMethod({
+    ...testProviderMethodSelection(args.type, args.authMethod),
+    authClient: args.authClient,
+    deviceCode: args.deviceCode,
+    ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
+  });
+}
+
+function refreshConnectorAuthProviderAccessToken(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly authClient?: ConnectorAuthClient;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}) {
+  return refreshConnectorAuthProviderAccessTokenWithMethod({
+    ...testProviderMethodSelection(args.type, args.authMethod),
+    ...(args.authClient === undefined ? {} : { authClient: args.authClient }),
+    inputs: args.inputs,
+    signal: args.signal,
+  });
+}
+
+function revokeConnectorAuthMethodAccessToken(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly readEnv: ConnectorEnvReader;
+  readonly signal: AbortSignal;
+  readonly loadInputs: () =>
+    | Readonly<Record<string, string>>
+    | Promise<Readonly<Record<string, string>>>;
+}) {
+  return revokeConnectorAuthMethodAccessTokenWithMethod({
+    ...testProviderMethodSelection(args.type, args.authMethod),
+    readEnv: args.readEnv,
+    signal: args.signal,
+    loadInputs: args.loadInputs,
+  });
 }
 
 function getApiTokenManualGrantFields(
@@ -1444,26 +1523,6 @@ describe("connector selected auth method capability checks", () => {
         loadInputs: () => {
           loadedInputs = true;
           return { accessToken: "notion-access-token" };
-        },
-      }),
-    ).resolves.toStrictEqual({ status: "unsupported" });
-    expect(loadedInputs).toBe(false);
-  });
-
-  it("returns unsupported for selected auth methods without token revoke", async () => {
-    let loadedInputs = false;
-
-    await expect(
-      revokeConnectorAuthMethodAccessToken({
-        type: "github",
-        authMethod: "api-token",
-        readEnv: () => {
-          return undefined;
-        },
-        signal: testRefreshSignal(),
-        loadInputs: () => {
-          loadedInputs = true;
-          return { accessToken: "gh-access-token" };
         },
       }),
     ).resolves.toStrictEqual({ status: "unsupported" });

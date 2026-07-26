@@ -42,7 +42,6 @@ import {
   createConnectorBddApi,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
-  mockGoogleDriveSlidesUpload,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -55,7 +54,6 @@ import {
   generatedStripeSubscriptionId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
  * CHAT-01 / CHAT-03: chat thread lifecycle beyond the mutation chain that
@@ -2498,125 +2496,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
-  }, 120_000);
-
-  it("uploads a presentation to Google Slides behind a feature flag", async () => {
-    const { actor } = await entitledChatActor("Slides upload agent");
-    const objectStore = chatCallbacks.acceptChatObjectStorage();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("entitled actor is missing an organization");
-    }
-    const threadId = randomUUID();
-    // Gated off by default: the feature switch hides the endpoint.
-    const gated = await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-      actor,
-      threadId,
-      randomUUID(),
-      [403],
-    );
-    expectApiError(gated.body);
-    expect(gated.body.error.code).toBe("FORBIDDEN");
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.PresentationExport]: true },
-    );
-
-    // Enabled, but Google Drive is not connected yet.
-    const noDrive =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [400],
-      );
-    expectApiError(noDrive.body);
-    expect(noDrive.body.error.message).toBe(
-      "Connect Google Drive before uploading to Google Slides",
-    );
-
-    // Connect Google Drive through the public OAuth routes.
-    mockGoogleDriveConnectorOAuth();
-    const start = await connectorsApi.startOauth(
-      actor,
-      "google-drive",
-      "oauth",
-    );
-    await connectorsApi.completeOauthCallback("google-drive", {
-      code: "drive-ok",
-      state: stateFromAuthorizationUrl(start.authorizationUrl),
-    });
-
-    const missingUpload =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [404],
-      );
-    expectApiError(missingUpload.body);
-    expect(missingUpload.body.error.message).toBe(
-      "Presentation upload not found",
-    );
-
-    const oversizedUploadId = randomUUID();
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      key: `artifacts/${encodeURIComponent(actor.userId)}/${oversizedUploadId}/too-large.pptx`,
-      size: 100 * 1024 * 1024 + 1,
-    });
-    const oversized =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        oversizedUploadId,
-        [400],
-      );
-    expectApiError(oversized.body);
-    expect(oversized.body.error.message).toBe(
-      "Presentation file is too large (max 100 MB)",
-    );
-
-    // A PPTX larger than Vercel's request-body limit is staged in R2, then
-    // Drive converts it into a native Google Slides deck via resumable upload.
-    const stagedPptx = new Uint8Array(5 * 1024 * 1024);
-    stagedPptx.set([0x50, 0x4b, 0x03, 0x04]);
-    const prepared = await chat.prepareUpload(actor, {
-      filename: "large-deck.pptx",
-      contentType:
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      size: stagedPptx.byteLength,
-    });
-    const stagedKey = `artifacts/${encodeURIComponent(actor.userId)}/${prepared.id}/large-deck.pptx`;
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      body: stagedPptx,
-      key: stagedKey,
-      size: stagedPptx.byteLength,
-    });
-    const uploadRecorder = mockGoogleDriveSlidesUpload();
-    const uploaded =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        prepared.id,
-        [200],
-      );
-    expect(uploaded.body).toStrictEqual({
-      id: "slides-file-1",
-      name: "deck",
-      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
-    });
-    expect(uploadRecorder.metadataBodies[0]).toContain(
-      "application/vnd.google-apps.presentation",
-    );
-    expect(uploadRecorder.uploadBodies[0]).toHaveLength(stagedPptx.byteLength);
-    expect(uploadRecorder.uploadBodies[0]?.slice(0, 4)).toStrictEqual(
-      stagedPptx.slice(0, 4),
-    );
-    expect(objectStore.deletedKeys).toContain(stagedKey);
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

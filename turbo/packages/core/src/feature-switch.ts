@@ -230,27 +230,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.CanonicalSlackIngress]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Route newly admitted per-user Slack threads through canonical chat ingress.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CanonicalSlackAssets]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Canonicalize direct Slack inputs and run-scoped Slack file publications.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroWeather]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -356,6 +335,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ClaudeSessionPruning]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Prune oversized Claude Code checkpoint histories to the latest native compact generation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -381,13 +367,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
-  },
-  [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
@@ -450,13 +429,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PresentationExport]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

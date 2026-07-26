@@ -239,7 +239,7 @@ pub struct GuestConfig {
     pub mock_codex_path: String,
     pub home_dir: String,
     pub artifacts: Vec<ArtifactEnv>,
-    pub feature_flags: String,
+    pub feature_flags: HashMap<String, bool>,
     pub codex_runtime_config: String,
     pub stuck_tool_timeout_secs: u64,
     pub post_result_sigterm_grace: Duration,
@@ -280,6 +280,12 @@ impl GuestConfig {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
         let artifacts = parse_artifacts_value(&payload.artifacts)
             .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
+        let feature_flags = parse_feature_flags_value(&payload.feature_flags).map_err(|e| {
+            format!(
+                "parse {} JSON: {e}",
+                guest_contracts::env::FEATURE_FLAGS_ENV
+            )
+        })?;
 
         Ok(Self {
             run_id: raw.run_id,
@@ -314,7 +320,7 @@ impl GuestConfig {
             ),
             home_dir,
             artifacts,
-            feature_flags: payload.feature_flags,
+            feature_flags,
             codex_runtime_config: payload.codex_runtime_config,
             stuck_tool_timeout_secs: u64_value_or(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
@@ -378,6 +384,13 @@ fn parse_artifacts_value(raw: &str) -> Result<Vec<ArtifactEnv>, serde_json::Erro
         return Ok(Vec::new());
     }
     serde_json::from_str::<Vec<ArtifactEnv>>(raw)
+}
+
+fn parse_feature_flags_value(raw: &str) -> Result<HashMap<String, bool>, serde_json::Error> {
+    if raw.is_empty() {
+        return Ok(HashMap::new());
+    }
+    serde_json::from_str(raw)
 }
 
 #[derive(Clone, Copy)]
@@ -847,7 +860,7 @@ mod tests {
         assert_eq!(config.tools, "Bash");
         assert_eq!(config.settings, "{}");
         assert_eq!(config.artifacts.len(), 1);
-        assert_eq!(config.feature_flags, r#"{"flag":true}"#);
+        assert_eq!(config.feature_flags.get("flag"), Some(&true));
         assert_eq!(config.codex_runtime_config, r#"{"providerId":"minimax"}"#);
         assert!(!path.exists());
         assert!(!parent.exists());

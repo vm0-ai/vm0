@@ -34,7 +34,6 @@
       "project": ["**/*.{ts,tsx}"],
       "ignore": [
         "src/views/zero-page/zero-sidebar-account.tsx",
-        "src/views/zero-page/html-dom-edit-types.ts",
         "src/views/zero-page/zero-sidebar-chat-list.tsx",
         "src/views/zero-page/zero-sidebar-pinned.tsx",
         "src/views/zero-page/zero-sidebar-scroll.tsx",
@@ -42,8 +41,8 @@
       ],
       "ignoreDependencies": [
         "@sentry/cli",
+        "@solana/web3.js",
         "idb",
-        "dom-to-pptx",
         "katex",
         "tailwindcss",
         "typescript-eslint",

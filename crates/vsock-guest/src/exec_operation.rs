@@ -1,3 +1,44 @@
+//! Guest-side exec operation lifecycle.
+//!
+//! The connection admits an exec request by acquiring an [`OperationGuard`],
+//! optionally registering an [`ExecControlGuard`], and adding an
+//! [`ExecOperationRegistration`] whose cancellation token is addressed by the
+//! request sequence. The worker then validates the request, spawns the child,
+//! and advances through [`ExecSetup`], [`ExecSetupWithStdout`], and
+//! [`RunningExec`]. These setup states record which process and I/O resources
+//! must be recovered if the next worker cannot be started.
+//!
+//! # Protocol lifecycle
+//!
+//! One-shot operations do not send `exec_started`. Supervised operations send
+//! it after the child is spawned and before the stdin or output workers start.
+//! Only supervised operations may omit a timeout or enable exec control.
+//! Both lifecycles normally finish by sending one `exec_result`, including
+//! controlled start and wait failures. If the supervised `exec_started` write
+//! fails, the child and containment are cleaned and operation ownership is
+//! released without attempting `exec_result`, because the shared connection
+//! can no longer deliver it reliably.
+//!
+//! # Cancellation and cleanup
+//!
+//! Running operations observe their timeout, explicit cancellation, and
+//! connection cancellation; output delivery failures also request operation
+//! cancellation. Setup failures kill and reap the child, force process
+//! containment cleanup, and cancel or join every I/O worker started so far.
+//! Running completion coordinates stdin cancellation with child reaping, then
+//! cleans containment, joins stdin, waits for and joins both output drains, and
+//! only then resolves captured output and the terminal result.
+//!
+//! # Completion boundary
+//!
+//! Normal worker result paths use [`GuestWriter::write_frame_after_lock`] to
+//! release the exec-control, quiesce, and operation-registration ownership
+//! while holding the shared writer lock immediately before `exec_result` is
+//! written. A later lifecycle response therefore cannot overtake the terminal
+//! frame. Encoding, write, and worker-start failures still release the
+//! ownership they hold through explicit cleanup or the guards' drop fallbacks,
+//! even when no terminal frame can be delivered.
+
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -123,6 +164,13 @@ impl Drop for ExecOperationRegistration {
     }
 }
 
+/// Borrowed coordinator for terminal results and operation-state release.
+///
+/// Start failures, wait failures, and normal completion all converge here.
+/// Normal result paths release exec-control, quiesce, and operation-registry
+/// ownership at the shared writer-lock boundary. If encoding or writing the
+/// result fails, the remaining ownership is still released; the supervised
+/// started-acknowledgement failure uses the explicit no-result release path.
 #[derive(Clone, Copy)]
 struct ExecCompletion<'a> {
     seq: u32,
@@ -396,6 +444,14 @@ impl ExecCompletion<'_> {
     }
 }
 
+/// Setup state after the child is spawned but before both output drains exist.
+///
+/// This state owns the child, process containment, optional stdin writer, and
+/// drain coordination accumulated so far. A consuming setup-failure path
+/// cancels pending work, kills and reaps the child, force-cleans containment,
+/// and joins every worker already started before reporting `WaitFailed`. The
+/// supervised started-acknowledgement failure occurs before I/O workers start
+/// and releases the operation without attempting a terminal result.
 struct ExecSetup {
     child: Child,
     process_containment: ExecProcessContainment,
@@ -498,6 +554,12 @@ impl ExecSetup {
     }
 }
 
+/// Partial setup state in which the stdout drain is running but stderr is not.
+///
+/// Keeping the stdout handle in a distinct state ensures a stderr startup
+/// failure also cleans the base setup resources and joins stdout. Successful
+/// stderr startup consumes this state and transfers both drains to
+/// [`RunningExec`].
 struct ExecSetupWithStdout {
     setup: ExecSetup,
     stdout_handle: JoinHandle<()>,
@@ -579,6 +641,13 @@ impl ExecSetupWithStdout {
     }
 }
 
+/// Fully started exec operation that owns terminal process and I/O cleanup.
+///
+/// `finish` consumes this state while it waits for normal exit, timeout, or
+/// cancellation. It coordinates stdin cancellation with child reaping so a
+/// blocked writer cannot strand completion, cleans process containment, joins
+/// stdin, waits for and joins both output drains, and then delegates the
+/// resolved output and termination to [`ExecCompletion`].
 struct RunningExec {
     child: Child,
     process_containment: ExecProcessContainment,

@@ -173,6 +173,19 @@ export function isDrizzleTableType(
   });
 }
 
+export function isDrizzleSqlType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  return everyConcreteType(checker, type, (member) => {
+    return (
+      isDrizzleWrapperType(checker, member) &&
+      drizzleBrand(checker, member, location) === "SQL"
+    );
+  });
+}
+
 export function isDrizzlePatternOperandType(
   checker: TypeChecker,
   type: Type,

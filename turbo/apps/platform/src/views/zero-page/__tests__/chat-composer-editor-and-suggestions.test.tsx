@@ -282,6 +282,36 @@ describe("chat composer models", () => {
     expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
+  it("does not highlight workflow names inside URLs", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "pr-review",
+          displayName: "PR Review",
+          description: "Review a pull request",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("https://www.vm0.ai/en/use-cases/pr-review");
+
+    expect(editor).toHaveTextContent(
+      "https://www.vm0.ai/en/use-cases/pr-review",
+    );
+    expect(editor.querySelector("span.text-primary")).not.toBeInTheDocument();
+  });
+
   it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");

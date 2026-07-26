@@ -8,7 +8,7 @@ use crate::error::AgentError;
 use crate::{env, paths};
 use guest_common::log_info;
 
-use super::{CliRuntimeConfig, LOG_TAG, codex_runtime_config};
+use super::{CODEX_ANALYTICS_DISABLED_CONFIG, CliRuntimeConfig, LOG_TAG, codex_runtime_config};
 
 pub(super) fn build_cli_command_for_runtime(
     runtime: &CliRuntimeConfig<'_>,
@@ -221,6 +221,8 @@ fn build_codex_args(
 
     args.push("-c".to_string());
     args.push(build_codex_memories_config());
+    args.push("-c".to_string());
+    args.push(CODEX_ANALYTICS_DISABLED_CONFIG.to_string());
 
     if startup_config_overrides.is_empty() && !openai_base_url.is_empty() {
         args.push("-c".to_string());

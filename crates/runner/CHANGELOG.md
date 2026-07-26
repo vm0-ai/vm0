@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.148.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.7...runner-rs-v0.148.8) (2026-07-26)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve usage when diagnostic type overflows ([#23115](https://github.com/vm0-ai/vm0/issues/23115)) ([bde3c3a](https://github.com/vm0-ai/vm0/commit/bde3c3ab5c210677df510c11639813907d898bdf))
+
+
+### Documentation
+
+* **python:** describe firewall allow auth handling ([#23113](https://github.com/vm0-ai/vm0/issues/23113)) ([74955f5](https://github.com/vm0-ai/vm0/commit/74955f580da930ee6eda1849624dbf4007f94d29))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid duplicate public destination validation ([#23117](https://github.com/vm0-ai/vm0/issues/23117)) ([362e539](https://github.com/vm0-ai/vm0/commit/362e53955ec91226c1ddd85809ca9b854e2d2ae1))
+
+## [0.148.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.6...runner-rs-v0.148.7) (2026-07-26)
+
+## [0.148.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.5...runner-rs-v0.148.6) (2026-07-26)
+
+
+### Documentation
+
+* **mitm-addon:** clarify decompress_body test contract ([#23108](https://github.com/vm0-ai/vm0/issues/23108)) ([f0e39ab](https://github.com/vm0-ai/vm0/commit/f0e39abf0779bfdb390feecd5dd86d7d9e7ee077))
+
+## [0.148.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.4...runner-rs-v0.148.5) (2026-07-26)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#23091](https://github.com/vm0-ai/vm0/issues/23091)) ([100f6fe](https://github.com/vm0-ai/vm0/commit/100f6fe7fbb9fd8d84044bf12f1c6633c1c0b025))
+
 ## [0.148.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.3...runner-rs-v0.148.4) (2026-07-25)
 
 

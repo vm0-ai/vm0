@@ -50,10 +50,6 @@ export const selectedArtifactCatalogKind$ = computed((get) => {
   return get(internalArtifactCatalogKind$);
 });
 
-export const selectedArtifactId$ = computed((get) => {
-  return get(internalSelectedArtifactId$);
-});
-
 const resetArtifactCatalogPages$ = command(({ set }) => {
   set(internalArtifactCatalogPages$, []);
   set(internalArtifactCatalogFetchedCursors$, new Set());
@@ -174,7 +170,7 @@ export const loadMoreArtifactCatalog$ = command(
   },
 );
 
-export const selectArtifact$ = command(({ set }, artifactId: string | null) => {
+const selectArtifact$ = command(({ set }, artifactId: string | null) => {
   set(internalSelectedArtifactId$, artifactId);
 });
 
@@ -182,7 +178,7 @@ export const selectArtifact$ = command(({ set }, artifactId: string | null) => {
  * Kind-specific detail for the opened card. Null while nothing is selected, so
  * the list never pays for detail queries it does not render.
  */
-export const selectedArtifactDetail$ = computed(
+const selectedArtifactDetail$ = computed(
   async (get, { signal }): Promise<ArtifactDetail | null> => {
     get(internalArtifactCatalogReload$);
     const artifactId = get(internalSelectedArtifactId$);
@@ -236,7 +232,6 @@ export const openArtifact$ = command(
 
     const preview = artifactDetailPreview(detail);
     const base = {
-      editAvailable: false,
       filename: preview.filename,
       showSizeInSubtitle: false,
       splitViewAvailable: false,

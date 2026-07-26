@@ -183,11 +183,28 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
-    def test_named_terminal_event_with_oversized_type_extracts_usage(self):
-        parse, usage = create_openai_responses_sse_usage_extractor()
+    @pytest.mark.parametrize(
+        "event_prefix",
+        [
+            pytest.param(b"", id="eventless"),
+            pytest.param(b"event: response.completed\n", id="named"),
+        ],
+    )
+    @pytest.mark.parametrize("with_parse_error_callback", [False, True])
+    def test_oversized_type_does_not_change_usage_with_parse_error_callback(
+        self, event_prefix, with_parse_error_callback
+    ):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error if with_parse_error_callback else None
+        )
         parse(
-            b"event: response.completed\n"
-            b'data: {"type":"'
+            event_prefix
+            + b'data: {"type":"'
             + b"x" * 2048
             + b'","response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
         )
@@ -197,6 +214,7 @@ class TestOpenAIResponsesSseUsageExtractor:
             "tokens.input": 9,
             "tokens.output": 4,
         }
+        assert parse_errors == []
 
     def test_eventless_duplicate_unknown_type_keeps_first_type_boundary(self):
         parse, usage = create_openai_responses_sse_usage_extractor()

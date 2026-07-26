@@ -377,10 +377,11 @@ class TestStreamDecodeFeed:
 
 
 class TestDecompressBody:
-    """Direct tests for ``decompress_body`` — the non-streaming one-shot
-    path used by ``extract_anthropic_messages_usage_from_json`` and ``log_connector_usage``
-    to decompress full response bodies (up to
-    ``LARGE_RESPONSE_DECOMPRESS_LIMIT``) for JSON parsing.
+    """Direct tests for the bounded, best-effort, one-shot ``decompress_body`` policy.
+
+    Response-body capture and silent usage extraction share this policy. Diagnostic
+    JSON usage extraction instead uses ``decompress_json_usage_body`` so invalid or
+    incomplete compressed bodies remain observable.
 
     Focus: verify the documented ``max_output`` cap is enforced during
     decompression (not only via after-the-fact slicing). Brotli uses a soft

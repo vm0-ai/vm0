@@ -1,6 +1,6 @@
 import MarkdownPreview, {
   type MarkdownPreviewProps,
-} from "@uiw/react-markdown-preview";
+} from "@uiw/react-markdown-preview/common";
 import { IconLoader2, IconPhoto } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";

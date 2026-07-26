@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { replaceState } from "../signals/location.ts";
 
 export interface MockedInvitation {
   id: string;
@@ -156,6 +157,7 @@ export function clearMockedAuth() {
   mockedClerk.openSignIn.mockReset();
   mockedClerk.openUserProfile.mockReset();
   mockedClerk.setActive.mockReset();
+  mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
@@ -202,6 +204,36 @@ const defaultBuildUrlWithAuthImpl = (to: string) => {
 const defaultLoadImpl = () => {
   return Promise.resolve();
 };
+
+interface MockedSetActiveParams {
+  organization?: string | null;
+  session?: string | null;
+  navigate?: (params: {
+    session: {
+      currentTask?: {
+        key: "choose-organization" | "reset-password" | "setup-mfa";
+      };
+    };
+    decorateUrl: (url: string) => string;
+  }) => void | Promise<unknown>;
+}
+
+async function defaultSetActiveImpl(
+  params: MockedSetActiveParams,
+): Promise<void> {
+  let navigatedTo: string | null = null;
+  await params.navigate?.({
+    session: {},
+    decorateUrl: (url) => {
+      navigatedTo = defaultBuildUrlWithAuthImpl(url);
+      return navigatedTo;
+    },
+  });
+  if (navigatedTo) {
+    replaceState(null, "", navigatedTo);
+  }
+}
+
 const initialize =
   vi.fn<
     (publishableKey: string, options?: { readonly domain?: string }) => void
@@ -254,16 +286,7 @@ export const mockedClerk = {
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
   buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
-  setActive: vi.fn(
-    (params: {
-      organization?: string;
-      session?: string;
-      beforeEmit?: () => void;
-    }) => {
-      params.beforeEmit?.();
-      return Promise.resolve();
-    },
-  ),
+  setActive: vi.fn(defaultSetActiveImpl),
   createOrganization: vi.fn((_params: { name: string; slug: string }) => {
     return Promise.resolve({ id: "new-org-id" });
   }),

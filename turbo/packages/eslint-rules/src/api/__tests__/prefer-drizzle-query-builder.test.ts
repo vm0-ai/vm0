@@ -443,6 +443,8 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
           ) AS consumption(window_id, units_applied)
           WHERE \${allowanceWindows.id} = consumption.window_id
         \`;
+        declare function expose(value: unknown): void;
+        expose(query);
         await db.execute(query);
       `,
     },
@@ -558,6 +560,8 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
           DELETE FROM cleanup_rows
           WHERE expires_at <= \${cutoff}
         \`;
+        declare function expose(value: unknown): void;
+        expose(query);
         await db.execute(query);
       `,
     },
@@ -674,6 +678,8 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
             credits = org_metadata.credits + \${amount},
             updated_at = now()
         \`;
+        declare function expose(value: unknown): void;
+        expose(query);
         await db.execute(query);
       `,
     },
@@ -1265,6 +1271,22 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
+        const source = sql\`runs\`;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${source}
+            WHERE \${eq(runs.id, threadId)}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
         await executeRawRows(
           db,
           sql\`SELECT 1 FROM \${runs} WHERE \${eq(runs.id, 1)} LIMIT 1\`,
@@ -1407,6 +1429,8 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         const lockingQuery = ${runnerLockingQuery};
+        declare function expose(value: unknown): void;
+        expose(lockingQuery);
         await executeRawRows(db, lockingQuery, rowSchema);
       `,
     },
@@ -1733,8 +1757,121 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         db.insert(users).select(${scalarQuery});
       `,
     },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        declare const chooseDelete: boolean;
+        const query = chooseDelete
+          ? sql\`
+              DELETE FROM \${cleanupRows}
+              WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+            \`
+          : sql\`SELECT 1\`;
+        await db.execute(query);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const parts = [
+          sql\`DELETE FROM \${cleanupRows}\`,
+          sql\` WHERE \${cleanupRows.expiresAt} <= \${cutoff}\`,
+        ];
+        parts.push(sql\` RETURNING \${cleanupRows.id}\`);
+        await db.execute(sql.join(parts));
+      `,
+    },
   ],
   invalid: [
+    {
+      code: `${deletePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        const query: SQL = sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`;
+        await db.execute(query);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(
+          sql.join([
+            sql\`DELETE FROM cleanup_rows\`,
+            sql\` WHERE expires_at <= \${cutoff}\`,
+          ]),
+        );
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        declare const firstPredicate: boolean;
+        const query = firstPredicate
+          ? sql\`
+              DELETE FROM \${cleanupRows}
+              WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+            \`
+          : sql\`
+              DELETE FROM \${cleanupRows}
+              WHERE \${cleanupRows.id} > \${0}
+            \`;
+        await db.execute(query);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        function deleteBefore(
+          table: typeof cleanupRows,
+          column: typeof cleanupRows.expiresAt,
+          value: Date,
+        ): SQL {
+          return sql\`
+            DELETE FROM \${table}
+            WHERE \${column} <= \${value}
+          \`;
+        }
+        await db.execute(
+          deleteBefore(cleanupRows, cleanupRows.expiresAt, cutoff),
+        );
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const parts = [
+          sql\`DELETE FROM \${cleanupRows}\`,
+          sql\` WHERE \${cleanupRows.expiresAt} <= \${cutoff}\`,
+        ];
+        await db.execute(sql.join(parts));
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const table = sql\`\${cleanupRows}\`;
+        await db.execute(sql\`
+          \${sql.empty()}DELETE FROM \${table}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        const query: SQL = ${runnerLockingQuery};
+        await executeRawRows(db, query, rowSchema);
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
+    },
     {
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql } from "drizzle-orm";
@@ -2338,6 +2475,24 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       `,
       errors: [
         { messageId: "structuredScalarQuery" },
+        { messageId: "structuredScalarQuery" },
+        { messageId: "structuredScalarQuery" },
+      ],
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        const selectedValue = flag ? ${mappedScalarQuery} : users.id;
+        function selectedFields() {
+          return flag
+            ? { value: users.id }
+            : { value: ${mappedScalarQuery} };
+        }
+        db.select({ value: selectedValue });
+        db.select(selectedFields());
+      `,
+      errors: [
         { messageId: "structuredScalarQuery" },
         { messageId: "structuredScalarQuery" },
       ],

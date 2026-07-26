@@ -378,18 +378,6 @@ export {
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
 export {
-  testSlackDispatchProbeBodySchema,
-  testSlackDispatchProbeContract,
-  testSlackDispatchProbeErrorSchema,
-  testSlackDispatchProbeFailureResponseSchema,
-  testSlackDispatchProbeResponseSchema,
-  testSlackDispatchProbeSuccessResponseSchema,
-  type TestSlackDispatchProbeBody,
-  type TestSlackDispatchProbeContract,
-  type TestSlackDispatchProbeError,
-  type TestSlackDispatchProbeResponse,
-} from "./test-slack-dispatch-probe";
-export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,
@@ -647,7 +635,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
   type WebsiteGenerationTemplateRequest,
@@ -684,7 +671,6 @@ export {
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
-  type HtmlArtifactEditSnapshot,
 } from "./chat-threads";
 export {
   runnersPollContract,
