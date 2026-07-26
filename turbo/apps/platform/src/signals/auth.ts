@@ -322,7 +322,7 @@ export const clerk$ = computed(async () => {
     ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
     : new Clerk(publishableKey);
   await clerkInstance.load({
-    ui: { ClerkUI },
+    ui,
     ...(satelliteConfig
       ? {
           isSatellite: true,
