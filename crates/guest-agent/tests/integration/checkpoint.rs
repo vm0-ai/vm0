@@ -8,12 +8,19 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
     ffi::OsString,
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
 };
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
 
 fn runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, String> {
     guest_agent::run_context::GuestRuntime::from_process_env()
+}
+
+fn set_claude_session_pruning(runtime: &mut guest_agent::run_context::GuestRuntime, enabled: bool) {
+    runtime
+        .config
+        .feature_flags
+        .insert("claudeSessionPruning".to_string(), enabled);
 }
 
 fn session_file_paths() -> (String, String) {
@@ -95,6 +102,65 @@ fn write_literal_session_history(
     Ok(dir)
 }
 
+fn write_prunable_claude_history(session_id: &str) -> Result<(tempfile::TempDir, Vec<u8>), String> {
+    let boundary_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    let summary_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    let records = [
+        json!({
+            "type": "system",
+            "subtype": "compact_boundary",
+            "sessionId": session_id,
+            "uuid": boundary_id,
+            "parentUuid": null,
+            "logicalParentUuid": "11111111-1111-4111-8111-111111111111",
+            "isSidechain": false,
+            "version": "2.1.220"
+        }),
+        json!({
+            "type": "user",
+            "sessionId": session_id,
+            "uuid": summary_id,
+            "parentUuid": boundary_id,
+            "isCompactSummary": true,
+            "message": {"role": "user", "content": "retained summary"}
+        }),
+    ];
+    let mut candidate = Vec::new();
+    for record in records {
+        let mut line =
+            serde_json::to_vec(&record).map_err(|error| format!("encode history: {error}"))?;
+        line.push(b'\n');
+        candidate.extend_from_slice(&line);
+    }
+
+    let history_dir =
+        tempfile::tempdir().map_err(|error| format!("create history dir: {error}"))?;
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let mut history_file =
+        std::fs::File::create(&history_path).map_err(|error| format!("create history: {error}"))?;
+    history_file
+        .set_len(guest_session_prune::CLAUDE_COMPACT_GENERATION_MAX_BYTES + 1)
+        .map_err(|error| format!("size history: {error}"))?;
+    history_file
+        .seek(SeekFrom::End(0))
+        .map_err(|error| format!("seek history: {error}"))?;
+    history_file
+        .write_all(b"\n")
+        .and_then(|()| history_file.write_all(&candidate))
+        .and_then(|()| history_file.flush())
+        .map_err(|error| format!("write history: {error}"))?;
+
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, session_id)
+        .map_err(|error| format!("write session id: {error}"))?;
+    guest_agent::paths::write_private(
+        &session_history_path_file,
+        history_path.to_string_lossy().as_ref(),
+    )
+    .map_err(|error| format!("write history marker: {error}"))?;
+    Ok((history_dir, candidate))
+}
+
 fn zstd_session_history_for_test(history: &[u8]) -> std::io::Result<Vec<u8>> {
     zstd::stream::encode_all(history, 3)
 }
@@ -158,6 +224,247 @@ fn upload_gzip_validation_response(
 // =========================================================================
 // Success checkpoint
 // =========================================================================
+
+#[tokio::test]
+async fn success_checkpoint_preserves_oversized_claude_history_when_pruning_disabled() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, false);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, _) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"rawSize":{source_size}}}"#))
+            .json_body_includes(r#"{"encoding":"zstd"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true, "encoding": "zstd"}));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-unpruned-claude"}));
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+
+    let identity_bytes =
+        std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
+    let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
+    assert_eq!(identity.history_size_bytes, source_size);
+}
+
+#[tokio::test]
+async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let history_hash = hex::encode(Sha256::digest(&candidate));
+    let history_size = candidate.len();
+    let upload_url = server.url("/test/pruned-claude-history-upload");
+    let prepare_history_path = history_path.clone();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
+            .json_body_includes(r#"{"encoding":"identity"}"#);
+        then.respond_with(move |_| {
+            if std::fs::metadata(&prepare_history_path)
+                .is_ok_and(|metadata| metadata.len() == source_size)
+            {
+                json_http_response(
+                    200,
+                    json!({
+                        "presignedUrl": upload_url.clone(),
+                        "existing": false
+                    }),
+                )
+            } else {
+                http_status(500)
+            }
+        });
+    });
+    let upload_len = history_size.to_string();
+    let upload_body = candidate.clone();
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/pruned-claude-history-upload")
+            .header("Content-Type", "application/octet-stream");
+        then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
+    });
+    let checkpoint_history_path = history_path.clone();
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#))
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.respond_with(move |_| {
+            if std::fs::metadata(&checkpoint_history_path)
+                .is_ok_and(|metadata| metadata.len() == source_size)
+            {
+                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-claude"}))
+            } else {
+                http_status(500)
+            }
+        });
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::read(&history_path).unwrap(), candidate);
+
+    let identity_bytes =
+        std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
+    let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
+    assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
+    assert_eq!(identity.history_size_bytes, history_size as u64);
+    assert_eq!(identity.history_hash, history_hash);
+    assert_eq!(
+        std::path::Path::new(&identity.history_marker_payload),
+        history_path
+    );
+}
+
+#[tokio::test]
+async fn success_checkpoint_omits_identity_when_live_history_replacement_fails() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+    let moved_history_dir = history_dir.path().with_extension("replacement-source");
+
+    let history_hash = hex::encode(Sha256::digest(&candidate));
+    let history_size = candidate.len();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true}));
+    });
+    let replacement_history_path = history_path.clone();
+    let replacement_moved_dir = moved_history_dir.clone();
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.respond_with(move |_| {
+            let history_parent = replacement_history_path.parent().unwrap();
+            std::fs::rename(history_parent, &replacement_moved_dir).unwrap();
+            std::fs::create_dir(history_parent).unwrap();
+            std::fs::rename(
+                replacement_moved_dir.join(replacement_history_path.file_name().unwrap()),
+                &replacement_history_path,
+            )
+            .unwrap();
+            json_http_response(
+                200,
+                json!({"checkpointId": "checkpoint-pruned-unreconciled"}),
+            )
+        });
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+    std::fs::remove_dir_all(moved_history_dir).unwrap();
+}
+
+#[tokio::test]
+async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let history_hash = hex::encode(Sha256::digest(&candidate));
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true}));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({}));
+    });
+
+    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Invalid checkpoint API response")
+    );
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+}
 
 #[tokio::test]
 async fn success_checkpoint_uploads_non_utf8_session_history() {
@@ -1027,6 +1334,45 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
         !std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists(),
         "recovery checkpoint must not write final session history identity metadata"
     );
+}
+
+#[tokio::test]
+async fn recovery_checkpoint_does_not_prune_eligible_claude_history() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, _) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let error = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Session history line 1 is not valid JSON"),
+        "recovery checkpoint should validate the original history: {error}"
+    );
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
 }
 
 async fn assert_recovery_checkpoint_derives_claude_history_marker(
