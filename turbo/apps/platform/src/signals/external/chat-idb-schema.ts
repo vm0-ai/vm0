@@ -1,24 +1,23 @@
 import type { IDBPDatabase } from "idb";
 
 const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
-const ARTIFACT_INDEX_RESET_VERSION = 19;
-const CHAT_IDB_CHAT_EVENT_RESET_VERSION = 20;
+// The artifacts page reads its pages straight from the artifact catalog API, so
+// the mirrored artifact history is gone. Bumping the version drops the stores
+// from browser databases that still carry a full history from the old page.
+const ARTIFACT_CACHE_REMOVED_VERSION = 20;
+const CHAT_IDB_CHAT_EVENT_RESET_VERSION = 21;
 const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CHAT_EVENT_RESET_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
+const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
+const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
 export const CHAT_MESSAGES_STORE = "chat_messages";
 export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
-export const ARTIFACT_ITEMS_STORE = "artifact_items";
-export const ARTIFACT_SYNC_STORE = "artifact_sync";
 export const CHAT_MESSAGES_ORDER_INDEX = "byThreadAndOrder";
 export const CHAT_THREAD_EVENTS_ORDER_INDEX = "byCreatedAt";
-export const ARTIFACT_ITEMS_UPDATED_AT_INDEX = "byUpdatedAt";
-export const ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX = "byAgentUpdatedAt";
-export const ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX = "byUrlUpdatedAt";
-export const ARTIFACT_ITEMS_RUN_HOSTED_INDEX = "byRunHosted";
 
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
@@ -42,34 +41,6 @@ function createChatThreadEventSyncStore(db: IDBPDatabase): void {
   db.createObjectStore(CHAT_THREAD_EVENT_SYNC_STORE, { keyPath: "id" });
 }
 
-function createArtifactItemsStore(db: IDBPDatabase): void {
-  const store = db.createObjectStore(ARTIFACT_ITEMS_STORE, {
-    keyPath: "artifactItemId",
-  });
-  store.createIndex(ARTIFACT_ITEMS_UPDATED_AT_INDEX, [
-    "updatedAt",
-    "createdAt",
-    "artifactItemId",
-  ]);
-  store.createIndex(ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX, [
-    "agentId",
-    "updatedAt",
-    "createdAt",
-    "artifactItemId",
-  ]);
-  store.createIndex(ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX, [
-    "url",
-    "updatedAt",
-    "createdAt",
-    "artifactItemId",
-  ]);
-  store.createIndex(ARTIFACT_ITEMS_RUN_HOSTED_INDEX, ["runId", "hosted"]);
-}
-
-function createArtifactSyncStore(db: IDBPDatabase): void {
-  db.createObjectStore(ARTIFACT_SYNC_STORE, { keyPath: "id" });
-}
-
 function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
   if (db.objectStoreNames.contains(storeName)) {
     db.deleteObjectStore(storeName);
@@ -86,14 +57,14 @@ function deleteLocalCacheStores(db: IDBPDatabase): void {
 }
 
 function deleteArtifactCacheStores(db: IDBPDatabase): void {
-  deleteObjectStoreIfExists(db, ARTIFACT_ITEMS_STORE);
-  deleteObjectStoreIfExists(db, ARTIFACT_SYNC_STORE);
+  deleteObjectStoreIfExists(db, LEGACY_ARTIFACT_ITEMS_STORE);
+  deleteObjectStoreIfExists(db, LEGACY_ARTIFACT_SYNC_STORE);
 }
 
 export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   if (oldVersion < CHAT_IDB_SEQ_ID_RESET_VERSION) {
     deleteLocalCacheStores(db);
-  } else if (oldVersion < ARTIFACT_INDEX_RESET_VERSION) {
+  } else if (oldVersion < ARTIFACT_CACHE_REMOVED_VERSION) {
     deleteArtifactCacheStores(db);
   }
 
@@ -112,11 +83,5 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
   if (!db.objectStoreNames.contains(CHAT_THREAD_EVENT_SYNC_STORE)) {
     createChatThreadEventSyncStore(db);
-  }
-  if (!db.objectStoreNames.contains(ARTIFACT_ITEMS_STORE)) {
-    createArtifactItemsStore(db);
-  }
-  if (!db.objectStoreNames.contains(ARTIFACT_SYNC_STORE)) {
-    createArtifactSyncStore(db);
   }
 }

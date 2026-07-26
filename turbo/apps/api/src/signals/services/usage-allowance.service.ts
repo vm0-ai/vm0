@@ -297,7 +297,7 @@ async function refreshUsageAllowanceEntitlementFromStripe(
   };
 }
 
-async function lockUsageAllowanceOrg(
+export async function lockUsageAllowanceOrg(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<void> {
@@ -609,9 +609,23 @@ export async function resolveUsageAllowanceAvailability(
   orgId: string,
 ): Promise<UsageAllowanceAvailability | null> {
   return await db.transaction(async (tx) => {
-    await lockUsageAllowanceOrg(tx, orgId);
-    return await resolveAvailabilityInLockedTransaction(tx, orgId);
+    return await resolveUsageAllowanceAvailabilityInTransaction(tx, orgId);
   });
+}
+
+async function resolveUsageAllowanceAvailabilityInTransaction(
+  tx: UsageAllowanceStore,
+  orgId: string,
+): Promise<UsageAllowanceAvailability | null> {
+  await lockUsageAllowanceOrg(tx, orgId);
+  return await resolveUsageAllowanceAvailabilityForLockedOrg(tx, orgId);
+}
+
+export async function resolveUsageAllowanceAvailabilityForLockedOrg(
+  tx: UsageAllowanceStore,
+  orgId: string,
+): Promise<UsageAllowanceAvailability | null> {
+  return await resolveAvailabilityInLockedTransaction(tx, orgId);
 }
 
 export async function activateUsageAllowanceWindowsForRun(

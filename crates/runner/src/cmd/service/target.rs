@@ -39,6 +39,13 @@ impl RunnerServiceUnit {
         })
     }
 
+    pub(crate) fn from_file_name(file_name: &str) -> Option<Self> {
+        let suffix = file_name
+            .strip_prefix(UNIT_PREFIX)?
+            .strip_suffix(".service")?;
+        Self::from_suffix(suffix).ok()
+    }
+
     pub(crate) fn suffix(&self) -> &str {
         &self.suffix
     }
@@ -128,5 +135,19 @@ mod tests {
     fn test_unit_name_error_mentions_service() {
         let msg = unit_name("UPPER").unwrap_err().to_string();
         assert!(msg.contains("service name suffix"), "got: {msg}");
+    }
+
+    #[test]
+    fn from_file_name_accepts_only_valid_runner_services() {
+        assert_eq!(
+            RunnerServiceUnit::from_file_name("vm0-runner-v1.0.0.service")
+                .unwrap()
+                .service_name(),
+            "vm0-runner-v1.0.0.service"
+        );
+        assert!(RunnerServiceUnit::from_file_name("other-v1.0.0.service").is_none());
+        assert!(RunnerServiceUnit::from_file_name("vm0-runner-v1.0.0.timer").is_none());
+        assert!(RunnerServiceUnit::from_file_name("vm0-runner-.service").is_none());
+        assert!(RunnerServiceUnit::from_file_name("vm0-runner-UPPER.service").is_none());
     }
 }

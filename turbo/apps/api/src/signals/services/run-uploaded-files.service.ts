@@ -9,6 +9,7 @@ import {
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { type Db, writeDb$ } from "../external/db";
+import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import {
   scheduleVideoArtifactPreviewRender$,
@@ -57,7 +58,7 @@ function isRunUploadedFileSource(
   });
 }
 
-async function sourceForRun(
+export async function sourceForRun(
   writeDb: Db,
   runId: string,
   fallback: RunUploadedFileSource,
@@ -120,7 +121,7 @@ export const recordHostedSiteArtifact$ = command(
     { set },
     args: RecordHostedSiteArtifactArgs,
     signal: AbortSignal,
-  ): Promise<string | null> => {
+  ): Promise<RecordedUploadedFile | null> => {
     if (!args.runId) {
       return null;
     }
@@ -183,18 +184,31 @@ export const recordHostedSiteArtifact$ = command(
             entrypoint: args.entrypoint,
             spaFallback: args.spaFallback,
           },
-          // Legacy redeploys reuse a mutable alias row, so their preview must
-          // be regenerated. Versioned rows are immutable and keep their own
-          // preview when completion is retried.
-          ...(args.deploymentVersion === null ? { previewImageUrl: null } : {}),
+          // Legacy redeploys reuse a mutable alias row. Preserve the preview
+          // when the same deployment is completed again, but clear it when a
+          // new deployment takes over that row. Versioned rows are immutable
+          // and keep their own preview.
+          ...(args.deploymentVersion === null
+            ? {
+                previewImageUrl: sql`case
+                  when ${runUploadedFiles.metadata}->>'deploymentId' = ${args.deploymentId}
+                  then ${runUploadedFiles.previewImageUrl}
+                  else null
+                end`,
+              }
+            : {}),
           updatedAt: sql`now()`,
         },
       })
-      .returning({ id: runUploadedFiles.id });
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
+      });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
-    return row?.id ?? null;
+    return row ?? null;
   },
 );
 
@@ -261,6 +275,7 @@ export const recordWebUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -349,6 +364,7 @@ export const recordTelegramUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -475,6 +491,7 @@ export const recordGithubUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -541,6 +558,7 @@ export const recordFeishuUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -607,6 +625,7 @@ export const recordTeamsUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -684,6 +703,7 @@ export const recordAgentPhoneUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -761,6 +781,7 @@ export const recordSlackUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
+    await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,

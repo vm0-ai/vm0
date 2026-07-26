@@ -5,11 +5,14 @@ import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   integrationsSlackMessageContract,
   integrationsSlackUploadInitContract,
+  integrationsSlackUploadMaterializeContract,
   integrationsSlackUploadCompleteContract,
   type SendSlackMessageBody,
   type SendSlackMessageResponse,
   type SlackUploadInitBody,
   type SlackUploadInitResponse,
+  type SlackUploadMaterializeBody,
+  type SlackUploadMaterializeResponse,
   type SlackUploadCompleteBody,
   type SlackUploadCompleteResponse,
 } from "@vm0/api-contracts/contracts/integrations";
@@ -67,6 +70,21 @@ export async function completeSlackFileUpload(
   handleError(result, "Failed to complete Slack file upload");
 }
 
+export async function materializeSlackFileUpload(
+  body: SlackUploadMaterializeBody,
+): Promise<SlackUploadMaterializeResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsSlackUploadMaterializeContract, config);
+
+  const result = await client.materialize({ body, headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to materialize Slack file upload");
+}
+
 interface DownloadSlackFileResult {
   path: string;
   mimetype: string;
@@ -95,10 +113,6 @@ export async function downloadSlackFile(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const response = await fetch(url, {
     headers: headersWithCliClientHeaders(headers),

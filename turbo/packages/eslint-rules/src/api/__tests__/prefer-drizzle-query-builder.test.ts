@@ -238,8 +238,90 @@ const runnerLockingQuery = `
   \`
 `;
 
+const creditAvailabilityQuery = `
+  sql\`
+    WITH org AS (
+      SELECT credits
+      FROM org_metadata
+      WHERE org_id = \${threadId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = \${threadId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired
+  \`
+`;
+
+const managedCreditAvailabilityQuery = `
+  sql\`
+    WITH pricing AS (
+      SELECT unit_price, unit_size
+      FROM usage_pricing
+      WHERE kind = \${threadId}
+        AND provider = \${threadId}
+        AND category = \${threadId}
+      LIMIT 1
+    ),
+    org AS (
+      SELECT credits
+      FROM org_metadata
+      WHERE org_id = \${threadId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = \${threadId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired,
+      (SELECT unit_price FROM pricing) AS unit_price,
+      (SELECT unit_size FROM pricing) AS unit_size
+  \`
+`;
+
+const composedReadCtePreamble = `
+  function usageCreditsExpr() {
+    return sql\`COALESCE(ue.credits_charged, 0)\`;
+  }
+
+  function usageRowsCte(userId: number) {
+    return sql\`
+      usage_rows AS (
+        SELECT
+          ue.run_id,
+          \${usageCreditsExpr()}::bigint AS credits
+        FROM usage_event ue
+        LEFT JOIN usage_allowance_allocations uaa
+          ON uaa.usage_event_id = ue.id
+        WHERE ue.user_id = \${userId}
+      )
+    \`;
+  }
+
+  function usageRowsWith(userId: number) {
+    return sql\`WITH \${usageRowsCte(userId)}\`;
+  }
+`;
+
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
     {
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql } from "drizzle-orm";
@@ -774,6 +856,13 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       `,
     },
     {
+      code: `${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "@fake/lib/db-raw-rows";
+        await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
+    {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         const query = ${directQuery};
@@ -799,6 +888,113 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         }
         const eq = (...values: unknown[]) => values;
         await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const opaqueCte: SQL;
+
+        function recursiveRows(userId: number) {
+          return sql\`
+            WITH RECURSIVE rows AS (
+              SELECT run_id, user_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+              UNION ALL
+              SELECT usage_event.run_id, usage_event.user_id
+              FROM usage_event
+              INNER JOIN rows ON rows.run_id = usage_event.run_id
+            )
+          \`;
+        }
+        function materializedRows(userId: number) {
+          return sql\`
+            WITH rows AS MATERIALIZED (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+            )
+          \`;
+        }
+        function unionRows(userId: number) {
+          return sql\`
+            WITH rows AS (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+              UNION ALL
+              SELECT run_id
+              FROM archived_usage_event
+              WHERE user_id = \${userId}
+            )
+          \`;
+        }
+        function deletingRows(userId: number) {
+          return sql\`
+            WITH rows AS (
+              DELETE FROM usage_event
+              WHERE user_id = \${userId}
+              RETURNING run_id
+            )
+          \`;
+        }
+        function lockingRows(userId: number) {
+          return sql\`
+            WITH rows AS (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${userId}
+              FOR UPDATE
+            )
+          \`;
+        }
+        function statefulRows(userId: number) {
+          const selectedUserId = userId;
+          return sql\`
+            WITH rows AS (
+              SELECT run_id
+              FROM usage_event
+              WHERE user_id = \${selectedUserId}
+            )
+          \`;
+        }
+
+        await executeRawRows(
+          db,
+          sql\`\${recursiveRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${materializedRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${unionRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${deletingRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${lockingRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${statefulRows(threadId)} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`\${opaqueCte} SELECT run_id FROM rows\`,
+          rowSchema,
+        );
       `,
     },
     {
@@ -842,6 +1038,180 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
               WHERE \${eq(runs.threadId, threadId)}
               LIMIT 1
             ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        const dynamicOrgTable = sql.identifier("org_metadata");
+        const groupedAggregate = sql\`GROUP BY org_id\`;
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              ORDER BY credits
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            pricing AS (
+              SELECT unit_price
+              FROM usage_pricing
+              WHERE kind = \${threadId}
+              LIMIT 1
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT unit_price FROM pricing) AS unit_price
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT org_id, SUM(remaining) AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+              GROUP BY org_id
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org WHERE credits > 0) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM \${dynamicOrgTable}
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS value,
+              (SELECT total FROM expired) AS value
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+              \${groupedAggregate}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS unsettled_expired
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expanded AS (
+              SELECT generate_series(
+                1,
+                COALESCE(SUM(remaining), 0)::integer + 2
+              ) AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expanded) AS total
           \`,
           rowSchema,
         );
@@ -1593,6 +1963,153 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          ${creditAvailabilityQuery},
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "scalarCteQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          ${managedCreditAvailabilityQuery},
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "scalarCteQueryBuilder" }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        ${composedReadCtePreamble}
+
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)}
+            SELECT
+              date_trunc('day', ur.created_at) AS ts,
+              COALESCE(SUM(ur.credits), 0)::bigint AS credits
+            FROM usage_rows ur
+            LEFT JOIN zero_runs zr ON zr.id = ur.run_id
+            GROUP BY 1
+            ORDER BY 1
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)},
+            agent_totals AS (
+              SELECT
+                ar.agent_name,
+                COALESCE(SUM(ur.credits), 0)::bigint AS total_credits
+              FROM usage_rows ur
+              LEFT JOIN agent_runs ar ON ar.id = ur.run_id
+              GROUP BY 1
+              ORDER BY 2 DESC
+            ),
+            top_agents AS (
+              SELECT agent_name
+              FROM agent_totals
+              LIMIT 7
+            )
+            SELECT
+              ur.run_id,
+              COALESCE(SUM(ur.credits), 0)::bigint AS credits
+            FROM usage_rows ur
+            LEFT JOIN agent_runs ar ON ar.id = ur.run_id
+            WHERE ar.agent_name IN (SELECT agent_name FROM top_agents)
+            GROUP BY 1
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)}
+            SELECT
+              COALESCE(SUM(ur.credits), 0)::bigint AS grand_credits
+            FROM usage_rows ur
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)}
+            SELECT
+              zr.trigger_source AS source,
+              COALESCE(SUM(ur.credits), 0)::bigint AS credits
+            FROM usage_rows ur
+            LEFT JOIN zero_runs zr ON zr.id = ur.run_id
+            WHERE zr.trigger_source IN ('email', 'slack')
+            GROUP BY 1
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)},
+            ranked AS (
+              SELECT
+                ur.run_id,
+                COALESCE(SUM(ur.credits), 0)::bigint AS credits,
+                ROW_NUMBER() OVER (
+                  ORDER BY SUM(ur.credits) DESC NULLS LAST
+                ) AS rn
+              FROM usage_rows ur
+              GROUP BY ur.run_id
+            )
+            SELECT run_id, credits, rn
+            FROM ranked
+            WHERE rn <= 100
+            UNION ALL
+            SELECT NULL AS run_id, COALESCE(SUM(credits), 0), 101 AS rn
+            FROM ranked
+            WHERE rn > 100
+            ORDER BY rn
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            \${usageRowsWith(threadId)},
+            ranked AS (
+              SELECT
+                ur.run_id,
+                ROW_NUMBER() OVER (
+                  ORDER BY SUM(ur.credits) DESC NULLS LAST
+                ) AS rn
+              FROM usage_rows ur
+              GROUP BY ur.run_id
+            )
+            SELECT COUNT(*)::bigint AS count
+            FROM ranked
+            WHERE rn > 100
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+        { messageId: "composedCteQueryBuilder" },
+      ],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
         import { desc, eq, sql } from "drizzle-orm";
         await executeRawRows(db, ${joinedHistoryQuery}, rowSchema);
       `,
@@ -1686,47 +2203,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         );
       `,
       errors: [{ messageId: "lockingQueryBuilder" }],
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(db, ${directQuery}, rowSchema);
-      `,
-      errors: [{ messageId: "queryBuilder" }],
-    },
-    {
-      code: `${schemaPreamble}
-        import { eq, sql as query } from "drizzle-orm";
-        import { executeRawRows as decodeRows } from "./lib/db-raw-rows";
-        await decodeRows(
-          db,
-          query\`select \${runs.id} from \${runs} inner join \${runStates} on \${eq(runStates.id, runs.id)} where \${eq(runs.threadId, threadId)} and \${eq(runs.id, excludedRunId)} limit 1;\`,
-          rowSchema,
-        );
-      `,
-      errors: [{ messageId: "queryBuilder" }],
-    },
-    {
-      code: `${schemaPreamble}
-        import * as drizzle from "drizzle-orm";
-        import * as rawRows from "./lib/db-raw-rows";
-        await rawRows.executeRawRows(
-          db,
-          drizzle.sql\`
-            SELECT \${runs.id}
-            FROM \${runs}
-            INNER JOIN \${runStates}
-              ON \${drizzle.eq(runStates.id, runs.id)}
-            WHERE \${drizzle.eq(runs.threadId, threadId)}
-              AND $$ORDER BY ignored$$ = $$ORDER BY ignored$$
-              /* GROUP BY ignored /* nested ORDER BY */ */
-              AND (SELECT 1 FROM ignored ORDER BY ignored LIMIT 1) = 1
-            LIMIT 1
-          \`,
-          rowSchema,
-        );
-      `,
-      errors: [{ messageId: "queryBuilder" }],
     },
     {
       code: `${structuredSelectionPreamble}

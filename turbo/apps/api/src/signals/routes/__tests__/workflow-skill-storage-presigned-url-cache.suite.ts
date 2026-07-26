@@ -21,7 +21,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
-  expectLegacyStorageManifest,
+  expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "../test-workflow-skill-storage-presigned-url-cache-state";
@@ -295,12 +295,12 @@ async function createRunAndClaimWorkflowSkill(args: {
   });
   await api.heartbeatRunner(args.runnerGroup);
   const claim = await api.claimRunnerJob(run.runId);
-  const entry = expectLegacyStorageManifest(
+  const entry = expectCanonicalStorageManifest(
     claim.storageManifest,
-  )?.storages.find((storage) => {
-    return storage.vasStorageName === args.storageName;
+  )?.storageMounts.find((storage) => {
+    return storage.name === args.storageName;
   });
-  if (!entry) {
+  if (!entry?.archiveUrl) {
     throw new Error(
       `Missing workflow skill manifest entry ${args.storageName}`,
     );
@@ -308,7 +308,7 @@ async function createRunAndClaimWorkflowSkill(args: {
   return {
     runId: run.runId,
     archiveUrl: entry.archiveUrl,
-    versionId: entry.vasVersionId,
+    versionId: entry.versionId,
   };
 }
 

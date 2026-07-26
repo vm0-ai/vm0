@@ -930,30 +930,6 @@ const queueResponseSchema = z.object({
   estimatedTimePerRun: z.number().nullable(),
 });
 
-/**
- * Runs queue route contract (/api/agent/runs/queue)
- * Returns org-wide queue status with concurrency context
- */
-export const runsQueueContract = c.router({
-  /**
-   * GET /api/agent/runs/queue
-   * Get org run queue status including concurrency context and queued entries
-   */
-  getQueue: {
-    method: "GET",
-    path: "/api/agent/runs/queue",
-    headers: authHeadersSchema,
-    responses: {
-      200: queueResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "Get org run queue status",
-  },
-});
-
-export type RunsQueueContract = typeof runsQueueContract;
-
 // Export schemas for reuse
 export {
   runStatusSchema,

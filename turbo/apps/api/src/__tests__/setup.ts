@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-kms";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 
+import { mockExternalConnectorCatalogEnabled } from "../lib/connector-catalog-source-selection";
 import { clearMockedEnv, mockEnv } from "../lib/env";
 import {
   resetSecretKmsClientForTests,
@@ -51,6 +52,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  // Static catalog fixtures remain the rollback baseline for general API tests.
+  // External catalog integration tests opt into the accepted snapshot explicitly.
+  mockExternalConnectorCatalogEnabled(false);
   mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
   setSecretKmsClientForTests(createApiTestKmsClient());
 });
@@ -60,6 +64,7 @@ afterEach(async () => {
   clearMockNow();
   resetSecretKmsClientForTests();
   clearMockedEnv();
+  mockExternalConnectorCatalogEnabled(false);
   resetApiTestMocks();
   server.resetHandlers();
 });

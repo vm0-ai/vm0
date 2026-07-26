@@ -43,7 +43,6 @@ import {
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
 import type { ChatMessage } from "./chat-message-types.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import {
   chatEventsContract,
   chatThreadArtifactsContract,
@@ -87,7 +86,10 @@ import type {
 } from "./chat-message.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 import { logger } from "../log.ts";
-import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+import {
+  CHAT_MESSAGES_PAGE_LIMIT,
+  createRemoteChatThreadDataSource,
+} from "./remote-chat-thread-data-source.ts";
 import {
   loadIndexedDbChatEvents$,
   writeIndexedDbChatEvents$,
@@ -129,7 +131,6 @@ import {
 } from "./run-group-folding.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
-import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
 import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
@@ -152,6 +153,13 @@ import {
   type MailDraftSignals,
 } from "./mail-draft.ts";
 import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
+import { currentBrowserSessionId$ } from "../zero-page/browser-session-sidebar.ts";
+import {
+  createBrowserSessionCardSignalsRegistry,
+  parseBrowserSessionUrl,
+  type BrowserSessionCardSignalsRegistry,
+  type BrowserSessionSignals,
+} from "./browser-session-block.ts";
 import { searchParams$ } from "../route.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
@@ -556,18 +564,11 @@ function cancellableRunIdsFromRawMessages(
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: remote thread detail fetching
+// Sub-factory: remote thread draft fetching
 // ---------------------------------------------------------------------------
 
-// The data source owns remote thread detail/draft reads plus `reloadThread$`
-// as the detail invalidation lever. Local mode never reloads; remote mode bumps
-// an internal counter on its `remoteThreadDetail$` computed.
-function createRemoteThreadDetail(dataSource: ChatThreadRemote) {
-  return {
-    remoteThreadDetail$: dataSource.remoteThreadDetail$,
-    threadDraft$: dataSource.threadDraft$,
-    reloadThread$: dataSource.reloadThread$,
-  };
+function createRemoteThreadDraft(dataSource: ChatThreadRemote) {
+  return dataSource.threadDraft$;
 }
 
 function createThreadMeta(threadId: string) {
@@ -605,7 +606,6 @@ function createThreadSettledInServer(threadId: string) {
 function createModelSelection(
   threadId: string,
   threadMeta$: Computed<ThreadMeta | null>,
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadRemote,
 ) {
   const selectedModel$ = computed((get): string | null => {
@@ -625,7 +625,6 @@ function createModelSelection(
         signal,
       );
       signal.throwIfAborted();
-      set(dataSource.reloadThread$);
     },
   );
 
@@ -644,7 +643,7 @@ function createModelSelection(
     ) {
       return false;
     }
-    return (await get(remoteThreadDetail$))?.codexServiceTier === "fast";
+    return get(threadMeta$)?.serviceTier === "priority";
   });
 
   const selectedModelOauthAvailable$ = computed(
@@ -721,7 +720,7 @@ function createModelSelectionForSend({
 
 function createComputerUseHostSelection(
   threadId: string,
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
+  threadMeta$: Computed<ThreadMeta | null>,
   dataSource: ChatThreadRemote,
 ) {
   const optimisticCreateUnsettled$ =
@@ -730,13 +729,12 @@ function createComputerUseHostSelection(
     { kind: "unset" } | { kind: "set"; value: string | null; dirty: boolean }
   >({ kind: "unset" });
 
-  const computerUseHostId$ = computed(async (get): Promise<string | null> => {
+  const computerUseHostId$ = computed((get): string | null => {
     const user = get(internalUserOverride$);
     if (user.kind === "set") {
       return user.value;
     }
-    const thread = await get(remoteThreadDetail$);
-    return thread?.computerUseHostId ?? null;
+    return get(threadMeta$)?.computerUseHostId ?? null;
   });
 
   const computerUseHostIdExplicit$ = computed((get): boolean => {
@@ -781,11 +779,8 @@ function createComputerUseHostSelection(
       );
       signal.throwIfAborted();
       set(internalUserOverride$, {
-        kind: "set",
-        value: computerUseHostId,
-        dirty: false,
+        kind: "unset",
       });
-      set(dataSource.reloadThread$);
     },
   );
 
@@ -2096,6 +2091,12 @@ function createSyncRemoteMessagesCommand({
       }
       sinceSeqId = result.events.at(-1)!.seqId;
 
+      if (
+        requestedSinceSeqId !== undefined &&
+        result.events.length < CHAT_MESSAGES_PAGE_LIMIT
+      ) {
+        return;
+      }
       return syncMessagesAfter();
     }
     await syncMessagesAfter();
@@ -2198,6 +2199,7 @@ interface BodyBlockRegistries {
   readonly mailDraftCardSignals: ReturnType<
     typeof createMailDraftCardSignalsRegistry
   >;
+  readonly browserSessionCardSignals: BrowserSessionCardSignalsRegistry;
 }
 
 function createBodyBlocksRenderer({
@@ -2208,6 +2210,7 @@ function createBodyBlocksRenderer({
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
   mailDraftCardSignals,
+  browserSessionCardSignals,
 }: BodyBlockRegistries): (
   resolution: "register" | "resolve",
 ) => BodyBlocksRenderer {
@@ -2292,6 +2295,16 @@ function createBodyBlocksRenderer({
                   : mailDraftCardSignals.resolve(block.resourceKey),
             };
           }
+          case "browser-session": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? browserSessionCardSignals.register(block.descriptor)
+                  : browserSessionCardSignals.resolve(block.resourceKey),
+            };
+          }
         }
         const exhaustive: never = block;
         return exhaustive;
@@ -2354,6 +2367,25 @@ function createMailDraftCardSignalsById(
   });
 }
 
+function createBrowserSessionCardSignalsById(
+  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
+  browserSessionCardSignals: BrowserSessionCardSignalsRegistry,
+): Computed<ReadonlyMap<string, BrowserSessionSignals>> {
+  return computed((get) => {
+    get(rawMessages$);
+    // The sidebar can be restored from the URL before its message renders, so
+    // register the selected browser as well as the ones already in the stream.
+    const selectedBrowserId = get(currentBrowserSessionId$);
+    const selectedDescriptor = selectedBrowserId
+      ? parseBrowserSessionUrl(`/browsers/${selectedBrowserId}`)
+      : null;
+    if (selectedDescriptor) {
+      browserSessionCardSignals.register(selectedDescriptor);
+    }
+    return new Map(browserSessionCardSignals.entries());
+  });
+}
+
 function createHistoryBackfillProgress(
   hasReachedOldestMessage$: Computed<boolean>,
   persistentMessages$: PersistentChatMessages$,
@@ -2384,6 +2416,8 @@ function createPagedMessages(
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
+  const browserSessionCardSignals =
+    createBrowserSessionCardSignalsRegistry(threadId);
   const artifactCardSignals = createArtifactCardSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
@@ -2399,6 +2433,7 @@ function createPagedMessages(
     computerUseAuthorizationCardSignals,
     planUpgradeCardSignals,
     mailDraftCardSignals,
+    browserSessionCardSignals,
   });
   const registerBodyBlocks = bodyBlocksRenderer("register");
   const resolveBodyBlocks = bodyBlocksRenderer("resolve");
@@ -2455,6 +2490,10 @@ function createPagedMessages(
     rawMessages$,
     mailDraftCardSignals,
   );
+  const browserSessionCardSignalsById$ = createBrowserSessionCardSignalsById(
+    rawMessages$,
+    browserSessionCardSignals,
+  );
 
   const mergePersistentMessages$ = createMergePersistentMessages(
     threadId,
@@ -2495,6 +2534,7 @@ function createPagedMessages(
     messageRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
+    browserSessionCardSignalsById$,
     syncRemoteMessages$,
   };
 }
@@ -2635,14 +2675,13 @@ function createLoadMoreRenderedChatGroupsWithPrependScroll(
 
 interface RunTrackingDeps {
   threadId: string;
-  reloadThread$: Command<void, []>;
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   mergePersistentMessages$: Command<void, [ChatEvent[]]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   settleMessageSync$: Command<Promise<void>, []>;
   reloadArtifacts$: Command<void, []>;
+  reloadComposerWorkflows$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   automationSignals: Pick<
     ChatThreadSignals,
@@ -2653,7 +2692,6 @@ interface RunTrackingDeps {
 
 interface MarkThreadReadDeps {
   threadId: string;
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   locallyMarkedReadAt$: State<string | undefined>;
   dataSource: ChatThreadRemote;
@@ -2786,7 +2824,6 @@ function createChatRenderWindow({
 
 function createMarkThreadReadIfNeeded({
   threadId,
-  remoteThreadDetail$,
   latestRunFinishCreatedAt$,
   locallyMarkedReadAt$,
   dataSource,
@@ -2807,14 +2844,9 @@ function createMarkThreadReadIfNeeded({
       return;
     }
 
-    const thread = await get(remoteThreadDetail$);
-    sig.throwIfAborted();
-    if (thread === null) {
-      return;
-    }
-    const lastReadAt = get(locallyMarkedReadAt$) ?? thread.lastReadAt;
+    const lastReadAt = get(locallyMarkedReadAt$);
     if (
-      lastReadAt !== null &&
+      lastReadAt !== undefined &&
       compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
     ) {
       return;
@@ -2833,20 +2865,18 @@ function createMarkThreadReadIfNeeded({
 
 function createOnSubscribedCommand({
   threadId,
-  reloadThread$,
-  remoteThreadDetail$,
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
+  reloadComposerWorkflows$,
   markThreadReadIfNeeded$,
 }: Pick<
   RunTrackingDeps,
   | "threadId"
-  | "reloadThread$"
-  | "remoteThreadDetail$"
   | "syncRemoteMessages$"
   | "settleMessageSync$"
   | "reloadArtifacts$"
+  | "reloadComposerWorkflows$"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<void>, [AbortSignal]> {
@@ -2854,11 +2884,9 @@ function createOnSubscribedCommand({
     optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
-    set(reloadThread$);
     set(reloadArtifacts$);
-    set(reloadWorkflowData$);
     await Promise.all([
-      get(remoteThreadDetail$),
+      set(reloadComposerWorkflows$, signal),
       get(optimisticCreateUnsettled$)
         ? set(settleMessageSync$)
         : set(syncRemoteMessages$, signal),
@@ -2907,14 +2935,13 @@ function createReceiveSyncedEventsCommand({
 
 function createRunTracking({
   threadId,
-  reloadThread$,
-  remoteThreadDetail$,
   latestRunFinishCreatedAt$,
   initializeIndexedDbMessages$,
   mergePersistentMessages$,
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
+  reloadComposerWorkflows$,
   autoScroll$,
   automationSignals,
   dataSource,
@@ -2924,7 +2951,6 @@ function createRunTracking({
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
-    remoteThreadDetail$,
     latestRunFinishCreatedAt$,
     locallyMarkedReadAt$,
     dataSource,
@@ -2939,11 +2965,10 @@ function createRunTracking({
 
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
-    reloadThread$,
-    remoteThreadDetail$,
     syncRemoteMessages$,
     settleMessageSync$,
     reloadArtifacts$,
+    reloadComposerWorkflows$,
     markThreadReadIfNeeded$,
   });
 
@@ -2951,25 +2976,6 @@ function createRunTracking({
     L.debug("subscribeChatThread$ start", { threadId });
     await set(initializeIndexedDbMessages$, signal);
     signal.throwIfAborted();
-
-    const onThreadDetailChanged$ = command(({ set }) => {
-      L.debug("onThreadDetailChanged$ fired", { threadId });
-      set(reloadThread$);
-      return false;
-    });
-
-    const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
-      L.debug("onRunChanged$ fired", { threadId });
-      await set(syncRemoteMessages$, sig);
-      sig.throwIfAborted();
-      animationFrame(
-        () => {
-          set(autoScroll$);
-        },
-        { signal: sig },
-      );
-      return false;
-    });
 
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
@@ -2982,11 +2988,13 @@ function createRunTracking({
       return false;
     });
 
-    const onWorkflowsChanged$ = command(({ set }) => {
-      L.debug("onWorkflowsChanged$ fired", { threadId });
-      set(reloadWorkflowData$);
-      return false;
-    });
+    const onWorkflowsChanged$ = command(
+      async ({ set }, signal: AbortSignal): Promise<boolean> => {
+        L.debug("onWorkflowsChanged$ fired", { threadId });
+        await set(reloadComposerWorkflows$, signal);
+        return false;
+      },
+    );
 
     const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
     const subscriptionSignal = subscriptionScope.signal;
@@ -3000,8 +3008,6 @@ function createRunTracking({
           {
             threadId,
             handlers: {
-              onThreadDetailChanged$,
-              onRunChanged$,
               onAutomationsChanged$,
               onArtifactsChanged$,
               onWorkflowsChanged$,
@@ -4219,6 +4225,7 @@ function publicChatThreadMessageSignals(
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
     messageImageGroups$: messages.messageImageGroups$,
     mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
+    browserSessionCardSignalsById$: messages.browserSessionCardSignalsById$,
     hasMessages$: messages.hasMessages$,
     hasNewMessages$: messages.hasNewMessages$,
     hasQueuedMessages$: messages.hasQueuedMessages$,
@@ -4260,21 +4267,19 @@ export function createChatThreadSignals(
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
 ): ChatThreadSignals {
-  const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
-    createRemoteThreadDetail(dataSource);
+  const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
   const threadSettledInServer$ = createThreadSettledInServer(threadId);
   const modelSelection = createModelSelection(
     threadId,
     threadMeta$,
-    remoteThreadDetail$,
     dataSource,
   );
   const modelSelectionForSend$ = createModelSelectionForSend(modelSelection);
   const computerUseHostSelection = createComputerUseHostSelection(
     threadId,
-    remoteThreadDetail$,
+    threadMeta$,
     dataSource,
   );
   const {
@@ -4287,6 +4292,7 @@ export function createChatThreadSignals(
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
+  const composer = createThreadComposer(draft, threadId, threadOwned.agentId$);
   const messages = createChatThreadMessagePipeline({
     threadId,
     dataSource,
@@ -4301,14 +4307,13 @@ export function createChatThreadSignals(
   const artifact = createArtifacts(threadId);
   const runTracking = createRunTracking({
     threadId,
-    reloadThread$,
-    remoteThreadDetail$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     mergePersistentMessages$: messages.mergePersistentMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     settleMessageSync$: messages.settleMessageSync$,
     reloadArtifacts$: artifact.reloadArtifacts$,
+    reloadComposerWorkflows$: composer.workflowComposer.reloadWorkflows$,
     autoScroll$: scrollSignals.autoScroll$,
     automationSignals: threadOwned,
     dataSource,
@@ -4327,13 +4332,10 @@ export function createChatThreadSignals(
     appendOptimisticMessage$: messages.appendOptimisticMessage$,
     dataSource,
   });
-  const composer = createThreadComposer(draft, threadId, threadOwned.agentId$);
   return {
     threadId,
-    remoteThreadDetail$,
     threadDraft$,
     threadMeta$,
-    reloadThread$,
     ...threadTitle,
     threadSettledInServer$,
     ...modelSelection,

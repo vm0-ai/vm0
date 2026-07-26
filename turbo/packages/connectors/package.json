@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.189.0",
+  "version": "1.192.2",
   "private": true,
   "type": "module",
   "exports": {

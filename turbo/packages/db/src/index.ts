@@ -20,7 +20,6 @@ import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as modelUsageObservationSchema from "./schema/model-usage-observation";
-import * as compactModelUsageObservationSchema from "./schema/compact-model-usage-observation";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
@@ -59,6 +58,8 @@ import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
 import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
 import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
 import * as feishuOrgEventSchema from "./schema/feishu-org-event";
+import * as feishuChatThreadRouteSchema from "./schema/feishu-chat-thread-route";
+import * as feishuChatIngressSchema from "./schema/feishu-chat-ingress";
 import * as feishuUserAgentPreferenceSchema from "./schema/feishu-user-agent-preference";
 import * as e2eTeamsMockCallLogSchema from "./schema/e2e-teams-mock-call-log";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
@@ -99,7 +100,7 @@ import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
-import * as htmlArtifactEditDraftSchema from "./schema/html-artifact-edit-draft";
+import * as artifactSchema from "./schema/artifact";
 import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-snapshot";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
@@ -110,6 +111,7 @@ import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
+import * as browserSessionSchema from "./schema/browser-session";
 
 export const schema = {
   ...userSchema,
@@ -134,7 +136,6 @@ export const schema = {
   ...orgModelPolicySchema,
   ...modelStatSchema,
   ...modelUsageObservationSchema,
-  ...compactModelUsageObservationSchema,
   ...slackOrgInstallationSchema,
   ...slackOrgConnectionSchema,
   ...slackOrgThreadSessionSchema,
@@ -149,6 +150,8 @@ export const schema = {
   ...feishuOrgConnectionSchema,
   ...feishuOrgThreadSessionSchema,
   ...feishuOrgEventSchema,
+  ...feishuChatThreadRouteSchema,
+  ...feishuChatIngressSchema,
   ...feishuUserAgentPreferenceSchema,
   ...e2eTeamsMockCallLogSchema,
   ...e2eTelegramMockCallLogSchema,
@@ -213,7 +216,7 @@ export const schema = {
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
-  ...htmlArtifactEditDraftSchema,
+  ...artifactSchema,
   ...imageArtifactEditSnapshotSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
@@ -224,6 +227,7 @@ export const schema = {
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,
   ...mailDraftSchema,
+  ...browserSessionSchema,
 };
 
 export type DatabaseSchema = typeof schema;

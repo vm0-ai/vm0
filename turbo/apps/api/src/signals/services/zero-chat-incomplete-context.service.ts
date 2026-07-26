@@ -5,7 +5,7 @@ import {
   chatEventCompatibilityRole,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -91,19 +91,21 @@ async function selectIncompleteRoundFrontier(
         FROM ${chatMessages}
         INNER JOIN ${agentRuns}
           ON ${eq(agentRuns.id, chatMessages.runId)}
-        WHERE ${eq(chatMessages.chatThreadId, threadId)}
-          AND ${isNotNull(chatMessages.runId)}
-          AND NOT (
+        WHERE ${and(
+          eq(chatMessages.chatThreadId, threadId),
+          isNotNull(chatMessages.runId),
+          sql`NOT (
             ${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)
-          )
-          AND ${visibleChatEventCondition(db)}
-          AND (
-            (${isSuccessfulRun})
-            OR (
-              ${agentRuns.status} IN ('cancelled', 'failed', 'timeout')
-              AND ${chatEventTypeIn(CHAT_EVENT_TYPES)}
-            )
-          )
+          )`,
+          visibleChatEventCondition(db),
+          or(
+            isSuccessfulRun,
+            and(
+              sql`${agentRuns.status} IN ('cancelled', 'failed', 'timeout')`,
+              chatEventTypeIn(CHAT_EVENT_TYPES),
+            ),
+          ),
+        )}
         ORDER BY
           ${desc(chatMessages.seqId)}
         LIMIT 1

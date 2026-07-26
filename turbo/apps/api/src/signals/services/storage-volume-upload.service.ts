@@ -180,7 +180,6 @@ const uploadVolumeServerSideInner$ = command(
     rmSync(tmpDir, { recursive: true, force: true });
 
     const writeDb = set(writeDb$);
-    const storageType = "volume";
     const { storageId, s3Prefix } = newStorageS3Location(args.orgId);
     const timestamp = nowDate();
 
@@ -191,7 +190,6 @@ const uploadVolumeServerSideInner$ = command(
         userId: VOLUME_ORG_USER_ID,
         orgId: args.orgId,
         name: args.storageName,
-        type: storageType,
         s3Prefix,
         size: 0,
         fileCount: 0,

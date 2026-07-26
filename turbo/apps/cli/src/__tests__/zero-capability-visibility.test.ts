@@ -35,6 +35,7 @@ function buildCommands(): Command[] {
     new Command("phone"),
     new Command("variable"),
     new Command("whoami"),
+    new Command("browser"),
     new Command("generate"),
     new Command("web"),
     new Command("host"),
@@ -93,6 +94,9 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
       iat: 1000,
       exp: 2000,
     });
@@ -103,6 +107,9 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
       iat: 1000,
       exp: 2000,
     });
@@ -144,12 +151,13 @@ describe("registerZeroCommands", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should not register default-disabled feature commands when ZERO_TOKEN is absent", () => {
+  it("should register globally enabled commands when ZERO_TOKEN is absent", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
     expect(hiddenCommandNames(prog)).toEqual([]);
-    expect(registeredCommandNames(prog)).not.toContain("upgrade");
+    expect(registeredCommandNames(prog)).toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -165,6 +173,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
+      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -204,7 +213,8 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toEqual([]);
-    expect(registeredCommandNames(prog)).not.toContain("upgrade");
+    expect(registeredCommandNames(prog)).toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
   it("should keep default-disabled feature commands unregistered outside zero scope", () => {
@@ -217,10 +227,11 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toEqual([]);
-    expect(registeredCommandNames(prog)).not.toContain("upgrade");
+    expect(registeredCommandNames(prog)).toContain("upgrade");
+    expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
-  it("should only show whoami when capabilities array is empty", () => {
+  it("should show globally enabled commands when capabilities array is empty", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: [],
@@ -232,6 +243,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "upgrade",
       "resource",
       "whoami",
       "generate",
@@ -642,7 +654,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide credit and not register default-disabled upgrade guidance when billing capabilities are missing", () => {
+  it("should hide credit but keep globally enabled upgrade guidance when billing capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent:read"],
@@ -652,7 +664,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("credit");
-    expect(registeredCommandNames(prog)).not.toContain("upgrade");
+    expect(registeredCommandNames(prog)).toContain("upgrade");
   });
 
   it("should show upgrade guidance when its feature switch is enabled", () => {
@@ -668,6 +680,34 @@ describe("registerZeroCommands", () => {
         [FeatureSwitchKey.PlanUpgradeGuidance]: true,
       }),
     ).toContain("Upgrade plan?");
+  });
+
+  it("should register browser only when its feature switch and capability are enabled", () => {
+    const disabledToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["browser:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: false,
+      },
+    });
+    vi.stubEnv("ZERO_TOKEN", disabledToken);
+
+    expect(registeredCommandNames(buildProgram())).not.toContain("browser");
+
+    const enabledToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["browser:read"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
+    });
+    vi.stubEnv("ZERO_TOKEN", enabledToken);
+
+    expect(visibleCommandNames(buildProgram())).toContain("browser");
   });
 
   it("should show billing help examples only for billing capabilities", () => {
@@ -1004,6 +1044,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "connector",
+      "upgrade",
       "resource",
       "whoami",
       "generate",

@@ -77,6 +77,7 @@ fn generated_prepare_request_serializes_wire_shape() {
     let hash = "a".repeat(64);
     let request = prepare::Request {
         run_id: "run-1".to_string(),
+        storage_id: None,
         storage_name: "memory".to_string(),
         storage_type: "artifact".to_string(),
         files: vec![FileEntryWithHash {
@@ -114,6 +115,7 @@ fn generated_prepare_request_serializes_wire_shape() {
 fn generated_prepare_request_serializes_optional_fields() {
     let request = prepare::Request {
         run_id: "run-1".to_string(),
+        storage_id: Some("00000000-0000-4000-8000-000000000001".to_string()),
         storage_name: "memory".to_string(),
         storage_type: "artifact".to_string(),
         files: vec![],
@@ -128,6 +130,7 @@ fn generated_prepare_request_serializes_optional_fields() {
     };
 
     let value = serde_json::to_value(request).unwrap();
+    assert_eq!(value["storageId"], "00000000-0000-4000-8000-000000000001");
     assert_eq!(value["parentVersionId"], "parent-1");
     assert_eq!(value["force"], true);
     assert_eq!(value["baseVersion"], "base-1");
@@ -183,6 +186,7 @@ fn generated_commit_request_serializes_wire_shape() {
     let hash = "b".repeat(64);
     let request = commit::Request {
         run_id: "run-1".to_string(),
+        storage_id: None,
         storage_name: "memory".to_string(),
         storage_type: "artifact".to_string(),
         version_id: "version-1".to_string(),
@@ -218,6 +222,7 @@ fn generated_commit_request_serializes_wire_shape() {
 fn generated_commit_request_preserves_empty_message() {
     let request = commit::Request {
         run_id: "run-1".to_string(),
+        storage_id: Some("00000000-0000-4000-8000-000000000001".to_string()),
         storage_name: "memory".to_string(),
         storage_type: "artifact".to_string(),
         version_id: "version-1".to_string(),
@@ -227,6 +232,7 @@ fn generated_commit_request_preserves_empty_message() {
     };
 
     let value = serde_json::to_value(request).unwrap();
+    assert_eq!(value["storageId"], "00000000-0000-4000-8000-000000000001");
     assert_eq!(value["message"], "");
 }
 

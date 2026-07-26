@@ -44,8 +44,6 @@ function mockThread(content: string): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
 }

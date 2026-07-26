@@ -464,21 +464,29 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version-file: crates/runner/mitm-addon/.python-version
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          working-directory: crates/runner/mitm-addon
+          enable-cache: true
+
+      - name: Sync locked environment
+        working-directory: crates/runner/mitm-addon
+        run: |
+          uv lock --check
+          uv sync --locked
 
       - name: Lint and format check
+        working-directory: crates/runner/mitm-addon
         run: |
-          cd crates/runner/mitm-addon
-          pip install ".[dev]"
-          ruff check .
-          ruff format --check .
-          basedpyright -p .
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+          uv run --no-sync basedpyright -p .
 
       - name: Run mitm-addon tests
-        run: |
-          cd crates/runner/mitm-addon
-          pip install ".[test]"
-          python -m pytest tests/ -v
+        working-directory: crates/runner/mitm-addon
+        run: uv run --no-sync python -m pytest tests/ -v
 
   nbd-cow-test:
     runs-on: ubuntu-latest

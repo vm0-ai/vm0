@@ -26,7 +26,12 @@ from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
-from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
+from ...json_selective import (
+    JsonExtractionResult,
+    JsonSelectiveExtractor,
+    ScalarField,
+    json_nesting_within_limit,
+)
 from ...reporting_context import usage_reporting_context
 from ...underbilling import log_usage_underbilling
 from .response_parser import ConnectorResponseParser
@@ -400,6 +405,9 @@ class _NdjsonExtractor:
         line = raw_line.rstrip(b"\r")
         if not line:
             return  # keep-alive blank line
+        if not json_nesting_within_limit(line):
+            self.state["lines_failed"] += 1
+            return
         try:
             obj = json.loads(line)
         except (ValueError, RecursionError):

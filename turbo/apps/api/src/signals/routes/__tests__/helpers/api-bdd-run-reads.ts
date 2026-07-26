@@ -5,7 +5,6 @@ import {
   runsByIdContract,
   runsCancelContract,
   runsMainContract,
-  runsQueueContract,
   runSystemLogContract,
 } from "@vm0/api-contracts/contracts/runs";
 import { sessionsByIdContract } from "@vm0/api-contracts/contracts/sessions";
@@ -143,18 +142,6 @@ export function createRunReadsApi(context: TestContext) {
         setupApp({ context })(runsByIdContract).getById({
           headers: { authorization },
           params: { id: runId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestReadAgentRunQueue<TStatus extends 200 | 401>(
-      actor: ApiTestUser | null,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runsQueueContract).getQueue({
-          headers: authenticate(context, actor),
         }),
         statuses,
       );

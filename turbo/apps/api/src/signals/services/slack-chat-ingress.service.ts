@@ -23,6 +23,13 @@ interface SlackChatThreadRouteBinding extends SlackChatThreadRouteKey {
   readonly id: string;
   readonly backend: SlackChatThreadRouteBackend;
   readonly chatThreadId: string | null;
+  readonly legacyCutoverEventId: string | null;
+  readonly legacyCutoverMessageTs: string | null;
+}
+
+interface CanonicalSlackChatThreadRouteBinding extends SlackChatThreadRouteBinding {
+  readonly backend: "canonical";
+  readonly chatThreadId: string;
 }
 
 function slackChatThreadRouteWhere(key: SlackChatThreadRouteKey) {
@@ -47,6 +54,8 @@ async function loadSlackChatThreadRoute(
       userId: slackChatThreadRoutes.userId,
       backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
+      legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
+      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
     })
     .from(slackChatThreadRoutes)
     .where(slackChatThreadRouteWhere(key))
@@ -70,6 +79,19 @@ async function requireSlackChatThreadRoute(
     throw new Error("Failed to resolve Slack chat thread route after conflict");
   }
   return route;
+}
+
+function requireCanonicalSlackChatThreadRoute(
+  route: SlackChatThreadRouteBinding,
+): CanonicalSlackChatThreadRouteBinding {
+  if (route.backend !== "canonical" || !route.chatThreadId) {
+    throw new Error("Failed to resolve canonical Slack chat thread route");
+  }
+  return {
+    ...route,
+    backend: "canonical",
+    chatThreadId: route.chatThreadId,
+  };
 }
 
 export async function ensureLegacySlackChatThreadRoute(
@@ -103,6 +125,8 @@ export async function ensureLegacySlackChatThreadRoute(
       userId: slackChatThreadRoutes.userId,
       backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
+      legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
+      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
     });
   return route ?? (await requireSlackChatThreadRoute(db, args));
 }
@@ -113,13 +137,15 @@ export async function ensureCanonicalSlackChatThreadRoute(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly cutoverEventId: string;
+    readonly cutoverMessageTs: string;
     readonly currentTime: Date;
   },
-): Promise<SlackChatThreadRouteBinding> {
+): Promise<CanonicalSlackChatThreadRouteBinding> {
   return await db.transaction(async (tx) => {
     const existing = await loadSlackChatThreadRoute(tx, args);
-    if (existing) {
-      return existing;
+    if (existing?.backend === "canonical") {
+      return requireCanonicalSlackChatThreadRoute(existing);
     }
 
     const [thread] = await tx
@@ -139,38 +165,88 @@ export async function ensureCanonicalSlackChatThreadRoute(
       throw new Error("Failed to create canonical Slack chat thread");
     }
 
-    const [route] = await tx
-      .insert(slackChatThreadRoutes)
-      .values({
-        connectionId: args.connectionId,
-        channelId: args.channelId,
-        threadTs: args.threadTs,
-        userId: args.userId,
-        backend: "canonical",
-        chatThreadId: thread.id,
-        createdAt: args.currentTime,
-      })
-      .onConflictDoNothing({
-        target: [
-          slackChatThreadRoutes.connectionId,
-          slackChatThreadRoutes.channelId,
-          slackChatThreadRoutes.threadTs,
-          slackChatThreadRoutes.userId,
-        ],
-      })
-      .returning({
-        id: slackChatThreadRoutes.id,
-        connectionId: slackChatThreadRoutes.connectionId,
-        channelId: slackChatThreadRoutes.channelId,
-        threadTs: slackChatThreadRoutes.threadTs,
-        userId: slackChatThreadRoutes.userId,
-        backend: slackChatThreadRoutes.backend,
-        chatThreadId: slackChatThreadRoutes.chatThreadId,
-      });
+    const returning = {
+      id: slackChatThreadRoutes.id,
+      connectionId: slackChatThreadRoutes.connectionId,
+      channelId: slackChatThreadRoutes.channelId,
+      threadTs: slackChatThreadRoutes.threadTs,
+      userId: slackChatThreadRoutes.userId,
+      backend: slackChatThreadRoutes.backend,
+      chatThreadId: slackChatThreadRoutes.chatThreadId,
+      legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
+      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
+    };
+    const [route] = existing
+      ? await tx
+          .update(slackChatThreadRoutes)
+          .set({
+            backend: "canonical",
+            chatThreadId: thread.id,
+            legacyCutoverEventId: args.cutoverEventId,
+            legacyCutoverMessageTs: args.cutoverMessageTs,
+          })
+          .where(
+            and(
+              eq(slackChatThreadRoutes.id, existing.id),
+              eq(slackChatThreadRoutes.backend, "legacy"),
+            ),
+          )
+          .returning(returning)
+      : await tx
+          .insert(slackChatThreadRoutes)
+          .values({
+            connectionId: args.connectionId,
+            channelId: args.channelId,
+            threadTs: args.threadTs,
+            userId: args.userId,
+            backend: "canonical",
+            chatThreadId: thread.id,
+            createdAt: args.currentTime,
+          })
+          .onConflictDoNothing({
+            target: [
+              slackChatThreadRoutes.connectionId,
+              slackChatThreadRoutes.channelId,
+              slackChatThreadRoutes.threadTs,
+              slackChatThreadRoutes.userId,
+            ],
+          })
+          .returning(returning);
 
     if (!route) {
+      const [promoted] = await tx
+        .update(slackChatThreadRoutes)
+        .set({
+          backend: "canonical",
+          chatThreadId: thread.id,
+          legacyCutoverEventId: args.cutoverEventId,
+          legacyCutoverMessageTs: args.cutoverMessageTs,
+        })
+        .where(
+          and(
+            slackChatThreadRouteWhere(args),
+            eq(slackChatThreadRoutes.backend, "legacy"),
+          ),
+        )
+        .returning(returning);
+      if (promoted) {
+        await appendChatThreadEvent(tx, {
+          kind: "created",
+          userId: args.userId,
+          orgId: args.orgId,
+          chatThreadId: thread.id,
+          agentComposeId: args.agentComposeId,
+          title: null,
+          selectedModel: args.selectedModel,
+          createdAt: thread.createdAt,
+        });
+        return requireCanonicalSlackChatThreadRoute(promoted);
+      }
+
       await tx.delete(chatThreads).where(eq(chatThreads.id, thread.id));
-      return await requireSlackChatThreadRoute(tx, args);
+      return requireCanonicalSlackChatThreadRoute(
+        await requireSlackChatThreadRoute(tx, args),
+      );
     }
 
     await appendChatThreadEvent(tx, {
@@ -183,8 +259,61 @@ export async function ensureCanonicalSlackChatThreadRoute(
       selectedModel: args.selectedModel,
       createdAt: thread.createdAt,
     });
-    return route;
+    return requireCanonicalSlackChatThreadRoute(route);
   });
+}
+
+function slackMessageTimestampMicros(value: string | null): bigint | null {
+  if (value === null) {
+    return null;
+  }
+  const match = /^([0-9]+)[.]([0-9]{1,6})$/u.exec(value);
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+  return BigInt(match[1]) * 1_000_000n + BigInt(match[2].padEnd(6, "0"));
+}
+
+export async function canonicalSlackChatRetryIsAdmissible(
+  db: Db,
+  args: {
+    readonly routeId: string;
+    readonly legacyCutoverEventId: string | null;
+    readonly legacyCutoverMessageTs: string | null;
+    readonly eventId: string;
+    readonly eventMessageTs: string;
+  },
+): Promise<boolean> {
+  if (
+    args.legacyCutoverEventId === null ||
+    args.legacyCutoverEventId === args.eventId
+  ) {
+    return true;
+  }
+
+  const cutoverMicros = slackMessageTimestampMicros(
+    args.legacyCutoverMessageTs,
+  );
+  const eventMicros = slackMessageTimestampMicros(args.eventMessageTs);
+  if (
+    cutoverMicros !== null &&
+    eventMicros !== null &&
+    eventMicros > cutoverMicros
+  ) {
+    return true;
+  }
+
+  const [ingress] = await db
+    .select({ id: slackChatIngress.id })
+    .from(slackChatIngress)
+    .where(
+      and(
+        eq(slackChatIngress.routeId, args.routeId),
+        eq(slackChatIngress.eventId, args.eventId),
+      ),
+    )
+    .limit(1);
+  return ingress !== undefined;
 }
 
 interface SlackChatIngressAdmission {

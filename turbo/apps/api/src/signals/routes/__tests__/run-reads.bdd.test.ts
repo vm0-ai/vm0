@@ -22,7 +22,7 @@ import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
-  expectLegacyStorageManifest,
+  expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -186,7 +186,7 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     const unauthenticated = [
       (await reads.requestListAgentRuns(null, {}, [401])).body,
       (await reads.requestReadAgentRun(null, missingId, [401])).body,
-      (await reads.requestReadAgentRunQueue(null, [401])).body,
+      (await api.requestReadRunQueue(null, [401])).body,
       (await reads.requestCancelAgentRun(null, missingId, [401])).body,
       (await reads.requestReadSession(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
@@ -205,7 +205,7 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     const orgless = bdd.user({ orgId: null });
     const orglessUnauthorized = [
       (await reads.requestListAgentRuns(orgless, {}, [401])).body,
-      (await reads.requestReadAgentRunQueue(orgless, [401])).body,
+      (await api.requestReadRunQueue(orgless, [401])).body,
       (await reads.requestCancelAgentRun(orgless, missingId, [401])).body,
       (await reads.requestListLogs(orgless, {}, [401])).body,
       (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
@@ -438,7 +438,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     // auth-me refreshes the caller's user-cache email, which the queue
     // surfaces for owner entries.
     await bdd.readMe(actor);
-    const agentQueue = await reads.requestReadAgentRunQueue(actor, [200]);
+    const agentQueue = await api.readRunQueue(actor);
     expect(agentQueue.body.concurrency).toMatchObject({
       tier: "pro",
       limit: 2,
@@ -509,7 +509,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     await api.requestCancelRun(actor, runA.runId, [200]);
     await api.requestCancelRun(member, runM.runId, [200]);
 
-    const drained = await reads.requestReadAgentRunQueue(actor, [200]);
+    const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
     expect(drained.body.queue).toStrictEqual([]);
   });
@@ -753,19 +753,19 @@ describe("RUN-04: session reads", () => {
       artifacts: [{ name: "bdd-out", mountPath: "/out" }],
     });
     const claim1 = await api.claimRunnerJob(r1.runId);
-    const claimedArtifacts = expectLegacyStorageManifest(
+    const claimedArtifacts = expectCanonicalStorageManifest(
       claim1.storageManifest,
-    )?.artifacts;
+    )?.storageMounts;
     const outArtifact = claimedArtifacts?.find((artifact) => {
-      return artifact.vasStorageName === "bdd-out";
+      return artifact.name === "bdd-out";
     });
     if (!claimedArtifacts || !outArtifact) {
       throw new Error("Expected the claim manifest to mount bdd-out");
     }
     expect(outArtifact.empty).toBeTruthy();
     expect(outArtifact.archiveUrl).toBeUndefined();
-    expect(outArtifact.vasStorageId).toStrictEqual(expect.any(String));
-    expect(outArtifact.vasVersionId).toStrictEqual(expect.any(String));
+    expect(outArtifact.storageId).toStrictEqual(expect.any(String));
+    expect(outArtifact.versionId).toStrictEqual(expect.any(String));
     expect("manifestUrl" in outArtifact).toBeFalsy();
     expect(
       hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
@@ -782,8 +782,8 @@ describe("RUN-04: session reads", () => {
           .digest("hex"),
         artifactSnapshots: claimedArtifacts.map((artifact) => {
           return {
-            name: artifact.vasStorageName,
-            version: artifact.vasVersionId,
+            name: artifact.name,
+            version: artifact.versionId,
             mountPath: artifact.mountPath,
             ...(artifact.missingRootPolicy === undefined
               ? {}
@@ -807,7 +807,7 @@ describe("RUN-04: session reads", () => {
     expect(completed.status).toBe("completed");
     expect(completed.result?.checkpointId).toBeDefined();
     expect(completed.result?.artifact).toMatchObject({
-      "bdd-out": outArtifact.vasVersionId,
+      "bdd-out": outArtifact.versionId,
     });
     expect(completed.result?.volumes).toBeUndefined();
 
@@ -1362,25 +1362,27 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     const claim1 = await api.claimRunnerJob(r1.runId);
     expect(
-      expectLegacyStorageManifest(claim1.storageManifest)?.storages,
-    ).toMatchObject([
-      {
-        name: "data",
-        mountPath: "/data",
-        vasVersionId: volumeVersion,
-        archiveSize: refreshedVolumeArchiveSize,
-      },
-    ]);
-    const memory1 = expectLegacyStorageManifest(
+      expectCanonicalStorageManifest(claim1.storageManifest)?.storageMounts,
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: volumeName,
+          mountPath: "/data",
+          versionId: volumeVersion,
+          archiveSize: refreshedVolumeArchiveSize,
+        }),
+      ]),
+    );
+    const memory1 = expectCanonicalStorageManifest(
       claim1.storageManifest,
-    )?.artifacts.find((artifact) => {
-      return artifact.vasStorageName === "memory";
+    )?.storageMounts.find((mount) => {
+      return mount.name === "memory";
     });
     expect(memory1).toMatchObject({
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
       empty: true,
-      vasStorageId: expect.any(String),
-      vasVersionId: expect.any(String),
+      storageId: expect.any(String),
+      versionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
     });
     if (!memory1) {
@@ -1403,7 +1405,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
         artifactSnapshots: [
           {
             name: "memory",
-            version: memory1.vasVersionId,
+            version: memory1.versionId,
             mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
           },
         ],
@@ -1446,15 +1448,17 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     const strictClaim = await api.claimRunnerJob(strictMemory.runId);
     expect(
-      expectLegacyStorageManifest(strictClaim.storageManifest)?.artifacts.map(
-        (artifact) => {
+      expectCanonicalStorageManifest(strictClaim.storageManifest)
+        ?.storageMounts.filter((mount) => {
+          return mount.name === "memory";
+        })
+        .map((mount) => {
           return {
-            name: artifact.vasStorageName,
-            mountPath: artifact.mountPath,
-            missingRootPolicy: artifact.missingRootPolicy,
+            name: mount.name,
+            mountPath: mount.mountPath,
+            missingRootPolicy: mount.missingRootPolicy,
           };
-        },
-      ),
+        }),
     ).toStrictEqual([
       {
         name: "memory",
@@ -1477,15 +1481,17 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     const customClaim = await api.claimRunnerJob(customCanonical.runId);
     expect(
-      expectLegacyStorageManifest(customClaim.storageManifest)?.artifacts.map(
-        (artifact) => {
+      expectCanonicalStorageManifest(customClaim.storageManifest)
+        ?.storageMounts.filter((mount) => {
+          return mount.name === "custom-memory";
+        })
+        .map((mount) => {
           return {
-            name: artifact.vasStorageName,
-            mountPath: artifact.mountPath,
-            missingRootPolicy: artifact.missingRootPolicy,
+            name: mount.name,
+            mountPath: mount.mountPath,
+            missingRootPolicy: mount.missingRootPolicy,
           };
-        },
-      ),
+        }),
     ).toStrictEqual([
       {
         name: "custom-memory",
@@ -1516,10 +1522,10 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
         downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
-    const continuedMemory = expectLegacyStorageManifest(
+    const continuedMemory = expectCanonicalStorageManifest(
       continuedClaim.storageManifest,
-    )?.artifacts.find((artifact) => {
-      return artifact.vasStorageName === "memory";
+    )?.storageMounts.find((mount) => {
+      return mount.name === "memory";
     });
     expect(continuedMemory).toMatchObject({
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,

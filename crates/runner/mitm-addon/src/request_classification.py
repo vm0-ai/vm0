@@ -14,7 +14,7 @@ stale decisions cannot leak into later hook handling for the same flow.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, TypeAlias
+from typing import Literal, Protocol
 
 from mitmproxy import http
 
@@ -62,7 +62,7 @@ _BROWSER_USER_AGENT_MARKERS = (
     " safari/",
 )
 
-StaleTlsAdmissionReason: TypeAlias = Literal[
+type StaleTlsAdmissionReason = Literal[
     "client_ip_missing",
     "client_ip_mismatch",
     "registry_entry_missing",
@@ -190,7 +190,9 @@ class Allow:
     kind: Literal["allow"] = field(init=False, default="allow")
 
 
-RequestClassification: TypeAlias = (
+# This must remain a runtime union because cached metadata is validated with
+# ``isinstance`` before it is returned to request handling.
+RequestClassification = (
     NoClientIp
     | PassThrough
     | RegistryUnavailable

@@ -36,7 +36,7 @@ agents:
     description: "Real codex smoke test"
     framework: codex
     environment:
-      OPENAI_MODEL: "gpt-5.4-mini"
+      OPENAI_MODEL: "gpt-5.6-luna"
     volumes:
       - codex-files:/home/user/.codex
 volumes:

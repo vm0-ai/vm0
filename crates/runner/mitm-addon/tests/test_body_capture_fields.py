@@ -39,6 +39,19 @@ class TestAddCaptureFields:
         assert entry["response_body"] == '{"result": "ok"}'
         assert entry["response_body_encoding"] == "utf-8"
 
+    def test_captures_structured_json_response_without_preserving_header_value(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_body=b'{"title": "Invalid request"}',
+            response_content_type="application/problem+json",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body"] == '{"title": "Invalid request"}'
+        assert entry["response_body_encoding"] == "utf-8"
+        assert entry["response_headers"]["Content-Type"] == "***"
+
     def test_captures_request_headers(self, real_flow):
         flow = real_flow(
             method="POST",

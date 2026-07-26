@@ -19,7 +19,12 @@ type ChatEventWriteTransaction = Parameters<
 
 type ChatEventIdentity = Pick<
   ChatEventInsert,
-  "id" | "chatThreadId" | "runId" | "runGroupId" | "slackMessagePermalink"
+  | "id"
+  | "chatThreadId"
+  | "runId"
+  | "runGroupId"
+  | "slackMessagePermalink"
+  | "feishuChatOpenUrl"
 > & {
   readonly createdAt?: Date;
 };

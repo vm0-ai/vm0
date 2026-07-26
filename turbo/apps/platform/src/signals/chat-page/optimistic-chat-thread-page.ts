@@ -21,6 +21,7 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
   clearArtifactSidebarParams,
+  clearBrowserSessionSidebarParams,
   clearChatAutomationSidebarParams,
   clearMailDraftSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
@@ -275,6 +276,7 @@ const routeMainChatThread$ = command(
     clearArtifactSidebarParams(next);
     clearChatAutomationSidebarParams(next);
     clearMailDraftSidebarParams(next);
+    clearBrowserSessionSidebarParams(next);
     set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: args.threadId },
       searchParams: next,
@@ -326,6 +328,8 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly eventId: string;
       readonly agentId: string;
       readonly selectedModel: string | null;
+      readonly serviceTier: "priority" | null;
+      readonly computerUseHostId: string | null;
     },
     signal: AbortSignal,
   ): void => {
@@ -342,6 +346,8 @@ const mintOptimisticThreadWithEvent$ = command(
       agentId: args.agentId,
       title: null,
       selectedModel: args.selectedModel,
+      serviceTier: args.serviceTier,
+      computerUseHostId: args.computerUseHostId,
       createdAt,
     } satisfies ChatThreadEvent);
   },
@@ -425,6 +431,9 @@ const startNewChatThreadCreate$ = command(
         eventId,
         agentId,
         selectedModel: modelSelection.selectedModel,
+        serviceTier:
+          modelSelection.codexServiceTier === "fast" ? "priority" : null,
+        computerUseHostId: null,
       },
       signal,
     );
@@ -533,6 +542,11 @@ const sendNewThreadMessage$ = command(
         eventId: chatThreadEventId,
         agentId,
         selectedModel: resolvedModelSelection.selectedModel,
+        serviceTier:
+          resolvedModelSelection.codexServiceTier === "fast"
+            ? "priority"
+            : null,
+        computerUseHostId: computerUseHostId ?? null,
       },
       signal,
     );

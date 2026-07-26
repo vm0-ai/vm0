@@ -18,7 +18,7 @@ import { exportJobs } from "@vm0/db/schema/export-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { command } from "ccstate";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notExists } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -133,7 +133,7 @@ async function seedRunForAction(
 
   const [session] = await db
     .insert(agentSessions)
-    .values({ userId, orgId, agentComposeId: compose.id, artifacts: [] })
+    .values({ userId, orgId, agentComposeId: compose.id })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
   if (!session) {
@@ -207,13 +207,19 @@ async function deleteRunForAction(
   if (runThreadIds.length > 0) {
     await db.delete(chatMessages).where(eq(chatMessages.runId, runId));
     signal.throwIfAborted();
-    await db.delete(chatThreads).where(
-      sql`${inArray(chatThreads.id, runThreadIds)} AND NOT EXISTS (
-        SELECT 1
-        FROM ${chatMessages}
-        WHERE ${eq(chatMessages.chatThreadId, chatThreads.id)}
-      )`,
-    );
+    await db
+      .delete(chatThreads)
+      .where(
+        and(
+          inArray(chatThreads.id, runThreadIds),
+          notExists(
+            db
+              .select({ id: chatMessages.id })
+              .from(chatMessages)
+              .where(eq(chatMessages.chatThreadId, chatThreads.id)),
+          ),
+        ),
+      );
     signal.throwIfAborted();
   }
   await db.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
@@ -259,6 +265,7 @@ async function seedRunnerJobForAction(
     profile: readOptionalString(body, "profile") ?? "vm0/default",
     executionContext: {
       storageManifest: null,
+      storageMounts: [],
       environment: null,
       resumeSession: null,
       encryptedSecrets: null,

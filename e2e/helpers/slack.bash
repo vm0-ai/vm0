@@ -195,43 +195,6 @@ wait_for_slack_run() {
     return 1
 }
 
-# Run the mention/DM handler synchronously against the dispatch-probe
-# endpoint and print the response. Use this as a diagnostic: if the real
-# events route succeeds but wait_for_slack_run never sees a run, this
-# endpoint surfaces the error that was swallowed by after().catch().
-# Usage: slack_dispatch_probe <team_id> <channel_id> <user_id> <text> <ts> [channel_type]
-slack_dispatch_probe() {
-    local team_id="$1" channel_id="$2" user_id="$3" text="$4" ts="$5"
-    local channel_type="${6:-channel}"
-    local body
-    body=$(jq -nc \
-        --arg team_id "$team_id" \
-        --arg channel_id "$channel_id" \
-        --arg user_id "$user_id" \
-        --arg message_text "$text" \
-        --arg message_ts "$ts" \
-        --arg channel_type "$channel_type" \
-        '{team_id: $team_id, channel_id: $channel_id, user_id: $user_id,
-          message_text: $message_text, message_ts: $message_ts,
-          channel_type: $channel_type}')
-    local -a bypass=()
-    _slack_test_endpoint_bypass_args bypass
-    local endpoint_base
-    endpoint_base="$(_slack_api_backend_url)"
-    endpoint_base="${endpoint_base%/}"
-    # The dispatch probe is API-authoritative. Hit the API preview alias
-    # directly so the diagnostic keeps exercising the handler without relying
-    # on external Next rewrites to preserve preview guard headers.
-    # --max-time bounds the probe so a hung handler doesn't eat the
-    # entire BATS budget. 60s is generous for a cold-started lambda
-    # doing DB + Clerk + mock calls.
-    curl -sS --max-time 60 -X POST \
-        -H "Content-Type: application/json" \
-        "${bypass[@]}" \
-        --data "$body" \
-        "$endpoint_base/api/test/slack-dispatch-probe"
-}
-
 # Poll test-state until a run reaches a terminal status or a timeout.
 # A run is considered terminal when its status is one of: completed,
 # succeeded, failed. Returns 0 on first matching run, 1 on timeout.
@@ -290,14 +253,31 @@ wait_for_slack_mock_post_message() {
 }
 
 # Substitute common placeholders in a JSON fixture file.
-# Usage: slack_render_fixture <path> <team_id> <channel_id> <user_id> [extra_ts]
+# Usage: slack_render_fixture <path> <team_id> <channel_id> <user_id> [extra_ts] [event_id]
+#
+# event_id must be unique per logical Slack event. Slack event IDs are
+# globally unique in production, and slack_chat_ingress enforces that with
+# a unique index on event_id — admission dedupes against the whole table,
+# not per workspace. A fixture-wide constant therefore makes two concurrent
+# CI jobs collide: cli-e2e-01-serial (ser-t07-slack.bats) and
+# cli-e2e-03-runner (t40-slack-roundtrip.bats) render this same DM fixture
+# against the same preview deployment, so whichever posts second dedupes
+# onto the first job's already-"processed" row, the webhook skips
+# processCanonicalSlackIngress$, and no run is ever dispatched.
+#
+# Deriving the default from the fixture name plus the already-unique
+# team/timestamp keeps independent events independent across jobs and runs,
+# while staying stable when the same event is re-rendered within one test.
+# Pass an explicit event_id to replay one event (Slack retry semantics).
 slack_render_fixture() {
     local path="$1" team_id="$2" channel_id="$3" user_id="$4"
     local ts="${5:-$(date +%s).000100}"
+    local event_id="${6:-Ev_$(basename "$path" .json)_${team_id}_${ts}}"
     sed \
         -e "s/{{TEAM_ID}}/$team_id/g" \
         -e "s/{{CHANNEL_ID}}/$channel_id/g" \
         -e "s/{{USER_ID}}/$user_id/g" \
         -e "s/{{TS}}/$ts/g" \
+        -e "s/{{EVENT_ID}}/$event_id/g" \
         "$path"
 }

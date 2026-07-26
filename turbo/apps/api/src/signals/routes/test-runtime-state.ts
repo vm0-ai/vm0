@@ -16,6 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-runtime-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -267,6 +268,36 @@ async function readRunApiStart(
   return run.apiStartedAt?.toISOString() ?? null;
 }
 
+async function readThreadSessionBinding(
+  db: Db,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<{
+  readonly agent_session_id: string | null;
+  readonly agent_session_run_id: string | null;
+  readonly run_session_id: string | null;
+}> {
+  const [thread] = await db
+    .select({
+      agentSessionId: chatThreads.agentSessionId,
+      agentSessionRunId: chatThreads.agentSessionRunId,
+      runSessionId: agentRuns.sessionId,
+    })
+    .from(chatThreads)
+    .leftJoin(agentRuns, eq(chatThreads.agentSessionRunId, agentRuns.id))
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!thread) {
+    throw new Error("Expected a chat thread session binding row");
+  }
+  return {
+    agent_session_id: thread.agentSessionId,
+    agent_session_run_id: thread.agentSessionRunId,
+    run_session_id: thread.runSessionId,
+  };
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -320,7 +351,6 @@ async function readStoragePersistenceState(
   const [[run], [session], [checkpoint]] = await Promise.all([
     db
       .select({
-        additionalVolumes: agentRuns.additionalVolumes,
         storageMounts: agentRuns.storageMounts,
       })
       .from(agentRuns)
@@ -328,7 +358,6 @@ async function readStoragePersistenceState(
       .limit(1),
     db
       .select({
-        artifacts: agentSessions.artifacts,
         storageMounts: agentSessions.storageMounts,
       })
       .from(agentSessions)
@@ -336,8 +365,6 @@ async function readStoragePersistenceState(
       .limit(1),
     db
       .select({
-        artifactSnapshots: checkpoints.artifactSnapshots,
-        volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
         storageMounts: checkpoints.storageMounts,
       })
       .from(checkpoints)
@@ -350,13 +377,8 @@ async function readStoragePersistenceState(
   }
   return {
     run_canonical: run.storageMounts !== null,
-    run_legacy: (run.additionalVolumes?.length ?? 0) > 0,
     session_canonical: session.storageMounts !== null,
-    session_legacy: session.artifacts.length > 0,
     checkpoint_canonical: checkpoint.storageMounts !== null,
-    checkpoint_legacy_artifacts:
-      (checkpoint.artifactSnapshots?.length ?? 0) > 0,
-    checkpoint_legacy_volumes: checkpoint.volumeVersionsSnapshot !== null,
   };
 }
 
@@ -456,6 +478,63 @@ async function timingStateActionResponse(
   }
 }
 
+type ThreadSessionBindingAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-thread-session-binding" }
+>;
+
+async function threadSessionBindingActionResponse(
+  db: Db,
+  body: ThreadSessionBindingAction,
+  signal: AbortSignal,
+) {
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      thread_session_binding: await readThreadSessionBinding(
+        db,
+        body.thread_id,
+        signal,
+      ),
+    },
+  };
+}
+
+type LegacyArtifactCatalogFileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-legacy-artifact-catalog-file" }
+>;
+
+async function insertLegacyArtifactCatalogFile(
+  db: Db,
+  body: LegacyArtifactCatalogFileAction,
+  signal: AbortSignal,
+) {
+  const [file] = await db
+    .insert(runUploadedFiles)
+    .values({
+      source: "web",
+      externalId: body.url,
+      userId: body.user_id,
+      orgId: body.org_id,
+      filename: body.filename,
+      contentType: "application/zip",
+      sizeBytes: 512,
+      url: body.url,
+      metadata: {},
+    })
+    .returning({ id: runUploadedFiles.id });
+  signal.throwIfAborted();
+  if (!file) {
+    throw new Error("Failed to insert a legacy artifact catalog file");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, file_id: file.id },
+  };
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -475,6 +554,12 @@ const postRuntimeStateAction$ = command(
     }
     if (isTimingStateAction(body)) {
       return await timingStateActionResponse(db, body, signal);
+    }
+    if (body.action === "read-thread-session-binding") {
+      return await threadSessionBindingActionResponse(db, body, signal);
+    }
+    if (body.action === "insert-legacy-artifact-catalog-file") {
+      return await insertLegacyArtifactCatalogFile(db, body, signal);
     }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {

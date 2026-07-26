@@ -135,6 +135,7 @@ export { linkZeroMailDraft } from "./domains/zero-mail";
 export {
   sendSlackMessage,
   initSlackFileUpload,
+  materializeSlackFileUpload,
   completeSlackFileUpload,
   downloadSlackFile,
 } from "./domains/integrations-slack";
@@ -191,11 +192,14 @@ export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
 // Domain modules - Zero Chat
 export {
+  getZeroChatThreadSnapshot,
   getZeroChatThread,
+  listZeroChatThreadEvents,
   renameZeroChatThread,
   searchZeroChat,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
+export type { ZeroChatThreadSnapshot } from "./domains/zero-chat";
 
 // Domain modules - Zero Developer Support
 export {
@@ -214,6 +218,14 @@ export {
   fetchComputerUseScreenshot,
   getComputerUseCommand,
 } from "./domains/zero-computer-use";
+
+// Domain modules - Zero Browser
+export {
+  createZeroBrowser,
+  getCurrentZeroBrowser,
+  leaseZeroBrowser,
+  useZeroBrowser,
+} from "./domains/zero-browser";
 
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
@@ -251,6 +263,7 @@ export {
 // Domain modules - Web
 export {
   downloadWebFile,
+  inferWebUploadContentType,
   uploadWebFile,
   generateWebVoice,
   generateWebImage,

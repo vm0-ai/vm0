@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadsContract,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
@@ -39,7 +42,6 @@ import {
   createConnectorBddApi,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
-  mockGoogleDriveSlidesUpload,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -52,7 +54,6 @@ import {
   generatedStripeSubscriptionId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
  * CHAT-01 / CHAT-03: chat thread lifecycle beyond the mutation chain that
@@ -333,18 +334,21 @@ const GOAL_CAPABILITIES = [
   "goal:agent-result:write",
   "goal:user-control:write",
 ] as const satisfies readonly ZeroCapability[];
+const CHAT_THREAD_READ_CAPABILITIES = [
+  "chat-thread:read",
+] as const satisfies readonly ZeroCapability[];
 
 function goalsClient() {
   return setupApp({ context })(zeroGoalsContract);
 }
 
-/** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
-function zeroGoalHeaders(
+function zeroCapabilityHeaders(
   actor: ApiTestUser,
   runId: string,
+  capabilities: readonly ZeroCapability[],
 ): { readonly authorization: string } {
   if (!actor.orgId) {
-    throw new Error("Expected an org-scoped actor for goal auth");
+    throw new Error("Expected an org-scoped actor for zero auth");
   }
   const seconds = Math.floor(now() / 1000);
   return {
@@ -353,11 +357,19 @@ function zeroGoalHeaders(
       userId: actor.userId,
       orgId: actor.orgId,
       runId,
-      capabilities: [...GOAL_CAPABILITIES],
+      capabilities: [...capabilities],
       iat: seconds,
       exp: seconds + 600,
     })}`,
   };
+}
+
+/** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
+function zeroGoalHeaders(
+  actor: ApiTestUser,
+  runId: string,
+): { readonly authorization: string } {
+  return zeroCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
 }
 
 async function createThreadGoal(
@@ -467,6 +479,59 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(unauthenticatedBody.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("allows chat-thread read zero tokens to sync snapshots and events", async () => {
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await api.ensureOrgModelProvider(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          role: actor.orgRole ?? "org:admin",
+          organization: { id: actor.orgId },
+          publicUserData: { userId: actor.userId },
+        },
+      ],
+    });
+    const zeroClient = setupApp({ context })(chatThreadsContract);
+    const zeroHeaders = zeroCapabilityHeaders(
+      actor,
+      randomUUID(),
+      CHAT_THREAD_READ_CAPABILITIES,
+    );
+
+    const snapshot = await accept(
+      zeroClient.snapshot({ headers: zeroHeaders }),
+      [200],
+    );
+    expect(snapshot.body).toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+    const events = await accept(
+      zeroClient.events({ headers: zeroHeaders, query: {} }),
+      [200],
+    );
+    expect(events.body).toStrictEqual({
+      events: [],
+      hasMore: false,
+    });
+
+    const missingCapability = await accept(
+      zeroClient.snapshot({
+        headers: zeroGoalHeaders(actor, randomUUID()),
+      }),
+      [403],
+    );
+    expect(missingCapability.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: chat-thread:read",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("rejects thread creation for unknown, cross-org, and org-less callers", async () => {
     const unauthenticated = await chat.requestCreateThread(
       null,
@@ -561,7 +626,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       throw new Error("Expected chat thread events to load");
     }
     expect(allEvents.body.hasMore).toBeFalsy();
-    expect(allEvents.body.events).toHaveLength(3);
+    expect(allEvents.body.events).toHaveLength(4);
     expect(allEvents.body.events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -589,6 +654,13 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
           selectedModel: "claude-sonnet-4-6",
           createdAt: expect.any(String),
         }),
+        expect.objectContaining({
+          kind: "service_tier_updated",
+          chatThreadId: thread.id,
+          agentId: agent.agentId,
+          serviceTier: null,
+          createdAt: expect.any(String),
+        }),
       ]),
     );
 
@@ -601,11 +673,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     if (afterCreate.status !== 200) {
       throw new Error("Expected chat thread events after cursor to load");
     }
-    expect(afterCreate.body.events).toHaveLength(2);
+    expect(afterCreate.body.events).toHaveLength(3);
     expect(afterCreate.body.events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: renameEventId }),
         expect.objectContaining({ id: modelSelectionEventId }),
+        expect.objectContaining({ kind: "service_tier_updated" }),
       ]),
     );
 
@@ -899,12 +972,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       model: "claude-sonnet-5",
       title: "limited free model pin",
     });
-    for (const selectedModel of [
-      "gpt-5.6-sol",
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-    ] as const) {
+    for (const selectedModel of ["gpt-5.6-sol", "gpt-5.5"] as const) {
       const restrictedSelection = await chat.requestUpdateThreadModelSelection(
         actor,
         thread.id,
@@ -941,9 +1009,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const host = await cu.startComputerUseHost(actor);
     await chat.updateThreadComputerUseHost(actor, thread.id, host.hostId);
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      computerUseHostId: host.hostId,
-    });
 
     const missingHost = await chat.requestUpdateThreadComputerUseHost(
       actor,
@@ -965,9 +1030,19 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerUpdate.body.error.message).toBe("Chat thread not found");
 
     await chat.updateThreadComputerUseHost(actor, thread.id, null);
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      computerUseHostId: null,
+
+    const hostEvents = (await allThreadEvents(actor)).filter((event) => {
+      return (
+        event.chatThreadId === thread.id &&
+        event.kind === "computer_use_host_updated"
+      );
     });
+    expect(hostEvents).toHaveLength(2);
+    expect(
+      hostEvents.map((event) => {
+        return event.computerUseHostId;
+      }),
+    ).toStrictEqual([host.hostId, null]);
 
     const missingThread = await chat.requestUpdateThreadComputerUseHost(
       actor,
@@ -1049,8 +1124,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
     await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
 
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
@@ -2423,125 +2496,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
-  }, 120_000);
-
-  it("uploads a presentation to Google Slides behind a feature flag", async () => {
-    const { actor } = await entitledChatActor("Slides upload agent");
-    const objectStore = chatCallbacks.acceptChatObjectStorage();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("entitled actor is missing an organization");
-    }
-    const threadId = randomUUID();
-    // Gated off by default: the feature switch hides the endpoint.
-    const gated = await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-      actor,
-      threadId,
-      randomUUID(),
-      [403],
-    );
-    expectApiError(gated.body);
-    expect(gated.body.error.code).toBe("FORBIDDEN");
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.PresentationExport]: true },
-    );
-
-    // Enabled, but Google Drive is not connected yet.
-    const noDrive =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [400],
-      );
-    expectApiError(noDrive.body);
-    expect(noDrive.body.error.message).toBe(
-      "Connect Google Drive before uploading to Google Slides",
-    );
-
-    // Connect Google Drive through the public OAuth routes.
-    mockGoogleDriveConnectorOAuth();
-    const start = await connectorsApi.startOauth(
-      actor,
-      "google-drive",
-      "oauth",
-    );
-    await connectorsApi.completeOauthCallback("google-drive", {
-      code: "drive-ok",
-      state: stateFromAuthorizationUrl(start.authorizationUrl),
-    });
-
-    const missingUpload =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [404],
-      );
-    expectApiError(missingUpload.body);
-    expect(missingUpload.body.error.message).toBe(
-      "Presentation upload not found",
-    );
-
-    const oversizedUploadId = randomUUID();
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      key: `artifacts/${encodeURIComponent(actor.userId)}/${oversizedUploadId}/too-large.pptx`,
-      size: 100 * 1024 * 1024 + 1,
-    });
-    const oversized =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        oversizedUploadId,
-        [400],
-      );
-    expectApiError(oversized.body);
-    expect(oversized.body.error.message).toBe(
-      "Presentation file is too large (max 100 MB)",
-    );
-
-    // A PPTX larger than Vercel's request-body limit is staged in R2, then
-    // Drive converts it into a native Google Slides deck via resumable upload.
-    const stagedPptx = new Uint8Array(5 * 1024 * 1024);
-    stagedPptx.set([0x50, 0x4b, 0x03, 0x04]);
-    const prepared = await chat.prepareUpload(actor, {
-      filename: "large-deck.pptx",
-      contentType:
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      size: stagedPptx.byteLength,
-    });
-    const stagedKey = `artifacts/${encodeURIComponent(actor.userId)}/${prepared.id}/large-deck.pptx`;
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      body: stagedPptx,
-      key: stagedKey,
-      size: stagedPptx.byteLength,
-    });
-    const uploadRecorder = mockGoogleDriveSlidesUpload();
-    const uploaded =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        prepared.id,
-        [200],
-      );
-    expect(uploaded.body).toStrictEqual({
-      id: "slides-file-1",
-      name: "deck",
-      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
-    });
-    expect(uploadRecorder.metadataBodies[0]).toContain(
-      "application/vnd.google-apps.presentation",
-    );
-    expect(uploadRecorder.uploadBodies[0]).toHaveLength(stagedPptx.byteLength);
-    expect(uploadRecorder.uploadBodies[0]?.slice(0, 4)).toStrictEqual(
-      stagedPptx.slice(0, 4),
-    );
-    expect(objectStore.deletedKeys).toContain(stagedKey);
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

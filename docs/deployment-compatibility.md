@@ -40,12 +40,14 @@ active, or introduce a versioned/new endpoint and migrate the frontend first.
 ### Backend
 
 The backend is the compatibility boundary for both frontend and runner traffic.
-In the production release workflow, app and runner promotion wait for API
-promotion when the same release also changes the API. That ordering reduces the
-chance of a new frontend or runner talking to an old backend, but it does not
-remove cross-version windows: old browser pages can still call the new backend,
-old runners keep draining against the new backend, and traffic promotion is not
-an atomic process visible to every client at the same instant.
+In the production release workflow, app promotion starts after any required
+production migration and does not wait for API promotion. A new frontend can
+therefore talk to the old backend during a normal production rollout or remain
+paired with it if API promotion fails. Runner promotion still waits for API
+promotion when the same release also changes the API. Old browser pages can
+also call the new backend, old runners keep draining against the new backend,
+and traffic promotion is not an atomic process visible to every client at the
+same instant.
 
 Production database migrations are part of the API release lifecycle and run
 before the new API deployment is promoted. Old backend code can therefore
@@ -57,14 +59,14 @@ This is a traffic-promotion guarantee, not a guarantee that no deployment
 preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
 builds, host provisioning, and other non-serving preparation jobs may complete
 before migrations run. API traffic promotion must wait until the required
-migrations have completed; app and runner promotion also wait for API promotion
-when the same release changes the API.
+migrations have completed. App promotion waits for required migrations but is
+independent of API promotion. Runner promotion waits for API promotion when the
+same release changes the API.
 
 Backend changes must be safe with:
 
 - old frontend -> new backend
-- new frontend -> old backend, if traffic propagation or non-production
-  deployment order can expose that pairing
+- new frontend -> old backend
 - old runner -> new backend
 - new runner -> old backend, if traffic propagation or non-production
   deployment order can expose that pairing
@@ -171,26 +173,27 @@ For runner/backend API changes:
 
 ### Storage mount manifest rollout
 
-The runtime Storage unification uses a receiver-first Runner rollout. New
-Runners advertise `storage-mounts-v1` through the existing claim
-`capabilities[]` field and accept exactly one of these response shapes:
+The runtime Storage unification used a receiver-first Runner rollout. Runners
+accept exactly one of these response shapes:
 
 - canonical `storageMounts`
 - legacy `storages` plus `artifacts`
 
 Mixed, incomplete, and representation-free manifests are invalid. The initial
 receiver release left backend output unchanged. After that receiver fleet was
-deployed, the API began sending `storageMounts` only to a Runner that advertises
-the capability; old Runners continue receiving both legacy arrays.
+deployed, the API selected `storageMounts` through the temporary
+`storage-mounts-v1` capability. Once production claim traffic and live Runner
+state showed only receiver-capable versions, the API began sending
+`storageMounts` to every Runner and the active capability was retired.
 
 New run, session, and checkpoint writers persist canonical Storage mounts only.
 After the latest session continuation heads were backfilled and verified,
 application readers require canonical run, session, and checkpoint persistence.
-Legacy API response shapes are still projected from canonical mounts. The
-physical legacy columns remain temporarily for rollback-safe deployment and are
-removed only after API versions that read them have drained. The short-lived
-runner job queue also retains its legacy claim projection until old Runner
-output is removed.
+Legacy API response shapes are still projected from canonical mounts. After the
+detached API release was healthy and every rollback-eligible API version that
+accessed them had drained, the physical legacy run, session, and checkpoint
+columns were removed. The short-lived runner job queue still retains its legacy
+claim projection for the previous API version and rollback.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical
@@ -201,15 +204,17 @@ into resumable snapshots: arbitrary checkpoint resume has been retired, while
 a successful session continuation naturally emits a fully resolved canonical
 run and checkpoint.
 
-Remove the remaining legacy columns and readers only after verification finds
-zero legacy writes, zero unmigrated session continuation heads, and no lossy
-session conversion. Malformed, ambiguous, or unresolvable latest session state
-must block contraction rather than being silently rewritten.
+The physical-column contraction was gated on verification finding zero legacy
+writes, zero unmigrated session continuation heads, and no lossy session
+conversion. Malformed, ambiguous, or unresolvable latest session state blocked
+contraction rather than being silently rewritten.
 
 Runner and guest binaries ship together, so the Runner-to-guest manifest uses
-the canonical shape immediately while the guest reader temporarily accepts both
-representations. Remove the legacy readers and the capability only after the
-canonical API output has been stable across the fully upgraded Runner fleet.
+the canonical shape while the guest reader temporarily accepts both
+representations. This keeps a newly promoted Runner compatible with the
+previous API during a cross-version window. Remove the legacy readers and queue
+projection only after canonical-only API output is stable and rollback-eligible
+API versions have drained.
 
 ### Firewall hostname policy
 

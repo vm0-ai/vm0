@@ -78,6 +78,13 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       `,
     },
     {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select().from(users).where(sql\`\${users.id} =\`);
+        db.select().from(users).crossJoin(users);
+      `,
+    },
+    {
       code: `
         function sql(strings: TemplateStringsArray, ...values: unknown[]) {
           return { strings, values };
@@ -136,6 +143,79 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`\${users.name} @> \${sql\`jsonb_build_array('tag')\`}\`;
         sql\`\${condition} @> \${sql\`jsonb_build_array('tag')\`}\`;
         void mutableList;
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql as query } from "drizzle-orm";
+        const names = ["one", "two"];
+        const nameList = query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        );
+        const subquery = query\`SELECT \${users.name} FROM \${users}\`;
+        function nameSqlList() {
+          return query.join(
+            names.map((name) => query\`\${name}\`),
+            query\`, \`,
+          );
+        }
+        const otherSql = {
+          join(values: string[]) {
+            return query.join(
+              values.map((value) => query\`\${value}\`),
+              query\`, \`,
+            );
+          },
+        };
+        function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+          return { strings, values };
+        }
+        sql.join = (values: unknown[], separator: unknown) => ({
+          values,
+          separator,
+        });
+        const condition = eq(users.id, 1);
+        sql\`lower(\${users.name}) IN (\${sql.join(
+          names.map((name) => sql\`\${name}\`),
+          sql\`, \`,
+        )})\`;
+        query\`upper(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) NOT IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) IN (\${nameList})\`;
+        query\`lower(\${users.name}) IN (\${nameSqlList()})\`;
+        query\`lower(\${users.name}) IN (\${otherSql.join(names)})\`;
+        query\`lower(\${users.name}) IN (\${subquery})\`;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name.toUpperCase()}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`; \`,
+        )})\`;
+        query\`SELECT lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )}) FROM \${users}\`;
+        query\`prefix_lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )}) IS TRUE\`;
+        query\`lower(\${condition}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
       `,
     },
     {
@@ -272,8 +352,294 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`discount(*)\`;
       `,
     },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        import { executeRawRows as decodeRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+
+        const composed: SQL = sql\`
+          SELECT \${users.id}
+          FROM \${users}
+          WHERE \${eq(users.id, 1)}
+          LIMIT 1
+        \`;
+        await decodeRows(db, composed, rowSchema);
+        await decodeRows(
+          db,
+          sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${eq(users.id, 1)}
+            LIMIT 1;
+            SELECT 1
+          \`,
+          rowSchema,
+        );
+        db.select().from(users).where(sql\`'\${users.id}' = 'literal'\`);
+        db.select().from(users).where(sql\`\${1} = \${2}\`);
+        db.select()
+          .from(users)
+          .where(
+            sql\`__VM0_SQL_MARKER_0_0 = 1 AND '\${users.id}' = 'literal'\`,
+          );
+
+        function local(
+          decodeRows: (...arguments_: unknown[]) => unknown,
+        ): unknown {
+          return decodeRows(
+            db,
+            sql\`
+              SELECT \${users.id}
+              FROM \${users}
+              WHERE \${eq(users.id, 1)}
+              LIMIT 1
+            \`,
+            rowSchema,
+          );
+        }
+        void local;
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "@fake/lib/db-raw-rows";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${eq(users.id, 1)}
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const builder = {
+          innerJoin(relation: unknown, condition: unknown) {
+            return { relation, condition };
+          },
+        };
+        builder.innerJoin(users, sql\`true\`);
+      `,
+    },
   ],
   invalid: [
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${users.id} AS "id"
+            FROM \${users}
+            WHERE \${eq(users.id, 1)}
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${users.deletedAt} IS NULL
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql as query } from "drizzle-orm";
+        import { executeRawRows as decodeRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await decodeRows(
+          db,
+          query\`select \${users.id} from \${users} where \${eq(users.id, 1)} limit 1;\`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import * as drizzle from "drizzle-orm";
+        import * as rawRows from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await rawRows.executeRawRows(
+          db,
+          drizzle.sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${drizzle.eq(users.id, 1)}
+              AND $$ORDER BY ignored$$ = $$ORDER BY ignored$$
+              /* GROUP BY ignored /* nested ORDER BY */ */
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            /* __vm0_sql_marker_0_ and Unicode α */
+            SELECT \${users.id} AS "识别符"
+            FROM \${users}
+            WHERE \${eq(users.id, 1)}
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${users.id} = \${1}
+            ORDER BY \${users.id}
+            LIMIT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`\${users.deletedAt} IS NULL\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "isNull" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${users.deletedAt} IS NULL
+            ORDER BY \${users.id}
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "isNull" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`\${users.deletedAt} > now()\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const condition = eq(users.id, 1);
+        db.select()
+          .from(users)
+          .where(sql\`\${condition} AND unsupported(\${users.name})\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(
+            sql\`(\${users.id} = \${1} OR unsupported(\${users.name}))
+              AND \${users.id} > \${2}\`,
+          );
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`unsupported(\${users.id} = \${1})\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            WITH first_group AS (
+              SELECT 1
+              WHERE \${eq(users.id, 1)} AND \${eq(users.name, "one")}
+            ),
+            second_group AS (
+              SELECT 1
+              WHERE \${eq(users.id, 2)} AND \${eq(users.name, "two")}
+            )
+            SELECT 1
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .innerJoin(users, sql\`/* structural */ TRUE\`);
+      `,
+      errors: [{ messageId: "crossJoin" }],
+    },
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
@@ -295,6 +661,19 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "emptyFragment" },
         { messageId: "emptyFragment" },
       ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const names = ["one", "two"];
+        sql\`lower(\${users.name}) IN (\${sql.join(
+          names.map((name) => {
+            return sql\`\${name}\`;
+          }),
+          sql\`, \`,
+        )})\`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "inArray" } }],
     },
     {
       code: `${drizzlePreamble}
@@ -682,6 +1061,32 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "max" } },
         { messageId: "typedApi", data: { helper: "or" } },
         { messageId: "typedApi", data: { helper: "arrayContains" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql as query } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        const names = ["one", "two"];
+        const condition = eq(users.id, 1);
+        const tag = drizzle.sql;
+        query\`lower(\${users.name}) IN (\${query.join(
+          names.map((name) => query\`\${name}\`),
+          query\`, \`,
+        )})\`;
+        drizzle.sql\`WHERE LOWER (\${users.name}) in (\${drizzle.sql.join(
+          names.map((name) => drizzle.sql\`\${name}\`),
+          drizzle.sql\`, \`,
+        )}) AND \${condition}\`;
+        tag\`NOT lower(\${users.name}) IN (\${tag.join(
+          names.map((name) => tag\`\${name}\`),
+          tag\`, \`,
+        )})\`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "inArray" } },
       ],
     },
     {

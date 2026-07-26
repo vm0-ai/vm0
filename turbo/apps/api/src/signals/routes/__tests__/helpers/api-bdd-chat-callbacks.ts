@@ -39,6 +39,8 @@ interface StoredS3Object {
 
 interface CapturedS3Put {
   readonly bucket: string;
+  readonly cacheControl: string | null;
+  readonly ifNoneMatch: string | null;
   readonly key: string;
   readonly contentType: string | null;
 }
@@ -292,10 +294,12 @@ export function createChatCallbacksApi(context: TestContext) {
       addObject(object: StoredS3Object): void;
       readonly deletedKeys: readonly string[];
       readonly puts: readonly CapturedS3Put[];
+      rejectNextImmutablePutAsExisting(): void;
     } {
       const objects: StoredS3Object[] = [];
       const deletedKeys: string[] = [];
       const puts: CapturedS3Put[] = [];
+      let rejectNextImmutablePut = false;
       context.mocks.s3.send.mockImplementation((...args: unknown[]) => {
         const input = commandInput(args[0]);
         const key = typeof input.Key === "string" ? input.Key : "";
@@ -317,10 +321,28 @@ export function createChatCallbacksApi(context: TestContext) {
         if (name === "PutObjectCommand") {
           puts.push({
             bucket,
+            cacheControl:
+              typeof input.CacheControl === "string"
+                ? input.CacheControl
+                : null,
+            ifNoneMatch:
+              typeof input.IfNoneMatch === "string" ? input.IfNoneMatch : null,
             key,
             contentType:
               typeof input.ContentType === "string" ? input.ContentType : null,
           });
+          if (rejectNextImmutablePut && input.IfNoneMatch === "*") {
+            rejectNextImmutablePut = false;
+            return Promise.reject(
+              Object.assign(new Error("immutable object already exists"), {
+                name: "PreconditionFailed",
+                $metadata: { httpStatusCode: 412 },
+              }),
+            );
+          }
+        }
+        if (name === "HeadObjectCommand") {
+          return Promise.resolve(storedS3ObjectResponse(objects, bucket, key));
         }
         if (name === "GetObjectCommand") {
           return Promise.resolve(storedS3ObjectResponse(objects, bucket, key));
@@ -351,6 +373,9 @@ export function createChatCallbacksApi(context: TestContext) {
         },
         deletedKeys,
         puts,
+        rejectNextImmutablePutAsExisting(): void {
+          rejectNextImmutablePut = true;
+        },
       };
     },
   };

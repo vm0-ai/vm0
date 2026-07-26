@@ -110,7 +110,7 @@ import {
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
-import { activeChatRunExists } from "../services/zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "../services/zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
@@ -121,7 +121,10 @@ import {
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
 } from "../services/zero-chat-queued-message.service";
-import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  chatThreadServiceTierFromCodex,
+} from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
@@ -847,7 +850,8 @@ async function latestSessionForThread(
     // mirrored in latestSessionForThreadFromDb
     // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
     // (zero-goal-continuation.service.ts) — keep them in sync. This is a
-    // continuity filter ONLY; it must NOT be copied into activeChatRunExists.
+    // continuity filter ONLY; it must NOT be copied into the thread admission
+    // check.
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
@@ -1160,6 +1164,7 @@ async function maybePersistExplicitModelFirstSelection(params: {
 
 async function maybePersistExplicitCodexServiceTier(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly body: NormalSendBody;
@@ -1167,18 +1172,38 @@ async function maybePersistExplicitCodexServiceTier(params: {
   if (params.body.modelSelection === undefined) {
     return;
   }
-  await params.db
-    .update(chatThreads)
-    .set({
-      codexServiceTier: params.body.runOptions?.codexServiceTier ?? null,
-      updatedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(chatThreads.id, params.threadId),
-        eq(chatThreads.userId, params.userId),
-      ),
-    );
+  const codexServiceTier = params.body.runOptions?.codexServiceTier ?? null;
+  await params.db.transaction(async (tx) => {
+    const updatedAt = nowDate();
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({
+        codexServiceTier,
+        updatedAt,
+      })
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "service_tier_updated",
+      userId: params.userId,
+      orgId: params.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
+      createdAt: updatedAt,
+    });
+  });
 }
 
 function hasComputerUseHostSelection(body: NormalSendBody): boolean {
@@ -1187,19 +1212,39 @@ function hasComputerUseHostSelection(body: NormalSendBody): boolean {
 
 async function updateThreadComputerUseHost(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly hostId: string | null;
 }): Promise<void> {
-  await params.db
-    .update(chatThreads)
-    .set({ computerUseHostId: params.hostId, updatedAt: nowDate() })
-    .where(
-      and(
-        eq(chatThreads.id, params.threadId),
-        eq(chatThreads.userId, params.userId),
-      ),
-    );
+  await params.db.transaction(async (tx) => {
+    const updatedAt = nowDate();
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({ computerUseHostId: params.hostId, updatedAt })
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "computer_use_host_updated",
+      userId: params.userId,
+      orgId: params.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      computerUseHostId: params.hostId,
+      createdAt: updatedAt,
+    });
+  });
 }
 
 async function selectedComputerUseHostGrant(params: {
@@ -1248,6 +1293,7 @@ async function resolveComputerUseHostGrant(params: {
     if (explicitSelection && params.thread.computerUseHostId !== null) {
       await updateThreadComputerUseHost({
         db: params.db,
+        orgId: params.orgId,
         threadId: params.thread.threadId,
         userId: params.userId,
         hostId: null,
@@ -1268,6 +1314,7 @@ async function resolveComputerUseHostGrant(params: {
     }
     await updateThreadComputerUseHost({
       db: params.db,
+      orgId: params.orgId,
       threadId: params.thread.threadId,
       userId: params.userId,
       hostId: null,
@@ -1281,6 +1328,7 @@ async function resolveComputerUseHostGrant(params: {
   ) {
     await updateThreadComputerUseHost({
       db: params.db,
+      orgId: params.orgId,
       threadId: params.thread.threadId,
       userId: params.userId,
       hostId: requestedHostId,
@@ -1325,6 +1373,8 @@ async function createChatThread(
           eventId: args.chatThreadEventId,
           title: null,
           selectedModel: args.pin.selectedModel,
+          serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
+          computerUseHostId: null,
           createdAt: thread.createdAt,
         });
         return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -1369,6 +1419,8 @@ async function createChatThread(
       eventId: args.chatThreadEventId,
       title: null,
       selectedModel: args.pin.selectedModel,
+      serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
+      computerUseHostId: null,
       createdAt: thread.createdAt,
     });
     return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -2260,6 +2312,7 @@ function maybePersistTimedExplicitCodexServiceTier(
     () => {
       return maybePersistExplicitCodexServiceTier({
         db,
+        orgId: args.orgId,
         threadId,
         userId: args.userId,
         body: args.body,
@@ -3129,6 +3182,7 @@ const createNormalChatRun$ = command(
           {
             ...createRunArgs,
             queueFirstAssociation: {
+              kind: "user_message",
               threadId: prepared.thread.threadId,
               messageId: queueFirstMessageId,
             },
@@ -3185,7 +3239,7 @@ const createNormalChatRun$ = command(
   },
 );
 
-const sendNormalMessage$ = command(
+export const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await measureApiDispatchTiming(
       args.timing,
@@ -3269,7 +3323,7 @@ const sendNormalMessage$ = command(
       "api_dispatch_pre_create_zero_web_chat_check_active_run",
       "nested",
       async () => {
-        return await activeChatRunExists(prepared.db, {
+        return await chatThreadAdmissionBlocked(prepared.db, {
           threadId: prepared.thread.threadId,
         });
       },
@@ -3330,7 +3384,7 @@ const sendQueueFirstNormalMessage$ = command(
       "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
       "nested",
       async (): Promise<"self" | "wait" | "drain"> => {
-        if (await activeChatRunExists(prepared.db, { threadId })) {
+        if (await chatThreadAdmissionBlocked(prepared.db, { threadId })) {
           return "wait";
         }
         const headMessageId = await loadNextUnclaimedQueuedUserMessageId(

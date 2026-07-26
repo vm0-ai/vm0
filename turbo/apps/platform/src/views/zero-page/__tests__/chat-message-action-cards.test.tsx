@@ -1,10 +1,17 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatMessagesContract,
+  chatThreadMessagesContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroBrowserContract,
+  type ZeroBrowserSession,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -235,6 +242,108 @@ async function confirmPermissionAction(
   card: HTMLElement,
 ): Promise<void> {
   await user.click(await waitForButtonByText("Confirm", card));
+}
+
+const MAIL_CALLBACK_SUBJECT = "Callback draft";
+
+async function waitForMailDraftCard(): Promise<HTMLElement> {
+  let card: HTMLElement | undefined;
+  await waitFor(() => {
+    card = queryAllByRoleFast("button").find((button) => {
+      return (
+        button.getAttribute("aria-label") ===
+        `Open draft email: ${MAIL_CALLBACK_SUBJECT}`
+      );
+    });
+    expect(card).toBeDefined();
+  });
+  if (!card) {
+    throw new Error("Mail draft card not found");
+  }
+  return card;
+}
+
+function mailCallbackScenario(args: {
+  readonly threadId: string;
+  readonly mailDraftId: string;
+  readonly callbackThreadId?: string;
+}): {
+  readonly threadId: string;
+  readonly mailDraftId: string;
+  readonly callbackPrompt: string;
+  readonly sentPrompts: { prompt: string; threadId?: string }[];
+} {
+  const { threadId, mailDraftId } = args;
+  const createdAt = "2026-07-14T10:00:00.000Z";
+  const callbackPrompt = "Confirm the email was sent, then track the reply";
+  const callbackThreadId = args.callbackThreadId ?? threadId;
+  const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}?agentId=${AGENT_ID}&threadId=${callbackThreadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+  const sentPrompts: { prompt: string; threadId?: string }[] = [];
+  let sent = false;
+  const mailDraft = (status: "draft" | "sent") => {
+    return {
+      version: 3 as const,
+      provider: "gmail" as const,
+      from: "sender@example.com",
+      to: ["recipient@example.com"],
+      cc: [],
+      bcc: [],
+      subject: MAIL_CALLBACK_SUBJECT,
+      body: "Mail body",
+      status,
+      detailAvailable: true,
+      gmailDraftId: "r-callback-draft",
+      gmailThreadId: "gmail-thread-id",
+      gmailMessageId: "gmail-message-id",
+      ...(status === "sent"
+        ? {
+            sentGmailMessageId: "gmail-sent-message-id",
+            sentAt: "2026-07-14T10:01:00.000Z",
+          }
+        : {}),
+      references: [],
+      attachments: [],
+      createdAt,
+      updatedAt: createdAt,
+    };
+  };
+
+  mockConnectorCatalogStatus([
+    publicConnectorStatusItem({ connectorRef: "gmail", label: "Gmail" }),
+  ]);
+  context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+    return respond(200, {
+      mailDraftId,
+      mailDraftUrl,
+      mailDraft: mailDraft(sent ? "sent" : "draft"),
+    });
+  });
+  context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+    sent = true;
+    return respond(200, {
+      mailDraftId,
+      mailDraftUrl,
+      mailDraft: mailDraft("sent"),
+    });
+  });
+  mockChatLifecycle(context, {
+    threadId,
+    threadTitle: "Mail callback",
+    chatMessages: [
+      {
+        id: `${mailDraftId}-message`,
+        role: "assistant",
+        content: mailDraftUrl,
+        runId: `${mailDraftId}-run`,
+        createdAt,
+      },
+    ],
+    onSendRequest: ({ prompt, threadId: sentThreadId }) => {
+      sentPrompts.push({ prompt, threadId: sentThreadId });
+    },
+  });
+
+  return { threadId, mailDraftId, callbackPrompt, sentPrompts };
 }
 
 function selectMailText(element: HTMLElement): void {
@@ -653,7 +762,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("renders canonical connector actions on alternate production origins", async () => {
+  it("keeps user links and renders assistant actions on alternate origins", async () => {
     const previousUrl = window.location.href;
     const threadId = `${THREAD_ID}-alternate-production-origin`;
     window.location.href = `https://app.okou.ai/chats/${threadId}`;
@@ -680,7 +789,7 @@ describe("chat message action cards", () => {
         {
           id: "msg-user-alternate-production-origin",
           role: "user",
-          content: "Authorize Slack",
+          content: `[User connector link](${canonicalUrl})`,
           runId: "run-alternate-production-origin",
           createdAt: "2026-07-23T10:00:00Z",
         },
@@ -701,6 +810,11 @@ describe("chat message action cards", () => {
 
     const connectorCard = await screen.findByTestId("connector-action-card");
     expect(within(connectorCard).getByText("Slack")).toBeInTheDocument();
+    expect(screen.getAllByTestId("connector-action-card")).toHaveLength(1);
+    const userConnectorLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent === "User connector link";
+    });
+    expect(userConnectorLink).toHaveAttribute("href", canonicalUrl);
     const untrustedLink = queryAllByRoleFast("link").find((link) => {
       return link.textContent === "Untrusted connector";
     });
@@ -761,6 +875,158 @@ describe("chat message action cards", () => {
     const sendButton = await waitForButtonByText("Send", sidebar);
     expect(sendButton).toBeInTheDocument();
     expect(draftRequests).toBe(1);
+  });
+
+  it("runs a mail draft callback prompt after the email is sent", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailCallbackScenario({
+      threadId: "c0000000-0000-4000-a000-000000000041",
+      mailDraftId: "c0000000-0000-4000-a000-000000000043",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(scenario.sentPrompts).toStrictEqual([
+        { prompt: scenario.callbackPrompt, threadId: scenario.threadId },
+      ]);
+    });
+  });
+
+  it("keeps the mail draft callback when the sidebar is restored from the URL first", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailCallbackScenario({
+      threadId: "c0000000-0000-4000-a000-000000000051",
+      mailDraftId: "c0000000-0000-4000-a000-000000000052",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}?mail-draft=${scenario.mailDraftId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(scenario.sentPrompts).toStrictEqual([
+        { prompt: scenario.callbackPrompt, threadId: scenario.threadId },
+      ]);
+    });
+  });
+
+  it("still confirms the sent email when the callback prompt cannot be delivered", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailCallbackScenario({
+      threadId: "c0000000-0000-4000-a000-000000000061",
+      mailDraftId: "c0000000-0000-4000-a000-000000000062",
+    });
+    // This case overrides the chat send route, so scenario.sentPrompts stays
+    // empty by construction; rejectedPrompts is what records the attempt.
+    const rejectedPrompts: {
+      prompt: string | undefined;
+      threadId: string | undefined;
+    }[] = [];
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      rejectedPrompts.push({ prompt: body.prompt, threadId: body.threadId });
+      return respond(402, {
+        error: {
+          message: "Insufficient credits",
+          code: "INSUFFICIENT_CREDITS",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    let sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(screen.getByText("Email sent")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      sidebar = screen.getByTestId("mail-draft-sidebar");
+      expect(within(sidebar).getByText("Sent")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(rejectedPrompts).toStrictEqual([
+        { prompt: scenario.callbackPrompt, threadId: scenario.threadId },
+      ]);
+    });
+    expect(screen.getByText("Insufficient credits")).toBeInTheDocument();
+  });
+
+  it("does not confirm or resume when the email fails to send", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailCallbackScenario({
+      threadId: "c0000000-0000-4000-a000-000000000081",
+      mailDraftId: "c0000000-0000-4000-a000-000000000082",
+    });
+    context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+      return respond(409, {
+        error: {
+          message: "This mail draft can no longer be sent",
+          code: "CONFLICT",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This mail draft can no longer be sent"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Email sent")).toBeNull();
+    expect(scenario.sentPrompts).toStrictEqual([]);
+  });
+
+  it("ignores a mail draft callback that targets another chat thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailCallbackScenario({
+      threadId: "c0000000-0000-4000-a000-000000000071",
+      mailDraftId: "c0000000-0000-4000-a000-000000000072",
+      callbackThreadId: "c0000000-0000-4000-a000-000000000079",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(screen.getByText("Email sent")).toBeInTheDocument();
+    });
+    expect(scenario.sentPrompts).toStrictEqual([]);
   });
 
   it("keeps mail feedback scoped to the chat that owns the draft in split view", async () => {
@@ -976,6 +1242,134 @@ describe("chat message action cards", () => {
     expect(secondDraftRequests).toBe(3);
   });
 
+  it("preserves assistant copy and reconnects an expired connector", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-reconnect`;
+    const callbackPrompt = "Retry the Gmail draft after reconnecting";
+    const connectorUrl = `${window.location.origin}/connectors/gmail/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const assistantCopy = `Gmail needs to be reconnected. [Reconnect Gmail](${connectorUrl}) to continue creating the draft.`;
+    const displayedCopy =
+      "Gmail needs to be reconnected. Reconnect Gmail to continue creating the draft.";
+    const sentPrompts: string[] = [];
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    let reconnectRequired = true;
+
+    context.mocks.data.connectors([
+      connectedConnector({
+        type: "gmail",
+        authMethod: "oauth",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    ]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "gmail",
+            label: "Gmail",
+            connected: true,
+            connectionStatus: reconnectRequired
+              ? "reconnect-required"
+              : "connected",
+            connection: {
+              authMethod: "oauth",
+              externalUsername: null,
+              externalEmail: "sender@example.com",
+              reconnectReason: reconnectRequired
+                ? "authorization_expired_or_revoked"
+                : null,
+            },
+            authMethods: [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description: null,
+                grantKind: "auth-code",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            singleAuthCodeAuthMethodId: "oauth",
+          }),
+        ],
+      });
+    });
+    mockAgentConnectorAuthorizations(["gmail"]);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("gmail");
+        expect(body).toStrictEqual({
+          authMethod: "oauth",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+          callbackTarget: "app",
+        });
+        reconnectRequired = false;
+        context.mocks.data.connectors([
+          connectedConnector({
+            type: "gmail",
+            authMethod: "oauth",
+            externalEmail: "sender@example.com",
+            updatedAt: "2026-01-01T00:00:01Z",
+          }),
+        ]);
+        return respond(200, {
+          authorizationUrl: "https://accounts.google.test/oauth",
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Reconnect connector",
+      chatMessages: [
+        {
+          id: "msg-user-reconnect",
+          role: "user",
+          content: "Create the Gmail draft",
+          runId: "run-reconnect",
+          createdAt: "2026-07-24T09:05:10Z",
+        },
+        {
+          id: "msg-assistant-reconnect",
+          role: "assistant",
+          content: assistantCopy,
+          runId: "run-reconnect",
+          createdAt: "2026-07-24T09:06:19Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const displayedCopyElement = await screen.findByText(displayedCopy);
+    expect(displayedCopyElement).toBeInTheDocument();
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    const reconnectButton = await waitForButtonByText(
+      "Reconnect",
+      connectorCard,
+    );
+    await user.click(reconnectButton);
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://accounts.google.test/oauth",
+      );
+      expect(sentPrompts).toStrictEqual([callbackPrompt]);
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
+      expect(buttonByText("Authorized", connectorCard)).toBeDisabled();
+    });
+  });
+
   it("connects a single OAuth connector directly and resumes the chat", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-direct-oauth`;
@@ -1090,7 +1484,7 @@ describe("chat message action cards", () => {
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
   });
 
@@ -1174,7 +1568,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(connectCalls).toBe(1);
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
     expect(
       screen.queryByRole("dialog", { name: "Public Stripe" }),
@@ -1639,11 +2033,11 @@ describe("chat message action cards", () => {
       "src",
       "https://icons.example.test/action-github.svg",
     );
-    await user.click(within(connectorCard).getByText("Connect"));
+    await user.click(within(connectorCard).getByText("Authorize"));
 
     await waitFor(() => {
       for (const card of connectorCards) {
-        expect(within(card).getByText("Authorize")).toBeInTheDocument();
+        expect(within(card).getByText("Authorized")).toBeInTheDocument();
       }
     });
 
@@ -1978,11 +2372,11 @@ describe("chat message action cards", () => {
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
-    await user.click(await waitForButtonByText("Connect", connectorCard));
+    await user.click(await waitForButtonByText("Authorize", connectorCard));
 
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
   });
 
@@ -2152,7 +2546,7 @@ describe("chat message action cards", () => {
     await user.click(saveButton);
 
     await waitFor(() => {
-      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
   });
 
@@ -3326,5 +3720,98 @@ describe("chat message action cards", () => {
         within(permissionCard).getByText("Permission denied"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("renders trusted browser universal links as fixed cards that open the live sidebar", async () => {
+    const threadId = "c0000000-0000-4000-a000-000000000080";
+    const browserId = "c0000000-0000-4000-a000-000000000081";
+    const liveUrl =
+      "https://live.browser-use.com/?wss=test-browser-session-token";
+    const browser: ZeroBrowserSession = {
+      id: browserId,
+      name: "booking",
+      status: "active",
+      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      liveUrl,
+      proxyCountryCode: null,
+      timeoutMinutes: 240,
+      maxCredits: 500,
+      grossCredits: 12,
+      creditsCharged: 12,
+      idleExpiresAt: "2026-07-24T10:10:00.000Z",
+      suspendedAt: null,
+      suspensionReason: null,
+      createdAt: "2026-07-24T10:00:00.000Z",
+      updatedAt: "2026-07-24T10:00:00.000Z",
+    };
+    let browserRequests = 0;
+    context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
+      expect(params.browserId).toBe(browserId);
+      expect(query.chatThreadId).toBe(threadId);
+      browserRequests += 1;
+      return respond(200, { browser });
+    });
+    let leaseRequests = 0;
+    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+      leaseRequests += 1;
+      return respond(200, { browser });
+    });
+
+    const untrustedUrl = `https://evil.example.test/browsers/${browserId}`;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Managed browser card",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000082",
+          role: "assistant",
+          content: [
+            `https://app.vm0.ai/browsers/${browserId}`,
+            `[Open browser](/browsers/${browserId})`,
+            `[Untrusted browser](${untrustedUrl})`,
+          ].join("\n"),
+          runId: "c0000000-0000-4000-a000-000000000085",
+          createdAt: "2026-07-24T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(browserRequests).toBeGreaterThan(0);
+    });
+    // The message stream shows fixed-height entry points only; the live view is
+    // heavy and would resize the transcript as pages load.
+    const cards = await waitFor(() => {
+      const found = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          "[data-browser-session-card]",
+        ),
+      );
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    expect(
+      document.querySelector('iframe[title="Live browser: booking"]'),
+    ).toBeNull();
+
+    cards[0]?.click();
+
+    const frame = await screen.findByTitle("Live browser: booking");
+    expect(frame).toHaveAttribute("src", liveUrl);
+    expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    await waitFor(() => {
+      expect(leaseRequests).toBeGreaterThan(0);
+    });
+    expect(
+      queryAllByRoleFast("link").find((link) => {
+        return link.textContent === "Untrusted browser";
+      }),
+    ).toHaveAttribute("href", untrustedUrl);
   });
 });

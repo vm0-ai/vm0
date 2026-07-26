@@ -89,7 +89,6 @@ interface ComputerUseRunFixture {
   readonly runId: string;
   readonly sessionId: string;
   readonly threadId: string | null;
-  readonly slack: TestComputerUseStatePostResponse["slack"];
 }
 
 function requestComputerUseState(
@@ -140,7 +139,6 @@ async function seedZeroRun(args: {
     runId: body.run_id,
     sessionId: body.session_id,
     threadId: body.thread_id,
-    slack: body.slack,
   };
   return await trackComputerUseRun(Promise.resolve(fixture));
 }
@@ -305,45 +303,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
       source: "web",
       computer_use_host_id: onlineHost.hostId,
-    });
-  });
-
-  it("creates a delegated authorization link and applies the selected host to the Slack thread", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const actor = bdd.user({ orgId });
-    const run = await seedZeroRun({ actor, triggerSource: "slack" });
-
-    const host = await api.startComputerUseHost(actor, {
-      hostName: "Slack Desktop",
-    });
-    mockClerkMembership(context, actor, "org:admin");
-    const token = zeroComputerUseToken({
-      userId: actor.userId,
-      orgId,
-      runId: run.runId,
-      capabilities: ["connector:read"],
-    }).token;
-
-    const created = await api.createComputerUseAuthorizationRequest({
-      bearer: token,
-    });
-    expect(created.source).toBe("slack");
-
-    const requestToken = requestTokenFromUrl(created.authorizationUrl);
-    const applied = await api.applyComputerUseAuthorizationRequest(
-      actor,
-      requestToken,
-      host.hostId,
-    );
-    expect(applied).toStrictEqual({
-      ok: true,
-      source: "slack",
-      computerUseHostId: host.hostId,
-    });
-
-    await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
-      source: "slack",
-      computer_use_host_id: host.hostId,
     });
   });
 
@@ -521,23 +480,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
     expect(restarted.hostId).not.toBe(second.hostId);
 
-    const missingDelete = await api.requestDeleteComputerUseHost(
-      actor,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingDelete.body);
-    expect(missingDelete.body.error.message).toBe(
-      "Computer-use host not found",
-    );
-
-    await api.deleteComputerUseHost(actor, restarted.hostId);
-    const afterDelete = await api.listComputerUseHosts(actor);
-    expect(
-      afterDelete.hosts.map((item) => {
-        return item.id;
-      }),
-    ).toStrictEqual([first.hostId]);
+    await api.stopComputerUseHost(restarted.hostToken);
   });
 
   it("keeps installation hosts stable across stop and restart", async () => {
@@ -672,16 +615,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     );
 
     clearMockNow();
-    const restarted = await api.startComputerUseHost(actor, {
-      hostName: "Recovered Desktop",
-    });
-    context.mocks.ably.publish.mockClear();
-    await api.deleteComputerUseHost(actor, restarted.hostId);
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "computerUseHostsChanged",
-      null,
-    );
   });
 
   it("rejects host-token routes with missing or invalid host tokens", async () => {

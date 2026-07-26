@@ -5,6 +5,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { artifacts } from "@vm0/db/schema/artifact";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { composeJobs } from "@vm0/db/schema/compose-job";
 import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
@@ -726,6 +727,7 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
     await cleanupWorkspaceInstallation(db, installation.slackWorkspaceId);
   }
 
+  await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
   await db.delete(storages).where(eq(storages.orgId, orgId));
@@ -772,6 +774,7 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db
     .delete(telegramInstallations)
     .where(eq(telegramInstallations.ownerUserId, userId));
+  await db.delete(artifacts).where(eq(artifacts.authorUserId, userId));
   await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
 
   const composeRows = await db

@@ -39,10 +39,15 @@ import {
   isNamedDrizzleSignature,
   resolvedSymbol,
 } from "../drizzle.ts";
+import { createExecuteRawRowsMatcher } from "../execute-raw-rows.ts";
 import {
   SQL_TEMPLATE_EXPRESSION_BOUNDARY,
   sqlCodeMask,
 } from "../sql-lexing.ts";
+import {
+  analyzeDirectSql,
+  type DirectSqlAnalysis,
+} from "../sql-analysis/direct-sql-analysis.ts";
 import { createRule } from "../utils.ts";
 
 type BinaryLeftOperand = "array" | "pattern" | "wrapper";
@@ -156,6 +161,17 @@ const BINARY_HELPERS = new Map<string, BinaryHelper>([
   ],
 ]);
 
+const STRUCTURAL_HELPERS = new Set([
+  "and",
+  "eq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "ne",
+  "or",
+]);
+
 type BooleanToken = "operand" | "and" | "or" | "(" | ")";
 type BooleanExpressionKind = "operand" | "and" | "or";
 type ExistenceKeyword =
@@ -262,6 +278,14 @@ function membershipRightBoundary(quasi: string): boolean {
   return (
     close !== null && hasPredicateRightBoundary(quasi.slice(close[0].length))
   );
+}
+
+function lowerCallStart(quasi: string): number | undefined {
+  const match = /\bLOWER\s*\(\s*$/i.exec(quasi);
+  if (match === null || hasSqlIdentifierPrefix(quasi, match.index)) {
+    return undefined;
+  }
+  return match.index;
 }
 
 function hasOrderingLeftBoundary(quasi: string): boolean {
@@ -744,10 +768,14 @@ export const preferDrizzleApis = createRule({
     },
     schema: [],
     messages: {
+      crossJoin:
+        "Use Drizzle crossJoin(...) for this equivalent inner join on true.",
       crossJoinLateral:
         "Use Drizzle crossJoinLateral(...) for this equivalent lateral join.",
       emptyFragment:
         "Use Drizzle sql.empty() for this intentionally empty SQL fragment.",
+      queryBuilder:
+        "Use a Drizzle select builder for this complete schema-backed query.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
       existencePredicate:
         "Use Drizzle {{helper}}(...) with a select builder for this equivalent existence predicate.",
@@ -756,6 +784,15 @@ export const preferDrizzleApis = createRule({
   create(context) {
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
+    const isExecuteRawRowsCallee = createExecuteRawRowsMatcher(
+      context.sourceCode.ast,
+      checker,
+      services,
+    );
+    const structurallyOwnedTemplates =
+      new WeakSet<TSESTree.TaggedTemplateExpression>();
+    const structurallyWholeTemplates =
+      new WeakSet<TSESTree.TaggedTemplateExpression>();
     const expressionTypeCache = new WeakMap<
       TSESTree.Expression,
       { readonly location: Node; readonly type: Type }
@@ -778,12 +815,39 @@ export const preferDrizzleApis = createRule({
       return result;
     }
 
-    function report(node: TSESTree.Node, helper: string): void {
+    function reportTypedApi(node: TSESTree.Node, helper: string): void {
       context.report({
         node,
         messageId: "typedApi",
         data: { helper },
       });
+    }
+
+    function reportStructuralAnalysis(analysis: DirectSqlAnalysis): void {
+      for (const finding of analysis.findings) {
+        if (finding.kind === "query-builder") {
+          context.report({
+            node: finding.node,
+            messageId: "queryBuilder",
+          });
+        } else {
+          reportTypedApi(finding.node, finding.helper);
+        }
+      }
+    }
+
+    function reportLegacy(
+      template: TSESTree.TaggedTemplateExpression,
+      node: TSESTree.Node,
+      helper: string,
+    ): void {
+      if (
+        structurallyOwnedTemplates.has(template) &&
+        STRUCTURAL_HELPERS.has(helper)
+      ) {
+        return;
+      }
+      reportTypedApi(node, helper);
     }
 
     function memberName(node: TSESTree.MemberExpression): string | undefined {
@@ -812,6 +876,78 @@ export const preferDrizzleApis = createRule({
       }
       const tsProperty = services.esTreeNodeToTSNodeMap.get(node.property);
       return isDrizzleSymbol(checker, checker.getSymbolAtLocation(tsProperty));
+    }
+
+    function taggedArgument(
+      node: TSESTree.CallExpression,
+      index: number,
+    ): TSESTree.TaggedTemplateExpression | undefined {
+      const argument = node.arguments[index];
+      return argument?.type === AST_NODE_TYPES.TaggedTemplateExpression &&
+        isDrizzleSqlTag(checker, services, argument.tag)
+        ? argument
+        : undefined;
+    }
+
+    function inspectRawQueryCall(node: TSESTree.CallExpression): void {
+      if (
+        node.arguments.length !== 3 ||
+        node.arguments.some((argument) => {
+          return argument.type === AST_NODE_TYPES.SpreadElement;
+        })
+      ) {
+        return;
+      }
+      const query = node.arguments[1];
+      if (
+        query?.type !== AST_NODE_TYPES.TaggedTemplateExpression ||
+        !isExecuteRawRowsCallee(node.callee) ||
+        !isDrizzleSqlTag(checker, services, query.tag)
+      ) {
+        return;
+      }
+      structurallyOwnedTemplates.add(query);
+      const analysis = analyzeDirectSql(query, "statement", checker, services);
+      if (analysis.isSimpleSelect) {
+        structurallyWholeTemplates.add(query);
+      }
+      reportStructuralAnalysis(analysis);
+    }
+
+    function inspectPredicateCall(node: TSESTree.CallExpression): void {
+      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
+        return;
+      }
+      const method = memberName(node.callee);
+      const predicateIndex =
+        method === "where" || method === "having"
+          ? 0
+          : method === "innerJoin" ||
+              method === "leftJoin" ||
+              method === "rightJoin" ||
+              method === "fullJoin" ||
+              method === "innerJoinLateral" ||
+              method === "leftJoinLateral"
+            ? 1
+            : undefined;
+      if (method === undefined || predicateIndex === undefined) {
+        return;
+      }
+      const predicate = taggedArgument(node, predicateIndex);
+      if (predicate === undefined || !isDrizzleMethod(node.callee, method)) {
+        return;
+      }
+      structurallyOwnedTemplates.add(predicate);
+      const analysis = analyzeDirectSql(
+        predicate,
+        "predicate",
+        checker,
+        services,
+      );
+      reportStructuralAnalysis(analysis);
+      if (method === "innerJoin" && analysis.isTruePredicate) {
+        context.report({ node, messageId: "crossJoin" });
+      }
     }
 
     function isTrueSqlTag(node: TSESTree.Expression): boolean {
@@ -1205,8 +1341,15 @@ export const preferDrizzleApis = createRule({
       );
     }
 
+    function isInlineParameterListSqlJoin(node: TSESTree.Expression): boolean {
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      return isExpression(tsNode) && isParameterListSqlJoin(tsNode);
+    }
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
+        inspectRawQueryCall(node);
+        inspectPredicateCall(node);
         if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
           return;
         }
@@ -1243,6 +1386,9 @@ export const preferDrizzleApis = createRule({
         if (!isDrizzleSqlTag(checker, services, node.tag)) {
           return;
         }
+        if (structurallyWholeTemplates.has(node)) {
+          return;
+        }
 
         const quasis = node.quasi.quasis.map(quasiText);
         const syntaxSource = sqlCodeMask(
@@ -1267,7 +1413,7 @@ export const preferDrizzleApis = createRule({
             syntaxSource.slice(0, match.start).trim() === "" &&
             syntaxSource.slice(match.end).trim() === "";
           if (!isWholeAggregate || hasDirectMapWith(node)) {
-            report(node, "count");
+            reportLegacy(node, node, "count");
           }
         }
         const existence = existenceTemplateMatch(syntaxQuasis);
@@ -1301,6 +1447,29 @@ export const preferDrizzleApis = createRule({
           return;
         }
         for (let index = 0; index < expressions.length - 1; index += 1) {
+          const columnNode = expressions[index];
+          const valuesNode = expressions[index + 1];
+          if (columnNode === undefined || valuesNode === undefined) {
+            continue;
+          }
+          const prefix = syntaxQuasis[index] ?? "";
+          const lowerStart = lowerCallStart(prefix);
+          if (
+            lowerStart !== undefined &&
+            hasPredicateLeftBoundary(prefix.slice(0, lowerStart)) &&
+            /^\s*\)\s+IN\s*\(\s*$/i.test(syntaxQuasis[index + 1] ?? "") &&
+            membershipRightBoundary(syntaxQuasis[index + 2] ?? "") &&
+            isDrizzleColumnType(
+              checker,
+              expressionType(columnNode).type,
+              expressionType(columnNode).location,
+            ) &&
+            isInlineParameterListSqlJoin(valuesNode)
+          ) {
+            reportLegacy(node, columnNode, "inArray");
+          }
+        }
+        for (let index = 0; index < expressions.length - 1; index += 1) {
           const leftNode = expressions[index];
           const rightNode = expressions[index + 1];
           if (leftNode === undefined || rightNode === undefined) {
@@ -1320,7 +1489,7 @@ export const preferDrizzleApis = createRule({
             binaryLeftMatches(binary.left, left) &&
             binaryRightMatches(binary.right, right.type)
           ) {
-            report(leftNode, binary.helper);
+            reportLegacy(node, leftNode, binary.helper);
           }
           const membership = /^\s+(NOT\s+)?IN\s*\(\s*$/i.exec(middle);
           if (
@@ -1330,7 +1499,8 @@ export const preferDrizzleApis = createRule({
             isDrizzleColumnType(checker, left.type, left.location) &&
             hasParameterListOrigin(rightNode)
           ) {
-            report(
+            reportLegacy(
+              node,
               leftNode,
               membership[1] === undefined ? "inArray" : "notInArray",
             );
@@ -1358,7 +1528,7 @@ export const preferDrizzleApis = createRule({
             hasPredicateRightBoundary(quasis[index + 3] ?? "") &&
             isDrizzleWrapperType(checker, expressionType(leftNode).type)
           ) {
-            report(leftNode, range.helper);
+            reportLegacy(node, leftNode, range.helper);
           }
         }
 
@@ -1379,7 +1549,7 @@ export const preferDrizzleApis = createRule({
             hasPredicateRightBoundary(rawSuffix) &&
             isDrizzleWrapperType(checker, expression.type)
           ) {
-            report(expressionNode, unary.helper);
+            reportLegacy(node, expressionNode, unary.helper);
           }
 
           const nullMatch = nullPredicateMatch(suffix);
@@ -1389,7 +1559,7 @@ export const preferDrizzleApis = createRule({
             hasPredicateRightBoundary(rawSuffix.slice(nullMatch.length)) &&
             isDrizzleWrapperType(checker, expression.type)
           ) {
-            report(expressionNode, nullMatch.helper);
+            reportLegacy(node, expressionNode, nullMatch.helper);
           }
 
           const order = orderingMatch(suffix);
@@ -1398,7 +1568,7 @@ export const preferDrizzleApis = createRule({
             hasOrderingLeftBoundary(prefix) &&
             isDrizzleWrapperType(checker, expression.type)
           ) {
-            report(expressionNode, order.helper);
+            reportLegacy(node, expressionNode, order.helper);
           }
 
           const aggregate = aggregateMatch(prefix);
@@ -1421,7 +1591,7 @@ export const preferDrizzleApis = createRule({
             prefix.slice(0, aggregate.start).trim() === "" &&
             aggregateSuffix.trim() === "";
           if (!isWholeAggregate) {
-            report(expressionNode, aggregate.helper);
+            reportLegacy(node, expressionNode, aggregate.helper);
           } else if (
             hasDirectMapWith(node) ||
             ((aggregate.helper === "max" || aggregate.helper === "min") &&
@@ -1431,7 +1601,7 @@ export const preferDrizzleApis = createRule({
                 expression.location,
               ))
           ) {
-            report(node, aggregate.helper);
+            reportLegacy(node, node, aggregate.helper);
           }
         }
 
@@ -1451,7 +1621,7 @@ export const preferDrizzleApis = createRule({
         }
         const tsNode = services.esTreeNodeToTSNodeMap.get(node);
         if (isOptionalDrizzleContext(checker.getContextualType(tsNode))) {
-          report(node, boolean);
+          reportLegacy(node, node, boolean);
         }
       },
     };

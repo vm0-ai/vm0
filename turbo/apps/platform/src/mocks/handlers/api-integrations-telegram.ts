@@ -158,16 +158,6 @@ export const apiIntegrationsTelegramHandlers = [
     return respond(200, mockTelegramList);
   }),
 
-  mockApi(zeroIntegrationsTelegramContract.getBot, ({ params, respond }) => {
-    const status = mockTelegramStatuses[params.botId];
-    if (!status) {
-      return respond(404, {
-        error: { message: "Telegram bot not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, status);
-  }),
-
   mockApi(
     zeroIntegrationsTelegramContract.updateBot,
     ({ params, body, respond }) => {

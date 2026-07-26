@@ -9,7 +9,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
@@ -19,6 +18,7 @@ import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
+import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 
@@ -70,10 +70,8 @@ export interface QueueMessageOptions {
 export interface ChatThreadSignals {
   threadId: string;
   // -- Data signals ----------------------------------------------------------
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   threadMeta$: Computed<ThreadMeta | null>;
-  reloadThread$: Command<void, []>;
   threadTitle$: Computed<string | null>;
   threadTitleEmoji$: Computed<string | null>;
   threadTitleText$: Computed<string>;
@@ -89,7 +87,7 @@ export interface ChatThreadSignals {
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
   >;
-  computerUseHostId$: Computed<Promise<string | null>>;
+  computerUseHostId$: Computed<string | null>;
   computerUseHostIdExplicit$: Computed<boolean>;
   setComputerUseHostId$: Command<Promise<void>, [string | null, AbortSignal]>;
   clearComputerUseHostIdOverride$: Command<void, []>;
@@ -149,6 +147,9 @@ export interface ChatThreadSignals {
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
+  browserSessionCardSignalsById$: Computed<
+    ReadonlyMap<string, BrowserSessionSignals>
+  >;
   hasMessages$: Computed<Promise<boolean>>;
   hasNewMessages$: Computed<Promise<boolean>>;
   hasQueuedMessages$: Computed<Promise<boolean>>;

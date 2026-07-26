@@ -13,7 +13,10 @@ import {
   currentRightThread$,
   SIDEBAR_PARAM,
 } from "./chat-thread-panes.ts";
-import { listEventsAfter$ } from "./remote-chat-thread-data-source.ts";
+import {
+  CHAT_MESSAGES_PAGE_LIMIT,
+  listEventsAfter$,
+} from "./remote-chat-thread-data-source.ts";
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
@@ -36,22 +39,58 @@ function createdMessageThreadId(message: unknown): string | null {
   return UUID_PATTERN.test(threadId) ? threadId : null;
 }
 
+function createdMessageSyncThroughSeqId(message: unknown): number | null {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    !("data" in message) ||
+    typeof message.data !== "object" ||
+    message.data === null ||
+    !("syncThroughSeqId" in message.data) ||
+    typeof message.data.syncThroughSeqId !== "number" ||
+    !Number.isSafeInteger(message.data.syncThroughSeqId) ||
+    message.data.syncThroughSeqId <= 0
+  ) {
+    return null;
+  }
+  return message.data.syncThroughSeqId;
+}
+
 const syncChatThreadEventsToIndexedDb$ = command(
   async (
     { set },
-    threadId: string,
+    {
+      threadId,
+      syncThroughSeqId,
+    }: {
+      readonly threadId: string;
+      readonly syncThroughSeqId: number | null;
+    },
     signal: AbortSignal,
   ): Promise<ChatEvent[]> => {
     const bounds = await set(loadIndexedDbChatEventBounds$, threadId, signal);
     signal.throwIfAborted();
 
+    if (
+      syncThroughSeqId !== null &&
+      bounds.last !== null &&
+      bounds.last.seqId >= syncThroughSeqId
+    ) {
+      L.debug("skipped background sync: seq watermark already cached", {
+        threadId,
+        syncThroughSeqId,
+      });
+      return [];
+    }
+
     const syncedEvents: ChatEvent[] = [];
     let sinceSeqId = bounds.last?.seqId;
 
     async function syncEventsAfter(): Promise<void> {
+      const requestedSinceSeqId = sinceSeqId;
       const result = await set(
         listEventsAfter$,
-        { threadId, sinceSeqId },
+        { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
@@ -64,6 +103,12 @@ const syncChatThreadEventsToIndexedDb$ = command(
       signal.throwIfAborted();
       syncedEvents.push(...result.events);
       sinceSeqId = result.events[result.events.length - 1]!.seqId;
+      if (
+        requestedSinceSeqId !== undefined &&
+        result.events.length < CHAT_MESSAGES_PAGE_LIMIT
+      ) {
+        return;
+      }
       await syncEventsAfter();
     }
 
@@ -121,9 +166,10 @@ const handleUserChannelMessage$ = command(
       return false;
     }
 
+    const syncThroughSeqId = createdMessageSyncThroughSeqId(message);
     const events = await set(
       syncChatThreadEventsToIndexedDb$,
-      threadId,
+      { threadId, syncThroughSeqId },
       signal,
     );
     signal.throwIfAborted();
@@ -137,11 +183,49 @@ const handleUserChannelMessage$ = command(
   },
 );
 
+const catchUpVisibleChatThreadEvents$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const mainThreadId = get(currentChatThreadId$);
+    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
+    const leftThreadId = get(currentLeftThread$)?.threadId;
+    const rightThreadId = get(currentRightThread$)?.threadId;
+    const visibleThreadIds = new Set<string>();
+
+    if (mainThreadId !== null && leftThreadId === mainThreadId) {
+      visibleThreadIds.add(mainThreadId);
+    }
+    if (sidebarThreadId !== null && rightThreadId === sidebarThreadId) {
+      visibleThreadIds.add(sidebarThreadId);
+    }
+
+    await Promise.all(
+      Array.from(visibleThreadIds, async (threadId) => {
+        const events = await set(
+          syncChatThreadEventsToIndexedDb$,
+          { threadId, syncThroughSeqId: null },
+          signal,
+        );
+        signal.throwIfAborted();
+        await set(
+          receiveSyncedEventsInVisibleThreads$,
+          { threadId, events },
+          signal,
+        );
+      }),
+    );
+    signal.throwIfAborted();
+    return false;
+  },
+);
+
 const subscribeChatEventBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       setAblyMessageLoop$,
-      { loopCommand$: handleUserChannelMessage$ },
+      {
+        loopCommand$: handleUserChannelMessage$,
+        catchUpCommand$: catchUpVisibleChatThreadEvents$,
+      },
       signal,
     );
   },

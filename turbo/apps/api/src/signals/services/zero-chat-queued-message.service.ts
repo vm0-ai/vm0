@@ -7,7 +7,7 @@ import {
   type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -15,20 +15,26 @@ import {
   zodDriverValueDecoder,
 } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
-import { revokeChatEvent, replaceChatEvent } from "./zero-chat-event.service";
+import {
+  insertChatEvent,
+  revokeChatEvent,
+  replaceChatEvent,
+} from "./zero-chat-event.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { activeChatRunExists } from "./zero-chat-active-run.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
+import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
 const queuedUserMessageTriggerSourceDecoder = zodDriverValueDecoder(
-  z.enum(["web", "slack"]),
+  z.enum(["web", "slack", "feishu"]),
 );
 
 const queuedUserMessageRunParamsSchema = z.object({
@@ -42,10 +48,25 @@ const queuedUserMessageRunParamsSchema = z.object({
       threadTs: z.string(),
     })
     .optional(),
+  feishuDelivery: z
+    .object({
+      installationId: z.string(),
+      connectionId: z.string(),
+      chatId: z.string(),
+      messageId: z.string(),
+      threadId: z.string(),
+      replyInThread: z.boolean(),
+      reactionId: z.string().optional(),
+      files: z.array(feishuOrgCallbackFileSchema).optional(),
+    })
+    .optional(),
+  apiStartTime: z.number().optional(),
   userInfoExtras: z
     .object({
       slackDisplayName: z.string().optional(),
       slackUserId: z.string().optional(),
+      feishuDisplayName: z.string().optional(),
+      feishuOpenId: z.string().optional(),
     })
     .optional(),
 });
@@ -57,6 +78,7 @@ type QueuedUserMessageRunParams = z.infer<
 const queuedUserMessageItemTypes = [
   "user_message",
   "slack_user_message",
+  "feishu_user_message",
 ] as const;
 
 export interface QueuedUserMessage {
@@ -70,14 +92,23 @@ export interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
-  readonly triggerSource: "web" | "slack";
+  readonly triggerSource: "web" | "slack" | "feishu";
   readonly encryptedParams: string | null;
 }
 
-export interface QueueFirstRunAssociation {
-  readonly threadId: string;
-  readonly messageId: string;
-}
+export type QueueFirstRunAssociation =
+  | {
+      readonly kind: "user_message";
+      readonly threadId: string;
+      readonly messageId: string;
+    }
+  | {
+      readonly kind: "workflow_event";
+      readonly threadId: string;
+      readonly eventId: string;
+      readonly prompt: string;
+      readonly runGroupId: string;
+    };
 
 export type QueueFirstRunClaimResult =
   | { readonly kind: "claimed"; readonly createdAt: Date }
@@ -155,6 +186,7 @@ export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
 export async function loadNextUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
+  queueItemCreatedBefore?: Date,
 ): Promise<QueuedUserMessage | null> {
   const [message] = await db
     .select({
@@ -170,6 +202,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
       selectedModel: chatThreads.selectedModel,
       triggerSource: sql`CASE
         WHEN ${chatMessageQueue.triggerSource} = 'slack' THEN 'slack'
+        WHEN ${chatMessageQueue.triggerSource} = 'feishu' THEN 'feishu'
         ELSE 'web'
       END`.mapWith(queuedUserMessageTriggerSourceDecoder),
       encryptedParams: chatMessageQueue.encryptedParams,
@@ -180,7 +213,14 @@ export async function loadNextUnclaimedQueuedUserMessage(
       eq(chatMessages.id, chatMessageQueue.chatMessageId),
     )
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-    .where(unclaimedQueuedUserMessageCondition(threadId))
+    .where(
+      and(
+        unclaimedQueuedUserMessageCondition(threadId),
+        queueItemCreatedBefore
+          ? lt(chatMessageQueue.createdAt, queueItemCreatedBefore)
+          : undefined,
+      ),
+    )
     .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
     .limit(1);
 
@@ -226,7 +266,7 @@ export async function enqueueUserMessageQueueItem(
     readonly userId: string;
     readonly chatThreadId: string;
     readonly chatMessageId: string;
-    readonly triggerSource?: "web" | "slack";
+    readonly triggerSource?: "web" | "slack" | "feishu";
     readonly encryptedParams?: string;
   },
 ): Promise<void> {
@@ -237,7 +277,11 @@ export async function enqueueUserMessageQueueItem(
       userId: args.userId,
       chatThreadId: args.chatThreadId,
       itemType:
-        args.triggerSource === "slack" ? "slack_user_message" : "user_message",
+        args.triggerSource === "slack"
+          ? "slack_user_message"
+          : args.triggerSource === "feishu"
+            ? "feishu_user_message"
+            : "user_message",
       chatMessageId: args.chatMessageId,
       triggerSource: args.triggerSource,
       encryptedParams: args.encryptedParams,
@@ -364,9 +408,70 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (await activeChatRunExists(db, { threadId: args.threadId })) {
+      if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
         outcome = "lost";
         return { kind: "lost" };
+      }
+
+      if (args.kind === "workflow_event") {
+        const [thread] = await db
+          .select({ queuePausedAt: chatThreads.queuePausedAt })
+          .from(chatThreads)
+          .where(eq(chatThreads.id, args.threadId))
+          .limit(1);
+        if (
+          thread?.queuePausedAt ||
+          (await hasUnclaimedQueuedUserMessage(db, args.threadId))
+        ) {
+          outcome = "lost";
+          return { kind: "lost" };
+        }
+
+        const [head] = await db
+          .select({
+            id: chatMessageQueue.id,
+            automationId: chatMessageQueue.automationId,
+          })
+          .from(chatMessageQueue)
+          .where(
+            and(
+              eq(chatMessageQueue.chatThreadId, args.threadId),
+              eq(chatMessageQueue.itemType, "workflow_event"),
+            ),
+          )
+          .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
+          .limit(1);
+        if (
+          head?.id !== args.eventId ||
+          head.automationId !== args.runGroupId
+        ) {
+          outcome = "lost";
+          return { kind: "lost" };
+        }
+
+        const claimed = await insertChatEvent(db, {
+          chatThreadId: args.threadId,
+          eventType: "input.prompt",
+          content: args.prompt,
+          runId: args.runId,
+          runGroupId: args.runGroupId,
+        });
+        const deleted = await db
+          .delete(chatMessageQueue)
+          .where(
+            and(
+              eq(chatMessageQueue.id, args.eventId),
+              eq(chatMessageQueue.chatThreadId, args.threadId),
+              eq(chatMessageQueue.itemType, "workflow_event"),
+            ),
+          )
+          .returning({ id: chatMessageQueue.id });
+        if (!claimed || deleted.length !== 1) {
+          throw new Error("Claimed workflow queue event disappeared");
+        }
+
+        outcome = "claimed";
+        return { kind: "claimed", createdAt: claimed.createdAt };
       }
 
       const headMessageId = await loadNextUnclaimedQueuedUserMessageId(
@@ -428,5 +533,101 @@ export async function discardUnclaimedUserMessage(
     if (!tombstone) {
       throw new Error("Failed to append discarded user message tombstone");
     }
+  });
+}
+
+/**
+ * Consume the current queue head without a run and append canonical user and
+ * assistant replacements that explain a permanent integration admission
+ * failure.
+ */
+export async function failQueuedUserMessage(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+    readonly assistantContent: string;
+    readonly errorMarker: string;
+    readonly currentTime: Date;
+  },
+): Promise<{ readonly assistantMessageId: string } | null> {
+  return await db.transaction(async (tx) => {
+    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
+      return null;
+    }
+    if (
+      (await loadNextUnclaimedQueuedUserMessageId(tx, args.threadId)) !==
+      args.messageId
+    ) {
+      return null;
+    }
+
+    const [queued] = await tx
+      .select({
+        content: chatMessages.content,
+        structuredPrompt: chatMessages.structuredPrompt,
+        attachFiles: chatMessages.attachFiles,
+        attachFileMetadata: chatMessages.attachFileMetadata,
+        generationTemplate: chatMessages.generationTemplate,
+      })
+      .from(chatMessageQueue)
+      .innerJoin(
+        chatMessages,
+        eq(chatMessages.id, chatMessageQueue.chatMessageId),
+      )
+      .where(
+        and(
+          inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
+          eq(chatMessageQueue.chatThreadId, args.threadId),
+          eq(chatMessageQueue.chatMessageId, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+          chatEventTypeIn(["input.prompt"]),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!queued) {
+      return null;
+    }
+
+    const replacement = await replaceChatEvent(tx, args.messageId, {
+      chatThreadId: args.threadId,
+      eventType: "input.rejected",
+      content: queued.content,
+      structuredPrompt: queued.structuredPrompt,
+      attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
+      attachFileMetadata: queued.attachFileMetadata
+        ? [...queued.attachFileMetadata]
+        : null,
+      generationTemplate: queued.generationTemplate,
+      runId: null,
+      error: args.errorMarker,
+      createdAt: args.currentTime,
+    });
+    if (!replacement) {
+      return null;
+    }
+    if (
+      !(await deleteUserMessageQueueItem(tx, {
+        threadId: args.threadId,
+        messageId: args.messageId,
+      }))
+    ) {
+      throw new Error("Failed integration queue item disappeared");
+    }
+
+    const assistant = await insertChatEvent(tx, {
+      chatThreadId: args.threadId,
+      eventType: "output.error",
+      content: args.assistantContent,
+      runId: null,
+      error: args.errorMarker,
+      createdAt: new Date(args.currentTime.getTime() + 1),
+    });
+    if (!assistant) {
+      throw new Error("Failed to append integration admission error");
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId, assistant.createdAt);
+    return { assistantMessageId: assistant.id };
   });
 }

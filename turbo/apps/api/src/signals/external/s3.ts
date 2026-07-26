@@ -1,6 +1,5 @@
 import { computed, type Computed } from "ccstate";
 import {
-  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
@@ -547,33 +546,85 @@ export function putS3Object(
   key: string,
   body: string | Buffer,
   contentType: string,
+  signal?: AbortSignal,
 ): Computed<Promise<void>> {
-  return putS3ObjectWithClient(
-    s3ClientForBucket(bucket),
+  return putS3ObjectWithClient(s3ClientForBucket(bucket), {
     bucket,
     key,
     body,
     contentType,
-  );
+    signal,
+  });
+}
+
+interface PutS3ObjectArgs {
+  readonly bucket: string;
+  readonly key: string;
+  readonly body: string | Buffer;
+  readonly contentType: string;
+  readonly signal?: AbortSignal;
 }
 
 function putS3ObjectWithClient(
   client$: Computed<S3Client>,
-  bucket: string,
-  key: string,
-  body: string | Buffer,
-  contentType: string,
+  args: PutS3ObjectArgs,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(client$);
     await client.send(
       new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
+        Bucket: args.bucket,
+        Key: args.key,
+        Body: args.body,
+        ContentType: args.contentType,
       }),
+      args.signal ? { abortSignal: args.signal } : undefined,
     );
+  });
+}
+
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+function isS3PreconditionFailedError(error: unknown): boolean {
+  const candidate = error as {
+    readonly name?: string;
+    readonly $metadata?: { readonly httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "PreconditionFailed" ||
+    candidate.$metadata?.httpStatusCode === 412
+  );
+}
+
+/**
+ * Upload an object exactly once. An existing key is an idempotent success, so
+ * callers can safely retry without changing bytes behind an immutable URL.
+ */
+export function putImmutableS3Object(
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+  signal?: AbortSignal,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    const uploaded = await settle(
+      client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+          CacheControl: IMMUTABLE_CACHE_CONTROL,
+          IfNoneMatch: "*",
+        }),
+        signal ? { abortSignal: signal } : undefined,
+      ),
+    );
+    if (!uploaded.ok && !isS3PreconditionFailedError(uploaded.error)) {
+      throw uploaded.error;
+    }
   });
 }
 
@@ -583,34 +634,11 @@ export function putHostedSitesS3Object(
   body: string | Buffer,
   contentType: string,
 ): Computed<Promise<void>> {
-  return putS3ObjectWithClient(
-    hostedSitesS3Client$,
+  return putS3ObjectWithClient(hostedSitesS3Client$, {
     bucket,
     key,
     body,
     contentType,
-  );
-}
-
-function s3CopySource(bucket: string, key: string): string {
-  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
-  return `${bucket}/${encodedKey}`;
-}
-
-export function copyHostedSitesS3Object(
-  bucket: string,
-  sourceKey: string,
-  destinationKey: string,
-): Computed<Promise<void>> {
-  return computed(async (get): Promise<void> => {
-    const client = get(hostedSitesS3Client$);
-    await client.send(
-      new CopyObjectCommand({
-        Bucket: bucket,
-        CopySource: s3CopySource(bucket, sourceKey),
-        Key: destinationKey,
-      }),
-    );
   });
 }
 

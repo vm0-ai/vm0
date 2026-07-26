@@ -67,10 +67,12 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
 
     let failed_request = server.next_request(Duration::from_secs(5)).await?;
     let failed_sequences = common::event_request_sequences(&failed_request.request)?;
+    let failed_body = failed_request.request.body.clone();
     assert_eq!(failed_sequences.len(), 32);
     failed_request.respond(500)?;
     for _ in 1..3 {
         let retry = server.next_request(Duration::from_secs(5)).await?;
+        assert_eq!(retry.request.body, failed_body);
         assert_eq!(
             common::event_request_sequences(&retry.request)?,
             failed_sequences

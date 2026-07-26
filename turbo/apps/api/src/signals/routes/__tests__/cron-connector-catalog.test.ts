@@ -35,6 +35,7 @@ import {
   onTestFinished,
 } from "vitest";
 
+import apiPackage from "../../../../package.json";
 import { createApp } from "../../../app-factory";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -62,6 +63,7 @@ import {
   mockDatadogConnectorOAuth,
   mockGmailConnectorOAuth,
   mockSlackConnectorOAuth,
+  mockTestOAuthAuthCodeProvider,
   mockTestOAuthDeviceConnectorProvider,
   requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
@@ -69,7 +71,7 @@ import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
-  expectLegacyStorageManifest,
+  expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
@@ -83,7 +85,10 @@ const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const ACTIVE_KEY = "connectors/v1/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
+const DIAGNOSTICS_USER_ID = `user_${randomUUID()}`;
+const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
+const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -390,6 +395,49 @@ function manualPrivateAuthMethod(args: {
             inputs: { token: `$secrets.${credentialName}` },
           }
         : { kind: "none" },
+  };
+}
+
+function testOauthPrivateAuthMethod(): JsonRecord {
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientId: "test-oauth-client",
+      clientSecret: "test-oauth-secret",
+    },
+    storage: {
+      version: 1,
+      secrets: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
+      variables: ["TEST_OAUTH_API_TENANT_ID"],
+    },
+    grant: {
+      kind: "auth-code",
+      scopes: ["read"],
+      callbackOrigin: "api",
+      outputs: {
+        accessToken: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+        refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
+        tenantId: "$vars.TEST_OAUTH_API_TENANT_ID",
+      },
+    },
+    access: {
+      kind: "refresh-token",
+      envBindings: {
+        TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+        TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
+      },
+      inputs: {
+        refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
+      },
+      outputs: {
+        accessToken: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+        refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
+      },
+      refreshableSecrets: ["TEST_OAUTH_ACCESS_TOKEN"],
+    },
+    revoke: { kind: "none" },
   };
 }
 
@@ -1249,12 +1297,20 @@ function configureSource(): string {
   return bucket;
 }
 
+function setApiVersion(version: string): void {
+  apiPackage.version = version;
+}
+
 function cronHeaders(secret = CRON_SECRET): { readonly authorization: string } {
   return { authorization: `Bearer ${secret}` };
 }
 
 function cronClient() {
   return setupApp({ context })(cronConnectorCatalogContract);
+}
+
+function diagnosticsClient() {
+  return setupApp({ context })(zeroConnectorCatalogContract);
 }
 
 function runnerFirewallClient() {
@@ -1331,8 +1387,34 @@ async function syncCatalog() {
   return await accept(cronClient().sync({ headers: cronHeaders() }), [200]);
 }
 
+async function enableDiagnosticsFeatureSwitch(): Promise<void> {
+  zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
+  await accept(
+    setupApp({ context })(zeroFeatureSwitchesContract).update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
+    }),
+    [200],
+  );
+  onTestFinished(async () => {
+    zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
+    await accept(
+      setupApp({ context })(zeroFeatureSwitchesContract).delete({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+  });
+}
+
 async function readStatus() {
-  return await accept(cronClient().status({ headers: cronHeaders() }), [200]);
+  await enableDiagnosticsFeatureSwitch();
+  return await accept(
+    diagnosticsClient().diagnostics({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
 }
 
 async function rawCronRequest(path: string): Promise<Response> {
@@ -1363,28 +1445,23 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  clearMockedExternalConnectorCatalogEnabled();
+  setApiVersion(DEFAULT_API_VERSION);
+  mockExternalConnectorCatalogEnabled(false);
   clearMockNow();
 });
 
 describe("connector catalog cron authentication and initial state", () => {
-  it("rejects missing and invalid cron credentials for both operations", async () => {
-    for (const operation of [cronClient().sync, cronClient().status]) {
-      const response = await accept(
-        operation({ headers: cronHeaders("wrong-secret") }),
-        [401],
-      );
-      expect(response.body).toStrictEqual({
-        error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-      });
-    }
-    for (const path of [
-      "/api/cron/sync-connector-catalog",
-      "/api/cron/connector-catalog-status",
-    ]) {
-      const response = await rawCronRequest(path);
-      expect(response.status).toBe(401);
-    }
+  it("rejects missing and invalid cron credentials", async () => {
+    const response = await accept(
+      cronClient().sync({ headers: cronHeaders("wrong-secret") }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+
+    const missing = await rawCronRequest("/api/cron/sync-connector-catalog");
+    expect(missing.status).toBe(401);
   });
 
   it("reports never-synced without reading the shared storage bucket", async () => {
@@ -1394,6 +1471,7 @@ describe("connector catalog cron authentication and initial state", () => {
       active: null,
       lastAttempt: null,
       lastSuccessAt: null,
+      rejectedCandidate: null,
       credentialStorage: {
         missingConnectorVersions: expect.any(Number),
         unownedConnectorSecrets: expect.any(Number),
@@ -1517,7 +1595,7 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
-  it("does not let a user select the external catalog source", async () => {
+  it("does not let a user override the global external catalog source", async () => {
     configureSource();
     const release = buildRelease({
       version: "2026-07-15.user-source-override",
@@ -1525,6 +1603,7 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
+    clearMockedExternalConnectorCatalogEnabled();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
@@ -1533,7 +1612,7 @@ describe("connector catalog valid lifecycle", () => {
         headers,
         body: {
           switches: {
-            [FeatureSwitchKey.ExternalConnectorCatalog]: true,
+            [FeatureSwitchKey.ExternalConnectorCatalog]: false,
           },
         },
       }),
@@ -1544,7 +1623,7 @@ describe("connector catalog valid lifecycle", () => {
     ).toBeUndefined();
     expect(
       update.body.effectiveSwitches[FeatureSwitchKey.ExternalConnectorCatalog],
-    ).toBeFalsy();
+    ).toBeTruthy();
 
     const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
@@ -1555,7 +1634,7 @@ describe("connector catalog valid lifecycle", () => {
       publicCatalog.body.connectors.some((connector) => {
         return connector.connectorRef === release.connectorRef;
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
       callsBeforePublicCatalog,
     );
@@ -2500,7 +2579,7 @@ describe("connector catalog valid lifecycle", () => {
       unknownPolicy: "deny",
     });
     expect(
-      expectLegacyStorageManifest(claim.storageManifest)?.storages.some(
+      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
         (storage) => {
           return storage.mountPath.endsWith(`/skills/${connectorRef}`);
         },
@@ -2757,19 +2836,18 @@ describe("connector catalog valid lifecycle", () => {
       .toBe(run.runId);
     const claim = await runs.claimRunnerJob(run.runId);
     const mountedSkills =
-      expectLegacyStorageManifest(claim.storageManifest)?.storages.filter(
-        (storage) => {
-          return (
-            storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
-          );
-        },
-      ) ?? [];
+      expectCanonicalStorageManifest(
+        claim.storageManifest,
+      )?.storageMounts.filter((storage) => {
+        return (
+          storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
+        );
+      }) ?? [];
     expect(mountedSkills).toHaveLength(1);
     expect(mountedSkills[0]).toMatchObject({
       name: storageName,
       mountPath: `/home/user/.claude/skills/${connectorRef}`,
-      vasStorageName: storageName,
-      vasVersionId: selectedVersionId,
+      versionId: selectedVersionId,
       archiveSize: 321,
       archiveUrl: expect.any(String),
     });
@@ -4566,6 +4644,91 @@ describe("connector catalog executable compatibility", () => {
     });
   });
 
+  it("accepts inline confidential test clients and applies rollout at request time", async () => {
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    const provider = mockTestOAuthAuthCodeProvider({
+      refreshToken: "catalog-test-oauth-refresh",
+    });
+    configureSource();
+    const method = publicAuthMethod({
+      id: "oauth",
+      grantKind: "auth-code",
+    });
+    method.featureSwitch = "testOauthConnector";
+    const release = buildRelease({
+      version: "2026-07-24.inline-confidential-test-client",
+      connectorRef: "test-oauth",
+      mutateCatalog: (artifact) => {
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [testOauthPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body.filtering).toMatchObject({
+      stale: false,
+      filteredAuthMethods: [],
+    });
+
+    mockExternalConnectorCatalogEnabled(true);
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        "test-oauth",
+        [204, 404],
+      );
+    });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const headers = { authorization: "Bearer clerk-session" };
+    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
+
+    expect(
+      (await accept(catalogClient.list({ headers }), [200])).body,
+    ).toStrictEqual({
+      connectors: [],
+      categoryMetadata: { categories: [], groups: [] },
+    });
+    await accept(
+      featureClient.update({
+        headers,
+        body: {
+          switches: { [FeatureSwitchKey.TestOauthConnector]: true },
+        },
+      }),
+      [200],
+    );
+    const enabled = await accept(catalogClient.list({ headers }), [200]);
+    expect(enabled.body.connectors).toMatchObject([
+      {
+        connectorRef: "test-oauth",
+        authMethods: [{ id: "oauth", grantKind: "auth-code" }],
+      },
+    ]);
+    expect(JSON.stringify(enabled.body)).not.toContain("test-oauth-secret");
+
+    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    const authorizationUrl = new URL(start.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "test-oauth-client",
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected test OAuth authorization state");
+    }
+    await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "catalog-test-oauth-code",
+      state,
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("client_secret")).toBe(
+      "test-oauth-secret",
+    );
+  });
+
   it("filters unsupported grant, access, and revoke handlers independently", async () => {
     configureSource();
     const publicMethods = [
@@ -5618,6 +5781,14 @@ describe("connector catalog rejection and latest-valid retention", () => {
     );
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeStatus);
     expect(JSON.stringify(rejected.body)).not.toContain(PRIVATE_VALUE);
+
+    serveObjects(catalogObjects([accepted], accepted));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "unchanged",
+      state: "current",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: null,
+    });
   });
 
   it("skips large artifacts for a deterministically rejected candidate", async () => {
@@ -5634,20 +5805,38 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
     serveObjects(catalogObjects([accepted, invalid], invalid));
     const callsBeforeFirstRejection = context.mocks.s3.send.mock.calls.length;
-    expect((await syncCatalog()).body).toMatchObject({
+    const freshRejection = await syncCatalog();
+    expect(freshRejection.body).toMatchObject({
       outcome: "rejected",
       state: "stale",
-      lastAttempt: { failureCode: "invalid-artifact" },
+      lastAttempt: {
+        failureCode: "invalid-artifact",
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: {
+        catalogVersion: invalid.version,
+        failureCode: "invalid-artifact",
+        backendVersion: DEFAULT_API_VERSION,
+      },
     });
     expect(
       context.mocks.s3.send.mock.calls.length - callsBeforeFirstRejection,
     ).toBe(2);
 
     const callsBeforeCachedRejection = context.mocks.s3.send.mock.calls.length;
-    expect((await syncCatalog()).body).toMatchObject({
+    const cachedRejection = await syncCatalog();
+    expect(cachedRejection.body).toMatchObject({
       outcome: "rejected",
       state: "stale",
-      lastAttempt: { failureCode: "invalid-artifact" },
+      lastAttempt: {
+        failureCode: "invalid-artifact",
+        reusedCachedRejection: true,
+      },
+      rejectedCandidate: {
+        catalogVersion: invalid.version,
+        failureCode: "invalid-artifact",
+        backendVersion: DEFAULT_API_VERSION,
+      },
     });
     expect(
       context.mocks.s3.send.mock.calls.length - callsBeforeCachedRejection,
@@ -5659,6 +5848,193 @@ describe("connector catalog rejection and latest-valid retention", () => {
     ).toMatchObject({
       Key: ACTIVE_KEY,
       IfNoneMatch: objectEtag(invalid.pointer),
+    });
+    expect(JSON.stringify(cachedRejection.body)).not.toContain(
+      invalid.catalogKey,
+    );
+    expect(JSON.stringify(cachedRejection.body)).not.toContain(
+      objectEtag(invalid.pointer),
+    );
+  });
+
+  it("revalidates a rejection when the production backend version advances", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const invalid = buildRelease({
+      version: "2026-07-25.backend-version-rejection",
+      mutateCatalog: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([invalid], invalid));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: "1.318.0" },
+    });
+
+    setApiVersion("1.319.0");
+    const callsBeforeNewBackend = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeNewBackend,
+    ).toBe(2);
+
+    setApiVersion("1.318.0");
+    const callsBeforeOlderBackend = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: true },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeOlderBackend,
+    ).toBe(1);
+  });
+
+  it("activates a candidate after backend-version revalidation succeeds", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const candidate = buildRelease({
+      version: "2026-07-25.backend-version-acceptance",
+    });
+    const rejectedObjects = new Map(catalogObjects([candidate], candidate));
+    rejectedObjects.set(candidate.catalogKey, Buffer.from("{}"));
+    serveObjects(rejectedObjects);
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: {
+        failureCode: "digest-mismatch",
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: { backendVersion: "1.318.0" },
+    });
+
+    setApiVersion("1.319.0");
+    serveObjects(catalogObjects([candidate], candidate));
+    const callsBeforeAcceptance = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: candidate.version },
+      lastAttempt: {
+        failureCode: null,
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: null,
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeAcceptance,
+    ).toBe(2);
+  });
+
+  it("uses build commits to invalidate preview rejections", async () => {
+    configureSource();
+    mockEnv("ENV", "preview");
+    mockEnv("GIT_COMMIT_SHA", "a".repeat(40));
+    const invalid = buildRelease({
+      version: "2026-07-25.preview-commit-rejection",
+      mutateCatalog: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([invalid], invalid));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: DEFAULT_API_VERSION },
+    });
+
+    mockEnv("GIT_COMMIT_SHA", "b".repeat(40));
+    const callsBeforeNewCommit = context.mocks.s3.send.mock.calls.length;
+    const revalidated = await syncCatalog();
+    expect(revalidated.body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: DEFAULT_API_VERSION },
+    });
+    expect(context.mocks.s3.send.mock.calls.length - callsBeforeNewCommit).toBe(
+      2,
+    );
+
+    const callsBeforeCachedCommit = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: true },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeCachedCommit,
+    ).toBe(1);
+    expect(JSON.stringify(revalidated.body)).not.toContain("a".repeat(40));
+    expect(JSON.stringify(revalidated.body)).not.toContain("b".repeat(40));
+  });
+
+  it("keeps the newer rejection authority across concurrent backend versions", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const invalid = buildRelease({
+      version: "2026-07-25.concurrent-backend-rejection",
+      mutateCatalog: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    const objects = catalogObjects([invalid], invalid);
+    const blocked = deferredGate();
+    const resume = deferredGate();
+    let blockedFirstCatalogRead = false;
+    context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+      const input = commandInput(command);
+      const key = typeof input.Key === "string" ? input.Key : undefined;
+      const bytes = key ? objects.get(key) : undefined;
+      if (!bytes) {
+        throw new Error("Object unavailable");
+      }
+      if (key === invalid.catalogKey && !blockedFirstCatalogRead) {
+        blockedFirstCatalogRead = true;
+        blocked.release();
+        await resume.promise;
+      }
+      const etag = objectEtag(bytes);
+      if (input.IfNoneMatch === etag) {
+        throw Object.assign(new Error("Not modified"), {
+          $metadata: { httpStatusCode: 304 },
+        });
+      }
+      return {
+        ContentLength: bytes.length,
+        Body: s3Body(bytes),
+        ETag: etag,
+      };
+    });
+
+    const olderSync = syncCatalog();
+    await blocked.promise;
+    setApiVersion("1.319.0");
+    const newerResult = await syncCatalog();
+    resume.release();
+    const olderResult = await olderSync;
+
+    expect(newerResult.body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: false },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect(olderResult.body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: { reusedCachedRejection: true },
+      rejectedCandidate: { backendVersion: "1.319.0" },
+    });
+    expect((await readStatus()).body).toMatchObject({
+      lastAttempt: { reusedCachedRejection: true },
+      rejectedCandidate: { backendVersion: "1.319.0" },
     });
   });
 
@@ -5740,8 +6116,10 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
   });
 
-  it("caches a malformed active pointer by its observed ETag", async () => {
+  it("revalidates an ETag-only pointer rejection after a backend release", async () => {
     configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
     const invalid = buildRelease({
       version: "2026-07-15.malformed-pointer-cache",
       mutatePointer: (pointer) => {
@@ -5769,6 +6147,38 @@ describe("connector catalog rejection and latest-valid retention", () => {
     ).toMatchObject({
       Key: ACTIVE_KEY,
       IfNoneMatch: objectEtag(invalid.pointer),
+    });
+
+    setApiVersion("1.319.0");
+    const callsBeforeNewBackend = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      lastAttempt: {
+        failureCode: "invalid-pointer",
+        reusedCachedRejection: false,
+      },
+      rejectedCandidate: {
+        catalogVersion: null,
+        catalogDigest: null,
+        backendVersion: "1.319.0",
+      },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeNewBackend,
+    ).toBe(1);
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeNewBackend]?.[0],
+      ),
+    ).toMatchObject({
+      Key: ACTIVE_KEY,
+    });
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeNewBackend]?.[0],
+      ),
+    ).toMatchObject({
+      IfNoneMatch: undefined,
     });
   });
 

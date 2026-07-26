@@ -20,6 +20,7 @@ import {
   linkByText,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
+import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
 
 describe("chat lifecycle", () => {
   it("links Slack-origin user messages back to the original message", async () => {
@@ -72,6 +73,57 @@ describe("chat lifecycle", () => {
     expect(originLink).toHaveAttribute("target", "_blank");
     expect(originLink).toHaveTextContent("Slack");
     expect(originLink).toHaveTextContent("Open message");
+    expect(originLinks).toHaveLength(1);
+  });
+
+  it("links Feishu-origin user messages back to the original chat", async () => {
+    const threadId = "thread-feishu-message-origin";
+    const chatOpenUrl =
+      "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_chat";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-feishu-origin",
+          role: "user",
+          content: "Check the Feishu conversation",
+          runId: "run-feishu-origin",
+          triggerSource: "feishu",
+          feishuChatOpenUrl: chatOpenUrl,
+          createdAt: "2026-07-23T01:00:00Z",
+        },
+        {
+          id: "msg-feishu-origin-assistant",
+          role: "assistant",
+          content: "The conversation is available.",
+          runId: "run-feishu-origin",
+          createdAt: "2026-07-23T01:01:00Z",
+        },
+        {
+          id: "msg-feishu-origin-without-link",
+          role: "user",
+          content: "This source link was unavailable",
+          runId: "run-feishu-origin-without-link",
+          triggerSource: "feishu",
+          createdAt: "2026-07-23T01:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Open chat")).toBeInTheDocument();
+    });
+    const originLinks = queryAllByRoleFast("link").filter((link) => {
+      return link.getAttribute("aria-label") === "Open original chat in Feishu";
+    });
+    const originLink = originLinks[0];
+    expect(originLink).toBeDefined();
+    expect(originLink).toHaveAttribute("href", chatOpenUrl);
+    expect(originLink).toHaveAttribute("target", "_blank");
+    expect(originLink).toHaveTextContent("Feishu");
+    expect(originLink).toHaveTextContent("Open chat");
     expect(originLinks).toHaveLength(1);
   });
 
@@ -289,9 +341,10 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps existing thread history visible after returning with an optimistic follow-up", async () => {
+  it("keeps the thread container without carrying resolved history or submission state across threads", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
+    const otherThreadMessagesGate = context.mocks.deferred<void>();
     const threadId = "b0000000-0000-4000-a000-000000000901";
     const otherThreadId = "b0000000-0000-4000-a000-000000000902";
     const lifecycle = mockChatLifecycle(context, {
@@ -331,12 +384,75 @@ describe("chat lifecycle", () => {
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ]);
+    context.mocks.api(
+      chatThreadEventsContract.list,
+      async ({ params, query, respond }) => {
+        if (query.sinceSeqId || query.beforeSeqId) {
+          return respond(200, { events: [] });
+        }
+        if (params.threadId === otherThreadId) {
+          await otherThreadMessagesGate.promise;
+          return respond(200, {
+            events: normalizeMockChatEvents([
+              {
+                id: "msg-other-user",
+                threadId: params.threadId,
+                seqId: 1,
+                role: "user",
+                runId: "run-other",
+                content: "Other thread context",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-other-assistant",
+                threadId: params.threadId,
+                seqId: 2,
+                role: "assistant",
+                runId: "run-other",
+                content: "Other thread answer",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ]),
+            hasHistoryBefore: false,
+          });
+        }
+        return respond(200, {
+          events: normalizeMockChatEvents([
+            {
+              id: "msg-existing-user",
+              threadId: params.threadId,
+              seqId: 1,
+              role: "user",
+              runId: "run-existing",
+              content: "Existing context before follow-up",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-existing-assistant",
+              threadId: params.threadId,
+              seqId: 2,
+              role: "assistant",
+              runId: "run-existing",
+              content: "Existing assistant answer",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ]),
+          hasHistoryBefore: false,
+        });
+      },
+    );
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await expect(
       screen.findByText("Existing context before follow-up"),
     ).resolves.toBeInTheDocument();
+    const threadContainer = document.querySelector(
+      `[data-chat-thread-container-id="${threadId}"]`,
+    );
+    if (!(threadContainer instanceof HTMLElement)) {
+      throw new Error("Chat thread container not found");
+    }
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -356,15 +472,40 @@ describe("chat lifecycle", () => {
     await user.click(linkByText("Other thread"));
     await waitFor(() => {
       expect(document.title).toBe("Other thread | VM0");
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${otherThreadId}"]`,
+        ),
+      ).toBe(threadContainer);
+      expect(
+        screen.queryByText("Existing context before follow-up"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
     });
+
+    otherThreadMessagesGate.resolve(undefined);
+    await waitFor(() => {
+      expect(screen.getByText("Other thread context")).toBeInTheDocument();
+    });
+    const otherTextarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    await user.type(otherTextarea, "Fresh draft for other thread");
+    expect(screen.getByLabelText("Send")).toBeEnabled();
 
     await user.click(linkByText("Long thread"));
     await waitFor(() => {
       expect(document.title).toBe("Long thread | VM0");
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
       expect(
+        screen.queryByText("Other thread context"),
+      ).not.toBeInTheDocument();
+      expect(
         screen.getByText("Existing context before follow-up"),
       ).toBeInTheDocument();
+      expect(
+        document.querySelector(`[data-chat-thread-container-id="${threadId}"]`),
+      ).toBe(threadContainer);
     });
     expectTextBefore(
       document.body,

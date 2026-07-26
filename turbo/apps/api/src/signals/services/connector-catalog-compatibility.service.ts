@@ -5,7 +5,7 @@ import {
   type ConnectorCatalogCompatibilityReason,
   type ConnectorCatalogFilteredAuthMethod,
   type ConnectorCatalogFilteringStatus,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import {
   CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS,
   getConnectorAuthProviderRegistrationCapabilities,
@@ -111,11 +111,13 @@ function methodClientContract(
     return { kind: "dynamic-public" };
   }
   if (client.clientType === "confidential") {
-    return {
-      kind: "static-confidential-env",
-      clientIdEnv: client.clientIdEnv,
-      clientSecretEnv: client.clientSecretEnv,
-    };
+    return "clientIdEnv" in client
+      ? {
+          kind: "static-confidential-env",
+          clientIdEnv: client.clientIdEnv,
+          clientSecretEnv: client.clientSecretEnv,
+        }
+      : { kind: "static-confidential-literal" };
   }
   return { kind: "static-public-literal" };
 }

@@ -1,4 +1,4 @@
-import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/cron";
+import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -229,7 +229,6 @@ async function createAndReadCanonicalStorages(
           orgId: SYSTEM_ORG_ID,
           userId: VOLUME_ORG_USER_ID,
           name: registration.storageName,
-          type: "volume",
           s3Prefix: registration.s3Prefix,
           size: registration.size,
           fileCount: registration.fileCount,
@@ -342,7 +341,6 @@ async function updateNewStorageHeads(
           orgId: SYSTEM_ORG_ID,
           userId: VOLUME_ORG_USER_ID,
           name: registration.storageName,
-          type: "volume",
           s3Prefix: registration.s3Prefix,
           size: registration.size,
           fileCount: registration.fileCount,

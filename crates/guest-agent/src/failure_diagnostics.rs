@@ -354,7 +354,7 @@ fn is_claude_result_provider_stream_timeout(source: FailureDetailSource, normali
 
 fn is_claude_result_stream_idle_timeout(trimmed: &str) -> bool {
     trimmed.starts_with("api error: stream idle timeout")
-        && trimmed.contains("partial response received")
+        && (trimmed.contains("partial response received") || trimmed.contains("no chunks received"))
 }
 
 fn is_claude_result_stalled_mid_stream(trimmed: &str) -> bool {

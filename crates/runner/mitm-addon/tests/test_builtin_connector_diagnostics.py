@@ -85,13 +85,14 @@ def test_classifies_static_connector_without_permission_method_enforcement():
         active_firewall_names=set(),
     )
 
-    assert candidate is not None
-    assert candidate.connector_type == "catalog-connector"
-    assert candidate.reason == "not_configured_for_run"
-    assert candidate.base == "https://service.example.com/api"
-    assert candidate.env_names == ("SERVICE_TOKEN", "TENANT_ID")
-    assert candidate.auth_header_names == ("Authorization",)
-    assert candidate.auth_query_param_names == ("tenant",)
+    assert candidate == builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
+        connector_type="catalog-connector",
+        reason="not_configured_for_run",
+        env_names=("SERVICE_TOKEN", "TENANT_ID"),
+        base="https://service.example.com/api",
+        auth_header_names=("Authorization",),
+        auth_query_param_names=("tenant",),
+    )
 
 
 def test_skips_active_connector_name():
@@ -236,6 +237,14 @@ def test_find_candidate_selects_unique_shared_base_route_owner():
             _firewall(
                 "inactive",
                 "INACTIVE_TOKEN",
+                auth={
+                    "headers": {
+                        "X-Inactive-Token": "${{ secrets.INACTIVE_HEADER_TOKEN }}",
+                    },
+                    "query": {
+                        "inactive_token": "${{ secrets.INACTIVE_QUERY_TOKEN }}",
+                    },
+                },
                 permissions=[{"name": "read", "rules": ["GET /messages/{id}"]}],
             ),
         ]
@@ -248,9 +257,14 @@ def test_find_candidate_selects_unique_shared_base_route_owner():
         active_firewall_names={"active"},
     )
 
-    assert candidate is not None
-    assert candidate.connector_type == "inactive"
-    assert candidate.env_names == ("INACTIVE_TOKEN",)
+    assert candidate == builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
+        connector_type="inactive",
+        reason="not_configured_for_run",
+        env_names=("INACTIVE_HEADER_TOKEN", "INACTIVE_QUERY_TOKEN"),
+        base="https://shared.example.com",
+        auth_header_names=("X-Inactive-Token",),
+        auth_query_param_names=("inactive_token",),
+    )
 
 
 def test_find_candidate_suppresses_multiple_shared_base_route_owners():

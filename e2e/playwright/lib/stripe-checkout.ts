@@ -63,6 +63,48 @@ async function disableLinkSaveInfo(page: Page): Promise<void> {
   }
 }
 
+// Stripe Checkout serves three card-entry layouts, and which one a run gets
+// depends on the browser and on the payment methods Stripe resolves for the
+// detected locale:
+//   1. expanded    - no toggle at all, card fields are already present
+//   2. wallet      - a visible "Pay with card" toggle collapsing the card form
+//   3. accordion   - a payment-method picker whose "Pay with card" entry is in
+//                    the DOM with a zero-height box, so it is not "visible"
+// Waiting for the toggle unconditionally fails layout 1, and gating the click
+// on visibility skips layout 3. Attachment is the signal that covers all three:
+// `dispatchEvent` bypasses actionability checks, so it drives the accordion
+// entry just as well as the wallet toggle.
+async function revealCardForm(page: Page, cardNumber: Locator): Promise<void> {
+  const payWithCard = page
+    .getByRole("button", { name: /pay with card/i })
+    .first();
+
+  // Settle on whichever layout Stripe rendered before deciding, so layout 1
+  // proceeds as soon as the card fields exist instead of burning the whole
+  // timeout waiting for a toggle that will never appear.
+  await payWithCard
+    .or(cardNumber)
+    .first()
+    .waitFor({ state: "attached", timeout: 10_000 })
+    .catch(() => {});
+
+  // Layout 1 has nothing to click. Layouts 2 and 3 both need exactly one
+  // dispatched click before the card fields render.
+  if ((await payWithCard.count()) === 0) {
+    return;
+  }
+  if (
+    await cardNumber
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return;
+  }
+
+  await payWithCard.dispatchEvent("click", undefined, { timeout: 10_000 });
+}
+
 export async function fillStripeCheckout(page: Page): Promise<void> {
   await expect(page).toHaveURL(/checkout\.stripe\.com/, { timeout: 30_000 });
 
@@ -71,16 +113,17 @@ export async function fillStripeCheckout(page: Page): Promise<void> {
     `billing-e2e-${Date.now()}@vm0-e2e.ai`,
   );
   await disableLinkSaveInfo(page);
-  await page
-    .getByRole("button", { name: /pay with card/i })
-    .dispatchEvent("click", undefined, { timeout: 10_000 });
+
+  const cardNumber = page
+    .getByLabel(/card number/i)
+    .or(page.getByPlaceholder(/1234 1234 1234 1234/i))
+    .or(page.locator('input[name="cardNumber"]'));
+
+  await revealCardForm(page, cardNumber);
 
   await fillStripeField(
     page,
-    page
-      .getByLabel(/card number/i)
-      .or(page.getByPlaceholder(/1234 1234 1234 1234/i))
-      .or(page.locator('input[name="cardNumber"]')),
+    cardNumber,
     /1234 1234 1234 1234/i,
     "4242424242424242",
   );

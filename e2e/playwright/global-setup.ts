@@ -1,3 +1,4 @@
+import { clerkSetup } from "@clerk/testing/playwright";
 import {
   createOrganization,
   createUser,
@@ -6,6 +7,12 @@ import {
 } from "./lib/clerk-api";
 
 export default async function globalSetup(): Promise<void> {
+  // Publishes CLERK_FAPI and CLERK_TESTING_TOKEN into the environment that
+  // every Playwright worker inherits, so `setupClerkTestingToken` works in
+  // each worker process. Clerk requires this during global setup: a token
+  // fetched inside one test body never reaches the other workers.
+  await clerkSetup();
+
   const email = generateTestEmail();
   console.log("[globalSetup] email:", email);
 

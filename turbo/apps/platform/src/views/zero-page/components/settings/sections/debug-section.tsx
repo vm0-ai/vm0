@@ -10,6 +10,7 @@ import {
   updateCaptureNetworkBodies$,
 } from "../../../../../signals/zero-page/settings/preferences-page.ts";
 import { BuildInfoBlock } from "../build-info-block.tsx";
+import { ConnectorCatalogDiagnosticsBlock } from "../connector-catalog-diagnostics-block.tsx";
 
 const CAPTURE_RUN_COUNT = 3;
 
@@ -63,6 +64,7 @@ export function DebugSection() {
   return (
     <div className="flex flex-col gap-6">
       <BuildInfoBlock />
+      <ConnectorCatalogDiagnosticsBlock />
       <CaptureNetworkBodiesBlock />
     </div>
   );

@@ -73,9 +73,6 @@ const hostNameSchema = z.string().trim().min(1).max(253);
 const hostInstallationIdSchema = z.string().trim().uuid();
 const hostVersionSchema = z.string().trim().min(1).max(64);
 const hostOsVersionSchema = z.string().trim().min(1).max(128);
-const hostIdPathParamsSchema = z.object({
-  hostId: z.string().min(1),
-});
 const authorizationRequestTokenPathParamsSchema = z.object({
   requestToken: z.string().min(1),
 });
@@ -451,10 +448,6 @@ export const computerUseHostListResponseSchema = z.object({
   hosts: z.array(computerUseHostSchema),
 });
 
-export const computerUseHostDeleteResponseSchema = z.object({
-  ok: z.literal(true),
-});
-
 export const computerUseAuthorizationSourceSchema = z.enum([
   "chat",
   "slack",
@@ -581,19 +574,6 @@ export const zeroComputerUseHostsContract = c.router({
       403: apiErrorSchema,
     },
     summary: "List linked desktop computer-use hosts",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/api/zero/computer-use/hosts/:hostId",
-    headers: authHeadersSchema,
-    pathParams: hostIdPathParamsSchema,
-    responses: {
-      200: computerUseHostDeleteResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Delete a desktop computer-use host",
   },
 });
 
@@ -837,9 +817,6 @@ export type ComputerUseCommandStatus = z.infer<
   typeof computerUseCommandStatusSchema
 >;
 export type ComputerUseHost = z.infer<typeof computerUseHostSchema>;
-export type ComputerUseHostDeleteResponse = z.infer<
-  typeof computerUseHostDeleteResponseSchema
->;
 export type ComputerUseHostListResponse = z.infer<
   typeof computerUseHostListResponseSchema
 >;

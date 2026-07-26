@@ -50,7 +50,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Use the accepted external catalog as the global source for official connectors",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
@@ -230,20 +230,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.CanonicalSlackIngress]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Route newly admitted per-user Slack threads through canonical chat ingress.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroWeather]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -306,6 +292,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable GitHub Actions workflow run completed event automations.",
     enabled: true,
   },
+  [FeatureSwitchKey.GithubWebhookAutomations]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show creation entry points for GitHub workflow job, pull request review, deployment status, and issue comment automations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -366,13 +360,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
-  },
-  [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
@@ -438,13 +425,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationExport]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -457,6 +437,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Create immutable hosted artifact versions behind stable site aliases.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",
@@ -476,8 +457,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show plan-upgrade guidance in Zero CLI help and render billing plan links as rich chat cards.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
@@ -499,6 +479,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ZeroBrowser]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Show the Zero Browser command in the Zero CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

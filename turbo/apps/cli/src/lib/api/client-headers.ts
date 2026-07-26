@@ -13,6 +13,8 @@ import {
 
 declare const __CLI_VERSION__: string;
 
+const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
+
 type CliClientHeaderInjector = (headers: Headers) => void;
 
 export function createCliClientHeaderInjector(options: {
@@ -36,6 +38,10 @@ const addDefaultCliClientHeaders = createCliClientHeaderInjector({
 
 function addCliClientHeaders(headers: Headers): void {
   addDefaultCliClientHeaders(headers);
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers.set(VERCEL_PROTECTION_BYPASS_HEADER, bypassSecret);
+  }
 }
 
 export function headersWithCliClientHeaders(

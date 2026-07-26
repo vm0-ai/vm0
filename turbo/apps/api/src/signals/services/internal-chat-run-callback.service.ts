@@ -1,11 +1,12 @@
 import { randomBytes } from "node:crypto";
 
-import { command } from "ccstate";
+import { command, createStore } from "ccstate";
 import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
 } from "@vm0/api-contracts/contracts/chat-events";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
+import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -58,10 +59,22 @@ import {
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
+import {
+  feishuDeliveryTargetSchema,
+  type FeishuDeliveryTarget,
+} from "./feishu-chat-callback-payload";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
-import { dispatchSlackChatDeliveryOnce } from "./internal-slack-chat-run-callback.service";
+import {
+  deliverSlackChatAdmissionFailure,
+  dispatchSlackChatDeliveryOnce,
+} from "./internal-slack-chat-run-callback.service";
+import {
+  clearCanonicalFeishuThinkingReaction,
+  dispatchFeishuChatDeliveryOnce,
+} from "./internal-feishu-chat-run-callback.service";
 import {
   clearCanonicalSlackThreadStatusIfIdle,
+  refreshCanonicalSlackThreadStatus,
   type CanonicalSlackThreadStatusTarget,
 } from "./canonical-slack-thread-status.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
@@ -76,12 +89,14 @@ import {
 } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
-import { activeChatRunExists } from "./zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
+import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-message.service";
 import {
   decryptQueuedUserMessageRunParams,
+  failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -96,12 +111,17 @@ import {
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
-import type { ModelFirstPin } from "./zero-model-selection.service";
+import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
+import {
+  resolveModelFirstProviderAdmission,
+  type ModelFirstPin,
+} from "./zero-model-selection.service";
 import {
   chatEventTypeIn,
   chatEventTypeSql,
@@ -189,7 +209,10 @@ export class ChatCallbackPreCreateTimingCollector {
     return result;
   }
 
-  flush(runId: string): void {
+  flush(
+    runId: string,
+    triggerSource: "web" | "slack" | "feishu" = "web",
+  ): void {
     if (this.flushed) {
       return;
     }
@@ -206,7 +229,7 @@ export class ChatCallbackPreCreateTimingCollector {
           timestamp: record.timestamp,
           dimensions: {
             span_kind: record.spanKind,
-            trigger_source: "web",
+            trigger_source: triggerSource,
             zero_run_origin: "zero_run",
             zero_pre_create_source: "chat_callback_auto_send",
           },
@@ -219,11 +242,12 @@ export class ChatCallbackPreCreateTimingCollector {
 function flushChatCallbackTimingOnRejection(args: {
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly getRunId: () => string | null;
+  readonly triggerSource: "web" | "slack" | "feishu";
 }): (error: unknown) => void {
   return () => {
     const runId = args.getRunId();
     if (runId !== null) {
-      args.timing.flush(runId);
+      args.timing.flush(runId, args.triggerSource);
     }
   };
 }
@@ -265,6 +289,7 @@ const chatCallbackPayloadSchema = z
         threadTs: z.string(),
       })
       .optional(),
+    feishuDelivery: feishuDeliveryTargetSchema.optional(),
     // Set for goal-triggered runs so terminal push notifications can be gated:
     // an active goal loops on every idle, so interim per-iteration pushes are
     // suppressed and only terminal states (complete/blocked/auto-stopped) notify.
@@ -386,6 +411,10 @@ type CreateQueuedRun = (
 ) => Promise<CreatedQueuedRun | null>;
 
 interface ChatCallbackDependencies {
+  readonly releaseBrowsersForRun: (
+    args: { readonly chatThreadId: string },
+    signal: AbortSignal,
+  ) => Promise<{ readonly released: number }>;
   readonly insertAssistantItems: (
     args: {
       readonly runId: string;
@@ -418,6 +447,39 @@ interface ChatCallbackDependencies {
     target: CanonicalSlackThreadStatusTarget,
     signal: AbortSignal,
   ) => Promise<boolean>;
+  readonly refreshSlackThreadStatus: (
+    target: CanonicalSlackThreadStatusTarget,
+    signal: AbortSignal,
+  ) => Promise<boolean>;
+  readonly formatIntegrationRunError: (
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly code: string;
+      readonly message: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<string>;
+  readonly deliverSlackAdmissionFailure: (
+    args: {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentId: string;
+      readonly channelId: string;
+      readonly threadTs: string;
+      readonly chatMessageId: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly dispatchFeishuDelivery: (
+    callbackId: string,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly clearFeishuThinkingReaction: (
+    target: FeishuDeliveryTarget,
+    signal: AbortSignal,
+  ) => Promise<void>;
   readonly createQueuedRun?: CreateQueuedRun;
   readonly drainThreadQueue?: (
     chatThreadId: string,
@@ -454,16 +516,34 @@ interface CreateQueuedChatRunInput {
     readonly hostId: string;
     readonly displayName: string;
   } | null;
-  readonly triggerSource: "web" | "slack";
+  readonly triggerSource: "web" | "slack" | "feishu";
   readonly realAgentInPreview?: boolean;
   readonly slackDelivery?: {
     readonly channelId: string;
     readonly threadTs: string;
   };
+  readonly feishuDelivery?: FeishuDeliveryTarget;
+  readonly apiStartTime?: number;
   readonly userInfoExtras?: {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
+    readonly feishuDisplayName?: string;
+    readonly feishuOpenId?: string;
   };
+}
+
+interface SlackQueuedMessageAdmissionFailure {
+  readonly kind: "slack_admission_failure";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly slackDelivery: {
+    readonly channelId: string;
+    readonly threadTs: string;
+  };
+  readonly error: QueuedMessageModelRouteError;
 }
 
 type CompletedChatCallbackResult =
@@ -472,6 +552,7 @@ type CompletedChatCallbackResult =
       readonly lastResultText: string | null;
       readonly followupContext: readonly ChatCompletionContextMessage[];
       readonly slackDeliveryCallbackId?: string;
+      readonly feishuDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
@@ -480,12 +561,14 @@ type FailedChatCallbackResult =
       readonly inserted: true;
       readonly displayErrorMessage: string;
       readonly slackDeliveryCallbackId?: string;
+      readonly feishuDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
 interface TerminalChatCallbackWork {
   readonly shouldDrainThreadQueue: boolean;
   readonly slackDeliveryCallbackId?: string;
+  readonly feishuDeliveryCallbackId?: string;
   readonly deferredSideEffects?: () => Promise<void>;
 }
 
@@ -532,8 +615,29 @@ function buildQueuedCreateZeroRunArgs(
           agentId: input.agentId,
           queuedMessageId: input.queuedMessage.id,
           slackDelivery: input.slackDelivery,
+          feishuDelivery: input.feishuDelivery,
         },
       },
+      ...(input.feishuDelivery
+        ? [
+            {
+              internalKind: "feishu:org" as const,
+              secret: generateCallbackSecret(),
+              payload: {
+                installationId: input.feishuDelivery.installationId,
+                chatId: input.feishuDelivery.chatId,
+                messageId: input.feishuDelivery.messageId,
+                connectionId: input.feishuDelivery.connectionId,
+                sessionKey: input.feishuDelivery.threadId,
+                agentId: input.agentId,
+                reactionId: input.feishuDelivery.reactionId,
+                replyInThread: input.feishuDelivery.replyInThread,
+                files: input.feishuDelivery.files,
+                canonicalChatDelivery: true,
+              },
+            },
+          ]
+        : []),
     ],
     triggerSource: input.triggerSource,
     zeroPreCreateSource: "chat_callback_auto_send" as const,
@@ -541,6 +645,7 @@ function buildQueuedCreateZeroRunArgs(
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
     queueFirstAssociation: {
+      kind: "user_message" as const,
       threadId: input.threadId,
       messageId: input.queuedMessage.id,
     },
@@ -683,9 +788,12 @@ async function latestEventBackedAssistantMessage(
   db: Db,
   runId: string,
   options: { readonly maxSequenceNumber?: number } = {},
-): Promise<{ readonly content: string } | null> {
+): Promise<AssistantEventItem | null> {
   const [message] = await db
-    .select({ content: chatMessages.content })
+    .select({
+      content: chatMessages.content,
+      sequenceNumber: chatMessages.sequenceNumber,
+    })
     .from(chatMessages)
     .where(
       and(
@@ -702,10 +810,13 @@ async function latestEventBackedAssistantMessage(
     .orderBy(desc(chatMessages.sequenceNumber))
     .limit(1);
 
-  if (!message || message.content === null) {
+  if (!message || message.content === null || message.sequenceNumber === null) {
     return null;
   }
-  return { content: message.content };
+  return {
+    content: message.content,
+    sequenceNumber: message.sequenceNumber,
+  };
 }
 
 async function loadDbCompletedChatOutputState(args: {
@@ -763,6 +874,7 @@ async function loadCompletedChatOutput(args: {
   readonly db: Db;
   readonly runId: string;
   readonly lastEventSequence: number | null;
+  readonly preferResultFallback: boolean;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<CompletedChatOutputLoad> {
@@ -785,8 +897,9 @@ async function loadCompletedChatOutput(args: {
 
   if (
     dbOutputState.kind === "complete" &&
-    (dbOutputState.latestAssistantContent !== null ||
-      !dbOutputState.hasResultFallbackCandidate)
+    (!dbOutputState.hasResultFallbackCandidate ||
+      (dbOutputState.latestAssistantContent !== null &&
+        !args.preferResultFallback))
   ) {
     return {
       assistantItems: [],
@@ -907,6 +1020,50 @@ async function insertSlackChatDeliveryCallback(args: {
   return callback.id;
 }
 
+async function insertFeishuChatDeliveryCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly sourceCallbackId?: string;
+  readonly target: FeishuDeliveryTarget;
+  readonly chatMessageId: string;
+}): Promise<string> {
+  const callbackCondition = args.sourceCallbackId
+    ? and(
+        eq(agentRunCallbacks.id, args.sourceCallbackId),
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      )
+    : and(
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      );
+  const [sourceCallback] = await args.db
+    .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
+    .from(agentRunCallbacks)
+    .where(callbackCondition)
+    .limit(1);
+  if (!sourceCallback) {
+    throw new Error("Canonical Feishu run is missing its chat callback");
+  }
+
+  const [callback] = await args.db
+    .insert(agentRunCallbacks)
+    .values({
+      runId: args.runId,
+      internalKind: "feishu:chat",
+      encryptedSecret: sourceCallback.encryptedSecret,
+      payload: {
+        ...args.target,
+        chatMessageId: args.chatMessageId,
+      },
+    })
+    .returning({ id: agentRunCallbacks.id });
+  if (!callback) {
+    throw new Error("Failed to persist canonical Feishu delivery callback");
+  }
+  return callback.id;
+}
+
 async function insertAssistantErrorMessage(args: {
   readonly db: Db;
   readonly runId: string;
@@ -915,6 +1072,7 @@ async function insertAssistantErrorMessage(args: {
   readonly lifecycleEvent: "failed" | "cancelled";
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
+  readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const displayErrorMessage = await args.getFormattedError();
@@ -945,8 +1103,17 @@ async function insertAssistantErrorMessage(args: {
           chatMessageId: message.id,
         })
       : undefined;
+    const feishuDeliveryCallbackId = args.feishuDelivery
+      ? await insertFeishuChatDeliveryCallback({
+          db: tx,
+          runId: args.runId,
+          sourceCallbackId: args.sourceCallbackId,
+          target: args.feishuDelivery,
+          chatMessageId: message.id,
+        })
+      : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, message.createdAt);
-    return { slackDeliveryCallbackId };
+    return { slackDeliveryCallbackId, feishuDeliveryCallbackId };
   });
   if (!inserted) {
     return { inserted: false };
@@ -961,6 +1128,7 @@ async function insertAssistantErrorMessage(args: {
     displayErrorMessage,
     inserted: true,
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,
+    feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
   };
 }
 
@@ -971,10 +1139,15 @@ async function insertRunLifecycleMarker(args: {
   readonly userId: string;
   readonly event: "completed" | "cancelled";
   readonly slackDelivery?: SlackDeliveryTarget;
+  readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<
   | { readonly inserted: false }
-  | { readonly inserted: true; readonly slackDeliveryCallbackId?: string }
+  | {
+      readonly inserted: true;
+      readonly slackDeliveryCallbackId?: string;
+      readonly feishuDeliveryCallbackId?: string;
+    }
 > {
   const markerCreatedAt = nowDate();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
@@ -995,21 +1168,29 @@ async function insertRunLifecycleMarker(args: {
     if (!marker) {
       return null;
     }
-    const [deliveryMessage] = args.slackDelivery
-      ? await tx
-          .select({ id: chatMessages.id })
-          .from(chatMessages)
-          .where(
-            and(
-              eq(chatMessages.runId, args.runId),
-              chatEventTypeIn(["output.message"]),
-              isNotNull(chatMessages.content),
-              isNotNull(chatMessages.sequenceNumber),
-            ),
-          )
-          .orderBy(desc(chatMessages.sequenceNumber))
-          .limit(1)
-      : [];
+    if (args.event === "completed") {
+      await attachCanonicalPublishedAssetsToCompletionEvent(tx, {
+        runId: args.runId,
+        threadId: args.threadId,
+        completedEventId: marker.id,
+      });
+    }
+    const [deliveryMessage] =
+      args.slackDelivery || args.feishuDelivery
+        ? await tx
+            .select({ id: chatMessages.id })
+            .from(chatMessages)
+            .where(
+              and(
+                eq(chatMessages.runId, args.runId),
+                chatEventTypeIn(["output.message"]),
+                isNotNull(chatMessages.content),
+                isNotNull(chatMessages.sequenceNumber),
+              ),
+            )
+            .orderBy(desc(chatMessages.sequenceNumber))
+            .limit(1)
+        : [];
     const slackDeliveryCallbackId =
       deliveryMessage && args.slackDelivery
         ? await insertSlackChatDeliveryCallback({
@@ -1020,8 +1201,18 @@ async function insertRunLifecycleMarker(args: {
             chatMessageId: deliveryMessage.id,
           })
         : undefined;
+    const feishuDeliveryCallbackId =
+      deliveryMessage && args.feishuDelivery
+        ? await insertFeishuChatDeliveryCallback({
+            db: tx,
+            runId: args.runId,
+            sourceCallbackId: args.sourceCallbackId,
+            target: args.feishuDelivery,
+            chatMessageId: deliveryMessage.id,
+          })
+        : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, markerCreatedAt);
-    return { slackDeliveryCallbackId };
+    return { slackDeliveryCallbackId, feishuDeliveryCallbackId };
   });
   if (!inserted) {
     return { inserted: false };
@@ -1034,6 +1225,7 @@ async function insertRunLifecycleMarker(args: {
   return {
     inserted: true,
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,
+    feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
   };
 }
 
@@ -1065,7 +1257,11 @@ async function insertRecommendedFollowupsMessage(args: {
     return false;
   }
 
-  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+  await publishChatThreadMessageCreatedSafely(
+    args.userId,
+    args.threadId,
+    inserted.seqId,
+  );
   return true;
 }
 
@@ -1106,30 +1302,19 @@ async function loadRecommendedFollowupContextForCompletedRun(args: {
   );
 }
 
-async function handleCompletedChatCallback(args: {
+async function materializeCompletedChatResult(args: {
   readonly db: Db;
   readonly runId: string;
-  readonly run: ChatRunInfo;
-  readonly chatThread: ChatThreadForRunRow;
+  readonly lastEventSequence: number | null;
+  readonly output: CompletedChatOutputLoad;
+  readonly preferResultFallback: boolean;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-  readonly structuredPromptEnabled: boolean;
   readonly signal: AbortSignal;
-  readonly slackDelivery?: SlackDeliveryTarget;
-  readonly sourceCallbackId?: string;
   readonly insertAssistantItems: (
     items: readonly AssistantEventItem[],
   ) => Promise<void>;
-}): Promise<CompletedChatCallbackResult> {
-  const output = await loadCompletedChatOutput({
-    db: args.db,
-    runId: args.runId,
-    lastEventSequence: args.run.lastEventSequence,
-    timing: args.timing,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-
-  const { assistantItems, resultFallback } = output;
+}): Promise<string | null> {
+  const { assistantItems, resultFallback } = args.output;
   if (assistantItems.length > 0) {
     await measureChatCallbackPreCreateTiming(
       args.timing,
@@ -1143,38 +1328,90 @@ async function handleCompletedChatCallback(args: {
   }
 
   let lastResultText =
-    output.lastResultText ??
+    args.output.lastResultText ??
     (assistantItems.length > 0
       ? assistantItems[assistantItems.length - 1]!.content
       : null);
-  if (lastResultText === null && !output.skipExistingAssistantLookup) {
+  let latestAssistantSequence =
+    assistantItems.length > 0
+      ? assistantItems[assistantItems.length - 1]!.sequenceNumber
+      : null;
+  if (lastResultText === null && !args.output.skipExistingAssistantLookup) {
     const existingAssistant = await measureChatCallbackPreCreateTiming(
       args.timing,
       "api_dispatch_pre_create_zero_chat_callback_lookup_existing_assistant",
       "nested",
       () => {
         return latestEventBackedAssistantMessage(args.db, args.runId, {
-          maxSequenceNumber: args.run.lastEventSequence ?? undefined,
+          maxSequenceNumber: args.lastEventSequence ?? undefined,
         });
       },
     );
     args.signal.throwIfAborted();
-
     if (existingAssistant) {
       lastResultText = existingAssistant.content;
-    } else if (resultFallback) {
-      await measureChatCallbackPreCreateTiming(
-        args.timing,
-        "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
-        "nested",
-        () => {
-          return args.insertAssistantItems([resultFallback]);
-        },
-      );
-      args.signal.throwIfAborted();
-      lastResultText = resultFallback.content;
+      latestAssistantSequence = existingAssistant.sequenceNumber;
     }
   }
+
+  const shouldInsertResultFallback =
+    resultFallback !== null &&
+    (lastResultText === null ||
+      (args.preferResultFallback &&
+        resultFallback.sequenceNumber >
+          (latestAssistantSequence ?? Number.NEGATIVE_INFINITY) &&
+        resultFallback.content !== lastResultText));
+  if (shouldInsertResultFallback) {
+    await measureChatCallbackPreCreateTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+      "nested",
+      () => {
+        return args.insertAssistantItems([resultFallback]);
+      },
+    );
+    args.signal.throwIfAborted();
+    lastResultText = resultFallback.content;
+  }
+  return lastResultText;
+}
+
+async function handleCompletedChatCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly run: ChatRunInfo;
+  readonly chatThread: ChatThreadForRunRow;
+  readonly timing: ChatCallbackPreCreateTimingCollector;
+  readonly structuredPromptEnabled: boolean;
+  readonly signal: AbortSignal;
+  readonly slackDelivery?: SlackDeliveryTarget;
+  readonly feishuDelivery?: FeishuDeliveryTarget;
+  readonly sourceCallbackId?: string;
+  readonly insertAssistantItems: (
+    items: readonly AssistantEventItem[],
+  ) => Promise<void>;
+}): Promise<CompletedChatCallbackResult> {
+  const output = await loadCompletedChatOutput({
+    db: args.db,
+    runId: args.runId,
+    lastEventSequence: args.run.lastEventSequence,
+    preferResultFallback: args.slackDelivery !== undefined,
+    timing: args.timing,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  const lastResultText = await materializeCompletedChatResult({
+    db: args.db,
+    runId: args.runId,
+    lastEventSequence: args.run.lastEventSequence,
+    output,
+    preferResultFallback: args.slackDelivery !== undefined,
+    timing: args.timing,
+    signal: args.signal,
+    insertAssistantItems: args.insertAssistantItems,
+  });
+  args.signal.throwIfAborted();
 
   waitUntil(
     tapError(recordLastEventToComplete(args.db, args.runId), (error) => {
@@ -1197,6 +1434,7 @@ async function handleCompletedChatCallback(args: {
         userId: args.chatThread.userId,
         event: "completed",
         slackDelivery: args.slackDelivery,
+        feishuDelivery: args.feishuDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -1226,6 +1464,7 @@ async function handleCompletedChatCallback(args: {
     followupContext,
     inserted: true,
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,
+    feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
   };
 }
 
@@ -1342,6 +1581,7 @@ async function handleFailedChatCallback(args: {
   readonly errorMessage: string;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
+  readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const lifecycleEvent =
@@ -1356,6 +1596,7 @@ async function handleFailedChatCallback(args: {
     lifecycleEvent,
     getFormattedError: args.getFormattedError,
     slackDelivery: args.slackDelivery,
+    feishuDelivery: args.feishuDelivery,
     sourceCallbackId: args.sourceCallbackId,
   });
 }
@@ -1485,7 +1726,7 @@ function formatPriorRunMessage(
 
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
-  triggerSource: "web" | "slack",
+  triggerSource: "web" | "slack" | "feishu",
   structuredPromptEnabled: boolean,
 ): string {
   if (runs.length === 0) {
@@ -1512,7 +1753,13 @@ function buildChatPriorRunsContext(
     ].join("\n");
   });
   return [
-    `# ${triggerSource === "slack" ? "Slack" : "Web Chat"} Run Context`,
+    `# ${
+      triggerSource === "slack"
+        ? "Slack"
+        : triggerSource === "feishu"
+          ? "Feishu"
+          : "Web Chat"
+    } Run Context`,
     "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
     "Use these messages as context for the user's current request.",
     "- Treat the newest run below as the most recent prior round.",
@@ -1525,7 +1772,7 @@ function buildChatPriorRunsContext(
 async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
-  triggerSource: "web" | "slack",
+  triggerSource: "web" | "slack" | "feishu",
   limit: number,
 ): Promise<PriorRun[]> {
   const runRows = await db
@@ -1644,7 +1891,7 @@ function hasAgentSessionId(
 async function latestSessionForThreadFromDb(
   db: Db,
   threadId: string,
-  triggerSource: "web" | "slack",
+  triggerSource: "web" | "slack" | "feishu",
 ): Promise<LatestThreadSession | null> {
   const rows = await db
     .select({
@@ -1737,7 +1984,7 @@ async function buildQueuedPriorContext(args: {
   readonly threadId: string;
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
-  readonly triggerSource: "web" | "slack";
+  readonly triggerSource: "web" | "slack" | "feishu";
   readonly structuredPromptEnabled: boolean;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
@@ -1841,13 +2088,102 @@ interface QueuedMessageModelRoute {
   readonly codexServiceTier: "fast" | undefined;
 }
 
+interface QueuedMessageModelRouteError {
+  readonly code: string;
+  readonly message: string;
+}
+
+type QueuedMessageModelRouteResolution =
+  | { readonly route: QueuedMessageModelRoute }
+  | { readonly error: QueuedMessageModelRouteError };
+
+function persistedModelProviderCredentialScope(
+  value: string | null,
+): ModelFirstPin["modelProviderCredentialScope"] {
+  if (value === null) {
+    return null;
+  }
+  const parsed = modelProviderCredentialScopeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<QueuedMessageModelRouteResolution | null> {
+  const [thread] = await args.db
+    .select({ selectedModel: chatThreads.selectedModel })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, args.threadId))
+    .limit(1);
+  if (!thread || thread.selectedModel !== null) {
+    return null;
+  }
+
+  const [firstRun] = await args.db
+    .select({
+      modelProviderId: zeroRuns.modelProviderId,
+      modelProviderType: zeroRuns.modelProvider,
+      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+      selectedModel: zeroRuns.selectedModel,
+    })
+    .from(chatMessages)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, args.threadId),
+        chatEventTypeIn(["input.prompt"]),
+        isNotNull(chatMessages.runId),
+        eq(zeroRuns.triggerSource, "slack"),
+      ),
+    )
+    .orderBy(asc(chatMessages.seqId))
+    .limit(1);
+  const modelPin: ModelFirstPin = firstRun
+    ? {
+        modelProviderId: firstRun.modelProviderId,
+        modelProviderType: firstRun.modelProviderType,
+        modelProviderCredentialScope: persistedModelProviderCredentialScope(
+          firstRun.modelProviderCredentialScope,
+        ),
+        selectedModel: firstRun.selectedModel,
+      }
+    : {
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: null,
+      };
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    modelPin,
+    requestedModelProvider: undefined,
+  });
+  if (providerAdmission.error) {
+    return { error: providerAdmission.error.body.error };
+  }
+  return {
+    route: {
+      modelPin,
+      effectiveModelProvider: providerAdmission.effectiveModelProvider,
+      cliAgentType: providerAdmission.cliAgentType,
+      codexServiceTier: undefined,
+    },
+  };
+}
+
 async function resolveQueuedMessageModelRoute(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly timing?: ChatCallbackPreCreateTimingCollector;
-}): Promise<QueuedMessageModelRoute | null> {
+}): Promise<QueuedMessageModelRouteResolution> {
   const modelContext = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
@@ -1862,25 +2198,34 @@ async function resolveQueuedMessageModelRoute(args: {
     },
   );
   if ("status" in modelContext) {
+    if (args.triggerSource === "slack") {
+      const unpinnedRoute =
+        await resolveUnpinnedSlackQueuedMessageModelRoute(args);
+      if (unpinnedRoute) {
+        return unpinnedRoute;
+      }
+    }
     log.warn("Auto-send aborted: current model route is unavailable", {
       threadId: args.threadId,
       error: modelContext.body.error.message,
     });
-    return null;
+    return { error: modelContext.body.error };
   }
   if (modelContext.providerAdmission.error) {
     log.warn("Auto-send aborted: current model route was not admitted", {
       threadId: args.threadId,
       error: modelContext.providerAdmission.error.body.error.message,
     });
-    return null;
+    return { error: modelContext.providerAdmission.error.body.error };
   }
   return {
-    modelPin: modelContext.pin,
-    effectiveModelProvider:
-      modelContext.providerAdmission.effectiveModelProvider,
-    cliAgentType: modelContext.providerAdmission.cliAgentType,
-    codexServiceTier: modelContext.runCodexServiceTier,
+    route: {
+      modelPin: modelContext.pin,
+      effectiveModelProvider:
+        modelContext.providerAdmission.effectiveModelProvider,
+      cliAgentType: modelContext.providerAdmission.cliAgentType,
+      codexServiceTier: modelContext.runCodexServiceTier,
+    },
   };
 }
 
@@ -1925,26 +2270,57 @@ function loadQueuedMessageSessionState(args: CreateQueuedChatRunInputArgs) {
   );
 }
 
+function slackQueuedMessageAdmissionFailure(
+  args: CreateQueuedChatRunInputArgs,
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  error: QueuedMessageModelRouteError,
+): SlackQueuedMessageAdmissionFailure | null {
+  if (
+    args.queuedMessage.triggerSource !== "slack" ||
+    !sourceParams?.slackDelivery
+  ) {
+    return null;
+  }
+  return {
+    kind: "slack_admission_failure",
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    agentId: args.agent.id,
+    threadId: args.threadId,
+    queuedMessage: args.queuedMessage,
+    slackDelivery: sourceParams.slackDelivery,
+    error,
+  };
+}
+
 async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
-): Promise<CreateQueuedChatRunInput | null> {
+): Promise<
+  CreateQueuedChatRunInput | SlackQueuedMessageAdmissionFailure | null
+> {
   const sourceParams = await decryptQueuedUserMessageRunParams(
     args.queuedMessage.encryptedParams,
     { orgId: args.agent.orgId, userId: args.userId },
   );
-  if (args.queuedMessage.triggerSource === "slack" && !sourceParams) {
-    throw new Error("Canonical Slack queue item is missing run params");
+  if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
+    throw new Error("Canonical integration queue item is missing run params");
   }
-  const modelRoute = await resolveQueuedMessageModelRoute({
+  const modelRouteResolution = await resolveQueuedMessageModelRoute({
     db: args.db,
     threadId: args.threadId,
     userId: args.userId,
     orgId: args.agent.orgId,
+    triggerSource: args.queuedMessage.triggerSource,
     timing: args.timing,
   });
-  if (!modelRoute) {
-    return null;
+  if ("error" in modelRouteResolution) {
+    return slackQueuedMessageAdmissionFailure(
+      args,
+      sourceParams,
+      modelRouteResolution.error,
+    );
   }
+  const modelRoute = modelRouteResolution.route;
 
   const [latestSession, loadedIncompleteContext, featureSwitchContext] =
     await loadQueuedMessageSessionState(args);
@@ -2038,6 +2414,8 @@ async function buildCreateQueuedChatRunInput(
     triggerSource: args.queuedMessage.triggerSource,
     realAgentInPreview: sourceParams?.realAgentInPreview,
     slackDelivery: sourceParams?.slackDelivery,
+    feishuDelivery: sourceParams?.feishuDelivery,
+    apiStartTime: sourceParams?.apiStartTime,
     userInfoExtras: sourceParams?.userInfoExtras,
   };
 }
@@ -2135,6 +2513,63 @@ async function publishAutoSentQueuedRunSignals(args: {
   );
 }
 
+async function handleSlackQueuedMessageAdmissionFailure(args: {
+  readonly db: Db;
+  readonly failure: SlackQueuedMessageAdmissionFailure;
+  readonly signal: AbortSignal;
+  readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+  readonly deliver: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
+}): Promise<void> {
+  const displayError = await args.formatError(
+    {
+      orgId: args.failure.orgId,
+      userId: args.failure.userId,
+      code: args.failure.error.code,
+      message: args.failure.error.message,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  const failed = await failQueuedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    messageId: args.failure.queuedMessage.id,
+    assistantContent: displayError,
+    errorMarker: args.failure.error.code.toLowerCase(),
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  if (!failed) {
+    return;
+  }
+
+  await publishUserSignal(
+    [args.failure.userId],
+    `chatThreadMessageCreated:${args.failure.threadId}`,
+  );
+  await publishThreadListChanged(args.failure.userId);
+  args.signal.throwIfAborted();
+  await tapError(
+    args.deliver(
+      {
+        chatThreadId: args.failure.threadId,
+        userId: args.failure.userId,
+        orgId: args.failure.orgId,
+        agentId: args.failure.agentId,
+        channelId: args.failure.slackDelivery.channelId,
+        threadTs: args.failure.slackDelivery.threadTs,
+        chatMessageId: failed.assistantMessageId,
+      },
+      args.signal,
+    ),
+    (error) => {
+      log.warn("Failed to deliver canonical Slack admission error", {
+        threadId: args.failure.threadId,
+        error,
+      });
+    },
+  );
+}
+
 /**
  * User-message half of the per-thread scheduler: when the thread has no
  * in-flight run, dispatch the oldest queued user message — whoever sent it.
@@ -2150,7 +2585,11 @@ async function autoSendQueuedMessageForThread(args: {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly agentId: string;
+  readonly queueItemCreatedBefore?: Date;
   readonly timing: ChatCallbackPreCreateTimingCollector;
+  readonly signal: AbortSignal;
+  readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
+  readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
 }): Promise<void> {
   const { chatThreadId: threadId, userId } = args;
 
@@ -2159,7 +2598,11 @@ async function autoSendQueuedMessageForThread(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
     "nested",
     () => {
-      return loadNextUnclaimedQueuedUserMessage(args.db, threadId);
+      return loadNextUnclaimedQueuedUserMessage(
+        args.db,
+        threadId,
+        args.queueItemCreatedBefore,
+      );
     },
   );
   if (!queuedMessage) {
@@ -2206,10 +2649,20 @@ async function autoSendQueuedMessageForThread(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
     "nested",
     () => {
-      return activeChatRunExists(args.db, { threadId });
+      return chatThreadAdmissionBlocked(args.db, { threadId });
     },
   );
   if (activeRunExists) {
+    return;
+  }
+  if ("kind" in runInput) {
+    await handleSlackQueuedMessageAdmissionFailure({
+      db: args.db,
+      failure: runInput,
+      signal: args.signal,
+      formatError: args.formatIntegrationRunError,
+      deliver: args.deliverSlackAdmissionFailure,
+    });
     return;
   }
 
@@ -2243,13 +2696,14 @@ async function autoSendQueuedMessageForThread(args: {
     })(),
     flushChatCallbackTimingOnRejection({
       timing: args.timing,
+      triggerSource: runInput.triggerSource,
       getRunId: () => {
         return createdRunId;
       },
     }),
   );
   if (run) {
-    args.timing.flush(run.runId);
+    args.timing.flush(run.runId, runInput.triggerSource);
   }
 }
 
@@ -2325,6 +2779,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
   readonly slackDelivery?: SlackDeliveryTarget;
+  readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const prepared = await measureChatCallbackPreCreateTiming(
@@ -2351,6 +2806,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         structuredPromptEnabled,
         signal: args.signal,
         slackDelivery: args.slackDelivery,
+        feishuDelivery: args.feishuDelivery,
         sourceCallbackId: args.sourceCallbackId,
         insertAssistantItems: async (items) => {
           await args.dependencies.insertAssistantItems(
@@ -2375,6 +2831,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   return {
     shouldDrainThreadQueue: true,
     slackDeliveryCallbackId: completed.slackDeliveryCallbackId,
+    feishuDeliveryCallbackId: completed.feishuDeliveryCallbackId,
     deferredSideEffects: () => {
       return runCompletedChatCallbackSideEffects({
         db: args.db,
@@ -2409,6 +2866,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
   readonly slackDelivery?: SlackDeliveryTarget;
+  readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const failed = await measureChatCallbackPreCreateTiming(
@@ -2432,6 +2890,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
           );
         },
         slackDelivery: args.slackDelivery,
+        feishuDelivery: args.feishuDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -2443,6 +2902,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   return {
     shouldDrainThreadQueue: true,
     slackDeliveryCallbackId: failed.slackDeliveryCallbackId,
+    feishuDeliveryCallbackId: failed.feishuDeliveryCallbackId,
     deferredSideEffects: () => {
       return runFailedChatCallbackSideEffects({
         db: args.db,
@@ -2504,11 +2964,35 @@ async function clearSlackThreadStatusAfterTerminalCallback(args: {
   args.signal.throwIfAborted();
 }
 
+async function clearFeishuThinkingAfterTerminalCallback(args: {
+  readonly feishuDelivery: FeishuDeliveryTarget | undefined;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (!args.feishuDelivery) {
+    return;
+  }
+  await tapError(
+    args.dependencies.clearFeishuThinkingReaction(
+      args.feishuDelivery,
+      args.signal,
+    ),
+    (error) => {
+      log.warn("Failed to clear canonical Feishu thinking reaction", {
+        messageId: args.feishuDelivery?.messageId,
+        error,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+}
+
 async function handleTerminalChatCallbackPreparationFailure(args: {
   readonly runId: string;
   readonly error: unknown;
   readonly chatThreadId: string;
   readonly slackDelivery: SlackDeliveryTarget | undefined;
+  readonly feishuDelivery: FeishuDeliveryTarget | undefined;
   readonly dependencies: ChatCallbackDependencies;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
@@ -2532,22 +3016,96 @@ async function handleTerminalChatCallbackPreparationFailure(args: {
     dependencies: args.dependencies,
     signal: args.signal,
   });
+  await clearFeishuThinkingAfterTerminalCallback({
+    feishuDelivery: args.feishuDelivery,
+    dependencies: args.dependencies,
+    signal: args.signal,
+  });
   throw args.error;
 }
 
-async function processTerminalChatCallback(args: {
+async function dispatchCanonicalDeliveryCallbacks(args: {
+  readonly runId: string;
+  readonly slackDeliveryCallbackId: string | undefined;
+  readonly feishuDeliveryCallbackId: string | undefined;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.slackDeliveryCallbackId) {
+    const delivery = await settle(
+      args.dependencies.dispatchSlackDelivery(
+        args.slackDeliveryCallbackId,
+        args.signal,
+      ),
+      args.signal,
+    );
+    if (!delivery.ok) {
+      log.error("Failed to finalize canonical Slack delivery callback", {
+        runId: args.runId,
+        callbackId: args.slackDeliveryCallbackId,
+        error: delivery.error,
+      });
+    }
+  }
+  if (args.feishuDeliveryCallbackId) {
+    const delivery = await settle(
+      args.dependencies.dispatchFeishuDelivery(
+        args.feishuDeliveryCallbackId,
+        args.signal,
+      ),
+      args.signal,
+    );
+    if (!delivery.ok) {
+      log.error("Failed to finalize canonical Feishu delivery callback", {
+        runId: args.runId,
+        callbackId: args.feishuDeliveryCallbackId,
+        error: delivery.error,
+      });
+    }
+  }
+}
+
+interface TerminalChatCallbackArgs {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
-}): Promise<void> {
+}
+
+async function releaseManagedBrowsersForTerminalCallback(
+  args: TerminalChatCallbackArgs,
+): Promise<void> {
+  // The window stays live after the run so the user can keep using it; this only
+  // restarts its idle lease. Browser resources outlive thread deletion, so use
+  // the callback payload rather than loading the thread first.
+  const released = await settle(
+    args.dependencies.releaseBrowsersForRun(
+      { chatThreadId: args.payload.threadId },
+      args.signal,
+    ),
+    args.signal,
+  );
+  if (!released.ok) {
+    log.error("Failed to extend managed browser leases for terminal run", {
+      runId: args.callback.runId,
+      chatThreadId: args.payload.threadId,
+      error: released.error,
+    });
+  }
+}
+
+async function processTerminalChatCallback(
+  args: TerminalChatCallbackArgs,
+): Promise<void> {
   const runId = args.callback.runId;
   const callbackStatus = args.callback.status;
   if (callbackStatus === "progress") {
     return;
   }
   const timing = new ChatCallbackPreCreateTimingCollector();
+
+  await releaseManagedBrowsersForTerminalCallback(args);
 
   const loaded = await measureChatCallbackPreCreateTiming(
     timing,
@@ -2570,6 +3128,11 @@ async function processTerminalChatCallback(args: {
       dependencies: args.dependencies,
       signal: args.signal,
     });
+    await clearFeishuThinkingAfterTerminalCallback({
+      feishuDelivery: args.payload.feishuDelivery,
+      dependencies: args.dependencies,
+      signal: args.signal,
+    });
     return;
   }
   const { run, chatThread } = loaded;
@@ -2587,6 +3150,7 @@ async function processTerminalChatCallback(args: {
           timing,
           signal: args.signal,
           slackDelivery: args.payload.slackDelivery,
+          feishuDelivery: args.payload.feishuDelivery,
           sourceCallbackId: args.callback.callbackId,
         })
       : prepareFailedTerminalChatCallbackWork({
@@ -2602,6 +3166,7 @@ async function processTerminalChatCallback(args: {
           timing,
           signal: args.signal,
           slackDelivery: args.payload.slackDelivery,
+          feishuDelivery: args.payload.feishuDelivery,
           sourceCallbackId: args.callback.callbackId,
         }),
     args.signal,
@@ -2613,6 +3178,7 @@ async function processTerminalChatCallback(args: {
       error: prepared.error,
       chatThreadId: chatThread.chatThreadId,
       slackDelivery: args.payload.slackDelivery,
+      feishuDelivery: args.payload.feishuDelivery,
       dependencies: args.dependencies,
       timing,
       signal: args.signal,
@@ -2620,22 +3186,13 @@ async function processTerminalChatCallback(args: {
   }
   const work = prepared.value;
 
-  if (work.slackDeliveryCallbackId) {
-    const delivery = await settle(
-      args.dependencies.dispatchSlackDelivery(
-        work.slackDeliveryCallbackId,
-        args.signal,
-      ),
-      args.signal,
-    );
-    if (!delivery.ok) {
-      log.error("Failed to finalize canonical Slack delivery callback", {
-        runId,
-        callbackId: work.slackDeliveryCallbackId,
-        error: delivery.error,
-      });
-    }
-  }
+  await dispatchCanonicalDeliveryCallbacks({
+    runId,
+    slackDeliveryCallbackId: work.slackDeliveryCallbackId,
+    feishuDeliveryCallbackId: work.feishuDeliveryCallbackId,
+    dependencies: args.dependencies,
+    signal: args.signal,
+  });
 
   const drainResult = await maybeDrainThreadQueueForTerminalCallback({
     enabled: work.shouldDrainThreadQueue,
@@ -2647,6 +3204,11 @@ async function processTerminalChatCallback(args: {
   await clearSlackThreadStatusAfterTerminalCallback({
     chatThreadId: chatThread.chatThreadId,
     slackDelivery: args.payload.slackDelivery,
+    dependencies: args.dependencies,
+    signal: args.signal,
+  });
+  await clearFeishuThinkingAfterTerminalCallback({
+    feishuDelivery: args.payload.feishuDelivery,
     dependencies: args.dependencies,
     signal: args.signal,
   });
@@ -2668,12 +3230,18 @@ function withoutQueuedRunDependency(
   dependencies: ChatCallbackDependencies,
 ): ChatCallbackDependencies {
   return {
+    releaseBrowsersForRun: dependencies.releaseBrowsersForRun,
     insertAssistantItems: dependencies.insertAssistantItems,
     saveRunSummary: dependencies.saveRunSummary,
     formatRunError: dependencies.formatRunError,
     getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
     dispatchSlackDelivery: dependencies.dispatchSlackDelivery,
     clearSlackThreadStatusIfIdle: dependencies.clearSlackThreadStatusIfIdle,
+    refreshSlackThreadStatus: dependencies.refreshSlackThreadStatus,
+    formatIntegrationRunError: dependencies.formatIntegrationRunError,
+    deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,
+    dispatchFeishuDelivery: dependencies.dispatchFeishuDelivery,
+    clearFeishuThinkingReaction: dependencies.clearFeishuThinkingReaction,
     drainThreadQueue: dependencies.drainThreadQueue,
   };
 }
@@ -2709,6 +3277,7 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       threadId: args.runInput.threadId,
       agentId: args.runInput.agentId,
       slackDelivery: args.runInput.slackDelivery,
+      feishuDelivery: args.runInput.feishuDelivery,
     };
     await processTerminalChatCallback({
       db,
@@ -2742,6 +3311,27 @@ function handleChatInternalCallback(args: {
   }
 
   if (args.callback.status === "progress") {
+    if (payload.data.slackDelivery) {
+      const backgroundSignal = new AbortController().signal;
+      waitUntil(
+        tapError(
+          args.dependencies.refreshSlackThreadStatus(
+            {
+              chatThreadId: payload.data.threadId,
+              channelId: payload.data.slackDelivery.channelId,
+              threadTs: payload.data.slackDelivery.threadTs,
+            },
+            backgroundSignal,
+          ),
+          (error) => {
+            log.warn("Failed to refresh canonical Slack thread status", {
+              runId: args.callback.runId,
+              error,
+            });
+          },
+        ),
+      );
+    }
     return { success: true };
   }
 
@@ -2789,6 +3379,13 @@ export async function handleChatInternalCallbackWithoutCcstate(
     callback,
     signal,
     dependencies: {
+      releaseBrowsersForRun: (args, inputSignal) => {
+        return createStore().set(
+          releaseThreadBrowsersForRun$,
+          args,
+          inputSignal,
+        );
+      },
       insertAssistantItems: async (args, inputSignal) => {
         await insertAssistantEventMessages(db, args, inputSignal);
       },
@@ -2816,6 +3413,30 @@ export async function handleChatInternalCallbackWithoutCcstate(
       clearSlackThreadStatusIfIdle: (target, inputSignal) => {
         return clearCanonicalSlackThreadStatusIfIdle(db, target, inputSignal);
       },
+      refreshSlackThreadStatus: (target, inputSignal) => {
+        return refreshCanonicalSlackThreadStatus(db, target, inputSignal);
+      },
+      formatIntegrationRunError: (params) => {
+        return Promise.resolve(
+          formatRunErrorForExternalSurface({
+            code: params.code,
+            message: params.message,
+          }),
+        );
+      },
+      deliverSlackAdmissionFailure: (params, inputSignal) => {
+        return deliverSlackChatAdmissionFailure({
+          db,
+          ...params,
+          signal: inputSignal,
+        });
+      },
+      dispatchFeishuDelivery: (callbackId, inputSignal) => {
+        return dispatchFeishuChatDeliveryOnce(db, callbackId, inputSignal);
+      },
+      clearFeishuThinkingReaction: (target, inputSignal) => {
+        return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
+      },
     },
   });
 }
@@ -2830,6 +3451,9 @@ const buildChatCallbackDependencies$ = command(
   ): ChatCallbackDependencies => {
     const { db } = input;
     const baseDependencies: ChatCallbackDependencies = {
+      releaseBrowsersForRun: (args, inputSignal) => {
+        return set(releaseThreadBrowsersForRun$, args, inputSignal);
+      },
       insertAssistantItems: async (args, inputSignal) => {
         await set(insertAssistantEventMessages$, args, inputSignal);
       },
@@ -2856,6 +3480,25 @@ const buildChatCallbackDependencies$ = command(
       },
       clearSlackThreadStatusIfIdle: (target, inputSignal) => {
         return clearCanonicalSlackThreadStatusIfIdle(db, target, inputSignal);
+      },
+      refreshSlackThreadStatus: (target, inputSignal) => {
+        return refreshCanonicalSlackThreadStatus(db, target, inputSignal);
+      },
+      formatIntegrationRunError: (params, inputSignal) => {
+        return set(formatIntegrationRunError$, params, inputSignal);
+      },
+      deliverSlackAdmissionFailure: (params, inputSignal) => {
+        return deliverSlackChatAdmissionFailure({
+          db,
+          ...params,
+          signal: inputSignal,
+        });
+      },
+      dispatchFeishuDelivery: (callbackId, inputSignal) => {
+        return dispatchFeishuChatDeliveryOnce(db, callbackId, inputSignal);
+      },
+      clearFeishuThinkingReaction: (target, inputSignal) => {
+        return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
       },
       drainThreadQueue: input.drainThreadQueue,
     };
@@ -2932,6 +3575,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
+      readonly queueItemCreatedBefore?: Date;
       readonly timing?: ChatCallbackPreCreateTimingCollector;
     },
     signal: AbortSignal,
@@ -2967,14 +3611,22 @@ export const drainQueuedUserMessagesForThread$ = command(
       chatThreadId: args.chatThreadId,
       userId: thread.userId,
       agentId: thread.agentId,
+      queueItemCreatedBefore: args.queueItemCreatedBefore,
       timing: args.timing ?? new ChatCallbackPreCreateTimingCollector(),
       getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
+      signal,
+      formatIntegrationRunError: dependencies.formatIntegrationRunError,
+      deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,
       createRun: (input) => {
         return createQueuedChatRun({
           input,
           signal,
           createRun: (runInput) => {
-            return createQueuedRun(runInput, apiStartTime, signal);
+            return createQueuedRun(
+              runInput,
+              runInput.apiStartTime ?? apiStartTime,
+              signal,
+            );
           },
         });
       },

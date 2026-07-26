@@ -379,6 +379,51 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
+  it("normalizes retired GPT policy writes to Luna", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+
+    const response = await accept(
+      apiClient().update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            {
+              model: "gpt-5.4",
+              isDefault: true,
+              defaultProviderType: "openrouter-codex",
+              credentialScope: "org",
+              modelProviderId: null,
+            },
+            {
+              model: "gpt-5.4-mini",
+              isDefault: false,
+              defaultProviderType: "vm0",
+              credentialScope: "org",
+              modelProviderId: null,
+            },
+            makeVm0Policy("gpt-5.5"),
+          ],
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(response.body.policies).toHaveLength(2);
+    expect(response.body.policies).toContainEqual(
+      expect.objectContaining({
+        model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      }),
+    );
+  });
+
   it("removes supported models omitted from an update", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
@@ -543,7 +588,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
     ).toStrictEqual([
       "claude-fable-5",
-      "claude-opus-4-8",
+      "claude-opus-5",
       "claude-sonnet-5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
@@ -841,7 +886,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "claude-opus-4-8") {
+      if (policy.model !== "claude-opus-5") {
         return policy;
       }
       return {
@@ -860,7 +905,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const opus = response.body.policies.find((policy) => {
-      return policy.model === "claude-opus-4-8";
+      return policy.model === "claude-opus-5";
     });
 
     expect(opus).toMatchObject({
@@ -884,7 +929,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "claude-opus-4-8") {
+      if (policy.model !== "claude-opus-5") {
         return policy;
       }
       return {

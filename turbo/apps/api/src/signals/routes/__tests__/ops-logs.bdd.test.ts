@@ -325,23 +325,6 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const baseTotal = baseline.body.totalTokens;
 
     mockNow(mainObservedAt);
-    const legacyNoOp = await webhooks.requestAgentModelUsageObservation(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.input",
-            quantity: 999,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-    expect(legacyNoOp.body).toStrictEqual({ success: true });
-
     const compactIdempotencyKey = randomUUID();
     const compactBody = {
       runId: created.runId,

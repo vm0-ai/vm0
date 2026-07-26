@@ -161,6 +161,8 @@ function mockChatThreadSnapshot(
           pinnedAt: thread.pinnedAt ?? null,
           renamedAt: thread.renamedAt ?? null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         };
       }),
       latestEventId: null,
@@ -318,8 +320,6 @@ function mockSidebarThreadStory(
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -388,8 +388,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
 
@@ -434,6 +432,8 @@ describe("zero sidebar", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
         latestEventId: null,
@@ -466,6 +466,47 @@ describe("zero sidebar", () => {
         "Running",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the sidebar responsive when a draft membership request rejects", async () => {
+    prepareDefaultAgent();
+    const draftResponse = context.mocks.deferred<void>();
+    let draftRequests = 0;
+    let draftResponseSent = false;
+
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+    context.mocks.api(chatThreadsContract.drafts, async ({ respond }) => {
+      draftRequests += 1;
+      await draftResponse.promise;
+      draftResponseSent = true;
+      return respond(401, {
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Draft membership unavailable",
+        },
+      });
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(draftRequests).toBe(1);
+      expect(
+        within(sidebar()).getByText("Existing conversation"),
+      ).toBeInTheDocument();
+    });
+
+    draftResponse.resolve();
+    await waitFor(() => {
+      expect(draftResponseSent).toBeTruthy();
+      expect(
+        within(sidebar()).getByText("Existing conversation"),
+      ).toBeInTheDocument();
+    });
+    openChatListMenu();
+    expect(menuItemByText("New chat")).toBeInTheDocument();
   });
 
   it("preserves server thread order while creating an optimistic new chat", async () => {
@@ -511,8 +552,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
 
@@ -581,8 +620,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
 
@@ -636,8 +673,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -727,8 +762,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -1826,8 +1859,9 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("moves to the first chat thread for the next pinned agent from a chat thread", async () => {
+  it("keeps the chat list owner without carrying rows across agent scopes", async () => {
     prepareAgentTeam();
+    const supportUnreadGate = context.mocks.deferred<void>();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
     });
@@ -1853,14 +1887,46 @@ describe("zero sidebar", () => {
       },
     );
     mockSidebarThreadStory([researchThread, supportThread, olderSupportThread]);
+    context.mocks.api(
+      chatThreadsContract.unreads,
+      async ({ query, respond }) => {
+        if (query.agentId === SUPPORT_AGENT_ID) {
+          await supportUnreadGate.promise;
+        }
+        const threadId =
+          query.agentId === SUPPORT_AGENT_ID
+            ? INCIDENT_THREAD_ID
+            : RESEARCH_THREAD_ID;
+        return respond(200, {
+          unreads: [
+            {
+              threadId,
+              unreadAt: "2026-03-10T00:05:00Z",
+            },
+          ],
+        });
+      },
+    );
 
-    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+    setupSidebarPage({
+      context,
+      path: `/chats/${RESEARCH_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+    });
 
     await waitFor(() => {
       expect(
         within(sidebar()).getByText("Research kickoff"),
       ).toBeInTheDocument();
     });
+    openChatListMenu();
+    click(menuItemByText("Unread only"));
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Research kickoff"),
+      ).toBeInTheDocument();
+    });
+    const chatList = within(sidebar()).getByLabelText("Chat threads");
 
     fireEvent.keyDown(document.body, {
       key: "}",
@@ -1870,6 +1936,18 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+      expect(
+        within(sidebar()).queryByText("Research kickoff"),
+      ).not.toBeInTheDocument();
+      expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
+    });
+
+    supportUnreadGate.resolve(undefined);
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Support escalation"),
+      ).toBeInTheDocument();
+      expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
     });
   });
 

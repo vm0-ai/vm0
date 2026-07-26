@@ -75,6 +75,8 @@ export const deleteChatThread$ = command(
         agentId: existingThread.agentId,
         title: null,
         selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
@@ -129,6 +131,8 @@ export const pinChatThread$ = command(
         agentId: existingThread.agentId,
         title: null,
         selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
@@ -161,6 +165,8 @@ export const unpinChatThread$ = command(
         agentId: existingThread.agentId,
         title: null,
         selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
@@ -209,6 +215,8 @@ export const renameChatThread$ = command(
         agentId: optimisticAgentId,
         title,
         selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }

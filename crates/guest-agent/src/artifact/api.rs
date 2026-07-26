@@ -12,6 +12,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 pub(super) struct PrepareSnapshotRequest<'a> {
     pub(super) run_id: &'a str,
+    pub(super) storage_id: &'a str,
     pub(super) storage_name: &'a str,
     pub(super) storage_type: &'a str,
     pub(super) files: &'a [FileEntry],
@@ -42,6 +43,7 @@ impl PrepareSnapshotError {
 
 pub(super) struct CommitSnapshotRequest<'a> {
     pub(super) run_id: &'a str,
+    pub(super) storage_id: &'a str,
     pub(super) storage_name: &'a str,
     pub(super) storage_type: &'a str,
     pub(super) version_id: &'a str,
@@ -54,6 +56,7 @@ pub(super) struct CommitSnapshotRequest<'a> {
 #[serde(rename_all = "camelCase")]
 struct PrepareSnapshotPayload<'a> {
     run_id: &'a str,
+    storage_id: &'a str,
     storage_name: &'a str,
     storage_type: &'a str,
     files: &'a [FileEntry],
@@ -65,6 +68,7 @@ struct PrepareSnapshotPayload<'a> {
 #[serde(rename_all = "camelCase")]
 struct CommitSnapshotPayload<'a> {
     run_id: &'a str,
+    storage_id: &'a str,
     storage_name: &'a str,
     storage_type: &'a str,
     version_id: &'a str,
@@ -81,6 +85,7 @@ pub(super) async fn prepare_snapshot(
 ) -> Result<PreparedSnapshot, PrepareSnapshotError> {
     let payload = PrepareSnapshotPayload {
         run_id: request.run_id,
+        storage_id: request.storage_id,
         storage_name: request.storage_name,
         storage_type: request.storage_type,
         files: request.files,
@@ -138,6 +143,7 @@ pub(super) async fn commit_snapshot(
 ) -> Result<bool, AgentError> {
     let payload = CommitSnapshotPayload {
         run_id: request.run_id,
+        storage_id: request.storage_id,
         storage_name: request.storage_name,
         storage_type: request.storage_type,
         version_id: request.version_id,

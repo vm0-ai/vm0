@@ -3,7 +3,7 @@
   "team_id": "{{TEAM_ID}}",
   "api_app_id": "A_E2E_APP",
   "type": "event_callback",
-  "event_id": "Ev_E2E_DM",
+  "event_id": "{{EVENT_ID}}",
   "event_time": 1700000000,
   "event": {
     "type": "message",

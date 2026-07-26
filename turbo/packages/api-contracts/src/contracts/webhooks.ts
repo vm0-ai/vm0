@@ -492,8 +492,8 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
-        // Multi-artifact snapshots validated by artifactSnapshotsSchema and
-        // persisted to checkpoints.artifact_snapshots.
+        // Multi-artifact snapshots are folded into canonical checkpoint mounts
+        // and projected back into the legacy response shape.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
@@ -802,6 +802,12 @@ export const webhookStoragesPrepareContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
+      /**
+       * Canonical Storage identity. During the dual-send rollout, old API
+       * versions strip this unknown field while new versions authorize it
+       * against the run's writeback mounts.
+       */
+      storageId: z.string().uuid().optional(),
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
       files: z.array(fileEntryWithHashSchema),
@@ -844,6 +850,11 @@ export const webhookStoragesCommitContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
+      /**
+       * Canonical Storage identity. Remove the legacy name/type envelope after
+       * the previous GuestAgent has drained from production.
+       */
+      storageId: z.string().uuid().optional(),
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
       versionId: z.string().min(1, "Version ID is required"),
@@ -944,54 +955,7 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-/**
- * Webhook model usage observation contract for
- * /api/webhooks/agent/model-usage-observation
- *
- * Receives model token observations from the sandbox for model usage statistics.
- * This endpoint is not a billing ledger input.
- */
-const modelUsageObservationCategorySchema = z.enum([
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-]);
-
 const webhookModelUsageObservationItemSchema = z
-  .object({
-    idempotencyKey: z.uuid(),
-    model: z.string().min(1).max(255),
-    category: modelUsageObservationCategorySchema,
-    quantity: z.number().int().min(1),
-  })
-  .strict();
-
-export const webhookModelUsageObservationContract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/webhooks/agent/model-usage-observation",
-    headers: authHeadersSchema,
-    body: z
-      .object({
-        runId: z.string().min(1, "runId is required"),
-        events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
-      })
-      .strict(),
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive model usage observation data from sandbox",
-  },
-});
-
-const webhookModelUsageObservationV2ItemSchema = z
   .object({
     idempotencyKey: z.uuid(),
     model: z.string().min(1).max(255),
@@ -1017,10 +981,10 @@ const webhookModelUsageObservationV2ItemSchema = z
     { message: "At least one token counter must be positive" },
   );
 
-const webhookModelUsageObservationV2BodySchema = z
+const webhookModelUsageObservationBodySchema = z
   .object({
     runId: z.string().min(1, "runId is required"),
-    events: z.array(webhookModelUsageObservationV2ItemSchema).min(1).max(100),
+    events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -1039,16 +1003,16 @@ const webhookModelUsageObservationV2BodySchema = z
 
 /**
  * Compact model usage observation contract for
- * /api/webhooks/agent/model-usage-observation-v2
+ * /api/webhooks/agent/model-usage-observation
  *
  * Each immutable event carries the four counters consumed by model rankings.
  */
-export const webhookModelUsageObservationV2Contract = c.router({
+export const webhookModelUsageObservationContract = c.router({
   send: {
     method: "POST",
-    path: "/api/webhooks/agent/model-usage-observation-v2",
+    path: "/api/webhooks/agent/model-usage-observation",
     headers: authHeadersSchema,
-    body: webhookModelUsageObservationV2BodySchema,
+    body: webhookModelUsageObservationBodySchema,
     responses: {
       200: z.object({
         success: z.boolean(),
@@ -1065,5 +1029,3 @@ export const webhookModelUsageObservationV2Contract = c.router({
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
 export type WebhookModelUsageObservationContract =
   typeof webhookModelUsageObservationContract;
-export type WebhookModelUsageObservationV2Contract =
-  typeof webhookModelUsageObservationV2Contract;

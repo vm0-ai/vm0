@@ -36,7 +36,7 @@ import {
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
-  type LegacyStorageManifest,
+  type CanonicalStorageManifest,
   type StorageManifest,
 } from "@vm0/api-contracts/contracts/runners";
 import {
@@ -106,14 +106,14 @@ type RunnerRealtimeTokenBody = z.infer<
   (typeof runnerRealtimeTokenContract.create)["body"]
 >;
 
-export function expectLegacyStorageManifest(
+export function expectCanonicalStorageManifest(
   manifest: StorageManifest | null | undefined,
-): LegacyStorageManifest | null | undefined {
+): CanonicalStorageManifest | null | undefined {
   if (manifest === null || manifest === undefined) {
     return manifest;
   }
-  if (!("storages" in manifest)) {
-    throw new Error("Expected a legacy Storage manifest");
+  if (!("storageMounts" in manifest)) {
+    throw new Error("Expected a canonical Storage manifest");
   }
   return manifest;
 }
@@ -325,10 +325,6 @@ export function createRunsApi(context: TestContext) {
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
       const tier = options.tier ?? "pro";
 
-      await createBddApi(context).bootstrapOnboarding(actor, {
-        displayName: "BDD Entitled Agent",
-      });
-
       const suffix = randomUUID().slice(0, 8);
       const customerId = options.customerId ?? `cus_bdd_${suffix}`;
       const subscriptionId = options.subscriptionId ?? `sub_bdd_${suffix}`;
@@ -404,6 +400,22 @@ export function createRunsApi(context: TestContext) {
           `Entitlement grant did not reach ${tier} tier: ${billingStatus.body.tier}`,
         );
       }
+
+      // Bootstrap only after the paid entitlement exists. Onboarding status
+      // then creates a default agent without granting limited-free credits or
+      // replacing metadata on an existing default agent.
+      const bdd = createBddApi(context);
+      const onboarding = await bdd.readOnboardingStatus(actor);
+      if (!onboarding.defaultAgentId) {
+        throw new Error("Expected paid onboarding to create a default agent");
+      }
+      const completed = await bdd.completeOnboarding(actor);
+      if (completed.status !== 200) {
+        throw new Error(
+          `Expected paid onboarding completion, got ${completed.status}`,
+        );
+      }
+
       return { customerId, subscriptionId, invoiceId };
     },
 
@@ -807,10 +819,14 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: ZeroRunRequest,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
+      extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
         runApp(context)(zeroRunsMainContract).create({
-          headers: authenticate(context, actor),
+          headers: {
+            ...authenticate(context, actor),
+            ...extraHeaders,
+          },
           body,
         }),
         statuses,

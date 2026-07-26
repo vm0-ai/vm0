@@ -23,7 +23,6 @@ import {
   claimNextComputerUseHostCommand$,
   completeComputerUseHostCommand$,
   createComputerUseCommand$,
-  deleteComputerUseHost$,
   getComputerUseCommand$,
   getComputerUseCommandPluginContent$,
   getComputerUseCommandScreenshot$,
@@ -201,23 +200,6 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   return { status: 200 as const, body: result };
-});
-
-const hostDeleteParams$ = pathParamsOf(zeroComputerUseHostsContract.delete);
-const hostDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(hostDeleteParams$);
-  const result = await set(
-    deleteComputerUseHost$,
-    { orgId: auth.orgId, userId: auth.userId, hostId: params.hostId },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (result.status === "not_found") {
-    return notFound("Computer-use host not found");
-  }
-  return { status: 200 as const, body: { ok: true as const } };
 });
 
 const commandCreateBody$ = bodyResultOf(zeroComputerUseCommandContract.create);
@@ -662,10 +644,6 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostsContract.list,
     handler: authRoute(computerUseHostListAuthOptions, hostsListInner$),
-  },
-  {
-    route: zeroComputerUseHostsContract.delete,
-    handler: authRoute(computerUseAuthOptions, hostDeleteInner$),
   },
   {
     route: zeroComputerUseCommandContract.create,

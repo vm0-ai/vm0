@@ -36,15 +36,10 @@ import {
   type GithubOauthInstallQuery,
 } from "@vm0/api-contracts/contracts/github-oauth";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import {
-  zeroSlackBrowserConnectContract,
-  type ZeroSlackBrowserConnectQuery,
-} from "@vm0/api-contracts/contracts/zero-slack-browser-connect";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
@@ -153,7 +148,7 @@ type SlackIngressPath =
   | "/api/zero/slack/commands"
   | "/api/zero/slack/events"
   | "/api/zero/slack/interactive";
-type SlackIngressStatus = 200 | 400 | 401 | 503;
+type SlackIngressStatus = 200 | 400 | 401 | 500 | 503;
 type SlackDownloadStatus = 200 | 400 | 401 | 404 | 413 | 502;
 type AgentPhoneWebhookStatus = 200 | 400 | 401 | 404;
 type TelegramWebhookStatus = 200 | 400 | 401 | 404;
@@ -393,6 +388,9 @@ async function requestRawSlackIngress(
     }
     case 401: {
       return { status: 401, ...result };
+    }
+    case 500: {
+      return { status: 500, ...result };
     }
     case 503: {
       return { status: 503, ...result };
@@ -756,21 +754,6 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
-    async requestSlackBrowserConnect(
-      actor: ApiTestUser | null,
-      query: ZeroSlackBrowserConnectQuery,
-      statuses: readonly 307[],
-    ) {
-      const client = setupApp({ context })(zeroSlackBrowserConnectContract);
-      return await accept(
-        client.connect({
-          extraHeaders: extraHeaders(authenticate(context, routeMocks, actor)),
-          query,
-        }),
-        statuses,
-      );
-    },
-
     async requestSlackOauthInstall(
       query: {
         readonly orgId?: string;
@@ -1075,6 +1058,41 @@ export function createBddIntegrationApi(context: TestContext) {
       return response.body;
     },
 
+    async admitSlackEventThroughPreviousReader(args: {
+      readonly actor: ApiTestUser;
+      readonly teamId: string;
+      readonly routeId: string;
+      readonly eventId: string;
+      readonly payload: string;
+      readonly isRetry: boolean;
+    }): Promise<void> {
+      if (!args.actor.orgId) {
+        throw new Error("Expected previous-reader actor to belong to an org");
+      }
+      const client = setupApp({ context })(testSlackStateContract);
+      await accept(
+        client.post({
+          body: {
+            team_id: args.teamId,
+            org_id: args.actor.orgId,
+            vm0_user_id: args.actor.userId,
+            previous_reader_ingress: {
+              route_id: args.routeId,
+              event_id: args.eventId,
+              payload: args.payload,
+              is_retry: args.isRetry,
+            },
+          },
+        }),
+        [200],
+      );
+    },
+
+    async deleteSlackTestState(teamId: string): Promise<void> {
+      const client = setupApp({ context })(testSlackStateContract);
+      await accept(client.delete({ query: { team_id: teamId } }), [200]);
+    },
+
     async readUserModelPreference(actor: ApiTestUser) {
       const client = setupApp({ context })(zeroUserModelPreferenceContract);
       const response = await accept(
@@ -1093,18 +1111,6 @@ export function createBddIntegrationApi(context: TestContext) {
         client.update({
           headers: authenticate(context, routeMocks, actor),
           body: { selectedModel },
-        }),
-        [200],
-      );
-    },
-
-    async setDefaultAgent(actor: ApiTestUser, agentId: string): Promise<void> {
-      const client = setupApp({ context })(orgDefaultAgentContract);
-      await accept(
-        client.setDefaultAgent({
-          headers: authenticate(context, routeMocks, actor),
-          query: {},
-          body: { agentId },
         }),
         [200],
       );
@@ -1154,7 +1160,11 @@ export function createBddIntegrationApi(context: TestContext) {
 
     mockSlackRunResultOutput(text: string): void {
       context.mocks.axiom.query.mockResolvedValueOnce([
-        { eventType: "result", eventData: { result: text } },
+        {
+          eventType: "result",
+          sequenceNumber: 0,
+          eventData: { result: text },
+        },
       ]);
     },
 
@@ -1162,6 +1172,7 @@ export function createBddIntegrationApi(context: TestContext) {
       context.mocks.axiom.query.mockResolvedValueOnce([
         {
           eventType: "item.completed",
+          sequenceNumber: 0,
           eventData: { item: { type: "agent_message", text } },
         },
       ]);
@@ -1234,7 +1245,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestSlackEvent(
       body: string,
       headers: SlackSignatureHeaders,
-      statuses: readonly (200 | 400 | 401 | 503)[],
+      statuses: readonly SlackIngressStatus[],
     ) {
       return await accept(
         requestRawSlackIngress(
@@ -1304,21 +1315,6 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({ context })(zeroSlackOauthContract);
       return await accept(client.callback({ query }), statuses);
-    },
-
-    async requestReadTelegramBot(
-      actor: ApiTestUser | null,
-      botId: string,
-      statuses: readonly (200 | 401 | 404)[],
-    ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
-      return await accept(
-        client.getBot({
-          headers: authenticate(context, routeMocks, actor),
-          params: { botId },
-        }),
-        statuses,
-      );
     },
 
     async requestListTelegramIntegrations(

@@ -18,6 +18,7 @@ from body_decoding import (
 )
 from body_limits import (
     DEFAULT_BODY_DECODE_LIMIT,
+    STREAM_BUFFER_LIMIT,
     STREAM_DECODE_CHUNK_LIMIT,
     STREAM_DECODE_EXPANSION_GRACE,
     STREAM_DECODE_MAX_EXPANSION_RATIO,
@@ -376,10 +377,11 @@ class TestStreamDecodeFeed:
 
 
 class TestDecompressBody:
-    """Direct tests for ``decompress_body`` — the non-streaming one-shot
-    path used by ``extract_anthropic_messages_usage_from_json`` and ``log_connector_usage``
-    to decompress full response bodies (up to
-    ``LARGE_RESPONSE_DECOMPRESS_LIMIT``) for JSON parsing.
+    """Direct tests for the bounded, best-effort, one-shot ``decompress_body`` policy.
+
+    Response-body capture and silent usage extraction share this policy. Diagnostic
+    JSON usage extraction instead uses ``decompress_json_usage_body`` so invalid or
+    incomplete compressed bodies remain observable.
 
     Focus: verify the documented ``max_output`` cap is enforced during
     decompression (not only via after-the-fact slicing). Brotli uses a soft
@@ -811,15 +813,20 @@ class TestDecompressJsonUsageBody:
         assert decoded == body
         assert error is None
 
-    def test_zstd_validation_does_not_decompress_full_remaining_input_at_once(
+    def test_zstd_validation_carries_bounded_unused_data_without_rebuilding_tail(
         self, headers, monkeypatch
     ):
-        frame_body = b"A" * 1024
-        compressed = b"".join(zstandard.ZstdCompressor().compress(frame_body) for _ in range(200))
-        body = frame_body * 200
+        frame_count = 7000
+        frame = zstandard.ZstdCompressor().compress(b"")
+        compressed = frame * frame_count
+        assert len(compressed) < STREAM_BUFFER_LIMIT
         hdrs = headers(("Content-Encoding", "zstd"))
         validation_input_sizes: list[int] = []
         real_factory = zstandard.ZstdDecompressor
+
+        class NonConcatenableUnusedData(bytes):
+            def __add__(self, _other: object) -> bytes:
+                raise TypeError("zstd unused data must not be concatenated")
 
         class TrackingDecompressionObj:
             def __init__(self, wrapped):
@@ -835,7 +842,7 @@ class TestDecompressJsonUsageBody:
 
             @property
             def unused_data(self):
-                return self._wrapped.unused_data
+                return NonConcatenableUnusedData(self._wrapped.unused_data)
 
             @property
             def unconsumed_tail(self):
@@ -859,10 +866,10 @@ class TestDecompressJsonUsageBody:
         decoded, error = decompress_json_usage_body(
             compressed,
             hdrs,
-            max_output=len(body),
+            max_output=1,
         )
 
-        assert decoded == body
+        assert decoded == b""
         assert error is None
         assert validation_input_sizes
         assert max(validation_input_sizes) <= 32

@@ -80,6 +80,47 @@ sudo chown -R vscode:vscode \
   /home/vscode/.zed_server
 echo "✓ User-local mounted directories ready"
 
+# Install the exact uv version required by the mitm-addon project.
+UV_PROJECT_FILE="$WORKSPACE_DIR/crates/runner/mitm-addon/pyproject.toml"
+UV_VERSION="$(
+  python3 - "$UV_PROJECT_FILE" <<'PY'
+import re
+import sys
+import tomllib
+from pathlib import Path
+
+project_file = Path(sys.argv[1])
+with project_file.open("rb") as file:
+    project = tomllib.load(file)
+
+required_version = project.get("tool", {}).get("uv", {}).get("required-version")
+match = re.fullmatch(r"==(\d+\.\d+\.\d+)", required_version or "")
+if match is None:
+    raise SystemExit(
+        f"ERROR: {project_file} must define an exact [tool.uv] required-version"
+    )
+
+print(match.group(1))
+PY
+)"
+
+if command -v uv > /dev/null 2>&1 \
+  && [ "$(uv --version | awk 'NR == 1 { print $2 }')" = "$UV_VERSION" ]; then
+  echo "✓ uv $UV_VERSION already installed"
+else
+  echo "📦 Installing uv $UV_VERSION..."
+  curl --proto '=https' --tlsv1.2 -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" \
+    | env UV_UNMANAGED_INSTALL="$HOME/.local/bin" sh
+  hash -r
+
+  if ! command -v uv > /dev/null 2>&1 \
+    || [ "$(uv --version | awk 'NR == 1 { print $2 }')" != "$UV_VERSION" ]; then
+    echo "ERROR: uv $UV_VERSION was installed but is not effective on PATH" >&2
+    exit 1
+  fi
+  echo "✓ uv $UV_VERSION installed"
+fi
+
 # Create ~/.claude symlink to ~/.config/claude for Claude Code IDE integration
 # The VS Code extension uses ~/.claude/ide/ while CLI respects CLAUDE_CONFIG_DIR
 if [ ! -L "$HOME/.claude" ]; then

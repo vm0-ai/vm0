@@ -4,25 +4,89 @@
 
 The mitmproxy addon (`crates/runner/mitm-addon/`) is a Python module that intercepts HTTPS requests inside sandboxes. Tests live in `tests/` and use pytest.
 
+## Environment Setup
+
+The addon uses uv for dependency management. The supported devcontainer installs
+the exact uv version declared in `pyproject.toml`. In other environments, install
+that version before continuing:
+
+```bash
+cd crates/runner/mitm-addon
+UV_VERSION="$(
+  python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"].removeprefix("=="))'
+)"
+curl --proto '=https' --tlsv1.2 -LsSf \
+  "https://astral.sh/uv/$UV_VERSION/install.sh" |
+  env UV_UNMANAGED_INSTALL="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
+uv --version
+```
+
+Create or update the local environment from the committed lockfile:
+
+```bash
+cd crates/runner/mitm-addon
+uv lock --check
+uv sync --locked
+```
+
+`uv sync --locked` installs the development and test dependency groups into
+`.venv` without changing `uv.lock`. It also selects the exact interpreter from
+`.python-version`, which matches the Python patch embedded in the pinned
+mitmproxy standalone runtime. The package metadata, Ruff, and BasedPyright
+retain Python 3.12 as the supported source-compatibility floor.
+
 ## Running Tests
 
 ```bash
 cd crates/runner/mitm-addon
 
 # All tests
-pytest tests/
+uv run --no-sync python -m pytest tests/
 
 # Specific file
-pytest tests/test_request_handler_passthrough.py
+uv run --no-sync python -m pytest tests/test_request_handler_passthrough.py
 
 # Specific test
-pytest tests/test_request_handler_passthrough.py::test_allowed_domain_passes_through
+uv run --no-sync python -m pytest \
+  tests/test_request_handler_passthrough.py::test_allowed_domain_passes_through
 
 # Verbose
-pytest -v tests/
+uv run --no-sync python -m pytest -v tests/
 ```
 
-Pre-commit hooks run `pytest` on staged Python files in the addon.
+Run the same static checks used by CI:
+
+```bash
+uv run --no-sync ruff format --check .
+uv run --no-sync ruff check .
+uv run --no-sync basedpyright -p .
+```
+
+Pre-commit hooks verify the lockfile when dependency metadata changes and run
+Ruff from the locked environment for staged addon Python files. Run pytest
+manually before committing behavior changes.
+
+## Updating Dependencies
+
+Edit the dependency constraints in `pyproject.toml`, then regenerate and verify
+the lockfile:
+
+```bash
+uv lock
+uv sync --locked
+uv lock --check
+```
+
+To deliberately refresh every dependency, use `uv lock --upgrade`. To refresh
+one package and the portion of the graph it constrains, use
+`uv lock --upgrade-package <package>`. Review the resolved versions and hashes
+with `git diff -- uv.lock`, then run all static checks and the complete test
+suite.
+
+Commit `pyproject.toml` and `uv.lock` together. Keep the mitmproxy constraint
+aligned with the standalone runtime version in `crates/runner/src/deps.rs`;
+tests must not resolve a different mitmproxy version from production.
 
 ## Test Files
 
@@ -30,18 +94,18 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `test_addon_configuration.py`                           | Addon option registration and configuration updates                                                                  |
 | `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
-| `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                     |
+| `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                    |
 | `test_request_handler_passthrough.py`                   | Request pass-through, auto-allow, and browser user-agent passthrough decisions                                       |
 | `test_request_handler_authority_validation.py`          | HTTPS authority validation before firewall auth                                                                      |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
 | `test_request_handler_public_destination.py`            | Request-hook public destination validation and revalidation                                                          |
 | `test_request_handler_connector_diagnostics.py`         | Request-hook connector diagnostics and inactive built-in connector diagnostics                                       |
 | `test_request_handler_auth_base_body.py`                | Request-hook auth-base body admission and cleanup                                                                    |
-| `test_request_headers_streaming.py`                     | Requestheaders stream installation, body framing, buffering, and probe cleanup                                        |
+| `test_request_headers_streaming.py`                     | Requestheaders stream installation, body framing, buffering, and probe cleanup                                       |
 | `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
-| `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                             |
+| `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                            |
 | `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
-| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                 |
+| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                |
 | `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
 | `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |
 | `test_response_handler_connector_diagnostics.py`        | Response-hook connector diagnostic replacement and streaming lifecycle                                               |
@@ -56,7 +120,11 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
 | `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
 | `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |
-| `test_registry_builtin_cache.py`                        | Registry built-in firewall resolution and compiled-core cache behavior                                               |
+| `test_registry_builtin_catalog_resolution.py`           | Built-in catalog resolution and resolver contracts                                                                   |
+| `test_registry_builtin_snapshot.py`                     | Built-in catalog snapshot identity and invalidation                                                                  |
+| `test_registry_builtin_catalog_validation.py`           | Built-in catalog payload and file-trust validation                                                                   |
+| `test_registry_builtin_core_cache.py`                   | Compiled built-in core reuse, scoping, pruning, and lifecycle                                                        |
+| `test_registry_inline_firewalls.py`                     | Inline registry firewall behavior outside the built-in catalog cache                                                 |
 | `test_registry_builtin_base_url_vars.py`                | Registry built-in base URL variable resolution and validation                                                        |
 | `test_registry_context_state.py`                        | Registry compiled context reload, unavailable-state, and malformed-shape behavior                                    |
 | `test_matching_path.py`                                 | Low-level firewall path matching                                                                                     |
@@ -111,6 +179,8 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_model_provider_sse_usage.py`                      | Model provider SSE usage pipeline                                                                                    |
 | `test_model_provider_websocket_usage.py`                | Model provider WebSocket usage reporting and source reconciliation                                                   |
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
+| `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
+| `test_claude_output_timing.py`                          | Claude Code provider-output lifecycle timing over Anthropic SSE                                                      |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
 | `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |

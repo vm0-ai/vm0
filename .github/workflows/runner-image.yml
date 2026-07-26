@@ -12,7 +12,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  cancel-superseded:
+    name: Cancel superseded merge-group CI
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cancel and await older runs for the queued PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: .github/scripts/cancel-superseded-merge-group-runs.sh
+
   prepare:
+    needs: [cancel-superseded]
+    if: >-
+      ${{
+        !cancelled() &&
+        (
+          github.event_name != 'merge_group' ||
+          needs.cancel-superseded.result == 'success'
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -265,6 +295,8 @@ jobs:
     needs: [prepare]
     if: >-
       ${{
+        !cancelled() &&
+        needs.prepare.result == 'success' &&
         needs.prepare.outputs.current-runner-image-needed == 'true' &&
         needs.prepare.outputs.runner-binary-miss-count != '0'
       }}

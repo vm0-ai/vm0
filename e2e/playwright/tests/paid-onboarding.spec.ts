@@ -1,4 +1,3 @@
-import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "../fixtures";
 import { signInThroughHostedAuth } from "../lib/auth";
 import {
@@ -27,8 +26,6 @@ test("paid onboarding completes through the video workflow", async ({
     const userId = await createUser(email);
     const orgId = await createOrganization("E2E Paid Onboarding Org", userId);
 
-    await clerkSetup();
-    await setupClerkTestingToken({ page });
     await signInThroughHostedAuth(page, email, appUrl, {
       followRedirect: false,
       activeOrganizationId: orgId,

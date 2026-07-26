@@ -776,6 +776,8 @@ describe("team page navigation", () => {
             pinnedAt: thread.pinnedAt,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           };
         }),
         latestEventId: null,
@@ -790,8 +792,6 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(

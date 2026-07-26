@@ -1,5 +1,6 @@
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -8,6 +9,7 @@ import { pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { connectorCatalogDiagnostics$ } from "../services/connector-catalog-diagnostics.service";
 import {
   getPublicConnectorCatalogDetail,
   getPublicConnectorCatalogPermissionDetail,
@@ -24,6 +26,22 @@ const connectorCatalogAuth = {
   missingOrganizationStatus: 401,
   requiredCapability: "connector:read",
 } as const;
+
+const connectorCatalogDiagnosticsAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  accept: ["session"],
+} as const;
+
+const connectorCatalogDiagnosticsDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Connector catalog diagnostics are not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
 
 function connectorCatalogNotFound() {
   return notFound("Connector catalog item not found");
@@ -116,6 +134,19 @@ const listConnectorCatalogStatusInner$ = command(
   },
 );
 
+const getConnectorCatalogDiagnosticsInner$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const context = await set(connectorCatalogRequestContext$);
+    signal.throwIfAborted();
+    if (!context.featureStates[FeatureSwitchKey.ZeroDebug]) {
+      return connectorCatalogDiagnosticsDisabled;
+    }
+
+    const diagnostics = await set(connectorCatalogDiagnostics$, signal);
+    return { status: 200 as const, body: diagnostics };
+  },
+);
+
 const getConnectorCatalogInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const context = await set(connectorCatalogRequestContext$);
@@ -176,6 +207,13 @@ export const zeroConnectorCatalogRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorCatalogContract.status,
     handler: authRoute(connectorCatalogAuth, listConnectorCatalogStatusInner$),
+  },
+  {
+    route: zeroConnectorCatalogContract.diagnostics,
+    handler: authRoute(
+      connectorCatalogDiagnosticsAuth,
+      getConnectorCatalogDiagnosticsInner$,
+    ),
   },
   {
     route: zeroConnectorCatalogContract.get,

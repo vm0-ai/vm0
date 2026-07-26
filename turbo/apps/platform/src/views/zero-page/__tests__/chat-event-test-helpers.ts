@@ -88,6 +88,7 @@ function baseEvent(
     runGroupId: message.runGroupId,
     triggerSource: message.triggerSource,
     slackMessagePermalink: message.slackMessagePermalink,
+    feishuChatOpenUrl: message.feishuChatOpenUrl,
     isGoalRun: message.isGoalRun,
     runEventId: message.runEventId,
     goalSnapshot: message.goalSnapshot,

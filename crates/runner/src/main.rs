@@ -1,4 +1,4 @@
-// Trigger runner release.
+// Trigger another runner release on 2026-07-26.
 mod active_input;
 mod axiom_layer;
 mod ca;
@@ -95,7 +95,7 @@ enum Command {
     Service(cmd::ServiceArgs),
     /// Kill a running sandbox
     Kill(cmd::KillArgs),
-    /// Clean up unused image directories
+    /// Clean up unused runner resources, artifacts, logs, and caches
     Gc(cmd::GcArgs),
     /// Inspect and clean up session workspace image cache entries
     WorkspaceImageCache(cmd::WorkspaceImageCacheArgs),
@@ -312,6 +312,7 @@ mod tests {
 
     use super::*;
     use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+    use clap::CommandFactory;
 
     const HELP_TOKEN_CHILD_SCENARIO_ENV: &str = "VM0_RUNNER_HELP_TOKEN_CHILD_SCENARIO";
     const HELP_TOKEN_CHILD_TEST: &str = "tests::runner_help_hides_token_environment_values_child";
@@ -347,6 +348,17 @@ mod tests {
         assert_eq!(
             runner_name_from_config(Path::new("/nonexistent.yaml")),
             "default"
+        );
+    }
+
+    #[test]
+    fn runner_gc_help_describes_full_cleanup_scope() {
+        let help = Cli::command().render_help().to_string();
+        let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        assert!(
+            normalized_help
+                .contains("gc Clean up unused runner resources, artifacts, logs, and caches")
         );
     }
 

@@ -115,8 +115,6 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(
@@ -240,8 +238,6 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
@@ -434,8 +430,6 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
@@ -1334,6 +1328,8 @@ describe("chat lifecycle", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
         latestEventId: null,
@@ -1359,6 +1355,8 @@ describe("chat lifecycle", () => {
           agentId: AGENT_ID,
           title: body.title,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
           createdAt: "2026-06-01T00:00:01.000Z",
         };
         return respond(204);

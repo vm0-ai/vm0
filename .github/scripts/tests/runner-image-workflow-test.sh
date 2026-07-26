@@ -14,6 +14,20 @@ command -v yq >/dev/null || fail "yq is required"
 workflow_json=$(yq -o=json '.' "$WORKFLOW")
 
 jq -e '
+  .jobs["cancel-superseded"].name == "Cancel superseded merge-group CI" and
+  .jobs["cancel-superseded"].if == "github.event_name == '\''merge_group'\''" and
+  .jobs["cancel-superseded"].permissions.actions == "write" and
+  .jobs["cancel-superseded"].permissions.contents == "read" and
+  .jobs["cancel-superseded"].permissions["pull-requests"] == "read" and
+  any(.jobs["cancel-superseded"].steps[];
+    .run == ".github/scripts/cancel-superseded-merge-group-runs.sh"
+  ) and
+  .jobs.prepare.needs == ["cancel-superseded"] and
+  (.jobs.prepare.if | contains("!cancelled()")) and
+  (.jobs.prepare.if | contains("needs.cancel-superseded.result == '\''success'\''"))
+' <<<"$workflow_json" >/dev/null || fail "merge-group consumers must stop before shared runner resources are rebuilt"
+
+jq -e '
   [.jobs | to_entries[] | .value.steps[]? |
     .with.name? // empty |
     select(startswith("runner-binary-hits-") or startswith("runner-binary-compiled-"))
@@ -48,6 +62,8 @@ jq -e '
 jq -e '
   .jobs.compile["runs-on"] == "ubuntu-latest-8-cores" and
   (.jobs.compile.container.image | startswith("ghcr.io/vm0-ai/vm0-toolchain-rust@sha256:")) and
+  (.jobs.compile.if | contains("!cancelled()")) and
+  (.jobs.compile.if | contains("needs.prepare.result == '\''success'\''")) and
   (.jobs.compile.if | contains("runner-binary-miss-count != '\''0'\''")) and
   .jobs.compile.strategy.matrix.include == "${{ fromJSON(needs.prepare.outputs.runner-binary-compile-matrix) }}" and
   any(.jobs.compile.steps[];

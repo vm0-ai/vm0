@@ -8,6 +8,7 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatEventsContract,
@@ -15,6 +16,7 @@ import {
   chatThreadEventsContract,
   type AttachFile,
   type ChatRunOptionsRequest,
+  type ChatThreadEvent,
   type GenerationTemplateRequest,
   type PagedChatMessage,
   type UserMessageDocument,
@@ -53,6 +55,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   deleteVm0ManagedDefaultModelKey,
+  readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -366,6 +369,14 @@ function firstAssistantMessageEventsForRun(
 ): readonly Record<string, unknown>[] {
   return sandboxOperationEventsForRun(runId).filter((event) => {
     return event.op_type === "api_to_first_assistant_message";
+  });
+}
+
+function firstAssistantMessageEligibilityEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === "first_assistant_message_eligible";
   });
 }
 
@@ -708,8 +719,46 @@ async function readThreadComputerUseHostId(
   actor: ApiTestUser,
   threadId: string,
 ): Promise<string | null> {
-  const thread = await chat.readThread(actor, threadId);
-  return thread.computerUseHostId ?? null;
+  return (await readThreadProjection(actor, threadId)).computerUseHostId;
+}
+
+async function readThreadProjection(actor: ApiTestUser, threadId: string) {
+  const snapshot = await chat.getThreadSnapshot(actor);
+  const events: ChatThreadEvent[] = [];
+  let cursor = snapshot.latestEventId;
+
+  for (let page = 0; page < 20; page++) {
+    const response = await chat.requestThreadEvents(
+      actor,
+      cursor ? { sinceEventId: cursor } : {},
+      [200],
+    );
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+
+    events.push(...response.body.events);
+    if (!response.body.hasMore) {
+      break;
+    }
+
+    const lastEvent = response.body.events.at(-1);
+    if (!lastEvent) {
+      throw new Error("Expected paginated chat thread events");
+    }
+    cursor = lastEvent.id;
+  }
+
+  const thread = replayChatThreadEvents(snapshot.chatThreads, events).find(
+    (candidate) => {
+      return candidate.id === threadId;
+    },
+  );
+  if (!thread) {
+    throw new Error("Expected chat thread event projection");
+  }
+  return thread;
 }
 
 /**
@@ -774,6 +823,13 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(first.body.threadId).toBe(clientThreadId);
     expect(first.body.status).toBe("pending");
     const runId = first.body.runId;
+    const pendingBinding = await readThreadSessionBinding(
+      context,
+      clientThreadId,
+    );
+    expect(pendingBinding.agent_session_run_id).toBe(runId);
+    expect(pendingBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
+    expect(pendingBinding.run_session_id).toBe(pendingBinding.agent_session_id);
 
     const timingEvents = apiDispatchTimingEventsForRun(runId);
     expectApiDispatchActions(
@@ -889,8 +945,6 @@ describe("CHAT-02: web chat send and client ids", () => {
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       },
     );
 
@@ -1384,6 +1438,13 @@ describe("CHAT-02: org queue markers", () => {
       throw new Error("Expected the second send to create a queued run");
     }
     expect(queuedRun.body.status).toBe("queued");
+    const queuedBinding = await readThreadSessionBinding(
+      context,
+      queuedRun.body.threadId,
+    );
+    expect(queuedBinding.agent_session_run_id).toBe(queuedRun.body.runId);
+    expect(queuedBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
+    expect(queuedBinding.run_session_id).toBe(queuedBinding.agent_session_id);
 
     const queuedThread = queuedRun.body.threadId;
     const beforeDequeue = await waitForThreadMessages(
@@ -1545,6 +1606,18 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected the failed dispatch to still create a run");
     }
     expect(sent.body.status).toBe("failed");
+    await flushWaitUntilForTest();
+    expect(
+      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
+    ).toStrictEqual([
+      expect.objectContaining({
+        op_type: "first_assistant_message_eligible",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: sent.body.runId,
+      }),
+    ]);
 
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
@@ -1596,6 +1669,10 @@ describe("CHAT-02: dispatch failure", () => {
       threadId: sent.body.threadId,
       status: "failed",
     });
+    await flushWaitUntilForTest();
+    expect(
+      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
+    ).toHaveLength(1);
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: sent.body.runId }),
@@ -1609,9 +1686,8 @@ describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD pro-suspend admission agent",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
@@ -1856,7 +1932,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.4",
+        model: "gpt-5.6-luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1868,7 +1944,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       prompt:
         "generate an image in web chat using the aurora-21210 color palette",
-      model: "gpt-5.4",
+      model: "gpt-5.6-luna",
     });
     const { claim } = await claimChatRun(runnerGroup, run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
@@ -1884,6 +1960,18 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain("append that signature exactly once");
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
+    );
+    expect(appendSystemPrompt).toContain(
+      "add `--callback-prompt <prompt>` to `zero mail link`",
+    );
+    expect(appendSystemPrompt).toContain(
+      "confirm the send against Gmail before reporting it",
+    );
+    expect(appendSystemPrompt).toContain(
+      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Never send a reply automatically; the user always sends",
     );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
@@ -2218,10 +2306,10 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
       {
-        model: "gpt-5.4",
+        model: "claude-sonnet-5",
         isDefault: false,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
         modelProviderId: null,
       },
     ]);
@@ -2254,8 +2342,8 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "gpt-5.6-sol",
       runOptions: { codexServiceTier: "fast" },
     });
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
     const { claim } = await claimChatRun(runnerGroup, fast.runId);
     const environment = claimEnvironment(claim);
@@ -2269,14 +2357,14 @@ describe("CHAT-02: model-first provider policies", () => {
       ),
     );
     await cancelChatRun(actor, fast.runId);
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
 
     const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
       actor,
       fast.threadId,
-      "gpt-5.4",
+      "claude-sonnet-5",
       [400],
       { codexServiceTier: "fast" },
     );
@@ -2284,16 +2372,21 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(invalidFastPatch.body.error.message).toBe(
       "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
     );
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
 
-    await chat.updateThreadModelSelection(actor, fast.threadId, "gpt-5.4", {
-      codexServiceTier: null,
-    });
-    const updatedFastThread = await chat.readThread(actor, fast.threadId);
-    expect(updatedFastThread).not.toHaveProperty("selectedModel");
-    expect(updatedFastThread.codexServiceTier).toBeNull();
+    await chat.updateThreadModelSelection(
+      actor,
+      fast.threadId,
+      "claude-sonnet-5",
+      {
+        codexServiceTier: null,
+      },
+    );
+    expect(
+      (await readThreadProjection(actor, fast.threadId)).serviceTier,
+    ).toBeNull();
     const updatedFastThreadEvents = await chat.requestThreadEvents(
       actor,
       {},
@@ -2307,7 +2400,21 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: fast.threadId,
-        selectedModel: "gpt-5.4",
+        selectedModel: "claude-sonnet-5",
+      }),
+    );
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "created",
+        chatThreadId: fast.threadId,
+        serviceTier: "priority",
+      }),
+    );
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "service_tier_updated",
+        chatThreadId: fast.threadId,
+        serviceTier: null,
       }),
     );
 
@@ -2318,7 +2425,7 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "gpt-5.5",
     });
     expect(
-      (await chat.readThread(actor, standard.threadId)).codexServiceTier,
+      (await readThreadProjection(actor, standard.threadId)).serviceTier,
     ).toBeNull();
     const { claim: standardClaim } = await claimChatRun(
       runnerGroup,
@@ -2334,9 +2441,9 @@ describe("CHAT-02: model-first provider policies", () => {
       actor,
       {
         agentId,
-        prompt: "5.4 cannot fast",
+        prompt: "Claude cannot use Codex fast mode",
         clientThreadId: rejectedThreadId,
-        model: "gpt-5.4",
+        model: "claude-sonnet-5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -2420,7 +2527,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
     expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     expect(
-      (await chat.readThread(actor, first.threadId)).codexServiceTier,
+      (await readThreadProjection(actor, first.threadId)).serviceTier,
     ).toBeNull();
     await expectNoThreadModelUpdateEvent(actor, first.threadId, "gpt-5.5");
     await cancelChatRun(actor, followUp.runId);
@@ -4265,38 +4372,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     expect(reconnected.hostId).toBe(installed.hostId);
 
-    // A deleted sticky host is cleared on the next send without the field.
-    // (The actor has no credits, so sends stop at admission — host selection
-    // and sticky-host updates still happen first.)
-    const sticky = await cu.startComputerUseHost(actor);
-    const pinned = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "pin the host before deleting it",
-        computerUseHostId: sticky.hostId,
-      },
-      [201],
-    );
-    if (pinned.status !== 201) {
-      throw new Error("Expected the pinned send to be accepted");
-    }
-    expect(pinned.body.runId).toBeNull();
-    await cu.deleteComputerUseHost(actor, sticky.hostId);
-    await expect(
-      readThreadComputerUseHostId(actor, pinned.body.threadId),
-    ).resolves.toBeNull();
-    const clearedSend = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        threadId: pinned.body.threadId,
-        prompt: "send after the host vanished",
-      },
-      [201],
-    );
-    expect(clearedSend.body).toMatchObject({ threadId: pinned.body.threadId });
-
     // A valid sticky host remains usable for later non-explicit sends.
     const survivor = await cu.startComputerUseHost(actor);
     const survivorThread = await chat.requestSendMessage(
@@ -5080,26 +5155,55 @@ describe("CHAT-02: shared user message queue", () => {
       messageId,
       signal: context.signal,
     });
+
+    // Stage the callback drain at org admission before recall reaches the queue
+    // row. The direct waiter proves recall is first; the transitive count after
+    // admission opens proves the drain is queued behind it.
+    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
+    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
+      if (!releaseCallbackQuery.settled()) {
+        releaseCallbackQuery.resolve(undefined);
+      }
       admissionLock.release();
       messageQueueLock.release();
       await Promise.all([admissionLock.done, messageQueueLock.done]);
     });
 
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (!apl.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      if (!callbackQueryStarted.settled()) {
+        callbackQueryStarted.resolve(undefined);
+      }
+      return releaseCallbackQuery.promise.then(() => {
+        return [assistantEvent(0, "recall-first queue race complete")];
+      });
+    });
 
-    const recall = chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        revokesMessageId: messageId,
-        clientMessageId: randomUUID(),
-      },
-      [201],
-    );
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await callbackQueryStarted.promise;
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    releaseCallbackQuery.resolve(undefined);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    const recall = Promise.allSettled([
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: anchor.threadId,
+          revokesMessageId: messageId,
+          clientMessageId: randomUUID(),
+        },
+        [201],
+      ),
+    ]);
     await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
 
     admissionLock.release();
@@ -5109,7 +5213,11 @@ describe("CHAT-02: shared user message queue", () => {
       .toBeGreaterThanOrEqual(2);
     messageQueueLock.release();
 
-    const recalled = await recall;
+    const [recallResult] = await recall;
+    if (recallResult.status === "rejected") {
+      throw recallResult.reason;
+    }
+    const recalled = recallResult.value;
     expect(recalled.body).toMatchObject({
       runId: null,
       threadId: anchor.threadId,

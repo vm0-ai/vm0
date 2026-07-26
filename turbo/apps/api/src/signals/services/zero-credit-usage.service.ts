@@ -168,7 +168,10 @@ function priceUsageEvents(
   );
   const pricedEvents: PricedUsageEvent[] = [];
   for (const record of records) {
-    if (record.kind === "model" && record.grossCredits !== null) {
+    if (
+      (record.kind === "model" || record.kind === "browser") &&
+      record.grossCredits !== null
+    ) {
       pricedEvents.push({
         record,
         grossCredits: record.grossCredits,

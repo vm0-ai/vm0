@@ -38,28 +38,28 @@ async def _wait_for_forward_start(
     started: threading.Event,
     request_task: asyncio.Task[None],
     *,
-    timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+    wait_timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
 ) -> None:
-    started_task = asyncio.create_task(asyncio.to_thread(started.wait, timeout))
+    started_task = asyncio.create_task(asyncio.to_thread(started.wait, wait_timeout))
     try:
         done, _ = await asyncio.wait(
             (started_task, request_task),
             return_when=asyncio.FIRST_COMPLETED,
-            timeout=timeout,
+            timeout=wait_timeout,
         )
         if (started_task in done and started_task.result()) or started.is_set():
             return
 
         if request_task not in done and not request_task.done():
             request_task.cancel()
-            await asyncio.wait((request_task,), timeout=timeout)
+            await asyncio.wait((request_task,), timeout=wait_timeout)
 
             if request_task.done():
                 await asyncio.gather(request_task, return_exceptions=True)
 
             raise AssertionError(
                 "auth.base forwarder did not start before timeout "
-                f"(timeout={timeout}, "
+                f"(timeout={wait_timeout}, "
                 "request_task_pending_before_cancel="
                 "True, "
                 f"request_task_done={request_task.done()}, "
@@ -88,23 +88,23 @@ async def _await_request_task(request_task: asyncio.Task[None]) -> None:
 async def _drain_request_task(
     request_task: asyncio.Task[None],
     *,
-    timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+    wait_timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
 ) -> None:
     if not request_task.done():
-        await asyncio.wait((request_task,), timeout=timeout)
+        await asyncio.wait((request_task,), timeout=wait_timeout)
     if request_task.done():
         await asyncio.gather(request_task, return_exceptions=True)
         return
 
     request_task.cancel()
-    await asyncio.wait((request_task,), timeout=timeout)
+    await asyncio.wait((request_task,), timeout=wait_timeout)
     if request_task.done():
         await asyncio.gather(request_task, return_exceptions=True)
         return
 
     raise AssertionError(
         "request task did not finish before cleanup timeout "
-        f"(timeout={timeout}, request_task_done={request_task.done()}, "
+        f"(timeout={wait_timeout}, request_task_done={request_task.done()}, "
         f"request_task_cancelled={request_task.cancelled()})"
     )
 

@@ -135,4 +135,38 @@ describe("zero mail", () => {
       `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
     );
   });
+
+  it("adds a callback prompt to the review URL for a single draft", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/zero/mail/drafts/link", () => {
+        return HttpResponse.json(
+          {
+            mailDraftId: MAIL_DRAFT_ID,
+            mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+          },
+          { status: 200 },
+        );
+      }),
+    );
+
+    await zeroMailCommand.parseAsync([
+      "node",
+      "cli",
+      "link",
+      "r-test-draft",
+      "--callback-prompt",
+      "Confirm the email was sent",
+    ]);
+
+    const reviewUrl = new URL(String(mockConsoleLog.mock.calls[0]?.[0]));
+    expect(reviewUrl.pathname).toBe(`/mail/drafts/${MAIL_DRAFT_ID}`);
+    expect(reviewUrl.searchParams.get("agentId")).toBe(AGENT_ID);
+    expect(reviewUrl.searchParams.get("threadId")).toBe(THREAD_ID);
+    expect(reviewUrl.searchParams.get("callbackPrompt")).toBe(
+      "Confirm the email was sent",
+    );
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+      "end the current turn",
+    );
+  });
 });

@@ -93,8 +93,8 @@ enum Warning {
         port: u16,
         ppid: Option<u32>,
     },
-    /// Runner is stopped but mitmproxy process is still running (leaked).
-    StaleMitmproxy { pid: u32, port: u16 },
+    /// Runner is stopped but a mitmproxy process is still using its port.
+    StaleMitmproxy { port: u16 },
     /// status.json lists a dns_port but no dnsmasq process found on it.
     NoDnsmasq { port: u16, base_dir: PathBuf },
     /// A network namespace whose pool lock is not held by any process.
@@ -154,11 +154,8 @@ impl fmt::Display for Warning {
                     "orphan mitmdump PID {pid} (port {port}, ppid={ppid_str})"
                 )
             }
-            Self::StaleMitmproxy { pid, port } => {
-                write!(
-                    f,
-                    "stale mitmproxy PID {pid} on port {port} (runner stopped)"
-                )
+            Self::StaleMitmproxy { port } => {
+                write!(f, "stale mitmproxy process on port {port} (runner stopped)")
             }
             Self::OrphanNamespace { ns_name, .. } => {
                 write!(f, "orphan namespace {ns_name} (pool lock not held)")
@@ -275,10 +272,7 @@ impl Warning {
                     None => true,
                 }
             }
-            Self::StaleMitmproxy { pid, .. } => {
-                // Resolved if the stale mitmproxy process has exited.
-                pid_exists(*pid)
-            }
+            Self::StaleMitmproxy { port } => fresh.mitmdumps.iter().any(|mitm| mitm.port == *port),
             Self::OrphanFirecracker { pid, .. } | Self::OrphanMitmdump { pid, .. } => {
                 // Resolved if the process exited or a runner registry entry
                 // appeared after the initial scan and now owns the process.
@@ -636,11 +630,8 @@ async fn build_runner_report(
                     base_dir: base_dir.clone(),
                 });
             }
-            ("stopped", Some(mitm_pid)) => {
-                warnings.push(Warning::StaleMitmproxy {
-                    pid: mitm_pid,
-                    port,
-                });
+            ("stopped", Some(_)) => {
+                warnings.push(Warning::StaleMitmproxy { port });
             }
             _ => {}
         }
@@ -755,16 +746,21 @@ async fn find_installed_services() -> Vec<InstalledService> {
         let Some(name_str) = name.to_str() else {
             continue;
         };
-        if !name_str.starts_with("vm0-runner-") || !name_str.ends_with(".service") {
+        let Some(unit) = super::service::RunnerServiceUnit::from_file_name(name_str) else {
             continue;
-        }
-        let unit_name = name_str
-            .strip_suffix(".service")
-            .unwrap_or(name_str)
-            .to_string();
-        let config_path = super::service::read_unit_config_path(&entry.path()).await;
+        };
+        let config_path = match super::service::read_unit_config_path(&unit).await {
+            Ok(config_path) => config_path,
+            Err(e) => {
+                tracing::warn!(
+                    "find_installed_services: cannot read effective config for {}: {e}",
+                    unit.service_name()
+                );
+                None
+            }
+        };
         services.push(InstalledService {
-            unit_name,
+            unit_name: unit.unit_name().to_string(),
             config_path,
         });
     }
@@ -2308,13 +2304,10 @@ mod tests {
             "orphan firecracker PID 42 (sandbox xyz, ppid=?)"
         );
 
-        let w = Warning::StaleMitmproxy {
-            pid: 555,
-            port: 32821,
-        };
+        let w = Warning::StaleMitmproxy { port: 32821 };
         assert_eq!(
             w.to_string(),
-            "stale mitmproxy PID 555 on port 32821 (runner stopped)"
+            "stale mitmproxy process on port 32821 (runner stopped)"
         );
 
         let w = Warning::OrphanNbdDevice {
@@ -3016,13 +3009,49 @@ mod tests {
             vec![],
         )
         .await;
-        assert!(report.warnings.iter().any(|w| matches!(
-            w,
-            Warning::StaleMitmproxy {
-                pid: 999,
-                port: 32821,
-            }
-        )));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::StaleMitmproxy { port: 32821 }))
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_proxy_recheck_tracks_the_recorded_port_across_pid_exit() {
+        let report = build_test_runner_report(
+            "stopped",
+            Some(32821),
+            None,
+            vec![mitm_proc(111, 32821), mitm_proc(222, 32821)],
+            vec![],
+        )
+        .await;
+        assert_eq!(report.proxy_pid, Some(111));
+        let mut reports = [report];
+        let replacement_only = process::DiscoveredProcesses {
+            firecrackers: vec![],
+            mitmdumps: vec![mitm_proc(222, 32821)],
+            dnsmasqs: vec![],
+        };
+
+        recheck_current_runner_warnings(None, &replacement_only, &mut reports).await;
+
+        assert!(
+            reports[0]
+                .warnings
+                .iter()
+                .any(|warning| matches!(warning, Warning::StaleMitmproxy { port: 32821 }))
+        );
+
+        let unrelated_only = process::DiscoveredProcesses {
+            firecrackers: vec![],
+            mitmdumps: vec![mitm_proc(333, 32822)],
+            dnsmasqs: vec![],
+        };
+        recheck_current_runner_warnings(None, &unrelated_only, &mut reports).await;
+
+        assert!(!has_proxy_warning(&reports[0]));
     }
 
     #[tokio::test]

@@ -1,8 +1,6 @@
 import { command, computed, state } from "ccstate";
-import {
-  chatThreadsContract,
-  type CodexServiceTier,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -14,7 +12,6 @@ import {
   chatThreadMetaMap$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
-import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
 
 const internalChatAgentId$ = state<string | null>(null);
 
@@ -38,6 +35,14 @@ const currentChatThreadAgentId$ = computed((get): string | null => {
     return null;
   }
   return get(chatThreadMetaMap$).get(threadId)?.agentId ?? null;
+});
+
+export const currentChatAgentScope$ = computed((get): string | null => {
+  return (
+    get(currentChatThreadAgentId$) ??
+    get(internalChatAgentId$) ??
+    get(currentAgentId$)
+  );
 });
 
 export const currentChatAgentId$ = computed(
@@ -81,12 +86,6 @@ export const currentChatAgent$ = computed(async (get) => {
 export const currentChatAgentDisplayName$ = computed(async (get) => {
   return (await get(currentChatAgent$))?.displayName;
 });
-
-export interface ChatThread {
-  lastReadAt: string | null;
-  codexServiceTier: CodexServiceTier | null;
-  computerUseHostId: string | null;
-}
 
 const filteredThreadIds$ = computed(
   async (get): Promise<ReadonlySet<string> | null> => {

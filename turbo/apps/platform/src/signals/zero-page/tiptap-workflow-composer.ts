@@ -19,7 +19,7 @@ import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { onRef } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createFeedbackSignals,
@@ -39,6 +39,7 @@ import {
   type ComposerChatThreadSuggestionResult,
 } from "./composer-chat-thread-suggestions.ts";
 import {
+  buildComposerSlashWorkflows,
   findActiveSlashWorkflowRange,
   workflowTokenPattern,
   type ComposerSlashWorkflow,
@@ -56,8 +57,67 @@ import {
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
 import { createComposerWorkflows } from "./composer-workflows.ts";
+import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
+type WorkflowNamesSyncCommand = Command<
+  Promise<void>,
+  [AbortSignal, AbortSignal]
+>;
+
+interface MountedWorkflowNamesSync {
+  readonly command$: WorkflowNamesSyncCommand;
+  readonly mountSignal: AbortSignal;
+}
+
+const mountedWorkflowNamesSyncs$ = state<ReadonlySet<MountedWorkflowNamesSync>>(
+  new Set(),
+);
+
+const registerMountedWorkflowNamesSync$ = command(
+  ({ get, set }, mountedWorkflowNamesSync: MountedWorkflowNamesSync): void => {
+    const current = get(mountedWorkflowNamesSyncs$);
+    if (current.has(mountedWorkflowNamesSync)) {
+      return;
+    }
+    const next = new Set(current);
+    next.add(mountedWorkflowNamesSync);
+    set(mountedWorkflowNamesSyncs$, next);
+  },
+);
+
+const unregisterMountedWorkflowNamesSync$ = command(
+  ({ get, set }, mountedWorkflowNamesSync: MountedWorkflowNamesSync): void => {
+    const current = get(mountedWorkflowNamesSyncs$);
+    if (!current.has(mountedWorkflowNamesSync)) {
+      return;
+    }
+    const next = new Set(current);
+    next.delete(mountedWorkflowNamesSync);
+    set(mountedWorkflowNamesSyncs$, next);
+  },
+);
+
+const reloadMountedWorkflowNames$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    set(reloadWorkflowData$);
+    const pendingSyncs: Promise<void>[] = [];
+    for (const mountedWorkflowNamesSync of get(mountedWorkflowNamesSyncs$)) {
+      if (mountedWorkflowNamesSync.mountSignal.aborted) {
+        continue;
+      }
+      pendingSyncs.push(
+        set(
+          mountedWorkflowNamesSync.command$,
+          mountedWorkflowNamesSync.mountSignal,
+          signal,
+        ),
+      );
+    }
+    await Promise.all(pendingSyncs);
+    signal.throwIfAborted();
+  },
+);
 
 const EDITOR_CONTENT_CLASS =
   // Let the editor grow to 40% of the viewport, capped at 320px, then scroll
@@ -120,10 +180,10 @@ export interface WorkflowComposerSignals {
   >;
   readonly agentId$: Computed<Promise<string | null>>;
   readonly workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>;
+  readonly reloadWorkflows$: Command<Promise<void>, [AbortSignal]>;
   readonly selectedSuggestionIndex$: Computed<number>;
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
   readonly closeSuggestionMenu$: Command<void, []>;
-  readonly setWorkflowNames$: Command<void, [readonly string[]]>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertPromptMarkdown$: Command<void, [string]>;
@@ -137,7 +197,6 @@ export interface WorkflowComposerSignals {
     (() => void) | undefined,
     [HTMLButtonElement | null]
   >;
-  readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
   readonly feedback: FeedbackSignals;
 }
 
@@ -153,15 +212,6 @@ export interface ComposerTemplateAttachment {
   readonly title: string;
   readonly category: string;
   readonly previewImageUrl?: string;
-}
-
-export interface WorkflowComposerEventHandlers {
-  readonly onInput: () => void;
-  readonly onKeyDown: (event: KeyboardEvent) => boolean;
-  readonly onPaste: (
-    event: ClipboardEvent,
-    currentTarget: HTMLElement,
-  ) => boolean;
 }
 
 function createComposerAgentResources<T extends AgentIdValue>(
@@ -995,9 +1045,11 @@ function buildWorkflowDecorations(
       return;
     }
     for (const match of text.matchAll(pattern)) {
-      const start = pos + (match.index ?? 0);
+      const matchStart = pos + (match.index ?? 0);
+      const workflowStart = match[0].lastIndexOf("/");
+      const start = matchStart + workflowStart;
       decorations.push(
-        Decoration.inline(start, start + match[0].length, {
+        Decoration.inline(start, matchStart + match[0].length, {
           class: WORKFLOW_HIGHLIGHT_CLASS,
         }),
       );
@@ -1072,15 +1124,12 @@ interface WorkflowComposerRuntime {
   selectionUpdate(editor: Editor): void;
   focus(editor: Editor): void;
   blur(): void;
-  input(): void;
   templateAttachment: ComposerTemplateAttachment | undefined;
   openTemplate(category: string): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
-  keyDown(event: KeyboardEvent): boolean;
-  paste(event: ClipboardEvent, currentTarget: HTMLElement): boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1207,12 +1256,6 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
         tabindex: "0",
         class: EDITOR_CONTENT_CLASS,
       },
-      handlePaste: (_view, event) => {
-        return runtime.paste(event, _view.dom);
-      },
-      handleKeyDown: (_view, event) => {
-        return runtime.keyDown(event);
-      },
     },
     onUpdate: ({ editor }) => {
       runtime.update(editor);
@@ -1284,7 +1327,6 @@ function workflowComposerDocumentForDraft(
 
 function configureMountedWorkflowEditor(
   editor: Editor,
-  runtime: WorkflowComposerRuntime,
   singleLineOnMobile: boolean,
 ): void {
   editor.setOptions({
@@ -1295,12 +1337,6 @@ function configureMountedWorkflowEditor(
         tabindex: "0",
         class: editorContentClass(singleLineOnMobile),
       },
-      handlePaste: (_view, event) => {
-        return runtime.paste(event, _view.dom);
-      },
-      handleKeyDown: (_view, event) => {
-        return runtime.keyDown(event);
-      },
     },
   });
 }
@@ -1310,15 +1346,64 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.selectionUpdate = () => {};
   runtime.focus = () => {};
   runtime.blur = () => {};
-  runtime.input = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
-  runtime.keyDown = () => {
-    return false;
-  };
-  runtime.paste = () => {
-    return false;
-  };
+}
+
+function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
+  const storage = workflowHighlightStorage(editor);
+  const unchanged =
+    storage.workflowNames.length === names.length &&
+    storage.workflowNames.every((name, index) => {
+      return name === names[index];
+    });
+  if (unchanged) {
+    return;
+  }
+  storage.workflowNames = names;
+  if (editor.isInitialized) {
+    editor.view.dispatch(editor.state.tr);
+  }
+}
+
+function createSyncWorkflowNamesCommand(
+  editor: Editor,
+  agentId$: Computed<Promise<string | null>>,
+  workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>,
+): WorkflowNamesSyncCommand {
+  const resetWorkflowNamesSyncSignal$ = resetSignal();
+  return command(
+    async (
+      { get, set },
+      mountSignal: AbortSignal,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      if (mountSignal.aborted) {
+        return;
+      }
+      signal.throwIfAborted();
+      const syncSignal = set(
+        resetWorkflowNamesSyncSignal$,
+        mountSignal,
+        signal,
+      );
+      const [agentId, workflows] = await Promise.all([
+        get(agentId$),
+        get(workflows$),
+      ]);
+      signal.throwIfAborted();
+      if (syncSignal.aborted) {
+        return;
+      }
+      const workflowNames = buildComposerSlashWorkflows({
+        agentId,
+        workflows,
+      }).map((workflow) => {
+        return workflow.name;
+      });
+      applyWorkflowNames(editor, workflowNames);
+    },
+  );
 }
 
 interface MountEditorOptions {
@@ -1330,6 +1415,7 @@ interface MountEditorOptions {
   selectedSuggestionIndexState$: State<number>;
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
+  syncWorkflowNames$: WorkflowNamesSyncCommand;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
@@ -1343,11 +1429,12 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$,
   feedback,
   compositionGate,
+  syncWorkflowNames$,
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
   return onRef(
-    command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+    command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
@@ -1357,10 +1444,13 @@ function createMountEditorCommand({
           draft.setEditorDocument$,
           createEditorDocumentSnapshot(updatedEditor.state.doc),
         );
-        runtime.input();
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
         compositionGate.notifySettled();
+        // React owns the current draft-sync callback. Forward every TipTap
+        // document transaction through the mounted DOM boundary instead of
+        // storing a render closure in the editor runtime.
+        element.dispatchEvent(new Event("input", { bubbles: true }));
       };
       runtime.selectionUpdate = (updatedEditor) => {
         set(caretIndex$, updatedEditor.state.selection.head);
@@ -1378,7 +1468,7 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.removeFeedback$, id);
       };
-      configureMountedWorkflowEditor(editor, runtime, singleLineOnMobile);
+      configureMountedWorkflowEditor(editor, singleLineOnMobile);
       const input = get(draft.input$);
       const structuredPrompt = set(draft.takeRestoredStructuredPrompt$);
       setWorkflowComposerDocument(
@@ -1439,16 +1529,26 @@ function createMountEditorCommand({
           );
         },
       });
+      // Workflow cache invalidation is shared by every composer. Keep the
+      // decoration sync registry bounded to real editor mounts so split panes
+      // update together without a render-time callback bridge.
+      const mountedWorkflowNamesSync = {
+        command$: syncWorkflowNames$,
+        mountSignal: signal,
+      };
+      set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
       if (autoFocus && !isIOS()) {
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {
+        set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
         resetMountedWorkflowRuntime(runtime);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
         editor.unmount();
       });
+      await set(syncWorkflowNames$, signal, signal);
     }),
   );
 }
@@ -1554,19 +1654,12 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     selectionUpdate(_editor: Editor): void {},
     focus(_editor: Editor): void {},
     blur(): void {},
-    input(): void {},
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
-    keyDown(_event: KeyboardEvent): boolean {
-      return false;
-    },
-    paste: (_event: ClipboardEvent, _currentTarget: HTMLElement) => {
-      return false;
-    },
   };
 }
 
@@ -1629,6 +1722,11 @@ export function createWorkflowComposerSignals<
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime);
+  const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
+    editor,
+    agentId$,
+    workflows$,
+  );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
   const feedback = createComposerFeedback(threadId, editor);
 
@@ -1671,19 +1769,6 @@ export function createWorkflowComposerSignals<
   const focus$ = command(() => {
     editor.commands.focus("end");
   });
-  const setWorkflowNames$ = command((_context, names: readonly string[]) => {
-    workflowHighlightStorage(editor).workflowNames = names;
-    if (editor.isInitialized) {
-      editor.view.dispatch(editor.state.tr);
-    }
-  });
-  const setEventHandlers$ = command(
-    (_context, handlers: WorkflowComposerEventHandlers) => {
-      runtime.input = handlers.onInput;
-      runtime.keyDown = handlers.onKeyDown;
-      runtime.paste = handlers.onPaste;
-    },
-  );
   const mountEditor = (autoFocus: boolean, singleLineOnMobile: boolean) => {
     return createMountEditorCommand({
       editor,
@@ -1694,6 +1779,7 @@ export function createWorkflowComposerSignals<
       selectedSuggestionIndexState$,
       feedback,
       compositionGate,
+      syncWorkflowNames$,
       autoFocus,
       singleLineOnMobile,
     });
@@ -1729,16 +1815,15 @@ export function createWorkflowComposerSignals<
     chatThreadSuggestions$,
     agentId$,
     workflows$,
+    reloadWorkflows$: reloadMountedWorkflowNames$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,
-    setWorkflowNames$,
     insertWorkflow$,
     insertChatThread$,
     ...textCommands,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
-    setEventHandlers$,
     feedback,
   };
 }

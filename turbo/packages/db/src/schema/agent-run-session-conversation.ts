@@ -12,12 +12,10 @@ import {
 import { sql } from "drizzle-orm";
 import { agentComposes, agentComposeVersions } from "./agent-compose";
 import type {
-  AgentRunAdditionalVolumes,
   AgentRunResult,
   AgentRunSecretNames,
   AgentRunStorageMounts,
   AgentRunVars,
-  AgentSessionArtifacts,
   AgentSessionStorageMounts,
 } from "@vm0/db/jsonb-contracts/agent-run-session-conversation";
 
@@ -54,9 +52,6 @@ export const agentRuns = pgTable(
     vars: jsonb("vars").$type<AgentRunVars>(),
     // Secret names for validation (values never stored - must be provided at runtime)
     secretNames: jsonb("secret_names").$type<AgentRunSecretNames>(),
-    // Historical additional-volume projection retained for legacy row reads.
-    additionalVolumes:
-      jsonb("additional_volumes").$type<AgentRunAdditionalVolumes>(),
     // Canonical resolved mounts used by new run writers.
     storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
@@ -134,12 +129,7 @@ export const agentSessions = pgTable(
         onDelete: "set null",
       },
     ),
-    artifacts: jsonb("artifacts")
-      .$type<AgentSessionArtifacts>()
-      .notNull()
-      .default([]),
-    // Canonical writeback mounts used by session continuation. artifacts
-    // contains only historical rollback data; new writers leave it empty.
+    // Canonical writeback mounts used by session continuation.
     storageMounts: jsonb("storage_mounts").$type<AgentSessionStorageMounts>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

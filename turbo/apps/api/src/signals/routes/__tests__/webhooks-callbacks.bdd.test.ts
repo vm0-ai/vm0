@@ -27,7 +27,10 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectCanonicalStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -85,6 +88,13 @@ async function waitForExpectation(
       return result.ok;
     })
     .toBe(true);
+}
+
+async function completeOnboardingWithoutCredits(
+  actor: ApiTestUser,
+): Promise<void> {
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
 }
 
 function stripeEvent(args: {
@@ -643,7 +653,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const ignoredBody = JSON.stringify({ action: "ignored" });
     const ignored = await api.requestGithubWebhook(
       ignoredBody,
-      api.signedGithubWebhookHeaders(ignoredBody, "workflow_job"),
+      api.signedGithubWebhookHeaders(ignoredBody, "fork"),
       [200],
     );
     expect(ignored.body).toBe("OK");
@@ -1210,25 +1220,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
-    const mismatchedLegacyModelUsage =
-      await api.requestAgentModelUsageObservation(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 1,
-            },
-          ],
-        },
-        mismatchedHeaders,
-        [401],
-      );
-    expectApiError(mismatchedLegacyModelUsage.body);
-    expect(mismatchedLegacyModelUsage.body.error.code).toBe("UNAUTHORIZED");
-
     const mismatchedCompactModelUsage =
       await api.requestAgentModelUsageObservationV2(
         {
@@ -1287,42 +1278,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(missingUsageRun.body);
     expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
-
-    const malformedModelUsage =
-      await api.requestAgentModelUsageObservationUnchecked(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 0,
-            },
-          ],
-        },
-        headers,
-        [400],
-      );
-    expectApiError(malformedModelUsage.body);
-    expect(malformedModelUsage.body.error.code).toBe("BAD_REQUEST");
-
-    const legacyModelUsageNoOp = await api.requestAgentModelUsageObservation(
-      {
-        runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 1,
-          },
-        ],
-      },
-      headers,
-      [200],
-    );
-    expect(legacyModelUsageNoOp.body).toStrictEqual({ success: true });
 
     const malformedCompactModelUsage =
       await api.requestAgentModelUsageObservationV2Unchecked(
@@ -1706,7 +1661,8 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
-    runs.configureRunnerGroup();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.heartbeatRunner(runnerGroup);
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -1718,8 +1674,16 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       prompt: "write artifacts from the sandbox",
       modelProvider: "anthropic-api-key",
     });
+    const claim = await runs.claimRunnerJob(run.runId);
+    const manifest = expectCanonicalStorageManifest(claim.storageManifest);
+    const writebackMount = manifest?.storageMounts.find((mount) => {
+      return mount.writeback === true;
+    });
+    if (!writebackMount) {
+      throw new Error("Expected a canonical writeback mount");
+    }
     const headers = {
-      authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}`,
+      authorization: `Bearer ${claim.sandboxToken}`,
     };
 
     // Checkpoint history blobs: first prepare issues an upload URL, the
@@ -1761,6 +1725,70 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     );
     expectApiError(missingHistoryRun.body);
     expect(missingHistoryRun.body.error.message).toBe("Agent run not found");
+
+    // New GuestAgent versions dual-send storageId with the legacy envelope.
+    // The API authorizes the id against this run's canonical writeback mounts.
+    const canonicalFiles = [
+      {
+        path: "MEMORY.md",
+        hash: createHash("sha256")
+          .update(`bdd canonical writeback ${run.runId}`)
+          .digest("hex"),
+        size: 512,
+      },
+    ];
+    const canonicalPrepared = await api.requestAgentStoragePrepare(
+      {
+        runId: run.runId,
+        storageId: writebackMount.storageId,
+        storageName: "ignored-legacy-name",
+        storageType: "volume",
+        parentVersionId: writebackMount.versionId,
+        files: canonicalFiles,
+      },
+      headers,
+      [200],
+    );
+    if (canonicalPrepared.status !== 200) {
+      throw new Error("Expected canonical storage prepare to succeed");
+    }
+    const canonicalCommitted = await api.requestAgentStorageCommit(
+      {
+        runId: run.runId,
+        storageId: writebackMount.storageId,
+        storageName: "ignored-legacy-name",
+        storageType: "volume",
+        versionId: canonicalPrepared.body.versionId,
+        parentVersionId: writebackMount.versionId,
+        files: canonicalFiles,
+      },
+      headers,
+      [200],
+    );
+    if (canonicalCommitted.status !== 200) {
+      throw new Error("Expected canonical storage commit to succeed");
+    }
+    expect(canonicalCommitted.body).toMatchObject({
+      success: true,
+      storageName: writebackMount.name,
+      fileCount: 1,
+    });
+
+    const unmountedStorage = await api.requestAgentStoragePrepare(
+      {
+        runId: run.runId,
+        storageId: randomUUID(),
+        storageName: writebackMount.name,
+        storageType: "artifact",
+        files: canonicalFiles,
+      },
+      headers,
+      [404],
+    );
+    expectApiError(unmountedStorage.body);
+    expect(unmountedStorage.body.error.message).toBe(
+      "Writeback storage not found",
+    );
 
     // Artifact writes land under the run organization's storage prefix.
     const storageName = `bdd-sandbox-artifact-${randomUUID().slice(0, 8)}`;
@@ -1959,7 +1987,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
     context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Atom Grant" });
+    await completeOnboardingWithoutCredits(actor);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2470,7 +2498,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const grantExpiresAtUnix = epochSeconds(30);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Custom Grant" });
+    await completeOnboardingWithoutCredits(actor);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2803,7 +2831,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Trial Agent" });
+    await completeOnboardingWithoutCredits(actor);
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_trial_${suffix}`;
@@ -3511,7 +3539,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Binding Agent" });
+    await completeOnboardingWithoutCredits(actor);
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_bind_${suffix}`;
@@ -3738,7 +3766,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Credits Agent" });
+    await completeOnboardingWithoutCredits(actor);
     const baselineCredits = (await billing.readBillingStatus(actor)).credits;
 
     // A one-time checkout before payment settles grants nothing.
@@ -4579,7 +4607,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const updateCalls =
       context.mocks.stripe.subscriptions.update.mock.calls.length;
     const plainActor = bdd.user();
-    await bdd.bootstrapOnboarding(plainActor, {
+    await bdd.bootstrapLimitedFreeOnboarding(plainActor, {
       displayName: "BDD Plain Teardown",
     });
     api.verifyNextClerkWebhook({

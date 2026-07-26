@@ -41,7 +41,7 @@ from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 BUILTIN_HOST_POLICY_RUNTIME_MARKER = "_builtinHostPolicyRuntime"
 _DEFAULT_HTTPS_PORT = 443
 _MIN_FIXED_HOST_OWNERSHIP_LABELS = 2
-_HOST_POLICY_HOST_FORBIDDEN_CHARS = frozenset("%*[]/?#@\\:{}")
+_HOST_POLICY_HOST_FORBIDDEN_CHARS = frozenset("%*[]/?#@\\:{}<>^|")
 _IPV4_LITERAL_COMPONENT_PATTERN = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
 _IPV4_LITERAL_MAX_COMPONENTS = 4
 _PROVIDER_OWNED_HOST_POLICY_KEYS = frozenset(
@@ -292,9 +292,9 @@ def _normalize_host_policy_hostname(hostname: str) -> str:
 
 
 def _host_policy_string_list(policy: dict, key: str) -> list[str]:
-    value = policy.get(key)
-    if value is None:
+    if key not in policy:
         return []
+    value = policy[key]
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise BuiltinHostPolicyError(f"builtin firewall hostPolicy.{key} must be a string list")
     return value
@@ -315,9 +315,9 @@ def _validate_host_policy_keys(
 
 
 def _host_policy_optional_bool(*, firewall_name: str, policy: dict, key: str) -> bool:
-    value = policy.get(key)
-    if value is None:
+    if key not in policy:
         return False
+    value = policy[key]
     if not isinstance(value, bool):
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" hostPolicy.{key} must be a boolean'

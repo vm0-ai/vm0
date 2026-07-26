@@ -142,12 +142,10 @@ export {
   type NetworkLogsResponse,
   type SearchResult,
   type LogsSearchResponse,
-  runsQueueContract,
   queueEntrySchema,
   runningTaskSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
-  type RunsQueueContract,
   type QueueEntry,
   type RunningTask,
   type ConcurrencyInfo,
@@ -256,11 +254,8 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookModelUsageObservationContract,
-  webhookModelUsageObservationV2Contract,
   webhookUsageEventContract,
   type WebhookClerkContract,
-  type WebhookModelUsageObservationContract,
-  type WebhookModelUsageObservationV2Contract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookGmailContract,
@@ -273,11 +268,9 @@ export {
   cliAuthDeviceContract,
   cliAuthTokenContract,
   cliAuthApproveContract,
-  cliAuthOrgContract,
   type CliAuthDeviceContract,
   type CliAuthTokenContract,
   type CliAuthApproveContract,
-  type CliAuthOrgContract,
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
 export {
@@ -404,18 +397,6 @@ export {
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
 export {
-  testSlackDispatchProbeBodySchema,
-  testSlackDispatchProbeContract,
-  testSlackDispatchProbeErrorSchema,
-  testSlackDispatchProbeFailureResponseSchema,
-  testSlackDispatchProbeResponseSchema,
-  testSlackDispatchProbeSuccessResponseSchema,
-  type TestSlackDispatchProbeBody,
-  type TestSlackDispatchProbeContract,
-  type TestSlackDispatchProbeError,
-  type TestSlackDispatchProbeResponse,
-} from "./test-slack-dispatch-probe";
-export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,
@@ -511,13 +492,11 @@ export {
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgDefaultAgentContract,
   orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
   isOrgTier,
-  type OrgDefaultAgentContract,
   type OrgResponse,
   type UpdateOrgRequest,
   type OrgTier,
@@ -633,6 +612,13 @@ export {
   type SessionResponse,
 } from "./sessions";
 export {
+  artifactCatalogContract,
+  type ArtifactCatalogContract,
+  type ArtifactCatalogKind,
+  type ArtifactDetail,
+  type ArtifactSummary,
+} from "./artifact-catalog";
+export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -674,7 +660,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
   type WebsiteGenerationTemplateRequest,
@@ -719,7 +704,6 @@ export {
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
-  type HtmlArtifactEditSnapshot,
 } from "./chat-threads";
 export {
   runnersPollContract,
@@ -741,7 +725,6 @@ export {
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
-  RUNNER_STORAGE_MOUNTS_CAPABILITY,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   artifactEntrySchema,
@@ -986,6 +969,14 @@ export {
   gmailNewMessageEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailWorkflowEventConfigSchema,
+  githubDeploymentStatusCreatedEventConfigSchema,
+  githubDeploymentStateSchema,
+  githubIssueCommentCreatedEventConfigSchema,
+  githubIssueCommentSubjectFilterSchema,
+  githubPullRequestReviewStateSchema,
+  githubPullRequestReviewSubmittedEventConfigSchema,
+  githubWorkflowJobCompletedEventConfigSchema,
+  githubWorkflowRunCompletedEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   zeroWorkflowScheduleSchema,
   zeroWorkflowAutomationSummarySchema,
@@ -1014,6 +1005,14 @@ export {
   type GmailNewMessageEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailWorkflowEventConfig,
+  type GithubDeploymentStatusCreatedEventConfig,
+  type GithubDeploymentState,
+  type GithubIssueCommentCreatedEventConfig,
+  type GithubIssueCommentSubjectFilter,
+  type GithubPullRequestReviewState,
+  type GithubPullRequestReviewSubmittedEventConfig,
+  type GithubWorkflowJobCompletedEventConfig,
+  type GithubWorkflowRunCompletedEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarWorkflowEventConfig,
   type ZeroWorkflowSchedule,
@@ -1533,12 +1532,6 @@ export {
   type ZeroSlackInteractiveContract,
 } from "./zero-slack-interactive";
 export {
-  zeroSlackBrowserConnectContract,
-  zeroSlackBrowserConnectQuerySchema,
-  type ZeroSlackBrowserConnectContract,
-  type ZeroSlackBrowserConnectQuery,
-} from "./zero-slack-browser-connect";
-export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,
   zeroSlackOauthConnectQuerySchema,
@@ -1605,7 +1598,6 @@ export {
   type ComputerUseCommandResult,
   type ComputerUseCommandStatus,
   type ComputerUseHost,
-  type ComputerUseHostDeleteResponse,
   type ComputerUseHostListResponse,
   type ComputerUsePluginCommandKind,
   type ComputerUseReadCommandKind,
@@ -1646,11 +1638,8 @@ export {
 } from "./zero-computer-use-plugins";
 export {
   zeroInsightsContract,
-  zeroInsightsRangeContract,
   type ZeroInsightsContract,
-  type ZeroInsightsRangeContract,
   type InsightsResponse,
-  type InsightsRangeResponse,
   type DayInsight,
 } from "./zero-insights";
 export {

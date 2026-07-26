@@ -905,6 +905,245 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
+async function validateConnectorCatalogFinalConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.6: Validate final connector catalog constraints ===\n",
+  );
+  const attemptConstraint =
+    "connector_catalog_sync_state_attempt_cache_reuse_complete";
+  const candidateConstraint =
+    "connector_catalog_sync_state_rejected_candidate_complete";
+  const authorityConstraint =
+    "connector_catalog_sync_state_rejection_authority_complete";
+
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+  try {
+    await client.query(`
+      INSERT INTO "connector_catalog_sync_state" (
+        "source_id",
+        "schema_version",
+        "last_attempt_at",
+        "last_attempt_outcome",
+        "last_attempt_reused_cached_rejection",
+        "last_failure_code",
+        "last_rejected_catalog_version",
+        "last_rejected_catalog_key",
+        "last_rejected_catalog_digest",
+        "last_rejected_pointer_etag",
+        "last_rejected_failure_code",
+        "last_rejected_backend_version",
+        "last_rejected_build_commit_sha"
+      )
+      VALUES
+        (
+          'migration-final-catalog-accepted',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          FALSE,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL
+        ),
+        (
+          'migration-final-catalog-rejected',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          TRUE,
+          'invalid-artifact',
+          '2026-07-25.1',
+          'connectors/v1/releases/2026-07-25.1/catalog.json',
+          'sha256:${"b".repeat(64)}',
+          '"final-authority-etag"',
+          'invalid-artifact',
+          '1.319.0',
+          '${"a".repeat(40)}'
+        )
+    `);
+    const validRows = await client.query<{ source_id: string }>(`
+      SELECT "source_id"
+      FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+      ORDER BY "source_id"
+    `);
+    assert.deepEqual(
+      validRows.rows.map((row) => {
+        return row.source_id;
+      }),
+      ["migration-final-catalog-accepted", "migration-final-catalog-rejected"],
+    );
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_attempt_reused_cached_rejection")
+        VALUES ('invalid-provenance-without-attempt', 1, FALSE)
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_attempt_at",
+          "last_attempt_outcome",
+          "last_failure_code"
+        )
+        VALUES (
+          'invalid-missing-attempt-provenance',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          'source-unavailable'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_attempt_at",
+          "last_attempt_outcome",
+          "last_attempt_reused_cached_rejection"
+        )
+        VALUES (
+          'invalid-reused-accepted-attempt',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          TRUE
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: candidateConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_catalog_version",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-partial-rejected-candidate',
+          1,
+          '2026-07-25.2',
+          'invalid-artifact',
+          '1.319.0'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_catalog_version",
+          "last_rejected_catalog_key",
+          "last_rejected_catalog_digest",
+          "last_rejected_failure_code"
+        )
+        VALUES (
+          'invalid-candidate-without-authority',
+          1,
+          '2026-07-25.3',
+          'connectors/v1/releases/2026-07-25.3/catalog.json',
+          'sha256:${"c".repeat(64)}',
+          'invalid-artifact'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_rejected_backend_version")
+        VALUES ('invalid-authority-without-candidate', 1, '1.319.0')
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_pointer_etag",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-rejection-backend-version',
+          1,
+          '"invalid-version-etag"',
+          'invalid-pointer',
+          '1.319.0-rc.1'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_pointer_etag",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version",
+          "last_rejected_build_commit_sha"
+        )
+        VALUES (
+          'invalid-rejection-build-commit',
+          1,
+          '"invalid-build-etag"',
+          'invalid-pointer',
+          '1.319.0',
+          '${"d".repeat(39)}'
+        )
+      `,
+    });
+
+    await client.query(`
+      DELETE FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+    `);
+  } finally {
+    await client.end();
+  }
+
+  console.log(
+    "   ✅ Final connector catalog constraints accept complete state and reject ambiguous state\n",
+  );
+}
+
 async function validateConnectorCredentialOwnershipContraction(): Promise<void> {
   console.log(
     "=== Phase 1.5: Validate connector credential ownership contraction ===\n",
@@ -1286,8 +1525,8 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
-const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 665;
-const CHAT_EVENT_TYPE_MIGRATION = 666;
+const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 691;
+const CHAT_EVENT_TYPE_MIGRATION = 692;
 
 async function validateChatEventTypeBackfill(): Promise<void> {
   console.log("=== Validate populated ChatEvent type backfill ===\n");
@@ -3045,143 +3284,60 @@ async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   }
 }
 
-async function validateCompactModelUsageObservationBackfill(): Promise<void> {
-  console.log(
-    "=== Phase 1.9: Validate compact model observation backfill ===\n",
-  );
-  const testDb = "migration_compact_model_observation_backfill_test";
+async function validateModelObservationContractCleanup(): Promise<void> {
+  console.log("=== Phase 1.9: Validate model observation cleanup ===\n");
+  const testDb = "migration_model_observation_cleanup_test";
   const testDbUrl = createTestDbUrl(testDb);
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, 660);
+    await runMigrationsUpTo(testDbUrl, 676);
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
       await client.query(`
-        WITH boundary AS (
-          SELECT date_trunc('hour', NOW() AT TIME ZONE 'UTC') AS current_hour
-        )
         INSERT INTO "model_usage_observation" (
           "idempotency_key",
-          "org_id",
-          "user_id",
           "model",
-          "category",
-          "quantity",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens",
           "observed_at"
         )
-        SELECT *
-        FROM (
-          VALUES
-            (
-              '66000000-0000-4000-8000-000000000001'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.input',
-              10::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000002'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.input',
-              7::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000003'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.output',
-              5::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000004'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.cache_read',
-              3::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000005'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.cache_creation',
-              2::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000006'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-b',
-              'tokens.output',
-              9::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000007'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'boundary-model',
-              'tokens.input',
-              11::bigint,
-              (
-                SELECT current_hour - INTERVAL '32 days' + INTERVAL '5 minutes'
-                FROM boundary
-              )
-            ),
-            (
-              '66000000-0000-4000-8000-000000000008'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'expired-model',
-              'tokens.input',
-              100::bigint,
-              (
-                SELECT current_hour - INTERVAL '32 days' - INTERVAL '1 second'
-                FROM boundary
-              )
-            ),
-            (
-              '66000000-0000-4000-8000-000000000009'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'ignored-model',
-              'tokens.unknown',
-              20::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000010'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'ignored-model',
-              'tokens.input',
-              0::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            )
-        ) AS fixture (
-          idempotency_key,
-          org_id,
-          user_id,
-          model,
-          category,
-          quantity,
-          observed_at
+        VALUES (
+          '66600000-0000-4000-8000-000000000001',
+          'claude-sonnet-4-6',
+          10,
+          20,
+          30,
+          40,
+          '2026-07-24 00:00:00'
         )
       `);
 
-      await applyMigrationsUpTo(client, 663);
+      await client.query(`
+        INSERT INTO "model_stat" (
+          "hour_start",
+          "model",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens",
+          "total_tokens"
+        )
+        VALUES (
+          '2026-07-24 00:00:00',
+          'claude-sonnet-4-6',
+          10,
+          20,
+          30,
+          40,
+          100
+        )
+      `);
+
+      await applyMigrationsUpTo(client, 676);
 
       const compactRows = await client.query<{
         cacheCreationInputTokens: string;
@@ -3189,84 +3345,100 @@ async function validateCompactModelUsageObservationBackfill(): Promise<void> {
         inputTokens: string;
         model: string;
         outputTokens: string;
-        window: string;
       }>(`
         SELECT
           "model",
-          CASE
-            WHEN "observed_at" =
-              date_trunc('hour', NOW() AT TIME ZONE 'UTC') - INTERVAL '2 hours'
-              THEN 'recent'
-            WHEN "observed_at" =
-              date_trunc('hour', NOW() AT TIME ZONE 'UTC') - INTERVAL '32 days'
-              THEN 'boundary'
-            ELSE 'unexpected'
-          END AS "window",
           "input_tokens"::text AS "inputTokens",
           "output_tokens"::text AS "outputTokens",
           "cache_read_input_tokens"::text AS "cacheReadInputTokens",
           "cache_creation_input_tokens"::text AS "cacheCreationInputTokens"
-        FROM "compact_model_usage_observation"
-        ORDER BY "window", "model"
+        FROM "model_usage_observation"
       `);
       assert.deepEqual(compactRows.rows, [
         {
-          model: "boundary-model",
-          window: "boundary",
-          inputTokens: "11",
-          outputTokens: "0",
-          cacheReadInputTokens: "0",
-          cacheCreationInputTokens: "0",
-        },
-        {
-          model: "model-a",
-          window: "recent",
-          inputTokens: "17",
-          outputTokens: "5",
-          cacheReadInputTokens: "3",
-          cacheCreationInputTokens: "2",
-        },
-        {
-          model: "model-b",
-          window: "recent",
-          inputTokens: "0",
-          outputTokens: "9",
-          cacheReadInputTokens: "0",
-          cacheCreationInputTokens: "0",
+          model: "claude-sonnet-4-6",
+          inputTokens: "10",
+          outputTokens: "20",
+          cacheReadInputTokens: "30",
+          cacheCreationInputTokens: "40",
         },
       ]);
 
-      await client.query(`
-        INSERT INTO "model_usage_observation" (
-          "idempotency_key",
-          "org_id",
-          "user_id",
+      const modelStatRows = await client.query<{
+        cacheCreationInputTokens: string;
+        cacheReadInputTokens: string;
+        inputTokens: string;
+        model: string;
+        outputTokens: string;
+        totalTokens: string;
+      }>(`
+        SELECT
           "model",
-          "category",
-          "quantity"
-        )
-        VALUES (
-          '66000000-0000-4000-8000-000000000100',
-          'legacy-api-org',
-          'legacy-api-user',
-          'legacy-api-model',
-          'tokens.input',
-          1
-        )
+          "input_tokens"::text AS "inputTokens",
+          "output_tokens"::text AS "outputTokens",
+          "cache_read_input_tokens"::text AS "cacheReadInputTokens",
+          "cache_creation_input_tokens"::text AS "cacheCreationInputTokens",
+          "total_tokens"::text AS "totalTokens"
+        FROM "model_stat"
       `);
+      assert.deepEqual(modelStatRows.rows, [
+        {
+          model: "claude-sonnet-4-6",
+          inputTokens: "10",
+          outputTokens: "20",
+          cacheReadInputTokens: "30",
+          cacheCreationInputTokens: "40",
+          totalTokens: "100",
+        },
+      ]);
 
-      const finalKey = await client.query<{ present: boolean }>(`
-        SELECT EXISTS (
-          SELECT 1
-          FROM pg_indexes
-          WHERE schemaname = 'public'
-            AND tablename = 'model_stat'
-            AND indexname = 'uq_model_stat_hour_model'
-        ) AS present
+      const contractState = await client.query<{
+        activeKeyPresent: boolean;
+        legacyColumnsAbsent: boolean;
+        legacyKeyAbsent: boolean;
+        compatibilityViewAbsent: boolean;
+      }>(`
+        SELECT
+          to_regclass('public.compact_model_usage_observation') IS NULL
+            AS "compatibilityViewAbsent",
+          NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'model_stat'
+              AND column_name IN (
+                'model_provider',
+                'request_count',
+                'org_count',
+                'user_count',
+                'credits_charged'
+              )
+          ) AS "legacyColumnsAbsent",
+          NOT EXISTS (
+            SELECT 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'model_stat'
+              AND indexname = 'uq_model_stat_hour_model_provider'
+          ) AS "legacyKeyAbsent",
+          EXISTS (
+            SELECT 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'model_stat'
+              AND indexname = 'uq_model_stat_hour_model'
+          ) AS "activeKeyPresent"
       `);
-      assert.equal(finalKey.rows[0]?.present, true);
+      assert.deepEqual(contractState.rows, [
+        {
+          compatibilityViewAbsent: true,
+          legacyColumnsAbsent: true,
+          legacyKeyAbsent: true,
+          activeKeyPresent: true,
+        },
+      ]);
       console.log(
-        "   ✅ Compact rows preserve retained four-counter totals and legacy writes remain valid\n",
+        "   ✅ Active compact and ranking data survive legacy schema cleanup\n",
       );
     } finally {
       await client.end();
@@ -3453,7 +3625,7 @@ async function main(): Promise<void> {
     await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
     await validateOrgPlanEntitlementBackfill();
-    await validateCompactModelUsageObservationBackfill();
+    await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
@@ -3467,6 +3639,7 @@ async function main(): Promise<void> {
     console.log("   ✅ Migrations applied successfully\n");
 
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
+    await validateConnectorCatalogFinalConstraints(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -3495,6 +3668,9 @@ async function main(): Promise<void> {
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
       console.log("   ✅ Chat event source tables reject UPDATE");
+      console.log(
+        "   ✅ Final connector catalog constraints reject invalid state",
+      );
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 

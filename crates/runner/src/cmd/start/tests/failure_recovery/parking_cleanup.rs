@@ -403,7 +403,7 @@ async fn release_destroy_and_wait_for_successful_completion(
 async fn assert_post_destroy_cleanup(
     budget: &ResourceBudget,
     idle_pool: &SharedIdlePool,
-    cancel_tokens: Option<&SharedRunCancellationMap>,
+    cancel_tokens: Option<&RunCancellationRegistry>,
     run_id: RunId,
     expected_budget_count: usize,
     expected_idle_len: usize,
@@ -443,7 +443,7 @@ async fn assert_workspace_cache_after_late_cancellation(
         .workspace_cache = Some(workspace_cache.clone());
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -693,7 +693,7 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -764,7 +764,7 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let cancel_tokens = config.provider.cancel_tokens.clone();
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
