@@ -2453,11 +2453,14 @@ function createPagedMessages(
   threadId: string,
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
   const browserSessionCardSignals =
     createBrowserSessionCardSignalsRegistry(threadId);
-  const artifactCardSignals = createArtifactCardSignalsRegistry();
+  const artifactCardSignals = createArtifactCardSignalsRegistry(
+    previewImageUrlsByUrl$,
+  );
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
   const permissionCardSignals = createPermissionCardSignalsRegistry();
@@ -2585,6 +2588,7 @@ function createChatThreadMessagePipeline({
   recordScrollHeightForPrepend$,
   clearScrollHeightForPrepend$,
   awayFromBottom$,
+  previewImageUrlsByUrl$,
 }: {
   threadId: string;
   dataSource: ChatThreadRemote;
@@ -2598,11 +2602,13 @@ function createChatThreadMessagePipeline({
     [PrependScrollCompensationToken | null | undefined]
   >;
   awayFromBottom$: Computed<boolean>;
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
 }) {
   const pagedMessages = createPagedMessages(
     threadId,
     dataSource,
     initialOptimisticEntries,
+    previewImageUrlsByUrl$,
   );
   const renderWindow = createChatRenderWindow({
     threadId,
@@ -2639,6 +2645,27 @@ function createArtifacts(threadId: string) {
   });
 
   return { artifacts$, reloadArtifacts$ };
+}
+
+function createArtifactPreviewImageUrls(
+  artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>,
+): Computed<Promise<ReadonlyMap<string, string>>> {
+  return computed(async (get) => {
+    const runs = await get(artifacts$);
+    const previewImageUrlsByUrl = new Map<string, string>();
+    for (const run of runs) {
+      for (const file of run.files) {
+        if (!file.previewImageUrl) {
+          continue;
+        }
+        previewImageUrlsByUrl.set(file.url, file.previewImageUrl);
+        if (file.aliasUrl) {
+          previewImageUrlsByUrl.set(file.aliasUrl, file.previewImageUrl);
+        }
+      }
+    }
+    return previewImageUrlsByUrl;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4323,6 +4350,10 @@ export function createChatThreadSignals(
     createComposerFileInput();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const composer = createThreadComposer(draft, threadId, threadOwned.agentId$);
+  const artifact = createArtifacts(threadId);
+  const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
+    artifact.artifacts$,
+  );
   const messages = createChatThreadMessagePipeline({
     threadId,
     dataSource,
@@ -4330,11 +4361,11 @@ export function createChatThreadSignals(
     recordScrollHeightForPrepend$,
     clearScrollHeightForPrepend$,
     awayFromBottom$,
+    previewImageUrlsByUrl$,
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
   const composerSendButton = createComposerSendButtonSignals(messages);
-  const artifact = createArtifacts(threadId);
   const runTracking = createRunTracking({
     threadId,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,

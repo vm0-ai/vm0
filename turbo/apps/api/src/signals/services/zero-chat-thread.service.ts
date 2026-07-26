@@ -466,6 +466,15 @@ function parseHostedArtifactKindFromMetadata(
   return parseHostedArtifactKind(metadata.artifactKind);
 }
 
+function parseHostedArtifactAliasUrlFromMetadata(
+  metadata: unknown,
+): string | undefined {
+  if (!isRecord(metadata) || typeof metadata.aliasUrl !== "string") {
+    return undefined;
+  }
+  return metadata.aliasUrl;
+}
+
 function ownedChatThread(
   threadId: string,
   userId: string,
@@ -1052,6 +1061,7 @@ function loadZeroChatThreadArtifactRows(
       contentType: runUploadedFiles.contentType,
       sizeBytes: runUploadedFiles.sizeBytes,
       url: runUploadedFiles.url,
+      previewImageUrl: runUploadedFiles.previewImageUrl,
       metadata: runUploadedFiles.metadata,
       classification: runUploadedFiles.classification,
       accessLevel: runUploadedFiles.accessLevel,
@@ -1141,6 +1151,7 @@ export function zeroChatThreadArtifacts(args: {
           files: [],
         };
         const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
+        const aliasUrl = parseHostedArtifactAliasUrlFromMetadata(row.metadata);
         const canonical =
           row.assetVersion === CANONICAL_ASSET_VERSION &&
           row.classification === "published-output" &&
@@ -1151,6 +1162,10 @@ export function zeroChatThreadArtifacts(args: {
           contentType: row.contentType ?? inferMimetype(filename),
           size: row.sizeBytes ?? 0,
           url: row.url,
+          ...(row.previewImageUrl
+            ? { previewImageUrl: row.previewImageUrl }
+            : {}),
+          ...(aliasUrl ? { aliasUrl } : {}),
           ...(canonical
             ? {
                 assetRef: {

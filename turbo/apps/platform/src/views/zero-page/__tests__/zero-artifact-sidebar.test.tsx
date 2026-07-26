@@ -1380,6 +1380,10 @@ ${openFencedHostedSiteUrl}`,
     const videoUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-demo.mp4";
     const audioUrl = "https://cdn.vm7.io/artifacts/test/run-1/voice-note.mp3";
     const htmlUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-site.html";
+    const videoPreviewImageUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/launch-demo-poster.jpg";
+    const htmlPreviewImageUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/launch-site-preview.webp";
     const pdfUrl = "https://cdn.vm7.io/artifacts/test/run-1/rollout-plan.pdf";
     const csvUrl = "https://cdn.vm7.io/artifacts/test/run-1/metrics.csv";
     const logUrl = "https://cdn.vm7.io/artifacts/test/run-1/debug.log";
@@ -1405,6 +1409,7 @@ ${openFencedHostedSiteUrl}`,
           filename: "launch-demo.mp4",
           contentType: "video/mp4",
           size: 2_048_000,
+          previewImageUrl: videoPreviewImageUrl,
         }),
         artifactFile(audioUrl, {
           id: "artifact-audio",
@@ -1417,6 +1422,7 @@ ${openFencedHostedSiteUrl}`,
           filename: "launch-site.html",
           contentType: "text/html",
           size: 4096,
+          previewImageUrl: htmlPreviewImageUrl,
         }),
         artifactFile(pdfUrl, {
           id: "artifact-pdf",
@@ -1470,6 +1476,28 @@ ${openFencedHostedSiteUrl}`,
     expect(
       screen.getByTestId("artifact-html-preview-badge"),
     ).toBeInTheDocument();
+    const videoThumbnail = screen.getByTestId("artifact-video-thumbnail-badge");
+    const htmlThumbnail = screen.getByTestId("artifact-html-thumbnail-badge");
+    expect(videoThumbnail).toHaveAttribute("src", videoPreviewImageUrl);
+    expect(htmlThumbnail).toHaveAttribute("src", htmlPreviewImageUrl);
+    expect(
+      screen.queryByTestId("artifact-video-preview-fallback"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle("launch-site.html artifact thumbnail"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.error(videoThumbnail);
+    fireEvent.error(htmlThumbnail);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-video-preview-fallback"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTitle("launch-site.html artifact thumbnail"),
+      ).toBeInTheDocument();
+    });
 
     click(screen.getByTestId("artifact-inbox-fullscreen-toggle"));
     await waitFor(() => {
