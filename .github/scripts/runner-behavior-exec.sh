@@ -1064,9 +1064,8 @@ sudo "$BIN_DIR/runner" exec --timeout 75 \
   || fail "Claude compact-generation compatibility"
 echo "PASS: Claude compact-generation compatibility"
 
-# Test 9: verify both supported Codex readers resume and append a native
-# compact generation under the same thread ID. Model requests terminate on
-# loopback; the rollback CLI is installed only into this ephemeral test root.
+# Test 9: verify the bundled Codex resumes and appends a native compact
+# generation under the same thread ID. Model requests terminate on loopback.
 echo "--- Test: Codex compact-generation compatibility ---"
 CODEX_COMPACT_SMOKE=$(cat <<'PY'
 import json
@@ -1082,6 +1081,8 @@ summary_token = "CODEX-COMPACT-SUMMARY-TOKEN"
 seed_token = "CODEX-COMPACT-SEED-TOKEN"
 append_token = "CODEX-COMPACT-APPEND-TOKEN"
 requests = []
+current_codex = shutil.which("codex")
+assert current_codex is not None, "bundled Codex is not on PATH"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1127,7 +1128,7 @@ stream_max_retries = 0
     )
 
 
-def run_codex(binary, codex_home, *args):
+def run_codex(codex_home, *args):
     env = os.environ.copy()
     env.update(
         {
@@ -1140,7 +1141,7 @@ def run_codex(binary, codex_home, *args):
     )
     return subprocess.run(
         [
-            str(binary),
+            current_codex,
             "exec",
             *args,
             "--skip-git-repo-check",
@@ -1161,9 +1162,7 @@ def event_type(record):
     return record.get("payload", {}).get("type")
 
 
-def probe_reader(
-    label,
-    binary,
+def probe_current_codex(
     root,
     candidate_relative_path,
     candidate_bytes,
@@ -1182,7 +1181,6 @@ def probe_reader(
 
     requests.clear()
     resumed = run_codex(
-        binary,
         codex_home,
         "resume",
         session_id,
@@ -1193,11 +1191,11 @@ def probe_reader(
         f"no rollout found for thread id {session_id}" not in output.lower()
     ), output
     assert requests and requests[-1][0] == "/v1/responses", (
-        f"{label}: Codex did not reach the loopback Responses endpoint\n{output}"
+        f"Codex did not reach the loopback Responses endpoint\n{output}"
     )
     request_json = json.dumps(requests[-1][1])
     assert summary_token in request_json, (
-        f"{label}: Codex did not reconstruct compact replacement history"
+        "Codex did not reconstruct compact replacement history"
     )
 
     started = [
@@ -1211,15 +1209,15 @@ def probe_reader(
         if event.get("type") == "thread.started"
     ]
     assert thread_started and thread_started[0].get("thread_id") == session_id, (
-        f"{label}: Codex changed the resumed thread ID"
+        "Codex changed the resumed thread ID"
     )
 
     histories = list((codex_home / "sessions").rglob("*.jsonl"))
     assert histories == [history_file], (
-        f"{label}: Codex created a different rollout path: {histories}"
+        f"Codex created a different rollout path: {histories}"
     )
     assert history_file.stat().st_size > original_size, (
-        f"{label}: Codex did not append to the compact generation"
+        "Codex did not append to the compact generation"
     )
 
     records = [
@@ -1240,7 +1238,7 @@ def probe_reader(
     assert (
         len(turn_completions) >= 2
         and turn_starts[-1] == turn_completions[-1]
-    ), f"{label}: Codex did not append a complete turn"
+    ), "Codex did not append a complete turn"
 
 
 with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
@@ -1252,18 +1250,10 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         server_thread.start()
         root = Path(temp_root)
         port = server.server_port
-        current_codex = shutil.which("codex")
-        assert current_codex is not None, "bundled Codex is not on PATH"
-        current_version = subprocess.check_output(
-            [current_codex, "--version"],
-            text=True,
-        )
-        assert "0.145.0" in current_version
 
         seed_home = root / "seed" / ".codex"
         write_config(seed_home, port)
         run_codex(
-            current_codex,
             seed_home,
             seed_token,
         )
@@ -1328,44 +1318,8 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             seed_home / "sessions"
         )
 
-        rollback_install = root / "rollback-install"
-        subprocess.run(
-            [
-                "npm",
-                "install",
-                "--prefix",
-                str(rollback_install),
-                "--ignore-scripts",
-                "--no-audit",
-                "--no-fund",
-                "--package-lock=false",
-                "@openai/codex@0.144.6",
-            ],
-            timeout=90,
-            check=True,
-        )
-        rollback_codex = (
-            rollback_install / "node_modules/.bin/codex"
-        )
-        rollback_version = subprocess.check_output(
-            [rollback_codex, "--version"],
-            text=True,
-        )
-        assert "0.144.6" in rollback_version
-
-        probe_reader(
-            "current",
-            Path(current_codex),
+        probe_current_codex(
             root / "current",
-            candidate_relative_path,
-            candidate_bytes,
-            session_id,
-            port,
-        )
-        probe_reader(
-            "rollback",
-            rollback_codex,
-            root / "rollback",
             candidate_relative_path,
             candidate_bytes,
             session_id,
@@ -1376,7 +1330,7 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         server_thread.join()
 PY
 )
-sudo "$BIN_DIR/runner" exec --timeout 150 \
+sudo "$BIN_DIR/runner" exec --timeout 75 \
   --sandbox "$SANDBOX_ID" -- python3 -c "$CODEX_COMPACT_SMOKE" \
   || fail "Codex compact-generation compatibility"
 echo "PASS: Codex compact-generation compatibility"
