@@ -1079,6 +1079,7 @@ from pathlib import Path
 
 summary_token = "CODEX-COMPACT-SUMMARY-TOKEN"
 seed_token = "CODEX-COMPACT-SEED-TOKEN"
+compacting_turn_token = "CODEX-COMPACTING-TURN-TOKEN"
 candidate_turn_token = "CODEX-COMPACT-CANDIDATE-TURN-TOKEN"
 append_token = "CODEX-COMPACT-APPEND-TOKEN"
 requests = []
@@ -1163,10 +1164,23 @@ def event_type(record):
     return record.get("payload", {}).get("type")
 
 
-def probe_current_codex(
+def normalize_probe_root(value, root):
+    if isinstance(value, str):
+        return value.replace(str(root), "$PROBE_ROOT")
+    if isinstance(value, list):
+        return [normalize_probe_root(item, root) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: normalize_probe_root(item, root)
+            for key, item in value.items()
+        }
+    return value
+
+
+def resume_history(
     root,
     candidate_relative_path,
-    candidate_bytes,
+    history_bytes,
     session_id,
     port,
 ):
@@ -1174,7 +1188,7 @@ def probe_current_codex(
     write_config(codex_home, port)
     history_file = codex_home / "sessions" / candidate_relative_path
     history_file.parent.mkdir(parents=True)
-    history_file.write_bytes(candidate_bytes)
+    history_file.write_bytes(history_bytes)
     assert not list(codex_home.glob("*.sqlite")), (
         "probe must begin without Codex SQLite state"
     )
@@ -1194,7 +1208,42 @@ def probe_current_codex(
     assert requests and requests[-1][0] == "/v1/responses", (
         f"Codex did not reach the loopback Responses endpoint\n{output}"
     )
-    request_json = json.dumps(requests[-1][1])
+    return resumed, history_file, original_size, requests[-1][1]
+
+
+def probe_current_codex(
+    root,
+    candidate_relative_path,
+    full_bytes,
+    candidate_bytes,
+    session_id,
+    port,
+):
+    full_root = root / "full"
+    _, _, _, full_request = resume_history(
+        full_root,
+        candidate_relative_path,
+        full_bytes,
+        session_id,
+        port,
+    )
+    candidate_root = root / "candidate"
+    resumed, history_file, original_size, candidate_request = resume_history(
+        candidate_root,
+        candidate_relative_path,
+        candidate_bytes,
+        session_id,
+        port,
+    )
+    full_input = normalize_probe_root(full_request["input"], full_root)
+    candidate_input = normalize_probe_root(
+        candidate_request["input"],
+        candidate_root,
+    )
+    assert full_input == candidate_input, (
+        "Codex reconstructed different model input from the compact generation"
+    )
+    request_json = json.dumps(candidate_request)
     assert summary_token in request_json, (
         "Codex did not reconstruct compact replacement history"
     )
@@ -1213,7 +1262,8 @@ def probe_current_codex(
         "Codex changed the resumed thread ID"
     )
 
-    histories = list((codex_home / "sessions").rglob("*.jsonl"))
+    candidate_home = candidate_root / ".codex"
+    histories = list((candidate_home / "sessions").rglob("*.jsonl"))
     assert histories == [history_file], (
         f"Codex created a different rollout path: {histories}"
     )
@@ -1267,7 +1317,22 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         candidate_relative_path = source.relative_to(
             seed_home / "sessions"
         )
-        complete_index = next(
+        compacting_turn = run_codex(
+            seed_home,
+            "resume",
+            session_id,
+            compacting_turn_token,
+        )
+        compacting_output = compacting_turn.stdout + compacting_turn.stderr
+        assert (
+            f"no rollout found for thread id {session_id}"
+            not in compacting_output.lower()
+        ), compacting_output
+        records = [
+            json.loads(line)
+            for line in source.read_text().splitlines()
+        ]
+        complete_index = max(
             index
             for index, record in enumerate(records)
             if event_type(record) in {"task_complete", "turn_complete"}
@@ -1348,15 +1413,34 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             if event_type(record) in {"task_complete", "turn_complete"}
         ]
         assert (
-            len(candidate_starts) >= 2
-            and len(candidate_completions) == 1
+            len(candidate_starts) >= 3
+            and len(candidate_completions) == 2
             and candidate_starts[-1] == candidate_completions[-1]
         ), "failed to build a compacting turn delimited by the next turn"
-        candidate_bytes = source.read_bytes()
+        full_lines = source.read_bytes().splitlines(keepends=True)
+        full_records = [json.loads(line) for line in full_lines]
+        compact_index = max(
+            index
+            for index, record in enumerate(full_records)
+            if record.get("type") == "compacted"
+        )
+        candidate_start_index = max(
+            index
+            for index, record in enumerate(full_records[:compact_index])
+            if event_type(record) in {"task_started", "turn_started"}
+        )
+        full_bytes = b"".join(full_lines)
+        candidate_bytes = b"".join(
+            [full_lines[0], *full_lines[candidate_start_index:]]
+        )
+        assert len(candidate_bytes) < len(full_bytes), (
+            "probe candidate must discard history superseded by compaction"
+        )
 
         probe_current_codex(
             root / "current",
             candidate_relative_path,
+            full_bytes,
             candidate_bytes,
             session_id,
             port,
