@@ -27,7 +27,10 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectCanonicalStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -1658,7 +1661,8 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
-    runs.configureRunnerGroup();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.heartbeatRunner(runnerGroup);
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -1670,8 +1674,16 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       prompt: "write artifacts from the sandbox",
       modelProvider: "anthropic-api-key",
     });
+    const claim = await runs.claimRunnerJob(run.runId);
+    const manifest = expectCanonicalStorageManifest(claim.storageManifest);
+    const writebackMount = manifest?.storageMounts.find((mount) => {
+      return mount.writeback === true;
+    });
+    if (!writebackMount) {
+      throw new Error("Expected a canonical writeback mount");
+    }
     const headers = {
-      authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}`,
+      authorization: `Bearer ${claim.sandboxToken}`,
     };
 
     // Checkpoint history blobs: first prepare issues an upload URL, the
@@ -1713,6 +1725,70 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     );
     expectApiError(missingHistoryRun.body);
     expect(missingHistoryRun.body.error.message).toBe("Agent run not found");
+
+    // New GuestAgent versions dual-send storageId with the legacy envelope.
+    // The API authorizes the id against this run's canonical writeback mounts.
+    const canonicalFiles = [
+      {
+        path: "MEMORY.md",
+        hash: createHash("sha256")
+          .update(`bdd canonical writeback ${run.runId}`)
+          .digest("hex"),
+        size: 512,
+      },
+    ];
+    const canonicalPrepared = await api.requestAgentStoragePrepare(
+      {
+        runId: run.runId,
+        storageId: writebackMount.storageId,
+        storageName: "ignored-legacy-name",
+        storageType: "volume",
+        parentVersionId: writebackMount.versionId,
+        files: canonicalFiles,
+      },
+      headers,
+      [200],
+    );
+    if (canonicalPrepared.status !== 200) {
+      throw new Error("Expected canonical storage prepare to succeed");
+    }
+    const canonicalCommitted = await api.requestAgentStorageCommit(
+      {
+        runId: run.runId,
+        storageId: writebackMount.storageId,
+        storageName: "ignored-legacy-name",
+        storageType: "volume",
+        versionId: canonicalPrepared.body.versionId,
+        parentVersionId: writebackMount.versionId,
+        files: canonicalFiles,
+      },
+      headers,
+      [200],
+    );
+    if (canonicalCommitted.status !== 200) {
+      throw new Error("Expected canonical storage commit to succeed");
+    }
+    expect(canonicalCommitted.body).toMatchObject({
+      success: true,
+      storageName: writebackMount.name,
+      fileCount: 1,
+    });
+
+    const unmountedStorage = await api.requestAgentStoragePrepare(
+      {
+        runId: run.runId,
+        storageId: randomUUID(),
+        storageName: writebackMount.name,
+        storageType: "artifact",
+        files: canonicalFiles,
+      },
+      headers,
+      [404],
+    );
+    expectApiError(unmountedStorage.body);
+    expect(unmountedStorage.body.error.message).toBe(
+      "Writeback storage not found",
+    );
 
     // Artifact writes land under the run organization's storage prefix.
     const storageName = `bdd-sandbox-artifact-${randomUUID().slice(0, 8)}`;

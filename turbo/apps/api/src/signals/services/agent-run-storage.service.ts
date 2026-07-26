@@ -1175,7 +1175,6 @@ async function findOrCreateArtifactStorage(
           orgId: args.orgId,
           userId: args.userId,
           name: args.name,
-          type: "artifact",
           s3Prefix: location.s3Prefix,
         })
         .onConflictDoNothing()

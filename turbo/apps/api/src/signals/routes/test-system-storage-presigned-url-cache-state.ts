@@ -137,7 +137,6 @@ async function seedStorageVersionForAction(
       orgId: body.org_id,
       userId: body.user_id,
       name: body.storage_name,
-      type: "volume",
       s3Prefix: body.s3_prefix,
       size: 1,
       fileCount: 1,

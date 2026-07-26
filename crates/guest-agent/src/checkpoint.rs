@@ -447,6 +447,7 @@ async fn snapshot_artifact_plan(
         artifact::CreateSnapshotRequest {
             mount_path: &entry.mount_path,
             files,
+            storage_id: &entry.storage_id,
             storage_name: &entry.name,
             storage_type: "artifact",
             run_id,

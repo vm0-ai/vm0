@@ -802,6 +802,12 @@ export const webhookStoragesPrepareContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
+      /**
+       * Canonical Storage identity. During the dual-send rollout, old API
+       * versions strip this unknown field while new versions authorize it
+       * against the run's writeback mounts.
+       */
+      storageId: z.string().uuid().optional(),
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
       files: z.array(fileEntryWithHashSchema),
@@ -844,6 +850,11 @@ export const webhookStoragesCommitContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
+      /**
+       * Canonical Storage identity. Remove the legacy name/type envelope after
+       * the previous GuestAgent has drained from production.
+       */
+      storageId: z.string().uuid().optional(),
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
       versionId: z.string().min(1, "Version ID is required"),
