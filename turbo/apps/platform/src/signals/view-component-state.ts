@@ -16,6 +16,7 @@ export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
 const internalImageLoadStatusByKey$ = state<Record<string, ImageLoadStatus>>(
   {},
 );
+const internalImageLoadStatusRefCountByKey$ = state<Record<string, number>>({});
 const internalZoomableImageCanvasFitWidthByKey$ = state<Record<string, number>>(
   {},
 );
@@ -98,13 +99,55 @@ const resetImageLoadStatus$ = command(({ set }, key: string) => {
   });
 });
 
+const retainImageLoadStatus$ = command(({ get, set }, key: string) => {
+  const refCount = get(internalImageLoadStatusRefCountByKey$)[key] ?? 0;
+  set(internalImageLoadStatusRefCountByKey$, (current) => {
+    return { ...current, [key]: refCount + 1 };
+  });
+  set(resetImageLoadStatus$, key);
+});
+
+const releaseImageLoadStatus$ = command(({ get, set }, key: string) => {
+  const refCount = get(internalImageLoadStatusRefCountByKey$)[key] ?? 0;
+  if (refCount > 1) {
+    set(internalImageLoadStatusRefCountByKey$, (current) => {
+      return { ...current, [key]: refCount - 1 };
+    });
+    return;
+  }
+
+  set(internalImageLoadStatusRefCountByKey$, (current) => {
+    if (!(key in current)) {
+      return current;
+    }
+    const next = { ...current };
+    delete next[key];
+    return next;
+  });
+  set(internalImageLoadStatusByKey$, (current) => {
+    if (!(key in current)) {
+      return current;
+    }
+    const next = { ...current };
+    delete next[key];
+    return next;
+  });
+});
+
 const resetImageLoadStatusOnRef$ = command(
-  ({ set }, el: HTMLElement, _signal: AbortSignal) => {
+  ({ set }, el: HTMLElement, signal: AbortSignal) => {
     const key = el.dataset.imageLoadKey;
     if (!key) {
       return;
     }
-    set(resetImageLoadStatus$, key);
+    set(retainImageLoadStatus$, key);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(releaseImageLoadStatus$, key);
+      },
+      { once: true },
+    );
   },
 );
 
