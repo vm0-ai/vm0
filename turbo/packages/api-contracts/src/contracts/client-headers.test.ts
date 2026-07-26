@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  addClientCapabilityToVersion,
+  clientVersionSupportsCapability,
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
   CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_HEADER_NAMES,
   CLIENT_REQUEST_ID_HEADER,
@@ -54,6 +57,26 @@ describe("client header contract", () => {
 
   it("identifies clients that understand link-backed Gmail draft cards", () => {
     expect(ZERO_MAIL_CLIENT_VERSION).toBe("3");
+  });
+
+  it("advertises capabilities through backward-compatible version metadata", () => {
+    const version = addClientCapabilityToVersion(
+      "0.636.1",
+      CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+    );
+    expect(version).toBe("0.636.1+structured-feedback-parts-v1");
+    expect(
+      clientVersionSupportsCapability(
+        version,
+        CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+      ),
+    ).toBe(true);
+    expect(
+      clientVersionSupportsCapability(
+        "0.631.1",
+        CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+      ),
+    ).toBe(false);
   });
 
   it("keeps the force upgrade status stable for app clients", () => {

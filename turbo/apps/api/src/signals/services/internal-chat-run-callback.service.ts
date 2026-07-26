@@ -87,6 +87,7 @@ import { insertChatMessage } from "./zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import { attachCanonicalPublishedAssetsToAssistantResponse } from "./canonical-published-asset-message.service";
@@ -1805,7 +1806,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      structuredPrompt: effectiveChatMessageStructuredPrompt(),
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,

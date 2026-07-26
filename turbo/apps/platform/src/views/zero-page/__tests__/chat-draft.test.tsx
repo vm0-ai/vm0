@@ -195,6 +195,18 @@ describe("chat drafts", () => {
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
         draftContent: `Resume the ${params.id} launch notes`,
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [
+            {
+              type: "feedback",
+              quote: "Structured agent quote stays hidden",
+              note: [
+                { type: "text", text: "Structured agent note stays hidden" },
+              ],
+            },
+          ],
+        },
         draftAttachments: [
           {
             id: "agent-draft-brief",
@@ -219,10 +231,17 @@ describe("chat drafts", () => {
       expect(
         screen.getByLabelText("Remove agent-brief.md"),
       ).toBeInTheDocument();
+      expect(textarea()).not.toHaveTextContent(
+        "Structured agent quote stays hidden",
+      );
+      expect(textarea()).not.toHaveTextContent(
+        "Structured agent note stays hidden",
+      );
+      expect(textarea().querySelector("[data-feedback-item]")).toBeNull();
     });
   });
 
-  it("restores a structured agent draft instead of stale legacy state", async () => {
+  it("restores an agent feedback draft with the structured prompt rollout", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000111";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
     const firstAttachment = {
@@ -265,6 +284,11 @@ describe("chat drafts", () => {
               titleSnapshot: "Launch research",
             },
             { type: "text", text: " now" },
+            {
+              type: "feedback",
+              quote: "The launch owner is unclear",
+              note: [{ type: "text", text: "Name the responsible team" }],
+            },
           ],
         },
         draftAttachments: [firstAttachment, secondAttachment],
@@ -286,6 +310,9 @@ describe("chat drafts", () => {
           `span[data-chat-thread-mention="${referencedThreadId}"]`,
         ),
       ).toHaveTextContent("Launch research");
+      const feedbackItem = editor.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent("The launch owner is unclear");
+      expect(feedbackItem).toHaveTextContent("Name the responsible team");
       expect(
         queryAllByRoleFast("button")
           .filter((button) => {
@@ -436,6 +463,65 @@ describe("chat drafts", () => {
     });
   });
 
+  it("preserves feedback draft nodes while navigating between threads", async () => {
+    const quote = "The launch owner is unclear";
+    const note = "Name the responsible team";
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
+      if (params.id !== THREAD_ONE_ID) {
+        return respond(200, {
+          draftContent: null,
+          draftAttachments: null,
+        });
+      }
+      return respond(200, {
+        draftContent: `Feedback on this part of your reply:\n\n> ${quote}\n\n${note}`,
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [
+            {
+              type: "feedback",
+              quote,
+              note: [{ type: "text", text: note }],
+            },
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ONE_ID}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await waitFor(() => {
+      const feedbackItem = textarea().querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(quote);
+      expect(feedbackItem).toHaveTextContent(note);
+    });
+
+    await navigateToThread(THREAD_TWO_ID);
+    await waitFor(() => {
+      expect(textarea().querySelector("[data-feedback-item]")).toBeNull();
+    });
+
+    await navigateToThread(THREAD_ONE_ID);
+    await waitFor(() => {
+      const feedbackItem = textarea().querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(quote);
+      expect(feedbackItem).toHaveTextContent(note);
+    });
+    expect(textarea()).not.toHaveTextContent(
+      "Feedback on this part of your reply:",
+    );
+  });
+
   it("restores a saved server draft with attachments on first thread open", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
@@ -470,10 +556,11 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores and persists the structured draft when the switch is enabled", async () => {
+  it("restores and persists feedback with the structured prompt rollout", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000104";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000105";
+    const feedbackReferencedThreadId = "b1000000-0000-4000-a000-000000000106";
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const draftPatches: Record<string, unknown>[] = [];
     const secondAttachment = {
@@ -528,6 +615,18 @@ describe("chat drafts", () => {
               titleSnapshot: "Launch research",
             },
             { type: "text", text: " now" },
+            {
+              type: "feedback",
+              quote: "The launch sequence is vague",
+              note: [
+                { type: "text", text: "Add the rollout dates from " },
+                {
+                  type: "chat_thread",
+                  threadId: feedbackReferencedThreadId,
+                  titleSnapshot: "Release notes",
+                },
+              ],
+            },
           ],
         },
         draftAttachments: [firstAttachment, secondAttachment],
@@ -555,6 +654,16 @@ describe("chat drafts", () => {
       expect(
         screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
       ).toBeInTheDocument();
+      const feedbackItem = editor.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent("The launch sequence is vague");
+      expect(feedbackItem).toHaveTextContent(
+        "Add the rollout dates from Release notes",
+      );
+      expect(
+        feedbackItem?.querySelector(
+          `span[data-chat-thread-mention="${feedbackReferencedThreadId}"]`,
+        ),
+      ).toHaveTextContent("Release notes");
       expect(
         queryAllByRoleFast("button")
           .filter((button) => {
@@ -572,7 +681,11 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: `Review [Launch research](/chats/${referencedThreadId}) now`,
+        draftContent:
+          `Review [Launch research](/chats/${referencedThreadId}) now\n\n` +
+          "Feedback on this part of your reply:\n\n" +
+          "> The launch sequence is vague\n\n" +
+          `Add the rollout dates from [Release notes](/chats/${feedbackReferencedThreadId})`,
         draftStructuredPrompt: {
           version: 1,
           parts: [
@@ -594,10 +707,27 @@ describe("chat drafts", () => {
               titleSnapshot: "Launch research",
             },
             { type: "text", text: " now" },
+            {
+              type: "feedback",
+              quote: "The launch sequence is vague",
+              note: [
+                { type: "text", text: "Add the rollout dates from " },
+                {
+                  type: "chat_thread",
+                  threadId: feedbackReferencedThreadId,
+                  titleSnapshot: "Release notes",
+                },
+              ],
+            },
           ],
         },
         draftAttachments: [secondAttachment],
       });
+    });
+
+    await user.click(screen.getByLabelText("Remove feedback"));
+    await waitFor(() => {
+      expect(editor.querySelector("[data-feedback-item]")).toBeNull();
     });
   });
 
@@ -619,7 +749,14 @@ describe("chat drafts", () => {
         draftContent: "legacy draft",
         draftStructuredPrompt: {
           version: 1,
-          parts: [{ type: "text", text: "structured draft" }],
+          parts: [
+            { type: "text", text: "structured draft" },
+            {
+              type: "feedback",
+              quote: "Structured quote stays hidden",
+              note: [{ type: "text", text: "Structured note stays hidden" }],
+            },
+          ],
         },
         draftAttachments: [legacyAttachment],
       });
@@ -639,6 +776,9 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(editor).toHaveTextContent("legacy draft");
       expect(editor).not.toHaveTextContent("structured draft");
+      expect(editor).not.toHaveTextContent("Structured quote stays hidden");
+      expect(editor).not.toHaveTextContent("Structured note stays hidden");
+      expect(editor.querySelector("[data-feedback-item]")).toBeNull();
       expect(screen.getByLabelText("Remove legacy.txt")).toBeInTheDocument();
     });
 

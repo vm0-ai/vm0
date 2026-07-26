@@ -1390,6 +1390,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           contentType: firstAttachment.contentType,
         },
         { type: "text" as const, text: " now" },
+        {
+          type: "feedback" as const,
+          quote: "The roadmap lacks dates",
+          note: [{ type: "text" as const, text: "Add the launch milestones" }],
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1422,7 +1427,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const item = await readSingleRichClipboardWrite(clipboard);
     const html = await readClipboardItemText(item, "text/html");
     expect(parseChatClipboardPayload(html)).toStrictEqual({
-      text: `Review [Roadmap](/chats/${referencedThreadId}) now`,
+      text:
+        `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` +
+        "Feedback on this part of your reply:\n\n" +
+        "> The roadmap lacks dates\n\nAdd the launch milestones",
       attachments: [secondAttachment, firstAttachment],
       structuredPrompt,
     });
@@ -1439,6 +1447,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       },
     };
     const messageText = "Create a matching illustration";
+    const feedbackQuote = "The illustration lacks contrast";
+    const feedbackNote = "Increase the foreground contrast";
     const structuredPrompt = {
       version: 1 as const,
       parts: [
@@ -1448,6 +1458,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           template: generationTemplate,
         },
         { type: "text" as const, text: messageText },
+        {
+          type: "feedback" as const,
+          quote: feedbackQuote,
+          note: [{ type: "text" as const, text: feedbackNote }],
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1496,6 +1511,84 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByLabelText(`Remove template ${style.title}`),
       ).toBeInTheDocument();
+      const feedbackItem = composer.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(feedbackQuote);
+      expect(feedbackItem).toHaveTextContent(feedbackNote);
+    });
+  });
+
+  it("preserves structured feedback when the browser rejects the modern clipboard API", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    clipboard.rejectWith(
+      new DOMException("Clipboard blocked", "NotAllowedError"),
+    );
+    const fallbackClipboard = context.mocks.browser.clipboardExecCommand();
+    const threadId = "structured-feedback-copy-fallback";
+    const structuredPrompt = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs an owner",
+          note: [{ type: "text" as const, text: "Name the owner" }],
+        },
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs dates",
+          note: [{ type: "text" as const, text: "Add the milestones" }],
+        },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-structured-feedback-copy-fallback",
+          role: "user",
+          content: "stale legacy feedback",
+          structuredPrompt,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await screen.findByText("The release plan needs an owner");
+    click(screen.getByLabelText("Copy message"));
+
+    await waitFor(() => {
+      expect(fallbackClipboard.writes).toHaveLength(1);
+    });
+    const copied = fallbackClipboard.writes[0];
+    if (!copied) {
+      throw new Error("Fallback clipboard write not found");
+    }
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: (type: string) => {
+          return copied[type] ?? "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      const feedbackItems = composer.querySelectorAll("[data-feedback-item]");
+      expect(feedbackItems).toHaveLength(2);
+      expect(feedbackItems[0]).toHaveTextContent(
+        "The release plan needs an owner",
+      );
+      expect(feedbackItems[0]).toHaveTextContent("Name the owner");
+      expect(feedbackItems[1]).toHaveTextContent(
+        "The release plan needs dates",
+      );
+      expect(feedbackItems[1]).toHaveTextContent("Add the milestones");
     });
   });
 
@@ -1520,6 +1613,16 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
             },
           },
           { type: "text" as const, text: messageText },
+          {
+            type: "feedback" as const,
+            quote: "Structured quote stays hidden",
+            note: [
+              {
+                type: "text" as const,
+                text: "Structured note stays hidden",
+              },
+            ],
+          },
         ],
       },
     };
@@ -1551,6 +1654,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.queryByLabelText(`Remove template ${style.title}`),
       ).not.toBeInTheDocument();
+      expect(
+        composer.querySelector("[data-feedback-item]"),
+      ).not.toBeInTheDocument();
+      expect(composer).not.toHaveTextContent("Structured quote stays hidden");
+      expect(composer).not.toHaveTextContent("Structured note stays hidden");
     });
   });
 });

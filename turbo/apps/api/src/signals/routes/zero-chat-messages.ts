@@ -105,6 +105,10 @@ import {
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "../services/zero-chat-structured-message.service";
+import {
+  effectiveChatMessageStructuredPrompt,
+  splitStructuredMessage,
+} from "../services/zero-chat-structured-message-storage.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   deleteUserMessageQueueItem,
@@ -672,7 +676,7 @@ function resolveRuntimeNormalSendBody(
   const projection = projectStructuredUserMessage(body.structuredPrompt);
   return {
     ...body,
-    prompt: projection.legacyContent,
+    prompt: projection.displayText,
     structuredPrompt: body.structuredPrompt,
     generationTemplate: projection.generationTemplate,
     agentPrompt: projection.agentPrompt,
@@ -897,7 +901,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      structuredPrompt: effectiveChatMessageStructuredPrompt(),
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -1591,6 +1595,7 @@ function appendUnassociatedUserMessage(params: {
       .set({
         draftContent: null,
         draftStructuredPrompt: null,
+        draftStructuredPromptWithFeedback: null,
         draftAttachments: null,
       })
       .where(
@@ -1610,7 +1615,7 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: params.threadId,
         role: "user",
         content: params.prompt,
-        structuredPrompt: params.structuredPrompt,
+        ...splitStructuredMessage(params.structuredPrompt),
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
@@ -1702,6 +1707,7 @@ async function clearThreadDraft(
     .set({
       draftContent: null,
       draftStructuredPrompt: null,
+      draftStructuredPromptWithFeedback: null,
       draftAttachments: null,
     })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
@@ -1737,7 +1743,7 @@ async function appendAssociatedUserMessage(params: {
       chatThreadId: params.threadId,
       role: "user",
       content: params.prompt,
-      structuredPrompt: params.structuredPrompt,
+      ...splitStructuredMessage(params.structuredPrompt),
       runId: params.runId,
       attachFiles: fileIds,
       attachFileMetadata: fileMetadata,
@@ -2759,7 +2765,8 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        structuredPrompt: effectiveChatMessageStructuredPrompt(),
+        structuredPromptWithFeedback: chatMessages.structuredPromptWithFeedback,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -2795,6 +2802,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       role: "user",
       content: queuedMessage.content,
       structuredPrompt: queuedMessage.structuredPrompt,
+      structuredPromptWithFeedback: queuedMessage.structuredPromptWithFeedback,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -2864,6 +2872,7 @@ async function appendInsufficientCreditsMessages(params: {
       .set({
         draftContent: null,
         draftStructuredPrompt: null,
+        draftStructuredPromptWithFeedback: null,
         draftAttachments: null,
       })
       .where(
@@ -2884,7 +2893,7 @@ async function appendInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
       content: params.body.prompt,
-      structuredPrompt: params.body.structuredPrompt,
+      ...splitStructuredMessage(params.body.structuredPrompt),
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,

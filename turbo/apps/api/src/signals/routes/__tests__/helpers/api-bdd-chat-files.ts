@@ -40,6 +40,11 @@ import {
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   storagesCommitContract,
@@ -94,7 +99,13 @@ type StorageType = "volume" | "artifact";
 
 interface AuthHeaders {
   readonly authorization?: string;
+  readonly [CLIENT_VERSION_HEADER]?: string;
 }
+
+const BDD_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.636.1",
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+);
 
 interface BddCompose {
   readonly composeId: string;
@@ -181,7 +192,12 @@ type BddSendMessageBody =
     };
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
-  return actor ? { authorization: "Bearer clerk-session" } : {};
+  return actor
+    ? {
+        authorization: "Bearer clerk-session",
+        [CLIENT_VERSION_HEADER]: BDD_CLIENT_VERSION,
+      }
+    : {};
 }
 
 function authenticate(

@@ -28,6 +28,7 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
+import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -84,6 +85,7 @@ export interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
   readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+  readonly structuredPromptWithFeedback: ChatMessageStructuredPrompt | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -191,7 +193,8 @@ export async function loadNextUnclaimedQueuedUserMessage(
     .select({
       id: chatMessages.id,
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      structuredPrompt: effectiveChatMessageStructuredPrompt(),
+      structuredPromptWithFeedback: chatMessages.structuredPromptWithFeedback,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -327,7 +330,8 @@ async function appendClaimedUserMessage(
   const [queued] = await db
     .select({
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      structuredPrompt: effectiveChatMessageStructuredPrompt(),
+      structuredPromptWithFeedback: chatMessages.structuredPromptWithFeedback,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -357,6 +361,7 @@ async function appendClaimedUserMessage(
     role: "user",
     content: queued.content,
     structuredPrompt: queued.structuredPrompt,
+    structuredPromptWithFeedback: queued.structuredPromptWithFeedback,
     runId: args.runId,
     attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
     attachFileMetadata: queued.attachFileMetadata
@@ -564,7 +569,8 @@ export async function failQueuedUserMessage(
     const [queued] = await tx
       .select({
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        structuredPrompt: effectiveChatMessageStructuredPrompt(),
+        structuredPromptWithFeedback: chatMessages.structuredPromptWithFeedback,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -594,6 +600,7 @@ export async function failQueuedUserMessage(
       role: "user",
       content: queued.content,
       structuredPrompt: queued.structuredPrompt,
+      structuredPromptWithFeedback: queued.structuredPromptWithFeedback,
       attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
       attachFileMetadata: queued.attachFileMetadata
         ? [...queued.attachFileMetadata]

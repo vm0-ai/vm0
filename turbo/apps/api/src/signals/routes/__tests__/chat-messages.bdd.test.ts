@@ -3624,7 +3624,19 @@ describe("CHAT-02: generation templates and attachments", () => {
     };
     const fileId = randomUUID();
     const referencedThreadId = randomUUID();
-    const prompt = `Review [Roadmap](/chats/${referencedThreadId}) now`;
+    const mailDraftId = randomUUID();
+    const feedbackPrompt =
+      `Feedback on 2 parts of an email draft (mail draft ID: ${mailDraftId}):\n\n` +
+      "> First quote\n\nClarify this point\n\n---\n\n" +
+      `> Second quote\n\nAdd supporting evidence from [Roadmap](/chats/${referencedThreadId})`;
+    const prompt =
+      `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` + feedbackPrompt;
+    const displayText = [
+      `[Template: ${style.title}]`,
+      "[File: brief.pdf]",
+      "Review [Chat thread: Roadmap] now",
+      feedbackPrompt,
+    ].join("\n\n");
     const structuredPrompt: UserMessageDocument = {
       version: 1,
       parts: [
@@ -3646,6 +3658,33 @@ describe("CHAT-02: generation templates and attachments", () => {
           titleSnapshot: "Roadmap",
         },
         { type: "text", text: " now" },
+        {
+          type: "feedback",
+          quote: "First quote",
+          note: [{ type: "text", text: "Clarify this point" }],
+          source: {
+            type: "mail",
+            id: mailDraftId,
+            status: "draft",
+          },
+        },
+        {
+          type: "feedback",
+          quote: "Second quote",
+          note: [
+            { type: "text", text: "Add supporting evidence from " },
+            {
+              type: "chat_thread",
+              threadId: referencedThreadId,
+              titleSnapshot: "Roadmap",
+            },
+          ],
+          source: {
+            type: "mail",
+            id: mailDraftId,
+            status: "draft",
+          },
+        },
       ],
     };
 
@@ -3688,7 +3727,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       return item.runId === sent.runId;
     });
     expect(message).toMatchObject({
-      content: prompt,
+      content: displayText,
       structuredPrompt,
     });
     await cancelChatRun(actor, sent.runId);
@@ -4282,6 +4321,10 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
     const fileId = randomUUID();
     const queuedId = randomUUID();
+    const queuedPrompt =
+      "queued structured text\n\n" +
+      "Feedback on this part of your reply:\n\n" +
+      "> Queued quote\n\nRevise after the anchor completes";
     const structuredPrompt: UserMessageDocument = {
       version: 1,
       parts: [
@@ -4292,6 +4335,11 @@ describe("CHAT-02: queued attachments on auto-send", () => {
           contentType: "text/plain",
         },
         { type: "text", text: "queued structured text" },
+        {
+          type: "feedback",
+          quote: "Queued quote",
+          note: [{ type: "text", text: "Revise after the anchor completes" }],
+        },
       ],
     };
     const queued = await chat.requestSendMessage(
@@ -4299,7 +4347,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       {
         agentId,
         threadId: anchor.threadId,
-        prompt: "queued structured text",
+        prompt: queuedPrompt,
         structuredPrompt,
         clientMessageId: queuedId,
         attachFiles: [
@@ -4340,7 +4388,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     expect(run.prompt).toBe(
       [
         `[Web file] ordered.txt (text/plain)\n   [ID] ${fileId}`,
-        "queued structured text",
+        queuedPrompt,
       ].join("\n\n"),
     );
     await cancelChatRun(actor, promoted.runId);

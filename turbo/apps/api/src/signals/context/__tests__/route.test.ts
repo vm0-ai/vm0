@@ -1,3 +1,8 @@
+import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { command, computed } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -48,7 +53,28 @@ const routeTestContract = c.router({
       }),
     },
   },
+  structured: {
+    method: "GET",
+    path: "/__test/structured",
+    responses: {
+      200: z.object({
+        content: z.string(),
+        structuredPrompt: z.unknown().optional(),
+      }),
+    },
+  },
 });
+
+const structuredFeedbackDocument = {
+  version: 1,
+  parts: [
+    {
+      type: "feedback",
+      quote: "The button is hard to find",
+      note: [{ type: "text", text: "Increase the contrast" }],
+    },
+  ],
+} as const;
 
 describe("honoSignalHandler", () => {
   it("reads computed handlers", async () => {
@@ -139,5 +165,49 @@ describe("honoSignalHandler", () => {
     );
 
     expect(response.body).toStrictEqual({ ok: true });
+  });
+
+  it("hides feedback parts from clients without the capability", async () => {
+    const handler$ = computed(() => {
+      return {
+        status: 200 as const,
+        body: {
+          content: "The button is hard to find\nIncrease the contrast",
+          structuredPrompt: structuredFeedbackDocument,
+        },
+      };
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...ROUTES,
+        { route: routeTestContract.structured, handler: handler$ },
+      ],
+    })(routeTestContract);
+
+    const legacyResponse = await accept(
+      client.structured({
+        extraHeaders: { [CLIENT_VERSION_HEADER]: "0.636.1" },
+      }),
+      [200],
+    );
+    expect(legacyResponse.body).toStrictEqual({
+      content: "The button is hard to find\nIncrease the contrast",
+    });
+
+    const capableVersion = addClientCapabilityToVersion(
+      "0.636.1",
+      CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+    );
+    const capableResponse = await accept(
+      client.structured({
+        extraHeaders: { [CLIENT_VERSION_HEADER]: capableVersion },
+      }),
+      [200],
+    );
+    expect(capableResponse.body).toStrictEqual({
+      content: "The button is hard to find\nIncrease the contrast",
+      structuredPrompt: structuredFeedbackDocument,
+    });
   });
 });

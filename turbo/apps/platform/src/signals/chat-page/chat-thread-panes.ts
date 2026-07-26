@@ -153,10 +153,11 @@ const loadDraft$ = command(
     }
 
     const features = get(featureSwitch$);
-    const restoredDraft =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-        ? (structuredDraftState(threadDraft) ?? legacyDraftState(threadDraft))
-        : legacyDraftState(threadDraft);
+    const structuredPromptEnabled =
+      features[FeatureSwitchKey.StructuredPrompt] ?? false;
+    const restoredDraft = structuredPromptEnabled
+      ? (structuredDraftState(threadDraft) ?? legacyDraftState(threadDraft))
+      : legacyDraftState(threadDraft);
     const hasDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.structuredPrompt !== null ||

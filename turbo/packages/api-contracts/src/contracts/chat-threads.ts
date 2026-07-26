@@ -325,20 +325,29 @@ const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   websiteGenerationTemplateRequestSchema,
 ]);
 
+const userMessageTextPartSchema = z
+  .object({
+    type: z.literal("text"),
+    text: z.string().min(1),
+  })
+  .strict();
+
+const userMessageChatThreadPartSchema = z
+  .object({
+    type: z.literal("chat_thread"),
+    threadId: z.string().uuid(),
+    titleSnapshot: z.string().min(1),
+  })
+  .strict();
+
+const feedbackNotePartSchema = z.discriminatedUnion("type", [
+  userMessageTextPartSchema,
+  userMessageChatThreadPartSchema,
+]);
+
 const userMessagePartSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("text"),
-      text: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("chat_thread"),
-      threadId: z.string().uuid(),
-      titleSnapshot: z.string().min(1),
-    })
-    .strict(),
+  userMessageTextPartSchema,
+  userMessageChatThreadPartSchema,
   z
     .object({
       type: z.literal("template"),
@@ -352,6 +361,22 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
       contentType: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("feedback"),
+      quote: z.string().min(1),
+      note: z.array(feedbackNotePartSchema).min(1),
+      source: z
+        .object({
+          type: z.literal("mail"),
+          id: z.string().min(1),
+          status: z.enum(["draft", "sent"]),
+          sentId: z.string().min(1).optional(),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
 ]);
@@ -1354,6 +1379,7 @@ export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
+export type FeedbackNotePart = z.infer<typeof feedbackNotePartSchema>;
 export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<

@@ -68,6 +68,7 @@ import {
 } from "./session-history-decompression";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -753,7 +754,7 @@ async function collectConversationMessages(
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        structuredPrompt: effectiveChatMessageStructuredPrompt(),
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)

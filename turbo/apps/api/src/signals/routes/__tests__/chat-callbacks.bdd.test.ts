@@ -2581,9 +2581,17 @@ describe("CHAT-02: auto-send after failures", () => {
           template: generationTemplate,
         },
         { type: "text", text: "structured failed request" },
+        {
+          type: "feedback",
+          quote: "The failed response omitted the owner",
+          note: [{ type: "text", text: "Name the responsible owner" }],
+        },
       ],
     };
     const templatePrompt = `Select ${style.title} illustration template`;
+    const feedbackPrompt =
+      "Feedback on this part of your reply:\n\n" +
+      "> The failed response omitted the owner\n\nName the responsible owner";
 
     const failedForNormal = await startChatRun(actor, {
       agentId,
@@ -2610,6 +2618,7 @@ describe("CHAT-02: auto-send after failures", () => {
     });
     const normalContext = await waitForRunContext(actor, normal.runId);
     expect(normalContext.body.appendSystemPrompt).toContain(templatePrompt);
+    expect(normalContext.body.appendSystemPrompt).toContain(feedbackPrompt);
     await api.requestCancelRun(actor, normal.runId, [200]);
     await waitForRunStatus(actor, normal.runId, "cancelled");
     await flushWaitUntilForTest();
@@ -2656,6 +2665,7 @@ describe("CHAT-02: auto-send after failures", () => {
     }
     const queuedContext = await waitForRunContext(actor, promoted.runId);
     expect(queuedContext.body.appendSystemPrompt).toContain(templatePrompt);
+    expect(queuedContext.body.appendSystemPrompt).toContain(feedbackPrompt);
 
     await api.requestCancelRun(actor, promoted.runId, [200]);
     await waitForRunStatus(actor, promoted.runId, "cancelled");

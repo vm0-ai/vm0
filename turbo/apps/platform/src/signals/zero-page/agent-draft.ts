@@ -236,11 +236,12 @@ export const loadAgentDraft$ = command(
     signal.throwIfAborted();
 
     const features = get(featureSwitch$);
-    const restoredDraft =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-        ? (structuredAgentDraftState(result.body) ??
-          legacyAgentDraftState(result.body))
-        : legacyAgentDraftState(result.body);
+    const structuredPromptEnabled =
+      features[FeatureSwitchKey.StructuredPrompt] ?? false;
+    const restoredDraft = structuredPromptEnabled
+      ? (structuredAgentDraftState(result.body) ??
+        legacyAgentDraftState(result.body))
+      : legacyAgentDraftState(result.body);
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.structuredPrompt !== null ||

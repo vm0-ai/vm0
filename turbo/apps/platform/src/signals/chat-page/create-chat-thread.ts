@@ -156,6 +156,7 @@ import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts"
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
+  shouldUseStructuredPrompt,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
 
@@ -1895,12 +1896,17 @@ function createMessageSemanticSignals(
         get(featureSwitch$)[FeatureSwitchKey.StructuredPrompt] ?? false;
       return Promise.resolve(
         get(queuedMessages$).map((message) => {
-          const text =
-            structuredPromptEnabled &&
+          const structuredPrompt =
             message.role === "user" &&
-            message.structuredPrompt
-              ? messageDocumentToDisplayText(message.structuredPrompt)
-              : message.content;
+            shouldUseStructuredPrompt(
+              structuredPromptEnabled,
+              message.structuredPrompt,
+            )
+              ? message.structuredPrompt
+              : undefined;
+          const text = structuredPrompt
+            ? messageDocumentToDisplayText(structuredPrompt)
+            : message.content;
           return { id: message.id, text: (text ?? "").trim() };
         }),
       );
@@ -3681,6 +3687,7 @@ interface RecallMessageDeps {
   agentId$: Computed<string | null>;
   rawMessages$: Computed<ChatMessageProjectionEntry[]>;
   draft: DraftSignals;
+  queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
   dataSource: ChatThreadRemote;
 }
@@ -3691,6 +3698,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
     agentId$,
     rawMessages$,
     draft,
+    queueDraftSync$,
     appendOptimisticMessage$,
     dataSource,
   } = deps;
@@ -3723,10 +3731,14 @@ function createRecallMessage(deps: RecallMessageDeps) {
         },
       });
       const features = get(featureSwitch$);
-      const structuredPrompt =
-        (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-          ? (message.structuredPrompt ?? null)
-          : null;
+      const structuredPromptEnabled =
+        features[FeatureSwitchKey.StructuredPrompt] ?? false;
+      const structuredPrompt = shouldUseStructuredPrompt(
+        structuredPromptEnabled,
+        message.structuredPrompt,
+      )
+        ? message.structuredPrompt
+        : null;
       const templatePart = structuredPrompt?.parts.find((part) => {
         return part.type === "template";
       });
@@ -3753,6 +3765,8 @@ function createRecallMessage(deps: RecallMessageDeps) {
         },
         signal,
       );
+      signal.throwIfAborted();
+      await set(queueDraftSync$, signal);
       signal.throwIfAborted();
     },
   );
@@ -4386,6 +4400,7 @@ export function createChatThreadSignals(
     modelSelectionForSend$,
     rawMessages$: messages.rawMessages$,
     draft,
+    queueDraftSync$,
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$: scrollSignals.scrollToBottom$,
