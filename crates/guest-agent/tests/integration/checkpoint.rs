@@ -16,6 +16,13 @@ fn runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, 
     guest_agent::run_context::GuestRuntime::from_process_env()
 }
 
+fn set_claude_session_pruning(runtime: &mut guest_agent::run_context::GuestRuntime, enabled: bool) {
+    runtime
+        .config
+        .feature_flags
+        .insert("claudeSessionPruning".to_string(), enabled);
+}
+
 fn session_file_paths() -> (String, String) {
     let paths = shared_guest_paths();
     (
@@ -219,11 +226,57 @@ fn upload_gzip_validation_response(
 // =========================================================================
 
 #[tokio::test]
+async fn success_checkpoint_preserves_oversized_claude_history_when_pruning_disabled() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, false);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, _) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"rawSize":{source_size}}}"#))
+            .json_body_includes(r#"{"encoding":"zstd"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true, "encoding": "zstd"}));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-unpruned-claude"}));
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+
+    let identity_bytes =
+        std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
+    let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
+    assert_eq!(identity.history_size_bytes, source_size);
+}
+
+#[tokio::test]
 async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
-    let runtime = runtime_from_process_env().unwrap();
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
@@ -310,7 +363,8 @@ async fn success_checkpoint_omits_identity_when_live_history_replacement_fails()
     let api = SharedApiMock::new().await;
     let server = api.server();
 
-    let runtime = runtime_from_process_env().unwrap();
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
@@ -369,7 +423,8 @@ async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
-    let runtime = runtime_from_process_env().unwrap();
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();

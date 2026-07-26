@@ -8019,6 +8019,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.PlanUpgradeGuidance]: true,
       [FeatureSwitchKey.ZeroFinance]: true,
+      [FeatureSwitchKey.ClaudeSessionPruning]: false,
     });
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(

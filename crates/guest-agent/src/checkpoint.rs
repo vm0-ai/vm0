@@ -36,6 +36,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const ARTIFACT_CHECKPOINT_CONCURRENCY: usize = 2;
 const SESSION_HISTORY_ZSTD_LEVEL: i32 = 3;
 const SESSION_HISTORY_COMPRESSION_MIN_BYTES: usize = SESSION_HISTORY_GZIP_MIN_BYTES as usize;
+const CLAUDE_SESSION_PRUNING_FEATURE_FLAG: &str = "claudeSessionPruning";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -515,6 +516,7 @@ async fn snapshot_artifact_plan(
 struct CheckpointInputs<'a> {
     run_id: &'a str,
     framework: env::Framework,
+    claude_session_pruning_enabled: bool,
     home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
     session_id_file: Cow<'a, str>,
@@ -527,6 +529,12 @@ impl<'a> CheckpointInputs<'a> {
         Self {
             run_id: &runtime.config.run_id,
             framework: runtime.config.framework,
+            claude_session_pruning_enabled: runtime
+                .config
+                .feature_flags
+                .get(CLAUDE_SESSION_PRUNING_FEATURE_FLAG)
+                .copied()
+                .unwrap_or(false),
             home_dir: &runtime.config.home_dir,
             artifact_entries: &runtime.config.artifacts,
             session_id_file: Cow::Borrowed(runtime.paths.session_id_file()),
@@ -817,11 +825,13 @@ async fn create_recovery_checkpoint_with_inputs(
 fn prepare_session_history(
     mode: CheckpointMode,
     framework: env::Framework,
+    claude_session_pruning_enabled: bool,
     cli_agent_session_id: &str,
     history_marker_payload: &str,
     history_read_start: std::time::Instant,
 ) -> Result<PreparedSessionHistory, AgentError> {
-    if mode.can_prune_claude_history()
+    if claude_session_pruning_enabled
+        && mode.can_prune_claude_history()
         && framework == env::Framework::ClaudeCode
         && !session_history::is_codex_marker(history_marker_payload)
     {
@@ -1191,6 +1201,7 @@ async fn create_checkpoint_impl(
     let prepared_history = prepare_session_history(
         mode,
         inputs.framework,
+        inputs.claude_session_pruning_enabled,
         &cli_agent_session_id,
         &history_marker_payload,
         history_read_start,
@@ -1995,6 +2006,7 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
+            claude_session_pruning_enabled: false,
             home_dir: &home_dir,
             artifact_entries: &entries,
             session_id_file: guest_paths.session_id_file().into(),
@@ -2088,6 +2100,7 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-codex-zstd-reuse",
             framework: env::Framework::Codex,
+            claude_session_pruning_enabled: false,
             home_dir: &home_dir,
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),
@@ -2190,6 +2203,7 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-codex-zstd-legacy-fallback",
             framework: env::Framework::Codex,
+            claude_session_pruning_enabled: false,
             home_dir: &home_dir,
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),
