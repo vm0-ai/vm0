@@ -1175,7 +1175,7 @@ def probe_current_codex(
     history_file.parent.mkdir(parents=True)
     history_file.write_bytes(candidate_bytes)
     assert not list(codex_home.glob("*.sqlite")), (
-        f"{label}: probe must begin without Codex SQLite state"
+        "probe must begin without Codex SQLite state"
     )
     original_size = history_file.stat().st_size
 
