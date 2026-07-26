@@ -24,7 +24,10 @@ use flate2::{Compression, write::GzEncoder};
 use futures_util::stream::{self, FuturesUnordered, StreamExt};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
-use guest_session_prune::{ClaudeHistorySelection, select_claude_compact_generation};
+use guest_session_prune::{
+    ClaudeHistorySelection, CodexHistorySelection, select_claude_compact_generation,
+    select_codex_compact_generation,
+};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
@@ -37,6 +40,7 @@ const ARTIFACT_CHECKPOINT_CONCURRENCY: usize = 2;
 const SESSION_HISTORY_ZSTD_LEVEL: i32 = 3;
 const SESSION_HISTORY_COMPRESSION_MIN_BYTES: usize = SESSION_HISTORY_GZIP_MIN_BYTES as usize;
 const CLAUDE_SESSION_PRUNING_FEATURE_FLAG: &str = "claudeSessionPruning";
+const CODEX_SESSION_PRUNING_FEATURE_FLAG: &str = "codexSessionPruning";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -64,20 +68,38 @@ struct PreparedSessionHistory {
 
 enum PreparedLiveHistory {
     MatchesCheckpoint,
-    ClaudeCandidate(Option<PendingClaudeHistoryReplacement>),
+    NativeCandidate {
+        kind: NativeHistoryKind,
+        replacement: Option<PendingNativeHistoryReplacement>,
+    },
 }
 
-struct PendingClaudeHistoryReplacement {
+#[derive(Clone, Copy)]
+enum NativeHistoryKind {
+    ClaudeCode,
+    Codex,
+}
+
+impl NativeHistoryKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "Claude",
+            Self::Codex => "Codex",
+        }
+    }
+}
+
+struct PendingNativeHistoryReplacement {
     staged: tempfile::NamedTempFile,
     target: PathBuf,
 }
 
-impl PendingClaudeHistoryReplacement {
+impl PendingNativeHistoryReplacement {
     fn stage(target: &Path, candidate: &[u8]) -> std::io::Result<Self> {
         let parent = target.parent().ok_or_else(|| {
             std::io::Error::new(
                 ErrorKind::InvalidInput,
-                "Claude session history path has no parent",
+                "session history path has no parent",
             )
         })?;
         let mut staged = tempfile::NamedTempFile::new_in(parent)?;
@@ -331,7 +353,7 @@ impl CheckpointMode {
         matches!(self, Self::Recovery)
     }
 
-    fn can_prune_claude_history(self) -> bool {
+    fn can_prune_history(self) -> bool {
         matches!(self, Self::Success)
     }
 }
@@ -517,6 +539,7 @@ struct CheckpointInputs<'a> {
     run_id: &'a str,
     framework: env::Framework,
     claude_session_pruning_enabled: bool,
+    codex_session_pruning_enabled: bool,
     home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
     session_id_file: Cow<'a, str>,
@@ -533,6 +556,12 @@ impl<'a> CheckpointInputs<'a> {
                 .config
                 .feature_flags
                 .get(CLAUDE_SESSION_PRUNING_FEATURE_FLAG)
+                .copied()
+                .unwrap_or(false),
+            codex_session_pruning_enabled: runtime
+                .config
+                .feature_flags
+                .get(CODEX_SESSION_PRUNING_FEATURE_FLAG)
                 .copied()
                 .unwrap_or(false),
             home_dir: &runtime.config.home_dir,
@@ -826,12 +855,13 @@ fn prepare_session_history(
     mode: CheckpointMode,
     framework: env::Framework,
     claude_session_pruning_enabled: bool,
+    codex_session_pruning_enabled: bool,
     cli_agent_session_id: &str,
     history_marker_payload: &str,
     history_read_start: std::time::Instant,
 ) -> Result<PreparedSessionHistory, AgentError> {
     if claude_session_pruning_enabled
-        && mode.can_prune_claude_history()
+        && mode.can_prune_history()
         && framework == env::Framework::ClaudeCode
         && !session_history::is_codex_marker(history_marker_payload)
     {
@@ -841,7 +871,7 @@ fn prepare_session_history(
                 let source_size = candidate.source_size();
                 let candidate_size = candidate.candidate_size();
                 let candidate = candidate.into_bytes();
-                let replacement = PendingClaudeHistoryReplacement::stage(
+                let replacement = PendingNativeHistoryReplacement::stage(
                     Path::new(history_marker_payload),
                     &candidate,
                 )
@@ -854,7 +884,10 @@ fn prepare_session_history(
                 record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
                 let mut prepared =
                     prepare_raw_session_history(mode, history_read_start, candidate)?;
-                prepared.live_history = PreparedLiveHistory::ClaudeCandidate(replacement);
+                prepared.live_history = PreparedLiveHistory::NativeCandidate {
+                    kind: NativeHistoryKind::ClaudeCode,
+                    replacement,
+                };
                 return Ok(prepared);
             }
             Ok(ClaudeHistorySelection::Ineligible(reason)) => {
@@ -869,6 +902,93 @@ fn prepare_session_history(
                 log_warn!(
                     LOG_TAG,
                     "Claude session history selector failed; using ordinary checkpoint path: {error}"
+                );
+                record_sandbox_op(
+                    "session_history_prune",
+                    prune_start.elapsed(),
+                    false,
+                    Some("selector_io"),
+                );
+            }
+        }
+    }
+
+    if codex_session_pruning_enabled
+        && mode.can_prune_history()
+        && framework == env::Framework::Codex
+        && session_history::is_codex_marker(history_marker_payload)
+    {
+        let prune_start = std::time::Instant::now();
+        match session_history::resolve_plain_codex_session_history_from_payload(
+            history_marker_payload,
+        ) {
+            Ok(Some(mut source)) => {
+                match select_codex_compact_generation(&mut source.file, cli_agent_session_id) {
+                    Ok(CodexHistorySelection::Candidate(candidate)) => {
+                        let source_size = candidate.source_size();
+                        let candidate_size = candidate.candidate_size();
+                        let candidate = candidate.into_bytes();
+                        let replacement =
+                            PendingNativeHistoryReplacement::stage(&source.path, &candidate).ok();
+                        log_info!(
+                            LOG_TAG,
+                            "Selected Codex compact generation for checkpoint \
+                             (source_size={source_size}, candidate_size={candidate_size})"
+                        );
+                        record_sandbox_op(
+                            "session_history_prune",
+                            prune_start.elapsed(),
+                            true,
+                            None,
+                        );
+                        let mut prepared =
+                            prepare_raw_session_history(mode, history_read_start, candidate)?;
+                        prepared.live_history = PreparedLiveHistory::NativeCandidate {
+                            kind: NativeHistoryKind::Codex,
+                            replacement,
+                        };
+                        return Ok(prepared);
+                    }
+                    Ok(CodexHistorySelection::Ineligible(reason)) => {
+                        log_info!(
+                            LOG_TAG,
+                            "Codex session history not eligible for pruning: {}",
+                            reason.as_str()
+                        );
+                        record_sandbox_op(
+                            "session_history_prune",
+                            prune_start.elapsed(),
+                            true,
+                            None,
+                        );
+                    }
+                    Err(error) => {
+                        log_warn!(
+                            LOG_TAG,
+                            "Codex session history selector failed; using ordinary checkpoint \
+                             path: {error}"
+                        );
+                        record_sandbox_op(
+                            "session_history_prune",
+                            prune_start.elapsed(),
+                            false,
+                            Some("selector_io"),
+                        );
+                    }
+                }
+            }
+            Ok(None) => {
+                log_info!(
+                    LOG_TAG,
+                    "Codex session history not eligible for pruning: compressed_source"
+                );
+                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+            }
+            Err(error) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Codex session history selector failed; using ordinary checkpoint path: \
+                     {error}"
                 );
                 record_sandbox_op(
                     "session_history_prune",
@@ -1202,6 +1322,7 @@ async fn create_checkpoint_impl(
         mode,
         inputs.framework,
         inputs.claude_session_pruning_enabled,
+        inputs.codex_session_pruning_enabled,
         &cli_agent_session_id,
         &history_marker_payload,
         history_read_start,
@@ -1289,7 +1410,10 @@ fn reconcile_live_history_after_checkpoint(live_history: PreparedLiveHistory) ->
     let started_at = std::time::Instant::now();
     match live_history {
         PreparedLiveHistory::MatchesCheckpoint => true,
-        PreparedLiveHistory::ClaudeCandidate(Some(replacement)) => {
+        PreparedLiveHistory::NativeCandidate {
+            kind,
+            replacement: Some(replacement),
+        } => {
             if replacement.persist().is_ok() {
                 record_sandbox_op(
                     "session_history_prune_reconcile",
@@ -1299,7 +1423,8 @@ fn reconcile_live_history_after_checkpoint(live_history: PreparedLiveHistory) ->
                 );
                 log_info!(
                     LOG_TAG,
-                    "Replaced live Claude session history with committed compact generation"
+                    "Replaced live {} session history with committed compact generation",
+                    kind.label()
                 );
                 true
             } else {
@@ -1311,13 +1436,17 @@ fn reconcile_live_history_after_checkpoint(live_history: PreparedLiveHistory) ->
                 );
                 log_warn!(
                     LOG_TAG,
-                    "Failed to reconcile committed Claude compact generation into live session \
-                     history; next resume will restore checkpoint history"
+                    "Failed to reconcile committed {} compact generation into live session \
+                     history; next resume will restore checkpoint history",
+                    kind.label()
                 );
                 false
             }
         }
-        PreparedLiveHistory::ClaudeCandidate(None) => {
+        PreparedLiveHistory::NativeCandidate {
+            kind,
+            replacement: None,
+        } => {
             record_sandbox_op(
                 "session_history_prune_reconcile",
                 started_at.elapsed(),
@@ -1326,8 +1455,9 @@ fn reconcile_live_history_after_checkpoint(live_history: PreparedLiveHistory) ->
             );
             log_warn!(
                 LOG_TAG,
-                "Failed to reconcile committed Claude compact generation into live session \
-                 history; next resume will restore checkpoint history"
+                "Failed to reconcile committed {} compact generation into live session \
+                 history; next resume will restore checkpoint history",
+                kind.label()
             );
             false
         }
@@ -2007,6 +2137,7 @@ mod tests {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
             claude_session_pruning_enabled: false,
+            codex_session_pruning_enabled: false,
             home_dir: &home_dir,
             artifact_entries: &entries,
             session_id_file: guest_paths.session_id_file().into(),
@@ -2101,6 +2232,7 @@ mod tests {
             run_id: "checkpoint-codex-zstd-reuse",
             framework: env::Framework::Codex,
             claude_session_pruning_enabled: false,
+            codex_session_pruning_enabled: false,
             home_dir: &home_dir,
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),
@@ -2204,6 +2336,7 @@ mod tests {
             run_id: "checkpoint-codex-zstd-legacy-fallback",
             framework: env::Framework::Codex,
             claude_session_pruning_enabled: false,
+            codex_session_pruning_enabled: false,
             home_dir: &home_dir,
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),

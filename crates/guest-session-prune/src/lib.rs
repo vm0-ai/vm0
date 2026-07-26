@@ -1,8 +1,10 @@
 //! Bounded native session-history selection for guest checkpoints.
 //!
-//! The crate currently supports one operation: retain Claude Code's latest
-//! structurally valid native compact generation without changing its session
-//! ID or modifying the live JSONL file.
+//! The crate retains structurally valid native compact generations for Claude
+//! Code and legacy Codex rollouts without changing their native session IDs or
+//! modifying live JSONL files.
+
+mod codex;
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -11,6 +13,11 @@ use std::path::Path;
 
 use serde_json::Value;
 use uuid::Uuid;
+
+pub use codex::{
+    CODEX_COMPACT_GENERATION_MAX_BYTES, CODEX_JSONL_RECORD_MAX_BYTES, CodexHistoryCandidate,
+    CodexHistoryIneligibleReason, CodexHistorySelection, select_codex_compact_generation,
+};
 
 /// Maximum decoded size of an accepted Claude compact generation.
 pub const CLAUDE_COMPACT_GENERATION_MAX_BYTES: u64 = 64 * 1024 * 1024;

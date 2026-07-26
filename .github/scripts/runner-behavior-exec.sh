@@ -1064,7 +1064,317 @@ sudo "$BIN_DIR/runner" exec --timeout 75 \
   || fail "Claude compact-generation compatibility"
 echo "PASS: Claude compact-generation compatibility"
 
-# Test 9: verify /etc/environment is loaded for both user and root
+# Test 9: verify both supported Codex readers resume and append a native
+# compact generation under the same thread ID. Model requests terminate on
+# loopback; the rollback CLI is installed only into this ephemeral test root.
+echo "--- Test: Codex compact-generation compatibility ---"
+CODEX_COMPACT_SMOKE=$(cat <<'PY'
+import json
+import os
+import subprocess
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+summary_token = "CODEX-COMPACT-SUMMARY-TOKEN"
+seed_token = "CODEX-COMPACT-SEED-TOKEN"
+append_token = "CODEX-COMPACT-APPEND-TOKEN"
+requests = []
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("content-length", "0"))
+        payload = json.loads(self.rfile.read(length))
+        requests.append((self.path, payload))
+        body = json.dumps(
+            {
+                "error": {
+                    "message": "loopback compatibility probe",
+                    "type": "invalid_request_error",
+                }
+            }
+        ).encode()
+        self.send_response(400)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, _format, *_args):
+        pass
+
+
+def write_config(codex_home, port):
+    codex_home.mkdir(parents=True)
+    (codex_home / "config.toml").write_text(
+        f"""
+model = "gpt-5.1-codex-mini"
+model_provider = "mock"
+approval_policy = "never"
+sandbox_mode = "read-only"
+
+[model_providers.mock]
+name = "mock"
+base_url = "http://127.0.0.1:{port}/v1"
+env_key = "PATH"
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0
+""".lstrip()
+    )
+
+
+def run_codex(binary, codex_home, *args):
+    env = os.environ.copy()
+    env.update(
+        {
+            "HOME": str(codex_home.parent),
+            "CODEX_HOME": str(codex_home),
+            "NO_PROXY": "127.0.0.1,localhost",
+            "no_proxy": "127.0.0.1,localhost",
+        }
+    )
+    return subprocess.run(
+        [
+            str(binary),
+            "exec",
+            *args,
+            "--skip-git-repo-check",
+            "--json",
+        ],
+        cwd="/home/user/workspace",
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def event_type(record):
+    if record.get("type") != "event_msg":
+        return None
+    return record.get("payload", {}).get("type")
+
+
+def probe_reader(
+    label,
+    binary,
+    root,
+    candidate_relative_path,
+    candidate_bytes,
+    session_id,
+    port,
+):
+    codex_home = root / ".codex"
+    write_config(codex_home, port)
+    history_file = codex_home / "sessions" / candidate_relative_path
+    history_file.parent.mkdir(parents=True)
+    history_file.write_bytes(candidate_bytes)
+    assert not list(codex_home.glob("*.sqlite")), (
+        f"{label}: probe must begin without Codex SQLite state"
+    )
+    original_size = history_file.stat().st_size
+
+    requests.clear()
+    resumed = run_codex(
+        binary,
+        codex_home,
+        "resume",
+        session_id,
+        append_token,
+    )
+    output = resumed.stdout + resumed.stderr
+    assert (
+        f"no rollout found for thread id {session_id}" not in output.lower()
+    ), output
+    assert requests and requests[-1][0] == "/v1/responses", (
+        f"{label}: Codex did not reach the loopback Responses endpoint\n{output}"
+    )
+    request_json = json.dumps(requests[-1][1])
+    assert summary_token in request_json, (
+        f"{label}: Codex did not reconstruct compact replacement history"
+    )
+
+    started = [
+        json.loads(line)
+        for line in resumed.stdout.splitlines()
+        if line.startswith("{")
+    ]
+    thread_started = [
+        event
+        for event in started
+        if event.get("type") == "thread.started"
+    ]
+    assert thread_started and thread_started[0].get("thread_id") == session_id, (
+        f"{label}: Codex changed the resumed thread ID"
+    )
+
+    histories = list((codex_home / "sessions").rglob("*.jsonl"))
+    assert histories == [history_file], (
+        f"{label}: Codex created a different rollout path: {histories}"
+    )
+    assert history_file.stat().st_size > original_size, (
+        f"{label}: Codex did not append to the compact generation"
+    )
+
+    records = [
+        json.loads(line)
+        for line in history_file.read_text().splitlines()
+    ]
+    assert records[0]["payload"]["id"] == session_id
+    turn_starts = [
+        record["payload"]["turn_id"]
+        for record in records
+        if event_type(record) in {"task_started", "turn_started"}
+    ]
+    turn_completions = [
+        record["payload"]["turn_id"]
+        for record in records
+        if event_type(record) in {"task_complete", "turn_complete"}
+    ]
+    assert (
+        len(turn_completions) >= 2
+        and turn_starts[-1] == turn_completions[-1]
+    ), f"{label}: Codex did not append a complete turn"
+
+
+with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        server_thread = threading.Thread(
+            target=server.serve_forever,
+            daemon=True,
+        )
+        server_thread.start()
+        root = Path(temp_root)
+        port = server.server_port
+
+        seed_home = root / "seed" / ".codex"
+        write_config(seed_home, port)
+        run_codex(
+            "/usr/local/bin/codex",
+            seed_home,
+            seed_token,
+        )
+        source = next((seed_home / "sessions").rglob("*.jsonl"))
+        records = [
+            json.loads(line)
+            for line in source.read_text().splitlines()
+        ]
+        session_id = records[0]["payload"]["id"]
+        complete_index = next(
+            index
+            for index, record in enumerate(records)
+            if event_type(record) in {"task_complete", "turn_complete"}
+        )
+        records.insert(
+            complete_index,
+            {
+                "timestamp": "2026-01-01T00:00:00.000Z",
+                "type": "compacted",
+                "payload": {
+                    "message": summary_token,
+                    "replacement_history": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": seed_token,
+                                }
+                            ],
+                        },
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": summary_token,
+                                }
+                            ],
+                        },
+                    ],
+                    "window_number": 2,
+                    "first_window_id": (
+                        "019c0000-0000-7000-8000-000000000001"
+                    ),
+                    "previous_window_id": (
+                        "019c0000-0000-7000-8000-000000000002"
+                    ),
+                    "window_id": (
+                        "019c0000-0000-7000-8000-000000000003"
+                    ),
+                },
+            },
+        )
+        candidate_bytes = "".join(
+            json.dumps(record, separators=(",", ":")) + "\n"
+            for record in records
+        ).encode()
+        candidate_relative_path = source.relative_to(
+            seed_home / "sessions"
+        )
+
+        rollback_install = root / "rollback-install"
+        subprocess.run(
+            [
+                "npm",
+                "install",
+                "--prefix",
+                str(rollback_install),
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--package-lock=false",
+                "@openai/codex@0.144.6",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=True,
+        )
+        rollback_codex = (
+            rollback_install / "node_modules/.bin/codex"
+        )
+        rollback_version = subprocess.check_output(
+            [rollback_codex, "--version"],
+            text=True,
+        )
+        assert "0.144.6" in rollback_version
+
+        probe_reader(
+            "current",
+            Path("/usr/local/bin/codex"),
+            root / "current",
+            candidate_relative_path,
+            candidate_bytes,
+            session_id,
+            port,
+        )
+        probe_reader(
+            "rollback",
+            rollback_codex,
+            root / "rollback",
+            candidate_relative_path,
+            candidate_bytes,
+            session_id,
+            port,
+        )
+
+        server.shutdown()
+        server_thread.join()
+PY
+)
+sudo "$BIN_DIR/runner" exec --timeout 150 \
+  --sandbox "$SANDBOX_ID" -- python3 -c "$CODEX_COMPACT_SMOKE" \
+  || fail "Codex compact-generation compatibility"
+echo "PASS: Codex compact-generation compatibility"
+
+# Test 10: verify /etc/environment is loaded for both user and root
 # [sync:etc-environment] Keep in sync with: crates/runner/scripts/customize-rootfs.sh
 echo "--- Test: environment variables ---"
 EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -1095,7 +1405,7 @@ check_env "user" ""
 check_env "root" "--sudo"
 echo "PASS: environment variables"
 
-# Test 10: verify HTTPS works through proxy for each runtime
+# Test 11: verify HTTPS works through proxy for each runtime
 # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
 echo "--- Test: HTTPS through proxy ---"
 TLS_URL="https://www.google.com"
@@ -1133,7 +1443,7 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "cd /tmp && printf 
 echo "  HTTPS go: ok"
 echo "PASS: HTTPS through proxy"
 
-# Test 11: verify DNS resolution works inside sandbox
+# Test 12: verify DNS resolution works inside sandbox
 # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
 echo "--- Test: DNS resolution ---"
 OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts localhost 2>&1) \

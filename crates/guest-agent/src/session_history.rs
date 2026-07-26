@@ -128,6 +128,11 @@ pub(crate) struct PreparedSessionHistorySidecar {
     source: SessionHistoryCheckpointSource,
 }
 
+pub(crate) struct PlainCodexSessionHistory {
+    pub(crate) path: PathBuf,
+    pub(crate) file: File,
+}
+
 impl PreparedSessionHistorySidecar {
     pub(crate) fn into_source(self) -> SessionHistoryCheckpointSource {
         self.source
@@ -199,6 +204,27 @@ pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
             .open_decoded_reader()?
             .prepare_sidecar(max_decoded_bytes),
     }
+}
+
+pub(crate) fn resolve_plain_codex_session_history_from_payload(
+    payload: &str,
+) -> Result<Option<PlainCodexSessionHistory>, AgentError> {
+    if !is_codex_marker(payload) {
+        return Ok(None);
+    }
+    let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
+        return Err(AgentError::Checkpoint(
+            "Invalid Codex session history marker".to_string(),
+        ));
+    };
+    let Some(session) = resolve_codex_session_history(&sessions_dir, thread_id)? else {
+        return Err(codex_session_not_found_error(&sessions_dir));
+    };
+    if session.is_zstd() {
+        return Ok(None);
+    }
+    let (path, file) = session.into_file()?;
+    Ok(Some(PlainCodexSessionHistory { path, file }))
 }
 
 fn read_session_history_from_payload_impl(
