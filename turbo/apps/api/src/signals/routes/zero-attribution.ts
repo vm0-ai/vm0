@@ -50,7 +50,7 @@ const recordSignupInner$ = command(async ({ get }, signal: AbortSignal) => {
     return { status: 200 as const, body: { recorded: false } };
   }
 
-  await clerk.users.updateUser(auth.userId, {
+  await clerk.users.updateUserMetadata(auth.userId, {
     privateMetadata: {
       ...privateMetadata,
       [SIGNUP_ATTRIBUTION_KEY]: {

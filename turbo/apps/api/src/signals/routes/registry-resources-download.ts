@@ -201,47 +201,47 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "template:black-slabs":
     "eaca342df50857477c64a1ca73faffb4a1819879948fc8610ff095fae9fe3f22",
   "template:black-slabs-v2":
-    "bfdd76866483fc78cf49f1e05a55732c3001dc6edd0899433367773eb3ec2435",
+    "3a7ccdd16e0c710cf20a0deddbd02d3a58a8125d2b3542648bc261bbaf9c5c91",
   "template:blueprint-grid":
     "78988a658604a25feb259d54e4543bfe6d57f85efe7ad67737e02c794d25e491",
   "template:blueprint-grid-v2":
-    "d7b65f9e32a9dc691ba9f96dfc45945d034ee7e841d53ff904a41038574572a3",
+    "c86f579ecca5f29d45eab19ae19157bdc9a9bc14c99cdbf8611b86aaae3aea70",
   "template:coastal-hotel":
     "3907cdbed6078702a058ed9c66c1cdeb76f83f1062efcf3b046cce0bd5c8ed06",
   "template:coastal-hotel-v2":
-    "9851c21802d2c96cb0d6a4b799f73249287b1ed8b46ab94cb719ce4d9f38c3e8",
+    "7c13e39abcabf4cb31bdecdac80e096d6e039367e23c55ca0c3e6647d8fb3583",
   "template:dot-matrix":
     "293a2bc33150ca1f39132a8235c5cf355944e8d3e213b5f7703237314a2ac449",
   "template:dot-matrix-v2":
-    "c3dc44d2445926f7bdc65e017028155aff73d7d59bc0deb783faf6ba689dcf5b",
+    "9a8977088b02b43d15654674571a88c0128b29076bb8e837d47ddd3a6ea4fd6a",
   "template:frame-stack":
     "efbf1788c8b084aa12b7cd48f7a3bf5fc9964d1e6115edbd9124f8cacfbfb3ca",
   "template:frame-stack-v2":
-    "4b29a3ccedbd2259f2663e9bae60bafe0ca03ab98c415c0d2624f2dbd5379972",
+    "cb8cf528ebfce90e6f78081fbaee0029f2790ff5398ffa0642a6c30c8c1e0c1b",
   "template:frosted-scatter":
     "c4507fd54d252dc905df36d99f23ab65a4d41185b78e62515ff3eb3d87a381a4",
   "template:frosted-scatter-v2":
-    "5076edab7ea87ad666e04ce74e8781f19eda8c660c697834d97a4e0d161f3035",
+    "7cab5008dbe877dd5ac43e3511d06109d101dda389bbdcc4589396ff495d9d41",
   "template:gallery-wall":
     "9e81cd8b35f9f6374440cd3a4a8fc214db4a137962797df69bde46248c4e75f3",
   "template:gallery-wall-v2":
-    "26e2033b18e1a1c2efed697b3b29b0f8e589c4556de34bd2caff1dc801b377e5",
+    "c208b3119387422c4487d1a9a6f3c8f1618d0ee77dcfd51cbe26e6b4092cb002",
   "template:glass-bloom":
     "52d38ebc1e62b974f7ab2f6dba8823b0a2f7c43d5c11d8079f32e3ff85df1e50",
   "template:glass-bloom-v2":
-    "3fc6629067c9581ccccd11b679e99e26dbbd45b9d15cce182ce4edb224216d1e",
+    "fe6ac8450b6f822707c3e38c2705b2b88828c9226befa090086dc53635d9f9b6",
   "template:serif-stack":
     "adee3b87f670c52a3cc4971e5dd8795f8ca05690087caff4b0d8b32b9029bead",
   "template:serif-stack-v2":
-    "00b1f6cbce5f93d1df53adc3519b7f32ebc9c1417c78a88b7f2e98fa7aff231e",
+    "e61f178818ccf31a0676ca0183fccbaef3019972adab592d8a5ba17287f54f65",
   "template:sticker-pop":
     "ddae2ff9236b0a4663dc19ad23b374488c0d4d9eddf9b5a4e8cad36011b0b420",
   "template:sticker-pop-v2":
-    "438eea8bf5a75642d2d645c035314416e1a0a44c9462d33b3fd6b36c6f21f673",
+    "d358cbcd29fc725fc282f4675ebba533fd60af564038d8efa0d4a057a29aee5b",
   "template:warm-cards":
     "0a87c99afe9cf24424aa1a1740a57cc3698e43f3c571b8ef1fd4560192f38746",
   "template:warm-cards-v2":
-    "736c14987395cb828dfa3626ace6ea947ca9852509b64d2867c6be105bdb8a12",
+    "f587c890c6db593a4cd102cb863f2484868277200d5630b40712ee8b2ded3153",
 } as const satisfies Record<string, string>;
 
 // Presentation runbook versions keyed by the digest in the current registry.

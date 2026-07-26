@@ -1,4 +1,7 @@
+import { Buffer } from "node:buffer";
+
 import {
+  AST_NODE_TYPES,
   type ParserServicesWithTypeInformation,
   type TSESTree,
 } from "@typescript-eslint/utils";
@@ -6,15 +9,19 @@ import { type TypeChecker } from "typescript";
 
 import {
   isDrizzleColumnType,
-  isDrizzleSqlTag,
   isDrizzleTableType,
   isDrizzleWrapperType,
 } from "../drizzle.ts";
 import { parsePostgres } from "./postgres-parser.ts";
+import {
+  type SqlSourceChunk,
+  type SqlSourceComposer,
+  type SqlSourceVariant,
+} from "./sql-source.ts";
 
-type DirectSqlContext = "predicate" | "statement";
+type SqlAnalysisContext = "predicate" | "statement";
 
-export type DirectSqlFinding =
+export type SqlAnalysisFinding =
   | {
       readonly helper: "and" | "eq" | "gt" | "gte" | "lt" | "lte" | "ne" | "or";
       readonly kind: "helper";
@@ -22,28 +29,38 @@ export type DirectSqlFinding =
     }
   | {
       readonly kind: "query-builder";
-      readonly node: TSESTree.TaggedTemplateExpression;
+      readonly node: TSESTree.Expression;
     };
 
-export interface DirectSqlAnalysis {
-  readonly findings: readonly DirectSqlFinding[];
+export interface SqlAnalysis {
+  readonly expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>;
+  readonly findings: readonly SqlAnalysisFinding[];
+  readonly hasWholeReplacementBoundary: boolean;
   readonly isSimpleSelect: boolean;
   readonly isTruePredicate: boolean;
 }
 
 interface SqlMarker {
+  readonly chunk: SqlSourceChunk;
   readonly isColumn: boolean;
   readonly isTable: boolean;
   readonly isWrapper: boolean;
   readonly node: TSESTree.Expression;
 }
 
-interface ParsedDirectSql {
+interface ParsedSql {
   readonly markers: ReadonlyMap<string, SqlMarker>;
+  readonly sourceRanges: readonly SqlSourceRange[];
   readonly statement: unknown;
 }
 
-type StructuralExpression =
+interface SqlSourceRange {
+  readonly chunk: SqlSourceChunk;
+  readonly end: number;
+  readonly start: number;
+}
+
+type StructuralExpression = (
   | {
       readonly children: readonly StructuralExpression[];
       readonly kind: "opaque";
@@ -65,11 +82,22 @@ type StructuralExpression =
       readonly items: readonly StructuralExpression[];
       readonly kind: "boolean";
       readonly operator: "and" | "or";
-    };
+    }
+) & {
+  readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
+};
+
+type ClassifiedHelperFinding = Extract<
+  SqlAnalysisFinding,
+  { readonly kind: "helper" }
+> & {
+  readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
+};
 
 interface ExpressionClassification {
   readonly anchor: TSESTree.Node | undefined;
-  readonly findings: readonly DirectSqlFinding[];
+  readonly findings: readonly ClassifiedHelperFinding[];
+  readonly isWholeReplacement: boolean;
 }
 
 interface RelationMatch {
@@ -78,15 +106,9 @@ interface RelationMatch {
   readonly sourceTable: SqlMarker;
 }
 
-const EMPTY_ANALYSIS: DirectSqlAnalysis = {
-  findings: [],
-  isSimpleSelect: false,
-  isTruePredicate: false,
-};
-
 const ANALYSIS_CACHE = new WeakMap<
-  TSESTree.TaggedTemplateExpression,
-  Map<DirectSqlContext, DirectSqlAnalysis>
+  SqlSourceComposer,
+  WeakMap<TSESTree.Expression, Map<SqlAnalysisContext, SqlAnalysis>>
 >();
 
 const COMPARISON_HELPERS = new Map<
@@ -140,10 +162,6 @@ function recordProperty(
   return isRecord(result) ? result : undefined;
 }
 
-function quasiText(node: TSESTree.TemplateElement): string {
-  return node.value.cooked ?? node.value.raw;
-}
-
 function markerIsColumn(
   node: TSESTree.Expression,
   checker: TypeChecker,
@@ -188,30 +206,46 @@ function markerPrefix(quasis: readonly string[]): string {
   }
 }
 
-function parseDirectSql(
-  node: TSESTree.TaggedTemplateExpression,
-  context: DirectSqlContext,
+function parseSqlVariant(
+  variant: SqlSourceVariant,
+  context: SqlAnalysisContext,
+  trackSourceRanges: boolean,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
-): ParsedDirectSql | null {
-  if (!isDrizzleSqlTag(checker, services, node.tag)) {
-    return null;
-  }
-  const quasis = node.quasi.quasis.map(quasiText);
-  const prefix = markerPrefix(quasis);
+): ParsedSql | null {
+  const literals = variant.chunks.flatMap((chunk) => {
+    return chunk.kind === "literal" ? [chunk.text] : [];
+  });
+  const prefix = markerPrefix(literals);
   const markers = new Map<string, SqlMarker>();
-  let source = quasis[0] ?? "";
-  for (let index = 0; index < node.quasi.expressions.length; index += 1) {
-    const expression = node.quasi.expressions[index];
-    const followingQuasi = quasis[index + 1];
-    if (expression === undefined || followingQuasi === undefined) {
-      return null;
+  const sourceRanges: SqlSourceRange[] = [];
+  const contextPrefix = context === "statement" ? "" : "SELECT 1 WHERE ";
+  let source = contextPrefix;
+  // libpg_query locations are UTF-8 byte offsets, not JavaScript string
+  // indexes.
+  let sourceByteLength = trackSourceRanges
+    ? Buffer.byteLength(contextPrefix)
+    : 0;
+  let markerIndex = 0;
+  for (const chunk of variant.chunks) {
+    const start = sourceByteLength;
+    if (chunk.kind === "literal") {
+      source += chunk.text;
+      if (trackSourceRanges) {
+        sourceByteLength += Buffer.byteLength(chunk.text);
+        sourceRanges.push({ chunk, end: sourceByteLength, start });
+      }
+      continue;
     }
-    const name = `${prefix}${index}`;
+    const expression = chunk.expression;
+    const name = `${prefix}${markerIndex}`;
+    const markerSource = `"${name}"`;
+    markerIndex += 1;
     let cachedColumn: boolean | undefined;
     let cachedTable: boolean | undefined;
     let cachedWrapper: boolean | undefined;
     const marker: SqlMarker = {
+      chunk,
       get isColumn(): boolean {
         cachedColumn ??= markerIsColumn(expression, checker, services);
         return cachedColumn;
@@ -227,17 +261,19 @@ function parseDirectSql(
       node: expression,
     };
     markers.set(name, marker);
-    source += `"${name}"${followingQuasi}`;
+    source += markerSource;
+    if (trackSourceRanges) {
+      sourceByteLength += Buffer.byteLength(markerSource);
+      sourceRanges.push({ chunk, end: sourceByteLength, start });
+    }
   }
 
-  const parseResult = parsePostgres(
-    context === "statement" ? source : `SELECT 1 WHERE ${source}`,
-  );
+  const parseResult = parsePostgres(source);
   if (parseResult === null || parseResult.statements.length !== 1) {
     return null;
   }
   const statement = parseResult.statements[0];
-  return statement === undefined ? null : { markers, statement };
+  return statement === undefined ? null : { markers, sourceRanges, statement };
 }
 
 function stringNodeValue(value: unknown): string | undefined {
@@ -290,9 +326,48 @@ function isExpressionNode(value: unknown): boolean {
   );
 }
 
+function syntaxLocation(value: unknown): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  for (const payload of Object.values(value)) {
+    if (isRecord(payload) && typeof payload.location === "number") {
+      return payload.location;
+    }
+  }
+  return undefined;
+}
+
+function ownSourceChunks(
+  value: unknown,
+  sourceRanges: readonly SqlSourceRange[],
+): ReadonlySet<SqlSourceChunk> {
+  const location = syntaxLocation(value);
+  if (location === undefined || location < 0) {
+    return new Set();
+  }
+  const range = sourceRanges.find((candidate) => {
+    return candidate.start <= location && location < candidate.end;
+  });
+  return range === undefined ? new Set() : new Set([range.chunk]);
+}
+
+function mergeSourceChunks(
+  own: ReadonlySet<SqlSourceChunk>,
+  expressions: readonly StructuralExpression[],
+): ReadonlySet<SqlSourceChunk> {
+  return new Set([
+    ...own,
+    ...expressions.flatMap((expression) => {
+      return [...expression.sourceChunks];
+    }),
+  ]);
+}
+
 function collectStructuralExpressions(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
 ): StructuralExpression[] {
   const expressions: StructuralExpression[] = [];
 
@@ -307,7 +382,7 @@ function collectStructuralExpressions(
       return;
     }
     if (isExpressionNode(current)) {
-      expressions.push(structuralExpression(current, markers));
+      expressions.push(structuralExpression(current, markers, sourceRanges));
       return;
     }
     for (const child of Object.values(current)) {
@@ -322,13 +397,21 @@ function collectStructuralExpressions(
 function structuralExpression(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
 ): StructuralExpression {
   const marker = columnMarker(value, markers);
   if (marker !== undefined) {
-    return { kind: "marker", marker };
+    return {
+      kind: "marker",
+      marker,
+      sourceChunks: new Set([marker.chunk]),
+    };
   }
   if (recordProperty(value, "A_Const") !== undefined) {
-    return { kind: "constant" };
+    return {
+      kind: "constant",
+      sourceChunks: ownSourceChunks(value, sourceRanges),
+    };
   }
 
   const binary = recordProperty(value, "A_Expr");
@@ -339,11 +422,17 @@ function structuralExpression(
     binary.lexpr !== undefined &&
     binary.rexpr !== undefined
   ) {
+    const left = structuralExpression(binary.lexpr, markers, sourceRanges);
+    const right = structuralExpression(binary.rexpr, markers, sourceRanges);
     return {
       kind: "comparison",
-      left: structuralExpression(binary.lexpr, markers),
+      left,
       operator: binaryOperator,
-      right: structuralExpression(binary.rexpr, markers),
+      right,
+      sourceChunks: mergeSourceChunks(ownSourceChunks(value, sourceRanges), [
+        left,
+        right,
+      ]),
     };
   }
 
@@ -353,26 +442,36 @@ function structuralExpression(
     Array.isArray(boolean.args) &&
     boolean.args.length >= 2
   ) {
+    const items = boolean.args.map((item) => {
+      return structuralExpression(item, markers, sourceRanges);
+    });
     return {
-      items: boolean.args.map((item) => {
-        return structuralExpression(item, markers);
-      }),
+      items,
       kind: "boolean",
       operator: boolean.boolop === "AND_EXPR" ? "and" : "or",
+      sourceChunks: mergeSourceChunks(
+        ownSourceChunks(value, sourceRanges),
+        items,
+      ),
     };
   }
 
   const payload = isRecord(value) ? Object.values(value)[0] : undefined;
+  const children = collectStructuralExpressions(payload, markers, sourceRanges);
   return {
-    children: collectStructuralExpressions(payload, markers),
+    children,
     kind: "opaque",
+    sourceChunks: mergeSourceChunks(
+      ownSourceChunks(value, sourceRanges),
+      children,
+    ),
   };
 }
 
-function deduplicateFindings(
-  findings: readonly DirectSqlFinding[],
-): DirectSqlFinding[] {
-  const result: DirectSqlFinding[] = [];
+function deduplicateFindings<T extends SqlAnalysisFinding>(
+  findings: readonly T[],
+): T[] {
+  const result: T[] = [];
   const seen = new Map<TSESTree.Node, Set<string>>();
   for (const finding of findings) {
     const key =
@@ -403,12 +502,14 @@ function classifyExpression(
           ? expression.marker.node
           : undefined,
       findings: [],
+      isWholeReplacement: false,
     };
   }
   if (expression.kind === "constant") {
     return {
       anchor: undefined,
       findings: [],
+      isWholeReplacement: false,
     };
   }
   if (expression.kind === "comparison") {
@@ -425,8 +526,10 @@ function classifyExpression(
             helper,
             kind: "helper",
             node: expression.left.marker.node,
+            sourceChunks: expression.sourceChunks,
           },
         ],
+        isWholeReplacement: true,
       };
     }
     const left = classifyExpression(expression.left);
@@ -437,7 +540,8 @@ function classifyExpression(
         left.findings[0]?.node ??
         right.anchor ??
         right.findings[0]?.node,
-      findings: deduplicateFindings([...left.findings, ...right.findings]),
+      findings: [...left.findings, ...right.findings],
+      isWholeReplacement: false,
     };
   }
   if (expression.kind === "boolean") {
@@ -452,14 +556,17 @@ function classifyExpression(
               helper: expression.operator,
               kind: "helper",
               node: reportNode,
+              sourceChunks: expression.sourceChunks,
             },
           ],
+          isWholeReplacement: true,
         };
       }
     }
     return {
       anchor: undefined,
       findings: [],
+      isWholeReplacement: false,
     };
   }
 
@@ -474,11 +581,10 @@ function classifyExpression(
       children.find((child) => {
         return child.findings[0] !== undefined;
       })?.findings[0]?.node,
-    findings: deduplicateFindings(
-      children.flatMap((child) => {
-        return child.findings;
-      }),
-    ),
+    findings: children.flatMap((child) => {
+      return child.findings;
+    }),
+    isWholeReplacement: false,
   };
 }
 
@@ -602,16 +708,159 @@ function isTrueConstant(expression: unknown): boolean {
   return boolean?.boolval === true;
 }
 
+function isCompositionBoundary(
+  node: TSESTree.Node,
+): node is TSESTree.Expression {
+  return (
+    node.type === AST_NODE_TYPES.CallExpression ||
+    node.type === AST_NODE_TYPES.ChainExpression ||
+    node.type === AST_NODE_TYPES.ConditionalExpression ||
+    node.type === AST_NODE_TYPES.Identifier ||
+    node.type === AST_NODE_TYPES.TaggedTemplateExpression ||
+    node.type === AST_NODE_TYPES.TSAsExpression ||
+    node.type === AST_NODE_TYPES.TSNonNullExpression ||
+    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    node.type === AST_NODE_TYPES.TSTypeAssertion
+  );
+}
+
+function isWithinCompositionRoot(
+  node: TSESTree.Node,
+  root: TSESTree.Expression,
+): boolean {
+  let current: TSESTree.Node | null | undefined = node;
+  while (current !== undefined && current !== null) {
+    if (current === root) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function commonCompositionBoundaries(
+  chunks: readonly SqlSourceChunk[],
+  root: TSESTree.Expression,
+): TSESTree.Expression[] {
+  const contributingChunks = chunks.filter((chunk) => {
+    return chunk.kind === "expression" || chunk.text.trim() !== "";
+  });
+  const firstChunk = contributingChunks[0];
+  if (firstChunk === undefined) {
+    return [];
+  }
+  // A definition can feed multiple SQL contexts with different precedence.
+  // Keep replacement ownership at the current use site instead of changing the
+  // shared initializer or factory body.
+  const commonBoundaries = [
+    ...new Set(
+      firstChunk.origins.filter((origin): origin is TSESTree.Expression => {
+        return (
+          isCompositionBoundary(origin) &&
+          isWithinCompositionRoot(origin, root) &&
+          contributingChunks.every((chunk) => {
+            return chunk.origins.includes(origin);
+          })
+        );
+      }),
+    ),
+  ];
+  const callBoundaries = commonBoundaries.filter((boundary) => {
+    return boundary.type === AST_NODE_TYPES.CallExpression;
+  });
+  const identifierBoundaries = commonBoundaries.filter((boundary) => {
+    return boundary.type === AST_NODE_TYPES.Identifier;
+  });
+  const prioritizedBoundaries = new Set<TSESTree.Expression>([
+    ...callBoundaries,
+    ...identifierBoundaries,
+  ]);
+  return [
+    ...callBoundaries,
+    ...identifierBoundaries,
+    ...[...commonBoundaries].reverse().filter((boundary) => {
+      return !prioritizedBoundaries.has(boundary);
+    }),
+  ];
+}
+
+function commonCompositionBoundary(
+  variant: SqlSourceVariant,
+  root: TSESTree.Expression,
+): TSESTree.Expression | undefined {
+  return commonCompositionBoundaries(variant.chunks, root)[0];
+}
+
+function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
+  return {
+    helper: finding.helper,
+    kind: finding.kind,
+    node: finding.node,
+  };
+}
+
+function replacementBoundaryForFinding(
+  finding: ClassifiedHelperFinding,
+  variant: SqlSourceVariant,
+  root: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): TSESTree.Expression | undefined {
+  // A parsed descendant can cross template boundaries because Drizzle inserts
+  // nested SQL without parentheses. Reparse each editable boundary in
+  // isolation before claiming that the helper can replace it.
+  const candidates = commonCompositionBoundaries(
+    [...finding.sourceChunks],
+    root,
+  );
+  for (const candidate of candidates) {
+    const candidateVariant = {
+      chunks: variant.chunks.filter((chunk) => {
+        return chunk.origins.includes(candidate);
+      }),
+    };
+    const parsed = parseSqlVariant(
+      candidateVariant,
+      "predicate",
+      false,
+      checker,
+      services,
+    );
+    const expression =
+      parsed === null ? undefined : predicateExpression(parsed.statement);
+    if (parsed === null || expression === undefined) {
+      continue;
+    }
+    const classification = classifyExpression(
+      structuralExpression(expression, parsed.markers, parsed.sourceRanges),
+    );
+    if (
+      classification.isWholeReplacement &&
+      classification.findings.length === 1 &&
+      classification.findings[0]?.helper === finding.helper
+    ) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 function analyzeParsed(
-  node: TSESTree.TaggedTemplateExpression,
-  context: DirectSqlContext,
-  parsed: ParsedDirectSql,
-): DirectSqlAnalysis {
+  node: TSESTree.Expression,
+  context: SqlAnalysisContext,
+  hasLocalExpansion: boolean,
+  parsed: ParsedSql,
+  variant: SqlSourceVariant,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): SqlAnalysis {
   const simpleSelect =
     context === "statement" && isSimpleSelect(parsed.statement, parsed.markers);
   if (simpleSelect) {
     return {
+      expandedTemplates: new Set(),
       findings: [{ kind: "query-builder", node }],
+      hasWholeReplacementBoundary: true,
       isSimpleSelect: true,
       isTruePredicate: false,
     };
@@ -623,15 +872,60 @@ function analyzeParsed(
       : parsed.statement;
   const structuralExpressions =
     context === "predicate" && expression !== undefined
-      ? [structuralExpression(expression, parsed.markers)]
-      : collectStructuralExpressions(expression, parsed.markers);
+      ? [structuralExpression(expression, parsed.markers, parsed.sourceRanges)]
+      : collectStructuralExpressions(
+          expression,
+          parsed.markers,
+          parsed.sourceRanges,
+        );
+  const classifications = structuralExpressions.map((item) => {
+    return classifyExpression(item);
+  });
+  const predicateClassification =
+    context === "predicate" ? classifications[0] : undefined;
+  const predicateFinding = predicateClassification?.findings[0];
+  const rootNeedsCompositionBoundary =
+    hasLocalExpansion && predicateFinding !== undefined;
+  const canReplaceRoot =
+    predicateClassification?.isWholeReplacement === true &&
+    predicateClassification.findings.length === 1 &&
+    predicateFinding?.kind === "helper" &&
+    rootNeedsCompositionBoundary;
+  const replacementBoundary = canReplaceRoot
+    ? commonCompositionBoundary(variant, node)
+    : undefined;
+  const hasWholeReplacementBoundary = replacementBoundary !== undefined;
   const findings = deduplicateFindings(
-    structuralExpressions.flatMap((item) => {
-      return classifyExpression(item).findings;
+    classifications.flatMap((classification) => {
+      if (hasWholeReplacementBoundary) {
+        return classification.findings.map((finding) => {
+          return publicFinding({
+            ...finding,
+            node: replacementBoundary ?? node,
+          });
+        });
+      }
+      return classification.findings.flatMap((finding) => {
+        if (!hasLocalExpansion) {
+          return [publicFinding(finding)];
+        }
+        const boundary = replacementBoundaryForFinding(
+          finding,
+          variant,
+          node,
+          checker,
+          services,
+        );
+        return boundary === undefined
+          ? []
+          : [publicFinding({ ...finding, node: boundary })];
+      });
     }),
   );
   return {
+    expandedTemplates: new Set(),
     findings,
+    hasWholeReplacementBoundary,
     isSimpleSelect: false,
     isTruePredicate:
       context === "predicate" &&
@@ -640,22 +934,109 @@ function analyzeParsed(
   };
 }
 
-export function analyzeDirectSql(
-  node: TSESTree.TaggedTemplateExpression,
-  context: DirectSqlContext,
+function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
+  if (
+    left.isSimpleSelect !== right.isSimpleSelect ||
+    left.isTruePredicate !== right.isTruePredicate ||
+    left.hasWholeReplacementBoundary !== right.hasWholeReplacementBoundary ||
+    left.findings.length !== right.findings.length
+  ) {
+    return false;
+  }
+  return left.findings.every((finding, index) => {
+    const other = right.findings[index];
+    return (
+      other !== undefined &&
+      finding.kind === other.kind &&
+      (finding.kind === "query-builder" ||
+        (other.kind === "helper" && finding.helper === other.helper))
+    );
+  });
+}
+
+function emptyAnalysis(
+  expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>,
+): SqlAnalysis {
+  return {
+    expandedTemplates,
+    findings: [],
+    hasWholeReplacementBoundary: false,
+    isSimpleSelect: false,
+    isTruePredicate: false,
+  };
+}
+
+export function analyzeSql(
+  node: TSESTree.Expression,
+  context: SqlAnalysisContext,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
-): DirectSqlAnalysis {
-  const cached = ANALYSIS_CACHE.get(node)?.get(context);
+  composer: SqlSourceComposer,
+): SqlAnalysis {
+  let composerCache = ANALYSIS_CACHE.get(composer);
+  if (composerCache === undefined) {
+    composerCache = new WeakMap();
+    ANALYSIS_CACHE.set(composer, composerCache);
+  }
+  const cached = composerCache.get(node)?.get(context);
   if (cached !== undefined) {
     return cached;
   }
-  const parsed = parseDirectSql(node, context, checker, services);
-  const analysis =
-    parsed === null ? EMPTY_ANALYSIS : analyzeParsed(node, context, parsed);
-  const nodeCache = ANALYSIS_CACHE.get(node);
+  const source = composer.compose(node);
+  let analysis: SqlAnalysis;
+  if (source === null) {
+    analysis = emptyAnalysis(new Set());
+  } else {
+    const variants: SqlAnalysis[] = [];
+    for (const variant of source.variants) {
+      const parsed = parseSqlVariant(
+        variant,
+        context,
+        source.hasLocalExpansion,
+        checker,
+        services,
+      );
+      if (parsed === null) {
+        variants.length = 0;
+        break;
+      }
+      variants.push(
+        analyzeParsed(
+          node,
+          context,
+          source.hasLocalExpansion,
+          parsed,
+          variant,
+          checker,
+          services,
+        ),
+      );
+    }
+    const first = variants[0];
+    if (
+      first === undefined ||
+      variants.some((variant) => {
+        return !sameAnalysisSignature(variant, first);
+      })
+    ) {
+      analysis = emptyAnalysis(source.expandedTemplates);
+    } else {
+      analysis = {
+        expandedTemplates: source.expandedTemplates,
+        findings: deduplicateFindings(
+          variants.flatMap((variant) => {
+            return variant.findings;
+          }),
+        ),
+        hasWholeReplacementBoundary: first.hasWholeReplacementBoundary,
+        isSimpleSelect: first.isSimpleSelect,
+        isTruePredicate: first.isTruePredicate,
+      };
+    }
+  }
+  const nodeCache = composerCache.get(node);
   if (nodeCache === undefined) {
-    ANALYSIS_CACHE.set(node, new Map([[context, analysis]]));
+    composerCache.set(node, new Map([[context, analysis]]));
   } else {
     nodeCache.set(context, analysis);
   }

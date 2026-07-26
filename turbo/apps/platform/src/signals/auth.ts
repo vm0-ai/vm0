@@ -1,3 +1,5 @@
+import { Clerk } from "@clerk/clerk-js";
+import { ui } from "@clerk/ui";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
@@ -27,6 +29,7 @@ type AllowedAuthRedirectOrigin = string | RegExp;
 export interface ClerkSatelliteConfig {
   readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
   readonly isSatellite: true;
+  readonly satelliteAutoSync: true;
 }
 
 const AD_ATTRIBUTION_PARAMS = [
@@ -93,6 +96,7 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
   return {
     domain: PRODUCTION_SATELLITE_HOSTNAME,
     isSatellite: true,
+    satelliteAutoSync: true,
   };
 }
 
@@ -294,20 +298,30 @@ export function buildSignInRedirectUrl(
  *
  * Initializes the real Clerk SDK with the publishable key.
  */
+export const clerkUi$ = computed(() => {
+  return ui;
+});
+
 export const clerk$ = computed(async () => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
 
-  // Dynamic import: @clerk/clerk-js is a 2.8MB webpack monolith (53%
-  // Web3/Solana/Coinbase code we don't use) that cannot be tree-shaken.
-  // Moving it to a separate async chunk avoids blocking initial JS parsing.
-  const { Clerk } = await import("@clerk/clerk-js");
+  const { ClerkUI } = ui;
+  if (!ClerkUI) {
+    throw new Error("Clerk UI module did not provide its renderer");
+  }
 
   const clerkInstance = satelliteConfig
     ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
     : new Clerk(publishableKey);
   await clerkInstance.load({
-    ...(satelliteConfig ? { isSatellite: true } : {}),
+    ui,
+    ...(satelliteConfig
+      ? {
+          isSatellite: true,
+          satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+        }
+      : {}),
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
