@@ -408,6 +408,9 @@ function mockClipboardExecCommand(
       if (command !== "copy") {
         return false;
       }
+      if (document.getSelection()?.rangeCount === 0) {
+        return false;
+      }
       const data: Record<string, string> = {};
       const event = new Event("copy", {
         bubbles: true,

@@ -135,7 +135,56 @@ async function writeClipboardItem(items: Record<string, Blob>): Promise<void> {
   await navigator.clipboard.write([new ClipboardItem(items)]);
 }
 
+function executeLegacyCopyCommand(): boolean {
+  const command: unknown = Reflect.get(document, "execCommand");
+  if (typeof command !== "function") {
+    return false;
+  }
+  return Reflect.apply(command, document, ["copy"]) === true;
+}
+
+function runLegacyClipboardCopy(
+  prepare: () => void,
+  cleanup: () => void,
+): boolean {
+  // eslint-disable-next-line no-restricted-syntax -- clipboard API requires try/catch for legacy execCommand fallback
+  try {
+    prepare();
+    return executeLegacyCopyCommand();
+  } catch (error: unknown) {
+    throwIfAbort(error);
+    return false;
+  } finally {
+    cleanup();
+  }
+}
+
 function writeRichClipboardFallback(plainText: string, html: string): boolean {
+  const body = document.body;
+  if (!body) {
+    return false;
+  }
+
+  const selection = window.getSelection();
+  const previousRanges = selection
+    ? Array.from({ length: selection.rangeCount }, (_, index) => {
+        return selection.getRangeAt(index).cloneRange();
+      })
+    : [];
+  const copyTarget = document.createElement("div");
+  copyTarget.contentEditable = "true";
+  copyTarget.setAttribute("aria-hidden", "true");
+  copyTarget.style.position = "fixed";
+  copyTarget.style.left = "-9999px";
+  copyTarget.style.top = "-9999px";
+  copyTarget.innerHTML = html;
+  body.appendChild(copyTarget);
+
+  const copyRange = document.createRange();
+  copyRange.selectNodeContents(copyTarget);
+  selection?.removeAllRanges();
+  selection?.addRange(copyRange);
+
   let copied = false;
   const handleCopy = (event: ClipboardEvent) => {
     if (!event.clipboardData) {
@@ -147,16 +196,21 @@ function writeRichClipboardFallback(plainText: string, html: string): boolean {
     copied = true;
   };
   document.addEventListener("copy", handleCopy, { once: true });
-  // eslint-disable-next-line no-restricted-syntax -- rich clipboard fallback requires compatibility recovery around the legacy API
-  try {
-    document.execCommand("copy");
-  } catch (error: unknown) {
-    throwIfAbort(error);
-    return false;
-  } finally {
-    document.removeEventListener("copy", handleCopy);
-  }
-  return copied;
+  const commandSucceeded = runLegacyClipboardCopy(
+    () => {
+      selection?.removeAllRanges();
+      selection?.addRange(copyRange);
+    },
+    () => {
+      document.removeEventListener("copy", handleCopy);
+      copyTarget.remove();
+      selection?.removeAllRanges();
+      for (const previousRange of previousRanges) {
+        selection?.addRange(previousRange);
+      }
+    },
+  );
+  return commandSucceeded && copied;
 }
 
 /**
@@ -178,21 +232,20 @@ export async function writeToClipboard(text: string): Promise<boolean> {
     // Clipboard API can throw NotAllowedError on iOS Safari when the user
     // gesture context is lost (e.g. after an async boundary). Fall back to
     // the legacy execCommand approach.
-    // eslint-disable-next-line no-restricted-syntax -- clipboard API requires try/catch for legacy execCommand fallback
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-      return true;
-    } catch (fallbackError: unknown) {
-      throwIfAbort(fallbackError);
-      return false;
-    }
+    let textarea: HTMLTextAreaElement | null = null;
+    return runLegacyClipboardCopy(
+      () => {
+        textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+      },
+      () => {
+        textarea?.remove();
+      },
+    );
   }
 }
 

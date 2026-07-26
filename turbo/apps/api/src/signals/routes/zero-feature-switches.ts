@@ -1,10 +1,16 @@
 import { command, computed } from "ccstate";
+import {
+  clientVersionSupportsCapability,
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import {
   deleteUserFeatureSwitches$,
@@ -21,6 +27,7 @@ function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
+  readonly supportsStructuredFeedbackParts: boolean;
 }) {
   const effectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
@@ -31,7 +38,15 @@ function featureSwitchResponseBody(params: {
   return {
     switches: params.switches,
     effectiveSwitches,
+    supportsStructuredFeedbackParts: params.supportsStructuredFeedbackParts,
   };
+}
+
+function supportsStructuredFeedbackParts(request: Request): boolean {
+  return clientVersionSupportsCapability(
+    request.headers.get(CLIENT_VERSION_HEADER),
+    CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+  );
 }
 
 const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
@@ -45,6 +60,9 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
+      supportsStructuredFeedbackParts: supportsStructuredFeedbackParts(
+        get(request$).raw,
+      ),
     }),
   };
 });
@@ -78,6 +96,9 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
+        supportsStructuredFeedbackParts: supportsStructuredFeedbackParts(
+          get(request$).raw,
+        ),
       }),
     };
   },
