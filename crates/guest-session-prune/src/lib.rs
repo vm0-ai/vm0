@@ -450,6 +450,11 @@ fn validate_summary(
         || value.get("isCompactSummary").and_then(Value::as_bool) != Some(true)
         || value
             .get("message")
+            .and_then(|message| message.get("role"))
+            .and_then(Value::as_str)
+            != Some("user")
+        || value
+            .get("message")
             .and_then(|message| message.get("content"))
             .and_then(Value::as_str)
             .is_none_or(|content| content.trim().is_empty())
@@ -489,10 +494,33 @@ fn validate_body_record(
         return Err(ClaudeHistoryIneligibleReason::InvalidRecord);
     };
     validate_optional_session_id(value, expected_session_id)?;
+    match record_type {
+        "assistant" => validate_message_record(value, "assistant")?,
+        "user" => validate_message_record(value, "user")?,
+        _ => {}
+    }
 
     let requires_ancestry = matches!(record_type, "assistant" | "attachment" | "system" | "user");
     validate_ancestry(value, requires_ancestry, seen_uuids)?;
-    validate_tool_pairs(value, tool_uses, tool_results)
+    validate_tool_pairs(value, record_type, tool_uses, tool_results)
+}
+
+fn validate_message_record(
+    value: &Value,
+    expected_role: &str,
+) -> Result<(), ClaudeHistoryIneligibleReason> {
+    let Some(message) = value.get("message").and_then(Value::as_object) else {
+        return Err(ClaudeHistoryIneligibleReason::InvalidRecord);
+    };
+    if message.get("role").and_then(Value::as_str) != Some(expected_role)
+        || !matches!(
+            message.get("content"),
+            Some(Value::String(_) | Value::Array(_))
+        )
+    {
+        return Err(ClaudeHistoryIneligibleReason::InvalidRecord);
+    }
+    Ok(())
 }
 
 fn require_session_id(
@@ -550,6 +578,7 @@ fn parse_uuid_field(value: &Value, field: &str) -> Result<Uuid, ClaudeHistoryIne
 
 fn validate_tool_pairs(
     value: &Value,
+    record_type: &str,
     tool_uses: &mut HashSet<String>,
     tool_results: &mut HashSet<String>,
 ) -> Result<(), ClaudeHistoryIneligibleReason> {
@@ -564,12 +593,18 @@ fn validate_tool_pairs(
     for block in content {
         match block.get("type").and_then(Value::as_str) {
             Some("tool_use") => {
+                if record_type != "assistant" {
+                    return Err(ClaudeHistoryIneligibleReason::BrokenToolPair);
+                }
                 let id = nonempty_string_field(block, "id")?;
                 if !tool_uses.insert(id.to_owned()) {
                     return Err(ClaudeHistoryIneligibleReason::BrokenToolPair);
                 }
             }
             Some("tool_result") => {
+                if record_type != "user" {
+                    return Err(ClaudeHistoryIneligibleReason::BrokenToolPair);
+                }
                 let id = nonempty_string_field(block, "tool_use_id")?;
                 if !tool_uses.contains(id) || !tool_results.insert(id.to_owned()) {
                     return Err(ClaudeHistoryIneligibleReason::BrokenToolPair);
@@ -793,6 +828,35 @@ mod tests {
                 ClaudeHistoryIneligibleReason::InvalidCompactSummary
             )
         );
+
+        let unlinked_summary = summary(
+            SESSION_ID,
+            "99999999-9999-4999-8999-999999999999",
+            SUMMARY_ID,
+        );
+        let file = source(&[boundary(SESSION_ID, BOUNDARY_ID), unlinked_summary]);
+        assert_eq!(
+            select(&file, SESSION_ID).unwrap(),
+            ClaudeHistorySelection::Ineligible(
+                ClaudeHistoryIneligibleReason::InvalidCompactSummary
+            )
+        );
+
+        let wrong_role_summary = line(json!({
+            "type": "user",
+            "sessionId": SESSION_ID,
+            "uuid": SUMMARY_ID,
+            "parentUuid": BOUNDARY_ID,
+            "isCompactSummary": true,
+            "message": {"role": "assistant", "content": "retained summary"}
+        }));
+        let file = source(&[boundary(SESSION_ID, BOUNDARY_ID), wrong_role_summary]);
+        assert_eq!(
+            select(&file, SESSION_ID).unwrap(),
+            ClaudeHistorySelection::Ineligible(
+                ClaudeHistoryIneligibleReason::InvalidCompactSummary
+            )
+        );
     }
 
     #[test]
@@ -845,6 +909,78 @@ mod tests {
     }
 
     #[test]
+    fn rejects_incomplete_or_mislabeled_message_records() {
+        let missing_content = line(json!({
+            "type": "user",
+            "sessionId": SESSION_ID,
+            "uuid": USER_ID,
+            "parentUuid": SUMMARY_ID,
+            "message": {"role": "user"}
+        }));
+        let file = source(&[
+            boundary(SESSION_ID, BOUNDARY_ID),
+            summary(SESSION_ID, BOUNDARY_ID, SUMMARY_ID),
+            missing_content,
+        ]);
+        assert_eq!(
+            select(&file, SESSION_ID).unwrap(),
+            ClaudeHistorySelection::Ineligible(ClaudeHistoryIneligibleReason::InvalidRecord)
+        );
+
+        let wrong_role = line(json!({
+            "type": "assistant",
+            "sessionId": SESSION_ID,
+            "uuid": ASSISTANT_ID,
+            "parentUuid": SUMMARY_ID,
+            "message": {"role": "user", "content": []}
+        }));
+        let file = source(&[
+            boundary(SESSION_ID, BOUNDARY_ID),
+            summary(SESSION_ID, BOUNDARY_ID, SUMMARY_ID),
+            wrong_role,
+        ]);
+        assert_eq!(
+            select(&file, SESSION_ID).unwrap(),
+            ClaudeHistorySelection::Ineligible(ClaudeHistoryIneligibleReason::InvalidRecord)
+        );
+    }
+
+    #[test]
+    fn rejects_tool_blocks_on_the_wrong_message_roles() {
+        let user_tool_use = line(json!({
+            "type": "user",
+            "sessionId": SESSION_ID,
+            "uuid": USER_ID,
+            "parentUuid": SUMMARY_ID,
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {}}]
+            }
+        }));
+        let assistant_tool_result = line(json!({
+            "type": "assistant",
+            "sessionId": SESSION_ID,
+            "uuid": ASSISTANT_ID,
+            "parentUuid": USER_ID,
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_result", "tool_use_id": "tool-1", "content": "ok"}]
+            }
+        }));
+        let file = source(&[
+            boundary(SESSION_ID, BOUNDARY_ID),
+            summary(SESSION_ID, BOUNDARY_ID, SUMMARY_ID),
+            user_tool_use,
+            assistant_tool_result,
+        ]);
+
+        assert_eq!(
+            select(&file, SESSION_ID).unwrap(),
+            ClaudeHistorySelection::Ineligible(ClaudeHistoryIneligibleReason::BrokenToolPair)
+        );
+    }
+
+    #[test]
     fn rejects_malformed_and_oversized_records_after_boundary() {
         let file = source(&[
             boundary(SESSION_ID, BOUNDARY_ID),
@@ -865,6 +1001,30 @@ mod tests {
         assert_eq!(
             select(&file, SESSION_ID).unwrap(),
             ClaudeHistorySelection::Ineligible(ClaudeHistoryIneligibleReason::RecordTooLarge)
+        );
+    }
+
+    #[test]
+    fn rejects_a_generation_above_the_candidate_limit() {
+        let metadata = || {
+            line(json!({
+                "type": "metadata",
+                "value": "x".repeat(900)
+            }))
+        };
+        let file = source(&[
+            boundary(SESSION_ID, BOUNDARY_ID),
+            summary(SESSION_ID, BOUNDARY_ID, SUMMARY_ID),
+            metadata(),
+            metadata(),
+            metadata(),
+            metadata(),
+            metadata(),
+        ]);
+
+        assert_eq!(
+            select(&file, SESSION_ID).unwrap(),
+            ClaudeHistorySelection::Ineligible(ClaudeHistoryIneligibleReason::NoCompactBoundary)
         );
     }
 

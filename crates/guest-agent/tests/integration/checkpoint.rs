@@ -1336,6 +1336,45 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     );
 }
 
+#[tokio::test]
+async fn recovery_checkpoint_does_not_prune_eligible_claude_history() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, _) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let error = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Session history line 1 is not valid JSON"),
+        "recovery checkpoint should validate the original history: {error}"
+    );
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+}
+
 async fn assert_recovery_checkpoint_derives_claude_history_marker(
     seed_empty_marker: bool,
     upload_path: &str,
