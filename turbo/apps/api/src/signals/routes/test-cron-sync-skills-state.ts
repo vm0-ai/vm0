@@ -268,7 +268,6 @@ async function readStorageByNameForAction(
   return actionOk({
     storage: row
       ? {
-          type: "volume",
           head_version_id: row.headVersionId,
           size: row.size,
           version_size: row.versionSize,

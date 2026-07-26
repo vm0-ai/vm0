@@ -11,7 +11,6 @@ import {
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
-  storageTypeSchema,
   fileEntryWithHashSchema,
   storageChangesSchema,
   presignedUploadSchema,
@@ -584,92 +583,6 @@ export const webhookHeartbeatContract = c.router({
 });
 
 /**
- * Webhook storages contract for /api/webhooks/agent/storages
- * Note: This endpoint handles multipart form data upload
- * The contract defines the JSON response schema
- */
-export const webhookStoragesContract = c.router({
-  /**
-   * POST /api/webhooks/agent/storages
-   * Create a new version of a storage from sandbox
-   *
-   * Form fields:
-   * - runId: string (required)
-   * - storageName: string (required)
-   * - message: string (optional)
-   * - file: File (required, tar.gz archive)
-   */
-  upload: {
-    method: "POST",
-    path: "/api/webhooks/agent/storages",
-    headers: authHeadersSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
-    responses: {
-      200: z.object({
-        versionId: z.string(),
-        storageName: z.string(),
-        size: z.number(),
-        fileCount: z.number(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upload storage version from sandbox",
-  },
-});
-
-/**
- * Webhook storages incremental contract for /api/webhooks/agent/storages/incremental
- * Note: This endpoint handles multipart form data upload
- */
-export const webhookStoragesIncrementalContract = c.router({
-  /**
-   * POST /api/webhooks/agent/storages/incremental
-   * Create a new version using incremental upload
-   *
-   * Form fields:
-   * - runId: string (required)
-   * - storageName: string (required)
-   * - baseVersion: string (required)
-   * - changes: JSON string (required)
-   * - message: string (optional)
-   * - file: File (optional, tar.gz of changed files)
-   */
-  upload: {
-    method: "POST",
-    path: "/api/webhooks/agent/storages/incremental",
-    headers: authHeadersSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
-    responses: {
-      200: z.object({
-        versionId: z.string(),
-        storageName: z.string(),
-        size: z.number(),
-        fileCount: z.number(),
-        incrementalStats: z
-          .object({
-            addedFiles: z.number(),
-            modifiedFiles: z.number(),
-            deletedFiles: z.number(),
-            unchangedFiles: z.number(),
-            bytesUploaded: z.number(),
-          })
-          .optional(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upload storage version incrementally from sandbox",
-  },
-});
-
-/**
  * Metric data point schema
  */
 const metricDataSchema = z.object({
@@ -803,13 +716,10 @@ export const webhookStoragesPrepareContract = c.router({
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
       /**
-       * Canonical Storage identity. During the dual-send rollout, old API
-       * versions strip this unknown field while new versions authorize it
-       * against the run's writeback mounts.
+       * Canonical Storage identity authorized against the run's writeback
+       * mounts.
        */
-      storageId: z.string().uuid().optional(),
-      storageName: z.string().min(1, "Storage name is required"),
-      storageType: storageTypeSchema,
+      storageId: z.string().uuid(),
       files: z.array(fileEntryWithHashSchema),
       parentVersionId: z.string().optional(),
       force: z.boolean().optional(),
@@ -851,12 +761,10 @@ export const webhookStoragesCommitContract = c.router({
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
       /**
-       * Canonical Storage identity. Remove the legacy name/type envelope after
-       * the previous GuestAgent has drained from production.
+       * Canonical Storage identity authorized against the run's writeback
+       * mounts.
        */
-      storageId: z.string().uuid().optional(),
-      storageName: z.string().min(1, "Storage name is required"),
-      storageType: storageTypeSchema,
+      storageId: z.string().uuid(),
       versionId: z.string().min(1, "Version ID is required"),
       parentVersionId: z.string().optional(),
       files: z.array(fileEntryWithHashSchema),
@@ -903,9 +811,6 @@ export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
 export type WebhookCheckpointsPrepareHistoryContract =
   typeof webhookCheckpointsPrepareHistoryContract;
 export type WebhookHeartbeatContract = typeof webhookHeartbeatContract;
-export type WebhookStoragesContract = typeof webhookStoragesContract;
-export type WebhookStoragesIncrementalContract =
-  typeof webhookStoragesIncrementalContract;
 export type WebhookTelemetryContract = typeof webhookTelemetryContract;
 export type WebhookStoragesPrepareContract =
   typeof webhookStoragesPrepareContract;

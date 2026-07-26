@@ -18,10 +18,9 @@ interface CommittedMemoryVersion {
 }
 
 /**
- * Create (or dedupe onto) a memory artifact version through the product
- * storage upload flow: `POST /api/storages/prepare` + `POST
- * /api/storages/commit` as the given actor. Returns the content-addressed
- * version id and the S3 key the product assigned to it.
+ * Create (or dedupe onto) a memory artifact version through the in-process
+ * Storage fixture. Returns the content-addressed version id and the S3 key
+ * assigned to it.
  */
 export async function commitMemoryVersion(
   context: TestContext,

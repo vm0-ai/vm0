@@ -77,9 +77,7 @@ fn generated_prepare_request_serializes_wire_shape() {
     let hash = "a".repeat(64);
     let request = prepare::Request {
         run_id: "run-1".to_string(),
-        storage_id: None,
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         files: vec![FileEntryWithHash {
             path: "file.txt".to_string(),
             hash: hash.clone(),
@@ -96,8 +94,7 @@ fn generated_prepare_request_serializes_wire_shape() {
         value,
         json!({
             "runId": "run-1",
-            "storageName": "memory",
-            "storageType": "artifact",
+            "storageId": "00000000-0000-4000-8000-000000000001",
             "files": [{
                 "path": "file.txt",
                 "hash": hash,
@@ -115,9 +112,7 @@ fn generated_prepare_request_serializes_wire_shape() {
 fn generated_prepare_request_serializes_optional_fields() {
     let request = prepare::Request {
         run_id: "run-1".to_string(),
-        storage_id: Some("00000000-0000-4000-8000-000000000001".to_string()),
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         files: vec![],
         parent_version_id: Some("parent-1".to_string()),
         force: Some(true),
@@ -186,9 +181,7 @@ fn generated_commit_request_serializes_wire_shape() {
     let hash = "b".repeat(64);
     let request = commit::Request {
         run_id: "run-1".to_string(),
-        storage_id: None,
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         version_id: "version-1".to_string(),
         parent_version_id: None,
         files: vec![FileEntryWithHash {
@@ -204,8 +197,7 @@ fn generated_commit_request_serializes_wire_shape() {
         value,
         json!({
             "runId": "run-1",
-            "storageName": "memory",
-            "storageType": "artifact",
+            "storageId": "00000000-0000-4000-8000-000000000001",
             "versionId": "version-1",
             "files": [{
                 "path": "file.txt",
@@ -222,9 +214,7 @@ fn generated_commit_request_serializes_wire_shape() {
 fn generated_commit_request_preserves_empty_message() {
     let request = commit::Request {
         run_id: "run-1".to_string(),
-        storage_id: Some("00000000-0000-4000-8000-000000000001".to_string()),
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         version_id: "version-1".to_string(),
         parent_version_id: None,
         files: vec![],

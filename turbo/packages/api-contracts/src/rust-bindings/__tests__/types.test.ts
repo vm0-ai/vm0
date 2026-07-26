@@ -385,20 +385,20 @@ describe("Rust type bindings", () => {
     const rendered = renderExampleRustTypes([
       validBinding({
         schema: z.object({
-          storageType: z.enum(["volume", "artifact"]),
+          deliveryMode: z.enum(["stream", "batch"]),
         }),
         fieldTypeOverrides: {
-          storageType: "String",
+          deliveryMode: "String",
         },
         declarations: [
           requestDeclaration({
-            storageType: ["Storage type."],
+            deliveryMode: ["Delivery mode."],
           }),
         ],
       }),
     ]);
 
-    expect(rendered).toContain("pub storage_type: String,");
+    expect(rendered).toContain("pub delivery_mode: String,");
     expect(rendered).not.toContain("pub enum RequestStorageType");
   });
 

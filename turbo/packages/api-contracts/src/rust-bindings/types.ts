@@ -283,7 +283,6 @@ export const rustTypeBindings = [
     rustTypeName: "Request",
     direction: "request",
     fieldTypeOverrides: {
-      storageType: "String",
       files: "Vec<super::FileEntryWithHash>",
     },
     declarations: [
@@ -308,8 +307,6 @@ export const rustTypeBindings = [
           storageId: [
             "Canonical Storage identifier authorized by the agent run.",
           ],
-          storageName: ["Storage name being prepared for upload."],
-          storageType: ["Storage kind encoded by the TypeScript contract."],
           files: ["Content-addressed file list included in the upload."],
           parentVersionId: [
             "Optional parent version used when preparing an incremental upload.",
@@ -378,7 +375,6 @@ export const rustTypeBindings = [
     rustTypeName: "Request",
     direction: "request",
     fieldTypeOverrides: {
-      storageType: "String",
       files: "Vec<super::FileEntryWithHash>",
     },
     declarations: [
@@ -392,8 +388,6 @@ export const rustTypeBindings = [
           storageId: [
             "Canonical Storage identifier authorized by the agent run.",
           ],
-          storageName: ["Storage name being committed."],
-          storageType: ["Storage kind encoded by the TypeScript contract."],
           versionId: ["Storage version identifier being committed."],
           parentVersionId: [
             "Optional parent version used when committing an incremental upload.",

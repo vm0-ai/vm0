@@ -1,5 +1,4 @@
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
-import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
@@ -25,21 +24,14 @@ import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
-import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 const L = logger("storage-write");
-
-type StorageType = "volume" | "artifact";
 
 interface StorageChanges {
   readonly deleted?: readonly string[];
 }
 
-interface PrepareStorageInput {
-  readonly auth: AuthContext;
-  readonly storageId?: string;
-  readonly storageName: string;
-  readonly storageType: StorageType;
+interface PrepareStorageUploadInput {
   readonly files: readonly FileEntryWithHash[];
   readonly force?: boolean;
   readonly runId?: string;
@@ -47,11 +39,16 @@ interface PrepareStorageInput {
   readonly changes?: StorageChanges;
 }
 
-interface CommitStorageInput {
+interface PrepareStorageInput extends PrepareStorageUploadInput {
   readonly auth: AuthContext;
-  readonly storageId?: string;
-  readonly storageName: string;
-  readonly storageType: StorageType;
+  readonly storageId: string;
+}
+
+interface PrepareStorageForStorageInput extends PrepareStorageUploadInput {
+  readonly storageId: string;
+}
+
+interface CommitStorageUploadInput {
   readonly versionId: string;
   readonly files: readonly FileEntryWithHash[];
   readonly runId?: string;
@@ -59,12 +56,32 @@ interface CommitStorageInput {
   readonly message?: string;
 }
 
-interface RuntimeOrg {
-  readonly orgId: string;
+interface CommitStorageInput extends CommitStorageUploadInput {
+  readonly auth: AuthContext;
+  readonly storageId: string;
 }
 
-type StorageRow = typeof storages.$inferSelect;
+interface CommitStorageForStorageInput extends CommitStorageUploadInput {
+  readonly storageId: string;
+}
+
+type StorageRow = Omit<typeof storages.$inferSelect, "type">;
 type StorageVersionRow = typeof storageVersions.$inferSelect;
+
+function storageRowSelection() {
+  return {
+    id: storages.id,
+    userId: storages.userId,
+    name: storages.name,
+    orgId: storages.orgId,
+    s3Prefix: storages.s3Prefix,
+    size: storages.size,
+    fileCount: storages.fileCount,
+    headVersionId: storages.headVersionId,
+    createdAt: storages.createdAt,
+    updatedAt: storages.updatedAt,
+  };
+}
 
 type StorageErrorResponse =
   | ReturnType<typeof badRequestMessage>
@@ -183,7 +200,7 @@ async function findMountedWritebackStorage(args: {
   }
 
   const [storage] = await args.db
-    .select()
+    .select(storageRowSelection())
     .from(storages)
     .where(
       and(
@@ -203,59 +220,6 @@ function hasRunId(auth: AuthContext): auth is AuthContext & {
   readonly runId: string;
 } {
   return "runId" in auth && typeof auth.runId === "string";
-}
-
-function storageUserId(type: StorageType, userId: string): string {
-  return type === "volume" ? VOLUME_ORG_USER_ID : userId;
-}
-
-async function resolveStorageRuntimeOrg(args: {
-  readonly db: Db;
-  readonly auth: AuthContext;
-  readonly runId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<RuntimeOrg | StorageErrorResponse> {
-  if (hasRunId(args.auth)) {
-    const [run] = await args.db
-      .select({ orgId: agentRuns.orgId })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, args.auth.runId),
-          eq(agentRuns.userId, args.auth.userId),
-        ),
-      )
-      .limit(1);
-    args.signal.throwIfAborted();
-
-    return run ? { orgId: run.orgId } : notFound("Agent run not found");
-  }
-
-  if (!args.auth.orgId) {
-    return badRequestMessage(
-      "Explicit org context required — ensure active org in session",
-    );
-  }
-
-  if (args.runId) {
-    const [run] = await args.db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, args.runId),
-          eq(agentRuns.userId, args.auth.userId),
-        ),
-      )
-      .limit(1);
-    args.signal.throwIfAborted();
-
-    if (!run) {
-      return notFound("Agent run not found");
-    }
-  }
-
-  return { orgId: args.auth.orgId };
 }
 
 function mergeWithBaseVersion(args: {
@@ -313,27 +277,6 @@ function totalSize(files: readonly FileEntryWithHash[]): number {
   }, 0);
 }
 
-async function findStorageForCommit(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly storageOwner: string;
-  readonly input: CommitStorageInput;
-}): Promise<StorageRow | undefined> {
-  const [storage] = await args.db
-    .select()
-    .from(storages)
-    .where(
-      and(
-        eq(storages.orgId, args.orgId),
-        eq(storages.userId, args.storageOwner),
-        eq(storages.name, args.input.storageName),
-      ),
-    )
-    .limit(1);
-
-  return storage;
-}
-
 async function findStorageVersion(args: {
   readonly db: Db;
   readonly storageId: string;
@@ -353,29 +296,15 @@ async function findStorageVersion(args: {
   return version;
 }
 
-async function upsertStorageForPrepare(args: {
+async function findStorageById(args: {
   readonly db: Db;
-  readonly orgId: string;
-  readonly storageOwner: string;
-  readonly input: PrepareStorageInput;
+  readonly storageId: string;
 }): Promise<StorageRow | undefined> {
-  const { storageId, s3Prefix } = newStorageS3Location(args.orgId);
   const [storage] = await args.db
-    .insert(storages)
-    .values({
-      id: storageId,
-      userId: args.storageOwner,
-      orgId: args.orgId,
-      name: args.input.storageName,
-      s3Prefix,
-      size: 0,
-      fileCount: 0,
-    })
-    .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name],
-      set: { updatedAt: nowDate() },
-    })
-    .returning();
+    .select(storageRowSelection())
+    .from(storages)
+    .where(eq(storages.id, args.storageId))
+    .limit(1);
 
   return storage;
 }
@@ -385,32 +314,12 @@ async function resolveStorageForPrepare(args: {
   readonly input: PrepareStorageInput;
   readonly signal: AbortSignal;
 }): Promise<StorageRow | StorageErrorResponse> {
-  if (args.input.storageId) {
-    return await findMountedWritebackStorage({
-      db: args.db,
-      auth: args.input.auth,
-      storageId: args.input.storageId,
-      signal: args.signal,
-    });
-  }
-
-  const runtimeOrg = await resolveStorageRuntimeOrg({
+  return await findMountedWritebackStorage({
     db: args.db,
     auth: args.input.auth,
-    runId: args.input.runId,
+    storageId: args.input.storageId,
     signal: args.signal,
   });
-  if ("status" in runtimeOrg) {
-    return runtimeOrg;
-  }
-
-  const storage = await upsertStorageForPrepare({
-    db: args.db,
-    orgId: runtimeOrg.orgId,
-    storageOwner: storageUserId(args.input.storageType, args.input.auth.userId),
-    input: args.input,
-  });
-  return storage ?? internalError("Failed to create storage");
 }
 
 async function resolveStorageForCommit(args: {
@@ -418,49 +327,19 @@ async function resolveStorageForCommit(args: {
   readonly input: CommitStorageInput;
   readonly signal: AbortSignal;
 }): Promise<StorageRow | StorageErrorResponse> {
-  if (args.input.storageId) {
-    return await findMountedWritebackStorage({
-      db: args.db,
-      auth: args.input.auth,
-      storageId: args.input.storageId,
-      signal: args.signal,
-    });
-  }
-
-  const runtimeOrg = await resolveStorageRuntimeOrg({
+  return await findMountedWritebackStorage({
     db: args.db,
     auth: args.input.auth,
-    runId: args.input.runId,
+    storageId: args.input.storageId,
     signal: args.signal,
   });
-  if ("status" in runtimeOrg) {
-    return runtimeOrg;
-  }
-
-  return (
-    (await findStorageForCommit({
-      db: args.db,
-      orgId: runtimeOrg.orgId,
-      storageOwner: storageUserId(
-        args.input.storageType,
-        args.input.auth.userId,
-      ),
-      input: args.input,
-    })) ?? notFound(`Storage "${args.input.storageName}" not found`)
-  );
-}
-
-function isWritebackStorageInput(
-  input: PrepareStorageInput | CommitStorageInput,
-): boolean {
-  return input.storageId !== undefined || input.storageType === "artifact";
 }
 
 function resolvePreparedFiles(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storageId: string;
-  readonly input: PrepareStorageInput;
+  readonly input: PrepareStorageUploadInput;
   readonly signal: AbortSignal;
 }): Computed<Promise<readonly FileEntryWithHash[]>> {
   return computed(async (get): Promise<readonly FileEntryWithHash[]> => {
@@ -647,12 +526,11 @@ function commitExistingStorageVersion(args: {
   readonly bucket: string;
   readonly storage: StorageRow;
   readonly version: StorageVersionRow;
-  readonly input: CommitStorageInput;
+  readonly input: CommitStorageUploadInput;
   readonly signal: AbortSignal;
 }): Computed<Promise<CommitStorageResponse>> {
   return computed(async (get): Promise<CommitStorageResponse> => {
-    const explicitEmptyVersion =
-      isWritebackStorageInput(args.input) && args.version.fileCount === 0;
+    const explicitEmptyVersion = args.version.fileCount === 0;
     const verification = explicitEmptyVersion
       ? null
       : await get(
@@ -719,7 +597,7 @@ async function insertStorageVersionAndUpdateHead(args: {
   readonly db: Db;
   readonly storageId: string;
   readonly s3Key: string;
-  readonly input: CommitStorageInput;
+  readonly input: CommitStorageUploadInput;
   readonly size: number;
   readonly archiveSize: number;
   readonly fileCount: number;
@@ -775,7 +653,7 @@ function commitNewStorageVersion(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storage: StorageRow;
-  readonly input: CommitStorageInput;
+  readonly input: CommitStorageUploadInput;
   readonly signal: AbortSignal;
 }): Computed<Promise<CommitStorageResponse>> {
   return computed(async (get): Promise<CommitStorageResponse> => {
@@ -840,11 +718,10 @@ async function recordStorageLineage(args: {
   readonly versionId: string;
   readonly parentVersionId: string | undefined;
   readonly runId: string | undefined;
-  readonly writeback: boolean;
 }): Promise<void> {
   const parentVersionId = args.parentVersionId;
   const runId = args.runId;
-  if (!parentVersionId || !runId || !args.writeback) {
+  if (!parentVersionId || !runId) {
     return;
   }
 
@@ -865,10 +742,10 @@ async function recordStorageLineage(args: {
   );
 }
 
-export const prepareStorageUploadForAuth$ = command(
+export const prepareStorageUploadForStorage$ = command(
   async (
     { get, set },
-    args: PrepareStorageInput,
+    args: PrepareStorageForStorageInput,
     signal: AbortSignal,
   ): Promise<PrepareStorageResponse> => {
     const declaredSize = totalSize(args.files);
@@ -879,15 +756,14 @@ export const prepareStorageUploadForAuth$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const storage = await resolveStorageForPrepare({
+    const storage = await findStorageById({
       db: writeDb,
-      input: args,
-      signal,
+      storageId: args.storageId,
     });
     signal.throwIfAborted();
 
-    if ("status" in storage) {
-      return storage;
+    if (!storage) {
+      return notFound("Storage not found");
     }
 
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
@@ -912,7 +788,7 @@ export const prepareStorageUploadForAuth$ = command(
         db: writeDb,
         bucket,
         storageId: storage.id,
-        allowMissingObjectsForEmptyVersion: isWritebackStorageInput(args),
+        allowMissingObjectsForEmptyVersion: true,
         versionId,
         force: args.force,
         signal,
@@ -934,22 +810,21 @@ export const prepareStorageUploadForAuth$ = command(
   },
 );
 
-export const commitStorageUploadForAuth$ = command(
+export const commitStorageUploadForStorage$ = command(
   async (
     { get, set },
-    args: CommitStorageInput,
+    args: CommitStorageForStorageInput,
     signal: AbortSignal,
   ): Promise<CommitStorageResponse> => {
     const writeDb = set(writeDb$);
-    const storage = await resolveStorageForCommit({
+    const storage = await findStorageById({
       db: writeDb,
-      input: args,
-      signal,
+      storageId: args.storageId,
     });
     signal.throwIfAborted();
 
-    if ("status" in storage) {
-      return storage;
+    if (!storage) {
+      return notFound("Storage not found");
     }
 
     const computedVersionId = computeContentHashFromHashes(
@@ -1003,11 +878,56 @@ export const commitStorageUploadForAuth$ = command(
         versionId: args.versionId,
         parentVersionId: args.parentVersionId,
         runId: args.runId,
-        writeback: isWritebackStorageInput(args),
       });
       signal.throwIfAborted();
     }
 
     return response;
+  },
+);
+
+export const prepareStorageUploadForAuth$ = command(
+  async (
+    { set },
+    args: PrepareStorageInput,
+    signal: AbortSignal,
+  ): Promise<PrepareStorageResponse> => {
+    const writeDb = set(writeDb$);
+    const storage = await resolveStorageForPrepare({
+      db: writeDb,
+      input: args,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if ("status" in storage) {
+      return storage;
+    }
+
+    const upload: PrepareStorageForStorageInput = args;
+    return await set(prepareStorageUploadForStorage$, upload, signal);
+  },
+);
+
+export const commitStorageUploadForAuth$ = command(
+  async (
+    { set },
+    args: CommitStorageInput,
+    signal: AbortSignal,
+  ): Promise<CommitStorageResponse> => {
+    const writeDb = set(writeDb$);
+    const storage = await resolveStorageForCommit({
+      db: writeDb,
+      input: args,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if ("status" in storage) {
+      return storage;
+    }
+
+    const upload: CommitStorageForStorageInput = args;
+    return await set(commitStorageUploadForStorage$, upload, signal);
   },
 );

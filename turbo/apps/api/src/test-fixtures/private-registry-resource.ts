@@ -35,7 +35,6 @@ export async function seedPrivateRegistryResourceVersionFixture(args: {
       orgId: `org_registry_fixture_${fixtureId}`,
       userId: `user_registry_fixture_${fixtureId}`,
       name: args.storageName,
-      type: "artifact",
       s3Prefix: `registry-fixture/${fixtureId}`,
       size: args.size,
       fileCount: args.fileCount,

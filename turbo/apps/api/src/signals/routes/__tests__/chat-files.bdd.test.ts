@@ -9,7 +9,6 @@ import {
   createChatFilesBddApi,
   hostedTextFile,
   persistedAttachment,
-  storageTextFile,
 } from "./helpers/api-bdd-chat-files";
 
 /*
@@ -20,8 +19,8 @@ helper gap:
 - CHAT-03 non-empty run artifacts and Google Drive status live in
   chat-threads.bdd.test.ts.
 - FILE-01 raw hosted-content download does not have an exported typed contract;
-  this file covers typed upload, storage, and host APIs instead of using DB or
-  untyped route fallbacks.
+  this file covers typed upload and host APIs instead of using DB or untyped
+  route fallbacks.
 - CHAIN-CHAT callback-signing branches are blocked by the CHAT-02 callback
   signing gap; the run-to-artifact path is covered through public run and
   sandbox upload APIs in chat-threads.bdd.test.ts.
@@ -778,67 +777,6 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     );
     expectApiError(unsupported.body);
     expect(unsupported.body.error.message).toContain("Unsupported file type");
-  });
-
-  it("chains storage prepare, commit, list, and download APIs", async () => {
-    const actor = bdd.user();
-    const storageName = `bdd-artifact-${randomUUID().slice(0, 8)}`;
-    const storageFile = storageTextFile(
-      "/notes.txt",
-      "visible storage content",
-    );
-    const files = [storageFile];
-
-    const prepared = await api.prepareStorage(actor, {
-      storageName,
-      storageType: "artifact",
-      files,
-      force: true,
-    });
-    expect(prepared.existing).toBeFalsy();
-    expect(prepared.uploads?.archive.presignedUrl).toMatch(/^https?:\/\//);
-    expect(prepared.uploads?.manifest.presignedUrl).toMatch(/^https?:\/\//);
-
-    api.mockObjectStorageObjectsExist();
-    const committed = await api.commitStorage(actor, {
-      storageName,
-      storageType: "artifact",
-      versionId: prepared.versionId,
-      files,
-      message: "BDD artifact upload",
-    });
-    expect(committed).toMatchObject({
-      success: true,
-      storageName,
-      versionId: prepared.versionId,
-      size: storageFile.size,
-      fileCount: 1,
-    });
-
-    const listed = await api.listStorages(actor, "artifact");
-    expect(
-      listed.some((item) => {
-        return item.name === storageName && item.fileCount === 1;
-      }),
-    ).toBeTruthy();
-
-    const download = await api.downloadStorage(actor, storageName, "artifact");
-    expect(download).toMatchObject({
-      versionId: prepared.versionId,
-      fileCount: 1,
-      size: storageFile.size,
-    });
-    expect("url" in download ? download.url : "").toMatch(/^https?:\/\//);
-
-    const otherActor = bdd.user();
-    const crossUserDownload = await api.requestDownloadStorage(
-      otherActor,
-      storageName,
-      "artifact",
-      [404],
-    );
-    expectApiError(crossUserDownload.body);
-    expect(crossUserDownload.body.error.code).toBe("NOT_FOUND");
   });
 
   it("prepares and completes a hosted-site deployment through host APIs", async () => {

@@ -198,7 +198,10 @@ const uploadVolumeServerSideInner$ = command(
         target: [storages.orgId, storages.userId, storages.name],
         set: { updatedAt: timestamp },
       })
-      .returning();
+      .returning({
+        id: storages.id,
+        s3Prefix: storages.s3Prefix,
+      });
     signal.throwIfAborted();
 
     if (!storage) {

@@ -513,8 +513,6 @@ async fn snapshot_artifact_plan(
             mount_path: &entry.mount_path,
             files,
             storage_id: &entry.storage_id,
-            storage_name: &entry.name,
-            storage_type: "artifact",
             run_id,
             message: &message,
             parent_version_id: &entry.version_id,
@@ -1621,18 +1619,21 @@ mod tests {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let (path, payload) = read_test_json_request(&mut socket).await;
                 assert_eq!(path, "/api/webhooks/agent/storages/prepare");
-                let storage_name = payload["storageName"].as_str().unwrap().to_string();
-                prepare_requests.push((socket, storage_name));
+                let storage_id = payload["storageId"].as_str().unwrap().to_string();
+                prepare_requests.push((socket, storage_id));
             }
-            let prepare_names = prepare_requests
+            let prepare_storage_ids = prepare_requests
                 .iter()
-                .map(|(_, storage_name)| storage_name.clone())
+                .map(|(_, storage_id)| storage_id.clone())
                 .collect();
-            for (mut socket, storage_name) in prepare_requests {
+            for (mut socket, storage_id) in prepare_requests {
+                let logical_name = storage_id
+                    .strip_suffix("-storage-id")
+                    .unwrap_or(&storage_id);
                 write_test_json_response(
                     &mut socket,
                     &json!({
-                        "versionId": format!("snapshot-{storage_name}"),
+                        "versionId": format!("snapshot-{logical_name}"),
                         "existing": true,
                     }),
                 )
@@ -1654,7 +1655,7 @@ mod tests {
                 )
                 .await;
             }
-            prepare_names
+            prepare_storage_ids
         });
         (format!("http://{address}"), handle)
     }
@@ -1969,9 +1970,12 @@ mod tests {
         .expect("both artifact pipelines must reach prepare concurrently")
         .unwrap()
         .unwrap();
-        let mut prepare_names = server.await.unwrap();
-        prepare_names.sort_unstable();
-        assert_eq!(prepare_names, ["memory", "workspace"]);
+        let mut prepare_storage_ids = server.await.unwrap();
+        prepare_storage_ids.sort_unstable();
+        assert_eq!(
+            prepare_storage_ids,
+            ["memory-storage-id", "workspace-storage-id"]
+        );
         assert_eq!(
             serde_json::to_value(snapshots).unwrap(),
             json!([
