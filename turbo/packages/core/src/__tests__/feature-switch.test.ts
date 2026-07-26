@@ -40,6 +40,7 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -124,6 +125,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
@@ -153,6 +155,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
@@ -225,6 +228,9 @@ describe("user-overridable switches", () => {
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ComposerConnectorPermissions,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ImageStyleR2,
     );
 
     expect(

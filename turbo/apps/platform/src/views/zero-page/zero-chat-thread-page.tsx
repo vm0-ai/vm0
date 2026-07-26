@@ -146,6 +146,7 @@ import {
   contentTypeForBodyPreviewKind,
   type BodyRenderBlock,
 } from "../../signals/chat-page/parse-body-blocks.ts";
+import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
@@ -178,6 +179,7 @@ import {
 } from "../../signals/chat-page/browser-session-block.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
+import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -1017,7 +1019,7 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
   }
 
   if (previewKind === "video") {
-    return (
+    const videoFallback = (
       <video
         src={videoPosterFrameUrl(publicUrl)}
         preload="metadata"
@@ -1025,27 +1027,57 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
         playsInline
         aria-hidden="true"
         className="h-full w-full object-cover"
-        data-testid="artifact-video-preview-badge"
+        data-testid="artifact-video-preview-fallback"
       />
+    );
+    return (
+      <span
+        aria-hidden="true"
+        className="relative block h-full w-full overflow-hidden bg-black"
+        data-testid="artifact-video-preview-badge"
+      >
+        {file.previewImageUrl ? (
+          <ArtifactThumbnailImage
+            src={file.previewImageUrl}
+            testId="artifact-video-thumbnail-badge"
+            className="absolute inset-0 h-full w-full object-cover"
+            fallback={videoFallback}
+          />
+        ) : (
+          videoFallback
+        )}
+      </span>
     );
   }
 
   if (getArtifactDocumentPreviewKind(file) === "html") {
+    const iframeFallback = (
+      <iframe
+        src={publicUrl}
+        title={`${file.filename} artifact thumbnail`}
+        sandbox="allow-same-origin allow-scripts"
+        tabIndex={-1}
+        loading="lazy"
+        scrolling="no"
+        className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25] border-0 bg-background"
+      />
+    );
     return (
       <span
         className="relative block h-full w-full overflow-hidden bg-background"
         aria-hidden="true"
         data-testid="artifact-html-preview-badge"
       >
-        <iframe
-          src={publicUrl}
-          title={`${file.filename} artifact thumbnail`}
-          sandbox="allow-same-origin allow-scripts"
-          tabIndex={-1}
-          loading="lazy"
-          scrolling="no"
-          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25] border-0 bg-background"
-        />
+        {file.previewImageUrl ? (
+          <ArtifactThumbnailImage
+            src={file.previewImageUrl}
+            testId="artifact-html-thumbnail-badge"
+            className="absolute inset-0 h-full w-full object-cover"
+            fallback={iframeFallback}
+          />
+        ) : (
+          iframeFallback
+        )}
       </span>
     );
   }
@@ -1229,6 +1261,8 @@ type ChatVideoPreviewButtonProps = {
   filename: string;
   onPreview: () => void;
   posterClassName: string;
+  previewImagePending?: boolean;
+  previewImageUrl?: string;
   url: string;
   videoClassName: string;
 };
@@ -1245,11 +1279,24 @@ function ChatVideoPreviewButton({
   filename,
   onPreview,
   posterClassName,
+  previewImagePending,
+  previewImageUrl,
   url,
   videoClassName,
 }: ChatVideoPreviewButtonProps) {
   const videoUrl = publicAttachmentUrl(url);
   const posterVideoUrl = videoPosterFrameUrl(videoUrl);
+  const videoFallback = (
+    <video
+      src={posterVideoUrl}
+      preload="metadata"
+      muted
+      playsInline
+      aria-hidden="true"
+      className={cn("absolute inset-0", videoClassName)}
+      data-testid="chat-video-preview-fallback"
+    />
+  );
 
   return (
     <button
@@ -1266,14 +1313,16 @@ function ChatVideoPreviewButton({
         data-testid="chat-video-preview-poster"
         className={cn("block bg-black", posterClassName)}
       />
-      <video
-        src={posterVideoUrl}
-        preload="metadata"
-        muted
-        playsInline
-        aria-hidden="true"
-        className={cn("absolute inset-0", videoClassName)}
-      />
+      {previewImageUrl ? (
+        <ArtifactThumbnailImage
+          src={previewImageUrl}
+          testId="chat-video-preview-thumbnail"
+          className={cn("absolute inset-0", videoClassName)}
+          fallback={videoFallback}
+        />
+      ) : previewImagePending ? null : (
+        videoFallback
+      )}
       <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
           <IconPlayerPlay size={17} stroke={1.8} />
@@ -4790,52 +4839,80 @@ function BodyRenderBlockView({
       return <BrowserSessionCard signals={block.signals} />;
     }
     case "artifact": {
-      const { signals } = block;
-      if (signals.kind === "image") {
-        return (
-          <ChatImagePreviewLink
-            alt={signals.filename}
-            ariaLabel={`Preview ${signals.filename}`}
-            imageClassName="block h-full w-full object-contain"
-            linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-            onPreview={() => {
-              openLightbox(signals.url);
-            }}
-            placeholderClassName="h-full w-full"
-            url={signals.url}
-          />
-        );
-      }
-      if (signals.kind === "video") {
-        return (
-          <ChatVideoPreviewButton
-            ariaLabel={`Preview ${signals.filename}`}
-            buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
-            filename={signals.filename}
-            onPreview={() => {
-              openVideoLightbox({
-                url: signals.url,
-                filename: signals.filename,
-              });
-            }}
-            posterClassName="h-full w-full"
-            url={signals.url}
-            videoClassName="h-full w-full object-contain"
-          />
-        );
-      }
       return (
-        <AttachmentPreview
-          attachment={{
-            filename: signals.filename,
-            url: signals.url,
-            contentType: contentTypeForBodyPreviewKind(signals.kind),
-          }}
-          text$={signals.text$}
+        <ArtifactBodyRenderBlockView
+          signals={block.signals}
+          openLightbox={openLightbox}
+          openVideoLightbox={openVideoLightbox}
         />
       );
     }
   }
+}
+
+function ArtifactBodyRenderBlockView({
+  signals,
+  openLightbox,
+  openVideoLightbox,
+}: {
+  signals: ArtifactSignals;
+  openLightbox: (url: string) => void;
+  openVideoLightbox: (value: { url: string; filename: string }) => void;
+}) {
+  const previewImageLoadable = useLastLoadable(signals.previewImageUrl$);
+  const previewImagePending = previewImageLoadable.state === "loading";
+  const previewImageUrl =
+    previewImageLoadable.state === "hasData"
+      ? previewImageLoadable.data
+      : undefined;
+
+  if (signals.kind === "image") {
+    return (
+      <ChatImagePreviewLink
+        alt={signals.filename}
+        ariaLabel={`Preview ${signals.filename}`}
+        imageClassName="block h-full w-full object-contain"
+        linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+        onPreview={() => {
+          openLightbox(signals.url);
+        }}
+        placeholderClassName="h-full w-full"
+        url={signals.url}
+      />
+    );
+  }
+  if (signals.kind === "video") {
+    return (
+      <ChatVideoPreviewButton
+        ariaLabel={`Preview ${signals.filename}`}
+        buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
+        filename={signals.filename}
+        onPreview={() => {
+          openVideoLightbox({
+            url: signals.url,
+            filename: signals.filename,
+          });
+        }}
+        posterClassName="h-full w-full"
+        previewImagePending={previewImagePending}
+        previewImageUrl={previewImageUrl}
+        url={signals.url}
+        videoClassName="h-full w-full object-contain"
+      />
+    );
+  }
+  return (
+    <AttachmentPreview
+      attachment={{
+        filename: signals.filename,
+        url: signals.url,
+        contentType: contentTypeForBodyPreviewKind(signals.kind),
+        ...(previewImagePending ? { previewImagePending: true } : {}),
+        ...(previewImageUrl ? { previewImageUrl } : {}),
+      }}
+      text$={signals.text$}
+    />
+  );
 }
 
 function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {

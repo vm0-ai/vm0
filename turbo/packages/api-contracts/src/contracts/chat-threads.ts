@@ -73,6 +73,8 @@ const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
+  previewImageUrl: z.string().optional(),
+  aliasUrl: z.string().optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 

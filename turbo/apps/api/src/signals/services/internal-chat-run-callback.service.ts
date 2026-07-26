@@ -2365,6 +2365,10 @@ async function buildCreateQueuedChatRunInput(
           FeatureSwitchKey.WebsiteTemplateV2,
           featureSwitchContext,
         ),
+        imageStyleR2Enabled: isFeatureEnabled(
+          FeatureSwitchKey.ImageStyleR2,
+          featureSwitchContext,
+        ),
       });
     },
   );

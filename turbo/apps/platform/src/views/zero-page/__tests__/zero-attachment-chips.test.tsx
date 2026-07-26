@@ -46,6 +46,7 @@ function setupHostedSiteArtifactPreview({
   htmlUrl,
   label,
   path = `/chats/${THREAD_ID}`,
+  previewImageUrl,
   runId,
 }: {
   artifactUrl?: string;
@@ -54,6 +55,7 @@ function setupHostedSiteArtifactPreview({
   htmlUrl: string;
   label: string;
   path?: string;
+  previewImageUrl?: string;
   runId: string;
 }): void {
   const artifactMetadataUrl = artifactUrl ?? htmlUrl;
@@ -83,6 +85,8 @@ function setupHostedSiteArtifactPreview({
             artifactFile(artifactMetadataUrl, {
               artifactKind: "hosted-site",
               filename,
+              aliasUrl: htmlUrl,
+              ...(previewImageUrl ? { previewImageUrl } : {}),
             }),
           ],
         },
@@ -1824,6 +1828,89 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+  });
+
+  it("uses a hosted artifact thumbnail before falling back to the live iframe", async () => {
+    const htmlUrl = "https://thumbnail-soft-switch.sites.vm7.io";
+    const artifactUrl =
+      "https://cdn.vm7.io/artifacts/test/thumbnail-soft-switch/site-v2.html";
+    const previewImageUrl =
+      "https://cdn.vm7.io/artifacts/test/thumbnail-soft-switch/preview.webp";
+    setupHostedSiteArtifactPreview({
+      artifactUrl,
+      filename: "thumbnail-soft-switch-v2.html",
+      htmlUrl,
+      label: "Thumbnail soft switch",
+      previewImageUrl,
+      runId: "run-thumbnail-soft-switch",
+    });
+
+    const thumbnail = await screen.findByTestId("attachment-preview-thumbnail");
+    expect(thumbnail).toHaveAttribute("src", previewImageUrl);
+    expect(
+      screen.queryByTitle("Site preview for Thumbnail soft switch"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.error(thumbnail);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTitle("Site preview for Thumbnail soft switch"),
+      ).toHaveAttribute("src", htmlUrl);
+    });
+  });
+
+  it("uses a video artifact thumbnail before falling back to the video frame", async () => {
+    const videoUrl =
+      "https://cdn.vm7.io/artifacts/test/video-thumbnail-soft-switch/demo.mp4";
+    const previewImageUrl =
+      "https://cdn.vm7.io/artifacts/test/video-thumbnail-soft-switch/poster.jpg";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-video-thumbnail-soft-switch",
+            files: [
+              artifactFile(videoUrl, {
+                id: "artifact-video-thumbnail-soft-switch",
+                filename: "demo.mp4",
+                contentType: "video/mp4",
+                previewImageUrl,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-video-thumbnail-soft-switch",
+          role: "assistant",
+          content: videoUrl,
+          runId: "run-video-thumbnail-soft-switch",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const thumbnail = await screen.findByTestId("chat-video-preview-thumbnail");
+    expect(thumbnail).toHaveAttribute("src", previewImageUrl);
+    expect(
+      screen.queryByTestId("chat-video-preview-fallback"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.error(thumbnail);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-video-preview-fallback")).toHaveAttribute(
+        "src",
+        `${videoUrl}#t=0.001`,
+      );
     });
   });
 

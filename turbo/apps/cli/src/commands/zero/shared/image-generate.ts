@@ -3,7 +3,11 @@ import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
-import { findImageStyle, listImageStyles } from "./resource-registry";
+import {
+  findImageStyle,
+  hasR2Archive,
+  listImageStyles,
+} from "./resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
@@ -28,6 +32,7 @@ interface ImageOptions {
   inputFidelity?: string;
   imagePromptStrength?: string;
   style?: string;
+  styleSource: "github" | "r2";
   compile?: boolean;
   all?: boolean;
 }
@@ -96,6 +101,13 @@ function collectString(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
+function parseStyleSource(value: string): "github" | "r2" {
+  if (value !== "github" && value !== "r2") {
+    throw new InvalidArgumentError("style source must be github or r2");
+  }
+  return value;
+}
+
 function parseInputFidelity(value: string | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -143,6 +155,9 @@ function resolveImagePromptMode(
 
   if (!compile && options.style) {
     throw new Error("--style can only be used with --compile");
+  }
+  if (!compile && options.styleSource !== "github") {
+    throw new Error("--style-source can only be used with --compile");
   }
 
   if ([compile, hasCompiledPrompt, hasRawPrompt].filter(Boolean).length !== 1) {
@@ -247,6 +262,12 @@ export function createImageGenerateCommand(
       "Image style id to compile from the registry (see Image Styles below)",
     )
     .option(
+      "--style-source <source>",
+      "Style package source for compile mode: github or r2",
+      parseStyleSource,
+      "github",
+    )
+    .option(
       "--compile",
       "Resolve the selected style and print a prompt-compilation packet",
     )
@@ -328,10 +349,16 @@ ${formatRegistryListing(styles, "image styles")}`;
           if (!style) {
             throw unknownStyleError(styleId, config.usageCommand);
           }
+          if (options.styleSource === "r2" && !hasR2Archive(style)) {
+            throw new Error(
+              `Image style ${style.id} does not provide an R2 archive`,
+            );
+          }
 
           const packet = createStyledImageCompilationPacket({
             prompt: resolvedPrompt,
             style,
+            sourceMode: options.styleSource,
             details: [
               `Model preference if direct image generation is used: ${options.model}`,
               `Requested size: ${options.size}`,
