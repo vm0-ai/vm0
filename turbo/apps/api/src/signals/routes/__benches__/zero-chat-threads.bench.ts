@@ -800,6 +800,23 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
           `connector sanity check failed: status=${String(connectorSanity.status)} body=${JSON.stringify(connectorSanity.body)}`,
         );
       }
+      const listedConnectorRefs = new Set(
+        connectorSanity.body.connectors.map((connector) => {
+          return connector.type;
+        }),
+      );
+      const missingConnectorRefs = BENCH_CONNECTOR_CATALOG.connectors
+        .map((connector) => {
+          return connector.connectorRef;
+        })
+        .filter((connectorRef) => {
+          return !listedConnectorRefs.has(connectorRef);
+        });
+      if (missingConnectorRefs.length > 0) {
+        throw new Error(
+          `connector sanity check omitted seeded connectors: ${missingConnectorRefs.join(", ")}`,
+        );
+      }
       return seeded;
     })();
     return cached;
