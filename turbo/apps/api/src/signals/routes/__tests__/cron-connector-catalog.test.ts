@@ -40,11 +40,11 @@ import apiPackage from "../../../../package.json";
 import { createApp } from "../../../app-factory";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { deleteConnectedConnectorFixture } from "../../../test-fixtures/connector";
+import { mockApiTestConnectorProviderConfiguration } from "../../../test-fixtures/connector-catalog";
 import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
@@ -115,18 +115,16 @@ interface ReleaseFixtureOptions {
   readonly mutatePointer?: JsonMutation;
 }
 
-async function deleteConnectorFixture(
+function createConnectorCleanup(
   actor: ApiTestUser,
   connectorRef: ConnectorRef,
-): Promise<void> {
-  if (actor.orgId === null) {
-    throw new Error("Connector fixture cleanup requires an organization");
-  }
-  await deleteConnectedConnectorFixture({
-    connectorRef,
-    orgId: actor.orgId,
-    userId: actor.userId,
-  });
+): () => Promise<void> {
+  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+  return async () => {
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", bucket);
+    mockApiTestConnectorProviderConfiguration();
+    await connectorsApi.deleteConnectorByType(actor, connectorRef, [204, 404]);
+  };
 }
 
 interface ReleaseFixture {
@@ -1967,9 +1965,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
 
     const actor = bdd.user();
-    onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "agora");
-    });
+    onTestFinished(createConnectorCleanup(actor, "agora"));
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const connected = await connectorsApi.connectManualGrant(
       actor,
@@ -2037,9 +2033,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const actor = bdd.user();
     const firewall = createFirewallApi(context);
-    onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "test-oauth-device");
-    });
+    onTestFinished(createConnectorCleanup(actor, "test-oauth-device"));
     await firewall.provisionRunReadyOrg(actor);
     const callsBeforeSeed = context.mocks.s3.send.mock.calls.length;
     await firewall.seedTestConnector(actor, {
@@ -2108,9 +2102,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
 
     const actor = bdd.user();
-    onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "agora");
-    });
+    onTestFinished(createConnectorCleanup(actor, "agora"));
     await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
       credential: "legacy-catalog-secret",
     });
@@ -2252,9 +2244,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
 
     const actor = bdd.user();
-    onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "agora");
-    });
+    onTestFinished(createConnectorCleanup(actor, "agora"));
     await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
       credential: "legacy-catalog-secret",
     });
@@ -2330,9 +2320,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
 
     const actor = bdd.user();
-    onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "gmail");
-    });
+    onTestFinished(createConnectorCleanup(actor, "gmail"));
     await connectorsApi.connectManualGrant(actor, "gmail", "legacy", {
       credential: "legacy-gmail-secret",
     });
@@ -2414,12 +2402,13 @@ describe("connector catalog valid lifecycle", () => {
       visibility: "private",
     });
     const created: { runId?: string } = {};
+    const cleanupConnector = createConnectorCleanup(actor, connectorRef);
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
       if (created.runId) {
         await runs.requestCancelRun(actor, created.runId, [200, 404]);
       }
-      await deleteConnectorFixture(actor, connectorRef);
+      await cleanupConnector();
       await bdd.deleteAgent(actor, agent.agentId);
     });
     await connectorsApi.connectManualGrant(
@@ -2702,6 +2691,7 @@ describe("connector catalog valid lifecycle", () => {
       visibility: "private",
     });
     let successfulRunId: string | undefined;
+    const cleanupConnector = createConnectorCleanup(actor, connectorRef);
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
       if (successfulRunId) {
@@ -2721,7 +2711,7 @@ describe("connector catalog valid lifecycle", () => {
         storageName,
         previous: previousRuntimeState,
       });
-      await deleteConnectorFixture(actor, connectorRef);
+      await cleanupConnector();
       await bdd.deleteAgent(actor, agent.agentId);
     });
     await connectorsApi.connectManualGrant(
@@ -2867,8 +2857,9 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
+    const cleanupConnector = createConnectorCleanup(actor, "test-oauth-device");
     onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "test-oauth-device");
+      await cleanupConnector();
       await connectorsApi.deleteFeatureSwitches(actor);
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
@@ -2938,9 +2929,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
 
     const actor = bdd.user();
-    onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "steam");
-    });
+    onTestFinished(createConnectorCleanup(actor, "steam"));
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
@@ -3012,8 +3001,9 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.AwsConnector]: true,
     });
+    const cleanupConnector = createConnectorCleanup(actor, "aws");
     onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "aws");
+      await cleanupConnector();
       await connectorsApi.deleteFeatureSwitches(actor);
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
@@ -3178,9 +3168,10 @@ describe("connector catalog valid lifecycle", () => {
     );
 
     const actor = bdd.user();
+    const cleanupConnector = createConnectorCleanup(actor, "slack");
     onTestFinished(async () => {
       providerResume.release();
-      await deleteConnectorFixture(actor, "slack");
+      await cleanupConnector();
     });
     const firstStart = await connectorsApi.startOauth(actor, "slack", "oauth");
     const firstState = new URL(firstStart.authorizationUrl).searchParams.get(
@@ -3327,9 +3318,10 @@ describe("connector catalog valid lifecycle", () => {
 
     const actor = bdd.user({ orgId: STAFF_ORG_ID });
     const created: { agentId?: string; workflowId?: string } = {};
+    const cleanupConnector = createConnectorCleanup(actor, "gmail");
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      await deleteConnectorFixture(actor, "gmail");
+      await cleanupConnector();
       if (created.workflowId) {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
@@ -3538,10 +3530,11 @@ describe("connector catalog valid lifecycle", () => {
     const actor = bdd.user({ orgId: STAFF_ORG_ID });
     const created: { agentId?: string; workflowId?: string } = {};
     const refreshResume = deferredGate();
+    const cleanupConnector = createConnectorCleanup(actor, "gmail");
     onTestFinished(async () => {
       refreshResume.release();
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      await deleteConnectorFixture(actor, "gmail");
+      await cleanupConnector();
       if (created.workflowId) {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
@@ -3716,8 +3709,9 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.DatadogConnector]: false,
     });
+    const cleanupConnector = createConnectorCleanup(actor, "datadog");
     onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "datadog");
+      await cleanupConnector();
       await connectorsApi.deleteFeatureSwitches(actor);
     });
     const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
@@ -4587,9 +4581,7 @@ describe("connector catalog executable compatibility", () => {
       filteredAuthMethods: [],
     });
     const actor = bdd.user();
-    onTestFinished(async () => {
-      await deleteConnectorFixture(actor, "test-oauth");
-    });
+    onTestFinished(createConnectorCleanup(actor, "test-oauth"));
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
