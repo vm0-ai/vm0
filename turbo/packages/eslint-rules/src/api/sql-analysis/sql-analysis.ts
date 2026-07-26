@@ -50,12 +50,16 @@ export type SqlAnalysisFinding =
     };
 
 export interface SqlCapabilityChecks {
+  acceptsOptionalSql(node: TSESTree.Expression): boolean;
   hasDirectResultMapping(node: TSESTree.Expression): boolean;
   hasParameterListOrigin(node: TSESTree.Expression): boolean;
   isInlineParameterList(node: TSESTree.Expression): boolean;
 }
 
 const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
+  acceptsOptionalSql(): boolean {
+    return false;
+  },
   hasDirectResultMapping(): boolean {
     return false;
   },
@@ -248,6 +252,7 @@ interface ExpressionClassification {
 }
 
 interface ClassificationContext {
+  readonly allowsOptionalSql: boolean;
   readonly capabilities: SqlCapabilityChecks;
   readonly checker: TypeChecker;
   readonly ownsResultMapping: boolean;
@@ -1139,8 +1144,8 @@ function operandNode(
 function nestedClassificationContext(
   context: ClassificationContext,
 ): ClassificationContext {
-  return context.ownsResultMapping
-    ? { ...context, ownsResultMapping: false }
+  return context.ownsResultMapping || !context.allowsOptionalSql
+    ? { ...context, allowsOptionalSql: true, ownsResultMapping: false }
     : context;
 }
 
@@ -1273,25 +1278,30 @@ function classifyExpression(
       return classifyExistence(expression.items[0], "notExists", context);
     }
     const helper = expression.operator;
-    for (const item of expression.items) {
-      const child = classifyExpression(
-        item,
-        nestedClassificationContext(context),
-      );
-      const reportNode = firstClassificationNode(child);
-      if (reportNode !== undefined) {
-        return {
-          anchor: reportNode,
-          findings: [
-            classifiedFinding(helper, reportNode, expression.sourceChunks),
-          ],
-          isWholeReplacement: true,
-        };
+    const children = expression.items.map((item) => {
+      return classifyExpression(item, nestedClassificationContext(context));
+    });
+    if ((helper !== "and" && helper !== "or") || context.allowsOptionalSql) {
+      for (const child of children) {
+        const reportNode = firstClassificationNode(child);
+        if (reportNode !== undefined) {
+          return {
+            anchor: reportNode,
+            findings: [
+              classifiedFinding(helper, reportNode, expression.sourceChunks),
+            ],
+            isWholeReplacement: true,
+          };
+        }
       }
     }
     return {
-      anchor: undefined,
-      findings: [],
+      anchor: children.map(firstClassificationNode).find((node) => {
+        return node !== undefined;
+      }),
+      findings: children.flatMap((child) => {
+        return child.findings;
+      }),
       isWholeReplacement: false,
     };
   }
@@ -2161,11 +2171,11 @@ function classifyOrdering(
   ordering: StructuralOrdering,
   context: ClassificationContext,
 ): ExpressionClassification {
-  const node =
-    ordering.direction === undefined
-      ? undefined
-      : operandNode(ordering.expression, "wrapper", context);
-  if (node === undefined || ordering.direction === undefined) {
+  if (ordering.direction === undefined) {
+    return classifyExpression(ordering.expression, context);
+  }
+  const node = operandNode(ordering.expression, "wrapper", context);
+  if (node === undefined) {
     return classifyExpression(
       ordering.expression,
       nestedClassificationContext(context),
@@ -2235,6 +2245,7 @@ function replacementBoundaryForFinding(
       continue;
     }
     const classificationContext: ClassificationContext = {
+      allowsOptionalSql: true,
       capabilities,
       checker,
       ownsResultMapping: false,
@@ -2324,6 +2335,10 @@ function analyzeParsed(
   const ownsResultMapping =
     context === "selection" && structuralExpressions.length === 1;
   const classificationContext: ClassificationContext = {
+    allowsOptionalSql:
+      context === "statement" ||
+      context === "relation" ||
+      capabilities.acceptsOptionalSql(node),
     capabilities,
     checker,
     ownsResultMapping,

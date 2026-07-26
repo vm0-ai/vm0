@@ -145,10 +145,80 @@ export const preferDrizzleApis = createRule({
       isSafeSqlTerminalUse,
     );
     const sqlCapabilityChecks: SqlCapabilityChecks = {
+      acceptsOptionalSql,
       hasDirectResultMapping: hasDirectMapWith,
       hasParameterListOrigin,
       isInlineParameterList: isInlineParameterListSqlJoin,
     };
+
+    function acceptsOptionalSql(node: TSESTree.Expression): boolean {
+      if (isRelationalWhereCallbackResult(node)) {
+        return true;
+      }
+      const parent = node.parent;
+      if (
+        parent.type === AST_NODE_TYPES.TemplateLiteral &&
+        parent.expressions.includes(node) &&
+        parent.parent.type === AST_NODE_TYPES.TaggedTemplateExpression &&
+        parent.parent.quasi === parent
+      ) {
+        return isDrizzleSqlTag(checker, services, parent.parent.tag);
+      }
+      if (
+        parent.type !== AST_NODE_TYPES.CallExpression ||
+        !parent.arguments.includes(node)
+      ) {
+        return false;
+      }
+      if (
+        isNamedDrizzleCall(parent, "and") ||
+        isNamedDrizzleCall(parent, "or")
+      ) {
+        return true;
+      }
+      const predicateIndex = predicateArgumentIndex(parent);
+      const method =
+        parent.callee.type === AST_NODE_TYPES.MemberExpression
+          ? memberName(parent.callee)
+          : undefined;
+      return (
+        method !== undefined &&
+        predicateIndex !== undefined &&
+        parent.arguments[predicateIndex] === node &&
+        isDrizzleMethodCall(parent, method)
+      );
+    }
+
+    function isRelationalWhereCallbackResult(
+      node: TSESTree.Expression,
+    ): boolean {
+      const parent = node.parent;
+      const callback =
+        (parent.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+          parent.type === AST_NODE_TYPES.FunctionExpression) &&
+        parent.body === node
+          ? parent
+          : parent.type === AST_NODE_TYPES.ReturnStatement &&
+              parent.argument === node &&
+              parent.parent.type === AST_NODE_TYPES.BlockStatement &&
+              parent.parent.body.length === 1 &&
+              (parent.parent.parent.type ===
+                AST_NODE_TYPES.ArrowFunctionExpression ||
+                parent.parent.parent.type ===
+                  AST_NODE_TYPES.FunctionExpression) &&
+              parent.parent.parent.body === parent.parent
+            ? parent.parent.parent
+            : undefined;
+      if (callback === undefined) {
+        return false;
+      }
+      const property = callback.parent;
+      return (
+        property.type === AST_NODE_TYPES.Property &&
+        property.value === callback &&
+        staticPropertyName(property) === "where"
+      );
+    }
 
     function isExecuteRawRowsCallee(node: TSESTree.Expression): boolean {
       return executeRawRowsMatcher(node);

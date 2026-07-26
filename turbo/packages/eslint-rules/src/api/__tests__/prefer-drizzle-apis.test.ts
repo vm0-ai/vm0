@@ -147,6 +147,24 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
+        import { eq, not, sql } from "drizzle-orm";
+        const first = eq(users.id, 1);
+        const second = eq(users.name, "name");
+        db.select()
+          .from(users)
+          .where(not(sql\`\${first} AND \${second}\`));
+        db.select({
+          value: sql\`\${first} AND \${second}\`,
+        }).from(users);
+        db.select()
+          .from(users)
+          .groupBy(sql\`\${first} AND \${second}\`)
+          .orderBy(sql\`\${first} AND \${second}\`);
+        sql\`\${first} AND \${second}\`.mapWith(Boolean);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
         import { eq, sql as query } from "drizzle-orm";
         const names = ["one", "two"];
         const nameList = query.join(
@@ -1879,6 +1897,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           where: (fields, operators) =>
             operators.sql\`\${fields.id} BETWEEN \${1} AND \${2}\`,
         });
+        db.query.users.findMany({
+          where: (fields, operators) => {
+            return operators.sql\`\${operators.eq(fields.id, 1)} AND \${operators.isNotNull(fields.name)}\`;
+          },
+        });
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "like" } },
@@ -1886,6 +1909,23 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "not" } },
         { messageId: "typedApi", data: { helper: "ilike" } },
         { messageId: "typedApi", data: { helper: "between" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { not, sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(
+            not(
+              sql\`\${users.id} = \${1} AND \${users.name} = \${"name"}\`,
+            ),
+          );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
       ],
     },
   ],
