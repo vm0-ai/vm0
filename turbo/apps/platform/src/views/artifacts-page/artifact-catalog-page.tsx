@@ -11,6 +11,7 @@ import {
   IconVideo,
   IconWorld,
 } from "@tabler/icons-react";
+import { r2ImageTransformUrl } from "@vm0/core";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 
@@ -31,6 +32,7 @@ import { emptyArtifactImg } from "../zero-page/platform-assets.ts";
 // requested. The signal layer deduplicates repeated requests for one cursor.
 const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
 const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 292;
+const ARTIFACT_CARD_THUMBNAIL_WIDTH_PX = 640;
 
 const ARTIFACT_KIND_OPTIONS: readonly {
   readonly ariaLabel: string;
@@ -108,7 +110,10 @@ function ArtifactCatalogCard({
       >
         {artifact.thumbnail ? (
           <img
-            src={artifact.thumbnail.url}
+            src={r2ImageTransformUrl(artifact.thumbnail.url, {
+              width: ARTIFACT_CARD_THUMBNAIL_WIDTH_PX,
+              fit: "scale-down",
+            })}
             alt=""
             loading="lazy"
             className="h-full w-full object-cover"

@@ -65,7 +65,7 @@ async function findCard(title: string): Promise<HTMLElement> {
 }
 
 describe("artifact catalog page", () => {
-  it("renders the first page of artifacts with their kind", async () => {
+  it("renders artifacts with their kind and resized thumbnails", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, {
         artifacts: [
@@ -74,7 +74,9 @@ describe("artifact catalog page", () => {
             id: "a0000000-0000-4000-a000-000000000002",
             kind: "hosted-site",
             title: "launch-site",
-            thumbnail: { url: "https://cdn.example.com/preview.webp" },
+            thumbnail: {
+              url: "https://cdn.vm0.io/artifacts/test/preview.webp",
+            },
           }),
         ],
         nextCursor: null,
@@ -90,7 +92,7 @@ describe("artifact catalog page", () => {
     ).toBeInTheDocument();
     expect(site.querySelector("img")).toHaveAttribute(
       "src",
-      "https://cdn.example.com/preview.webp",
+      "https://cdn.vm0.io/cdn-cgi/image/width=640,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/preview.webp",
     );
   });
 
