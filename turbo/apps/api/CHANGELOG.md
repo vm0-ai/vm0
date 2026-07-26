@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.326.1](https://github.com/vm0-ai/vm0/compare/api-v1.326.0...api-v1.326.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* refresh website template v2 archives to upstream ccff774 ([#23126](https://github.com/vm0-ai/vm0/issues/23126)) ([b564fa1](https://github.com/vm0-ai/vm0/commit/b564fa11bcd86b0e7f26ed7c464299e673e61fbf))
+
+
+### Refactoring
+
+* detach slack routing from legacy route fields ([#23127](https://github.com/vm0-ai/vm0/issues/23127)) ([50c43ab](https://github.com/vm0-ai/vm0/commit/50c43abc1be127d4b40e5d429058dcd6954597b6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.2
+    * @vm0/core bumped to 8.469.1
+    * @vm0/db bumped to 1.142.2
+
 ## [1.326.0](https://github.com/vm0-ai/vm0/compare/api-v1.325.0...api-v1.326.0) (2026-07-26)
 
 
