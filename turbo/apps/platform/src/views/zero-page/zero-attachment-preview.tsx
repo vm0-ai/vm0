@@ -24,11 +24,14 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
+import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface ChatAttachmentDescriptor {
   filename: string;
   url: string;
   contentType?: string;
+  previewImageUrl?: string;
+  previewImagePending?: boolean;
 }
 
 type DocumentPreviewKind =
@@ -220,9 +223,13 @@ export function fallbackHtmlPreviewTitle(
 
 function HtmlSitePreviewCard({
   filename,
+  previewImagePending,
+  previewImageUrl,
   url,
 }: {
   filename: string;
+  previewImagePending?: boolean;
+  previewImageUrl?: string;
   url: string;
 }) {
   const publicUrl = publicAttachmentUrl(url);
@@ -251,36 +258,75 @@ function HtmlSitePreviewCard({
         </span>
       </div>
       <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
-        <div
-          data-testid="attachment-preview-html-viewport"
-          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
-        >
-          <iframe
-            src={publicUrl}
-            title={`Site preview for ${title}`}
-            sandbox="allow-same-origin allow-scripts"
-            tabIndex={-1}
-            loading="lazy"
-            scrolling="no"
-            className="pointer-events-none h-full w-full bg-background"
+        {previewImageUrl ? (
+          <ArtifactThumbnailImage
+            src={previewImageUrl}
+            testId="attachment-preview-thumbnail"
+            className="absolute inset-0 h-full w-full object-cover"
+            fallback={
+              <HtmlSitePreviewViewport publicUrl={publicUrl} title={title} />
+            }
           />
-        </div>
+        ) : previewImagePending ? (
+          <span
+            className="absolute inset-0 bg-muted/30"
+            data-testid="attachment-preview-thumbnail-pending"
+          />
+        ) : (
+          <HtmlSitePreviewViewport publicUrl={publicUrl} title={title} />
+        )}
       </div>
     </a>
   );
 }
 
+function HtmlSitePreviewViewport({
+  publicUrl,
+  title,
+}: {
+  publicUrl: string;
+  title: string;
+}) {
+  return (
+    <div
+      data-testid="attachment-preview-html-viewport"
+      className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
+    >
+      <iframe
+        src={publicUrl}
+        title={`Site preview for ${title}`}
+        sandbox="allow-same-origin allow-scripts"
+        tabIndex={-1}
+        loading="lazy"
+        scrolling="no"
+        className="pointer-events-none h-full w-full bg-background"
+      />
+    </div>
+  );
+}
+
 function DocumentThumbnailPreview({
   filename,
-  url,
   kind,
+  previewImagePending,
+  previewImageUrl,
+  url,
 }: {
   filename: string;
-  url: string;
   kind: "markdown" | "csv" | "pdf" | "html";
+  previewImagePending?: boolean;
+  previewImageUrl?: string;
+  url: string;
 }) {
   if (kind === "html") {
-    return <HtmlSitePreviewCard filename={filename} url={url} />;
+    return (
+      <HtmlSitePreviewCard
+        filename={filename}
+        previewImagePending={previewImagePending}
+        previewImageUrl={previewImageUrl}
+        url={url}
+      />
+    );
   }
 
   return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
@@ -526,6 +572,8 @@ export function AttachmentPreview({
       return (
         <DocumentThumbnailPreview
           filename={attachment.filename}
+          previewImagePending={attachment.previewImagePending}
+          previewImageUrl={attachment.previewImageUrl}
           url={attachment.url}
           kind="html"
         />

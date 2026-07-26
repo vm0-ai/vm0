@@ -623,6 +623,20 @@ describe("GET /api/zero/artifacts", () => {
         }),
       ]),
     );
+    const threadArtifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    expect(threadArtifacts.runs).toHaveLength(1);
+    expect(threadArtifacts.runs[0]?.files).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: first.artifactUrl,
+          aliasUrl: first.url,
+        }),
+        expect.objectContaining({
+          url: second.artifactUrl,
+          aliasUrl: first.url,
+        }),
+      ]),
+    );
   }, 120_000);
 
   it("generates deploy-time preview images once per deployment", async () => {
@@ -648,6 +662,19 @@ describe("GET /api/zero/artifacts", () => {
     });
     expect(firstArtifact?.previewImageUrl).toContain(
       `/preview-v3-${artifact.deploymentId}.webp`,
+    );
+    const threadArtifacts = await chat.listThreadArtifacts(
+      owner.actor,
+      artifact.threadId,
+    );
+    expect(threadArtifacts.runs[0]?.files).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: artifact.url,
+          aliasUrl: artifact.url,
+          previewImageUrl: firstArtifact?.previewImageUrl,
+        }),
+      ]),
     );
     expect(snapshotRequests).toHaveLength(1);
     expect(snapshotRequests[0]).toMatchObject({

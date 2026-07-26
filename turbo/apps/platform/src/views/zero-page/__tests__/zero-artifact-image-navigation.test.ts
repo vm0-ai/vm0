@@ -2,6 +2,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { computed } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { createArtifactCardSignalsRegistry } from "../../../signals/chat-page/artifact-card-signals.ts";
 import {
@@ -14,6 +15,10 @@ import { currentMessageImageArtifactNavigation } from "../zero-artifact-image-na
 type MessageFixture = Parameters<
   typeof currentMessageImageArtifactNavigation
 >[1][number]["messages"][number];
+
+const emptyArtifactPreviewImageUrls$ = computed(() => {
+  return Promise.resolve(new Map<string, string>());
+});
 
 function artifactFile(
   url: string,
@@ -32,7 +37,9 @@ function artifactFile(
 }
 
 function assistantMessage({ content }: { content: string }): MessageFixture {
-  const artifactCardSignals = createArtifactCardSignalsRegistry();
+  const artifactCardSignals = createArtifactCardSignalsRegistry(
+    emptyArtifactPreviewImageUrls$,
+  );
   const renderBlock = (block: ParsedBodyBlock): BodyRenderBlock => {
     if (block.type === "markdown") {
       return block;
