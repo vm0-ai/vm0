@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.325.0](https://github.com/vm0-ai/vm0/compare/api-v1.324.2...api-v1.325.0) (2026-07-26)
+
+
+### Features
+
+* persist chat thread session bindings on admission ([#23105](https://github.com/vm0-ai/vm0/issues/23105)) ([3292c55](https://github.com/vm0-ai/vm0/commit/3292c55025c9ee308454a8de5185d3df9918cad8))
+
+
+### Refactoring
+
+* retire legacy slack runtime branches ([#23104](https://github.com/vm0-ai/vm0/issues/23104)) ([e1d8dde](https://github.com/vm0-ai/vm0/commit/e1d8ddeaaba338b59c56cc2515c7599abf13cbe3))
+* **storage:** authorize writeback by storage id ([#23112](https://github.com/vm0-ai/vm0/issues/23112)) ([321117e](https://github.com/vm0-ai/vm0/commit/321117edaf5f2304b87a435748557ad47cf73ea3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.0
+    * @vm0/connectors bumped to 1.192.2
+    * @vm0/core bumped to 8.468.2
+    * @vm0/db bumped to 1.142.0
+
 ## [1.324.2](https://github.com/vm0-ai/vm0/compare/api-v1.324.1...api-v1.324.2) (2026-07-26)
 
 

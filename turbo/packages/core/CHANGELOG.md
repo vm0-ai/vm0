@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.468.2](https://github.com/vm0-ai/vm0/compare/core-v8.468.1...core-v8.468.2) (2026-07-26)
+
+
+### Refactoring
+
+* retire legacy slack runtime branches ([#23104](https://github.com/vm0-ai/vm0/issues/23104)) ([e1d8dde](https://github.com/vm0-ai/vm0/commit/e1d8ddeaaba338b59c56cc2515c7599abf13cbe3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.0
+    * @vm0/connectors bumped to 1.192.2
+
 ## [8.468.1](https://github.com/vm0-ai/vm0/compare/core-v8.468.0...core-v8.468.1) (2026-07-26)
 
 
