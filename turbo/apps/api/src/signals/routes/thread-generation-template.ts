@@ -11,12 +11,14 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly websiteTemplateV2Enabled?: boolean;
+  readonly imageStyleR2Enabled?: boolean;
 }): string {
   if (!args.explicit) {
     return "";
   }
   const built = buildGenerationTemplatePrompt(args.explicit, {
     websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
+    imageStyleR2Enabled: args.imageStyleR2Enabled,
   });
   return built.status === "resolved" ? built.prompt : "";
 }

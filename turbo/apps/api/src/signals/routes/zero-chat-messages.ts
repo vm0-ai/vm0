@@ -273,6 +273,7 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly structuredPromptEnabled: boolean;
   readonly websiteTemplateV2Enabled: boolean;
+  readonly imageStyleR2Enabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends NormalSendBody {
@@ -1090,6 +1091,10 @@ async function resolveNormalSendFeatureSwitches(
     ),
     websiteTemplateV2Enabled: isFeatureEnabled(
       FeatureSwitchKey.WebsiteTemplateV2,
+      context,
+    ),
+    imageStyleR2Enabled: isFeatureEnabled(
+      FeatureSwitchKey.ImageStyleR2,
       context,
     ),
   };
@@ -2427,6 +2432,7 @@ const prepareNormalSend$ = command(
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.generationTemplate,
       websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,
+      imageStyleR2Enabled: featureSwitches.imageStyleR2Enabled,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(args, db);

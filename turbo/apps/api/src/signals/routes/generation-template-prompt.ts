@@ -4,6 +4,7 @@ import {
   findPresentationRunbookPackage,
   findVideoTemplate,
   findWebsiteTemplatePackage,
+  hasR2Archive,
   resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
@@ -74,6 +75,11 @@ interface BuildGenerationTemplatePromptOptions {
    * packages. When false, the existing package resources remain unchanged.
    */
   readonly websiteTemplateV2Enabled?: boolean;
+  /**
+   * When true, archive-enabled image styles resolve through private R2.
+   * When false, the existing vm0-skills GitHub source remains unchanged.
+   */
+  readonly imageStyleR2Enabled?: boolean;
 }
 
 export function buildGenerationTemplatePrompt(
@@ -88,7 +94,10 @@ export function buildGenerationTemplatePrompt(
     return buildVideoGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "illustration") {
-    return buildIllustrationGenerationTemplatePrompt(generationTemplate);
+    return buildIllustrationGenerationTemplatePrompt(
+      generationTemplate,
+      options,
+    );
   }
   if (generationTemplate.type === "workflow") {
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
@@ -262,6 +271,7 @@ function buildVideoGenerationTemplatePrompt(
 
 function buildIllustrationGenerationTemplatePrompt(
   generationTemplate: IllustrationGenerationTemplateInput,
+  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   const imageStyle = findImageStyle(
     generationTemplate.selection.illustrationStyleId,
@@ -269,10 +279,21 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
-  const styleSource =
-    imageStyle.source.repo && imageStyle.source.ref
+  const useR2 =
+    options?.imageStyleR2Enabled === true && hasR2Archive(imageStyle);
+  const styleSource = useR2
+    ? `private R2 registry resource ${imageStyle.id}`
+    : imageStyle.source.repo && imageStyle.source.ref
       ? `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`
       : imageStyle.source.path;
+  const compileCommand = [
+    `zero generate image --provider built-in --style ${imageStyle.id}`,
+    '--prompt "<user request>" --compile',
+    ...(useR2 ? ["--style-source r2"] : []),
+  ].join(" ");
+  const sourceInstruction = useR2
+    ? "Follow the returned packet completely, including pulling the private R2 package and reading its extracted SKILL.md. If the R2 source is unavailable, stop without generating; do not fall back to GitHub."
+    : `Follow the returned packet completely, including reading its style source (${styleSource}) and SKILL.md. If the source is unavailable, stop without generating.`;
 
   return {
     status: "resolved",
@@ -285,8 +306,8 @@ function buildIllustrationGenerationTemplatePrompt(
       `- Style source: ${styleSource}`,
       "",
       "When you produce an illustration or image from the user's request:",
-      `- Run once: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
-      `- Follow the returned packet completely, including reading its style source (${styleSource}) and SKILL.md. If the source is unavailable, stop without generating.`,
+      `- Run once: ${compileCommand}`,
+      `- ${sourceInstruction}`,
       '- Then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved compatible CLI options and required reference image URLs, without `--style`.',
       "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),

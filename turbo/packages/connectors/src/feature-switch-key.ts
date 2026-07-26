@@ -75,6 +75,7 @@ export enum FeatureSwitchKey {
   HostedArtifactVersions = "hostedArtifactVersions",
   VideoArtifactPosters = "videoArtifactPosters",
   WebsiteTemplateV2 = "websiteTemplateV2",
+  ImageStyleR2 = "imageStyleR2",
   PlanUpgradeGuidance = "planUpgradeGuidance",
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",

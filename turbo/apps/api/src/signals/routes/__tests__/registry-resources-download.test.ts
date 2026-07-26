@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
 import { findWebsiteTemplateResource } from "@vm0/core/resource-registry";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
+import { seedPrivateRegistryResourceVersionFixture } from "../../../test-fixtures/private-registry-resource";
 import { resolvePrivateRegistryResourceArchive } from "../registry-resources-download";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -49,6 +51,55 @@ describe("registry resource download", () => {
         "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad",
       ),
     ).toBeUndefined();
+  });
+
+  it("downloads a manually published image style archive through the route", async () => {
+    const id = "image-style:vm0-illustration";
+    const sha256 =
+      "03e77d6968190b9f1888a900963135e92f75b40a6c37e1c1bae999ea49669a37";
+    const versionId =
+      "820d2e2ce81805d935e4098d5b6f2899967c2ad5c0af4586f794010c6db66966";
+    const s3Key = "registry-fixture/vm0-illustration/version";
+    const fixture = await seedPrivateRegistryResourceVersionFixture({
+      storageName: `registry-resource@${id}`,
+      versionId,
+      s3Key,
+      size: 6054,
+      archiveSize: 2621,
+      fileCount: 1,
+    });
+    onTestFinished(fixture.cleanup);
+
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "registry-resource-test");
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/registry/vm0-illustration.tar.gz",
+    );
+
+    const response = await accept(
+      client().download({
+        headers: authHeaders(),
+        query: { id, expectedSha256: sha256 },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://r2.example.com/registry/vm0-illustration.tar.gz",
+      id,
+      type: "tar.gz",
+      sha256,
+      expiresInSeconds: 900,
+      versionId,
+      fileCount: 1,
+      size: 6054,
+    });
+    const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
+    expect(signedCommand).toMatchObject({
+      input: {
+        Bucket: "registry-resource-test",
+        Key: `${s3Key}/archive.tar.gz`,
+      },
+    });
   });
 
   it("resolves every refreshed additive website v2 archive", () => {
