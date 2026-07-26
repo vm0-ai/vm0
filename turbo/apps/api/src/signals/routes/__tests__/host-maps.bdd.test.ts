@@ -195,6 +195,9 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(immutableVersionOne.deploymentId).toBe(first.deploymentId);
     expect(immutableVersionOne.artifactUrl).toBe(first.artifactUrl);
 
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/hosted-sites/upload?sig=bdd",
+    );
     const third = await api.prepareHostedSite(actor, {
       ...body,
       files: [
