@@ -33,12 +33,11 @@ export const testSlackStatePostBodySchema = z.object({
   org_name: z.string().optional(),
   seed_secret_names: z.array(z.string()).optional(),
   seed_variables: z.record(z.string(), z.string()).optional(),
-  previous_reader_ingress: z
+  previous_writer_route: z
     .object({
-      route_id: z.string().uuid(),
-      event_id: z.string(),
-      payload: z.string(),
-      is_retry: z.boolean(),
+      connection_id: z.string().uuid(),
+      channel_id: z.string(),
+      thread_ts: z.string(),
     })
     .optional(),
 });

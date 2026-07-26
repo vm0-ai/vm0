@@ -12,11 +12,11 @@ describe("slackChatThreadRoutes schema", () => {
     expect(schema.slackChatThreadRoutes).toBe(slackChatThreadRoutes);
   });
 
-  it("keeps the per-user route identity and backend binding stable", () => {
+  it("keeps the per-user route identity and canonical receiver default stable", () => {
     const config = getTableConfig(slackChatThreadRoutes);
     const columns = new Map(
       config.columns.map((column) => {
-        return [column.name, column.notNull] as const;
+        return [column.name, column] as const;
       }),
     );
     const routeKey = config.indexes.find((index) => {
@@ -31,14 +31,15 @@ describe("slackChatThreadRoutes schema", () => {
         return "name" in column ? column.name : undefined;
       }),
     ).toStrictEqual(["connection_id", "channel_id", "thread_ts", "user_id"]);
-    expect(columns.get("connection_id")).toBeTruthy();
-    expect(columns.get("channel_id")).toBeTruthy();
-    expect(columns.get("thread_ts")).toBeTruthy();
-    expect(columns.get("user_id")).toBeTruthy();
-    expect(columns.get("backend")).toBeTruthy();
-    expect(columns.get("chat_thread_id")).toBeFalsy();
-    expect(columns.get("legacy_cutover_event_id")).toBeFalsy();
-    expect(columns.get("legacy_cutover_message_ts")).toBeFalsy();
+    expect(columns.get("connection_id")?.notNull).toBeTruthy();
+    expect(columns.get("channel_id")?.notNull).toBeTruthy();
+    expect(columns.get("thread_ts")?.notNull).toBeTruthy();
+    expect(columns.get("user_id")?.notNull).toBeTruthy();
+    expect(columns.get("backend")?.notNull).toBeTruthy();
+    expect(columns.get("backend")?.default).toBe("canonical");
+    expect(columns.get("chat_thread_id")?.notNull).toBeFalsy();
+    expect(columns.get("legacy_cutover_event_id")?.notNull).toBeFalsy();
+    expect(columns.get("legacy_cutover_message_ts")?.notNull).toBeFalsy();
     expect(
       config.foreignKeys.map((foreignKey) => {
         return foreignKey.reference().foreignTable;
