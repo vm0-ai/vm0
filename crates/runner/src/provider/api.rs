@@ -3960,34 +3960,58 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let completion = capture_api_provider_events(provider.complete(
-            run_id,
-            1,
-            Some("boom"),
-            None,
-            None,
-            CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
-        ));
-        let observe_requests = async {
-            let first_request = next_request(&mut requests).await;
-            assert_complete_authorization(&first_request, "sandbox-token");
-            tokio::task::yield_now().await;
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let completion = provider
+            .complete(
+                run_id,
+                1,
+                Some("boom"),
+                None,
+                None,
+                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+            )
+            .with_subscriber(subscriber);
+        tokio::pin!(completion);
+
+        let first_request = tokio::select! {
+            () = &mut completion => panic!("completion should wait before the retry"),
+            request = next_request(&mut requests) => request,
+        };
+        assert_complete_authorization(&first_request, "sandbox-token");
+        // Establish the retry timer before advancing paused time.
+        std::future::poll_fn(|cx| {
             assert!(
-                requests.try_recv().is_err(),
+                completion.as_mut().poll(cx).is_pending(),
                 "completion should wait before the retry"
             );
-            tokio::time::advance(Duration::from_secs(2)).await;
-            let second_request = next_request(&mut requests).await;
-            assert_complete_authorization(&second_request, "sandbox-token");
-        };
+            if captured.entries().iter().any(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message == "completion report failed, retrying")
+            }) {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+        assert!(
+            requests.try_recv().is_err(),
+            "completion should wait before the retry"
+        );
 
-        let (((), events), ()) = tokio::join!(completion, observe_requests);
+        tokio::time::advance(Duration::from_secs(2)).await;
+        let ((), second_request) = tokio::join!(&mut completion, next_request(&mut requests));
+        assert_complete_authorization(&second_request, "sandbox-token");
         server_task.await.unwrap();
         assert!(
             requests.recv().await.is_none(),
             "completion should stop after the retry"
         );
 
+        let events = captured.entries();
         let run_id = run_id.to_string();
         assert_eq!(
             events
