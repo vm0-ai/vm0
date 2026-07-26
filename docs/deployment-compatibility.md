@@ -40,12 +40,14 @@ active, or introduce a versioned/new endpoint and migrate the frontend first.
 ### Backend
 
 The backend is the compatibility boundary for both frontend and runner traffic.
-In the production release workflow, app and runner promotion wait for API
-promotion when the same release also changes the API. That ordering reduces the
-chance of a new frontend or runner talking to an old backend, but it does not
-remove cross-version windows: old browser pages can still call the new backend,
-old runners keep draining against the new backend, and traffic promotion is not
-an atomic process visible to every client at the same instant.
+In the production release workflow, app promotion starts after any required
+production migration and does not wait for API promotion. A new frontend can
+therefore talk to the old backend during a normal production rollout or remain
+paired with it if API promotion fails. Runner promotion still waits for API
+promotion when the same release also changes the API. Old browser pages can
+also call the new backend, old runners keep draining against the new backend,
+and traffic promotion is not an atomic process visible to every client at the
+same instant.
 
 Production database migrations are part of the API release lifecycle and run
 before the new API deployment is promoted. Old backend code can therefore
@@ -57,14 +59,14 @@ This is a traffic-promotion guarantee, not a guarantee that no deployment
 preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
 builds, host provisioning, and other non-serving preparation jobs may complete
 before migrations run. API traffic promotion must wait until the required
-migrations have completed; app and runner promotion also wait for API promotion
-when the same release changes the API.
+migrations have completed. App promotion waits for required migrations but is
+independent of API promotion. Runner promotion waits for API promotion when the
+same release changes the API.
 
 Backend changes must be safe with:
 
 - old frontend -> new backend
-- new frontend -> old backend, if traffic propagation or non-production
-  deployment order can expose that pairing
+- new frontend -> old backend
 - old runner -> new backend
 - new runner -> old backend, if traffic propagation or non-production
   deployment order can expose that pairing
