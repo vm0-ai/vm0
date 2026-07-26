@@ -12,6 +12,14 @@
       "import": "./src/connector-utils.ts",
       "types": "./src/connector-utils.ts"
     },
+    "./connector-auth-method": {
+      "import": "./src/connector-auth-method.ts",
+      "types": "./src/connector-auth-method.ts"
+    },
+    "./connector-config": {
+      "import": "./src/connector-config.ts",
+      "types": "./src/connector-config.ts"
+    },
     "./connector-search": {
       "import": "./src/connector-search.ts",
       "types": "./src/connector-search.ts"

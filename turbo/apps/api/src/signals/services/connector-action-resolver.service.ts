@@ -7,7 +7,7 @@ import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogDetail,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 
 import { db$ } from "../external/db";
 import {

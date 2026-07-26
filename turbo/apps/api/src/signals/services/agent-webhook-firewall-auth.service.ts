@@ -24,7 +24,7 @@ import {
   type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import {
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,

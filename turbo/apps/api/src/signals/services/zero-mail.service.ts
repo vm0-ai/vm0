@@ -11,7 +11,7 @@ import {
   type ZeroMailDraftStatus,
   type ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
-import { connectorAuthMethodHasRequiredScopes } from "@vm0/connectors/connector-utils";
+import { connectorAuthMethodHasRequiredScopes } from "@vm0/connectors/connector-auth-method";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";

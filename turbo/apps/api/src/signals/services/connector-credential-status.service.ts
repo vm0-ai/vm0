@@ -1,4 +1,4 @@
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 
 export type ConnectorCredentialStatus = "available" | "reconnect-required";

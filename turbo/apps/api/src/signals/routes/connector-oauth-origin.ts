@@ -1,12 +1,12 @@
 import {
   connectorAuthCodeGrantCallbackOrigin,
   connectorOpenIdAuthGrantCallbackOrigin,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorBrowserAuthCallbackOrigin,
-} from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-config";
 
 import { env } from "../../lib/env";
 import {

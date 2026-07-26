@@ -6,14 +6,11 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import {
-  completeConnectorExternalCodeAuthorization,
-  refreshConnectorAuthProviderAccessToken,
-  startConnectorExternalCodeAuthorization,
-} from "../../connector-auth";
+import { resolveConnectorAuthClient } from "../../../connector-auth-method";
 import { isOAuthProviderHttpError } from "../../oauth/error";
 import { isProviderResponseError } from "../../provider-error";
-import { resolveConnectorAuthClientForMethod } from "../../../connector-utils";
+import { AWS_PROVIDER_METHOD } from "./provider-method-fixtures";
+import { providerOperationFixture } from "./provider-operation-fixture";
 
 const AWS_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
 const AWS_STS_URL = "https://sts.us-east-1.amazonaws.com/";
@@ -23,6 +20,15 @@ const AWS_EXCHANGE_CREDENTIAL_ID = ["aws", "exchange", "credential", "id"].join(
 const AWS_REFRESH_CREDENTIAL_ID = ["aws", "refresh", "credential", "id"].join(
   "-",
 );
+const {
+  completeConnectorExternalCodeAuthorization,
+  refreshConnectorAuthProviderAccessToken,
+  startConnectorExternalCodeAuthorization,
+} = providerOperationFixture({
+  connectorRef: "aws",
+  authMethodId: "cli",
+  method: AWS_PROVIDER_METHOD,
+});
 
 const awsTokenRequestSchema = z.object({
   clientId: z.literal("arn:aws:signin:::devtools/cross-device"),
@@ -82,9 +88,12 @@ afterAll(() => {
 });
 
 function awsAuthClient() {
-  const authClient = resolveConnectorAuthClientForMethod("aws", "cli", () => {
-    return undefined;
-  });
+  const authClient = resolveConnectorAuthClient(
+    AWS_PROVIDER_METHOD.client,
+    () => {
+      return undefined;
+    },
+  );
   if (!authClient) {
     throw new Error("Expected AWS auth client");
   }
