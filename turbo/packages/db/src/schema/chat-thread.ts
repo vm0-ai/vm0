@@ -49,7 +49,7 @@ export const chatThreads = pgTable(
     sourceScheduleRunId: uuid("source_schedule_run_id"),
     /**
      * Canonical vm0 application session for runs admitted on this thread.
-     * Readers remain source-specific during the additive rollout stage.
+     * Every thread-bound run source resolves continuation through this binding.
      */
     agentSessionId: uuid("agent_session_id").references(
       () => {

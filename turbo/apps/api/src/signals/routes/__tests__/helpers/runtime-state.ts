@@ -235,6 +235,26 @@ export async function readThreadSessionBinding(
   return response.thread_session_binding;
 }
 
+export async function clearThreadSessionBinding(
+  context: TestContext,
+  threadId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-thread-session-binding",
+    thread_id: threadId,
+  });
+}
+
+export async function clearThreadSessionConversation(
+  context: TestContext,
+  threadId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-thread-session-conversation",
+    thread_id: threadId,
+  });
+}
+
 export async function insertLegacyArtifactCatalogFile(
   context: TestContext,
   args: {

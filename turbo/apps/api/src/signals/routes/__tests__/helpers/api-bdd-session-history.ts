@@ -22,6 +22,7 @@ function knownSessionHistoryBodies(runId: string): readonly string[] {
     `bdd timing session history ${runId}`,
     `bdd snapshot history ${runId}`,
     `bdd zero detail ${runId}`,
+    `morning brief history ${runId}`,
     `slack dispatch probe ${runId}`,
     `workflow automation history ${runId}`,
   ];

@@ -75,6 +75,14 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     thread_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("clear-thread-session-binding"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("clear-thread-session-conversation"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("insert-legacy-artifact-catalog-file"),
     user_id: z.string(),
     org_id: z.string(),

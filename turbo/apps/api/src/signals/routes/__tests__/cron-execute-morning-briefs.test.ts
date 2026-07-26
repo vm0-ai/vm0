@@ -305,7 +305,6 @@ async function setupMorningBriefActor(
   }
 
   routeMocks.clerk.session(actor.userId, actor.orgId);
-  context.mocks.s3.send.mockResolvedValue({});
 
   // Morning Brief is opt-in: the preference defaults to off for everyone.
   const initial = await accept(
@@ -432,9 +431,15 @@ async function completeMorningBriefRun(
   scenario: Scenario,
   runId: string,
   exitCode: number,
+  expectedResumeSessionId?: string | null,
 ): Promise<string> {
   await api.heartbeatRunner(scenario.runnerGroup);
   const claim = await api.claimRunnerJob(runId);
+  if (expectedResumeSessionId !== undefined) {
+    expect(claim.resumeSession?.sessionId ?? null).toBe(
+      expectedResumeSessionId,
+    );
+  }
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
   await webhooks.requestAgentCheckpoint(
     {
@@ -830,7 +835,7 @@ describe("cron execute morning briefs", () => {
     }
 
     mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(scenario, triggered.body.runId, 0);
+    await completeMorningBriefRun(scenario, triggered.body.runId, 0, null);
     await drainOutbox();
     expect(sentMorningBriefEmails()).toHaveLength(1);
 
@@ -845,7 +850,12 @@ describe("cron execute morning briefs", () => {
     );
     await flushWaitUntilForTest();
     mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(scenario, second.body.runId, 0);
+    await completeMorningBriefRun(
+      scenario,
+      second.body.runId,
+      0,
+      `morning-brief-cli-${triggered.body.runId}`,
+    );
     await drainOutbox();
     expect(sentMorningBriefEmails()).toHaveLength(2);
     clearMockNow();

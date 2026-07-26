@@ -28,6 +28,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { readThreadSessionBinding } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
@@ -150,7 +151,7 @@ async function setup(): Promise<Scenario> {
     name: WORKFLOW_NAME,
   });
   mocks.clerk.session(actor.userId, actor.orgId);
-  context.mocks.s3.send.mockResolvedValue({});
+  chatCallbacks.acceptChatObjectStorage();
   chatCallbacks.mockChatOutputEvents([]);
   return {
     actor,
@@ -294,7 +295,7 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
       cliAgentType: "claude-code",
       cliAgentSessionId: `workflow-queue-cli-${runId}`,
       cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`workflow queue history ${runId}`)
+        .update(`workflow automation history ${runId}`)
         .digest("hex"),
     },
     sandboxHeaders,
@@ -912,7 +913,7 @@ describe("workflow queue", () => {
     expect(resumed.body.running?.runId).toStrictEqual(expect.any(String));
   });
 
-  it("drains a previous-version queued one-time event during rollout", async () => {
+  it("drains a previous-version queued one-time event through the canonical session", async () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
@@ -963,15 +964,42 @@ describe("workflow queue", () => {
       automationId: created.body.id,
     });
 
+    const busyBinding = await readThreadSessionBinding(
+      context,
+      created.body.chatThreadId,
+    );
+    if (!busyBinding.agent_session_id) {
+      throw new Error("Expected the busy run to bind the thread session");
+    }
     await completeRunThroughSandbox(scenario, busyRunId);
     const runIds = await workflowRunIds(created.body.chatThreadId);
     expect(runIds).toHaveLength(2);
+    const drainedRunId = runIds[1];
+    if (!drainedRunId) {
+      throw new Error("Expected the previous-version event to drain");
+    }
+    const drainedBinding = await readThreadSessionBinding(
+      context,
+      created.body.chatThreadId,
+    );
+    expect(drainedBinding).toMatchObject({
+      agent_session_id: busyBinding.agent_session_id,
+      agent_session_run_id: drainedRunId,
+      run_session_id: busyBinding.agent_session_id,
+    });
+    const drainedClaim = await completeRunThroughSandbox(
+      scenario,
+      drainedRunId,
+    );
+    expect(drainedClaim.resumeSession?.sessionId).toBe(
+      `workflow-queue-cli-${busyRunId}`,
+    );
     const drained = await wf.readAutomation(created.body.id);
     expect(drained.enabled).toBeFalsy();
     expect(drained.nextRunAt).toBeNull();
   });
 
-  it("drains queued user chat messages before workflow events", async () => {
+  it("drains user chat before workflow events in one canonical session", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     // The queued-message auto-send runs inside the terminal chat callback,
@@ -990,6 +1018,13 @@ describe("workflow queue", () => {
       await postWorkflowWebhook(automation, "first"),
       automation.threadId,
     );
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      automation.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the first workflow run to bind the session");
+    }
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
 
     // A user message sent while the automation run is active joins the chat
@@ -1020,13 +1055,49 @@ describe("workflow queue", () => {
     if (!userMessage?.runId) {
       throw new Error("Expected the queued user message to claim a run");
     }
+    const userBinding = await readThreadSessionBinding(
+      context,
+      automation.threadId,
+    );
+    expect(userBinding).toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: userMessage.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
 
     // The workflow event drains only after the user's run finishes.
-    await completeRunThroughSandbox(scenario, userMessage.runId);
-    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+    const userClaim = await completeRunThroughSandbox(
+      scenario,
+      userMessage.runId,
+    );
+    expect(userClaim.resumeSession?.sessionId).toBe(
+      `workflow-queue-cli-${firstRunId}`,
+    );
+    const runIds = await workflowRunIds(automation.threadId);
+    expect(runIds).toHaveLength(2);
+    const secondWorkflowRunId = runIds[1];
+    if (!secondWorkflowRunId) {
+      throw new Error("Expected the queued workflow event to drain");
+    }
+    const workflowBinding = await readThreadSessionBinding(
+      context,
+      automation.threadId,
+    );
+    expect(workflowBinding).toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: secondWorkflowRunId,
+      run_session_id: firstBinding.agent_session_id,
+    });
+    const workflowClaim = await completeRunThroughSandbox(
+      scenario,
+      secondWorkflowRunId,
+    );
+    expect(workflowClaim.resumeSession?.sessionId).toBe(
+      `workflow-queue-cli-${userMessage.runId}`,
+    );
   });
 
-  it("keeps the workflow event queued when a user message wins final admission", async () => {
+  it("serializes competing admissions into one canonical session", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     chatCallbacks.mockChatOutputEvents([
@@ -1080,8 +1151,38 @@ describe("workflow queue", () => {
       throw new Error("Expected the user message to win final admission");
     }
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
+    const userBinding = await readThreadSessionBinding(
+      context,
+      automation.threadId,
+    );
+    if (!userBinding.agent_session_id) {
+      throw new Error("Expected the winning user run to bind the session");
+    }
+    expect(userBinding).toMatchObject({
+      agent_session_run_id: userResult.body.runId,
+      run_session_id: userBinding.agent_session_id,
+    });
 
     await completeRunThroughSandbox(scenario, userResult.body.runId);
-    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(1);
+    const [workflowRunId] = await workflowRunIds(automation.threadId);
+    if (!workflowRunId) {
+      throw new Error("Expected the competing workflow event to drain");
+    }
+    const workflowBinding = await readThreadSessionBinding(
+      context,
+      automation.threadId,
+    );
+    expect(workflowBinding).toMatchObject({
+      agent_session_id: userBinding.agent_session_id,
+      agent_session_run_id: workflowRunId,
+      run_session_id: userBinding.agent_session_id,
+    });
+    const workflowClaim = await completeRunThroughSandbox(
+      scenario,
+      workflowRunId,
+    );
+    expect(workflowClaim.resumeSession?.sessionId).toBe(
+      `workflow-queue-cli-${userResult.body.runId}`,
+    );
   });
 });

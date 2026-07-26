@@ -503,6 +503,7 @@ interface CreateQueuedChatRunInput {
   readonly queuedMessage: QueuedUserMessage;
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly cliAgentType: string | null;
   readonly codexServiceTier: "fast" | undefined;
   readonly computerUseHostGrant: {
     readonly hostId: string;
@@ -646,6 +647,11 @@ function buildQueuedCreateZeroRunArgs(
       modelProviderId: input.modelPin.modelProviderId,
       modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
       selectedModel: input.modelPin.selectedModel,
+    },
+    threadSessionRoute: {
+      selectedModel: input.modelPin.selectedModel,
+      modelProvider: input.effectiveModelProvider ?? null,
+      cliAgentType: input.cliAgentType,
     },
     body: {
       prompt: input.prompt,
@@ -2406,6 +2412,7 @@ async function buildCreateQueuedChatRunInput(
     queuedMessage: args.queuedMessage,
     modelPin: modelRoute.modelPin,
     effectiveModelProvider: modelRoute.effectiveModelProvider,
+    cliAgentType: modelRoute.cliAgentType,
     codexServiceTier: modelRoute.codexServiceTier,
     computerUseHostGrant,
     triggerSource: args.queuedMessage.triggerSource,

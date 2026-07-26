@@ -30,12 +30,19 @@ import { writeDb$, type Db } from "../external/db";
 import {
   completeAgentRun$,
   isQueueFirstRunClaimLost,
+  isThreadSessionSnapshotStale,
   prepareAgentRun$,
+  recordThreadSessionBindingRetryTelemetry,
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
   type QueueFirstRunClaimLost,
   type ZeroRunModelPin,
 } from "./agent-run-create.service";
+import {
+  resolveChatThreadSession,
+  type ChatThreadSessionResolution,
+  type ChatThreadSessionRoute,
+} from "./chat-session-continuity.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -161,6 +168,7 @@ interface CreateZeroRunCommandArgs {
   >;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  readonly threadSessionRoute?: ChatThreadSessionRoute;
   readonly computerUseHostId?: string;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
@@ -882,6 +890,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly allowedConnectorTypes: readonly ConnectorRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
+  readonly threadSessionResolution?: ChatThreadSessionResolution;
 }): CreateAgentRunArgs {
   const command = args.command;
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
@@ -908,6 +917,9 @@ function buildZeroCreateAgentRunArgs(args: {
     modelProviderType: command.body.modelProvider,
     selectedModelOverride: command.selectedModelOverride ?? agentSelectedModel,
     chatThreadId: command.chatThreadId,
+    ...(args.threadSessionResolution
+      ? { threadSessionResolution: args.threadSessionResolution }
+      : {}),
     extraEnvironment: buildZeroRunExtraEnvironment({
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
@@ -1024,6 +1036,7 @@ interface RegularZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
   readonly kind: "regular";
   readonly command: AnyCreateZeroRunCommandArgs;
   readonly triggerAgentId: string | undefined;
+  readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
 interface IntegrationZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
@@ -1044,45 +1057,93 @@ function buildZeroCreateAgentRunArgsForKind(
   return buildZeroIntegrationCreateAgentRunArgs(input);
 }
 
+async function resolveThreadSessionForZeroRun(
+  db: Db,
+  input: ZeroRunAfterPreCreate,
+): Promise<ZeroRunAfterPreCreate> {
+  if (input.kind === "integration" || !input.command.chatThreadId) {
+    return input;
+  }
+  if (!input.command.threadSessionRoute) {
+    throw new Error("Thread-bound Zero run is missing its model route");
+  }
+  const resolution = await resolveChatThreadSession({
+    db,
+    threadId: input.command.chatThreadId,
+    userId: input.command.auth.userId,
+    orgId: input.command.auth.orgId,
+    agentComposeId: input.agent.id,
+    route: input.command.threadSessionRoute,
+  });
+  const body: ZeroRunCreateBody = { ...input.command.body };
+  if (resolution.sessionId) {
+    body.sessionId = resolution.sessionId;
+  } else {
+    delete body.sessionId;
+  }
+  return {
+    ...input,
+    command: { ...input.command, body },
+    threadSessionResolution: resolution,
+  };
+}
+
+const THREAD_SESSION_PREPARATION_ATTEMPTS = 3;
+
 const createAgentRunAfterZeroPreCreate$ = command(
   async ({ set }, input: ZeroRunAfterPreCreate, signal: AbortSignal) => {
-    const createAgentRunArgs = await measureZeroPreCreate(
-      input.timing,
-      "api_dispatch_pre_create_zero_build_create_run_args",
-      () => {
-        return buildZeroCreateAgentRunArgsForKind(input);
-      },
-    );
-    signal.throwIfAborted();
-    input.timing.recordElapsed(
-      "api_dispatch_pre_create_agent_run",
-      "top_level",
-      input.command.apiStartTime,
-    );
-    const preparedAgentRun = await set(
-      prepareAgentRun$,
-      {
-        args: createAgentRunArgs,
-        timing: input.timing,
-        checkOrgPlanStatusBeforeContext: false,
-        preloadedFeatureSwitchContext: input.featureSwitchContext,
-        preloadedConnectorCatalogSnapshot: input.connectorCatalogSnapshot,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if ("status" in preparedAgentRun) {
-      return preparedAgentRun;
-    }
+    const db = set(writeDb$);
+    for (
+      let attempt = 0;
+      attempt < THREAD_SESSION_PREPARATION_ATTEMPTS;
+      attempt += 1
+    ) {
+      const attemptInput = await resolveThreadSessionForZeroRun(db, input);
+      signal.throwIfAborted();
+      const createAgentRunArgs = await measureZeroPreCreate(
+        input.timing,
+        "api_dispatch_pre_create_zero_build_create_run_args",
+        () => {
+          return buildZeroCreateAgentRunArgsForKind(attemptInput);
+        },
+      );
+      signal.throwIfAborted();
+      input.timing.recordElapsed(
+        "api_dispatch_pre_create_agent_run",
+        "top_level",
+        input.command.apiStartTime,
+      );
+      const preparedAgentRun = await set(
+        prepareAgentRun$,
+        {
+          args: createAgentRunArgs,
+          timing: input.timing,
+          checkOrgPlanStatusBeforeContext: false,
+          preloadedFeatureSwitchContext: input.featureSwitchContext,
+          preloadedConnectorCatalogSnapshot: input.connectorCatalogSnapshot,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if ("status" in preparedAgentRun) {
+        return preparedAgentRun;
+      }
 
-    return await set(
-      completeAgentRun$,
-      {
-        prepared: preparedAgentRun,
-        finalAppendSystemPrompt: createAgentRunArgs.body.appendSystemPrompt,
-      },
-      signal,
-    );
+      const result = await set(
+        completeAgentRun$,
+        {
+          prepared: preparedAgentRun,
+          finalAppendSystemPrompt: createAgentRunArgs.body.appendSystemPrompt,
+        },
+        signal,
+      );
+      if (!isThreadSessionSnapshotStale(result)) {
+        return result;
+      }
+      recordThreadSessionBindingRetryTelemetry(result);
+      signal.throwIfAborted();
+    }
+    throw new Error("Chat thread session changed during every run preparation");
   },
 );
 

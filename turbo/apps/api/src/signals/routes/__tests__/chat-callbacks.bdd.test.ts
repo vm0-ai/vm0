@@ -1503,6 +1503,16 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
       "# How to operate",
     );
+    expect(goalContext.body.sessionId).toBe(
+      cliAgentSessionIdForChatRun(first.runId),
+    );
+    const continuationClaim = await claimChatRunJob(
+      runnerGroup,
+      goalContinuation.runId,
+    );
+    expect(continuationClaim.resumeSession?.sessionId).toBe(
+      cliAgentSessionIdForChatRun(first.runId),
+    );
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);
     await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
     await flushWaitUntilForTest();

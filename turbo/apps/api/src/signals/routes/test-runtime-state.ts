@@ -298,6 +298,47 @@ async function readThreadSessionBinding(
   };
 }
 
+async function clearThreadSessionBinding(
+  db: Db,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [thread] = await db
+    .update(chatThreads)
+    .set({ agentSessionId: null, agentSessionRunId: null })
+    .where(eq(chatThreads.id, threadId))
+    .returning({ id: chatThreads.id });
+  signal.throwIfAborted();
+  if (!thread) {
+    throw new Error("Expected a chat thread session binding row");
+  }
+}
+
+async function clearThreadSessionConversation(
+  db: Db,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [thread] = await db
+    .select({ agentSessionId: chatThreads.agentSessionId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!thread?.agentSessionId) {
+    throw new Error("Expected a bound chat thread session");
+  }
+  const [session] = await db
+    .update(agentSessions)
+    .set({ conversationId: null })
+    .where(eq(agentSessions.id, thread.agentSessionId))
+    .returning({ id: agentSessions.id });
+  signal.throwIfAborted();
+  if (!session) {
+    throw new Error("Expected a bound agent session");
+  }
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -478,27 +519,54 @@ async function timingStateActionResponse(
   }
 }
 
-type ThreadSessionBindingAction = Extract<
+type ThreadSessionStateAction = Extract<
   TestRuntimeStateActionBody,
-  { action: "read-thread-session-binding" }
+  {
+    action:
+      | "read-thread-session-binding"
+      | "clear-thread-session-binding"
+      | "clear-thread-session-conversation";
+  }
 >;
 
-async function threadSessionBindingActionResponse(
+function isThreadSessionStateAction(
+  body: TestRuntimeStateActionBody,
+): body is ThreadSessionStateAction {
+  return (
+    body.action === "read-thread-session-binding" ||
+    body.action === "clear-thread-session-binding" ||
+    body.action === "clear-thread-session-conversation"
+  );
+}
+
+async function threadSessionStateActionResponse(
   db: Db,
-  body: ThreadSessionBindingAction,
+  body: ThreadSessionStateAction,
   signal: AbortSignal,
 ) {
-  return {
-    status: 200 as const,
-    body: {
-      ok: true as const,
-      thread_session_binding: await readThreadSessionBinding(
-        db,
-        body.thread_id,
-        signal,
-      ),
-    },
-  };
+  switch (body.action) {
+    case "read-thread-session-binding": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          thread_session_binding: await readThreadSessionBinding(
+            db,
+            body.thread_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "clear-thread-session-binding": {
+      await clearThreadSessionBinding(db, body.thread_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "clear-thread-session-conversation": {
+      await clearThreadSessionConversation(db, body.thread_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
 }
 
 type LegacyArtifactCatalogFileAction = Extract<
@@ -555,8 +623,8 @@ const postRuntimeStateAction$ = command(
     if (isTimingStateAction(body)) {
       return await timingStateActionResponse(db, body, signal);
     }
-    if (body.action === "read-thread-session-binding") {
-      return await threadSessionBindingActionResponse(db, body, signal);
+    if (isThreadSessionStateAction(body)) {
+      return await threadSessionStateActionResponse(db, body, signal);
     }
     if (body.action === "insert-legacy-artifact-catalog-file") {
       return await insertLegacyArtifactCatalogFile(db, body, signal);

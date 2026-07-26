@@ -1708,7 +1708,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     let run2Id = queuedRuns.run2Id;
 
     const webClaim = await runs.claimRunnerJob(webRunId);
-    expect(webClaim.resumeSession).toBeNull();
+    expect(webClaim.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: webRunId,
@@ -1721,18 +1721,16 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const webRun = await runs.readRun(actor, webRunId);
     const webSessionId = webRun.result?.agentSessionId;
     if (!webSessionId) {
-      throw new Error("Expected the Web run to save its independent session");
+      throw new Error("Expected the Web run to save its canonical session");
     }
+    expect(webSessionId).toBe(slackSessionId);
 
     ({ run2Id, claim2 } = await ensureSlackRunClaimed({
       runnerGroup,
       run2Id,
       claim2,
     }));
-    expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
-    expect(claim2.resumeSession?.sessionId).not.toBe(
-      `bdd-slack-cli-${webRunId}`,
-    );
+    expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
     expect(state.recent_runs).toContainEqual(
       expect.objectContaining({
@@ -1878,7 +1876,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     const run2 = await runs.readRun(actor, run2Id);
     expect(run2.result?.agentSessionId).toBe(slackSessionId);
-    expect(run2.result?.agentSessionId).not.toBe(webSessionId);
+    expect(run2.result?.agentSessionId).toBe(webSessionId);
   });
 
   it("admits a later promoted-route retry after its first ingress insert fails", async () => {
