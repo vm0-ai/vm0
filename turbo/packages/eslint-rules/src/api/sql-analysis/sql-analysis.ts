@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import {
   AST_NODE_TYPES,
   type ParserServicesWithTypeInformation,
@@ -11,7 +13,11 @@ import {
   isDrizzleWrapperType,
 } from "../drizzle.ts";
 import { parsePostgres } from "./postgres-parser.ts";
-import { type SqlSourceComposer, type SqlSourceVariant } from "./sql-source.ts";
+import {
+  type SqlSourceChunk,
+  type SqlSourceComposer,
+  type SqlSourceVariant,
+} from "./sql-source.ts";
 
 type SqlAnalysisContext = "predicate" | "statement";
 
@@ -35,6 +41,7 @@ export interface SqlAnalysis {
 }
 
 interface SqlMarker {
+  readonly chunk: SqlSourceChunk;
   readonly isColumn: boolean;
   readonly isTable: boolean;
   readonly isWrapper: boolean;
@@ -43,10 +50,17 @@ interface SqlMarker {
 
 interface ParsedSql {
   readonly markers: ReadonlyMap<string, SqlMarker>;
+  readonly sourceRanges: readonly SqlSourceRange[];
   readonly statement: unknown;
 }
 
-type StructuralExpression =
+interface SqlSourceRange {
+  readonly chunk: SqlSourceChunk;
+  readonly end: number;
+  readonly start: number;
+}
+
+type StructuralExpression = (
   | {
       readonly children: readonly StructuralExpression[];
       readonly kind: "opaque";
@@ -68,11 +82,21 @@ type StructuralExpression =
       readonly items: readonly StructuralExpression[];
       readonly kind: "boolean";
       readonly operator: "and" | "or";
-    };
+    }
+) & {
+  readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
+};
+
+type ClassifiedHelperFinding = Extract<
+  SqlAnalysisFinding,
+  { readonly kind: "helper" }
+> & {
+  readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
+};
 
 interface ExpressionClassification {
   readonly anchor: TSESTree.Node | undefined;
-  readonly findings: readonly SqlAnalysisFinding[];
+  readonly findings: readonly ClassifiedHelperFinding[];
   readonly isWholeReplacement: boolean;
 }
 
@@ -185,6 +209,7 @@ function markerPrefix(quasis: readonly string[]): string {
 function parseSqlVariant(
   variant: SqlSourceVariant,
   context: SqlAnalysisContext,
+  trackSourceRanges: boolean,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
 ): ParsedSql | null {
@@ -193,20 +218,34 @@ function parseSqlVariant(
   });
   const prefix = markerPrefix(literals);
   const markers = new Map<string, SqlMarker>();
-  let source = "";
+  const sourceRanges: SqlSourceRange[] = [];
+  const contextPrefix = context === "statement" ? "" : "SELECT 1 WHERE ";
+  let source = contextPrefix;
+  // libpg_query locations are UTF-8 byte offsets, not JavaScript string
+  // indexes.
+  let sourceByteLength = trackSourceRanges
+    ? Buffer.byteLength(contextPrefix)
+    : 0;
   let markerIndex = 0;
   for (const chunk of variant.chunks) {
+    const start = sourceByteLength;
     if (chunk.kind === "literal") {
       source += chunk.text;
+      if (trackSourceRanges) {
+        sourceByteLength += Buffer.byteLength(chunk.text);
+        sourceRanges.push({ chunk, end: sourceByteLength, start });
+      }
       continue;
     }
     const expression = chunk.expression;
     const name = `${prefix}${markerIndex}`;
+    const markerSource = `"${name}"`;
     markerIndex += 1;
     let cachedColumn: boolean | undefined;
     let cachedTable: boolean | undefined;
     let cachedWrapper: boolean | undefined;
     const marker: SqlMarker = {
+      chunk,
       get isColumn(): boolean {
         cachedColumn ??= markerIsColumn(expression, checker, services);
         return cachedColumn;
@@ -222,17 +261,19 @@ function parseSqlVariant(
       node: expression,
     };
     markers.set(name, marker);
-    source += `"${name}"`;
+    source += markerSource;
+    if (trackSourceRanges) {
+      sourceByteLength += Buffer.byteLength(markerSource);
+      sourceRanges.push({ chunk, end: sourceByteLength, start });
+    }
   }
 
-  const parseResult = parsePostgres(
-    context === "statement" ? source : `SELECT 1 WHERE ${source}`,
-  );
+  const parseResult = parsePostgres(source);
   if (parseResult === null || parseResult.statements.length !== 1) {
     return null;
   }
   const statement = parseResult.statements[0];
-  return statement === undefined ? null : { markers, statement };
+  return statement === undefined ? null : { markers, sourceRanges, statement };
 }
 
 function stringNodeValue(value: unknown): string | undefined {
@@ -285,9 +326,48 @@ function isExpressionNode(value: unknown): boolean {
   );
 }
 
+function syntaxLocation(value: unknown): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  for (const payload of Object.values(value)) {
+    if (isRecord(payload) && typeof payload.location === "number") {
+      return payload.location;
+    }
+  }
+  return undefined;
+}
+
+function ownSourceChunks(
+  value: unknown,
+  sourceRanges: readonly SqlSourceRange[],
+): ReadonlySet<SqlSourceChunk> {
+  const location = syntaxLocation(value);
+  if (location === undefined || location < 0) {
+    return new Set();
+  }
+  const range = sourceRanges.find((candidate) => {
+    return candidate.start <= location && location < candidate.end;
+  });
+  return range === undefined ? new Set() : new Set([range.chunk]);
+}
+
+function mergeSourceChunks(
+  own: ReadonlySet<SqlSourceChunk>,
+  expressions: readonly StructuralExpression[],
+): ReadonlySet<SqlSourceChunk> {
+  return new Set([
+    ...own,
+    ...expressions.flatMap((expression) => {
+      return [...expression.sourceChunks];
+    }),
+  ]);
+}
+
 function collectStructuralExpressions(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
 ): StructuralExpression[] {
   const expressions: StructuralExpression[] = [];
 
@@ -302,7 +382,7 @@ function collectStructuralExpressions(
       return;
     }
     if (isExpressionNode(current)) {
-      expressions.push(structuralExpression(current, markers));
+      expressions.push(structuralExpression(current, markers, sourceRanges));
       return;
     }
     for (const child of Object.values(current)) {
@@ -317,13 +397,21 @@ function collectStructuralExpressions(
 function structuralExpression(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
 ): StructuralExpression {
   const marker = columnMarker(value, markers);
   if (marker !== undefined) {
-    return { kind: "marker", marker };
+    return {
+      kind: "marker",
+      marker,
+      sourceChunks: new Set([marker.chunk]),
+    };
   }
   if (recordProperty(value, "A_Const") !== undefined) {
-    return { kind: "constant" };
+    return {
+      kind: "constant",
+      sourceChunks: ownSourceChunks(value, sourceRanges),
+    };
   }
 
   const binary = recordProperty(value, "A_Expr");
@@ -334,11 +422,17 @@ function structuralExpression(
     binary.lexpr !== undefined &&
     binary.rexpr !== undefined
   ) {
+    const left = structuralExpression(binary.lexpr, markers, sourceRanges);
+    const right = structuralExpression(binary.rexpr, markers, sourceRanges);
     return {
       kind: "comparison",
-      left: structuralExpression(binary.lexpr, markers),
+      left,
       operator: binaryOperator,
-      right: structuralExpression(binary.rexpr, markers),
+      right,
+      sourceChunks: mergeSourceChunks(ownSourceChunks(value, sourceRanges), [
+        left,
+        right,
+      ]),
     };
   }
 
@@ -348,26 +442,36 @@ function structuralExpression(
     Array.isArray(boolean.args) &&
     boolean.args.length >= 2
   ) {
+    const items = boolean.args.map((item) => {
+      return structuralExpression(item, markers, sourceRanges);
+    });
     return {
-      items: boolean.args.map((item) => {
-        return structuralExpression(item, markers);
-      }),
+      items,
       kind: "boolean",
       operator: boolean.boolop === "AND_EXPR" ? "and" : "or",
+      sourceChunks: mergeSourceChunks(
+        ownSourceChunks(value, sourceRanges),
+        items,
+      ),
     };
   }
 
   const payload = isRecord(value) ? Object.values(value)[0] : undefined;
+  const children = collectStructuralExpressions(payload, markers, sourceRanges);
   return {
-    children: collectStructuralExpressions(payload, markers),
+    children,
     kind: "opaque",
+    sourceChunks: mergeSourceChunks(
+      ownSourceChunks(value, sourceRanges),
+      children,
+    ),
   };
 }
 
-function deduplicateFindings(
-  findings: readonly SqlAnalysisFinding[],
-): SqlAnalysisFinding[] {
-  const result: SqlAnalysisFinding[] = [];
+function deduplicateFindings<T extends SqlAnalysisFinding>(
+  findings: readonly T[],
+): T[] {
+  const result: T[] = [];
   const seen = new Map<TSESTree.Node, Set<string>>();
   for (const finding of findings) {
     const key =
@@ -422,6 +526,7 @@ function classifyExpression(
             helper,
             kind: "helper",
             node: expression.left.marker.node,
+            sourceChunks: expression.sourceChunks,
           },
         ],
         isWholeReplacement: true,
@@ -451,6 +556,7 @@ function classifyExpression(
               helper: expression.operator,
               kind: "helper",
               node: reportNode,
+              sourceChunks: expression.sourceChunks,
             },
           ],
           isWholeReplacement: true,
@@ -620,36 +726,101 @@ function isCompositionBoundary(
   );
 }
 
-function commonCompositionBoundary(
-  variant: SqlSourceVariant,
-  root: TSESTree.Expression,
-): TSESTree.Expression {
-  const contributingChunks = variant.chunks.filter((chunk) => {
+function commonCompositionBoundaries(
+  chunks: readonly SqlSourceChunk[],
+  preferCallBoundary: boolean,
+): TSESTree.Expression[] {
+  const contributingChunks = chunks.filter((chunk) => {
     return chunk.kind === "expression" || chunk.text.trim() !== "";
   });
   const firstChunk = contributingChunks[0];
   if (firstChunk === undefined) {
-    return root;
+    return [];
   }
-  const commonBoundaries = firstChunk.origins.filter(
-    (origin): origin is TSESTree.Expression => {
-      return (
-        isCompositionBoundary(origin) &&
-        contributingChunks.every((chunk) => {
-          return chunk.origins.includes(origin);
-        })
-      );
-    },
+  const commonBoundaries = [
+    ...new Set(
+      firstChunk.origins.filter((origin): origin is TSESTree.Expression => {
+        return (
+          isCompositionBoundary(origin) &&
+          contributingChunks.every((chunk) => {
+            return chunk.origins.includes(origin);
+          })
+        );
+      }),
+    ),
+  ];
+  const callBoundaries: TSESTree.Expression[] = preferCallBoundary
+    ? commonBoundaries.filter((boundary) => {
+        return boundary.type === AST_NODE_TYPES.CallExpression;
+      })
+    : [];
+  return [
+    ...callBoundaries,
+    ...[...commonBoundaries].reverse().filter((boundary) => {
+      return !callBoundaries.includes(boundary);
+    }),
+  ];
+}
+
+function commonCompositionBoundary(
+  variant: SqlSourceVariant,
+  preferCallBoundary: boolean,
+): TSESTree.Expression | undefined {
+  return commonCompositionBoundaries(variant.chunks, preferCallBoundary)[0];
+}
+
+function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
+  return {
+    helper: finding.helper,
+    kind: finding.kind,
+    node: finding.node,
+  };
+}
+
+function replacementBoundaryForFinding(
+  finding: ClassifiedHelperFinding,
+  variant: SqlSourceVariant,
+  variantCount: number,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): TSESTree.Expression | undefined {
+  // A parsed descendant can cross template boundaries because Drizzle inserts
+  // nested SQL without parentheses. Reparse each editable boundary in
+  // isolation before claiming that the helper can replace it.
+  const candidates = commonCompositionBoundaries(
+    [...finding.sourceChunks],
+    variantCount === 1,
   );
-  // A factory or sql.join call owns the concrete replacement even when every
-  // chunk also comes from one shared returned or separator template.
-  return (
-    commonBoundaries.find((boundary) => {
-      return boundary.type === AST_NODE_TYPES.CallExpression;
-    }) ??
-    commonBoundaries[commonBoundaries.length - 1] ??
-    root
-  );
+  for (const candidate of candidates) {
+    const candidateVariant = {
+      chunks: variant.chunks.filter((chunk) => {
+        return chunk.origins.includes(candidate);
+      }),
+    };
+    const parsed = parseSqlVariant(
+      candidateVariant,
+      "predicate",
+      false,
+      checker,
+      services,
+    );
+    const expression =
+      parsed === null ? undefined : predicateExpression(parsed.statement);
+    if (parsed === null || expression === undefined) {
+      continue;
+    }
+    const classification = classifyExpression(
+      structuralExpression(expression, parsed.markers, parsed.sourceRanges),
+    );
+    if (
+      classification.isWholeReplacement &&
+      classification.findings.length === 1 &&
+      classification.findings[0]?.helper === finding.helper
+    ) {
+      return candidate;
+    }
+  }
+  return undefined;
 }
 
 function analyzeParsed(
@@ -658,6 +829,9 @@ function analyzeParsed(
   hasLocalExpansion: boolean,
   parsed: ParsedSql,
   variant: SqlSourceVariant,
+  variantCount: number,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
 ): SqlAnalysis {
   const simpleSelect =
     context === "statement" && isSimpleSelect(parsed.statement, parsed.markers);
@@ -677,30 +851,54 @@ function analyzeParsed(
       : parsed.statement;
   const structuralExpressions =
     context === "predicate" && expression !== undefined
-      ? [structuralExpression(expression, parsed.markers)]
-      : collectStructuralExpressions(expression, parsed.markers);
+      ? [structuralExpression(expression, parsed.markers, parsed.sourceRanges)]
+      : collectStructuralExpressions(
+          expression,
+          parsed.markers,
+          parsed.sourceRanges,
+        );
   const classifications = structuralExpressions.map((item) => {
     return classifyExpression(item);
   });
   const predicateClassification =
     context === "predicate" ? classifications[0] : undefined;
   const predicateFinding = predicateClassification?.findings[0];
-  const ownsExpandedTemplates =
+  const rootNeedsCompositionBoundary =
+    hasLocalExpansion && predicateFinding !== undefined;
+  const canReplaceRoot =
     predicateClassification?.isWholeReplacement === true &&
     predicateClassification.findings.length === 1 &&
     predicateFinding?.kind === "helper" &&
-    (predicateFinding.helper === "and" || predicateFinding.helper === "or") &&
-    hasLocalExpansion;
-  const replacementBoundary = ownsExpandedTemplates
-    ? commonCompositionBoundary(variant, node)
+    rootNeedsCompositionBoundary;
+  const replacementBoundary = canReplaceRoot
+    ? commonCompositionBoundary(variant, variantCount === 1)
     : undefined;
+  const ownsExpandedTemplates = replacementBoundary !== undefined;
   const findings = deduplicateFindings(
     classifications.flatMap((classification) => {
-      return ownsExpandedTemplates
-        ? classification.findings.map((finding) => {
-            return { ...finding, node: replacementBoundary ?? node };
-          })
-        : classification.findings;
+      if (ownsExpandedTemplates) {
+        return classification.findings.map((finding) => {
+          return publicFinding({
+            ...finding,
+            node: replacementBoundary ?? node,
+          });
+        });
+      }
+      return classification.findings.flatMap((finding) => {
+        if (!hasLocalExpansion) {
+          return [publicFinding(finding)];
+        }
+        const boundary = replacementBoundaryForFinding(
+          finding,
+          variant,
+          variantCount,
+          checker,
+          services,
+        );
+        return boundary === undefined
+          ? []
+          : [publicFinding({ ...finding, node: boundary })];
+      });
     }),
   );
   return {
@@ -770,13 +968,28 @@ export function analyzeSql(
   } else {
     const variants: SqlAnalysis[] = [];
     for (const variant of source.variants) {
-      const parsed = parseSqlVariant(variant, context, checker, services);
+      const parsed = parseSqlVariant(
+        variant,
+        context,
+        source.hasLocalExpansion,
+        checker,
+        services,
+      );
       if (parsed === null) {
         variants.length = 0;
         break;
       }
       variants.push(
-        analyzeParsed(node, context, source.hasLocalExpansion, parsed, variant),
+        analyzeParsed(
+          node,
+          context,
+          source.hasLocalExpansion,
+          parsed,
+          variant,
+          source.variants.length,
+          checker,
+          services,
+        ),
       );
     }
     const first = variants[0];

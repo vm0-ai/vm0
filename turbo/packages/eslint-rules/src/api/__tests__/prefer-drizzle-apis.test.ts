@@ -568,6 +568,15 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .innerJoin(users, flag ? sql.empty() : sql\`true\`);
       `,
     },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const column = sql\`\${users.id}\`;
+        db.select()
+          .from(users)
+          .where(sql\`COALESCE(\${column} = \${1}, FALSE)\`);
+      `,
+    },
   ],
   invalid: [
     {
@@ -593,6 +602,98 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .where(sql\`\${sql\`\${users.id} = \${1}\`}\`);
       `,
       errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const column = sql\`\${users.id}\`;
+        db.select().from(users).where(sql\`\${column} = \${1}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 21,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`\${users.id} = \${1}\`;
+        db.select()
+          .from(users)
+          .where(sql\`unsupported('α', \${predicate})\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 20,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(
+            sql\`COALESCE(\${sql.join(
+              [eq(users.id, 1), eq(users.name, "name")],
+              sql\` AND \`,
+            )}, FALSE)\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 23,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        function conjunction(left: SQL, right: SQL): SQL {
+          return sql\`\${left} AND \${right}\`;
+        }
+        db.select()
+          .from(users)
+          .where(
+            sql\`COALESCE(\${conjunction(
+              eq(users.id, 1),
+              eq(users.name, "name"),
+            )}, FALSE)\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select()
+          .from(users)
+          .where(sql\`EXISTS (SELECT 1 WHERE NOT \${fragment})\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "not" },
+          line: 26,
+        },
+      ],
     },
     {
       code: `${drizzlePreamble}
