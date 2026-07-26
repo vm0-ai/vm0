@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.470.0](https://github.com/vm0-ai/vm0/compare/core-v8.469.1...core-v8.470.0) (2026-07-26)
+
+
+### Features
+
+* add fixed r2 packages for image styles behind a rollout switch ([#23120](https://github.com/vm0-ai/vm0/issues/23120)) ([bbeeaee](https://github.com/vm0-ai/vm0/commit/bbeeaee0515508f9a58359bb78984d074ff2c7fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.0
+    * @vm0/connectors bumped to 1.194.0
+
 ## [8.469.1](https://github.com/vm0-ai/vm0/compare/core-v8.469.0...core-v8.469.1) (2026-07-26)
 
 

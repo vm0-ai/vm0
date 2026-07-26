@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.57.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.57.0...guest-agent-v0.57.1) (2026-07-26)
+
+
+### Performance Improvements
+
+* disable unused codex plugin and apps startup work ([#23132](https://github.com/vm0-ai/vm0/issues/23132)) ([038cabe](https://github.com/vm0-ai/vm0/commit/038cabedd7e5b8adbe4926f94102affe8455ad14))
+
 ## [0.57.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.6...guest-agent-v0.57.0) (2026-07-26)
 
 
