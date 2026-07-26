@@ -1262,7 +1262,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.56.6"
+version = "0.57.0"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1380,7 +1380,7 @@ dependencies = [
 
 [[package]]
 name = "guest-session-prune"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -2586,7 +2586,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.148.7"
+version = "0.148.8"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
