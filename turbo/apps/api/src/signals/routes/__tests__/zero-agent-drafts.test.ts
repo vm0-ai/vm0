@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
@@ -31,8 +36,16 @@ async function seedAgent(): Promise<AgentDraftFixture> {
   return { userId: actor.userId, orgId: actor.orgId, agentId: agent.agentId };
 }
 
+const CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.636.1",
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+);
+
 function authHeaders() {
-  return { authorization: "Bearer clerk-session" };
+  return {
+    authorization: "Bearer clerk-session",
+    [CLIENT_VERSION_HEADER]: CLIENT_VERSION,
+  };
 }
 
 function draftsClient() {
