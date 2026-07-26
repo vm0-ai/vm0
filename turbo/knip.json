@@ -41,6 +41,7 @@
       ],
       "ignoreDependencies": [
         "@sentry/cli",
+        "@solana/web3.js",
         "idb",
         "katex",
         "tailwindcss",
