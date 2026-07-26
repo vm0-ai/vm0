@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.5...guest-agent-v0.56.6) (2026-07-26)
+
+
+### Refactoring
+
+* **storage:** authorize writeback by storage id ([#23112](https://github.com/vm0-ai/vm0/issues/23112)) ([321117e](https://github.com/vm0-ai/vm0/commit/321117edaf5f2304b87a435748557ad47cf73ea3))
+
 ## [0.56.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.4...guest-agent-v0.56.5) (2026-07-26)
 
 

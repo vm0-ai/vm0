@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.636.5](https://github.com/vm0-ai/vm0/compare/app-v0.636.4...app-v0.636.5) (2026-07-26)
+
+
+### Bug Fixes
+
+* **platform:** restrict workflow highlights to standalone tokens ([#22776](https://github.com/vm0-ai/vm0/issues/22776)) ([0826a32](https://github.com/vm0-ai/vm0/commit/0826a32edeacf9ac300b3093d0bdfd71a5727d90))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.0
+    * @vm0/connectors bumped to 1.192.2
+    * @vm0/core bumped to 8.468.2
+
 ## [0.636.4](https://github.com/vm0-ai/vm0/compare/app-v0.636.3...app-v0.636.4) (2026-07-26)
 
 
