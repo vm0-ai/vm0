@@ -300,14 +300,18 @@ export const clerk$ = computed(async () => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
 
-  // Clerk JS remains a large browser bundle. Keeping it in a separate async
-  // chunk avoids blocking initial JavaScript parsing.
-  const { Clerk } = await import("@clerk/clerk-js");
+  // Clerk JS and its bundled UI remain large browser modules. Keeping them in
+  // separate async chunks avoids blocking initial JavaScript parsing.
+  const [{ Clerk }, { ClerkUI }] = await Promise.all([
+    import("@clerk/clerk-js"),
+    import("@clerk/ui/entry"),
+  ]);
 
   const clerkInstance = satelliteConfig
     ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
     : new Clerk(publishableKey);
   await clerkInstance.load({
+    ui: { ClerkUI },
     ...(satelliteConfig
       ? {
           isSatellite: true,
