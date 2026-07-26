@@ -44,7 +44,7 @@
     "google-auth-library": "^10.9.0",
     "gpt-tokenizer": "^3.4.0",
     "hono": "^4.12.27",
-    "html-to-text": "^9.0.5",
+    "html-to-text": "^10.0.0",
     "music-metadata": "^11.13.0",
     "pg": "^8.20.0",
     "resend": "^6.12.4",
