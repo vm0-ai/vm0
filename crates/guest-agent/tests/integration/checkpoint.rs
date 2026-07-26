@@ -451,6 +451,51 @@ async fn success_checkpoint_preserves_oversized_codex_history_when_pruning_disab
 }
 
 #[tokio::test]
+async fn success_checkpoint_preserves_small_codex_history_when_pruning_enabled() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_codex_session_pruning(&mut runtime, true);
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
+    std::fs::write(&history_path, &history).unwrap();
+    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+
+    let history_hash = hex::encode(Sha256::digest(&history));
+    let history_size = history.len();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
+            .json_body_includes(r#"{"encoding":"identity"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true}));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-unpruned-codex"}));
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::read(&history_path).unwrap(), history);
+}
+
+#[tokio::test]
 async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() {
     let api = SharedApiMock::new().await;
     let server = api.server();

@@ -913,76 +913,78 @@ fn prepare_session_history(
         }
     }
 
+    let mut resolved_codex_history = None;
     if codex_session_pruning_enabled
         && mode.can_prune_history()
         && framework == env::Framework::Codex
         && session_history::is_codex_marker(history_marker_payload)
     {
         let prune_start = std::time::Instant::now();
-        match session_history::resolve_plain_codex_session_history_from_payload(
-            history_marker_payload,
-        ) {
-            Ok(Some(mut source)) => {
-                match select_codex_compact_generation(&mut source.file, cli_agent_session_id) {
-                    Ok(CodexHistorySelection::Candidate(candidate)) => {
-                        let source_size = candidate.source_size();
-                        let candidate_size = candidate.candidate_size();
-                        let candidate = candidate.into_bytes();
-                        let replacement =
-                            PendingNativeHistoryReplacement::stage(&source.path, &candidate).ok();
-                        log_info!(
-                            LOG_TAG,
-                            "Selected Codex compact generation for checkpoint \
+        match session_history::resolve_codex_session_history_from_payload(history_marker_payload) {
+            Ok(mut source) => {
+                if let Some(file) = source.plain_file_mut() {
+                    match select_codex_compact_generation(file, cli_agent_session_id) {
+                        Ok(CodexHistorySelection::Candidate(candidate)) => {
+                            let source_size = candidate.source_size();
+                            let candidate_size = candidate.candidate_size();
+                            let candidate = candidate.into_bytes();
+                            let replacement =
+                                PendingNativeHistoryReplacement::stage(source.path(), &candidate)
+                                    .ok();
+                            log_info!(
+                                LOG_TAG,
+                                "Selected Codex compact generation for checkpoint \
                              (source_size={source_size}, candidate_size={candidate_size})"
-                        );
-                        record_sandbox_op(
-                            "session_history_prune",
-                            prune_start.elapsed(),
-                            true,
-                            None,
-                        );
-                        let mut prepared =
-                            prepare_raw_session_history(mode, history_read_start, candidate)?;
-                        prepared.live_history = PreparedLiveHistory::NativeCandidate {
-                            kind: NativeHistoryKind::Codex,
-                            replacement,
-                        };
-                        return Ok(prepared);
-                    }
-                    Ok(CodexHistorySelection::Ineligible(reason)) => {
-                        log_info!(
-                            LOG_TAG,
-                            "Codex session history not eligible for pruning: {}",
-                            reason.as_str()
-                        );
-                        record_sandbox_op(
-                            "session_history_prune",
-                            prune_start.elapsed(),
-                            true,
-                            None,
-                        );
-                    }
-                    Err(error) => {
-                        log_warn!(
-                            LOG_TAG,
-                            "Codex session history selector failed; using ordinary checkpoint \
+                            );
+                            record_sandbox_op(
+                                "session_history_prune",
+                                prune_start.elapsed(),
+                                true,
+                                None,
+                            );
+                            let mut prepared =
+                                prepare_raw_session_history(mode, history_read_start, candidate)?;
+                            prepared.live_history = PreparedLiveHistory::NativeCandidate {
+                                kind: NativeHistoryKind::Codex,
+                                replacement,
+                            };
+                            return Ok(prepared);
+                        }
+                        Ok(CodexHistorySelection::Ineligible(reason)) => {
+                            log_info!(
+                                LOG_TAG,
+                                "Codex session history not eligible for pruning: {}",
+                                reason.as_str()
+                            );
+                            record_sandbox_op(
+                                "session_history_prune",
+                                prune_start.elapsed(),
+                                true,
+                                None,
+                            );
+                        }
+                        Err(error) => {
+                            log_warn!(
+                                LOG_TAG,
+                                "Codex session history selector failed; using ordinary checkpoint \
                              path: {error}"
-                        );
-                        record_sandbox_op(
-                            "session_history_prune",
-                            prune_start.elapsed(),
-                            false,
-                            Some("selector_io"),
-                        );
+                            );
+                            record_sandbox_op(
+                                "session_history_prune",
+                                prune_start.elapsed(),
+                                false,
+                                Some("selector_io"),
+                            );
+                        }
                     }
+                } else {
+                    log_info!(
+                        LOG_TAG,
+                        "Codex session history not eligible for pruning: compressed_source"
+                    );
+                    record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
                 }
-            }
-            Ok(None) => {
-                log_info!(
-                    LOG_TAG,
-                    "Codex session history not eligible for pruning: compressed_source"
-                );
-                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                resolved_codex_history = Some(source);
             }
             Err(error) => {
                 log_warn!(
@@ -1000,10 +1002,16 @@ fn prepare_session_history(
         }
     }
 
-    let source = match session_history::read_session_history_checkpoint_source_from_payload_bounded(
-        history_marker_payload,
-        RESUME_SESSION_HISTORY_MAX_BYTES,
-    ) {
+    let source_result = resolved_codex_history.map_or_else(
+        || {
+            session_history::read_session_history_checkpoint_source_from_payload_bounded(
+                history_marker_payload,
+                RESUME_SESSION_HISTORY_MAX_BYTES,
+            )
+        },
+        |source| source.into_checkpoint_source_bounded(RESUME_SESSION_HISTORY_MAX_BYTES),
+    );
+    let source = match source_result {
         Ok(source) => source,
         Err(e) => {
             return Err(fail_preserving_error(
@@ -2161,7 +2169,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkpoint_reuses_codex_zstd_session_history_upload_body() {
+    async fn checkpoint_reuses_codex_zstd_session_history_when_pruning_enabled() {
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
         let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
@@ -2232,7 +2240,7 @@ mod tests {
             run_id: "checkpoint-codex-zstd-reuse",
             framework: env::Framework::Codex,
             claude_session_pruning_enabled: false,
-            codex_session_pruning_enabled: false,
+            codex_session_pruning_enabled: true,
             home_dir: &home_dir,
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),

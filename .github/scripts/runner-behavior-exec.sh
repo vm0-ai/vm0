@@ -1079,6 +1079,7 @@ from pathlib import Path
 
 summary_token = "CODEX-COMPACT-SUMMARY-TOKEN"
 seed_token = "CODEX-COMPACT-SEED-TOKEN"
+candidate_turn_token = "CODEX-COMPACT-CANDIDATE-TURN-TOKEN"
 append_token = "CODEX-COMPACT-APPEND-TOKEN"
 requests = []
 current_codex = shutil.which("codex")
@@ -1263,11 +1264,15 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             for line in source.read_text().splitlines()
         ]
         session_id = records[0]["payload"]["id"]
+        candidate_relative_path = source.relative_to(
+            seed_home / "sessions"
+        )
         complete_index = next(
             index
             for index, record in enumerate(records)
             if event_type(record) in {"task_complete", "turn_complete"}
         )
+        records.pop(complete_index)
         records.insert(
             complete_index,
             {
@@ -1310,13 +1315,44 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
                 },
             },
         )
-        candidate_bytes = "".join(
-            json.dumps(record, separators=(",", ":")) + "\n"
-            for record in records
-        ).encode()
-        candidate_relative_path = source.relative_to(
-            seed_home / "sessions"
+        source.write_bytes(
+            "".join(
+                json.dumps(record, separators=(",", ":")) + "\n"
+                for record in records
+            ).encode()
         )
+
+        candidate_turn = run_codex(
+            seed_home,
+            "resume",
+            session_id,
+            candidate_turn_token,
+        )
+        candidate_output = candidate_turn.stdout + candidate_turn.stderr
+        assert (
+            f"no rollout found for thread id {session_id}"
+            not in candidate_output.lower()
+        ), candidate_output
+        candidate_records = [
+            json.loads(line)
+            for line in source.read_text().splitlines()
+        ]
+        candidate_starts = [
+            record["payload"]["turn_id"]
+            for record in candidate_records
+            if event_type(record) in {"task_started", "turn_started"}
+        ]
+        candidate_completions = [
+            record["payload"]["turn_id"]
+            for record in candidate_records
+            if event_type(record) in {"task_complete", "turn_complete"}
+        ]
+        assert (
+            len(candidate_starts) >= 2
+            and len(candidate_completions) == 1
+            and candidate_starts[-1] == candidate_completions[-1]
+        ), "failed to build a compacting turn delimited by the next turn"
+        candidate_bytes = source.read_bytes()
 
         probe_current_codex(
             root / "current",

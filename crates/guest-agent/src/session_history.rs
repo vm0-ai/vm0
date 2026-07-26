@@ -35,7 +35,7 @@ use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
 use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{self, BufReader, Read};
+use std::io::{self, BufReader, Read, Seek};
 use std::path::{Path, PathBuf};
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
@@ -128,9 +128,44 @@ pub(crate) struct PreparedSessionHistorySidecar {
     source: SessionHistoryCheckpointSource,
 }
 
-pub(crate) struct PlainCodexSessionHistory {
-    pub(crate) path: PathBuf,
-    pub(crate) file: File,
+pub(crate) struct ResolvedCodexSessionHistory {
+    path: PathBuf,
+    file: File,
+    is_zstd: bool,
+}
+
+impl ResolvedCodexSessionHistory {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn plain_file_mut(&mut self) -> Option<&mut File> {
+        (!self.is_zstd).then_some(&mut self.file)
+    }
+
+    pub(crate) fn into_checkpoint_source_bounded(
+        mut self,
+        max_bytes: u64,
+    ) -> Result<SessionHistoryCheckpointSource, AgentError> {
+        self.file
+            .rewind()
+            .map_err(|error| read_history_error(&self.path, error))?;
+        if self.is_zstd {
+            let encoded_len = self
+                .file
+                .metadata()
+                .map_err(|error| read_history_error(&self.path, error))?
+                .len();
+            if encoded_len <= max_bytes {
+                let encoded = read_zstd_encoded_session_history(self.file, &self.path, max_bytes)?;
+                return Ok(SessionHistoryCheckpointSource::CodexZstd { encoded });
+            }
+        }
+
+        DecodedSessionHistoryReader::open(self.path, self.file)?
+            .read(Some(max_bytes))
+            .map(SessionHistoryCheckpointSource::Decoded)
+    }
 }
 
 impl PreparedSessionHistorySidecar {
@@ -206,11 +241,13 @@ pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
     }
 }
 
-pub(crate) fn resolve_plain_codex_session_history_from_payload(
+pub(crate) fn resolve_codex_session_history_from_payload(
     payload: &str,
-) -> Result<Option<PlainCodexSessionHistory>, AgentError> {
+) -> Result<ResolvedCodexSessionHistory, AgentError> {
     if !is_codex_marker(payload) {
-        return Ok(None);
+        return Err(AgentError::Checkpoint(
+            "Invalid Codex session history marker".to_string(),
+        ));
     }
     let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
         return Err(AgentError::Checkpoint(
@@ -220,11 +257,13 @@ pub(crate) fn resolve_plain_codex_session_history_from_payload(
     let Some(session) = resolve_codex_session_history(&sessions_dir, thread_id)? else {
         return Err(codex_session_not_found_error(&sessions_dir));
     };
-    if session.is_zstd() {
-        return Ok(None);
-    }
+    let is_zstd = session.is_zstd();
     let (path, file) = session.into_file()?;
-    Ok(Some(PlainCodexSessionHistory { path, file }))
+    Ok(ResolvedCodexSessionHistory {
+        path,
+        file,
+        is_zstd,
+    })
 }
 
 fn read_session_history_from_payload_impl(

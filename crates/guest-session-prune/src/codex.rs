@@ -75,7 +75,7 @@ pub enum CodexHistoryIneligibleReason {
     RecordTooLarge,
     /// The newest compacted record did not contain usable replacement history.
     InvalidCompactBoundary,
-    /// The selected compacting or later turn was incomplete or inconsistent.
+    /// The selected compacting or later turn was unbounded or inconsistent.
     InvalidTurn,
     /// The selected compacting or later turn did not retain compatible context.
     MissingTurnContext,
@@ -170,7 +170,7 @@ impl TurnState {
         }
     }
 
-    fn validate_completion(&self) -> Result<(), CodexHistoryIneligibleReason> {
+    fn validate_segment(&self) -> Result<(), CodexHistoryIneligibleReason> {
         if let Some(reason) = self.invalid {
             return Err(reason);
         }
@@ -187,7 +187,7 @@ impl TurnState {
 struct CandidateState {
     bytes: Vec<u8>,
     selected_turn_id: String,
-    selected_turn_complete: bool,
+    selected_turn_delimited: bool,
     invalid: Option<CodexHistoryIneligibleReason>,
 }
 
@@ -200,7 +200,7 @@ impl CandidateState {
         Self {
             bytes: turn.bytes.clone(),
             selected_turn_id: turn.id.clone(),
-            selected_turn_complete: false,
+            selected_turn_delimited: false,
             invalid,
         }
     }
@@ -370,7 +370,7 @@ fn select_with_limits_and_hook(
     if current_turn.is_some() {
         candidate.invalidate(CodexHistoryIneligibleReason::InvalidTurn);
     }
-    if !candidate.selected_turn_complete {
+    if !candidate.selected_turn_delimited {
         candidate.invalidate(CodexHistoryIneligibleReason::InvalidTurn);
     }
     if let Some(reason) = candidate.invalid {
@@ -427,11 +427,7 @@ fn process_record(
 
     match record {
         RolloutRecord::Event(EventRecord::TurnStarted(turn_id)) => {
-            if current_turn.is_some()
-                && let Some(existing) = candidate.as_mut()
-            {
-                existing.invalidate(CodexHistoryIneligibleReason::InvalidTurn);
-            }
+            finish_current_turn(current_turn, candidate);
             if let Some(existing) = candidate.as_mut() {
                 existing.push(raw_record, body_max_bytes);
             }
@@ -448,7 +444,7 @@ fn process_record(
                             Some(CandidateState {
                                 bytes: Vec::new(),
                                 selected_turn_id: String::new(),
-                                selected_turn_complete: false,
+                                selected_turn_delimited: false,
                                 invalid: Some(CodexHistoryIneligibleReason::InvalidTurn),
                             })
                         });
@@ -539,10 +535,24 @@ fn complete_turn(
         }
         return;
     }
-    let validation = turn.validate_completion();
+    finish_turn(turn, candidate);
+}
+
+fn finish_current_turn(
+    current_turn: &mut Option<TurnState>,
+    candidate: &mut Option<CandidateState>,
+) {
+    let Some(turn) = current_turn.take() else {
+        return;
+    };
+    finish_turn(turn, candidate);
+}
+
+fn finish_turn(turn: TurnState, candidate: &mut Option<CandidateState>) {
+    let validation = turn.validate_segment();
     if let Some(existing) = candidate.as_mut() {
-        if existing.selected_turn_id == turn_id {
-            existing.selected_turn_complete = true;
+        if existing.selected_turn_id == turn.id {
+            existing.selected_turn_delimited = true;
         }
         if let Err(reason) = validation {
             existing.invalidate(reason);
@@ -1113,6 +1123,37 @@ mod tests {
         let selected = candidate_bytes(select(&file).unwrap());
 
         assert!(selected.ends_with(&later.concat()));
+    }
+
+    #[test]
+    fn accepts_compacting_turn_delimited_by_the_next_turn_start() {
+        let records = [
+            turn_started(TURN_ID),
+            user_message(),
+            turn_context(TURN_ID),
+            compacted("summary"),
+            turn_started("turn-2"),
+            turn_context("turn-2"),
+            user_message(),
+            line(
+                "response_item",
+                json!({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "done"}],
+                }),
+            ),
+            turn_complete("turn-2"),
+        ];
+        let file = source(&records);
+
+        let selected = candidate_bytes(select(&file).unwrap());
+        let expected = std::iter::once(canonical(Some("legacy")))
+            .chain(records)
+            .flatten()
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected, expected);
     }
 
     #[test]
