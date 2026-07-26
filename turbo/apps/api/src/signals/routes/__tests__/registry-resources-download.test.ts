@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
+import { seedPrivateRegistryResourceVersionFixture } from "../../../test-fixtures/private-registry-resource";
 import { resolvePrivateRegistryResourceArchive } from "../registry-resources-download";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -50,21 +52,52 @@ describe("registry resource download", () => {
     ).toBeUndefined();
   });
 
-  it("resolves a manually published image style archive", () => {
-    const currentSha256 =
-      "40b65c731e46f35633fbd18fada81ed2fabebc6d88d521917d4859ce469a4af4";
+  it("downloads a manually published image style archive through the route", async () => {
+    const id = "image-style:vm0-illustration";
+    const sha256 =
+      "03e77d6968190b9f1888a900963135e92f75b40a6c37e1c1bae999ea49669a37";
+    const versionId =
+      "820d2e2ce81805d935e4098d5b6f2899967c2ad5c0af4586f794010c6db66966";
+    const s3Key = "registry-fixture/vm0-illustration/version";
+    const fixture = await seedPrivateRegistryResourceVersionFixture({
+      storageName: `registry-resource@${id}`,
+      versionId,
+      s3Key,
+      size: 6054,
+      archiveSize: 2621,
+      fileCount: 1,
+    });
+    onTestFinished(fixture.cleanup);
 
-    expect(
-      resolvePrivateRegistryResourceArchive(
-        "image-style:ink-storefront",
-        currentSha256,
-        currentSha256,
-      ),
-    ).toStrictEqual({
-      storageName: "registry-resource@image-style:ink-storefront",
-      versionId:
-        "ec8d871a9739e6d276b058336904b6a95bdc0ec56de5de91b40bdd8cc910277b",
-      sha256: currentSha256,
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "registry-resource-test");
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/registry/vm0-illustration.tar.gz",
+    );
+
+    const response = await accept(
+      client().download({
+        headers: authHeaders(),
+        query: { id, expectedSha256: sha256 },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://r2.example.com/registry/vm0-illustration.tar.gz",
+      id,
+      type: "tar.gz",
+      sha256,
+      expiresInSeconds: 900,
+      versionId,
+      fileCount: 1,
+      size: 6054,
+    });
+    const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
+    expect(signedCommand).toMatchObject({
+      input: {
+        Bucket: "registry-resource-test",
+        Key: `${s3Key}/archive.tar.gz`,
+      },
     });
   });
 
