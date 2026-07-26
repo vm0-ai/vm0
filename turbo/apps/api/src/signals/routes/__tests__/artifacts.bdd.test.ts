@@ -328,7 +328,7 @@ describe("video Artifact previews", () => {
     expect(frameRequests).toHaveLength(0);
     expect(
       owner.objectStore.puts.some((put) => {
-        return put.key.endsWith("/poster.jpg");
+        return put.key.endsWith("/poster-v2.jpg");
       }),
     ).toBeFalsy();
     const response = await chat.listArtifacts(owner.actor);
@@ -357,19 +357,44 @@ describe("video Artifact previews", () => {
       `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoArtifact.url}`,
     );
     const posterPuts = owner.objectStore.puts.filter((put) => {
-      return put.key.endsWith("/poster.jpg");
+      return put.key.endsWith("/poster-v2.jpg");
     });
     expect(posterPuts).toHaveLength(1);
     expect(posterPuts[0]).toMatchObject({
       bucket: "test-user-artifacts",
+      cacheControl: "public, max-age=31536000, immutable",
       contentType: "image/jpeg",
+      ifNoneMatch: "*",
     });
 
     const response = await chat.listArtifacts(owner.actor);
     const previewedArtifact = response.artifacts.find((item) => {
       return item.fileId === videoArtifact.fileId;
     });
-    expect(previewedArtifact?.previewImageUrl).toMatch(/\/poster\.jpg$/);
+    expect(previewedArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
+  }, 180_000);
+
+  it("reuses an existing write-once poster after a concurrent upload", async () => {
+    const owner = await artifactActor(
+      "Artifacts API concurrent video preview agent",
+    );
+    await setVideoArtifactPosters(owner.actor, true);
+    mockCloudflareVideoFrame(owner.actor.userId);
+    owner.objectStore.rejectNextImmutablePutAsExisting();
+
+    const videoArtifact = await createRunUploadedFile({
+      owner,
+      prompt: "upload video with concurrent poster generation",
+      filename: "concurrent-poster.mp4",
+      contentType: "video/mp4",
+    });
+    await flushWaitUntilForTest();
+
+    const response = await chat.listArtifacts(owner.actor);
+    const previewedArtifact = response.artifacts.find((item) => {
+      return item.fileId === videoArtifact.fileId;
+    });
+    expect(previewedArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
   }, 180_000);
 
   it("leaves video preview empty when media frame extraction fails", async () => {
@@ -388,7 +413,7 @@ describe("video Artifact previews", () => {
     expect(frameRequests).toHaveLength(1);
     expect(
       owner.objectStore.puts.some((put) => {
-        return put.key.endsWith("/poster.jpg");
+        return put.key.endsWith("/poster-v2.jpg");
       }),
     ).toBeFalsy();
 
@@ -622,7 +647,7 @@ describe("GET /api/zero/artifacts", () => {
       return item.fileId === artifact.fileId;
     });
     expect(firstArtifact?.previewImageUrl).toContain(
-      `/preview-v2-${artifact.deploymentId}.webp`,
+      `/preview-v3-${artifact.deploymentId}.webp`,
     );
     expect(snapshotRequests).toHaveLength(1);
     expect(snapshotRequests[0]).toMatchObject({
@@ -650,17 +675,30 @@ describe("GET /api/zero/artifacts", () => {
       },
     });
     expect(
-      owner.objectStore.puts.some((put) => {
-        return (
-          put.bucket === "test-user-artifacts" &&
-          put.key.endsWith(`/preview-v2-${artifact.deploymentId}.webp`) &&
-          put.contentType === "image/webp"
-        );
+      owner.objectStore.puts.find((put) => {
+        return put.key.endsWith(`/preview-v3-${artifact.deploymentId}.webp`);
       }),
-    ).toBeTruthy();
+    ).toMatchObject({
+      bucket: "test-user-artifacts",
+      cacheControl: "public, max-age=31536000, immutable",
+      contentType: "image/webp",
+      ifNoneMatch: "*",
+    });
     if (!firstResponse.syncUntil) {
       throw new Error("Expected artifact sync timestamp");
     }
+
+    await chat.completeHostedSite(owner.actor, artifact.deploymentId);
+    await flushWaitUntilForTest();
+
+    const retriedResponse = await chat.listArtifacts(owner.actor);
+    const retriedArtifact = retriedResponse.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    expect(retriedArtifact?.previewImageUrl).toBe(
+      firstArtifact?.previewImageUrl,
+    );
+    expect(snapshotRequests).toHaveLength(1);
 
     host.captureHostedSitesS3();
     const redeployed = await host.redeployHtml(owner.actor, {
@@ -676,7 +714,7 @@ describe("GET /api/zero/artifacts", () => {
       return item.fileId === artifact.fileId;
     });
     expect(refreshedArtifact?.previewImageUrl).toContain(
-      `/preview-v2-${redeployed.deploymentId}.webp`,
+      `/preview-v3-${redeployed.deploymentId}.webp`,
     );
     expect(refreshedArtifact?.previewImageUrl).not.toBe(
       firstArtifact?.previewImageUrl,
@@ -729,7 +767,7 @@ describe("GET /api/zero/artifacts", () => {
       expect(rejectedArtifact).not.toHaveProperty("previewImageUrl");
       expect(
         owner.objectStore.puts.some((put) => {
-          return put.key.endsWith(`/preview-v2-${artifact.deploymentId}.webp`);
+          return put.key.endsWith(`/preview-v3-${artifact.deploymentId}.webp`);
         }),
       ).toBeFalsy();
     }

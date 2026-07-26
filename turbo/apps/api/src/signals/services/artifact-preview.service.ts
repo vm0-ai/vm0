@@ -11,7 +11,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
-import { putS3Object } from "../external/s3";
+import { putImmutableS3Object } from "../external/s3";
 import { tapError } from "../utils";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
@@ -29,7 +29,7 @@ const PREVIEW_VIEWPORT = {
 } as const;
 const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
-const PREVIEW_IMAGE_BASENAME = "preview-v2";
+const PREVIEW_IMAGE_BASENAME = "preview-v3";
 const PREVIEW_WAF_COOKIE_NAME = "vm0_artifact_preview";
 
 const browserSnapshotSchema = z.object({
@@ -44,9 +44,10 @@ const browserSnapshotSchema = z.object({
   }),
 });
 
-// Videos are immutable, so a fixed poster key (no versioning) is fine. The
-// Cloudflare Media Transformations frame endpoint only outputs jpg/png.
-const VIDEO_POSTER_FILENAME = "poster.jpg";
+// Poster versions are write-once. Renderer changes must use a new filename
+// instead of replacing bytes behind an immutable CDN URL. The Cloudflare Media
+// Transformations frame endpoint only outputs jpg/png.
+const VIDEO_POSTER_FILENAME = "poster-v2.jpg";
 const VIDEO_POSTER_CONTENT_TYPE = "image/jpeg";
 
 export interface RenderArtifactPreviewArgs {
@@ -224,11 +225,12 @@ const renderAndStoreArtifactPreview$ = command(
 
     const key = buildArtifactKey(args.userId, args.id, filename);
     await get(
-      putS3Object(
+      putImmutableS3Object(
         env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         key,
         image,
         contentType,
+        signal,
       ),
     );
     signal.throwIfAborted();
