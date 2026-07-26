@@ -412,8 +412,6 @@ function classifyExpression(
     };
   }
   if (expression.kind === "comparison") {
-    const left = classifyExpression(expression.left);
-    const right = classifyExpression(expression.right);
     const helper = COMPARISON_HELPERS.get(expression.operator);
     if (
       helper !== undefined &&
@@ -431,6 +429,8 @@ function classifyExpression(
         ],
       };
     }
+    const left = classifyExpression(expression.left);
+    const right = classifyExpression(expression.right);
     return {
       anchor:
         left.anchor ??
@@ -441,41 +441,25 @@ function classifyExpression(
     };
   }
   if (expression.kind === "boolean") {
-    const children = expression.items.map((item) => {
-      return classifyExpression(item);
-    });
-    const anchor = children.find((child) => {
-      return child.anchor !== undefined || child.findings.length > 0;
-    });
-    if (
-      anchor !== undefined &&
-      (anchor.anchor !== undefined || anchor.findings[0] !== undefined)
-    ) {
-      const reportNode = anchor.anchor ?? anchor.findings[0]?.node;
-      if (reportNode === undefined) {
+    for (const item of expression.items) {
+      const child = classifyExpression(item);
+      const reportNode = child.anchor ?? child.findings[0]?.node;
+      if (reportNode !== undefined) {
         return {
-          anchor: undefined,
-          findings: [],
+          anchor: reportNode,
+          findings: [
+            {
+              helper: expression.operator,
+              kind: "helper",
+              node: reportNode,
+            },
+          ],
         };
       }
-      return {
-        anchor: reportNode,
-        findings: [
-          {
-            helper: expression.operator,
-            kind: "helper",
-            node: reportNode,
-          },
-        ],
-      };
     }
     return {
       anchor: undefined,
-      findings: deduplicateFindings(
-        children.flatMap((child) => {
-          return child.findings;
-        }),
-      ),
+      findings: [],
     };
   }
 
