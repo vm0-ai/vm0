@@ -32,6 +32,7 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
+import { mockExternalConnectorCatalogEnabled } from "../../../lib/connector-catalog-source-selection";
 import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
@@ -575,6 +576,9 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
   let cached: Promise<BenchChatThreadFixture> | undefined;
   return () => {
     cached ??= (async () => {
+      // Vitest bench mode skips the normal API test beforeEach hooks, so
+      // preserve the general-test static catalog baseline in the lazy setup.
+      mockExternalConnectorCatalogEnabled(false);
       installR2ListMock();
       const seeded = await seedBenchChatThread();
       await seedBackgroundLoad();

@@ -74,6 +74,7 @@ import {
   notExists,
   or,
   type SQL,
+  type SQLWrapper,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -1231,11 +1232,11 @@ function artifactVisibilityConditions(
   ];
 }
 
-function artifactChatThreadId(db: Pick<Db, "select">): SQL {
+function artifactChatThreadId(db: Pick<Db, "select">, runId: SQLWrapper): SQL {
   const earliestThread = db
     .select({ threadId: chatMessages.chatThreadId })
     .from(chatMessages)
-    .where(eq(chatMessages.runId, runUploadedFiles.runId))
+    .where(eq(chatMessages.runId, runId))
     .orderBy(asc(chatMessages.seqId))
     .limit(1);
 
@@ -1428,16 +1429,7 @@ async function listChangedArtifacts(args: {
         INNER JOIN ${zeroRuns}
           ON ${eq(zeroRuns.id, agentRuns.id)}
         INNER JOIN ${chatThreads}
-          ON ${chatThreads.id} = COALESCE(
-            ${zeroRuns.chatThreadId},
-            (
-              SELECT ${chatMessages.chatThreadId}
-              FROM ${chatMessages}
-              WHERE ${eq(chatMessages.runId, zeroRuns.id)}
-              ORDER BY ${asc(chatMessages.seqId)}
-              LIMIT 1
-            )
-          )
+          ON ${eq(chatThreads.id, artifactChatThreadId(args.db, zeroRuns.id))}
         INNER JOIN ${agentComposes}
           ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
         INNER JOIN ${zeroAgents}
@@ -1450,10 +1442,15 @@ async function listChangedArtifacts(args: {
           ${effectiveUpdatedAt} AS effective_updated_at
         FROM visible_runs
         INNER JOIN ${runUploadedFiles}
-          ON ${runUploadedFiles.runId} = visible_runs.run_id
-        WHERE ${sql.join(fileConditions, sql` AND `)}
-          AND ${lowerBoundClause}
-          AND ${lt(effectiveUpdatedAt, sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`)}
+          ON ${eq(runUploadedFiles.runId, sql`visible_runs.run_id`)}
+        WHERE ${and(
+          ...fileConditions,
+          lowerBoundClause,
+          lt(
+            effectiveUpdatedAt,
+            sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`,
+          ),
+        )}
         ORDER BY ${asc(effectiveUpdatedAt)}, ${asc(runUploadedFiles.id)}
         LIMIT ${args.limit + 1}
       )
@@ -1490,22 +1487,16 @@ async function listChangedArtifacts(args: {
         ${zeroAgents.avatarUrl} AS agent_avatar_url
       FROM changed_artifact_ids
       INNER JOIN ${runUploadedFiles}
-        ON ${runUploadedFiles.id} = changed_artifact_ids.row_id
+        ON ${eq(runUploadedFiles.id, sql`changed_artifact_ids.row_id`)}
       INNER JOIN ${agentRuns}
         ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
         ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
-        ON ${chatThreads.id} = COALESCE(
-          ${zeroRuns.chatThreadId},
-          (
-            SELECT ${chatMessages.chatThreadId}
-            FROM ${chatMessages}
-            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${asc(chatMessages.seqId)}
-            LIMIT 1
-          )
-        )
+        ON ${eq(
+          chatThreads.id,
+          artifactChatThreadId(args.db, runUploadedFiles.runId),
+        )}
       INNER JOIN ${agentComposes}
         ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
@@ -1582,7 +1573,10 @@ async function listArtifactHistory(args: {
     .from(runUploadedFiles)
     .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
     .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-    .innerJoin(chatThreads, eq(chatThreads.id, artifactChatThreadId(args.db)))
+    .innerJoin(
+      chatThreads,
+      eq(chatThreads.id, artifactChatThreadId(args.db, runUploadedFiles.runId)),
+    )
     .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
     .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
     .where(and(...conditions, keysetCondition))
@@ -1694,7 +1688,10 @@ async function artifactUrlIsVisible(
     .from(runUploadedFiles)
     .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
     .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-    .innerJoin(chatThreads, eq(chatThreads.id, artifactChatThreadId(db)))
+    .innerJoin(
+      chatThreads,
+      eq(chatThreads.id, artifactChatThreadId(db, runUploadedFiles.runId)),
+    )
     .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
     .where(and(...conditions))
     .limit(1);
@@ -1873,7 +1870,7 @@ async function loadChatSearchContexts(
     )
     .innerJoin(
       matchedChatMessage,
-      sql`${matchedChatMessage.id} = chat_search_matches.message_id`,
+      eq(matchedChatMessage.id, sql`chat_search_matches.message_id`),
     )
     .crossJoinLateral(context)
     .orderBy(resultOrdinality, asc(context.seqId));

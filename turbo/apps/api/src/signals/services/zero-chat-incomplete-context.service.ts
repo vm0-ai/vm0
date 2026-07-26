@@ -1,7 +1,7 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -83,19 +83,21 @@ async function selectIncompleteRoundFrontier(
         FROM ${chatMessages}
         INNER JOIN ${agentRuns}
           ON ${eq(agentRuns.id, chatMessages.runId)}
-        WHERE ${eq(chatMessages.chatThreadId, threadId)}
-          AND ${isNotNull(chatMessages.runId)}
-          AND NOT (
+        WHERE ${and(
+          eq(chatMessages.chatThreadId, threadId),
+          isNotNull(chatMessages.runId),
+          sql`NOT (
             ${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)
-          )
-          AND ${visibleChatMessageCondition(db)}
-          AND (
-            (${isSuccessfulRun})
-            OR (
-              ${agentRuns.status} IN ('cancelled', 'failed', 'timeout')
-              AND ${chatMessages.role} IN ('user', 'assistant')
-            )
-          )
+          )`,
+          visibleChatMessageCondition(db),
+          or(
+            isSuccessfulRun,
+            and(
+              sql`${agentRuns.status} IN ('cancelled', 'failed', 'timeout')`,
+              sql`${chatMessages.role} IN ('user', 'assistant')`,
+            ),
+          ),
+        )}
         ORDER BY
           ${desc(chatMessages.seqId)}
         LIMIT 1

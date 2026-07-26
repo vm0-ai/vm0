@@ -1107,9 +1107,11 @@ async function loadStorageIndex(
         ${sql.param(userIds)}::text[],
         ${sql.param(names)}::varchar(256)[]
       ) AS requested(org_id, user_id, name)`,
-      sql`${storages.orgId} = requested.org_id
-        AND ${storages.userId} = requested.user_id
-        AND ${storages.name} = requested.name`,
+      and(
+        eq(storages.orgId, sql`requested.org_id`),
+        eq(storages.userId, sql`requested.user_id`),
+        eq(storages.name, sql`requested.name`),
+      ),
     )
     .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id));
 

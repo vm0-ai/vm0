@@ -337,10 +337,17 @@ async function pruneInactiveExpiredCacheRows(
       WITH candidates AS (
       SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
       FROM ${systemStoragePresignedUrlCache}
-      WHERE
-        ${eq(systemStoragePresignedUrlCache.scope, scope)}
-        AND ${lte(systemStoragePresignedUrlCache.expiresAt, sql`${issuedAtTimestamp}::timestamp`)}
-        AND ${lte(systemStoragePresignedUrlCache.lastRequestedAt, sql`${inactiveCutoffTimestamp}::timestamp`)}
+      WHERE ${and(
+        eq(systemStoragePresignedUrlCache.scope, scope),
+        lte(
+          systemStoragePresignedUrlCache.expiresAt,
+          sql`${issuedAtTimestamp}::timestamp`,
+        ),
+        lte(
+          systemStoragePresignedUrlCache.lastRequestedAt,
+          sql`${inactiveCutoffTimestamp}::timestamp`,
+        ),
+      )}
       ORDER BY
         ${systemStoragePresignedUrlCache.lastRequestedAt},
         ${systemStoragePresignedUrlCache.expiresAt},
@@ -351,17 +358,27 @@ async function pruneInactiveExpiredCacheRows(
       SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
       FROM ${systemStoragePresignedUrlCache}
       INNER JOIN candidates
-        ON ${systemStoragePresignedUrlCache.cacheKey} = candidates."cacheKey"
-      WHERE
-        ${eq(systemStoragePresignedUrlCache.scope, scope)}
-        AND ${lte(systemStoragePresignedUrlCache.expiresAt, sql`${issuedAtTimestamp}::timestamp`)}
-        AND ${lte(systemStoragePresignedUrlCache.lastRequestedAt, sql`${inactiveCutoffTimestamp}::timestamp`)}
+        ON ${eq(
+          systemStoragePresignedUrlCache.cacheKey,
+          sql`candidates."cacheKey"`,
+        )}
+      WHERE ${and(
+        eq(systemStoragePresignedUrlCache.scope, scope),
+        lte(
+          systemStoragePresignedUrlCache.expiresAt,
+          sql`${issuedAtTimestamp}::timestamp`,
+        ),
+        lte(
+          systemStoragePresignedUrlCache.lastRequestedAt,
+          sql`${inactiveCutoffTimestamp}::timestamp`,
+        ),
+      )}
       ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
       FOR UPDATE OF ${systemStoragePresignedUrlCache}
     )
     DELETE FROM ${systemStoragePresignedUrlCache}
     USING locked
-    WHERE ${systemStoragePresignedUrlCache.cacheKey} = locked."cacheKey"
+    WHERE ${eq(systemStoragePresignedUrlCache.cacheKey, sql`locked."cacheKey"`)}
       RETURNING ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
     `,
     deletedCacheRowSchema,

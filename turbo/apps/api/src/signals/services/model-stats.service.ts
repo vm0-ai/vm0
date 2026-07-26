@@ -275,9 +275,11 @@ async function selectModelRankings(
         COALESCE(${sum(modelStat.outputTokens)}, 0)::bigint AS output_tokens,
         COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS total_tokens
       FROM ${modelStat}
-      WHERE ${gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`)}
-        AND ${lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`)}
-        AND ${inArray(modelStat.model, modelStatsModelIds)}
+      WHERE ${and(
+        gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`),
+        lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
+        inArray(modelStat.model, modelStatsModelIds),
+      )}
       GROUP BY 1
     ),
     previous_period AS (
@@ -285,9 +287,11 @@ async function selectModelRankings(
         ${modelExpr} AS model,
         COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS previous_total_tokens
       FROM ${modelStat}
-      WHERE ${gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`)}
-        AND ${lt(modelStat.hourStart, sql`${previousEndParam}::timestamp`)}
-        AND ${inArray(modelStat.model, modelStatsModelIds)}
+      WHERE ${and(
+        gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`),
+        lt(modelStat.hourStart, sql`${previousEndParam}::timestamp`),
+        inArray(modelStat.model, modelStatsModelIds),
+      )}
       GROUP BY 1
     )
     SELECT
