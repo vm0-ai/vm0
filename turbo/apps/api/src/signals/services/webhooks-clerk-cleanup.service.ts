@@ -686,7 +686,10 @@ function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
       .where(
         and(
           eq(storages.userId, userId),
-          sql`${storages.s3Prefix} = ${storages.orgId} || '/' || ${storages.id}::text`,
+          eq(
+            storages.s3Prefix,
+            sql`${storages.orgId} || '/' || ${storages.id}::text`,
+          ),
         ),
       );
 

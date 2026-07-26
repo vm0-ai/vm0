@@ -28,6 +28,8 @@ import {
   isNotNull,
   lte,
   max,
+  not,
+  or,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -800,7 +802,7 @@ async function latestEventBackedAssistantMessage(
         eq(chatMessages.role, "assistant"),
         isNotNull(chatMessages.sequenceNumber),
         isNotNull(chatMessages.content),
-        sql`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
+        not(sql`${chatMessages.content} ~ '^[[:space:]]*$'`),
         ...(options.maxSequenceNumber === undefined
           ? []
           : [lte(chatMessages.sequenceNumber, options.maxSequenceNumber)]),
@@ -1787,7 +1789,10 @@ async function getLatestRunsByThreadId(
       and(
         eq(zeroRuns.chatThreadId, threadId),
         eq(zeroRuns.triggerSource, triggerSource),
-        sql`(${agentRuns.status} IS DISTINCT FROM ${"cancelled"} OR ${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR})`,
+        or(
+          sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
+          sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
+        ),
       ),
     )
     .orderBy(desc(agentRuns.createdAt))

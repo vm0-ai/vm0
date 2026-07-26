@@ -196,7 +196,10 @@ export function mergedRunModel(events: UsageEventRunUsageTotalsSubquery) {
 }
 
 function usageEventTokenSum(categories: readonly string[], alias: string) {
-  return sql`COALESCE(SUM(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} AND ${inArray(usageEvent.category, categories)} THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
+  return sql`COALESCE(SUM(CASE WHEN ${and(
+    eq(usageEvent.kind, MODEL_USAGE_KIND),
+    inArray(usageEvent.category, categories),
+  )} THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }

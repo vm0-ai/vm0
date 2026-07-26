@@ -225,7 +225,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .select({ id: users.id })
           .from(users)
           .as("selected_users");
-        const dynamicCondition = sql\`true\`;
         sql\` \`;
         sql\`true::boolean\`;
         db.select()
@@ -248,9 +247,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select()
           .from(users)
           .innerJoinLateral(selected, eq(selected.id, users.id));
-        db.select()
-          .from(users)
-          .innerJoinLateral(selected, dynamicCondition);
       `,
     },
     {
@@ -706,12 +702,12 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         \`;
         db.select()
           .from(users)
-          .where(sql\`EXISTS (SELECT 1 WHERE NOT \${fragment})\`);
+          .where(sql\`EXISTS (SELECT 1 WHERE \${fragment})\`);
       `,
       errors: [
         {
           messageId: "typedApi",
-          data: { helper: "not" },
+          data: { helper: "and" },
           line: 26,
         },
       ],
@@ -753,11 +749,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       errors: [
         {
           messageId: "typedApi",
-          data: { helper: "isNotNull" },
+          data: { helper: "and" },
         },
         {
           messageId: "typedApi",
-          data: { helper: "and" },
+          data: { helper: "isNotNull" },
         },
       ],
     },
@@ -1277,12 +1273,16 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         const names = ["one", "two"];
-        sql\`lower(\${users.name}) IN (\${sql.join(
-          names.map((name) => {
-            return sql\`\${name}\`;
-          }),
-          sql\`, \`,
-        )})\`;
+        db.select()
+          .from(users)
+          .where(
+            sql\`lower(\${users.name}) IN (\${sql.join(
+              names.map((name) => {
+                return sql\`\${name}\`;
+              }),
+              sql\`, \`,
+            )})\`,
+          );
       `,
       errors: [{ messageId: "typedApi", data: { helper: "inArray" } }],
     },
@@ -1295,22 +1295,46 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         const aliasedNameSql = nameSql.as("aliased_name");
         const selected = db.select({ id: users.id }).from(users);
         const tag = drizzle.sql;
-        query\`NOT \${condition}\`;
-        drizzle.sql\`WHERE NOT \${condition} AND \${condition}\`;
-        tag\`\${users.name} NOT LIKE \${"prefix%"} ESCAPE '\\\\'\`;
-        query\`\${users.name} ILIKE \${"prefix%"}\`;
-        drizzle.sql\`\${users.name} NOT ILIKE \${query\`LOWER(\${"prefix%"})\`}\`;
-        tag\`\${nameSql} ILIKE \${"prefix%"}\`;
-        query\`\${aliasedNameSql} NOT LIKE \${"prefix%"}\`;
-        tag\`\${users.id} BETWEEN \${1} AND \${2}\`;
-        tag\`\${users.deletedAt} BETWEEN \${"2026-01-01"}::timestamp AND \${"2026-01-02"}::timestamp\`;
-        query\`WHERE \${users.id} NOT BETWEEN \${1} AND \${2} ORDER BY 1\`;
-        drizzle.sql\`EXISTS \${selected}\`;
-        tag\`NOT EXISTS \${selected}\`;
+        db.select().from(users).where(query\`NOT \${condition}\`);
+        db.select()
+          .from(users)
+          .where(drizzle.sql\`unsupported(NOT \${condition})\`);
+        db.select()
+          .from(users)
+          .where(tag\`\${users.name} NOT LIKE \${"prefix%"} ESCAPE '\\\\'\`);
+        db.select()
+          .from(users)
+          .where(query\`\${users.name} ILIKE \${"prefix%"}\`);
+        db.select()
+          .from(users)
+          .where(
+            drizzle.sql\`\${users.name} NOT ILIKE \${query\`LOWER(\${"prefix%"})\`}\`,
+          );
+        db.select()
+          .from(users)
+          .where(tag\`\${nameSql} ILIKE \${"prefix%"}\`);
+        db.select()
+          .from(users)
+          .where(query\`\${aliasedNameSql} NOT LIKE \${"prefix%"}\`);
+        db.select()
+          .from(users)
+          .where(tag\`\${users.id} BETWEEN \${1} AND \${2}\`);
+        db.select()
+          .from(users)
+          .where(
+            tag\`\${users.deletedAt} BETWEEN \${"2026-01-01"}::timestamp AND \${"2026-01-02"}::timestamp\`,
+          );
+        db.select()
+          .from(users)
+          .where(query\`\${users.id} NOT BETWEEN \${1} AND \${2}\`);
+        db.select()
+          .from(users)
+          .where(drizzle.sql\`EXISTS \${selected}\`);
+        db.select().from(users).where(tag\`NOT EXISTS \${selected}\`);
         function pattern<T extends typeof users.name>(left: T) {
-          query\`\${left} NOT ILIKE \${"prefix%"}\`;
+          return query\`\${left} NOT ILIKE \${"prefix%"}\`;
         }
-        void pattern;
+        db.select().from(users).where(pattern(users.name));
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "not" } },
@@ -1334,18 +1358,26 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         const tagsSql = sql\`\${users.tags}\`;
         const typedTagsSql = sql\`\${users.tags}\`.mapWith(users.tags);
         const aliasedTagsSql = typedTagsSql.as("aliased_tags");
-        sql\`\${users.tags} <@ \${tagsSql}\`;
-        sql\`\${users.tags} && \${tagsSql}\`;
-        sql\`\${typedTagsSql} @> \${tagsSql}\`;
-        sql\`\${aliasedTagsSql} <@ \${tagsSql}\`;
+        db.select()
+          .from(users)
+          .where(sql\`\${users.tags} <@ \${tagsSql}\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.tags} && \${tagsSql}\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${typedTagsSql} @> \${tagsSql}\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${aliasedTagsSql} <@ \${tagsSql}\`);
         function overlaps<T extends typeof users.tags>(left: T, right: SQLWrapper) {
-          sql\`\${left} && \${right}\`;
+          return sql\`\${left} && \${right}\`;
         }
         function overlapsSql<T extends SQL<string[]>>(left: T, right: SQLWrapper) {
-          sql\`\${left} && \${right}\`;
+          return sql\`\${left} && \${right}\`;
         }
-        void overlaps;
-        void overlapsSql;
+        db.select().from(users).where(overlaps(users.tags, tagsSql));
+        db.select().from(users).where(overlapsSql(typedTagsSql, tagsSql));
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "arrayContained" } },
@@ -1360,14 +1392,22 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       code: `${drizzlePreamble}
         import { eq, sql } from "drizzle-orm";
         const condition = eq(users.id, 1);
-        sql\`SELECT COUNT(*)::int, COUNT(*) FILTER (WHERE \${condition}) FROM \${users}\`;
-        sql\`SELECT SUM(\${users.id}) FROM \${users}\`;
-        sql\`SELECT COUNT(\${users.id}) FROM \${users}\`;
-        sql\`SELECT COUNT(DISTINCT \${users.id}) FROM \${users}\`;
-        sql\`SELECT AVG(\${users.id}) FROM \${users}\`;
-        sql\`SELECT AVG(DISTINCT \${users.id}) FROM \${users}\`;
-        sql\`SELECT SUM(DISTINCT \${users.id}) FROM \${users}\`;
-        sql\`SELECT MIN(\${users.id}) FROM \${users}\`;
+        await db.execute(
+          sql\`SELECT COUNT(*)::int, COUNT(*) FILTER (WHERE \${condition}) FROM \${users}\`,
+        );
+        await db.execute(sql\`SELECT SUM(\${users.id}) FROM \${users}\`);
+        await db.execute(sql\`SELECT COUNT(\${users.id}) FROM \${users}\`);
+        await db.execute(
+          sql\`SELECT COUNT(DISTINCT \${users.id}) FROM \${users}\`,
+        );
+        await db.execute(sql\`SELECT AVG(\${users.id}) FROM \${users}\`);
+        await db.execute(
+          sql\`SELECT AVG(DISTINCT \${users.id}) FROM \${users}\`,
+        );
+        await db.execute(
+          sql\`SELECT SUM(DISTINCT \${users.id}) FROM \${users}\`,
+        );
+        await db.execute(sql\`SELECT MIN(\${users.id}) FROM \${users}\`);
         const fragment = sql\`\${users.id} + 1\`;
         sql\`COUNT(*)\`.mapWith(Number);
         sql\`SUM(\${fragment})\`.mapWith(users.id);
@@ -1391,12 +1431,16 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${drizzlePreamble}
         import { and, eq, isNotNull, sql } from "drizzle-orm";
-        sql\`EXISTS (
-          SELECT 1
-          FROM \${users}
-          WHERE \${eq(users.id, 1)}
-            AND \${isNotNull(users.name)}
-        )\`;
+        db.select()
+          .from(users)
+          .where(
+            sql\`EXISTS (
+              SELECT 1
+              FROM \${users}
+              WHERE \${eq(users.id, 1)}
+                AND \${isNotNull(users.name)}
+            )\`,
+          );
       `,
       errors: [
         {
@@ -1412,14 +1456,26 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         import { alias } from "drizzle-orm/pg-core";
         const otherUsers = alias(users, "other_users");
         const tag = drizzle.sql;
-        query\` not   exists(
-          select 1 from \${users}
-          inner join \${otherUsers} on \${eq(otherUsers.id, users.id)}
-          where \${eq(users.id, 1)} and \${isNotNull(otherUsers.name)}
-          limit 1
-        ) \`;
-        drizzle.sql\`EXISTS (SELECT 1 FROM \${otherUsers} WHERE \${eq(otherUsers.id, 1)})\`;
-        tag\`NOT EXISTS (SELECT 1 FROM \${users} WHERE \${eq(users.id, 1)})\`;
+        db.select()
+          .from(users)
+          .where(
+            query\` not   exists(
+              select 1 from \${users}
+              inner join \${otherUsers} on \${eq(otherUsers.id, users.id)}
+              where \${eq(users.id, 1)} and \${isNotNull(otherUsers.name)}
+              limit 1
+            ) \`,
+          );
+        db.select()
+          .from(users)
+          .where(
+            drizzle.sql\`EXISTS (SELECT 1 FROM \${otherUsers} WHERE \${eq(otherUsers.id, 1)})\`,
+          );
+        db.select()
+          .from(users)
+          .where(
+            tag\`NOT EXISTS (SELECT 1 FROM \${users} WHERE \${eq(users.id, 1)})\`,
+          );
       `,
       errors: [
         {
@@ -1439,7 +1495,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
-        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${users.id} = \${1})\`;
+        db.select()
+          .from(users)
+          .where(
+            sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${users.id} = \${1})\`,
+          );
       `,
       errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
     },
@@ -1471,14 +1531,19 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .select({ id: users.id })
           .from(users)
           .as("selected_users");
+        const trueCondition = query\`true\`;
         db.select()
           .from(users)
           .innerJoinLateral(selected, query\` true \`);
         db.select()
           .from(users)
           .innerJoinLateral(selected, drizzle.sql\`TRUE\`);
+        db.select()
+          .from(users)
+          .innerJoinLateral(selected, trueCondition);
       `,
       errors: [
+        { messageId: "crossJoinLateral" },
         { messageId: "crossJoinLateral" },
         { messageId: "crossJoinLateral" },
       ],
@@ -1514,12 +1579,12 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         const value = 1;
-        sql\`\${users.id} = \${value}\`;
-        sql\`\${users.id} <> \${value}\`;
-        sql\`\${users.id} > \${value}\`;
-        sql\`\${users.id} >= \${value}\`;
-        sql\`\${users.id} < \${value}\`;
-        sql\`\${users.id} <= \${value}\`;
+        db.select().from(users).where(sql\`\${users.id} = \${value}\`);
+        db.select().from(users).where(sql\`\${users.id} <> \${value}\`);
+        db.select().from(users).where(sql\`\${users.id} > \${value}\`);
+        db.select().from(users).where(sql\`\${users.id} >= \${value}\`);
+        db.select().from(users).where(sql\`\${users.id} < \${value}\`);
+        db.select().from(users).where(sql\`\${users.id} <= \${value}\`);
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "eq" } },
@@ -1533,8 +1598,12 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${drizzlePreamble}
         import { sql as query } from "drizzle-orm";
-        query\` \${users.deletedAt}  is   null \`;
-        query\`\${users.deletedAt}\nIS NOT NULL\`;
+        db.select()
+          .from(users)
+          .where(query\` \${users.deletedAt}  is   null \`);
+        db.select()
+          .from(users)
+          .where(query\`\${users.deletedAt}\nIS NOT NULL\`);
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "isNull" } },
@@ -1544,9 +1613,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${drizzlePreamble}
         import * as drizzle from "drizzle-orm";
-        drizzle.sql\`MAX ( \${users.id} )\`;
+        db.select({ value: drizzle.sql\`MAX ( \${users.id} )\` }).from(users);
         const query = drizzle.sql;
-        query\`min(\${users.id})\`;
+        db.select({ value: query\`min(\${users.id})\` }).from(users);
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "max" } },
@@ -1560,7 +1629,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .select({ id: users.id })
           .from(users)
           .as("selected_users");
-        sql\`\${selected.id} > \${users.id}\`;
+        db.select()
+          .from(users)
+          .where(sql\`\${selected.id} > \${users.id}\`);
       `,
       errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
     },
@@ -1568,29 +1639,38 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         const value = 1;
-        sql\`(\${users.id} = \${value})\`;
-        sql\`\${users.deletedAt} >= \${"2026-01-01"}::timestamp\`;
-        sql\`\${users.deletedAt} < \${"2026-01-02"}::timestamptz AT TIME ZONE 'UTC' ORDER BY 1\`;
-        sql\`
-          SELECT \${users.id}
-          FROM \${users}
-          WHERE \${users.id} >= \${value}
-            AND \${users.deletedAt} IS NOT NULL
-        \`;
-        sql\`CASE
-          WHEN \${users.id} > \${value} AND \${users.id} <> \${value}
-          THEN \${users.name}
-          ELSE NULL
-        END\`;
+        db.select().from(users).where(sql\`(\${users.id} = \${value})\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.deletedAt} >= \${"2026-01-01"}::timestamp\`);
+        await db.execute(
+          sql\`SELECT 1
+            WHERE \${users.deletedAt} < \${"2026-01-02"}::timestamptz
+              AT TIME ZONE 'UTC'
+            ORDER BY 1\`,
+        );
+        await db.execute(
+          sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${users.id} >= \${value}
+              AND \${users.deletedAt} IS NOT NULL
+          \`,
+        );
+        db.select({
+          value: sql\`CASE
+            WHEN \${users.id} > \${value} AND \${users.id} <> \${value}
+            THEN \${users.name}
+            ELSE NULL
+          END\`,
+        }).from(users);
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "eq" } },
         { messageId: "typedApi", data: { helper: "gte" } },
         { messageId: "typedApi", data: { helper: "lt" } },
-        { messageId: "typedApi", data: { helper: "gte" } },
-        { messageId: "typedApi", data: { helper: "isNotNull" } },
-        { messageId: "typedApi", data: { helper: "gt" } },
-        { messageId: "typedApi", data: { helper: "ne" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "and" } },
       ],
     },
     {
@@ -1600,23 +1680,23 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             operators.sql\`(\${fields.id} > \${0}) OR \${fields.deletedAt} IS NULL\`,
         });
       `,
-      errors: [
-        { messageId: "typedApi", data: { helper: "gt" } },
-        { messageId: "typedApi", data: { helper: "isNull" } },
-      ],
+      errors: [{ messageId: "typedApi", data: { helper: "or" } }],
     },
     {
       code: `${drizzlePreamble}
         import { sql, type SQLWrapper } from "drizzle-orm";
-        function predicates<T extends SQLWrapper>(left: T, right: string) {
-          sql\`\${left} = \${right}\`;
-          sql\`\${left} IS NOT NULL\`;
+        function comparison<T extends SQLWrapper>(left: T, right: string) {
+          return sql\`\${left} = \${right}\`;
+        }
+        function present<T extends SQLWrapper>(value: T) {
+          return sql\`\${value} IS NOT NULL\`;
         }
         function aggregate<T extends typeof users.id>(column: T) {
           return sql\`MAX(\${column})\`;
         }
-        void predicates;
-        void aggregate;
+        db.select().from(users).where(comparison(users.id, "1"));
+        db.select().from(users).where(present(users.id));
+        db.select({ value: aggregate(users.id) }).from(users);
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "eq" } },
@@ -1638,23 +1718,50 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             sql\`, \`,
           );
         }
-        function optional(value: SQL | undefined): SQL | undefined {
+        function optional(value: SQL): SQL {
           return value;
         }
         const condition = eq(users.id, 1);
         const jsonArray = sql\`jsonb_build_array(\${"tag"})\`;
-        sql\`\${users.name} LIKE \${"prefix%"} ESCAPE '\\\\'\`;
-        sql\`\${users.name} IN (\${nameList})\`;
-        sql\`\${users.name} IN (\${nameSqlList()})\`;
-        sql\`\${users.name} NOT IN (\${nameList})\`;
-        sql\`\${users.name} NOT IN (\${nameSqlList()})\`;
-        sql\`ORDER BY \${users.name} ASC, \${users.id} DESC NULLS FIRST\`;
-        sql\`COALESCE(SUM(\${users.id}), 0)\`;
-        sql\`COUNT(\${users.id}) FILTER (WHERE \${condition})::int\`;
-        sql\`MAX(\${users.deletedAt}) FILTER (WHERE \${condition})\`;
-        sql\`SELECT COUNT(\${users.id}), COUNT(DISTINCT \${users.name}), MAX(\${users.id}) FROM \${users}\`;
-        optional(sql\`(\${condition} AND \${condition}) OR \${condition}\`);
-        sql\`\${users.tags} @> \${jsonArray}\`;
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} LIKE \${"prefix%"} ESCAPE '\\\\'\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} IN (\${nameList})\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} IN (\${nameSqlList()})\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} NOT IN (\${nameList})\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} NOT IN (\${nameSqlList()})\`);
+        db.select()
+          .from(users)
+          .orderBy(
+            sql\`\${users.name} ASC\`,
+            sql\`\${users.id} DESC NULLS FIRST\`,
+          );
+        db.select({
+          value: sql\`COALESCE(SUM(\${users.id}), 0)\`,
+        }).from(users);
+        db.select({
+          value: sql\`COUNT(\${users.id}) FILTER (WHERE \${condition})::int\`,
+        }).from(users);
+        db.select({
+          value: sql\`MAX(\${users.deletedAt}) FILTER (WHERE \${condition})\`,
+        }).from(users);
+        await db.execute(
+          sql\`SELECT COUNT(\${users.id}), COUNT(DISTINCT \${users.name}), MAX(\${users.id}) FROM \${users}\`,
+        );
+        db.select()
+          .from(users)
+          .where(optional(sql\`(\${condition} AND \${condition}) OR \${condition}\`));
+        db.select()
+          .from(users)
+          .where(sql\`\${users.tags} @> \${jsonArray}\`);
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "like" } },
@@ -1681,23 +1788,35 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         const names = ["one", "two"];
         const condition = eq(users.id, 1);
         const tag = drizzle.sql;
-        query\`lower(\${users.name}) IN (\${query.join(
-          names.map((name) => query\`\${name}\`),
-          query\`, \`,
-        )})\`;
-        drizzle.sql\`WHERE LOWER (\${users.name}) in (\${drizzle.sql.join(
-          names.map((name) => drizzle.sql\`\${name}\`),
-          drizzle.sql\`, \`,
-        )}) AND \${condition}\`;
-        tag\`NOT lower(\${users.name}) IN (\${tag.join(
-          names.map((name) => tag\`\${name}\`),
-          tag\`, \`,
-        )})\`;
+        db.select()
+          .from(users)
+          .where(
+            query\`lower(\${users.name}) IN (\${query.join(
+              names.map((name) => query\`\${name}\`),
+              query\`, \`,
+            )})\`,
+          );
+        db.select()
+          .from(users)
+          .where(
+            drizzle.sql\`LOWER (\${users.name}) in (\${drizzle.sql.join(
+              names.map((name) => drizzle.sql\`\${name}\`),
+              drizzle.sql\`, \`,
+            )}) AND \${condition}\`,
+          );
+        db.select()
+          .from(users)
+          .where(
+            tag\`NOT lower(\${users.name}) IN (\${tag.join(
+              names.map((name) => tag\`\${name}\`),
+              tag\`, \`,
+            )})\`,
+          );
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "inArray" } },
-        { messageId: "typedApi", data: { helper: "inArray" } },
-        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "not" } },
       ],
     },
     {
@@ -1709,13 +1828,26 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           names.map((name) => drizzle.sql\`\${name}\`),
           drizzle.sql\`, \`,
         );
-        query\`\${users.name} LIKE \${"prefix%"}\`;
-        drizzle.sql\`\${users.name} IN (\${nameList})\`;
-        drizzle.sql\`ORDER BY \${users.name} ASC, COALESCE(SUM(\${users.id}), 0)\`;
+        db.select()
+          .from(users)
+          .where(query\`\${users.name} LIKE \${"prefix%"}\`);
+        db.select()
+          .from(users)
+          .where(drizzle.sql\`\${users.name} IN (\${nameList})\`);
+        db.select()
+          .from(users)
+          .orderBy(
+            drizzle.sql\`\${users.name} ASC\`,
+            drizzle.sql\`COALESCE(SUM(\${users.id}), 0)\`,
+          );
         function contains<T extends typeof users.tags>(column: T, value: SQLWrapper) {
-          query\`\${column} @> \${value}\`;
+          return query\`\${column} @> \${value}\`;
         }
-        void contains;
+        db.select()
+          .from(users)
+          .where(
+            contains(users.tags, drizzle.sql\`\${users.tags}\`),
+          );
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "like" } },
@@ -1750,6 +1882,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "like" } },
+        { messageId: "typedApi", data: { helper: "and" } },
         { messageId: "typedApi", data: { helper: "not" } },
         { messageId: "typedApi", data: { helper: "ilike" } },
         { messageId: "typedApi", data: { helper: "between" } },

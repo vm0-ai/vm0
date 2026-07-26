@@ -186,6 +186,39 @@ export function isDrizzleSqlType(
   });
 }
 
+export function isDrizzleSelectType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  return everyConcreteType(checker, type, (member) => {
+    if (!isDrizzleWrapperType(checker, member)) {
+      return false;
+    }
+    const metadataType = propertyType(checker, member, "_", location);
+    if (metadataType === undefined) {
+      return false;
+    }
+    const dialectType = propertyType(
+      checker,
+      metadataType,
+      "dialect",
+      location,
+    );
+    const selectModeType = propertyType(
+      checker,
+      metadataType,
+      "selectMode",
+      location,
+    );
+    return (
+      dialectType?.isStringLiteral() === true &&
+      dialectType.value === "pg" &&
+      selectModeType !== undefined
+    );
+  });
+}
+
 export function isDrizzlePatternOperandType(
   checker: TypeChecker,
   type: Type,

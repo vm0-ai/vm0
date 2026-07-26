@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, or, sql, sum } from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
@@ -180,15 +180,23 @@ async function replaceModelStats(
           ${modelUsageObservation.cacheReadInputTokens}::bigint AS cache_read_input_tokens,
           ${modelUsageObservation.cacheCreationInputTokens}::bigint AS cache_creation_input_tokens
         FROM ${modelUsageObservation}
-        WHERE ${gte(modelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
-          AND ${lt(modelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
-          AND ${inArray(modelUsageObservation.model, modelStatsModelIds)}
-          AND (
-            ${modelUsageObservation.inputTokens} > 0
-            OR ${modelUsageObservation.outputTokens} > 0
-            OR ${modelUsageObservation.cacheReadInputTokens} > 0
-            OR ${modelUsageObservation.cacheCreationInputTokens} > 0
-          )
+        WHERE ${and(
+          gte(
+            modelUsageObservation.observedAt,
+            sql`${windowStartParam}::timestamp`,
+          ),
+          lt(
+            modelUsageObservation.observedAt,
+            sql`${windowEndParam}::timestamp`,
+          ),
+          inArray(modelUsageObservation.model, modelStatsModelIds),
+          or(
+            gt(modelUsageObservation.inputTokens, sql`0`),
+            gt(modelUsageObservation.outputTokens, sql`0`),
+            gt(modelUsageObservation.cacheReadInputTokens, sql`0`),
+            gt(modelUsageObservation.cacheCreationInputTokens, sql`0`),
+          ),
+        )}
       ),
       aggregated AS (
         SELECT
