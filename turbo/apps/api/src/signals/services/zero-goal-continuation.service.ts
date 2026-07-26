@@ -343,6 +343,11 @@ const runGoalNow$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        threadSessionRoute: {
+          selectedModel: modelPin.selectedModel,
+          modelProvider: effectiveModelProvider ?? null,
+          cliAgentType,
+        },
         codexServiceTier,
         callbacks: buildGoalChatCallbacks({
           threadId: goal.threadId,

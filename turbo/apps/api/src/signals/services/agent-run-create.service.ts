@@ -187,6 +187,10 @@ import {
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import type {
+  ChatThreadSessionResolution,
+  ChatThreadSessionResolutionAction,
+} from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
   type QueueFirstRunAssociation,
@@ -417,7 +421,7 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
-type ThreadSessionBindingAction = "initialized" | "reused" | "rotated";
+type ThreadSessionBindingAction = ChatThreadSessionResolutionAction;
 
 interface ThreadSessionBindingWrite {
   readonly chatThreadId: string;
@@ -458,6 +462,15 @@ export interface QueueFirstRunClaimLost {
   readonly kind: "queue-first-claim-lost";
 }
 
+interface ThreadSessionSnapshotStale {
+  readonly kind: "thread-session-snapshot-stale";
+  readonly chatThreadId: string;
+  readonly agentSessionId: string;
+  readonly agentSessionRunId: string;
+  readonly resolutionAction: ChatThreadSessionResolutionAction;
+  readonly reason: "binding_changed" | "session_changed";
+}
+
 type AtomicLaunchCommitResult =
   | {
       readonly kind: "pending";
@@ -481,6 +494,7 @@ type AtomicLaunchCommitResult =
   | {
       readonly kind: "queue-payload-required";
     }
+  | ThreadSessionSnapshotStale
   | QueueFirstRunClaimLost;
 type QueuePayloadRequiredResult = Extract<
   AtomicLaunchCommitResult,
@@ -494,7 +508,9 @@ type CommitAtomicLaunch = (
 ) => Promise<AtomicLaunchCommitAttempt>;
 type CommittedAtomicLaunchResult = Exclude<
   AtomicLaunchCommitResult,
-  { readonly kind: "queue-payload-required" } | QueueFirstRunClaimLost
+  | { readonly kind: "queue-payload-required" }
+  | QueueFirstRunClaimLost
+  | ThreadSessionSnapshotStale
 >;
 
 type FailedLaunchCommitResult =
@@ -521,7 +537,8 @@ type CreateRunSuccessResult = {
 type QueueFirstAgentRunResult =
   | CreateRunSuccessResult
   | CreateRunErrorResult
-  | QueueFirstRunClaimLost;
+  | QueueFirstRunClaimLost
+  | ThreadSessionSnapshotStale;
 
 export function isQueueFirstRunClaimLost(
   result: unknown,
@@ -531,6 +548,17 @@ export function isQueueFirstRunClaimLost(
     result !== null &&
     "kind" in result &&
     result.kind === "queue-first-claim-lost"
+  );
+}
+
+export function isThreadSessionSnapshotStale(
+  result: unknown,
+): result is ThreadSessionSnapshotStale {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "kind" in result &&
+    result.kind === "thread-session-snapshot-stale"
   );
 }
 
@@ -658,6 +686,7 @@ export interface CreateAgentRunArgs {
   readonly selectedModelOverride?: string;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
   readonly extraEnvironment?: Record<string, string>;
@@ -4950,6 +4979,34 @@ function recordThreadSessionBindingTelemetry(args: {
   }
 }
 
+export function recordThreadSessionBindingRetryTelemetry(
+  retry: ThreadSessionSnapshotStale,
+): void {
+  const result = safeSync(() => {
+    recordSandboxOperation({
+      sandboxType: "chat",
+      actionType: "chat_thread_session_binding_retry",
+      durationMs: 0,
+      success: true,
+      runId: retry.agentSessionRunId,
+      dimensions: {
+        chat_thread_id: retry.chatThreadId,
+        agent_session_id: retry.agentSessionId,
+        agent_session_run_id: retry.agentSessionRunId,
+        binding_action: "retried",
+        resolution_action: retry.resolutionAction,
+        retry_reason: retry.reason,
+      },
+    });
+  });
+  if ("error" in result) {
+    L.warn("Failed to record chat thread session binding retry telemetry", {
+      runId: retry.agentSessionRunId,
+      error: result.error,
+    });
+  }
+}
+
 async function publishQueueChangedSafely(args: {
   readonly orgId: string;
   readonly runId: string;
@@ -5524,6 +5581,7 @@ async function persistThreadSessionBinding(
   args: {
     readonly chatThreadId: string | undefined;
     readonly identity: LaunchRunIdentity;
+    readonly resolution: ChatThreadSessionResolution | undefined;
   },
 ): Promise<ThreadSessionBindingWrite | undefined> {
   if (!args.chatThreadId) {
@@ -5541,11 +5599,12 @@ async function persistThreadSessionBinding(
   }
 
   const action: ThreadSessionBindingAction =
-    thread.agentSessionId === null
+    args.resolution?.action ??
+    (thread.agentSessionId === null
       ? "initialized"
       : thread.agentSessionId === args.identity.sessionId
         ? "reused"
-        : "rotated";
+        : "rotated");
   const [updated] = await tx
     .update(chatThreads)
     .set({
@@ -5564,6 +5623,84 @@ async function persistThreadSessionBinding(
     agentSessionRunId: args.identity.runId,
     action,
   };
+}
+
+function threadSessionSnapshotStale(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly identity: LaunchRunIdentity;
+  readonly reason: ThreadSessionSnapshotStale["reason"];
+}): ThreadSessionSnapshotStale {
+  const resolution = args.createArgs.threadSessionResolution;
+  const chatThreadId = args.createArgs.chatThreadId;
+  if (!resolution || !chatThreadId) {
+    throw new Error("Missing chat thread session snapshot");
+  }
+  return {
+    kind: "thread-session-snapshot-stale",
+    chatThreadId,
+    agentSessionId: args.identity.sessionId,
+    agentSessionRunId: args.identity.runId,
+    resolutionAction: resolution.action,
+    reason: args.reason,
+  };
+}
+
+async function validateThreadSessionSnapshot(
+  tx: DbTransaction,
+  args: {
+    readonly createArgs: CreateAgentRunArgs;
+    readonly identity: LaunchRunIdentity;
+  },
+): Promise<ThreadSessionSnapshotStale | undefined> {
+  const resolution = args.createArgs.threadSessionResolution;
+  const chatThreadId = args.createArgs.chatThreadId;
+  if (!resolution || !chatThreadId) {
+    return undefined;
+  }
+
+  const [thread] = await tx
+    .select({
+      agentSessionId: chatThreads.agentSessionId,
+      agentSessionRunId: chatThreads.agentSessionRunId,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, chatThreadId))
+    .for("update")
+    .limit(1);
+  if (!thread) {
+    throw new Error("Chat thread not found while validating session snapshot");
+  }
+  if (
+    thread.agentSessionId !== resolution.expected.agentSessionId ||
+    thread.agentSessionRunId !== resolution.expected.agentSessionRunId
+  ) {
+    return threadSessionSnapshotStale({
+      createArgs: args.createArgs,
+      identity: args.identity,
+      reason: "binding_changed",
+    });
+  }
+
+  if (resolution.expected.sessionId === null) {
+    return undefined;
+  }
+  const [session] = await tx
+    .select({ conversationId: agentSessions.conversationId })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, resolution.expected.sessionId))
+    .for("update")
+    .limit(1);
+  if (
+    !session ||
+    session.conversationId !== resolution.expected.conversationId
+  ) {
+    return threadSessionSnapshotStale({
+      createArgs: args.createArgs,
+      identity: args.identity,
+      reason: "session_changed",
+    });
+  }
+  return undefined;
 }
 
 async function commitQueuedPreparedLaunch(
@@ -5601,6 +5738,7 @@ async function commitQueuedPreparedLaunch(
   const threadSessionBinding = await persistThreadSessionBinding(tx, {
     chatThreadId: args.createArgs.chatThreadId,
     identity: args.identity,
+    resolution: args.createArgs.threadSessionResolution,
   });
   return {
     kind: "queued",
@@ -5655,6 +5793,7 @@ async function commitPendingPreparedLaunch(
   const threadSessionBinding = await persistThreadSessionBinding(tx, {
     chatThreadId: args.createArgs.chatThreadId,
     identity: args.identity,
+    resolution: args.createArgs.threadSessionResolution,
   });
   return {
     kind: "pending",
@@ -5681,6 +5820,13 @@ async function commitPreparedLaunch(
         );
       },
     );
+    const staleThreadSession = await validateThreadSessionSnapshot(tx, {
+      createArgs: args.createArgs,
+      identity: args.identity,
+    });
+    if (staleThreadSession) {
+      return staleThreadSession;
+    }
     const concurrency = await args.timing.measure(
       "api_dispatch_check_concurrency_limit",
       "nested",
@@ -6810,6 +6956,9 @@ async function finalizeAtomicLaunchCommit(args: {
     });
     return args.committed;
   }
+  if (args.committed.kind === "thread-session-snapshot-stale") {
+    return args.committed;
+  }
   if (args.committed.kind === "queue-payload-required") {
     return args.committed;
   }
@@ -7152,6 +7301,9 @@ export const createAgentRun$ = command(
     );
     if (isQueueFirstRunClaimLost(result)) {
       throw new Error("Direct run unexpectedly lost a queue-first claim");
+    }
+    if (isThreadSessionSnapshotStale(result)) {
+      throw new Error("Direct run unexpectedly used a stale thread session");
     }
     return result;
   },

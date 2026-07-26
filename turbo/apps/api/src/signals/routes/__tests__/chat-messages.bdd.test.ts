@@ -52,6 +52,8 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
+  clearThreadSessionBinding,
+  clearThreadSessionConversation,
   deleteVm0ManagedDefaultModelKey,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
@@ -1597,6 +1599,13 @@ describe("CHAT-02: dispatch failure", () => {
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
     expect(run.error).toContain("RUNNER_DEFAULT_GROUP");
+    await expect(
+      readThreadSessionBinding(context, sent.body.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: null,
+      agent_session_run_id: null,
+      run_session_id: null,
+    });
 
     const messages = await waitForThreadMessages(
       actor,
@@ -2950,6 +2959,133 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
+  it("lazily adopts the latest eligible session for a legacy unbound thread", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish history before lazy adoption",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the first run to establish a session");
+    }
+
+    await clearThreadSessionBinding(context, first.threadId);
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: null,
+      agent_session_run_id: null,
+    });
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "adopt the historical session",
+    });
+    const secondBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(secondBinding).toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: second.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        chat_thread_id: first.threadId,
+        agent_session_id: firstBinding.agent_session_id,
+        agent_session_run_id: second.runId,
+        binding_action: "adopted",
+      }),
+    );
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("retries preparation when the canonical conversation snapshot changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for snapshot retry");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the checkpoint snapshot",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the first run to establish a session");
+    }
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+    const secondPromise = sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "retry after the checkpoint changes",
+    });
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+
+    await clearThreadSessionConversation(context, first.threadId);
+    admissionLock.release();
+    await admissionLock.done;
+    const second = await secondPromise;
+
+    const retryEvents = sandboxOperationEvents().filter((event) => {
+      return (
+        event.op_type === "chat_thread_session_binding_retry" &&
+        event.chat_thread_id === first.threadId
+      );
+    });
+    expect(retryEvents).toContainEqual(
+      expect.objectContaining({
+        agent_session_id: firstBinding.agent_session_id,
+        binding_action: "retried",
+        resolution_action: "reused",
+        retry_reason: "session_changed",
+      }),
+    );
+    const secondBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(secondBinding).toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: second.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
   it("re-resolves a sticky model through the current provider policy", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2962,6 +3098,13 @@ describe("CHAT-02: run-level model overrides", () => {
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the original route to bind a session");
+    }
     const pinned = await chat.readThread(actor, first.threadId);
     expect(pinned).not.toHaveProperty("selectedModel");
     expect(pinned).not.toHaveProperty("modelProviderId");
@@ -3052,12 +3195,43 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     expect(thirdClaim.claim.cliAgentType).toBe("claude-code");
     expect(thirdClaim.claim.resumeSession).toBeNull();
+    await completeChatRunOk(third.runId, thirdClaim.sandboxHeaders);
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
+    expect(rotatedBinding).toMatchObject({
+      agent_session_run_id: third.runId,
+      run_session_id: rotatedBinding.agent_session_id,
+    });
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
       "claude-sonnet-4-6",
     );
-    await cancelChatRun(actor, third.runId);
+
+    const fourth = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue after the canonical session rotates",
+    });
+    const fourthBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(fourthBinding).toMatchObject({
+      agent_session_id: rotatedBinding.agent_session_id,
+      agent_session_run_id: fourth.runId,
+      run_session_id: rotatedBinding.agent_session_id,
+    });
+    const fourthClaim = await claimChatRun(runnerGroup, fourth.runId);
+    expect(fourthClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${third.runId}`,
+    );
+    await cancelChatRun(actor, fourth.runId);
   }, 90_000);
 
   it("rejects invalid model selections without creating visible state", async () => {
@@ -3147,6 +3321,13 @@ describe("CHAT-02: incomplete-round context", () => {
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     await failChatRun(first.runId, firstClaim.sandboxHeaders, "boom one");
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the failed run to retain its session binding");
+    }
 
     const longPrompt = `second ${"x".repeat(4100)}`;
     const second = await sendChatRun(actor, {
@@ -3156,11 +3337,25 @@ describe("CHAT-02: incomplete-round context", () => {
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     await failChatRun(second.runId, secondClaim.sandboxHeaders, "boom two");
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: second.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
 
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "retry after two failures",
+    });
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: third.runId,
+      run_session_id: firstBinding.agent_session_id,
     });
     const thirdRun = await api.readRun(actor, third.runId);
     const appended = thirdRun.appendSystemPrompt ?? "";

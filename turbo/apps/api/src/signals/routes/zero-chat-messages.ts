@@ -3005,6 +3005,11 @@ function buildCreateZeroRunArgs(params: {
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
       selectedModel: modelPin.selectedModel,
     },
+    threadSessionRoute: {
+      selectedModel: modelPin.selectedModel,
+      modelProvider: providerAdmission.effectiveModelProvider ?? null,
+      cliAgentType: providerAdmission.cliAgentType,
+    },
     codexServiceTier,
     callbacks: [
       {

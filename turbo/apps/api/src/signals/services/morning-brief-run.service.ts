@@ -351,6 +351,7 @@ async function ensureMorningBriefChatThread(
 interface MorningBriefModelContext {
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly cliAgentType: string | null;
   readonly codexServiceTier: "fast" | undefined;
 }
 
@@ -390,6 +391,7 @@ async function resolveMorningBriefModelContext(
   return {
     modelPin: pin,
     effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    cliAgentType: providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
   };
 }
@@ -523,6 +525,11 @@ const startMorningBriefRun$ = command(
         modelProviderCredentialScope:
           model.modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: model.modelPin.selectedModel ?? undefined,
+        threadSessionRoute: {
+          selectedModel: model.modelPin.selectedModel,
+          modelProvider: model.effectiveModelProvider ?? null,
+          cliAgentType: model.cliAgentType,
+        },
         codexServiceTier: model.codexServiceTier,
         appendSystemPrompt: buildMorningBriefAppendSystemPrompt({
           briefDate,

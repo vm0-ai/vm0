@@ -71,6 +71,7 @@ type ModelContext =
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
       readonly effectiveModelProvider: string | null | undefined;
+      readonly cliAgentType: string | null;
       readonly codexServiceTier: "fast" | undefined;
     }
   | { readonly ok: false; readonly failure: RunFailure };
@@ -253,7 +254,18 @@ async function resolveModelContext(args: {
     ok: true,
     modelPin: pin,
     effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    cliAgentType: providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
+  };
+}
+
+function workflowThreadSessionRoute(
+  modelContext: Extract<ModelContext, { readonly ok: true }>,
+) {
+  return {
+    selectedModel: modelContext.modelPin.selectedModel,
+    modelProvider: modelContext.effectiveModelProvider ?? null,
+    cliAgentType: modelContext.cliAgentType,
   };
 }
 
@@ -526,6 +538,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        threadSessionRoute: workflowThreadSessionRoute(modelContext),
         codexServiceTier,
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,

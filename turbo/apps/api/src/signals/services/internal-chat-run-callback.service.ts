@@ -503,6 +503,7 @@ interface CreateQueuedChatRunInput {
   readonly queuedMessage: QueuedUserMessage;
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly cliAgentType: string | null;
   readonly codexServiceTier: "fast" | undefined;
   readonly computerUseHostGrant: {
     readonly hostId: string;
@@ -646,6 +647,11 @@ function buildQueuedCreateZeroRunArgs(
       modelProviderId: input.modelPin.modelProviderId,
       modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
       selectedModel: input.modelPin.selectedModel,
+    },
+    threadSessionRoute: {
+      selectedModel: input.modelPin.selectedModel,
+      modelProvider: input.effectiveModelProvider ?? null,
+      cliAgentType: input.cliAgentType,
     },
     body: {
       prompt: input.prompt,
@@ -2290,6 +2296,30 @@ function slackQueuedMessageAdmissionFailure(
   };
 }
 
+function resolveQueuedMessageGenerationTemplatePrompt(args: {
+  readonly input: CreateQueuedChatRunInputArgs;
+  readonly structuredProjection:
+    | ReturnType<typeof projectStructuredUserMessage>
+    | undefined;
+  readonly websiteTemplateV2Enabled: boolean;
+  readonly imageStyleR2Enabled: boolean;
+}) {
+  return measureChatCallbackPreCreateTiming(
+    args.input.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template",
+    "nested",
+    () => {
+      return resolveThreadGenerationTemplatePrompt({
+        explicit: args.structuredProjection
+          ? args.structuredProjection.generationTemplate
+          : args.input.queuedMessage.generationTemplate,
+        websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
+        imageStyleR2Enabled: args.imageStyleR2Enabled,
+      });
+    },
+  );
+}
+
 async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
 ): Promise<
@@ -2351,26 +2381,19 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const generationTemplatePrompt = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template",
-    "nested",
-    () => {
-      return resolveThreadGenerationTemplatePrompt({
-        explicit: structuredProjection
-          ? structuredProjection.generationTemplate
-          : args.queuedMessage.generationTemplate,
-        websiteTemplateV2Enabled: isFeatureEnabled(
-          FeatureSwitchKey.WebsiteTemplateV2,
-          featureSwitchContext,
-        ),
-        imageStyleR2Enabled: isFeatureEnabled(
-          FeatureSwitchKey.ImageStyleR2,
-          featureSwitchContext,
-        ),
-      });
-    },
-  );
+  const generationTemplatePrompt =
+    await resolveQueuedMessageGenerationTemplatePrompt({
+      input: args,
+      structuredProjection,
+      websiteTemplateV2Enabled: isFeatureEnabled(
+        FeatureSwitchKey.WebsiteTemplateV2,
+        featureSwitchContext,
+      ),
+      imageStyleR2Enabled: isFeatureEnabled(
+        FeatureSwitchKey.ImageStyleR2,
+        featureSwitchContext,
+      ),
+    });
   const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
@@ -2410,6 +2433,7 @@ async function buildCreateQueuedChatRunInput(
     queuedMessage: args.queuedMessage,
     modelPin: modelRoute.modelPin,
     effectiveModelProvider: modelRoute.effectiveModelProvider,
+    cliAgentType: modelRoute.cliAgentType,
     codexServiceTier: modelRoute.codexServiceTier,
     computerUseHostGrant,
     triggerSource: args.queuedMessage.triggerSource,
