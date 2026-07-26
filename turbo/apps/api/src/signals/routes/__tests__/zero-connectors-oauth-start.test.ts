@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 
+import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
 import { connectorOauthStartResponseSchema } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorRegistryAuthMethodId } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
+import {
+  API_TEST_CONNECTOR_CATALOG,
+  installApiTestConnectorCatalog,
+} from "../../../test-fixtures/connector-catalog";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -82,20 +85,26 @@ function mockOAuthEnv(): void {
 }
 
 function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
-  const grant = getConnectorAuthMethodAuthCodeGrantConfig(
-    "cloudflare",
-    "oauth",
-  );
+  const method = API_TEST_CONNECTOR_CATALOG.connectors
+    .find((connector) => {
+      return connector.connectorRef === "cloudflare";
+    })
+    ?.authMethods.find((authMethod) => {
+      return authMethod.id === "oauth";
+    });
+  if (method?.grant.kind !== "auth-code") {
+    throw new Error("Expected Cloudflare OAuth auth-code fixture");
+  }
   expect(authorizationUrl.searchParams.get("scope")?.split(" ")).toStrictEqual(
-    grant.scopes,
+    method.grant.scopes,
   );
-  expect(grant.scopes).toContain("offline_access");
+  expect(method.grant.scopes).toContain("offline_access");
 }
 
 async function requestOauthStart(
   type: string,
   options: {
-    readonly authMethod?: ConnectorRegistryAuthMethodId;
+    readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
     readonly callbackTarget?: "app";
     readonly headers?: HeadersInit;
@@ -602,8 +611,9 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
-  it("returns 500 when auth client is not configured", async () => {
+  it("returns 500 when the auth method lacks executable platform configuration", async () => {
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog();
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
@@ -613,7 +623,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "github auth client not configured",
+        message: "Connector execution is not configured",
         code: "INTERNAL_SERVER_ERROR",
       },
     });

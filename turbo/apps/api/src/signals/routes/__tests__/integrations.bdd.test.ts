@@ -9,6 +9,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -4346,6 +4347,7 @@ describe("INT-02: Telegram integration", () => {
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
     integrations.clearGithubAppProvider();
+    await installApiTestConnectorCatalog();
 
     const unconfiguredInstall = await integrations.requestGithubOauthInstall(
       {},
@@ -4439,7 +4441,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       [307],
     );
     expect(unconfiguredConnect.headers.get("location") ?? "").toContain(
-      "GitHub%20OAuth%20is%20not%20configured",
+      "GitHub%20OAuth%20is%20not%20available",
     );
   });
 

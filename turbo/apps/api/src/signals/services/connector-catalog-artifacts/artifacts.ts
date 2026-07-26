@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
-import { isStaticConnectorIconPublicPath } from "@vm0/connectors/static-connector-icons";
 
 import {
   artifactKeySchema,
@@ -25,6 +24,7 @@ import {
   internalOptionNameSchema,
   publicFieldIdSchema,
 } from "./source";
+import { isConnectorCatalogIconKey } from "./icon";
 
 export { connectorCatalogVersionSchema } from "./common";
 
@@ -51,8 +51,8 @@ const connectorCatalogIconSchema = z
     key: z
       .string()
       .refine(
-        isStaticConnectorIconPublicPath,
-        "Connector icon key must be a safe supported static-files path",
+        isConnectorCatalogIconKey,
+        "Connector icon key must be a safe supported static asset path",
       ),
     invertInDarkMode: z.boolean(),
     scale: z.number().min(1).max(3).optional(),

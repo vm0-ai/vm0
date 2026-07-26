@@ -20,7 +20,6 @@ import {
   type ExecutionFirewallEntry,
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
-import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -42,6 +41,7 @@ import {
   readOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { API_TEST_CONNECTOR_FIREWALL_CONFIGS } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
   createBddApi,
@@ -408,10 +408,14 @@ function modelProviderPlaceholder(
 }
 
 function connectorPlaceholder(type: string, secretName: string): string {
-  const placeholder =
-    getFirewallExecutionMetadata(type)?.placeholderValues[secretName];
+  const firewall = API_TEST_CONNECTOR_FIREWALL_CONFIGS.find((candidate) => {
+    return candidate.name === type;
+  });
+  const placeholder = firewall?.placeholders?.[secretName];
   if (!placeholder) {
-    throw new Error(`Missing connector placeholder for ${secretName}`);
+    throw new Error(
+      `Missing accepted connector placeholder for ${type}.${secretName}`,
+    );
   }
   return placeholder;
 }

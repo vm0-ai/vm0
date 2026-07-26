@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
@@ -39,14 +40,11 @@ import apiPackage from "../../../../package.json";
 import { createApp } from "../../../app-factory";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  clearMockedExternalConnectorCatalogEnabled,
-  mockExternalConnectorCatalogEnabled,
-} from "../../../lib/connector-catalog-source-selection";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { deleteConnectedConnectorFixture } from "../../../test-fixtures/connector";
 import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
@@ -55,7 +53,11 @@ import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
-import { createBddApi, expectApiError } from "./helpers/api-bdd";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
 import {
   awsVerificationCode,
   createConnectorBddApi,
@@ -111,6 +113,20 @@ interface ReleaseFixtureOptions {
   readonly mutateFirewall?: JsonMutation;
   readonly mutateArtifact?: JsonMutation;
   readonly mutatePointer?: JsonMutation;
+}
+
+async function deleteConnectorFixture(
+  actor: ApiTestUser,
+  connectorRef: ConnectorRef,
+): Promise<void> {
+  if (actor.orgId === null) {
+    throw new Error("Connector fixture cleanup requires an organization");
+  }
+  await deleteConnectedConnectorFixture({
+    connectorRef,
+    orgId: actor.orgId,
+    userId: actor.userId,
+  });
 }
 
 interface ReleaseFixture {
@@ -1446,7 +1462,6 @@ beforeEach(() => {
 
 afterEach(() => {
   setApiVersion(DEFAULT_API_VERSION);
-  mockExternalConnectorCatalogEnabled(false);
   clearMockNow();
 });
 
@@ -1503,7 +1518,7 @@ describe("connector catalog cron authentication and initial state", () => {
 });
 
 describe("connector catalog valid lifecycle", () => {
-  it("accepts, advances, rolls back, and leaves the public catalog static", async () => {
+  it("accepts, advances, rolls back, and serves the active database snapshot", async () => {
     const bucket = configureSource();
     const first = buildRelease({ version: "2026-07-15.1" });
     const second = buildRelease({
@@ -1589,56 +1604,10 @@ describe("connector catalog valid lifecycle", () => {
       publicCatalog.body.connectors.some((connector) => {
         return connector.connectorRef === first.connectorRef;
       }),
-    ).toBeFalsy();
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(
-      callsBeforePublicCatalog,
-    );
-  });
-
-  it("does not let a user override the global external catalog source", async () => {
-    configureSource();
-    const release = buildRelease({
-      version: "2026-07-15.user-source-override",
-    });
-    serveObjects(catalogObjects([release], release));
-    await syncCatalog();
-
-    clearMockedExternalConnectorCatalogEnabled();
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-    const headers = { authorization: "Bearer clerk-session" };
-    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
-    const update = await accept(
-      featureClient.update({
-        headers,
-        body: {
-          switches: {
-            [FeatureSwitchKey.ExternalConnectorCatalog]: false,
-          },
-        },
-      }),
-      [200],
-    );
-    expect(
-      update.body.switches[FeatureSwitchKey.ExternalConnectorCatalog],
-    ).toBeUndefined();
-    expect(
-      update.body.effectiveSwitches[FeatureSwitchKey.ExternalConnectorCatalog],
-    ).toBeTruthy();
-
-    const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
-    const publicCatalog = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({ headers }),
-      [200],
-    );
-    expect(
-      publicCatalog.body.connectors.some((connector) => {
-        return connector.connectorRef === release.connectorRef;
-      }),
     ).toBeTruthy();
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
       callsBeforePublicCatalog,
     );
-    await accept(featureClient.delete({ headers }), [200]);
   });
 
   it("serves every public catalog surface from accepted database state", async () => {
@@ -1654,8 +1623,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
@@ -1814,8 +1781,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).permissions({
@@ -1837,8 +1802,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
@@ -1910,8 +1873,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-
-    mockExternalConnectorCatalogEnabled(true);
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     zeroMocks.clerk.session(userId, orgId);
@@ -2004,11 +1965,10 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
+      await deleteConnectorFixture(actor, "agora");
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const connected = await connectorsApi.connectManualGrant(
@@ -2074,16 +2034,11 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     const firewall = createFirewallApi(context);
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(
-        actor,
-        "test-oauth-device",
-        [204, 404],
-      );
+      await deleteConnectorFixture(actor, "test-oauth-device");
     });
     await firewall.provisionRunReadyOrg(actor);
     const callsBeforeSeed = context.mocks.s3.send.mock.calls.length;
@@ -2151,11 +2106,10 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial], initial));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
+      await deleteConnectorFixture(actor, "agora");
     });
     await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
       credential: "legacy-catalog-secret",
@@ -2296,15 +2250,10 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial], initial));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
-      mockEnv("CRON_SECRET", CRON_SECRET);
-      configureSource();
-      serveObjects(catalogObjects([initial], initial));
-      await syncCatalog();
-      await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
+      await deleteConnectorFixture(actor, "agora");
     });
     await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
       credential: "legacy-catalog-secret",
@@ -2379,15 +2328,10 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial], initial));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
-      mockEnv("CRON_SECRET", CRON_SECRET);
-      configureSource();
-      serveObjects(catalogObjects([initial], initial));
-      await syncCatalog();
-      await connectorsApi.deleteConnectorByType(actor, "gmail", [204, 404]);
+      await deleteConnectorFixture(actor, "gmail");
     });
     await connectorsApi.connectManualGrant(actor, "gmail", "legacy", {
       credential: "legacy-gmail-secret",
@@ -2455,7 +2399,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const runs = createRunsApi(context);
     const firewall = createFirewallApi(context);
@@ -2476,11 +2419,7 @@ describe("connector catalog valid lifecycle", () => {
       if (created.runId) {
         await runs.requestCancelRun(actor, created.runId, [200, 404]);
       }
-      await connectorsApi.deleteConnectorByType(
-        actor,
-        connectorRef,
-        [204, 404],
-      );
+      await deleteConnectorFixture(actor, connectorRef);
       await bdd.deleteAgent(actor, agent.agentId);
     });
     await connectorsApi.connectManualGrant(
@@ -2626,7 +2565,6 @@ describe("connector catalog valid lifecycle", () => {
     if (!acceptedCatalogDigest) {
       throw new Error("Expected an accepted connector catalog digest");
     }
-    mockExternalConnectorCatalogEnabled(true);
 
     const headers = { authorization: OFFICIAL_RUNNER_AUTHORIZATION };
     const providerName = "model-provider:openai-api-key";
@@ -2742,7 +2680,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const runs = createRunsApi(context);
     const actor = bdd.user();
@@ -2784,11 +2721,7 @@ describe("connector catalog valid lifecycle", () => {
         storageName,
         previous: previousRuntimeState,
       });
-      await connectorsApi.deleteConnectorByType(
-        actor,
-        connectorRef,
-        [204, 404],
-      );
+      await deleteConnectorFixture(actor, connectorRef);
       await bdd.deleteAgent(actor, agent.agentId);
     });
     await connectorsApi.connectManualGrant(
@@ -2929,18 +2862,13 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(
-        actor,
-        "test-oauth-device",
-        [204, 404],
-      );
+      await deleteConnectorFixture(actor, "test-oauth-device");
       await connectorsApi.deleteFeatureSwitches(actor);
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
@@ -3008,11 +2936,10 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(actor, "steam", [204, 404]);
+      await deleteConnectorFixture(actor, "steam");
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
@@ -3080,14 +3007,13 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.AwsConnector]: true,
     });
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(actor, "aws", [204, 404]);
+      await deleteConnectorFixture(actor, "aws");
       await connectorsApi.deleteFeatureSwitches(actor);
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
@@ -3151,7 +3077,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const response = await connectorsApi.requestOauthStart(
       bdd.user(),
@@ -3194,7 +3119,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const actor = bdd.user();
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
@@ -3232,7 +3156,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([firstRelease], firstRelease));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
 
     const providerEntered = deferredGate();
     const providerResume = deferredGate();
@@ -3257,7 +3180,7 @@ describe("connector catalog valid lifecycle", () => {
     const actor = bdd.user();
     onTestFinished(async () => {
       providerResume.release();
-      await connectorsApi.deleteConnectorByType(actor, "slack", [204, 404]);
+      await deleteConnectorFixture(actor, "slack");
     });
     const firstStart = await connectorsApi.startOauth(actor, "slack", "oauth");
     const firstState = new URL(firstStart.authorizationUrl).searchParams.get(
@@ -3372,8 +3295,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([connectedRelease], connectedRelease));
     await syncCatalog();
-
-    mockExternalConnectorCatalogEnabled(true);
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     mockOptionalEnv(
       "GMAIL_PUBSUB_TOPIC_NAME",
@@ -3408,7 +3329,7 @@ describe("connector catalog valid lifecycle", () => {
     const created: { agentId?: string; workflowId?: string } = {};
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      await connectorsApi.deleteConnectorByType(actor, "gmail", [204, 404]);
+      await deleteConnectorFixture(actor, "gmail");
       if (created.workflowId) {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
@@ -3596,8 +3517,6 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-
-    mockExternalConnectorCatalogEnabled(true);
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     mockOptionalEnv(
       "GMAIL_PUBSUB_TOPIC_NAME",
@@ -3622,7 +3541,7 @@ describe("connector catalog valid lifecycle", () => {
     onTestFinished(async () => {
       refreshResume.release();
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      await connectorsApi.deleteConnectorByType(actor, "gmail", [204, 404]);
+      await deleteConnectorFixture(actor, "gmail");
       if (created.workflowId) {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
@@ -3793,13 +3712,12 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([matching], matching));
     await syncCatalog();
-    mockExternalConnectorCatalogEnabled(true);
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.DatadogConnector]: false,
     });
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(actor, "datadog", [204, 404]);
+      await deleteConnectorFixture(actor, "datadog");
       await connectorsApi.deleteFeatureSwitches(actor);
     });
     const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
@@ -3893,9 +3811,8 @@ describe("connector catalog valid lifecycle", () => {
     });
   });
 
-  it("fails closed when the external catalog is enabled without accepted state", async () => {
+  it("fails closed without accepted catalog state", async () => {
     configureSource();
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
 
@@ -3955,7 +3872,6 @@ describe("connector catalog valid lifecycle", () => {
       state: "current",
       active: { catalogVersion: release.version },
     });
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const diagnostic = await accept(
@@ -4495,7 +4411,6 @@ describe("connector catalog valid lifecycle", () => {
       state: "current",
       active: { catalogVersion: release.version },
     });
-    mockExternalConnectorCatalogEnabled(true);
     const response = await accept(
       runnerFirewallClient().resolve({
         headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
@@ -4671,15 +4586,9 @@ describe("connector catalog executable compatibility", () => {
       stale: false,
       filteredAuthMethods: [],
     });
-
-    mockExternalConnectorCatalogEnabled(true);
     const actor = bdd.user();
     onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(
-        actor,
-        "test-oauth",
-        [204, 404],
-      );
+      await deleteConnectorFixture(actor, "test-oauth");
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
@@ -4794,8 +4703,6 @@ describe("connector catalog executable compatibility", () => {
         },
       ],
     });
-
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
       setupApp({ context })(zeroConnectorCheckContract).check({
@@ -4862,7 +4769,6 @@ describe("connector catalog executable compatibility", () => {
         reasons: ["missing-grant-provider", "provider-contract-mismatch"],
       },
     ]);
-    mockExternalConnectorCatalogEnabled(true);
 
     const response = await requestOauthCallbackRaw(context, {
       origin: "https://api.vm0.ai",
@@ -4973,8 +4879,6 @@ describe("connector catalog executable compatibility", () => {
       ],
     });
     const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
-
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
@@ -5266,7 +5170,6 @@ describe("connector catalog rejection and latest-valid retention", () => {
       outcome: "accepted",
       active: { catalogVersion: release.version },
     });
-    mockExternalConnectorCatalogEnabled(true);
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
       setupApp({ context })(zeroConnectorCheckContract).check({

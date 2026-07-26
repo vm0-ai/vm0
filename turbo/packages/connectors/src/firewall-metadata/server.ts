@@ -1,4 +1,5 @@
 import {
+  normalizeFirewallFixedHost,
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
@@ -30,6 +31,7 @@ export type FirewallServerMetadataConnectorType =
   FirewallPermissionMetadataConnectorType;
 export type FirewallExecutionMetadataConnectorType =
   FirewallServerExecutionMetadataConnectorType;
+export { normalizeFirewallFixedHost as normalizeConnectorFixedHost };
 
 export interface BuiltinConnectorHostOwner {
   readonly type: FirewallServerMetadataConnectorType;
@@ -59,40 +61,6 @@ const permissionIndexCache = new Map<
 const builtinFirewallFixedHostOwnerLookup: Readonly<
   Record<string, FirewallPermissionSummaryMetadata["type"]>
 > = BUILTIN_FIREWALL_FIXED_HOST_OWNERS;
-
-function trimTrailingDots(value: string): string {
-  let end = value.length;
-  while (end > 0 && value.charCodeAt(end - 1) === 46) {
-    end -= 1;
-  }
-  return end === value.length ? value : value.slice(0, end);
-}
-
-function stripHostnameTrailingDot(host: string): string {
-  const portStart = host.startsWith("[") ? -1 : host.lastIndexOf(":");
-  if (portStart === -1) {
-    return trimTrailingDots(host);
-  }
-
-  const hostname = trimTrailingDots(host.slice(0, portStart));
-  return `${hostname}${host.slice(portStart)}`;
-}
-
-export function normalizeConnectorFixedHost(host: string): string | null {
-  const trimmedHost = host.trim();
-  if (trimmedHost.length === 0) {
-    return null;
-  }
-
-  try {
-    const url = trimmedHost.includes("://")
-      ? new URL(trimmedHost)
-      : new URL(`https://${trimmedHost}`);
-    return stripHostnameTrailingDot(url.host.toLowerCase());
-  } catch {
-    return stripHostnameTrailingDot(trimmedHost.toLowerCase());
-  }
-}
 
 export function isFirewallServerMetadataConnectorType(
   type: string,
@@ -133,7 +101,7 @@ export function getFirewallExecutionMetadata(
 export function getBuiltinConnectorHostOwner(
   host: string,
 ): BuiltinConnectorHostOwner | null {
-  const normalizedHost = normalizeConnectorFixedHost(host);
+  const normalizedHost = normalizeFirewallFixedHost(host);
   if (!normalizedHost) {
     return null;
   }

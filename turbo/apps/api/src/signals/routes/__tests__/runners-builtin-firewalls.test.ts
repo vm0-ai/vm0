@@ -2,16 +2,17 @@ import {
   runnersBuiltinFirewallsResolveContract,
   type RunnerBuiltinFirewallsResolveResponse,
 } from "@vm0/api-contracts/contracts/runners";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 import {
-  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
-  RUNNER_RUNTIME_FIREWALL_NAMES,
-  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
-} from "@vm0/connectors/firewall-metadata/runner-runtime";
+  createRunnerRuntimeFirewallCatalog,
+  projectRunnerRuntimeFirewall,
+} from "@vm0/connectors/firewall-metadata/runner-runtime-catalog";
 import { describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
+import { API_TEST_CONNECTOR_FIREWALL_CONFIGS } from "../../../test-fixtures/connector-catalog";
 import { runnersRoutes } from "../runners";
 
 const context = testContext();
@@ -21,6 +22,14 @@ const OPENAI_API_KEY_AUTH_HEADER = [
   "Bearer $",
   "{{ secrets.OPENAI_API_KEY }}",
 ].join("");
+const EXPECTED_RUNNER_FIREWALL_CATALOG = createRunnerRuntimeFirewallCatalog([
+  ...API_TEST_CONNECTOR_FIREWALL_CONFIGS.map((firewall) => {
+    return projectRunnerRuntimeFirewall(firewall);
+  }),
+  ...Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS).map((firewall) => {
+    return projectRunnerRuntimeFirewall(firewall);
+  }),
+]);
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -111,8 +120,12 @@ describe("runner builtin firewall resolver", () => {
     );
     const body: RunnerBuiltinFirewallsResolveResponse = response.body;
 
-    expect(body.catalogDigest).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST);
-    expect(body.catalogVersion).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION);
+    expect(body.catalogDigest).toBe(
+      EXPECTED_RUNNER_FIREWALL_CATALOG.catalogDigest,
+    );
+    expect(body.catalogVersion).toBe(
+      EXPECTED_RUNNER_FIREWALL_CATALOG.catalogVersion,
+    );
     expect(Object.keys(body.firewalls).sort()).toStrictEqual([
       "github",
       "model-provider:openai-api-key",
@@ -146,10 +159,14 @@ describe("runner builtin firewall resolver", () => {
 
     for (const response of responses) {
       const body: RunnerBuiltinFirewallsResolveResponse = response.body;
-      expect(body.catalogDigest).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST);
-      expect(body.catalogVersion).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION);
+      expect(body.catalogDigest).toBe(
+        EXPECTED_RUNNER_FIREWALL_CATALOG.catalogDigest,
+      );
+      expect(body.catalogVersion).toBe(
+        EXPECTED_RUNNER_FIREWALL_CATALOG.catalogVersion,
+      );
       expect(Object.keys(body.firewalls).sort(compareStrings)).toStrictEqual([
-        ...RUNNER_RUNTIME_FIREWALL_NAMES,
+        ...EXPECTED_RUNNER_FIREWALL_CATALOG.names,
       ]);
     }
   });
@@ -164,15 +181,19 @@ describe("runner builtin firewall resolver", () => {
     );
     const body: RunnerBuiltinFirewallsResolveResponse = response.body;
 
-    expect(body.catalogDigest).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST);
-    expect(body.catalogVersion).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION);
+    expect(body.catalogDigest).toBe(
+      EXPECTED_RUNNER_FIREWALL_CATALOG.catalogDigest,
+    );
+    expect(body.catalogVersion).toBe(
+      EXPECTED_RUNNER_FIREWALL_CATALOG.catalogVersion,
+    );
     expect(
       runnersBuiltinFirewallsResolveContract.resolve.responses[200].safeParse(
         body,
       ).success,
     ).toBeTruthy();
     expect(Object.keys(body.firewalls).sort(compareStrings)).toStrictEqual([
-      ...RUNNER_RUNTIME_FIREWALL_NAMES,
+      ...EXPECTED_RUNNER_FIREWALL_CATALOG.names,
     ]);
     expect(body.firewalls.github?.name).toBe("github");
     expect(

@@ -8,7 +8,7 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -42,7 +42,7 @@ type StaffFixture =
   | {
       readonly kind: "connector";
       readonly actor: ApiTestUser;
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorRef;
     }
   | {
       readonly kind: "workflow";
@@ -169,7 +169,7 @@ async function createWorkflow(
 
 async function connectManualGrant(
   actor: ApiTestUser,
-  connectorType: ConnectorType,
+  connectorType: ConnectorRef,
   authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
   values: Parameters<typeof connectorApi.connectManualGrant>[3],
 ) {

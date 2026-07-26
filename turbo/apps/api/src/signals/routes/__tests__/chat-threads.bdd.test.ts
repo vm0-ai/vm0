@@ -23,6 +23,7 @@ import {
   holdChatMessageInsertTransactionFixture,
   insertChatMessageTransactionFixture,
 } from "../../../test-fixtures/chat-messages";
+import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -2486,12 +2487,13 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     // Drive 401 with no refresh credentials resolves to "unknown".
     mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", undefined);
     mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", undefined);
+    await installApiTestConnectorCatalog();
     mockGoogleDriveFilesList(() => {
       return { status: 401 };
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
     for (const file of artifacts.runs[0]?.files ?? []) {
-      expect(file.googleDriveSync).toStrictEqual({ status: "unknown" });
+      expect(file.googleDriveSync).toStrictEqual({ status: "disconnected" });
     }
 
     chatCallbacks.mockChatOutputEvents([]);

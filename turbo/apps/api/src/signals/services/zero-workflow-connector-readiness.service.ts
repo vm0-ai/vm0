@@ -299,7 +299,6 @@ export const detectWorkflowConnectorReadiness$ = command(
     const catalogRead = await readPublicConnectorCatalogStatus({
       db,
       featureStates: args.featureStates,
-      apiAuthMethodPolicy: "include",
       connectors: connectorState.connectors,
       referenceConnectorRefs: [...automationDependencies.keys()],
     });

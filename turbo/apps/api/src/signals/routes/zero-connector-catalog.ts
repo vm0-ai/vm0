@@ -90,7 +90,6 @@ const listConnectorCatalogInner$ = command(
       listPublicConnectorCatalog({
         db: context.db,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );
@@ -121,7 +120,6 @@ const listConnectorCatalogStatusInner$ = command(
       listPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
         connectors: connectorState.connectors,
       }),
       signal,
@@ -158,7 +156,6 @@ const getConnectorCatalogInner$ = command(
         db: context.db,
         connectorRef: params.connectorRef,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );
@@ -184,7 +181,6 @@ const getConnectorCatalogPermissionsInner$ = command(
         db: context.db,
         connectorRef: params.connectorRef,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );

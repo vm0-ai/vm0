@@ -2,11 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodConfig,
-} from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -64,12 +59,8 @@ describe("GET /api/zero/connectors/search", () => {
     readonly orgId: string;
     readonly userId: string;
   }[] = [];
-  const restoreConnectorRegistry: (() => void)[] = [];
 
   afterEach(async () => {
-    while (restoreConnectorRegistry.length > 0) {
-      restoreConnectorRegistry.pop()?.();
-    }
     while (seededFeatureSwitches.length > 0) {
       const fixture = seededFeatureSwitches.pop();
       if (fixture) {
@@ -239,72 +230,25 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth", "api"]);
   });
 
-  it("applies static auth method visibility to connector search", async () => {
+  it("applies accepted auth method visibility to connector search", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededFeatureSwitches.push({ orgId, userId });
     await enableFeatureSwitches(orgId, userId, {});
     mocks.clerk.session(userId, orgId);
 
-    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
-    const originalOauth = authMethods.oauth;
-    const originalCli = authMethods.cli;
-    const originalApiToken = authMethods["api-token"];
-
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "oauth", {
-        value: originalOauth,
-        configurable: true,
-        enumerable: true,
-      });
-      Object.defineProperty(authMethods, "cli", {
-        value: originalCli,
-        configurable: true,
-        enumerable: true,
-      });
-      Object.defineProperty(authMethods, "api-token", {
-        value: originalApiToken,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "oauth", {
-      value: {
-        ...originalOauth,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    Object.defineProperty(authMethods, "cli", {
-      value: {
-        ...originalCli,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    Object.defineProperty(authMethods, "api-token", {
-      value: {
-        ...originalApiToken,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-
     const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const partial = await accept(
+    const response = await accept(
       client.search({
-        query: { keyword: "stripe" },
+        query: { keyword: "cloudflare" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-    const visibleStripe = partial.body.connectors.find((connector) => {
-      return connector.id === "stripe";
+    const cloudflare = response.body.connectors.find((connector) => {
+      return connector.id === "cloudflare";
     });
-    expect(visibleStripe).toBeUndefined();
+    expect(cloudflare?.authMethods).toStrictEqual(["oauth"]);
   });
 
   it("matches Google Cloud connector tags without a feature switch", async () => {
@@ -385,7 +329,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(neon?.authMethods).not.toContain("oauth");
   });
 
-  it("includes connectors with at least one ungated auth method", async () => {
+  it("includes accepted connectors with at least one ungated auth method", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
@@ -397,14 +341,7 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    const unflaggedTypes = CONNECTOR_TYPE_KEYS.filter((type) => {
-      return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
-        return !method.featureFlag;
-      });
-    });
-    expect(unflaggedTypes.length).toBeGreaterThan(0);
-
-    for (const type of unflaggedTypes) {
+    for (const type of ["github", "openai", "steam"]) {
       const found = response.body.connectors.find((c) => {
         return c.id === type;
       });

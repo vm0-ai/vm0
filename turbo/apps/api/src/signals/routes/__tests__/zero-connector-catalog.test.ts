@@ -265,11 +265,15 @@ describe("GET /api/zero/connector-catalog", () => {
       return connector.connectorRef === "slack-webhook";
     });
     expect(slack?.icon).toStrictEqual({
-      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg",
       invertInDarkMode: false,
       scale: 2.2,
     });
-    expect(slackWebhook?.icon).toStrictEqual(slack?.icon);
+    expect(slackWebhook?.icon).toStrictEqual({
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-webhook-198390069136.svg",
+      invertInDarkMode: false,
+      scale: 2.2,
+    });
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
@@ -1048,7 +1052,7 @@ describe("GET /api/zero/connector-catalog", () => {
     ).toStrictEqual(["oauth", "api-token"]);
   });
 
-  it("returns public permission detail without firewall execution metadata", async () => {
+  it("returns public permission detail from accepted firewall metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -1056,21 +1060,21 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.permissions({
-        params: { connectorRef: "google-docs" },
+        params: { connectorRef: "notion" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
     const detailResponse = await accept(
       client.get({
-        params: { connectorRef: "google-docs" },
+        params: { connectorRef: "notion" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
-    expect(response.body.permissions.connectorRef).toBe("google-docs");
+    expect(response.body.permissions.connectorRef).toBe("notion");
     expect(response.body.permissions.icon).toStrictEqual(
       detailResponse.body.connector.icon,
     );

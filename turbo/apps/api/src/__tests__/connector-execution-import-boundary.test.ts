@@ -29,31 +29,12 @@ function isRegistryBoundConnectorPackageImport(specifier: string): boolean {
     specifier === "@vm0/connectors/connectors" ||
     specifier.startsWith("@vm0/connectors/connectors/") ||
     specifier === "@vm0/connectors/connector-utils" ||
-    specifier === "@vm0/connectors/connector-search"
+    specifier === "@vm0/connectors/connector-search" ||
+    specifier === "@vm0/connectors/static-connector-icons" ||
+    specifier === "@vm0/connectors/firewall-metadata/server" ||
+    specifier === "@vm0/connectors/firewall-metadata/routing" ||
+    specifier === "@vm0/connectors/firewall-metadata/runner-runtime"
   );
-}
-
-function isAllowedApiStaticImport(
-  relativePath: string,
-  specifier: string,
-): boolean {
-  switch (relativePath) {
-    case "signals/services/agent-run-create.service.ts":
-    case "test-fixtures/x-connector.ts": {
-      return specifier === "@vm0/connectors/connectors";
-    }
-    case "signals/services/connector-catalog-form-fields.service.ts":
-    case "signals/services/connector-catalog-reader.service.ts":
-    case "signals/services/connector-catalog-runtime.service.ts": {
-      return (
-        specifier === "@vm0/connectors/connectors" ||
-        specifier === "@vm0/connectors/connector-utils"
-      );
-    }
-    default: {
-      return false;
-    }
-  }
 }
 
 function sourceFiles(directory: string): string[] {
@@ -125,15 +106,12 @@ describe("connector execution import boundary", () => {
     expect(violations).toStrictEqual([]);
   });
 
-  it("limits API static imports to the retained catalog fallbacks", () => {
+  it("keeps API production code independent from static connector authorities", () => {
     const violations = sourceFiles(API_SOURCE_DIR).flatMap((filePath) => {
       const relativePath = path.relative(API_SOURCE_DIR, filePath);
       return moduleSpecifiers(filePath)
         .filter((specifier) => {
-          return (
-            isRegistryBoundConnectorPackageImport(specifier) &&
-            !isAllowedApiStaticImport(relativePath, specifier)
-          );
+          return isRegistryBoundConnectorPackageImport(specifier);
         })
         .map((specifier) => {
           return `${relativePath} -> ${specifier}`;

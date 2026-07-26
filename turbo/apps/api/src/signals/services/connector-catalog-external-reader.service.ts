@@ -22,7 +22,6 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorFeatureStates } from "@vm0/connectors/connector-auth-method";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { staticConnectorIconPublicPathUrl } from "@vm0/connectors/static-connector-icons";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
@@ -43,6 +42,7 @@ import {
   connectorCatalogArtifactFailureCode,
   decodeConnectorCatalogSnapshot,
 } from "./connector-catalog-artifacts/loader";
+import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
 import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
@@ -104,7 +104,7 @@ interface EffectiveConnector {
   readonly authMethods: readonly ConnectorCatalogAuthMethod[];
 }
 
-export interface ExternalConnectorCatalogDiagnostics
+interface ExternalConnectorCatalogDiagnostics
   extends ExternalCatalogIdentity, RequestFilteringCounts {
   readonly rawConnectorCount: number;
   readonly rawAuthMethodCount: number;
@@ -114,7 +114,7 @@ export interface ExternalConnectorCatalogDiagnostics
   >;
 }
 
-export interface ExternalConnectorCatalogRead<T> {
+interface ExternalConnectorCatalogRead<T> {
   readonly value: T;
   readonly diagnostics: ExternalConnectorCatalogDiagnostics;
 }
@@ -547,7 +547,7 @@ function iconForCatalog(
   connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogIcon {
   return {
-    url: staticConnectorIconPublicPathUrl(connector.icon.key),
+    url: connectorCatalogIconUrl(connector.icon.key),
     invertInDarkMode: connector.icon.invertInDarkMode,
     ...(connector.icon.scale === undefined
       ? {}
@@ -681,21 +681,6 @@ export function getAcceptedConnectorCatalogResolutionDetail(args: {
         authMethods: connector.authMethods,
       })
     : null;
-}
-
-export function getAcceptedConnectorCatalogAvailableDetail(args: {
-  readonly snapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectorRef: string;
-  readonly featureStates: ConnectorFeatureStates;
-}): PublicConnectorCatalogDetail | null {
-  const effective = effectiveConnectors({
-    catalog: args.snapshot,
-    featureStates: args.featureStates,
-  });
-  const connector = effective.connectors.find((entry) => {
-    return entry.connector.connectorRef === args.connectorRef;
-  });
-  return connector ? connectorCatalogDetail(connector) : null;
 }
 
 export function listAcceptedConnectorCatalogAvailableRefs(args: {

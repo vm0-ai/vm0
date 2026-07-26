@@ -1227,7 +1227,7 @@ export const resolveConnectorCheck$ = command(
       args.userId,
     );
     signal.throwIfAborted();
-    const visibleConnectorRefs = await listConnectorRuntimeVisibleRefs({
+    const visibleConnectorRefs = listConnectorRuntimeVisibleRefs({
       snapshot,
       featureStates,
     });

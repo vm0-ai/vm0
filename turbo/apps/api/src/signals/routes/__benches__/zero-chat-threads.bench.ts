@@ -36,7 +36,6 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
-import { mockExternalConnectorCatalogEnabled } from "../../../lib/connector-catalog-source-selection";
 import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
@@ -210,8 +209,6 @@ function sha256Digest(bytes: Uint8Array): string {
 }
 
 async function seedBenchConnectorCatalog(): Promise<void> {
-  mockExternalConnectorCatalogEnabled(true);
-
   const rawBytes = Buffer.from(`${JSON.stringify(BENCH_CONNECTOR_CATALOG)}\n`);
   const catalogDigest = sha256Digest(rawBytes);
   const catalogGzip = encodeConnectorCatalogSnapshot(rawBytes);
