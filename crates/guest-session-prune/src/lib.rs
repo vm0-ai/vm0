@@ -490,7 +490,11 @@ fn validate_body_record(
     tool_uses: &mut HashSet<String>,
     tool_results: &mut HashSet<String>,
 ) -> Result<(), ClaudeHistoryIneligibleReason> {
-    let Some(record_type) = value.get("type").and_then(Value::as_str) else {
+    let Some(record_type) = value
+        .get("type")
+        .and_then(Value::as_str)
+        .filter(|record_type| !record_type.trim().is_empty())
+    else {
         return Err(ClaudeHistoryIneligibleReason::InvalidRecord);
     };
     validate_optional_session_id(value, expected_session_id)?;
@@ -512,13 +516,19 @@ fn validate_message_record(
     let Some(message) = value.get("message").and_then(Value::as_object) else {
         return Err(ClaudeHistoryIneligibleReason::InvalidRecord);
     };
-    if message.get("role").and_then(Value::as_str) != Some(expected_role)
-        || !matches!(
-            message.get("content"),
-            Some(Value::String(_) | Value::Array(_))
-        )
-    {
+    if message.get("role").and_then(Value::as_str) != Some(expected_role) {
         return Err(ClaudeHistoryIneligibleReason::InvalidRecord);
+    }
+    match message.get("content") {
+        Some(Value::String(_)) => {}
+        Some(Value::Array(blocks))
+            if blocks.iter().all(|block| {
+                block
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|block_type| !block_type.trim().is_empty())
+            }) => {}
+        _ => return Err(ClaudeHistoryIneligibleReason::InvalidRecord),
     }
     Ok(())
 }
@@ -938,6 +948,36 @@ mod tests {
             boundary(SESSION_ID, BOUNDARY_ID),
             summary(SESSION_ID, BOUNDARY_ID, SUMMARY_ID),
             wrong_role,
+        ]);
+        assert_eq!(
+            select(&file, SESSION_ID).unwrap(),
+            ClaudeHistorySelection::Ineligible(ClaudeHistoryIneligibleReason::InvalidRecord)
+        );
+
+        for malformed_content in [json!([42]), json!([{}]), json!([{"type": " "}])] {
+            let malformed_block = line(json!({
+                "type": "user",
+                "sessionId": SESSION_ID,
+                "uuid": USER_ID,
+                "parentUuid": SUMMARY_ID,
+                "message": {"role": "user", "content": malformed_content}
+            }));
+            let file = source(&[
+                boundary(SESSION_ID, BOUNDARY_ID),
+                summary(SESSION_ID, BOUNDARY_ID, SUMMARY_ID),
+                malformed_block,
+            ]);
+            assert_eq!(
+                select(&file, SESSION_ID).unwrap(),
+                ClaudeHistorySelection::Ineligible(ClaudeHistoryIneligibleReason::InvalidRecord)
+            );
+        }
+
+        let empty_record_type = line(json!({"type": " ", "value": "metadata"}));
+        let file = source(&[
+            boundary(SESSION_ID, BOUNDARY_ID),
+            summary(SESSION_ID, BOUNDARY_ID, SUMMARY_ID),
+            empty_record_type,
         ]);
         assert_eq!(
             select(&file, SESSION_ID).unwrap(),
