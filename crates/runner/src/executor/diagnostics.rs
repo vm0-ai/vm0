@@ -43,8 +43,7 @@ pub(super) use exit::{
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
 pub(super) use guest_files::{
-    read_guest_checkpoint_history_diverged, read_guest_cli_agent_session_id, read_guest_error_file,
-    read_guest_failure_diagnostic_file,
+    read_guest_cli_agent_session_id, read_guest_error_file, read_guest_failure_diagnostic_file,
 };
 pub(super) use guest_logs::copy_guest_logs;
 #[cfg(test)]

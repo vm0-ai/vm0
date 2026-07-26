@@ -219,19 +219,21 @@ fn upload_gzip_validation_response(
 // =========================================================================
 
 #[tokio::test]
-async fn success_checkpoint_selects_claude_compact_generation_before_prepare() {
+async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
     let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    let (_history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
+    let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
 
     let history_hash = hex::encode(Sha256::digest(&candidate));
     let history_size = candidate.len();
-    let divergence_marker = runtime.paths.checkpoint_history_diverged_file().to_string();
     let upload_url = server.url("/test/pruned-claude-history-upload");
+    let prepare_history_path = history_path.clone();
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/checkpoints/prepare-history")
@@ -240,7 +242,9 @@ async fn success_checkpoint_selects_claude_compact_generation_before_prepare() {
             .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
             .json_body_includes(r#"{"encoding":"identity"}"#);
         then.respond_with(move |_| {
-            if std::path::Path::new(&divergence_marker).is_file() {
+            if std::fs::metadata(&prepare_history_path)
+                .is_ok_and(|metadata| metadata.len() == source_size)
+            {
                 json_http_response(
                     200,
                     json!({
@@ -261,6 +265,7 @@ async fn success_checkpoint_selects_claude_compact_generation_before_prepare() {
             .header("Content-Type", "application/octet-stream");
         then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
     });
+    let checkpoint_history_path = history_path.clone();
     let checkpoint_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/checkpoints")
@@ -268,9 +273,15 @@ async fn success_checkpoint_selects_claude_compact_generation_before_prepare() {
             .json_body_includes(format!(
                 r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
             ));
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-pruned-claude"}));
+        then.respond_with(move |_| {
+            if std::fs::metadata(&checkpoint_history_path)
+                .is_ok_and(|metadata| metadata.len() == source_size)
+            {
+                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-claude"}))
+            } else {
+                http_status(500)
+            }
+        });
     });
 
     guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
@@ -280,10 +291,7 @@ async fn success_checkpoint_selects_claude_compact_generation_before_prepare() {
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
-    assert_eq!(
-        std::fs::read(runtime.paths.checkpoint_history_diverged_file()).unwrap(),
-        b"1"
-    );
+    assert_eq!(std::fs::read(&history_path).unwrap(), candidate);
 
     let identity_bytes =
         std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
@@ -291,31 +299,101 @@ async fn success_checkpoint_selects_claude_compact_generation_before_prepare() {
     assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
     assert_eq!(identity.history_size_bytes, history_size as u64);
     assert_eq!(identity.history_hash, history_hash);
+    assert_eq!(
+        std::path::Path::new(&identity.history_marker_payload),
+        history_path
+    );
 }
 
 #[tokio::test]
-async fn success_checkpoint_fails_before_prepare_when_divergence_marker_cannot_be_written() {
+async fn success_checkpoint_omits_identity_when_live_history_replacement_fails() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
     let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    let (_history_dir, _candidate) = write_prunable_claude_history(session_id).unwrap();
-    std::fs::create_dir(runtime.paths.checkpoint_history_diverged_file()).unwrap();
+    let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+    let moved_history_dir = history_dir.path().with_extension("replacement-source");
 
+    let history_hash = hex::encode(Sha256::digest(&candidate));
+    let history_size = candidate.len();
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history");
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true}));
+    });
+    let replacement_history_path = history_path.clone();
+    let replacement_moved_dir = moved_history_dir.clone();
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.respond_with(move |_| {
+            let history_parent = replacement_history_path.parent().unwrap();
+            std::fs::rename(history_parent, &replacement_moved_dir).unwrap();
+            std::fs::create_dir(history_parent).unwrap();
+            std::fs::rename(
+                replacement_moved_dir.join(replacement_history_path.file_name().unwrap()),
+                &replacement_history_path,
+            )
+            .unwrap();
+            json_http_response(
+                200,
+                json!({"checkpointId": "checkpoint-pruned-unreconciled"}),
+            )
+        });
+    });
+
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
+        .await
+        .unwrap();
+
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+    std::fs::remove_dir_all(moved_history_dir).unwrap();
+}
+
+#[tokio::test]
+async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let runtime = runtime_from_process_env().unwrap();
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let (history_dir, candidate) = write_prunable_claude_history(session_id).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    let source_size = std::fs::metadata(&history_path).unwrap().len();
+
+    let history_hash = hex::encode(Sha256::digest(&candidate));
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#));
         then.status(200)
             .header("Content-Type", "application/json")
             .json_body(json!({"existing": true}));
     });
     let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected"}));
+            .json_body(json!({}));
     });
 
     let error = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
@@ -325,11 +403,12 @@ async fn success_checkpoint_fails_before_prepare_when_divergence_marker_cannot_b
     assert!(
         error
             .to_string()
-            .contains("Failed to write checkpoint history divergence marker")
+            .contains("Invalid checkpoint API response")
     );
-    prepare_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
-    std::fs::remove_dir(runtime.paths.checkpoint_history_diverged_file()).unwrap();
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
 }
 
 #[tokio::test]
@@ -382,7 +461,6 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
 
     assert!(result.is_ok());
-    assert!(!std::path::Path::new(runtime.paths.checkpoint_history_diverged_file()).exists());
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
