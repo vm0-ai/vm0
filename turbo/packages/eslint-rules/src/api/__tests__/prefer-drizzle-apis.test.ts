@@ -364,6 +364,8 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           WHERE \${eq(users.id, 1)}
           LIMIT 1
         \`;
+        declare function expose(value: SQL): void;
+        expose(composed);
         await decodeRows(db, composed, rowSchema);
         await decodeRows(
           db,
@@ -429,8 +431,617 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         builder.innerJoin(users, sql\`true\`);
       `,
     },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        db.select()
+          .from(users)
+          .where(
+            flag
+              ? sql\`\${users.id} = \${1}\`
+              : sql\`\${users.id} > \${1}\`,
+          );
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        export const exportedQuery: SQL = sql\`
+          SELECT \${users.id}
+          FROM \${users}
+          WHERE \${eq(users.id, 1)}
+          LIMIT 1
+        \`;
+        await executeRawRows(db, exportedQuery, rowSchema);
+
+        const mutatedQuery: SQL = sql\`
+          SELECT \${users.id}
+          FROM \${users}
+          WHERE \${eq(users.id, 1)}
+          LIMIT 1
+        \`;
+        mutatedQuery.append(sql.raw(""));
+        await executeRawRows(db, mutatedQuery, rowSchema);
+
+        const nestedSource: SQL = sql\`
+          SELECT \${users.id}
+          FROM \${users}
+          WHERE \${eq(users.id, 1)}
+          LIMIT 1
+        \`;
+        const escapedWrapper = sql\`\${nestedSource}\`;
+        declare function expose(value: SQL): void;
+        expose(escapedWrapper);
+        await executeRawRows(db, nestedSource, rowSchema);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        const fake = {
+          empty(): SQL {
+            return sql\`true\`;
+          },
+          join(items: SQL[]): SQL {
+            return items[0] ?? sql\`true\`;
+          },
+        };
+        db.select().from(users).innerJoin(users, fake.empty());
+        db.select()
+          .from(users)
+          .innerJoin(users, fake.join([sql\`true\`]));
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        function recursive(): SQL {
+          return recursive();
+        }
+        db.select().from(users).innerJoin(users, recursive());
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        const condition =
+          ${Array.from({ length: 17 }, () => "flag ? sql`true` : ").join("")}
+          sql\`true\`;
+        db.select().from(users).innerJoin(users, condition);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        const predicate0: SQL = sql\`true\`;
+        ${Array.from({ length: 130 }, (_, index) => {
+          return `const predicate${index + 1}: SQL = sql\`\${predicate${index}}\`;`;
+        }).join("\n")}
+        db.select().from(users).innerJoin(users, predicate130);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        function queryFor(table: typeof users): SQL {
+          return sql\`
+            SELECT \${table.id}
+            FROM \${table}
+            WHERE \${eq(table.id, 1)}
+            LIMIT 1
+          \`;
+        }
+        await executeRawRows(db, queryFor(users), rowSchema);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        const predicates = [sql\`true\`];
+        db.select()
+          .from(users)
+          .innerJoin(
+            users,
+            sql.join(
+              [...predicates],
+              sql\` AND \`,
+            ),
+          );
+        db.select()
+          .from(users)
+          .innerJoin(
+            users,
+            sql.join(
+              predicates.map((predicate) => predicate),
+              sql\` AND \`,
+            ),
+          );
+        db.select()
+          .from(users)
+          .innerJoin(users, flag ? sql.empty() : sql\`true\`);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const column = sql\`\${users.id}\`;
+        db.select()
+          .from(users)
+          .where(sql\`COALESCE(\${column} = \${1}, FALSE)\`);
+      `,
+    },
   ],
   invalid: [
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const rowSchema: never;
+        const query: SQL = sql\`
+          SELECT \${users.id}
+          FROM \${users}
+          WHERE \${eq(users.id, 1)}
+          LIMIT 1
+        \`;
+        await executeRawRows(db, query, rowSchema);
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`\${sql\`\${users.id} = \${1}\`}\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const column = sql\`\${users.id}\`;
+        db.select().from(users).where(sql\`\${column} = \${1}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 21,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`\${users.id} = \${1}\`;
+        db.select()
+          .from(users)
+          .where(sql\`unsupported('α', \${predicate})\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 23,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`\${users.id} = \${1}\`;
+        db.select()
+          .from(users)
+          .where(sql\`unsupported(\${predicate}, \${predicate})\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 23,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 23,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(
+            sql\`COALESCE(\${sql.join(
+              [eq(users.id, 1), eq(users.name, "name")],
+              sql\` AND \`,
+            )}, FALSE)\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 23,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        function conjunction(left: SQL, right: SQL): SQL {
+          return sql\`\${left} AND \${right}\`;
+        }
+        db.select()
+          .from(users)
+          .where(
+            sql\`COALESCE(\${conjunction(
+              eq(users.id, 1),
+              eq(users.name, "name"),
+            )}, FALSE)\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select()
+          .from(users)
+          .where(sql\`EXISTS (SELECT 1 WHERE NOT \${fragment})\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "not" },
+          line: 26,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const predicate = sql.join(
+          [eq(users.id, 1), eq(users.name, "name")],
+          sql\` AND \`,
+        );
+        db.select().from(users).where(sql\`unsupported(\${predicate})\`);
+        db.select().from(users).having(sql\`NOT \${predicate}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 24,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 25,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const fragment = sql\`\${users.deletedAt} IS NOT NULL\`;
+        db.select()
+          .from(users)
+          .where(sql\`\${fragment} AND \${eq(users.id, 1)}\`);
+        db.select()
+          .from(users)
+          .having(sql\`COALESCE(\${fragment}, FALSE)\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "isNotNull" },
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select().from(users).where(sql\`unsupported(\${fragment})\`);
+        db.select().from(users).having(sql\`NOT \${fragment}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 24,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 25,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select().from(users).where(sql\`NOT \${fragment}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 24,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          OR \${users.name} = \${"name"}
+        \`;
+        db.select()
+          .from(users)
+          .where(
+            sql\`(\${fragment}) AND \${users.deletedAt} IS NOT NULL\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 27,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          OR \${users.name} = \${"name"}
+        \`;
+        db.select()
+          .from(users)
+          .where(
+            sql\`\${fragment} AND \${users.deletedAt} IS NOT NULL\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "or" },
+          line: 27,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select().from(users).where(sql\` \${fragment} \`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 24,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`\${users.id} = \${1}\`;
+        db.select().from(users).where(predicate).having(predicate);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 21,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 21,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`\${users.id} = \${1}\`;
+        db.select()
+          .from(users)
+          .where(sql\`\${sql.empty()}\${predicate}\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicates = [
+          sql\`\${users.id} = \${1}\`,
+          sql\`\${users.name} = \${"name"}\`,
+        ];
+        db.select()
+          .from(users)
+          .where(sql.join(predicates, sql\` AND \`));
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import * as drizzle from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(
+            drizzle.sql.join(
+              [
+                drizzle.sql\`\${users.id} = \${1}\`,
+                drizzle.sql\`\${users.name} = \${"name"}\`,
+              ],
+              drizzle.sql\` AND \`,
+            ),
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 23,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        function comparison(
+          column: typeof users.id,
+          value: number,
+        ): SQL {
+          return sql\`\${column} = \${value}\`;
+        }
+        db.select().from(users).where(comparison(users.id, 1));
+        db.select().from(users).having(comparison(users.id, 2));
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        function conjunction(left: SQL, right: SQL): SQL {
+          return sql\`\${left} AND \${right}\`;
+        }
+        db.select()
+          .from(users)
+          .where(
+            conjunction(
+              sql\`\${users.id} = \${1}\`,
+              sql\`\${users.name} = \${"one"}\`,
+            ),
+          );
+        db.select()
+          .from(users)
+          .having(
+            conjunction(
+              sql\`\${users.id} = \${2}\`,
+              sql\`\${users.name} = \${"two"}\`,
+            ),
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 34,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const flag: boolean;
+        function choose(left: SQL, right: SQL): SQL {
+          return flag ? left : right;
+        }
+        db.select()
+          .from(users)
+          .where(
+            choose(
+              sql\`\${users.id} = \${1}\`,
+              sql\`\${users.name} = \${"name"}\`,
+            ),
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+          line: 27,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        db.select()
+          .from(users)
+          .where(
+            flag
+              ? sql\`\${users.id} = \${1}\`
+              : sql\`\${users.name} = \${"name"}\`,
+          );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        db.select()
+          .from(users)
+          .where(
+            flag
+              ? sql\`\${users.id} = \${1} AND \${users.name} = \${"one"}\`
+              : sql\`\${users.id} = \${2} AND \${users.name} = \${"two"}\`,
+          );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+      ],
+    },
     {
       code: `${drizzlePreamble}
         import { eq, sql } from "drizzle-orm";
