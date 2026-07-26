@@ -290,14 +290,31 @@ wait_for_slack_mock_post_message() {
 }
 
 # Substitute common placeholders in a JSON fixture file.
-# Usage: slack_render_fixture <path> <team_id> <channel_id> <user_id> [extra_ts]
+# Usage: slack_render_fixture <path> <team_id> <channel_id> <user_id> [extra_ts] [event_id]
+#
+# event_id must be unique per logical Slack event. Slack event IDs are
+# globally unique in production, and slack_chat_ingress enforces that with
+# a unique index on event_id — admission dedupes against the whole table,
+# not per workspace. A fixture-wide constant therefore makes two concurrent
+# CI jobs collide: cli-e2e-01-serial (ser-t07-slack.bats) and
+# cli-e2e-03-runner (t40-slack-roundtrip.bats) render this same DM fixture
+# against the same preview deployment, so whichever posts second dedupes
+# onto the first job's already-"processed" row, the webhook skips
+# processCanonicalSlackIngress$, and no run is ever dispatched.
+#
+# Deriving the default from the fixture name plus the already-unique
+# team/timestamp keeps independent events independent across jobs and runs,
+# while staying stable when the same event is re-rendered within one test.
+# Pass an explicit event_id to replay one event (Slack retry semantics).
 slack_render_fixture() {
     local path="$1" team_id="$2" channel_id="$3" user_id="$4"
     local ts="${5:-$(date +%s).000100}"
+    local event_id="${6:-Ev_$(basename "$path" .json)_${team_id}_${ts}}"
     sed \
         -e "s/{{TEAM_ID}}/$team_id/g" \
         -e "s/{{CHANNEL_ID}}/$channel_id/g" \
         -e "s/{{USER_ID}}/$user_id/g" \
         -e "s/{{TS}}/$ts/g" \
+        -e "s/{{EVENT_ID}}/$event_id/g" \
         "$path"
 }
