@@ -1,3 +1,5 @@
+import { Clerk } from "@clerk/clerk-js";
+import { ui } from "@clerk/ui";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
@@ -296,23 +298,14 @@ export function buildSignInRedirectUrl(
  *
  * Initializes the real Clerk SDK with the publishable key.
  */
-async function loadClerkUi() {
-  const { ui } = await import("@clerk/ui");
+export const clerkUi$ = computed(() => {
   return ui;
-}
-
-export const clerkUi$ = computed(loadClerkUi);
+});
 
 export const clerk$ = computed(async () => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
 
-  // Clerk JS and its bundled UI remain large browser modules. Keeping them in
-  // separate async chunks avoids blocking initial JavaScript parsing.
-  const [{ Clerk }, ui] = await Promise.all([
-    import("@clerk/clerk-js"),
-    loadClerkUi(),
-  ]);
   const { ClerkUI } = ui;
   if (!ClerkUI) {
     throw new Error("Clerk UI module did not provide its renderer");
