@@ -1,4 +1,4 @@
-import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
+import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "../fixtures";
 import { refreshClerkSessionToken, signInThroughHostedAuth } from "../lib/auth";
 import { completeExploreOnboarding } from "../lib/onboarding";
@@ -11,9 +11,6 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
   const orgId = process.env.E2E_CLERK_ORG_ID!;
   const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
-
-  await clerkSetup();
-  await setupClerkTestingToken({ page });
 
   await signInThroughHostedAuth(page, email, appUrl, {
     followRedirect: false,
