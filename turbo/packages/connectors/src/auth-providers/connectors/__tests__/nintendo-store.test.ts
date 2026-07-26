@@ -4,12 +4,7 @@ import { createHash } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { resolveConnectorAuthClientForMethod } from "../../../connector-utils";
-import {
-  completeConnectorExternalCodeAuthorization,
-  refreshConnectorAuthProviderAccessToken,
-  startConnectorExternalCodeAuthorization,
-} from "../../connector-auth";
+import { resolveConnectorAuthClient } from "../../../connector-auth-method";
 import { isOAuthProviderHttpError } from "../../oauth/error";
 import { server } from "../../__tests__/test-server";
 import {
@@ -19,16 +14,26 @@ import {
   NINTENDO_STORE_TOKEN_URL,
   NINTENDO_STORE_USER_AGENT,
 } from "../nintendo-store/api";
+import { NINTENDO_STORE_PROVIDER_METHOD } from "./provider-method-fixtures";
+import { providerOperationFixture } from "./provider-operation-fixture";
 
 const NINTENDO_STORE_CLIENT_ID = "5c38e31cd085304b";
 const NINTENDO_STORE_REDIRECT_URI = "npf5c38e31cd085304b://auth";
 const NINTENDO_SESSION_TOKEN_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token";
+const {
+  completeConnectorExternalCodeAuthorization,
+  refreshConnectorAuthProviderAccessToken,
+  startConnectorExternalCodeAuthorization,
+} = providerOperationFixture({
+  connectorRef: "nintendo-store",
+  authMethodId: "api",
+  method: NINTENDO_STORE_PROVIDER_METHOD,
+});
 
 function nintendoStoreAuthClient() {
-  const authClient = resolveConnectorAuthClientForMethod(
-    "nintendo-store",
-    "api",
+  const authClient = resolveConnectorAuthClient(
+    NINTENDO_STORE_PROVIDER_METHOD.client,
     () => {
       throw new Error("Nintendo Store auth client should not read env");
     },

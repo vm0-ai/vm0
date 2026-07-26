@@ -1,4 +1,4 @@
-import { SignIn, SignUp } from "@clerk/clerk-react";
+import { SignIn, SignUp } from "@clerk/react";
 import { useGet } from "ccstate-react";
 import {
   buildSignInRedirectUrl,

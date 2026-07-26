@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
+import { findWebsiteTemplateResource } from "@vm0/core/resource-registry";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -70,83 +71,92 @@ describe("registry resource download", () => {
       {
         id: "template:black-slabs-v2",
         versionId:
-          "bfdd76866483fc78cf49f1e05a55732c3001dc6edd0899433367773eb3ec2435",
+          "3a7ccdd16e0c710cf20a0deddbd02d3a58a8125d2b3542648bc261bbaf9c5c91",
         sha256:
-          "0f12d8408536ce4e0178129db5ceecc3b7d77605eaff76bff8fab04fd6193c22",
+          "de6f78c5a524cf3959ca56af7a93ec5bca113555bbd1a5983eebf1bc353971d4",
       },
       {
         id: "template:blueprint-grid-v2",
         versionId:
-          "d7b65f9e32a9dc691ba9f96dfc45945d034ee7e841d53ff904a41038574572a3",
+          "c86f579ecca5f29d45eab19ae19157bdc9a9bc14c99cdbf8611b86aaae3aea70",
         sha256:
-          "38737948531b22ab5ae03c537464b948b48e139ca0362ea68e9dd3daaf6760b6",
+          "dec02c4fe156566272a92b7386cb032cec7e3a1250dd42429ca3e7f42374dc28",
       },
       {
         id: "template:coastal-hotel-v2",
         versionId:
-          "9851c21802d2c96cb0d6a4b799f73249287b1ed8b46ab94cb719ce4d9f38c3e8",
+          "7c13e39abcabf4cb31bdecdac80e096d6e039367e23c55ca0c3e6647d8fb3583",
         sha256:
-          "5c8650684d247143e010859d957c58c3c77d2b4e3a5540dbb4c4961cc2d70d54",
+          "09d239d7a0e1c27334f2c3c8da9e408174cece6bcc8a34342438598db739aa4e",
       },
       {
         id: "template:dot-matrix-v2",
         versionId:
-          "c3dc44d2445926f7bdc65e017028155aff73d7d59bc0deb783faf6ba689dcf5b",
+          "9a8977088b02b43d15654674571a88c0128b29076bb8e837d47ddd3a6ea4fd6a",
         sha256:
-          "20931f59434fea45e2772dd4a2a7790572f65b3514b84bfbb245968618f0ad44",
+          "0beb9b1bcb12ace6d3541df269a629af8e3b41c8f9d7e3c3fcfe069655cd9074",
       },
       {
         id: "template:frame-stack-v2",
         versionId:
-          "4b29a3ccedbd2259f2663e9bae60bafe0ca03ab98c415c0d2624f2dbd5379972",
+          "cb8cf528ebfce90e6f78081fbaee0029f2790ff5398ffa0642a6c30c8c1e0c1b",
         sha256:
-          "628139021e196f12e06723d899d299a89dc16696870fede38fc9864b6ffff9c1",
+          "7c4c13eaa22b4185607c6ac6a726dd931fe896b279b38a6267c0105f81214f8b",
       },
       {
         id: "template:frosted-scatter-v2",
         versionId:
-          "5076edab7ea87ad666e04ce74e8781f19eda8c660c697834d97a4e0d161f3035",
+          "7cab5008dbe877dd5ac43e3511d06109d101dda389bbdcc4589396ff495d9d41",
         sha256:
-          "3b0fab9f9f52434f37686377793dae2e467e818e48b85b6696f862d9e8e23232",
+          "c67a7baf924ae4b57241e61527dd875d084e38040653a9bbcc659c13d2382cf9",
       },
       {
         id: "template:gallery-wall-v2",
         versionId:
-          "26e2033b18e1a1c2efed697b3b29b0f8e589c4556de34bd2caff1dc801b377e5",
+          "c208b3119387422c4487d1a9a6f3c8f1618d0ee77dcfd51cbe26e6b4092cb002",
         sha256:
-          "df998b7ca480d24665b49e6c07f4e29eb8f26f3916ed3b8051f41e47535588ab",
+          "f6e41fb711b8c9317a425b463a9812e99f2aecb630d1acbfb77ef0965c2ba55f",
       },
       {
         id: "template:glass-bloom-v2",
         versionId:
-          "3fc6629067c9581ccccd11b679e99e26dbbd45b9d15cce182ce4edb224216d1e",
+          "fe6ac8450b6f822707c3e38c2705b2b88828c9226befa090086dc53635d9f9b6",
         sha256:
-          "b66ec9fda392e13a8f0c71c842cc0b2e655695cf60d7dd28e8db3b322ba35596",
+          "713fbac57cf37a0ddd6d7e7d79a0b9f29f8fff7a0aa55bc741bc5dcd0e498d25",
       },
       {
         id: "template:serif-stack-v2",
         versionId:
-          "00b1f6cbce5f93d1df53adc3519b7f32ebc9c1417c78a88b7f2e98fa7aff231e",
+          "e61f178818ccf31a0676ca0183fccbaef3019972adab592d8a5ba17287f54f65",
         sha256:
-          "0641c65b035abab0b53d3b345178688f1b4091083d1b7c574b640537b49ef3e5",
+          "6d5d65fb21d6c5ec5627fe32fbfc55e80841a2343f2d91bf3ee3a0f62547766a",
       },
       {
         id: "template:sticker-pop-v2",
         versionId:
-          "438eea8bf5a75642d2d645c035314416e1a0a44c9462d33b3fd6b36c6f21f673",
+          "d358cbcd29fc725fc282f4675ebba533fd60af564038d8efa0d4a057a29aee5b",
         sha256:
-          "4b076e69118268108e550322cdfe9befd91378bee5d28bf73627df54ccbaacbd",
+          "61954f4652e2cc86cd1016a537078ea050fe95735a7477e6bd56c91a0c0aec3b",
       },
       {
         id: "template:warm-cards-v2",
         versionId:
-          "736c14987395cb828dfa3626ace6ea947ca9852509b64d2867c6be105bdb8a12",
+          "f587c890c6db593a4cd102cb863f2484868277200d5630b40712ee8b2ded3153",
         sha256:
-          "20f0a7fa09bf2653b55fb0323b050accaa565817587d105b98ada03243b75bf3",
+          "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
       },
     ] as const;
 
     for (const archive of v2Archives) {
+      // The pinned digest must be the one the registry ships, otherwise the
+      // version ids below would be resolved for an archive nobody pulls.
+      expect(
+        findWebsiteTemplateResource(archive.id)?.source.archive,
+      ).toStrictEqual({
+        type: "tar.gz",
+        sha256: archive.sha256,
+      });
+
       expect(
         resolvePrivateRegistryResourceArchive(
           archive.id,

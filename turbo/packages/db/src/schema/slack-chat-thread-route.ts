@@ -15,9 +15,10 @@ import { slackOrgConnections } from "./slack-org-connection";
 export type SlackChatThreadRouteBackend = "legacy" | "canonical";
 
 /**
- * Sticky backend ownership for one VM0 user's view of a physical Slack thread.
- * Runtime routing lands separately; this table is the adapter-owned routing
- * source of truth shared by the legacy and canonical paths.
+ * Sticky canonical chat ownership for one VM0 user's view of a physical Slack
+ * thread. The backend column remains temporarily so the next production
+ * release can contract the legacy schema after every API reader stops
+ * depending on it.
  */
 export const slackChatThreadRoutes = pgTable(
   "slack_chat_thread_routes",
@@ -36,6 +37,7 @@ export const slackChatThreadRoutes = pgTable(
     userId: text("user_id").notNull(),
     backend: varchar("backend", { length: 16 })
       .$type<SlackChatThreadRouteBackend>()
+      .default("canonical")
       .notNull(),
     chatThreadId: uuid("chat_thread_id").references(
       () => {

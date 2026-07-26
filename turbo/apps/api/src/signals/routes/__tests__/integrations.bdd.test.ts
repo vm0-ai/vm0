@@ -1354,7 +1354,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(context.mocks.slack.fetchFile).not.toHaveBeenCalled();
   });
 
-  it("promotes legacy routes and keeps current and previous readers retry-safe", async () => {
+  it("promotes previous-writer routes and deduplicates canonical retries", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -1406,24 +1406,18 @@ describe("INT-01: Slack app deep webhook flows", () => {
       event_id: eventId,
       event,
     });
-    const legacyRetryEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
-    const legacyRetryBody = JSON.stringify({
-      type: "event_callback",
-      team_id: teamId,
-      event_id: legacyRetryEventId,
-      event: {
-        ...event,
-        text: "ignore this pre-cutover retry",
-      },
+    const installedState = await integrations.readSlackTestState(teamId);
+    const connectionId = installedState.connections[0]?.id;
+    if (!connectionId) {
+      throw new Error("Expected a connected Slack test user");
+    }
+    await integrations.seedSlackRouteThroughPreviousWriter({
+      actor,
+      teamId,
+      connectionId,
+      channelId,
+      threadTs,
     });
-    await integrations.requestSlackEvent(
-      legacyRetryBody,
-      {
-        ...integrations.signedSlackIngressHeaders(legacyRetryBody),
-        "x-slack-retry-num": "1",
-      },
-      [200],
-    );
     const legacyState = await integrations.readSlackTestState(teamId);
     expect(legacyState.chat_thread_routes).toStrictEqual([
       expect.objectContaining({
@@ -1460,8 +1454,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
       userId: actor.userId,
       backend: "canonical",
       chatThreadId: expect.any(String),
-      legacyCutoverEventId: eventId,
-      legacyCutoverMessageTs: threadTs,
+      legacyCutoverEventId: null,
+      legacyCutoverMessageTs: null,
     });
     expect(state.chat_ingress).toHaveLength(1);
     expect(state.chat_ingress[0]).toMatchObject({
@@ -1471,27 +1465,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       status: "processed",
       retryCount: 3,
     });
-    await integrations.requestSlackEvent(
-      legacyRetryBody,
-      {
-        ...integrations.signedSlackIngressHeaders(legacyRetryBody),
-        "x-slack-retry-num": "2",
-      },
-      [200],
-    );
-    await flushWaitUntilForTest();
-    state = await integrations.readSlackTestState(teamId);
-    expect(state.chat_ingress).toHaveLength(1);
-    expect(
-      state.chat_ingress.some((ingress) => {
-        return ingress.eventId === legacyRetryEventId;
-      }),
-    ).toBeFalsy();
-    expect(
-      state.recent_runs.some((run) => {
-        return run.promptPreview?.includes("ignore this pre-cutover retry");
-      }),
-    ).toBeFalsy();
     const canonicalChatThreadId = state.chat_thread_routes[0]?.chatThreadId;
     if (!canonicalChatThreadId) {
       throw new Error("Expected canonical Slack route to own a chat thread");
@@ -1906,36 +1879,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const run2 = await runs.readRun(actor, run2Id);
     expect(run2.result?.agentSessionId).toBe(slackSessionId);
     expect(run2.result?.agentSessionId).not.toBe(webSessionId);
-
-    const promotedState = await integrations.readSlackTestState(teamId);
-    const promotedRouteId = promotedState.chat_thread_routes[0]?.id;
-    if (!promotedRouteId) {
-      throw new Error("Expected promoted Slack route identity");
-    }
-    await integrations.admitSlackEventThroughPreviousReader({
-      actor,
-      teamId,
-      routeId: promotedRouteId,
-      eventId: legacyRetryEventId,
-      payload: legacyRetryBody,
-      isRetry: true,
-    });
-    const compatibilityState = await integrations.readSlackTestState(teamId);
-    expect(compatibilityState.chat_ingress).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          routeId: promotedRouteId,
-          eventId: legacyRetryEventId,
-          status: "ignored",
-          retryCount: 1,
-        }),
-      ]),
-    );
-    expect(
-      compatibilityState.recent_runs.some((run) => {
-        return run.promptPreview?.includes("ignore this pre-cutover retry");
-      }),
-    ).toBeFalsy();
   });
 
   it("admits a later promoted-route retry after its first ingress insert fails", async () => {
@@ -1962,27 +1905,20 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     const channelId = "C_BDD_CANONICAL_RETRY_RECOVERY";
     const threadTs = "3100.000100";
-    const legacyRetryBody = JSON.stringify({
-      type: "event_callback",
-      team_id: targetInstallation.teamId,
-      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
-      event: {
-        type: "app_mention",
-        user: slackUserId,
-        text: "seed the legacy route only",
-        ts: threadTs,
-        channel: channelId,
-        channel_type: "channel",
-      },
-    });
-    await integrations.requestSlackEvent(
-      legacyRetryBody,
-      {
-        ...integrations.signedSlackIngressHeaders(legacyRetryBody),
-        "x-slack-retry-num": "1",
-      },
-      [200],
+    const targetInstalledState = await integrations.readSlackTestState(
+      targetInstallation.teamId,
     );
+    const targetConnectionId = targetInstalledState.connections[0]?.id;
+    if (!targetConnectionId) {
+      throw new Error("Expected a connected target Slack test user");
+    }
+    await integrations.seedSlackRouteThroughPreviousWriter({
+      actor,
+      teamId: targetInstallation.teamId,
+      connectionId: targetConnectionId,
+      channelId,
+      threadTs,
+    });
 
     const cutoverEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
     const cutoverBody = JSON.stringify({
@@ -2107,49 +2043,80 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
   });
 
-  it("keeps Slack retries on sticky legacy routes out of canonical ingress", async () => {
+  it("promotes retry-only previous-writer routes into canonical ingress", async () => {
     const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
     integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
     const slackUserId = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
     });
     const legacyThreadTs = "2900.000300";
     const channelId = "C_BDD_LEGACY_INGRESS";
-    const legacyRetryBody = JSON.stringify({
+    const installedState = await integrations.readSlackTestState(teamId);
+    const connectionId = installedState.connections[0]?.id;
+    if (!connectionId) {
+      throw new Error("Expected a connected Slack test user");
+    }
+    await integrations.seedSlackRouteThroughPreviousWriter({
+      actor,
+      teamId,
+      connectionId,
+      channelId,
+      threadTs: legacyThreadTs,
+    });
+    const retryEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const retryBody = JSON.stringify({
       type: "event_callback",
       team_id: teamId,
-      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
+      event_id: retryEventId,
       event: {
         type: "app_mention",
         user: slackUserId,
-        text: "legacy retry stays ignored",
+        text: "retry this route through canonical ingress",
         ts: legacyThreadTs,
         channel: channelId,
         channel_type: "channel",
       },
     });
     await integrations.requestSlackEvent(
-      legacyRetryBody,
+      retryBody,
       {
-        ...integrations.signedSlackIngressHeaders(legacyRetryBody),
+        ...integrations.signedSlackIngressHeaders(retryBody),
         "x-slack-retry-num": "1",
       },
       [200],
     );
+    await flushWaitUntilForTest();
 
     const state = await integrations.readSlackTestState(teamId);
     expect(state.chat_thread_routes).toHaveLength(1);
     expect(state.chat_thread_routes[0]).toMatchObject({
       channelId,
       threadTs: legacyThreadTs,
-      backend: "legacy",
-      chatThreadId: null,
+      backend: "canonical",
+      chatThreadId: expect.any(String),
+      legacyCutoverEventId: null,
+      legacyCutoverMessageTs: null,
     });
-    expect(state.chat_ingress).toHaveLength(0);
+    expect(state.chat_ingress).toStrictEqual([
+      expect.objectContaining({
+        eventId: retryEventId,
+        status: "processed",
+        retryCount: 1,
+      }),
+    ]);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledWith({
+      channel_id: channelId,
+      thread_ts: legacyThreadTs,
+      status: "is thinking...",
+    });
   });
 
   it("binds agent and model choices when canonical Slack threads are created", async () => {

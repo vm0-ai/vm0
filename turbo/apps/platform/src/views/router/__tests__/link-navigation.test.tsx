@@ -87,6 +87,7 @@ describe("link navigation", () => {
       ticket: "clerk-ticket",
     });
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      navigate: expect.any(Function),
       session: "test-created-session-id",
     });
   });

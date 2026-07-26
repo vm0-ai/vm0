@@ -20,7 +20,7 @@ import type {
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorFeatureStates } from "@vm0/connectors/connector-utils";
+import type { ConnectorFeatureStates } from "@vm0/connectors/connector-auth-method";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { staticConnectorIconPublicPathUrl } from "@vm0/connectors/static-connector-icons";
 import {

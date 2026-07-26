@@ -60,9 +60,7 @@ import {
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import {
   admitCanonicalSlackChatEvent,
-  canonicalSlackChatRetryIsAdmissible,
   ensureCanonicalSlackChatThreadRoute,
-  ensureLegacySlackChatThreadRoute,
   findSlackChatThreadRoute,
 } from "./slack-chat-ingress.service";
 import { processCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
@@ -688,47 +686,6 @@ const postSlackAgentAdmissionNotice$ = command(
   },
 );
 
-async function resolveExistingSlackRouteAdmission(
-  db: Db,
-  args: {
-    readonly existingRoute: Awaited<
-      ReturnType<typeof findSlackChatThreadRoute>
-    >;
-    readonly routeKey: Parameters<typeof findSlackChatThreadRoute>[1];
-    readonly eventId: string;
-    readonly messageTs: string;
-    readonly isRetry: boolean;
-  },
-): Promise<SlackAgentRouteAdmission | null> {
-  if (args.existingRoute?.backend === "canonical") {
-    if (
-      args.isRetry &&
-      !(await canonicalSlackChatRetryIsAdmissible(db, {
-        routeId: args.existingRoute.id,
-        legacyCutoverEventId: args.existingRoute.legacyCutoverEventId,
-        legacyCutoverMessageTs: args.existingRoute.legacyCutoverMessageTs,
-        eventId: args.eventId,
-        eventMessageTs: args.messageTs,
-      }))
-    ) {
-      return { kind: "ignored" };
-    }
-    return { kind: "canonical", routeId: args.existingRoute.id };
-  }
-  if (!args.isRetry) {
-    return null;
-  }
-  const route =
-    args.existingRoute ??
-    (await ensureLegacySlackChatThreadRoute(db, {
-      ...args.routeKey,
-      currentTime: nowDate(),
-    }));
-  return route.backend === "canonical"
-    ? { kind: "canonical", routeId: route.id }
-    : { kind: "ignored" };
-}
-
 const resolveSlackAgentRouteAdmission$ = command(
   async (
     { set },
@@ -792,19 +749,8 @@ const resolveSlackAgentRouteAdmission$ = command(
     };
     const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
     signal.throwIfAborted();
-    const existingAdmission = await resolveExistingSlackRouteAdmission(
-      args.db,
-      {
-        existingRoute,
-        routeKey,
-        eventId: args.eventId,
-        messageTs: args.messageTs,
-        isRetry: args.isRetry,
-      },
-    );
-    signal.throwIfAborted();
-    if (existingAdmission) {
-      return existingAdmission;
+    if (existingRoute?.chatThreadId) {
+      return { kind: "canonical", routeId: existingRoute.id };
     }
 
     const effectiveCompose = await resolveEffectiveCompose(
@@ -849,8 +795,6 @@ const resolveSlackAgentRouteAdmission$ = command(
       orgId,
       agentComposeId: effectiveCompose.composeId,
       selectedModel: modelRoute?.selectedModel ?? null,
-      cutoverEventId: args.eventId,
-      cutoverMessageTs: args.messageTs,
       currentTime: nowDate(),
     });
     signal.throwIfAborted();

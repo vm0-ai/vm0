@@ -3,12 +3,7 @@ import { Buffer } from "node:buffer";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { resolveConnectorAuthClientForMethod } from "../../../connector-utils";
-import {
-  completeConnectorExternalCodeAuthorization,
-  refreshConnectorAuthProviderAccessToken,
-  startConnectorExternalCodeAuthorization,
-} from "../../connector-auth";
+import { resolveConnectorAuthClient } from "../../../connector-auth-method";
 import { isOAuthProviderHttpError } from "../../oauth/error";
 import { server } from "../../__tests__/test-server";
 import {
@@ -17,6 +12,8 @@ import {
   PLAYSTATION_PROFILE_USERS_URL,
   PLAYSTATION_REDIRECT_URI,
 } from "../playstation/api";
+import { PLAYSTATION_PROVIDER_METHOD } from "./provider-method-fixtures";
+import { providerOperationFixture } from "./provider-operation-fixture";
 
 const PLAYSTATION_TOKEN_URL = `${PLAYSTATION_AUTH_BASE_URL}/token`;
 const PLAYSTATION_AUTHORIZE_URL = `${PLAYSTATION_AUTH_BASE_URL}/authorize`;
@@ -25,11 +22,19 @@ const PLAYSTATION_CLIENT_SECRET = "ucPjka5tntB2KqsP";
 const PLAYSTATION_CLIENT_BASIC_AUTH = `Basic ${Buffer.from(
   `${PLAYSTATION_CLIENT_ID}:${PLAYSTATION_CLIENT_SECRET}`,
 ).toString("base64")}`;
+const {
+  completeConnectorExternalCodeAuthorization,
+  refreshConnectorAuthProviderAccessToken,
+  startConnectorExternalCodeAuthorization,
+} = providerOperationFixture({
+  connectorRef: "playstation",
+  authMethodId: "api",
+  method: PLAYSTATION_PROVIDER_METHOD,
+});
 
 function playstationAuthClient() {
-  const authClient = resolveConnectorAuthClientForMethod(
-    "playstation",
-    "api",
+  const authClient = resolveConnectorAuthClient(
+    PLAYSTATION_PROVIDER_METHOD.client,
     () => {
       throw new Error("PlayStation auth client should not read env");
     },

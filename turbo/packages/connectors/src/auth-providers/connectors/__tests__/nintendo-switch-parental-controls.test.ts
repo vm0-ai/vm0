@@ -4,16 +4,10 @@ import { createHash } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "../../../connectors/nintendo-switch-parental-controls";
-import { resolveConnectorAuthClientForMethod } from "../../../connector-utils";
-import {
-  completeConnectorExternalCodeAuthorization,
-  refreshConnectorAuthProviderAccessToken,
-  revokeConnectorAuthMethodAccessToken,
-  startConnectorExternalCodeAuthorization,
-} from "../../connector-auth";
+import { resolveConnectorAuthClient } from "../../../connector-auth-method";
 import { server } from "../../__tests__/test-server";
 import {
+  NINTENDO_SWITCH_PARENTAL_CONTROLS_APP,
   NINTENDO_SWITCH_PARENTAL_CONTROLS_AUTHORIZATION_URL,
   NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL,
   NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL,
@@ -22,14 +16,25 @@ import {
   NINTENDO_SWITCH_PARENTAL_CONTROLS_SESSION_TOKEN_URL,
   NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN_URL,
 } from "../nintendo-switch-parental-controls/api";
+import { NINTENDO_SWITCH_PARENTAL_CONTROLS_PROVIDER_METHOD } from "./provider-method-fixtures";
+import { providerOperationFixture } from "./provider-operation-fixture";
 
 const NINTENDO_SESSION_TOKEN_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token";
+const {
+  completeConnectorExternalCodeAuthorization,
+  refreshConnectorAuthProviderAccessToken,
+  revokeConnectorAuthMethodAccessToken,
+  startConnectorExternalCodeAuthorization,
+} = providerOperationFixture({
+  connectorRef: "nintendo-switch-parental-controls",
+  authMethodId: "api",
+  method: NINTENDO_SWITCH_PARENTAL_CONTROLS_PROVIDER_METHOD,
+});
 
 function nintendoSwitchParentalControlsAuthClient() {
-  const authClient = resolveConnectorAuthClientForMethod(
-    "nintendo-switch-parental-controls",
-    "api",
+  const authClient = resolveConnectorAuthClient(
+    NINTENDO_SWITCH_PARENTAL_CONTROLS_PROVIDER_METHOD.client,
     () => {
       throw new Error(
         "Nintendo Switch Parental Controls auth client should not read env",

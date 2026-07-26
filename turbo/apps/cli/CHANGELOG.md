@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.257.9](https://github.com/vm0-ai/vm0/compare/cli-v9.257.8...cli-v9.257.9) (2026-07-26)
+
+
+### Bug Fixes
+
+* refresh website template v2 archives to upstream ccff774 ([#23126](https://github.com/vm0-ai/vm0/issues/23126)) ([b564fa1](https://github.com/vm0-ai/vm0/commit/b564fa11bcd86b0e7f26ed7c464299e673e61fbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.232.2
+    * @vm0/core bumped to 8.469.1
+
 ## [9.257.8](https://github.com/vm0-ai/vm0/compare/cli-v9.257.7...cli-v9.257.8) (2026-07-26)
 
 
