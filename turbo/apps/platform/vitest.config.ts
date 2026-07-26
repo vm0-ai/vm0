@@ -6,11 +6,11 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@clerk/clerk-react/experimental": path.resolve(
+      "@clerk/react/experimental": path.resolve(
         __dirname,
         "./src/test/mocks/clerk-react-experimental.ts",
       ),
-      "@clerk/clerk-react": path.resolve(
+      "@clerk/react": path.resolve(
         __dirname,
         "./src/test/mocks/clerk-react.ts",
       ),

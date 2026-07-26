@@ -167,11 +167,11 @@ export const fetch$ = computed((get) => {
     let response = await performFetch(initialToken);
 
     if (response.status === 401) {
-      const freshToken = await fetchFreshToken(clerk, initialToken);
-      if (freshToken) {
-        response = await performFetch(freshToken);
+      const refreshResult = await fetchFreshToken(clerk, initialToken);
+      if (refreshResult.status === "refreshed") {
+        response = await performFetch(refreshResult.token);
       }
-      if (response.status === 401) {
+      if (response.status === 401 && refreshResult.status !== "offline") {
         handleUnauthorizedRedirect(
           clerk,
           get(unauthorizedRedirectSuppressionUntil$),
