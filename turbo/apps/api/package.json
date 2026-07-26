@@ -72,7 +72,7 @@
     "adm-zip": "^0.6.0",
     "eslint": "^9.34.0",
     "msw": "^2.13.2",
-    "oxlint": "^1.57.0",
+    "oxlint": "^1.75.0",
     "oxlint-tsgolint": "0.23.0",
     "tsx": "^4.19.0",
     "typescript": "6.0.3",

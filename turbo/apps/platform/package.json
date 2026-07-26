@@ -65,7 +65,7 @@
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.9.0",
     "msw": "^2.13.2",
-    "oxlint": "^1.57.0",
+    "oxlint": "^1.75.0",
     "oxlint-tsgolint": "0.23.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^6.0.3",
