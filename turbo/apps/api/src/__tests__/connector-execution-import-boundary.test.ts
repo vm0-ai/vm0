@@ -31,6 +31,7 @@ function isRegistryBoundConnectorPackageImport(specifier: string): boolean {
     specifier === "@vm0/connectors/connector-utils" ||
     specifier === "@vm0/connectors/connector-search" ||
     specifier === "@vm0/connectors/static-connector-icons" ||
+    specifier === "@vm0/connectors/firewall-metadata" ||
     specifier === "@vm0/connectors/firewall-metadata/server" ||
     specifier === "@vm0/connectors/firewall-metadata/routing" ||
     specifier === "@vm0/connectors/firewall-metadata/runner-runtime"

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
