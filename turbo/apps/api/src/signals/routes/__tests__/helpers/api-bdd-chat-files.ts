@@ -61,7 +61,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { zeroChatMessagesRoutes } from "../../zero-chat-messages";
+import { zeroChatEventsRoutes } from "../../zero-chat-events";
 import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
 import { zeroArtifactsRoutes } from "../../zero-artifacts";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
@@ -192,7 +192,7 @@ const chatFilesRoutes = [
   ...zeroChatThreadModelSelectionRoutes,
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadsArtifactsSyncRoutes,
-  ...zeroChatMessagesRoutes,
+  ...zeroChatEventsRoutes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroHostRoutes,
@@ -330,6 +330,10 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   return {
+    async getDefaultCreateThreadModel(actor: ApiTestUser): Promise<string> {
+      return await defaultCreateThreadModel(actor);
+    },
+
     mockCompletedUploadObject(
       actor: ApiTestUser,
       uploadId: string,

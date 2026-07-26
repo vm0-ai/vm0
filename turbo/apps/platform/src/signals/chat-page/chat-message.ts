@@ -39,7 +39,7 @@ export {
 // Re-export paged message types from @vm0/core
 // ---------------------------------------------------------------------------
 
-export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+export type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 
 export type EnrichedChatMessage = ChatMessage & {
   blocks: BodyRenderBlock[];

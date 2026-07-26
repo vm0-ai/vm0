@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   zeroConnectorCatalogContract,
@@ -132,7 +132,7 @@ describe("permission allow page", () => {
         ]);
       },
     );
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       capturedContinuationBody = body;
       return respond(201, {
         runId: "c0000000-0000-4000-a000-000000000201",

@@ -3,6 +3,7 @@ import {
   chatSearchContract,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
+  chatThreadEventsContract,
   chatThreadMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -24,9 +25,9 @@ import {
   zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
-  zeroChatThreadMessageById,
+  zeroChatThreadEventById,
+  zeroChatThreadEventsPage,
   zeroChatThreadDraftIds,
-  zeroChatThreadMessagesPage,
   zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
@@ -102,7 +103,7 @@ const getChatThreadSnapshotInner$ = computed(async (get) => {
   };
 });
 
-const listChatThreadEventsInner$ = computed(async (get) => {
+const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatThreadsContract.events));
   const db = get(db$);
@@ -145,13 +146,13 @@ const listChatThreadActiveIdsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { threadIds: [...threadIds] } };
 });
 
-const listChatThreadMessagesInner$ = computed(async (get) => {
+const listChatEventsInner$ = computed(async (get) => {
   const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadMessagesContract.list));
-  const query = get(queryOf(chatThreadMessagesContract.list));
+  const params = get(pathParamsOf(chatThreadEventsContract.list));
+  const query = get(queryOf(chatThreadEventsContract.list));
 
   const page = await get(
-    zeroChatThreadMessagesPage({
+    zeroChatThreadEventsPage({
       threadId: params.threadId,
       userId: auth.userId,
       sinceSeqId: query.sinceSeqId,
@@ -168,28 +169,75 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      messages: [...page.messages],
+      events: [...page.events],
       hasHistoryBefore: page.hasHistoryBefore,
     },
   };
 });
 
-const getChatThreadMessageInner$ = computed(async (get) => {
+const listLegacyChatThreadMessagesInner$ = computed(async (get) => {
   const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadMessagesContract.get));
+  const params = get(pathParamsOf(chatThreadMessagesContract.list));
+  const query = get(queryOf(chatThreadMessagesContract.list));
 
-  const message = await get(
-    zeroChatThreadMessageById({
+  const page = await get(
+    zeroChatThreadEventsPage({
       threadId: params.threadId,
       userId: auth.userId,
-      messageId: params.messageId,
+      sinceSeqId: query.sinceSeqId,
+      beforeSeqId: query.beforeSeqId,
+      sinceId: query.sinceId,
+      beforeId: query.beforeId,
+      limit: query.limit,
     }),
   );
-  if (!message) {
+  if (!page) {
     return chatThreadNotFound();
   }
 
-  return { status: 200 as const, body: message };
+  return {
+    status: 200 as const,
+    body: {
+      messages: [...page.events],
+      hasHistoryBefore: page.hasHistoryBefore,
+    },
+  };
+});
+
+const getChatThreadEventInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadEventsContract.get));
+
+  const event = await get(
+    zeroChatThreadEventById({
+      threadId: params.threadId,
+      userId: auth.userId,
+      eventId: params.eventId,
+    }),
+  );
+  if (!event) {
+    return chatThreadNotFound();
+  }
+
+  return { status: 200 as const, body: event };
+});
+
+const getLegacyChatThreadMessageInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadMessagesContract.get));
+
+  const event = await get(
+    zeroChatThreadEventById({
+      threadId: params.threadId,
+      userId: auth.userId,
+      eventId: params.messageId,
+    }),
+  );
+  if (!event) {
+    return chatThreadNotFound();
+  }
+
+  return { status: 200 as const, body: event };
 });
 
 const listChatThreadDraftsInner$ = computed(async (get) => {
@@ -317,7 +365,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
         requiredCapability: "chat-thread:read",
       },
-      listChatThreadEventsInner$,
+      listChatThreadLifecycleEventsInner$,
     ),
   },
   {
@@ -351,12 +399,20 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute({}, listChatThreadArtifactsInner$),
   },
   {
+    route: chatThreadEventsContract.list,
+    handler: authRoute({}, listChatEventsInner$),
+  },
+  {
+    route: chatThreadEventsContract.get,
+    handler: authRoute({}, getChatThreadEventInner$),
+  },
+  {
     route: chatThreadMessagesContract.list,
-    handler: authRoute({}, listChatThreadMessagesInner$),
+    handler: authRoute({}, listLegacyChatThreadMessagesInner$),
   },
   {
     route: chatThreadMessagesContract.get,
-    handler: authRoute({}, getChatThreadMessageInner$),
+    handler: authRoute({}, getLegacyChatThreadMessageInner$),
   },
   {
     route: chatSearchContract.search,

@@ -1,6 +1,6 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  chatMessagesContract,
+  chatEventsContract,
   chatThreadMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -936,7 +936,7 @@ describe("chat message action cards", () => {
       prompt: string | undefined;
       threadId: string | undefined;
     }[] = [];
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       rejectedPrompts.push({ prompt: body.prompt, threadId: body.threadId });
       return respond(402, {
         error: {
@@ -1089,7 +1089,9 @@ describe("chat message action cards", () => {
           messages: [
             {
               id: "c0000000-0000-4000-a000-000000000034",
+              threadId: rightThreadId,
               seqId: 1,
+              eventType: "output.message" as const,
               role: "assistant",
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
               createdAt,

@@ -1,7 +1,9 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  ChatEvent,
   GenerationTemplateRequest,
-  PagedChatMessage,
+  ChatFollowupsEvent,
+  ChatPromptEvent,
   ChatThreadArtifactRun,
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -21,7 +23,7 @@ import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 
 type RecommendedFollowup = NonNullable<
-  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+  ChatFollowupsEvent["recommendedFollowups"]
 >[number];
 
 export interface RecommendedFollowupSource {
@@ -46,13 +48,13 @@ export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface MessageImageGroupProjection {
   readonly messages: readonly {
-    readonly attachFiles?: PagedChatMessage["attachFiles"];
+    readonly attachFiles?: ChatPromptEvent["attachFiles"];
     readonly blocks: readonly BodyRenderBlock[];
   }[];
 }
 
 export interface SendMessageOptions {
-  readonly revokesMessageId?: string;
+  readonly revokesEventId?: string;
   readonly includeDraftAttachments?: boolean;
   readonly computerUseHostId?: string | null;
   readonly generationTemplate?: GenerationTemplateRequest;
@@ -165,10 +167,7 @@ export interface ChatThreadSignals {
   activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
-  receiveSyncedMessages$: Command<
-    Promise<void>,
-    [PagedChatMessage[], AbortSignal]
-  >;
+  receiveSyncedEvents$: Command<Promise<void>, [ChatEvent[], AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;

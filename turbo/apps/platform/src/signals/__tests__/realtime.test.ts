@@ -127,20 +127,20 @@ function createFailingSubscribeDataSource(): ChatThreadRemote {
     patchComputerUseHost$: command(() => {
       return unexpectedDataSourceCall("patchComputerUseHost$");
     }),
-    appendQueuedMessage$: command(() => {
-      return unexpectedDataSourceCall("appendQueuedMessage$");
+    appendQueuedEvent$: command(() => {
+      return unexpectedDataSourceCall("appendQueuedEvent$");
     }),
-    recallMessage$: command(() => {
-      return unexpectedDataSourceCall("recallMessage$");
+    recallEvent$: command(() => {
+      return unexpectedDataSourceCall("recallEvent$");
     }),
-    listMessagesAfter$: command(() => {
+    listEventsAfter$: command(() => {
       return Promise.resolve({
-        messages: [],
+        events: [],
         hasHistoryBefore: false,
       });
     }),
-    listMessagesBefore$: command(() => {
-      return unexpectedDataSourceCall("listMessagesBefore$");
+    listEventsBefore$: command(() => {
+      return unexpectedDataSourceCall("listEventsBefore$");
     }),
     cancelRuns$: command(() => {
       return unexpectedDataSourceCall("cancelRuns$");

@@ -63,7 +63,7 @@ import {
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route-entry";
-import { sendNormalMessage$ } from "./zero-chat-messages";
+import { sendNormalMessage$ } from "./zero-chat-events";
 
 const log = logger("api:zero:workflow-connector-readiness");
 

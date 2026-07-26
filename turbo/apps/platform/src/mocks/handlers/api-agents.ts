@@ -17,7 +17,7 @@ import {
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadArtifactsContract,
   artifactsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -192,9 +192,9 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/zero/chat-threads/:threadId/messages (paged messages)
-  mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-    return respond(200, { messages: [] });
+  // GET /api/zero/chat-threads/:threadId/events (paged events)
+  mockApi(chatThreadEventsContract.list, ({ respond }) => {
+    return respond(200, { events: [] });
   }),
 
   // GET /api/zero/chat-threads/:threadId/artifacts

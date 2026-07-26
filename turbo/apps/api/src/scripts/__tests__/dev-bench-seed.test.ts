@@ -4,10 +4,10 @@ import { buildProfileRows, DEV_BENCH_THREAD_PROFILES } from "../dev-bench-seed";
 
 const EXPECTED_PROFILE_SHAPES = {
   "feature-switch-digest": {
-    messages: 1421,
+    messages: 1429,
     runs: 134,
     userMessages: 139,
-    assistantMessages: 1282,
+    assistantMessages: 1290,
     nullRunMessages: 9,
     completedLifecycleMessages: 133,
     failedLifecycleMessages: 1,
@@ -113,7 +113,7 @@ describe("dev bench seed profile rows", () => {
       expect(
         countWhere(rows.messageRows, (row) => {
           return (
-            row.revokesMessageId !== null && row.revokesMessageId !== undefined
+            row.revokesEventId !== null && row.revokesEventId !== undefined
           );
         }),
       ).toBe(expected.revokeMessages);

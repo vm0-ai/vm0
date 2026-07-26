@@ -4,12 +4,13 @@ import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-s
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  chatEventResponse,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
-  type PagedChatMessage,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -64,10 +65,11 @@ function setupChatThread({
     },
   ]);
 
-  const messages: PagedChatMessage[] = [
+  const messages: ChatEvent[] = [
     {
       id: "msg-artifact-user",
-      role: "user",
+      threadId: THREAD_ID,
+      eventType: "input.prompt" as const,
       content: "Show me the artifact",
       runId: "run-artifact",
       seqId: 1,
@@ -76,7 +78,8 @@ function setupChatThread({
     },
     {
       id: "msg-artifact-assistant",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "output.message" as const,
       content,
       runId: "run-artifact",
       seqId: 2,
@@ -84,7 +87,8 @@ function setupChatThread({
     },
     {
       id: "msg-artifact-completed",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "run.completed" as const,
       content: null,
       runId: "run-artifact",
       runLifecycleEvent: "completed",
@@ -118,11 +122,19 @@ function setupChatThread({
       latestEventId: "00000000-0000-4000-8000-000000000001",
     });
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId || query.beforeSeqId) {
-      return respond(200, { messages: [] });
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+    if (
+      query.sinceSeqId ||
+      query.beforeSeqId ||
+      query.sinceId ||
+      query.beforeId
+    ) {
+      return respond(200, { events: [] });
     }
-    return respond(200, { messages, hasHistoryBefore: false });
+    return respond(200, {
+      events: messages.map(chatEventResponse),
+      hasHistoryBefore: false,
+    });
   });
   if (artifactFiles) {
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {

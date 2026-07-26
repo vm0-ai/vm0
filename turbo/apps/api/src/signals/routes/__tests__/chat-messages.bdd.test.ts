@@ -11,7 +11,9 @@ import {
 import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  chatEventsContract,
   chatMessagesContract,
+  chatThreadEventsContract,
   type AttachFile,
   type ChatRunOptionsRequest,
   type ChatThreadEvent,
@@ -674,6 +676,14 @@ function chatMessagesClient() {
   return setupApp({ context })(chatMessagesContract);
 }
 
+function chatEventsClient() {
+  return setupApp({ context })(chatEventsContract);
+}
+
+function chatThreadEventsClient() {
+  return setupApp({ context })(chatThreadEventsContract);
+}
+
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
@@ -793,11 +803,20 @@ describe("CHAT-02: web chat send and client ids", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const clientThreadId = randomUUID();
-    const clientMessageId = randomUUID();
+    const clientEventId = randomUUID();
     const prompt = "hello from bdd web chat";
-    const first = await chat.requestSendMessage(
-      actor,
-      { agentId, prompt, clientThreadId, clientMessageId },
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    const first = await accept(
+      chatEventsClient().send({
+        headers: sessionHeaders(actor),
+        body: {
+          agentId,
+          prompt,
+          clientThreadId,
+          clientEventId,
+          model,
+        },
+      }),
       [201],
     );
     if (first.status !== 201 || first.body.runId === null) {
@@ -858,7 +877,7 @@ describe("CHAT-02: web chat send and client ids", () => {
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
       clientThreadId,
-      clientMessageId,
+      clientEventId,
       agentId,
     ]);
 
@@ -875,7 +894,7 @@ describe("CHAT-02: web chat send and client ids", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === clientMessageId &&
+            message.revokesMessageId === clientEventId &&
             message.runId === runId
           );
         });
@@ -885,7 +904,7 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(userRows).toHaveLength(2);
     expect(userRows).toContainEqual(
       expect.objectContaining({
-        id: clientMessageId,
+        id: clientEventId,
         content: prompt,
       }),
     );
@@ -893,17 +912,51 @@ describe("CHAT-02: web chat send and client ids", () => {
       expect.objectContaining({
         content: prompt,
         runId,
-        revokesMessageId: clientMessageId,
+        revokesMessageId: clientEventId,
       }),
     );
     const original = userRows.find((message) => {
-      return message.id === clientMessageId;
+      return message.id === clientEventId;
     });
     expect(original).toMatchObject({
-      id: clientMessageId,
+      id: clientEventId,
       content: prompt,
     });
     expect(original?.runId).toBeUndefined();
+
+    const eventPage = await accept(
+      chatThreadEventsClient().list({
+        headers: sessionHeaders(actor),
+        params: { threadId: clientThreadId },
+        query: { limit: 50 },
+      }),
+      [200],
+    );
+    const originalEvent = eventPage.body.events.find((event) => {
+      return event.id === clientEventId;
+    });
+    expect(originalEvent).toMatchObject({
+      id: clientEventId,
+      threadId: clientThreadId,
+      eventType: "input.prompt",
+      role: "user",
+      content: prompt,
+    });
+    await expect(
+      accept(
+        chatThreadEventsClient().get({
+          headers: sessionHeaders(actor),
+          params: { threadId: clientThreadId, eventId: clientEventId },
+        }),
+        [200],
+      ),
+    ).resolves.toMatchObject({
+      body: {
+        id: clientEventId,
+        threadId: clientThreadId,
+        eventType: "input.prompt",
+      },
+    });
 
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {
@@ -5355,7 +5408,7 @@ describe("CHAT-02: shared user message queue", () => {
     await expect.poll(admissionLock.waiterCount).toBe(2);
     admissionLock.release();
     await admissionLock.done;
-    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
+    await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
 
     const recall = Promise.allSettled([
       chat.requestSendMessage(

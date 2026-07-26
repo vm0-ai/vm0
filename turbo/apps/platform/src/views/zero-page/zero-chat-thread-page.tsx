@@ -89,11 +89,17 @@ import type {
   ChatThreadArtifactFile,
   ChatMessageUsagePayload,
   FeedbackNotePart,
+  ChatFollowupsEvent,
   GenerationTemplateRequest,
   ResolvedAttachFile,
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatEventCompatibilityRole,
+  foldLatestChatUsageByRunId,
+  terminatedChatRunIds,
+} from "@vm0/api-contracts/contracts/chat-events";
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
@@ -158,7 +164,7 @@ import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
-import { isCancelledAssistantMessage } from "../../signals/chat-page/chat-run-lifecycle.ts";
+import { isCancelledRunEvent } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
   runGroupExpansionOverrides$,
@@ -269,8 +275,11 @@ import {
   renameChatThread$,
   type EnrichedChatMessage,
   type GroupedChatMessageGroup,
-  type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
+import type {
+  ChatInputMessage,
+  ChatMessage,
+} from "../../signals/chat-page/chat-message-types.ts";
 import type {
   ChatThreadSignals,
   QueuedChatMessageItem,
@@ -339,8 +348,50 @@ import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
 type RecommendedFollowup = NonNullable<
-  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+  ChatFollowupsEvent["recommendedFollowups"]
 >[number];
+
+function isInputChatEvent(message: ChatMessage): message is ChatInputMessage {
+  return (
+    message.eventType === "input.prompt" ||
+    message.eventType === "input.rejected"
+  );
+}
+
+function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
+  return isInputChatEvent(message) ? message : undefined;
+}
+
+function visibleStructuredPrompt(
+  inputMessage: ChatInputMessage | undefined,
+  structuredPromptEnabled: boolean,
+): UserMessageDocument | undefined {
+  return inputMessage &&
+    shouldUseStructuredPrompt(
+      structuredPromptEnabled,
+      inputMessage.structuredPrompt,
+    )
+    ? inputMessage.structuredPrompt
+    : undefined;
+}
+
+function chatEventAttachments(message: ChatMessage) {
+  return isInputChatEvent(message) || message.eventType === "run.completed"
+    ? message.attachFiles
+    : undefined;
+}
+
+function chatEventError(message: ChatMessage): string | undefined {
+  if (
+    message.eventType === "input.rejected" ||
+    message.eventType === "output.error" ||
+    message.eventType === "run.failed" ||
+    message.eventType === "run.cancelled"
+  ) {
+    return message.error;
+  }
+  return undefined;
+}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
@@ -3020,14 +3071,15 @@ function groupMessagesByRole(
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const message of messages) {
+    const role = chatEventCompatibilityRole(message.eventType);
     const last = groups[groups.length - 1];
-    if (last && last.role === message.role) {
+    if (last && last.role === role) {
       last.messages.push(message);
       continue;
     }
     groups.push({
       beginMessageId: message.id,
-      role: message.role,
+      role,
       messages: [message],
     });
   }
@@ -3052,18 +3104,25 @@ function groupMessagesForCompletedWorkDisplay(
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const message of messages) {
+    const role = chatEventCompatibilityRole(message.eventType);
     const forceStandalone = foldFinalMessageIds.has(message.id);
     const last = groups[groups.length - 1];
     const lastHasFoldFinal =
       last?.messages.some((candidate) => {
         return foldFinalMessageIds.has(candidate.id);
       }) ?? false;
+    const lastFoldFinal = last?.messages.find((candidate) => {
+      return foldFinalMessageIds.has(candidate.id);
+    });
+    const continuesFoldFinalRun =
+      lastFoldFinal?.runId !== undefined &&
+      lastFoldFinal.runId === message.runId;
 
     if (
       !forceStandalone &&
       last &&
-      last.role === message.role &&
-      !lastHasFoldFinal
+      last.role === role &&
+      (!lastHasFoldFinal || continuesFoldFinalRun)
     ) {
       last.messages.push(message);
       continue;
@@ -3071,7 +3130,7 @@ function groupMessagesForCompletedWorkDisplay(
 
     groups.push({
       beginMessageId: message.id,
-      role: message.role,
+      role,
       messages: [message],
     });
   }
@@ -3089,36 +3148,22 @@ function firstRunIdForMessages(
 function usageByRunIdFromGroups(
   groups: readonly GroupedChatMessageGroup[],
 ): Map<string, ChatMessageUsagePayload> {
-  const usageByRunId = new Map<string, ChatMessageUsagePayload>();
-  for (const group of groups) {
-    if (group.role !== "assistant" || group.usage === undefined) {
-      continue;
-    }
-    const runId = firstRunIdForMessages(group.messages);
-    if (runId !== undefined) {
-      setLatestUsageForRun(usageByRunId, runId, group.usage);
-    }
-  }
-  return usageByRunId;
-}
-
-function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
-  const timestamp = Date.parse(usage.settledAt);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
-function setLatestUsageForRun(
-  usageByRunId: Map<string, ChatMessageUsagePayload>,
-  runId: string,
-  usage: ChatMessageUsagePayload,
-): void {
-  const existing = usageByRunId.get(runId);
-  if (
-    existing === undefined ||
-    usageSettledAtMs(usage) >= usageSettledAtMs(existing)
-  ) {
-    usageByRunId.set(runId, usage);
-  }
+  return foldLatestChatUsageByRunId(
+    groups.flatMap((group) => {
+      const runId = firstRunIdForMessages(group.messages);
+      return group.role === "assistant" &&
+        group.usage !== undefined &&
+        runId !== undefined
+        ? [
+            {
+              eventType: "usage.recorded" as const,
+              runId,
+              usage: group.usage,
+            },
+          ]
+        : [];
+    }),
+  );
 }
 
 function attachUsageToCompletedWorkGroups(
@@ -3137,21 +3182,24 @@ function attachUsageToCompletedWorkGroups(
 
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
-    message.role === "assistant" &&
+    chatEventCompatibilityRole(message.eventType) === "assistant" &&
     (Boolean(message.content) ||
-      Boolean(message.error) ||
+      Boolean(chatEventError(message)) ||
       message.blocks.length > 0 ||
-      (message.runLifecycleEvent === undefined &&
-        Boolean(message.attachFiles?.length)))
+      Boolean(chatEventAttachments(message)?.length))
+  );
+}
+
+function isPrimaryAssistantResult(message: EnrichedChatMessage): boolean {
+  return (
+    (message.eventType !== "run.completed" || Boolean(message.content)) &&
+    isRenderableAssistantMessage(message)
   );
 }
 
 function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
-    message.role === "assistant" &&
-    message.content === null &&
-    message.error === undefined &&
-    typeof message.thinking === "string" &&
+    message.eventType === "output.thinking" &&
     message.thinking.trim().length > 0
   );
 }
@@ -3159,20 +3207,7 @@ function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
 function terminatedRunIdsForCompletedWork(
   messages: readonly EnrichedChatMessage[],
 ): Set<string> {
-  const terminatedRunIds = new Set<string>();
-  for (const message of messages) {
-    if (message.interruptsRunId !== undefined) {
-      terminatedRunIds.add(message.interruptsRunId);
-    }
-    if (
-      message.role === "assistant" &&
-      message.runId !== undefined &&
-      message.runLifecycleEvent !== undefined
-    ) {
-      terminatedRunIds.add(message.runId);
-    }
-  }
-  return terminatedRunIds;
+  return terminatedChatRunIds(messages);
 }
 
 function buildCompletedWorkFolding(
@@ -3200,10 +3235,7 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
-    if (
-      !terminatedRunIds.has(runId) ||
-      runMessages.some(isCancelledAssistantMessage)
-    ) {
+    if (!terminatedRunIds.has(runId) || runMessages.some(isCancelledRunEvent)) {
       visibleMessages.push(...runMessages);
       index = endIndex;
       continue;
@@ -3211,9 +3243,17 @@ function buildCompletedWorkFolding(
 
     let finalMessageIndex = -1;
     for (let offset = runMessages.length - 1; offset >= 0; offset--) {
-      if (isRenderableAssistantMessage(runMessages[offset]!)) {
+      if (isPrimaryAssistantResult(runMessages[offset]!)) {
         finalMessageIndex = offset;
         break;
+      }
+    }
+    if (finalMessageIndex < 0) {
+      for (let offset = runMessages.length - 1; offset >= 0; offset--) {
+        if (isRenderableAssistantMessage(runMessages[offset]!)) {
+          finalMessageIndex = offset;
+          break;
+        }
       }
     }
     const finalMessage =
@@ -3222,15 +3262,21 @@ function buildCompletedWorkFolding(
       finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
     const hiddenMessages = precedingMessages.filter((message) => {
       return (
-        message.role !== "user" && !isThinkingOnlyAssistantMessage(message)
+        chatEventCompatibilityRole(message.eventType) !== "user" &&
+        !isThinkingOnlyAssistantMessage(message)
       );
     });
     const trailingMessages =
       finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
     const trailingMessagesAreMarkers = trailingMessages.every((message) => {
       return (
-        message.role === "assistant" && !isRenderableAssistantMessage(message)
+        chatEventCompatibilityRole(message.eventType) === "assistant" &&
+        (!isRenderableAssistantMessage(message) ||
+          message.eventType === "run.completed")
       );
+    });
+    const visibleTrailingMessages = trailingMessages.filter((message) => {
+      return isRenderableAssistantMessage(message);
     });
     if (
       finalMessage !== undefined &&
@@ -3239,9 +3285,10 @@ function buildCompletedWorkFolding(
     ) {
       visibleMessages.push(
         ...precedingMessages.filter((message) => {
-          return message.role === "user";
+          return chatEventCompatibilityRole(message.eventType) === "user";
         }),
         finalMessage,
+        ...visibleTrailingMessages,
       );
       folds.push({
         key: `${runId}:${finalMessage.id}`,
@@ -3385,7 +3432,7 @@ function runGroupFoldSourceLabel(
     return workflowLabel;
   }
   for (const message of messages) {
-    if (message.role !== "user") {
+    if (!isInputChatEvent(message)) {
       continue;
     }
     const content = shouldUseStructuredPrompt(
@@ -3435,9 +3482,9 @@ function goalUserMessageBrief(message: EnrichedChatMessage): string | null {
 
 function isGoalUserMessage(
   message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
+): message is EnrichedChatMessage & ChatInputMessage {
   return (
-    message.role === "user" &&
+    isInputChatEvent(message) &&
     message.isGoalRun === true &&
     !hasWorkflowMessageMetadata(message) &&
     goalUserMessageBrief(message) !== null
@@ -6155,8 +6202,8 @@ function PagedUserGroup({
 
 function isWorkflowUserMessage(
   message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
-  return message.role === "user" && hasWorkflowMessageMetadata(message);
+): message is EnrichedChatMessage & ChatInputMessage {
+  return isInputChatEvent(message) && hasWorkflowMessageMetadata(message);
 }
 
 function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
@@ -6184,7 +6231,7 @@ function workflowMessageBrief(
 }
 
 function workflowMessageBody(
-  message: EnrichedChatMessage & { role: "user" },
+  message: EnrichedChatMessage & ChatInputMessage,
 ): string {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
@@ -6210,10 +6257,9 @@ function resolveAttachments(
   message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
 ): ResolvedMessageAttachment[] {
+  const eventAttachments = chatEventAttachments(message);
   const source =
-    message.attachFiles && message.attachFiles.length > 0
-      ? message.attachFiles
-      : parsed;
+    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
     const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
@@ -6247,13 +6293,12 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function clipboardAttachmentsFromMessage(
-  message: EnrichedChatMessage,
+  message: ChatMessage,
   parsed: { filename: string; url: string }[],
 ): ChatClipboardAttachment[] {
+  const eventAttachments = chatEventAttachments(message);
   const source =
-    message.attachFiles && message.attachFiles.length > 0
-      ? message.attachFiles
-      : parsed;
+    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
@@ -7011,7 +7056,7 @@ function StructuredUserMessageContent({
 function WorkflowUserMessage({
   message,
 }: {
-  message: EnrichedChatMessage & { role: "user" };
+  message: EnrichedChatMessage & ChatInputMessage;
 }) {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
@@ -7071,7 +7116,7 @@ function GoalUserMessage({
   bodyBlocks,
   openLightbox,
 }: {
-  message: EnrichedChatMessage & { role: "user" };
+  message: EnrichedChatMessage & ChatInputMessage;
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
 }) {
@@ -7123,20 +7168,21 @@ function PagedUserMessage({
   const featureSwitches = useGet(featureSwitch$);
   const structuredPromptEnabled =
     featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
-  const structuredPrompt =
-    message.role === "user" &&
-    shouldUseStructuredPrompt(structuredPromptEnabled, message.structuredPrompt)
-      ? message.structuredPrompt
-      : undefined;
+  const inputMessage = asInputChatEvent(message);
+  const structuredPrompt = visibleStructuredPrompt(
+    inputMessage,
+    structuredPromptEnabled,
+  );
   const content = message.content ?? "";
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
+  const attachFiles = inputMessage?.attachFiles;
   const legacyCopyText =
-    message.attachFiles &&
-    message.attachFiles.length > 0 &&
+    attachFiles &&
+    attachFiles.length > 0 &&
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
@@ -7211,13 +7257,13 @@ function PagedUserMessage({
             <StructuredUserMessageContent
               document={structuredPrompt}
               attachments={allAttachments}
-              referenceAttachments={message.attachFiles ?? []}
+              referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
             />
           ) : (
             <>
               <UserMessageGenerationTemplate
-                generationTemplate={message.generationTemplate}
+                generationTemplate={inputMessage?.generationTemplate}
               />
               <UserMessageAttachments
                 attachments={allAttachments}
@@ -7352,7 +7398,8 @@ function PagedAssistantMessageItem({
   };
   const attachments = resolveAttachments(message, []);
 
-  if (message.error) {
+  const error = chatEventError(message);
+  if (error) {
     return (
       <div
         className={cn(
@@ -7360,7 +7407,7 @@ function PagedAssistantMessageItem({
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        <AssistantErrorContent error={message.error} />
+        <AssistantErrorContent error={error} />
       </div>
     );
   }
