@@ -3,7 +3,7 @@ import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -1234,7 +1234,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
 });
 
 describe("INT-01: Slack app deep webhook flows", () => {
-  it("retries canonical inputs safely across concurrent historical reads", async () => {
+  it("keeps failed canonical inputs inert across historical reads", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -1295,76 +1295,63 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected historical Slack route to own a chat thread");
     }
     context.mocks.slack.fetchFile.mockClear();
-
-    const firstFetchStarted = createDeferredPromise<void>(context.signal);
-    const secondFetchStarted = createDeferredPromise<void>(context.signal);
-    const releaseFirstFetch = createDeferredPromise<void>(context.signal);
-    const releaseStaleFailure = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      for (const deferred of [releaseFirstFetch, releaseStaleFailure]) {
-        if (!deferred.settled()) {
-          deferred.resolve(undefined);
-        }
-      }
-    });
-    let fetchAttempt = 0;
-    context.mocks.slack.fetchFile.mockImplementation(async () => {
-      fetchAttempt += 1;
-      if (fetchAttempt === 1) {
-        firstFetchStarted.resolve(undefined);
-        await releaseFirstFetch.promise;
-        return new Response(fileBody, {
-          headers: { "Content-Type": "text/plain" },
-        });
-      }
-      if (fetchAttempt === 2) {
-        secondFetchStarted.resolve(undefined);
-        await releaseStaleFailure.promise;
-        throw new Error("stale concurrent Slack fetch failed");
-      }
-      throw new Error("Unexpected additional Slack file fetch");
-    });
-    const firstRead = chat.listThreadMessages(actor, chatThreadId);
-    await firstFetchStarted.promise;
-    const secondRead = chat.listThreadMessages(actor, chatThreadId);
-    await secondFetchStarted.promise;
-
-    releaseFirstFetch.resolve(undefined);
-    const firstMessages = (await firstRead).messages;
-    const assetId = requireCanonicalSlackInputAssetId(firstMessages);
-    expect(firstMessages).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          attachFiles: [
-            expect.objectContaining({
-              assetRef: expect.objectContaining({
-                id: assetId,
-                materialization: { status: "ready" },
-              }),
-            }),
-          ],
-        }),
-      ]),
+    context.mocks.slack.fetchFile.mockRejectedValue(
+      new Error("historical reads must not fetch Slack files"),
     );
 
-    releaseStaleFailure.resolve(undefined);
-    const secondMessages = (await secondRead).messages;
-    expect(requireCanonicalSlackInputAssetId(secondMessages)).toBe(assetId);
-    expect(secondMessages).toStrictEqual(
-      expect.arrayContaining([
+    const listedMessages = (await chat.listThreadMessages(actor, chatThreadId))
+      .messages;
+    const assetId = requireCanonicalSlackInputAssetId(listedMessages);
+    const listedMessage = listedMessages.find((message) => {
+      return message.attachFiles?.some((file) => {
+        return file.assetRef?.id === assetId;
+      });
+    });
+    expect(listedMessage).toMatchObject({
+      attachFiles: [
         expect.objectContaining({
-          attachFiles: [
-            expect.objectContaining({
-              assetRef: expect.objectContaining({
-                id: assetId,
-                materialization: { status: "ready" },
-              }),
-            }),
-          ],
+          assetRef: expect.objectContaining({
+            id: assetId,
+            materialization: {
+              status: "failed",
+              error: {
+                code: "import-failed",
+                message: "initial canonical Slack fetch failed",
+                retryable: true,
+              },
+            },
+          }),
         }),
-      ]),
+      ],
+    });
+    if (!listedMessage) {
+      throw new Error("Expected a canonical Slack input message");
+    }
+
+    const fetchedMessage = await chat.getThreadMessage(
+      actor,
+      chatThreadId,
+      listedMessage.id,
     );
-    expect(context.mocks.slack.fetchFile).toHaveBeenCalledTimes(2);
+    expect(fetchedMessage).toMatchObject({
+      id: listedMessage.id,
+      attachFiles: [
+        expect.objectContaining({
+          assetRef: expect.objectContaining({
+            id: assetId,
+            materialization: {
+              status: "failed",
+              error: {
+                code: "import-failed",
+                message: "initial canonical Slack fetch failed",
+                retryable: true,
+              },
+            },
+          }),
+        }),
+      ],
+    });
+    expect(context.mocks.slack.fetchFile).not.toHaveBeenCalled();
   });
 
   it("promotes legacy routes and keeps current and previous readers retry-safe", async () => {

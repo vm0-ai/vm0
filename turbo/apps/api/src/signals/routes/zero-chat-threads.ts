@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { computed } from "ccstate";
 import {
   chatSearchContract,
   chatThreadByIdContract,
@@ -35,7 +35,6 @@ import {
   getChatThreadSnapshot,
 } from "../services/zero-chat-thread-event.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { materializeHistoricalCanonicalSlackAssets$ } from "../services/canonical-asset.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
@@ -147,116 +146,52 @@ const listChatThreadActiveIdsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { threadIds: [...threadIds] } };
 });
 
-const listChatThreadMessagesInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const params = get(pathParamsOf(chatThreadMessagesContract.list));
-    const query = get(queryOf(chatThreadMessagesContract.list));
+const listChatThreadMessagesInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadMessagesContract.list));
+  const query = get(queryOf(chatThreadMessagesContract.list));
 
-    let page = await get(
-      zeroChatThreadMessagesPage({
-        threadId: params.threadId,
-        userId: auth.userId,
-        sinceSeqId: query.sinceSeqId,
-        beforeSeqId: query.beforeSeqId,
-        sinceId: query.sinceId,
-        beforeId: query.beforeId,
-        limit: query.limit,
-      }),
-    );
-    signal.throwIfAborted();
-    if (!page) {
-      return chatThreadNotFound();
-    }
-    const materialized = auth.orgId
-      ? await set(
-          materializeHistoricalCanonicalSlackAssets$,
-          {
-            orgId: auth.orgId,
-            userId: auth.userId,
-            chatThreadId: params.threadId,
-            messageIds: page.messages.map((message) => {
-              return message.id;
-            }),
-          },
-          signal,
-        )
-      : false;
-    signal.throwIfAborted();
-    if (materialized) {
-      page = await get(
-        zeroChatThreadMessagesPage({
-          threadId: params.threadId,
-          userId: auth.userId,
-          sinceSeqId: query.sinceSeqId,
-          beforeSeqId: query.beforeSeqId,
-          sinceId: query.sinceId,
-          beforeId: query.beforeId,
-          limit: query.limit,
-        }),
-      );
-      signal.throwIfAborted();
-      if (!page) {
-        return chatThreadNotFound();
-      }
-    }
+  const page = await get(
+    zeroChatThreadMessagesPage({
+      threadId: params.threadId,
+      userId: auth.userId,
+      sinceSeqId: query.sinceSeqId,
+      beforeSeqId: query.beforeSeqId,
+      sinceId: query.sinceId,
+      beforeId: query.beforeId,
+      limit: query.limit,
+    }),
+  );
+  if (!page) {
+    return chatThreadNotFound();
+  }
 
-    return {
-      status: 200 as const,
-      body: {
-        messages: [...page.messages],
-        hasHistoryBefore: page.hasHistoryBefore,
-      },
-    };
-  },
-);
+  return {
+    status: 200 as const,
+    body: {
+      messages: [...page.messages],
+      hasHistoryBefore: page.hasHistoryBefore,
+    },
+  };
+});
 
-const getChatThreadMessageInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const params = get(pathParamsOf(chatThreadMessagesContract.get));
+const getChatThreadMessageInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadMessagesContract.get));
 
-    let message = await get(
-      zeroChatThreadMessageById({
-        threadId: params.threadId,
-        userId: auth.userId,
-        messageId: params.messageId,
-      }),
-    );
-    signal.throwIfAborted();
-    if (!message) {
-      return chatThreadNotFound();
-    }
-    const materialized = auth.orgId
-      ? await set(
-          materializeHistoricalCanonicalSlackAssets$,
-          {
-            orgId: auth.orgId,
-            userId: auth.userId,
-            chatThreadId: params.threadId,
-            messageIds: [params.messageId],
-          },
-          signal,
-        )
-      : false;
-    signal.throwIfAborted();
-    if (materialized) {
-      message = await get(
-        zeroChatThreadMessageById({
-          threadId: params.threadId,
-          userId: auth.userId,
-          messageId: params.messageId,
-        }),
-      );
-      signal.throwIfAborted();
-      if (!message) {
-        return chatThreadNotFound();
-      }
-    }
+  const message = await get(
+    zeroChatThreadMessageById({
+      threadId: params.threadId,
+      userId: auth.userId,
+      messageId: params.messageId,
+    }),
+  );
+  if (!message) {
+    return chatThreadNotFound();
+  }
 
-    return { status: 200 as const, body: message };
-  },
-);
+  return { status: 200 as const, body: message };
+});
 
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
