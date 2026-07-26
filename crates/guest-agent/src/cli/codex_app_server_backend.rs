@@ -25,8 +25,8 @@ use super::codex_app_server_events::{
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
-    LOG_TAG, ParsedEventAction, command,
+    CODEX_ANALYTICS_DISABLED_CONFIG, CliEventIngestor, CliExecutionResult, CliRuntimeConfig,
+    HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
@@ -363,13 +363,15 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
     };
     let codex_home = PathBuf::from(runtime.codex_home());
     let child_user_env = runtime.child_user_env();
+    let mut config_overrides = runtime.codex_startup_config_overrides();
+    config_overrides.push(CODEX_ANALYTICS_DISABLED_CONFIG.to_string());
     let mut config = CodexAppServerConfig::new(binary, codex_home)
         .with_child_env(
             runtime.home_dir.as_ref(),
             child_user_env.as_ref(),
             runtime.api_url.as_ref(),
         )
-        .with_config_overrides(runtime.codex_startup_config_overrides())
+        .with_config_overrides(config_overrides)
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
     if runtime.use_mock_codex
