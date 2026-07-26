@@ -59,7 +59,6 @@ async function loadCanonicalSlackThreadStatusBinding(
         eq(slackChatThreadRoutes.chatThreadId, target.chatThreadId),
         eq(slackChatThreadRoutes.channelId, target.channelId),
         eq(slackChatThreadRoutes.threadTs, target.threadTs),
-        eq(slackChatThreadRoutes.backend, "canonical"),
         eq(slackOrgConnections.vm0UserId, slackChatThreadRoutes.userId),
       ),
     )
@@ -90,7 +89,6 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
         eq(slackOrgConnections.slackWorkspaceId, workspaceId),
         eq(slackChatThreadRoutes.channelId, target.channelId),
         eq(slackChatThreadRoutes.threadTs, target.threadTs),
-        eq(slackChatThreadRoutes.backend, "canonical"),
         isNotNull(slackChatThreadRoutes.chatThreadId),
       ),
     );
@@ -185,7 +183,6 @@ export async function canonicalSlackThreadStatusTargetForIngress(
     .where(
       and(
         eq(slackChatIngress.id, ingressId),
-        eq(slackChatThreadRoutes.backend, "canonical"),
         isNotNull(slackChatThreadRoutes.chatThreadId),
       ),
     )
