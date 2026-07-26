@@ -1,4 +1,4 @@
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import { buildConnectorOpenIdAuthAuthorizationUrlWithMethod } from "@vm0/connectors/auth-providers";
 import type { AuthUrlResult } from "@vm0/connectors/auth-providers/provider-flow-types";
 

@@ -2302,6 +2302,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     | ReturnType<typeof projectStructuredUserMessage>
     | undefined;
   readonly websiteTemplateV2Enabled: boolean;
+  readonly imageStyleR2Enabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -2313,6 +2314,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
           ? args.structuredProjection.generationTemplate
           : args.input.queuedMessage.generationTemplate,
         websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
+        imageStyleR2Enabled: args.imageStyleR2Enabled,
       });
     },
   );
@@ -2385,6 +2387,10 @@ async function buildCreateQueuedChatRunInput(
       structuredProjection,
       websiteTemplateV2Enabled: isFeatureEnabled(
         FeatureSwitchKey.WebsiteTemplateV2,
+        featureSwitchContext,
+      ),
+      imageStyleR2Enabled: isFeatureEnabled(
+        FeatureSwitchKey.ImageStyleR2,
         featureSwitchContext,
       ),
     });

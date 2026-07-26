@@ -460,6 +460,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ImageStyleR2]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
+    enabled: false,
+  },
   [FeatureSwitchKey.PlanUpgradeGuidance]: {
     maintainer: "ethan@vm0.ai",
     description:

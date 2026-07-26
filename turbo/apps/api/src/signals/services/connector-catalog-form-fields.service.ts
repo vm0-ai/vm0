@@ -5,12 +5,10 @@ import type {
   ConnectorDeviceAuthStartOptions,
   ConnectorDeviceAuthStartOptionsConfig,
   ConnectorManualGrantFieldConfig,
-  ConnectorType,
-} from "@vm0/connectors/connectors";
-import {
-  getConnectorAuthMethod,
-  parseConnectorDeviceAuthStartOptionsConfig,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-config";
+import { parseConnectorDeviceAuthStartOptionsConfig } from "@vm0/connectors/connector-auth-method";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 
 interface PublicManualGrantFieldDescriptor {
   readonly publicId: string;

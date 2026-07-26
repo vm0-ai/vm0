@@ -35,7 +35,7 @@ import {
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import type {
   ConnectorServerFirewallExecutionMetadata,

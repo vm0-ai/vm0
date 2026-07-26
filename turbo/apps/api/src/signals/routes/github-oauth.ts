@@ -8,7 +8,7 @@ import {
   resolveConnectorAuthClient,
   isStaticConfidentialConnectorAuthClient,
   type StaticConfidentialConnectorAuthClient,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import { exchangeConnectorAuthCodeWithMethod } from "@vm0/connectors/auth-providers";
 import {
   exchangeGitHubCode,

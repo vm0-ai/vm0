@@ -7,6 +7,7 @@ interface StyledImageCompilationOptions {
   readonly prompt: string;
   readonly details: readonly string[];
   readonly style: RegistryEntry;
+  readonly sourceMode: "github" | "r2";
 }
 
 interface StyledImageCompilationPacket {
@@ -35,14 +36,27 @@ interface StyledImageCompilationPacket {
   readonly instructions: string;
 }
 
-function formatStyleSource(source: RegistryEntry["source"]): readonly string[] {
-  if ("repo" in source) {
+function formatStyleSource(
+  style: RegistryEntry,
+  sourceMode: StyledImageCompilationOptions["sourceMode"],
+): readonly string[] {
+  const source = style.source;
+  if (sourceMode === "github" && source.repo && source.ref) {
     return [
       `- Repository: \`${source.repo}@${source.ref}\``,
       `- Path: \`${source.path}\``,
     ];
   }
-  return [`- Path: \`${source.path}\``];
+  if (sourceMode === "r2" && source.archive) {
+    return [
+      `- Registry resource: \`${style.id}\``,
+      `- Pull command: \`zero resource pull ${style.id} --dir ./generated/resources\``,
+      `- Path after pull: \`./generated/resources/${source.path}\``,
+    ];
+  }
+  throw new Error(
+    `Image style ${style.id} does not support ${sourceMode} source resolution`,
+  );
 }
 
 const outputDir = "./generated/images";
@@ -72,6 +86,10 @@ export function createStyledImageCompilationPacket(
     previewKind: "image",
     outputDir,
   } as const;
+  const sourceResolutionRule =
+    options.sourceMode === "r2"
+      ? "Run the listed `zero resource pull` command once, then read the extracted style package before compiling."
+      : "Read the selected GitHub style source before compiling.";
   const instructions = [
     `# Zero generate image prompt compile ${options.style.id}`,
     "",
@@ -86,9 +104,10 @@ export function createStyledImageCompilationPacket(
     `- ${options.style.description}`,
     "",
     "## Style Source",
-    ...formatStyleSource(options.style.source),
+    ...formatStyleSource(options.style, options.sourceMode),
     "",
     "## Prompt Compiler Task",
+    `- ${sourceResolutionRule}`,
     "- Read the selected style source before compiling, especially `SKILL.md`, references, examples, and templates. If unavailable, stop without generating.",
     "- Rewrite the user prompt into one final image-generation prompt that obeys the selected style.",
     "- Include style-specific composition, medium, palette, subject handling, reference usage, and must-avoid constraints in the final prompt.",
