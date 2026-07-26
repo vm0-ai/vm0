@@ -11,11 +11,7 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
-import {
-  getSeedSkillNames,
-  GOAL_SKILL_NAME,
-  SEED_SKILLS,
-} from "@vm0/core/zero-seed-skills";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
@@ -688,7 +684,7 @@ async function devSeed() {
   }
   writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
 
-  // --- skills (seed skills + common connectors, including system volumes) ---
+  // --- skills (published volumes + seed-skill metadata fallback) ---
   const seedSkillVolumes = getDevSeedSkillVolumes();
   writeLine("Seeding official skill volumes");
   const seededVolumeCount = await seedOfficialSkillVolumes(
@@ -703,7 +699,7 @@ async function devSeed() {
     }),
   );
   const fallbackSkillValues = buildSeedSkillValues(
-    getSeedSkillNames().filter((name) => {
+    SEED_SKILLS.filter((name) => {
       const fullPath = resolveSkillRef(name).replace("https://github.com/", "");
       return !seededVolumeStorageNames.has(getSkillStorageName(fullPath));
     }),
