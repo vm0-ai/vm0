@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.326.0](https://github.com/vm0-ai/vm0/compare/api-v1.325.0...api-v1.326.0) (2026-07-26)
+
+
+### Features
+
+* prune compacted claude session history ([#23081](https://github.com/vm0-ai/vm0/issues/23081)) ([671dc1c](https://github.com/vm0-ai/vm0/commit/671dc1c3a1ffe14b3be6d7079afd6f2cc24f14b0))
+
+
+### Bug Fixes
+
+* **api:** persist thread session binding telemetry ([#23121](https://github.com/vm0-ai/vm0/issues/23121)) ([c0bfeef](https://github.com/vm0-ai/vm0/commit/c0bfeef2934bfc3cc59f9fd3c1da4e762f31702c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.1
+    * @vm0/connectors bumped to 1.193.0
+    * @vm0/core bumped to 8.469.0
+    * @vm0/db bumped to 1.142.1
+
 ## [1.325.0](https://github.com/vm0-ai/vm0/compare/api-v1.324.2...api-v1.325.0) (2026-07-26)
 
 
