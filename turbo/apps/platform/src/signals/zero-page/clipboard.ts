@@ -135,6 +135,30 @@ async function writeClipboardItem(items: Record<string, Blob>): Promise<void> {
   await navigator.clipboard.write([new ClipboardItem(items)]);
 }
 
+function writeRichClipboardFallback(plainText: string, html: string): boolean {
+  let copied = false;
+  const handleCopy = (event: ClipboardEvent) => {
+    if (!event.clipboardData) {
+      return;
+    }
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", plainText);
+    event.clipboardData.setData("text/html", html);
+    copied = true;
+  };
+  document.addEventListener("copy", handleCopy, { once: true });
+  // eslint-disable-next-line no-restricted-syntax -- rich clipboard fallback requires compatibility recovery around the legacy API
+  try {
+    document.execCommand("copy");
+  } catch (error: unknown) {
+    throwIfAbort(error);
+    return false;
+  } finally {
+    document.removeEventListener("copy", handleCopy);
+  }
+  return copied;
+}
+
 /**
  * Write text to the clipboard with a legacy fallback.
  *
@@ -176,15 +200,17 @@ export async function writeChatMessageToClipboard(
   payload: ChatClipboardPayload,
 ): Promise<boolean> {
   const plainText = formatPlainText(payload);
-  if (
-    (payload.attachments.length === 0 && !payload.structuredPrompt) ||
-    typeof ClipboardItem === "undefined" ||
-    !navigator.clipboard?.write
-  ) {
+  if (payload.attachments.length === 0 && !payload.structuredPrompt) {
     return await writeToClipboard(plainText);
   }
 
   const html = formatMessageHtml(payload);
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+    if (writeRichClipboardFallback(plainText, html)) {
+      return true;
+    }
+    return await writeToClipboard(plainText);
+  }
   const baseItems: Record<string, Blob> = {
     "text/plain": new Blob([plainText], { type: "text/plain" }),
     "text/html": new Blob([html], { type: "text/html" }),
@@ -196,6 +222,9 @@ export async function writeChatMessageToClipboard(
     return true;
   } catch (error: unknown) {
     throwIfAbort(error);
+    if (writeRichClipboardFallback(plainText, html)) {
+      return true;
+    }
     return await writeToClipboard(plainText);
   }
 }

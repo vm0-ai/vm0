@@ -1517,6 +1517,81 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("preserves structured feedback when the browser rejects the modern clipboard API", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    clipboard.rejectWith(
+      new DOMException("Clipboard blocked", "NotAllowedError"),
+    );
+    const fallbackClipboard = context.mocks.browser.clipboardExecCommand();
+    const threadId = "structured-feedback-copy-fallback";
+    const structuredPrompt = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs an owner",
+          note: "Name the owner",
+        },
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs dates",
+          note: "Add the milestones",
+        },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-structured-feedback-copy-fallback",
+          role: "user",
+          content: "stale legacy feedback",
+          structuredPrompt,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await screen.findByText("The release plan needs an owner");
+    click(screen.getByLabelText("Copy message"));
+
+    await waitFor(() => {
+      expect(fallbackClipboard.writes).toHaveLength(1);
+    });
+    const copied = fallbackClipboard.writes[0];
+    if (!copied) {
+      throw new Error("Fallback clipboard write not found");
+    }
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: (type: string) => {
+          return copied[type] ?? "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      const feedbackItems = composer.querySelectorAll("[data-feedback-item]");
+      expect(feedbackItems).toHaveLength(2);
+      expect(feedbackItems[0]).toHaveTextContent(
+        "The release plan needs an owner",
+      );
+      expect(feedbackItems[0]).toHaveTextContent("Name the owner");
+      expect(feedbackItems[1]).toHaveTextContent(
+        "The release plan needs dates",
+      );
+      expect(feedbackItems[1]).toHaveTextContent("Add the milestones");
+    });
+  });
+
   it("does not restore a copied structured template when the switch is off", async () => {
     const threadId = "structured-template-paste-disabled";
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
