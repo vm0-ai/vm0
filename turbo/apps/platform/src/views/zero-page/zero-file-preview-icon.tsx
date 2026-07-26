@@ -1,6 +1,7 @@
 const SPREADSHEET_FILE_RE =
   /\.(csv|tsv|xls|xlsx|xlsm|xlsb|xltx|xltm|ods|numbers|parquet)$/i;
 const DATABASE_FILE_RE = /\.(sqlite|sqlite3|db)$/i;
+const PRESENTATION_FILE_RE = /\.(ppt|pptx|pptm|potx|potm|ppsx|ppsm|odp|key)$/i;
 const ARCHIVE_FILE_RE = /\.(zip|rar|7z|tar|gz|tgz|bz2|xz)$/i;
 const ARTWORK_FILE_RE = /\.(psd|ai|eps)$/i;
 const DOCUMENT_FILE_RE = /\.(doc|docx|docm|dotx|dotm|odt|rtf|pages|epub)$/i;
@@ -14,6 +15,8 @@ const VIDEO_FILE_RE = /\.(mp4|webm|mov|ogv)$/i;
 const SPREADSHEET_EXTENSION_RE =
   /^(CSV|TSV|XLS|XLSX|XLSM|XLSB|XLTX|XLTM|ODS|NUMBERS|PARQUET)$/;
 const DATABASE_EXTENSION_RE = /^(SQLITE|SQLITE3|DB)$/;
+const PRESENTATION_EXTENSION_RE =
+  /^(PPT|PPTX|PPTM|POTX|POTM|PPSX|PPSM|ODP|KEY)$/;
 const ARCHIVE_EXTENSION_RE = /^(ZIP|RAR|7Z|TAR|GZ|TGZ|BZ2|XZ)$/;
 const ARTWORK_EXTENSION_RE = /^(PSD|AI|EPS)$/;
 const DOCUMENT_EXTENSION_RE = /^(DOC|DOCX|DOCM|DOTX|DOTM|ODT|RTF|PAGES|EPUB)$/;
@@ -83,6 +86,18 @@ function isDatabasePreviewFile(
   );
 }
 
+function isPresentationPreviewFile(
+  lowerFilename: string,
+  lowerContentType: string,
+) {
+  return matchesFilePreviewType(
+    lowerFilename,
+    lowerContentType,
+    PRESENTATION_FILE_RE,
+    ["presentation", "powerpoint", "keynote"],
+  );
+}
+
 function isArchivePreviewFile(lowerFilename: string, lowerContentType: string) {
   return matchesFilePreviewType(
     lowerFilename,
@@ -106,6 +121,10 @@ export function getFilePreviewAccentClass(
     return "from-teal-500/15 via-emerald-500/10 to-background";
   }
 
+  if (isPresentationPreviewFile(lower, type)) {
+    return "from-blue-500/15 via-cyan-500/10 to-background";
+  }
+
   if (isArchivePreviewFile(lower, type)) {
     return "from-amber-500/15 via-orange-500/10 to-background";
   }
@@ -120,6 +139,10 @@ function filePreviewExtension(filename: string): string {
 
 function spreadsheetFilePreviewLabel(ext: string) {
   return ext ? ext.slice(0, 4) : "XLS";
+}
+
+function presentationFilePreviewLabel(ext: string) {
+  return ext ? ext.slice(0, 4) : "PPT";
 }
 
 function archiveFilePreviewLabel(ext: string) {
@@ -188,6 +211,16 @@ function getStructuredFilePreviewIconMeta(
 
   if (DATABASE_EXTENSION_RE.test(ext) || isDatabasePreviewFile(lower, type)) {
     return { label: "DB", bandClassName: "bg-[#0F766E]" };
+  }
+
+  if (
+    PRESENTATION_EXTENSION_RE.test(ext) ||
+    isPresentationPreviewFile(lower, type)
+  ) {
+    return {
+      label: presentationFilePreviewLabel(ext),
+      bandClassName: "bg-[#2563EB]",
+    };
   }
 
   if (ARCHIVE_EXTENSION_RE.test(ext) || isArchivePreviewFile(lower, type)) {
