@@ -325,6 +325,44 @@ async function cleanupSandboxes(): Promise<void> {
   expect(response.status).toBe(200);
 }
 
+/**
+ * Product-visible proof that the stale sweep admitted nothing on this thread
+ * while a request is still blocked on the org admission lock.
+ *
+ * The sweep runs inline in the cron request, so `cleanupSandboxes()` returning
+ * at all already shows it never reached that lock — any attempt would block on
+ * the hold this test owns. This asserts the outcome half through the queue API:
+ * the pending events are exactly the ones queued before the sweep, nothing is
+ * running, and no queued item was drained into a run.
+ *
+ * Deliberately not asserted through `admissionLock.waiterCount()`: that counter
+ * is a cluster-wide `pg_locks` observation of one `hashtext(orgId)` key shared
+ * by several admission paths, and it never decreases while the lock is held, so
+ * any unrelated arrival is permanent. It is a sound lower-bound barrier and an
+ * unsound equality contract.
+ */
+async function expectSweepLeftQueueUntouched(
+  threadId: string,
+  pendingEventIds: readonly string[],
+): Promise<void> {
+  const swept = await accept(
+    queueClient().get({ headers: authHeaders(), params: { threadId } }),
+    [200],
+  );
+  expect(swept.body.running).toBeNull();
+  expect(
+    swept.body.pending.map((event) => {
+      return event.id;
+    }),
+  ).toStrictEqual(pendingEventIds);
+  const messages = await wf.readThreadMessages(threadId);
+  expect(
+    messages.filter((message) => {
+      return typeof message.runId === "string";
+    }),
+  ).toStrictEqual([]);
+}
+
 describe("workflow queue", () => {
   it("does not let the stale sweep race a newly admitted workflow event", async () => {
     mockNow(Date.UTC(2020, 0, 1));
@@ -340,10 +378,23 @@ describe("workflow queue", () => {
     });
 
     const workflowRequest = postWorkflowWebhook(automation, "fresh event");
-    await expect.poll(admissionLock.waiterCount).toBe(1);
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    const queued = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    const event = queued.body.pending[0];
+    if (!event) {
+      throw new Error("Expected a pending workflow event");
+    }
 
+    // The business assertion: the stale sweep must not race the freshly
+    // admitted event that is still blocked on org admission.
     await cleanupSandboxes();
-    await expect(admissionLock.waiterCount()).resolves.toBe(1);
+    await expectSweepLeftQueueUntouched(automation.threadId, [event.id]);
 
     admissionLock.release();
     const result = await workflowRequest;
@@ -406,13 +457,12 @@ describe("workflow queue", () => {
       })
       .toBe(true);
     await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(2);
-    const admittedWaiters = await admissionLock.waiterCount();
 
-    // The business assertion: the stale sweep must not add an admission
-    // attempt of its own for this org, so the waiter count stays exactly where
-    // both blocked requests left it.
+    // The business assertion: the stale sweep must leave the fresh user message
+    // queued and must not drain it ahead of the stale workflow event that is
+    // still blocked on org admission.
     await cleanupSandboxes();
-    await expect(admissionLock.waiterCount()).resolves.toBe(admittedWaiters);
+    await expectSweepLeftQueueUntouched(automation.threadId, [event.id]);
 
     admissionLock.release();
     const [workflowResult, userResult] = await Promise.all([

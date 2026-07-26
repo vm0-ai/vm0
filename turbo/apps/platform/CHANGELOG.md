@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.636.2](https://github.com/vm0-ai/vm0/compare/app-v0.636.1...app-v0.636.2) (2026-07-26)
+
+
+### Bug Fixes
+
+* trigger api and platform releases ([#23076](https://github.com/vm0-ai/vm0/issues/23076)) ([a005cfc](https://github.com/vm0-ai/vm0/commit/a005cfce2200944636124ab35be19702c879dba9))
+
+
+### Performance Improvements
+
+* resize artifact catalog thumbnails with cloudflare ([#23074](https://github.com/vm0-ai/vm0/issues/23074)) ([215532c](https://github.com/vm0-ai/vm0/commit/215532cead0823908f2e7a46148b6d4f9fa447f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.468.0
+
 ## [0.636.1](https://github.com/vm0-ai/vm0/compare/app-v0.636.0...app-v0.636.1) (2026-07-25)
 
 
