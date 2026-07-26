@@ -145,7 +145,7 @@ ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKE
 ZERO_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
 
 # Optional: Zero Browser provider (Browser Use)
-ZERO_BROWSER_USE_API_KEY=op://Development/browser-use/ZERO_BROWSER_USE_API_KEY
+# ZERO_BROWSER_USE_API_KEY=
 
 # Optional: Steam Web API
 STEAM_WEB_API_KEY=op://Development/steam/STEAM_WEB_API_KEY
