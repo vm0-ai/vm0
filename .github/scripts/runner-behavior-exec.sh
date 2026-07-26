@@ -1118,7 +1118,7 @@ sandbox_mode = "read-only"
 [model_providers.mock]
 name = "mock"
 base_url = "http://127.0.0.1:{port}/v1"
-env_key = "PATH"
+env_key = "CODEX_COMPACT_PROBE_TOKEN"
 wire_api = "responses"
 request_max_retries = 0
 stream_max_retries = 0
@@ -1132,6 +1132,7 @@ def run_codex(binary, codex_home, *args):
         {
             "HOME": str(codex_home.parent),
             "CODEX_HOME": str(codex_home),
+            "CODEX_COMPACT_PROBE_TOKEN": "test-token",
             "NO_PROXY": "127.0.0.1,localhost",
             "no_proxy": "127.0.0.1,localhost",
         }
@@ -1332,8 +1333,6 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
                 "--package-lock=false",
                 "@openai/codex@0.144.6",
             ],
-            capture_output=True,
-            text=True,
             timeout=90,
             check=True,
         )
