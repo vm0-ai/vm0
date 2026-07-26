@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.4...guest-agent-v0.56.5) (2026-07-26)
+
+
+### Performance Improvements
+
+* **guest-agent:** disable upstream codex analytics ([#23099](https://github.com/vm0-ai/vm0/issues/23099)) ([88ecf52](https://github.com/vm0-ai/vm0/commit/88ecf529e28c1a18f2ecd421d51f5d8023b25d8b))
+
 ## [0.56.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.3...guest-agent-v0.56.4) (2026-07-25)
 
 

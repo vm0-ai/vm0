@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.636.4](https://github.com/vm0-ai/vm0/compare/app-v0.636.3...app-v0.636.4) (2026-07-26)
+
+
+### Performance Improvements
+
+* retire html artifact editing and presentation export ([#23083](https://github.com/vm0-ai/vm0/issues/23083)) ([d0d3a24](https://github.com/vm0-ai/vm0/commit/d0d3a248437eb67270c8fc76ade7d95c013b0029))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.2
+    * @vm0/connectors bumped to 1.192.1
+    * @vm0/core bumped to 8.468.1
+
 ## [0.636.3](https://github.com/vm0-ai/vm0/compare/app-v0.636.2...app-v0.636.3) (2026-07-26)
 
 

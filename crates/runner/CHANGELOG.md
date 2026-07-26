@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.5...runner-rs-v0.148.6) (2026-07-26)
+
+
+### Documentation
+
+* **mitm-addon:** clarify decompress_body test contract ([#23108](https://github.com/vm0-ai/vm0/issues/23108)) ([f0e39ab](https://github.com/vm0-ai/vm0/commit/f0e39abf0779bfdb390feecd5dd86d7d9e7ee077))
+
 ## [0.148.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.4...runner-rs-v0.148.5) (2026-07-26)
 
 

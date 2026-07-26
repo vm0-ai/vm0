@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.324.2](https://github.com/vm0-ai/vm0/compare/api-v1.324.1...api-v1.324.2) (2026-07-26)
+
+
+### CI
+
+* decouple app release from api promotion ([#23100](https://github.com/vm0-ai/vm0/issues/23100)) ([8f3ddcb](https://github.com/vm0-ai/vm0/commit/8f3ddcb3977c8ace140995e94219c7e051557a48))
+
+
+### Performance Improvements
+
+* retire html artifact editing and presentation export ([#23083](https://github.com/vm0-ai/vm0/issues/23083)) ([d0d3a24](https://github.com/vm0-ai/vm0/commit/d0d3a248437eb67270c8fc76ade7d95c013b0029))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.2
+    * @vm0/connectors bumped to 1.192.1
+    * @vm0/core bumped to 8.468.1
+    * @vm0/db bumped to 1.141.3
+
 ## [1.324.1](https://github.com/vm0-ai/vm0/compare/api-v1.324.0...api-v1.324.1) (2026-07-26)
 
 
