@@ -7,7 +7,9 @@ mod common;
 
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
+use shell_quote::quote_shell_arg;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[tokio::test]
@@ -15,12 +17,14 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
+    let argv_path = tmp.path().join("codex-argv");
+    let recording_mock = recording_codex(tmp.path(), &mock, &argv_path)?;
     let run_id = "codex-app-server-backend-test";
     let prompt = "drive the app-server backend";
 
     unsafe {
         common::setup_codex_app_server_env(
-            &mock,
+            &recording_mock,
             tmp.path(),
             common::CodexAppServerEnvConfig {
                 run_id,
@@ -78,6 +82,7 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
     assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
     assert!(cli_result.failure_diagnostic.is_none());
     assert!(cli_result.last_event_sequence.is_none());
+    assert_app_server_analytics_disabled(&argv_path)?;
 
     let events = read_agent_log_events(&runtime.paths)?;
     assert_event_type_sequence(
@@ -241,4 +246,45 @@ fn assert_event_type_sequence(events: &[Value], expected: &[&str]) {
         .map(|value| Some(*value))
         .collect::<Vec<_>>();
     assert_eq!(actual, expected);
+}
+
+fn recording_codex(root: &Path, mock: &Path, argv_path: &Path) -> Result<PathBuf, std::io::Error> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let path = root.join("recording-codex");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\nexec {} \"$@\"\n",
+            quote_shell_arg(&argv_path.to_string_lossy()),
+            quote_shell_arg(&mock.to_string_lossy()),
+        ),
+    )?;
+    let mut permissions = std::fs::metadata(&path)?.permissions();
+    permissions.set_mode(0o700);
+    std::fs::set_permissions(&path, permissions)?;
+    Ok(path)
+}
+
+fn assert_app_server_analytics_disabled(argv_path: &Path) -> Result<(), std::io::Error> {
+    let args = std::fs::read_to_string(argv_path)?
+        .lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let analytics_index = args
+        .windows(2)
+        .position(
+            |window| matches!(window, [flag, value] if flag == "-c" && value == "analytics.enabled=false"),
+        )
+        .ok_or_else(|| {
+            std::io::Error::other(format!(
+                "Codex app-server argv should disable upstream analytics: {args:?}"
+            ))
+        })?;
+    let app_server_index = args
+        .iter()
+        .position(|arg| arg == "app-server")
+        .ok_or_else(|| std::io::Error::other("Codex argv omitted app-server subcommand"))?;
+    assert!(analytics_index < app_server_index);
+    Ok(())
 }

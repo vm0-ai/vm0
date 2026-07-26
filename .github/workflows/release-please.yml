@@ -1332,16 +1332,16 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # Publish the immutable app artifact to Cloudflare Pages. If the same release
-  # run also promotes API, wait for API traffic to be live first.
+  # Publish the immutable app artifact to Cloudflare Pages after any required
+  # production migration succeeds, without waiting for API promotion.
   promote-app-production:
-    needs: [release-please, builds-complete, promote-api-production]
+    needs: [release-please, builds-complete, migrate-production]
     if: >-
       always() &&
       needs.release-please.outputs.app_release_created == 'true' &&
       needs.builds-complete.result == 'success' &&
-      (needs.release-please.outputs.api_deploy_required != 'true' ||
-       needs.promote-api-production.result == 'success')
+      (needs.release-please.outputs.api_release_created != 'true' ||
+       needs.migrate-production.result == 'success')
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
