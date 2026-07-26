@@ -1002,7 +1002,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const videoArtifact = artifacts.artifacts.find((artifact) => {
       return artifact.fileId === fileId;
     });
-    expect(videoArtifact?.previewImageUrl).toMatch(/\/poster\.jpg$/);
+    expect(videoArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
   });
 
   it("does not record a run association for ordinary clerk session auth", async () => {
