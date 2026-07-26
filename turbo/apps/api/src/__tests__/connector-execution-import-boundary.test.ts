@@ -66,27 +66,11 @@ function sourceFiles(directory: string): string[] {
 }
 
 function moduleSpecifiers(filePath: string): string[] {
-  const source = ts.createSourceFile(
-    filePath,
-    fs.readFileSync(filePath, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  const specifiers: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
-      if (
-        node.moduleSpecifier !== undefined &&
-        ts.isStringLiteral(node.moduleSpecifier)
-      ) {
-        specifiers.push(node.moduleSpecifier.text);
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return specifiers;
+  return ts
+    .preProcessFile(fs.readFileSync(filePath, "utf8"), true, true)
+    .importedFiles.map((importedFile) => {
+      return importedFile.fileName;
+    });
 }
 
 function resolvesToStaticConnectorSource(

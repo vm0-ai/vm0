@@ -1,7 +1,34 @@
 import type { ConnectorConfig } from "../connector-config";
-import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "../auth-providers/connectors/nintendo-switch-parental-controls/app";
 
-export { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP };
+export const NINTENDO_SWITCH_PARENTAL_CONTROLS_APP = {
+  clientId: "54789befb391a838",
+  redirectUri: "npf54789befb391a838://auth",
+  packageId: "com.nintendo.znma",
+  displayedVersion: "2.4.0",
+  internalVersion: 660,
+  os: "ANDROID",
+  osVersion: "35",
+  modelName: "vm0",
+  timeZone: "Etc/UTC",
+  actionBaseUrl: "https://app.lp1.znma.srv.nintendo.net",
+  accountBaseUrl: "https://api.accounts.nintendo.com",
+  scopes: [
+    "openid",
+    "user",
+    "user.mii",
+    "moonUser:administration",
+    "moonDevice:create",
+    "moonOwnedDevice:administration",
+    "moonParentalControlSetting",
+    "moonParentalControlSetting:update",
+    "moonParentalControlSettingState",
+    "moonPairingState",
+    "moonSmartDevice:administration",
+    "moonDailySummary",
+    "moonMonthlySummary",
+  ],
+  userAgent: "moon_ANDROID/2.4.0 (com.nintendo.znma; build:660; ANDROID 35)",
+} as const;
 
 export const nintendoSwitchParentalControls = {
   "nintendo-switch-parental-controls": {
