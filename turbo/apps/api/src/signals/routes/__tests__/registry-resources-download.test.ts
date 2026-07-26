@@ -50,6 +50,24 @@ describe("registry resource download", () => {
     ).toBeUndefined();
   });
 
+  it("resolves a manually published image style archive", () => {
+    const currentSha256 =
+      "40b65c731e46f35633fbd18fada81ed2fabebc6d88d521917d4859ce469a4af4";
+
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        "image-style:ink-storefront",
+        currentSha256,
+        currentSha256,
+      ),
+    ).toStrictEqual({
+      storageName: "registry-resource@image-style:ink-storefront",
+      versionId:
+        "ec8d871a9739e6d276b058336904b6a95bdc0ec56de5de91b40bdd8cc910277b",
+      sha256: currentSha256,
+    });
+  });
+
   it("resolves every refreshed additive website v2 archive", () => {
     const currentSha256 =
       "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3";

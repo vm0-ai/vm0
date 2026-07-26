@@ -120,6 +120,58 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("required reference image URLs");
   });
 
+  it("routes archive-enabled illustration styles through R2 when switched on", () => {
+    const imageStyle = findImageStyle("image-style:ink-storefront")!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "illustration",
+        selection: {
+          illustrationStyleId: imageStyle.id,
+        },
+      },
+      { imageStyleR2Enabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      `Style source: private R2 registry resource ${imageStyle.id}`,
+    );
+    expect(result.prompt).toContain(`--compile --style-source r2`);
+    expect(result.prompt).toContain(
+      "If the R2 source is unavailable, stop without generating; do not fall back to GitHub.",
+    );
+    expect(result.prompt).not.toContain(
+      `Style source: vm0-ai/vm0-skills@main:${imageStyle.source.path}`,
+    );
+  });
+
+  it("keeps styles without an R2 archive on GitHub even when switched on", () => {
+    const imageStyle = findImageStyle("image-style:chibi-hero")!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "illustration",
+        selection: {
+          illustrationStyleId: imageStyle.id,
+        },
+      },
+      { imageStyleR2Enabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      `Style source: vm0-ai/vm0-skills@main:${imageStyle.source.path}`,
+    );
+    expect(result.prompt).not.toContain("--style-source r2");
+  });
+
   it("builds video template preset guidance", () => {
     const item = VIDEO_TEMPLATE_ITEMS[0]!;
 

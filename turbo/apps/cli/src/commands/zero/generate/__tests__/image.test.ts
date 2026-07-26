@@ -329,6 +329,53 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("--compiled-prompt");
   });
 
+  it("should print an R2-backed style packet when --style-source r2 is selected", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--style",
+      "image-style:ink-storefront",
+      "--style-source",
+      "r2",
+      "--prompt",
+      "A florist named Luna Floral",
+      "--compile",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("Registry resource: `image-style:ink-storefront`");
+    expect(stdout).toContain(
+      "zero resource pull image-style:ink-storefront --dir ./generated/resources",
+    );
+    expect(stdout).toContain(
+      "./generated/resources/illustration-template/ink-storefront",
+    );
+    expect(stdout).not.toContain("Repository: `vm0-ai/vm0-skills@main`");
+  });
+
+  it("should reject R2 compile mode for a style without an archive", async () => {
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--style",
+        "image-style:chibi-hero",
+        "--style-source",
+        "r2",
+        "--prompt",
+        "A chibi hero",
+        "--compile",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain(
+      "Image style image-style:chibi-hero does not provide an R2 archive",
+    );
+  });
+
   it("should fail with mode guidance when no image prompt mode is selected", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([
@@ -483,6 +530,7 @@ describe("zero generate image command", () => {
     expect(helpOutput).toContain("--image-prompt-strength");
     expect(helpOutput).toContain("Nano Banana 2 accepts up to 14");
     expect(helpOutput).toContain("--style <id>");
+    expect(helpOutput).toContain("--style-source <source>");
     expect(helpOutput).toContain("--compile");
     expect(helpOutput).toContain("--compiled-prompt");
     expect(helpOutput).toContain("--raw-prompt");

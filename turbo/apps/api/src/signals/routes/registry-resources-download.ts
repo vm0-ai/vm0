@@ -85,6 +85,71 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "f23a7edd4705fcf7b8086da55553a601194bcd857be15de7072128ff916a03ad",
   "color-system:warm-sand":
     "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
+  // Image style packages manually published from vm0-ai/vm0-skills@45e237a.
+  "image-style:cozy-parlor":
+    "b6ce5ecd7207360f6929616daea4c054aa9583ee24ca64eeb7d5aca5c9767db5",
+  "image-style:crowd-ink":
+    "3389f30fbdc8248c5885ab94edb667a3d7fb4a17018162233bf0ca6c4d5e72cc",
+  "image-style:editorial-flatfolk":
+    "d03620d739815baca2764e9fa3ea520a639d0487988c47f58bdb17fca61fd80a",
+  "image-style:endpaper":
+    "72f75194d1e27bf5b9222473a74c63fe27ca700e435c4e47cb7642d44d8f1297",
+  "image-style:flat-poster":
+    "73292de49674ba797b2f86b3babb14b899ba5e7047c9f13dc63fce52c81d04aa",
+  "image-style:folk-muse":
+    "3446e78cf337b24dd1a5a6530fe2926b7ca6b153b7393be338b782b633543cdc",
+  "image-style:folk-storybook":
+    "96a309a4bc6ddf6fdc30488a0a74e576a0a7f1ebbae2da14b08a0dd9cc02b9d7",
+  "image-style:grain-poster":
+    "771417220bcea158f9729e15b085de61aeb0d771d5dd39ca6e63711a8b47c4e5",
+  "image-style:grainy-duotone":
+    "21b5f3f0f6ec7d32ba3e1c8ff49048c481327f484807c093465824c0fbbf26c6",
+  "image-style:iberian-vignette":
+    "7e875c6fd6f154d87aa27d0aceb69dbb36fe084299642d2d3ec0c24fdb2dd730",
+  "image-style:ink-mascot":
+    "408ab314cc262395fbd6d257cb981976327a5b6a2742d62b3646b9dc49c7df07",
+  "image-style:ink-storefront":
+    "ec8d871a9739e6d276b058336904b6a95bdc0ec56de5de91b40bdd8cc910277b",
+  "image-style:inkdab":
+    "40e1663067c705935086ed61d8e7610da32b4dab707b92e3dc1a3a60fdc44dbe",
+  "image-style:inkstomp":
+    "035a7fe17aef573086f24552de23363adc39f51b28d2b5415a59da4fac83a98a",
+  "image-style:iso-scene":
+    "32b295fff8931cbc1db4754b481ee432e70119da22f32881ebab180479c7a6f8",
+  "image-style:jade-blockprint":
+    "5a1103c33434979c4ce997da0e2f66cb8f90ba598d20b319b09e47d8ec2af289",
+  "image-style:light-pop-portrait":
+    "77eafa06066c0f8ebfa11af0fe83eace551db5e008378f710d3264dba45e4b82",
+  "image-style:loose-contour":
+    "228ad875fdad30feb0101f48db70d58a7cdcf200c07510d256a539bea292ee1f",
+  "image-style:mellow-pop":
+    "32ce89482cc85dc27b20ccbf57756b814f9fae88bc7cf5f5979a7b26b5f0dc26",
+  "image-style:mosaic-still-life":
+    "db22e147647987a182e69fba0ce1864b2f5dff5c0b5e1a6db7487b0ce22c13a1",
+  "image-style:notion-illustration":
+    "82d5ab3a95484702df121449dda63c086cd7ef06e9240c6620846afd5bfea079",
+  "image-style:op-ed-cover":
+    "c5223ade7d86bef1691d71e95286558a5ff533ca604d51d360bea20c4f250f48",
+  "image-style:painterly-botanical":
+    "3c6f0874686d0e021680bf28dfd81e7eb81d0eaa6b355e4732c524c5bfac3d4a",
+  "image-style:papernook":
+    "aada3a4b40f0989d779ee1d3b1471addca557cafd8135d0cd061932d0e7e2314",
+  "image-style:postcard-illustration":
+    "1fd4876ba668a0b6ff5bff0c95610c6ba8f8a87dbcebe31d91c73955358a2aa4",
+  "image-style:riso-relic":
+    "b3c5bd37419a0f627ee7a4c8941a4a21c351e5d4f45cec82eefa7ddaf58adfd6",
+  "image-style:shadow-pop":
+    "5c1179938f3bb07ca84a11b2ea4e01c3bcdd72f0383d5549434fe4ffe37b8969",
+  "image-style:soft-vector":
+    "ede91c010b3ac2b5bd80df9dca436ce9006acd9ac5af7f33c5590309ca7c6f53",
+  "image-style:sticker-sheet":
+    "a5d1fbaeeb87247996c5b6d801fb135b4b6e5f5db9a4c22f4cb58269578c33f7",
+  "image-style:sunlit-gouache":
+    "9156b502d879ce3f8715ec3aa309d62e46ee691d5f86d5a8355f14aec90b4d3a",
+  "image-style:tiny-wanderer":
+    "f728fa4248d2da8ba9be92c14266059c613952e5d8d6e5b2e3a73fe8bacced55",
+  "image-style:vm0-illustration":
+    "820d2e2ce81805d935e4098d5b6f2899967c2ad5c0af4586f794010c6db66966",
   // Presentation runbook packages (self-contained per-template archives).
   "template:html-ppt-playful-launch-runbook":
     "1c46e7d953de0ea47924b9e9936433d7ede1d21ac595f62cbcdee160bded6c26",

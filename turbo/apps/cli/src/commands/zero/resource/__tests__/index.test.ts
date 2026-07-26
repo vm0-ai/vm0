@@ -1,4 +1,5 @@
 import { WEBSITE_TEMPLATE_ITEMS } from "@vm0/core";
+import { hasR2Archive, listImageStyles } from "@vm0/core/resource-registry";
 import { describe, expect, it } from "vitest";
 
 import { findRegistryResourceForPull } from "../index";
@@ -91,5 +92,30 @@ describe("zero resource pull registry resolver", () => {
         }),
       );
     }
+  });
+
+  it("resolves every manually published image style package", () => {
+    const imageStyles = listImageStyles();
+    const r2ImageStyles = imageStyles.filter(hasR2Archive);
+
+    expect(r2ImageStyles).toHaveLength(32);
+    for (const style of r2ImageStyles) {
+      expect(findRegistryResourceForPull(style.id)).toEqual(
+        expect.objectContaining({
+          id: style.id,
+          kind: "image-style",
+          source: expect.objectContaining({
+            archive: {
+              type: "tar.gz",
+              sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            },
+          }),
+        }),
+      );
+    }
+
+    expect(
+      findRegistryResourceForPull("image-style:chibi-hero")?.source.archive,
+    ).toBeUndefined();
   });
 });
