@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.258.0](https://github.com/vm0-ai/vm0/compare/cli-v9.257.9...cli-v9.258.0) (2026-07-26)
+
+
+### Features
+
+* add fixed r2 packages for image styles behind a rollout switch ([#23120](https://github.com/vm0-ai/vm0/issues/23120)) ([bbeeaee](https://github.com/vm0-ai/vm0/commit/bbeeaee0515508f9a58359bb78984d074ff2c7fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.233.0
+    * @vm0/connectors bumped to 1.194.0
+    * @vm0/core bumped to 8.470.0
+
 ## [9.257.9](https://github.com/vm0-ai/vm0/compare/cli-v9.257.8...cli-v9.257.9) (2026-07-26)
 
 

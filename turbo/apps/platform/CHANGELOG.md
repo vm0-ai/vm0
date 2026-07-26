@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.638.0](https://github.com/vm0-ai/vm0/compare/app-v0.637.1...app-v0.638.0) (2026-07-26)
+
+
+### Features
+
+* prefer thumbnails for chat artifact covers ([#23131](https://github.com/vm0-ai/vm0/issues/23131)) ([e1b9cdf](https://github.com/vm0-ai/vm0/commit/e1b9cdf2f5c781883ae4c0540b69b50b88a4389a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.0
+    * @vm0/connectors bumped to 1.194.0
+    * @vm0/core bumped to 8.470.0
+
 ## [0.637.1](https://github.com/vm0-ai/vm0/compare/app-v0.637.0...app-v0.637.1) (2026-07-26)
 
 

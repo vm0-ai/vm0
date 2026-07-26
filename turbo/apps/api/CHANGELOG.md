@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.327.0](https://github.com/vm0-ai/vm0/compare/api-v1.326.1...api-v1.327.0) (2026-07-26)
+
+
+### Features
+
+* add fixed r2 packages for image styles behind a rollout switch ([#23120](https://github.com/vm0-ai/vm0/issues/23120)) ([bbeeaee](https://github.com/vm0-ai/vm0/commit/bbeeaee0515508f9a58359bb78984d074ff2c7fb))
+* **api:** unify chat thread session resolution across run sources ([#23129](https://github.com/vm0-ai/vm0/issues/23129)) ([99efc92](https://github.com/vm0-ai/vm0/commit/99efc92f37078e17aac8687ebcc87bf054074e28))
+* prefer thumbnails for chat artifact covers ([#23131](https://github.com/vm0-ai/vm0/issues/23131)) ([e1b9cdf](https://github.com/vm0-ai/vm0/commit/e1b9cdf2f5c781883ae4c0540b69b50b88a4389a))
+
+
+### Refactoring
+
+* **connectors:** decouple execution from static registry ([#23128](https://github.com/vm0-ai/vm0/issues/23128)) ([7a8688d](https://github.com/vm0-ai/vm0/commit/7a8688d08fec2fd4d2e7046ef2bed883e3683a2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.0
+    * @vm0/connectors bumped to 1.194.0
+    * @vm0/core bumped to 8.470.0
+    * @vm0/db bumped to 1.143.0
+
 ## [1.326.1](https://github.com/vm0-ai/vm0/compare/api-v1.326.0...api-v1.326.1) (2026-07-26)
 
 
