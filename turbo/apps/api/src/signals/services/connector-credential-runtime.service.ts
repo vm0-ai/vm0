@@ -1,6 +1,6 @@
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { refreshConnectorAuthProviderAccessTokenWithMethod } from "@vm0/connectors/auth-providers";
-import { resolveConnectorAuthClient } from "@vm0/connectors/connector-utils";
+import { resolveConnectorAuthClient } from "@vm0/connectors/connector-auth-method";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";

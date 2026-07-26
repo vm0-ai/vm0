@@ -12,7 +12,6 @@ import {
 } from "@vm0/connectors/auth-providers";
 import {
   CONNECTOR_PLATFORM_SECRET_NAMES,
-  CONNECTOR_TYPE_KEYS,
   type ConnectorAccessConfig,
   type ConnectorAuthClientConfig,
   type ConnectorAuthMethodRuntimeConfig,
@@ -26,14 +25,17 @@ import {
   type ConnectorRevokeInputBindings,
   type ConnectorSecretValueRef,
   type ConnectorVariableValueRef,
-} from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-config";
 import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodRuntimeMetadata,
-  getConnectorAuthMethod,
-  getRuntimeAvailableConnectorTypes,
   type ConnectorEnvReader,
   type ConnectorFeatureStates,
+} from "@vm0/connectors/connector-auth-method";
+import { CONNECTOR_TYPE_KEYS } from "@vm0/connectors/connectors";
+import {
+  getConnectorAuthMethod,
+  getRuntimeAvailableConnectorTypes,
 } from "@vm0/connectors/connector-utils";
 
 import { isExternalConnectorCatalogEnabled } from "../../lib/connector-catalog-source-selection";

@@ -17,12 +17,12 @@ import {
   connectorAuthMethodScopeDiff,
   type ConnectorManualGrantFieldNames,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import { revokeConnectorAuthMethodAccessTokenWithMethod } from "@vm0/connectors/auth-providers";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorManualGrantFieldConfig,
-} from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-config";
 import {
   getAllFeatureStates,
   type FeatureSwitchContext,

@@ -13,8 +13,8 @@ import {
   resolveConnectorAuthClient,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
-} from "@vm0/connectors/connector-utils";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-auth-method";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";

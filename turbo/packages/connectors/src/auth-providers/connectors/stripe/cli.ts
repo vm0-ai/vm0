@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
+import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
