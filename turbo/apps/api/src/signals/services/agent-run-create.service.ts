@@ -84,6 +84,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
@@ -416,6 +417,15 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
+type ThreadSessionBindingAction = "initialized" | "reused" | "rotated";
+
+interface ThreadSessionBindingWrite {
+  readonly chatThreadId: string;
+  readonly agentSessionId: string;
+  readonly agentSessionRunId: string;
+  readonly action: ThreadSessionBindingAction;
+}
+
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
@@ -456,6 +466,7 @@ type AtomicLaunchCommitResult =
       readonly runnerJobCreatedAt: Date;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
     }
   | {
       readonly kind: "queued";
@@ -465,6 +476,7 @@ type AtomicLaunchCommitResult =
       readonly telemetryTimestamp: string;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
     }
   | {
       readonly kind: "queue-payload-required";
@@ -5479,6 +5491,53 @@ async function insertAtomicLaunchRunRecord(args: {
   return run;
 }
 
+async function persistThreadSessionBinding(
+  tx: DbTransaction,
+  args: {
+    readonly chatThreadId: string | undefined;
+    readonly identity: LaunchRunIdentity;
+  },
+): Promise<ThreadSessionBindingWrite | undefined> {
+  if (!args.chatThreadId) {
+    return undefined;
+  }
+
+  const [thread] = await tx
+    .select({ agentSessionId: chatThreads.agentSessionId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .for("update")
+    .limit(1);
+  if (!thread) {
+    throw new Error("Chat thread not found while persisting session binding");
+  }
+
+  const action: ThreadSessionBindingAction =
+    thread.agentSessionId === null
+      ? "initialized"
+      : thread.agentSessionId === args.identity.sessionId
+        ? "reused"
+        : "rotated";
+  const [updated] = await tx
+    .update(chatThreads)
+    .set({
+      agentSessionId: args.identity.sessionId,
+      agentSessionRunId: args.identity.runId,
+    })
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .returning({ id: chatThreads.id });
+  if (!updated) {
+    throw new Error("Failed to persist chat thread session binding");
+  }
+
+  return {
+    chatThreadId: updated.id,
+    agentSessionId: args.identity.sessionId,
+    agentSessionRunId: args.identity.runId,
+    action,
+  };
+}
+
 async function commitQueuedPreparedLaunch(
   tx: DbTransaction,
   args: CommitPreparedLaunchArgs,
@@ -5511,6 +5570,10 @@ async function commitQueuedPreparedLaunch(
     .select({ depth: count() })
     .from(agentRunQueue)
     .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
+  const threadSessionBinding = await persistThreadSessionBinding(tx, {
+    chatThreadId: args.createArgs.chatThreadId,
+    identity: args.identity,
+  });
   return {
     kind: "queued",
     run,
@@ -5519,6 +5582,7 @@ async function commitQueuedPreparedLaunch(
     telemetryTimestamp: nowDate().toISOString(),
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
+    threadSessionBinding,
   };
 }
 
@@ -5560,6 +5624,10 @@ async function commitPendingPreparedLaunch(
       );
     },
   );
+  const threadSessionBinding = await persistThreadSessionBinding(tx, {
+    chatThreadId: args.createArgs.chatThreadId,
+    identity: args.identity,
+  });
   return {
     kind: "pending",
     run,
@@ -5567,6 +5635,7 @@ async function commitPendingPreparedLaunch(
     runnerJobCreatedAt,
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
+    threadSessionBinding,
   };
 }
 
@@ -6581,6 +6650,15 @@ async function committedAtomicLaunchResponse(args: {
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+  if (args.committed.threadSessionBinding) {
+    L.debug("Chat thread session binding persisted", {
+      chatThreadId: args.committed.threadSessionBinding.chatThreadId,
+      agentSessionId: args.committed.threadSessionBinding.agentSessionId,
+      agentSessionRunId: args.committed.threadSessionBinding.agentSessionRunId,
+      bindingAction: args.committed.threadSessionBinding.action,
+      runStatus: args.committed.kind,
+    });
+  }
   if (args.committed.kind === "queued") {
     recordQueuedRunEnqueueTelemetry({
       runId: args.committed.run.id,
