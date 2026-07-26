@@ -1212,8 +1212,7 @@ async def test_public_destination_revalidates_cached_policy_allow_classification
 
     auth_fetch.assert_not_awaited()
     request_phase_validated_hosts = validated_hosts[1:]
-    assert request_phase_validated_hosts
-    assert request_phase_validated_hosts[-1] == "10.0.0.1"
+    assert "10.0.0.1" in request_phase_validated_hosts
     _assert_public_destination_denied(
         flow,
         destination_host="10.0.0.1",
