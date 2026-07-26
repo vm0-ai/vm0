@@ -142,7 +142,7 @@ _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS = {
     **{("response", *path): field for path, field in _RESPONSES_RESPONSE_SCALAR_FIELDS.items()},
 }
 _RESPONSES_SSE_SCALAR_FIELDS = {
-    ("type",): ScalarField("string", max_bytes=1024),
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     **_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS,
 }
 
