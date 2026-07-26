@@ -920,13 +920,16 @@ export function createSqlSourceComposer(
         });
       }
     }
-    return {
-      expandedTemplates,
-      hasLocalExpansion,
-      variants: variantChunks.map((chunks) => {
-        return { chunks };
-      }),
-    };
+    return prependOrigin(
+      {
+        expandedTemplates,
+        hasLocalExpansion,
+        variants: variantChunks.map((chunks) => {
+          return { chunks };
+        }),
+      },
+      node,
+    );
   }
 
   function staticArray(node: TSESTree.Expression): {

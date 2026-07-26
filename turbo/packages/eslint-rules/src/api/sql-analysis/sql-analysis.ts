@@ -1,4 +1,5 @@
 import {
+  AST_NODE_TYPES,
   type ParserServicesWithTypeInformation,
   type TSESTree,
 } from "@typescript-eslint/utils";
@@ -30,6 +31,7 @@ export interface SqlAnalysis {
   readonly findings: readonly SqlAnalysisFinding[];
   readonly isSimpleSelect: boolean;
   readonly isTruePredicate: boolean;
+  readonly ownsExpandedTemplates: boolean;
 }
 
 interface SqlMarker {
@@ -71,6 +73,7 @@ type StructuralExpression =
 interface ExpressionClassification {
   readonly anchor: TSESTree.Node | undefined;
   readonly findings: readonly SqlAnalysisFinding[];
+  readonly isWholeReplacement: boolean;
 }
 
 interface RelationMatch {
@@ -395,12 +398,14 @@ function classifyExpression(
           ? expression.marker.node
           : undefined,
       findings: [],
+      isWholeReplacement: false,
     };
   }
   if (expression.kind === "constant") {
     return {
       anchor: undefined,
       findings: [],
+      isWholeReplacement: false,
     };
   }
   if (expression.kind === "comparison") {
@@ -419,6 +424,7 @@ function classifyExpression(
             node: expression.left.marker.node,
           },
         ],
+        isWholeReplacement: true,
       };
     }
     const left = classifyExpression(expression.left);
@@ -430,6 +436,7 @@ function classifyExpression(
         right.anchor ??
         right.findings[0]?.node,
       findings: deduplicateFindings([...left.findings, ...right.findings]),
+      isWholeReplacement: false,
     };
   }
   if (expression.kind === "boolean") {
@@ -446,12 +453,14 @@ function classifyExpression(
               node: reportNode,
             },
           ],
+          isWholeReplacement: true,
         };
       }
     }
     return {
       anchor: undefined,
       findings: [],
+      isWholeReplacement: false,
     };
   }
 
@@ -471,6 +480,7 @@ function classifyExpression(
         return child.findings;
       }),
     ),
+    isWholeReplacement: false,
   };
 }
 
@@ -594,10 +604,60 @@ function isTrueConstant(expression: unknown): boolean {
   return boolean?.boolval === true;
 }
 
+function isCompositionBoundary(
+  node: TSESTree.Node,
+): node is TSESTree.Expression {
+  return (
+    node.type === AST_NODE_TYPES.CallExpression ||
+    node.type === AST_NODE_TYPES.ChainExpression ||
+    node.type === AST_NODE_TYPES.ConditionalExpression ||
+    node.type === AST_NODE_TYPES.Identifier ||
+    node.type === AST_NODE_TYPES.TaggedTemplateExpression ||
+    node.type === AST_NODE_TYPES.TSAsExpression ||
+    node.type === AST_NODE_TYPES.TSNonNullExpression ||
+    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    node.type === AST_NODE_TYPES.TSTypeAssertion
+  );
+}
+
+function commonCompositionBoundary(
+  variant: SqlSourceVariant,
+  root: TSESTree.Expression,
+): TSESTree.Expression {
+  const contributingChunks = variant.chunks.filter((chunk) => {
+    return chunk.kind === "expression" || chunk.text.trim() !== "";
+  });
+  const firstChunk = contributingChunks[0];
+  if (firstChunk === undefined) {
+    return root;
+  }
+  const commonBoundaries = firstChunk.origins.filter(
+    (origin): origin is TSESTree.Expression => {
+      return (
+        isCompositionBoundary(origin) &&
+        contributingChunks.every((chunk) => {
+          return chunk.origins.includes(origin);
+        })
+      );
+    },
+  );
+  // A factory or sql.join call owns the concrete replacement even when every
+  // chunk also comes from one shared returned or separator template.
+  return (
+    commonBoundaries.find((boundary) => {
+      return boundary.type === AST_NODE_TYPES.CallExpression;
+    }) ??
+    commonBoundaries[commonBoundaries.length - 1] ??
+    root
+  );
+}
+
 function analyzeParsed(
   node: TSESTree.Expression,
   context: SqlAnalysisContext,
+  hasLocalExpansion: boolean,
   parsed: ParsedSql,
+  variant: SqlSourceVariant,
 ): SqlAnalysis {
   const simpleSelect =
     context === "statement" && isSimpleSelect(parsed.statement, parsed.markers);
@@ -607,6 +667,7 @@ function analyzeParsed(
       findings: [{ kind: "query-builder", node }],
       isSimpleSelect: true,
       isTruePredicate: false,
+      ownsExpandedTemplates: true,
     };
   }
 
@@ -618,9 +679,28 @@ function analyzeParsed(
     context === "predicate" && expression !== undefined
       ? [structuralExpression(expression, parsed.markers)]
       : collectStructuralExpressions(expression, parsed.markers);
+  const classifications = structuralExpressions.map((item) => {
+    return classifyExpression(item);
+  });
+  const predicateClassification =
+    context === "predicate" ? classifications[0] : undefined;
+  const predicateFinding = predicateClassification?.findings[0];
+  const ownsExpandedTemplates =
+    predicateClassification?.isWholeReplacement === true &&
+    predicateClassification.findings.length === 1 &&
+    predicateFinding?.kind === "helper" &&
+    (predicateFinding.helper === "and" || predicateFinding.helper === "or") &&
+    hasLocalExpansion;
+  const replacementBoundary = ownsExpandedTemplates
+    ? commonCompositionBoundary(variant, node)
+    : undefined;
   const findings = deduplicateFindings(
-    structuralExpressions.flatMap((item) => {
-      return classifyExpression(item).findings;
+    classifications.flatMap((classification) => {
+      return ownsExpandedTemplates
+        ? classification.findings.map((finding) => {
+            return { ...finding, node: replacementBoundary ?? node };
+          })
+        : classification.findings;
     }),
   );
   return {
@@ -631,6 +711,7 @@ function analyzeParsed(
       context === "predicate" &&
       expression !== undefined &&
       isTrueConstant(expression),
+    ownsExpandedTemplates,
   };
 }
 
@@ -638,6 +719,7 @@ function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
   if (
     left.isSimpleSelect !== right.isSimpleSelect ||
     left.isTruePredicate !== right.isTruePredicate ||
+    left.ownsExpandedTemplates !== right.ownsExpandedTemplates ||
     left.findings.length !== right.findings.length
   ) {
     return false;
@@ -661,6 +743,7 @@ function emptyAnalysis(
     findings: [],
     isSimpleSelect: false,
     isTruePredicate: false,
+    ownsExpandedTemplates: false,
   };
 }
 
@@ -692,7 +775,9 @@ export function analyzeSql(
         variants.length = 0;
         break;
       }
-      variants.push(analyzeParsed(node, context, parsed));
+      variants.push(
+        analyzeParsed(node, context, source.hasLocalExpansion, parsed, variant),
+      );
     }
     const first = variants[0];
     if (
@@ -712,6 +797,7 @@ export function analyzeSql(
         ),
         isSimpleSelect: first.isSimpleSelect,
         isTruePredicate: first.isTruePredicate,
+        ownsExpandedTemplates: first.ownsExpandedTemplates,
       };
     }
   }

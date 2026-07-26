@@ -863,6 +863,15 @@ export const preferDrizzleApis = createRule({
       }
     }
 
+    function registerStructuralOwnership(analysis: SqlAnalysis): void {
+      for (const template of analysis.expandedTemplates) {
+        structurallyOwnedTemplates.add(template);
+        if (analysis.ownsExpandedTemplates) {
+          structurallyWholeTemplates.add(template);
+        }
+      }
+    }
+
     function reportLegacy(
       template: TSESTree.TaggedTemplateExpression,
       node: TSESTree.Node,
@@ -990,14 +999,7 @@ export const preferDrizzleApis = createRule({
           services,
           sqlSourceComposer,
         );
-        for (const template of analysis.expandedTemplates) {
-          structurallyOwnedTemplates.add(template);
-        }
-        if (analysis.isSimpleSelect) {
-          for (const template of analysis.expandedTemplates) {
-            structurallyWholeTemplates.add(template);
-          }
-        }
+        registerStructuralOwnership(analysis);
         reportStructuralAnalysis(analysis);
       });
     }
@@ -1031,9 +1033,7 @@ export const preferDrizzleApis = createRule({
           services,
           sqlSourceComposer,
         );
-        for (const template of analysis.expandedTemplates) {
-          structurallyOwnedTemplates.add(template);
-        }
+        registerStructuralOwnership(analysis);
         reportStructuralAnalysis(analysis);
         if (method === "innerJoin" && analysis.isTruePredicate) {
           context.report({ node, messageId: "crossJoin" });

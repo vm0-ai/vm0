@@ -597,6 +597,82 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select().from(users).where(sql\`NOT \${fragment}\`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 24,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          OR \${users.name} = \${"name"}
+        \`;
+        db.select()
+          .from(users)
+          .where(
+            sql\`(\${fragment}) AND \${users.deletedAt} IS NOT NULL\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 27,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          OR \${users.name} = \${"name"}
+        \`;
+        db.select()
+          .from(users)
+          .where(
+            sql\`\${fragment} AND \${users.deletedAt} IS NOT NULL\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "or" },
+          line: 27,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fragment = sql\`
+          \${users.id} = \${1}
+          AND \${users.name} = \${"name"}
+        \`;
+        db.select().from(users).where(sql\` \${fragment} \`);
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 20,
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
         const predicate = sql\`\${users.id} = \${1}\`;
         db.select().from(users).where(predicate).having(predicate);
       `,
@@ -623,7 +699,13 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .from(users)
           .where(sql.join(predicates, sql\` AND \`));
       `,
-      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+      ],
     },
     {
       code: `${drizzlePreamble}
@@ -640,7 +722,13 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             ),
           );
       `,
-      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 23,
+        },
+      ],
     },
     {
       code: `${drizzlePreamble}
@@ -657,6 +745,42 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       errors: [
         { messageId: "typedApi", data: { helper: "eq" } },
         { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        function conjunction(left: SQL, right: SQL): SQL {
+          return sql\`\${left} AND \${right}\`;
+        }
+        db.select()
+          .from(users)
+          .where(
+            conjunction(
+              sql\`\${users.id} = \${1}\`,
+              sql\`\${users.name} = \${"one"}\`,
+            ),
+          );
+        db.select()
+          .from(users)
+          .having(
+            conjunction(
+              sql\`\${users.id} = \${2}\`,
+              sql\`\${users.name} = \${"two"}\`,
+            ),
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 34,
+        },
       ],
     },
     {
@@ -695,6 +819,23 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       errors: [
         { messageId: "typedApi", data: { helper: "eq" } },
         { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        db.select()
+          .from(users)
+          .where(
+            flag
+              ? sql\`\${users.id} = \${1} AND \${users.name} = \${"one"}\`
+              : sql\`\${users.id} = \${2} AND \${users.name} = \${"two"}\`,
+          );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "and" } },
       ],
     },
     {
