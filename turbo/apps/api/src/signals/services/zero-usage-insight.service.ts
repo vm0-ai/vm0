@@ -71,8 +71,8 @@ interface TimeParts {
 interface UsageInsightSqlParams {
   readonly userId: string;
   readonly orgId: string;
-  readonly startTs: string;
-  readonly endTs: string;
+  readonly startTs: Date;
+  readonly endTs: Date;
   readonly trunc: "hour" | "day";
   readonly tz: string;
 }
@@ -314,15 +314,15 @@ function rangeToWindow(
 
 function usageBucketExpr(activityTime: SQLWrapper, p: UsageInsightSqlParams) {
   return sql`date_trunc(${p.trunc}, ${activityTime} AT TIME ZONE 'UTC' AT TIME ZONE ${p.tz})`.mapWith(
-    usageEvent.createdAt,
+    usageEvent.processedAt,
   );
 }
 
 function activityTimeWindowPredicate(p: UsageInsightSqlParams) {
-  const activityTime = sql`${usageEvent.createdAt} AT TIME ZONE 'UTC'`;
   return and(
-    gte(activityTime, sql`${p.startTs}::timestamptz`),
-    lt(activityTime, sql`${p.endTs}::timestamptz`),
+    isNotNull(usageEvent.processedAt),
+    gte(usageEvent.processedAt, p.startTs),
+    lt(usageEvent.processedAt, p.endTs),
   );
 }
 
@@ -345,7 +345,8 @@ function usageRowsCte(db: Db, p: UsageInsightSqlParams) {
   return db.$with("usage_rows").as(
     db
       .select({
-        activityTime: usageEvent.createdAt,
+        // Finalized reports assign usage to the time settlement completed.
+        activityTime: usageEvent.processedAt,
         runId: usageEvent.runId,
         userId: usageEvent.userId,
         orgId: usageEvent.orgId,
@@ -713,8 +714,8 @@ export const zeroUsageInsight$ = command(
     const params: UsageInsightSqlParams = {
       userId: args.userId,
       orgId: args.orgId,
-      startTs: startTs.toISOString(),
-      endTs: endTs.toISOString(),
+      startTs,
+      endTs,
       trunc,
       tz: args.options.tz,
     };

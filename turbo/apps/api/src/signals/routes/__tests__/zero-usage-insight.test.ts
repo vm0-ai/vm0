@@ -9,10 +9,10 @@ import {
   zeroUsageInsightContract,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { nowDate } from "../../../lib/time";
+import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   ensureUsagePricingRow,
@@ -26,16 +26,15 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /*
- * Usage rows are bucketed by their database insertion time, which cannot be
- * backdated through any product path. All seeded activity therefore lands in
- * the current hour; window-boundary behavior for past days (yesterday
- * buckets, 7d/day-window edges, timezone date shifts, and the
- * activity-vs-billing-time distinction) is no longer covered here.
+ * Finalized usage is filtered and bucketed by settlement time. Database
+ * insertion time remains independent from the application clock used by
+ * inline managed settlement and the pending-usage processing endpoint.
  */
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const GOOGLE_GEOCODING_URL =
   "https://maps.googleapis.com/maps/api/geocode/json";
+const HOUR_MS = 3_600_000;
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -212,6 +211,10 @@ function authenticateInsightActor(actor: ApiTestUser): void {
 }
 
 describe("GET /api/zero/usage/insight", () => {
+  afterEach(() => {
+    clearMockNow();
+  });
+
   it("returns 401 when not authenticated", async () => {
     const response = await accept(
       apiClient().get({
@@ -451,6 +454,50 @@ describe("GET /api/zero/usage/insight", () => {
     expect(bucket).toBeDefined();
     expect(bucket?.ts).toContain(selectedDate);
     expect(bucket?.ts).toMatch(/:00:00/);
+  });
+
+  it("uses settlement time for range membership and hourly buckets", async () => {
+    const actor = await entitledInsightActor();
+    const settledAt = new Date(nowDate().getTime() + 25 * HOUR_MS);
+    mockNow(settledAt);
+    const credits = await recordRunlessUsage(actor);
+    clearMockNow();
+    authenticateInsightActor(actor);
+
+    const currentRange = await accept(
+      apiClient().get({
+        query: { range: "7d", groupBy: "source", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(currentRange.body.grandTotalCredits).toBe(0);
+    expect(currentRange.body.buckets).toStrictEqual([]);
+
+    const processedDate = settledAt.toISOString().slice(0, 10);
+    const processedRange = await accept(
+      apiClient().get({
+        query: {
+          range: "day",
+          date: processedDate,
+          groupBy: "source",
+          tz: "UTC",
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const processedHour = new Date(settledAt);
+    processedHour.setUTCMinutes(0, 0, 0);
+
+    expect(processedRange.body.grandTotalCredits).toBe(credits);
+    expect(processedRange.body.buckets).toStrictEqual([
+      {
+        ts: processedHour.toISOString(),
+        series: { others: credits },
+        tokens: { others: 0 },
+      },
+    ]);
   });
 
   it("scope isolation — other user's activity in same org is invisible", async () => {
