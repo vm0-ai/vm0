@@ -1023,7 +1023,12 @@ def _ensure_compiled_network_policies(
 
 
 class FirewallAllow(NamedTuple):
-    """Base URL matched and auth headers should be injected.
+    """Matched-firewall allow decision for connector auth handling.
+
+    Depending on the auth configuration, handling may inject headers or query
+    parameters, rewrite and forward through ``auth.base``, apply AWS SigV4
+    signing, or make no credential changes. Asterisk-form allows that proceed
+    without auth are represented by ``FirewallPolicyAllow`` instead.
 
     ``permission`` and ``rule`` are present for a matched permission. They are
     ``None`` for unknown-endpoint allow, where the firewall base matched but no
