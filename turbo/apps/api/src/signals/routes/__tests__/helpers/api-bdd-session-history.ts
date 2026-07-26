@@ -26,6 +26,7 @@ function knownSessionHistoryBodies(runId: string): readonly string[] {
     `morning brief history ${runId}`,
     `slack dispatch probe ${runId}`,
     `workflow automation history ${runId}`,
+    `workflow queue api history ${runId}`,
   ];
 }
 
