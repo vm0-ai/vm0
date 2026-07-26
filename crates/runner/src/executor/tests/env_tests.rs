@@ -113,7 +113,9 @@ fn model_provider_env_placeholder_validation_rejects_non_placeholder_values() {
     for (key, value) in protected_values {
         let ctx = context_with_env(HashMap::from([(key.to_owned(), value.to_owned())]));
 
-        let error = validate_context_for_test(&ctx).unwrap_err();
+        let Err(error) = validate_context_for_test(&ctx) else {
+            panic!("validation unexpectedly accepted {key}");
+        };
 
         assert!(
             error.contains(key),
