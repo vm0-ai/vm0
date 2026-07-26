@@ -18,7 +18,6 @@ import {
   chatThreadMessagesContract,
   type AttachFile,
   type ArtifactFavoritesResponse,
-  type ArtifactsListResponse,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -1032,24 +1031,6 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    async listArtifacts(
-      actor: ApiTestUser,
-      query: {
-        readonly limit?: number;
-        readonly cursor?: string;
-        readonly updatedAfter?: string;
-      } = {},
-    ): Promise<ArtifactsListResponse> {
-      const response = await accept(
-        artifactsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        [200],
-      );
-      return response.body;
     },
 
     async listArtifactCatalog(

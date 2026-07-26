@@ -81,57 +81,6 @@ const chatThreadArtifactRunSchema = z.object({
   files: z.array(chatThreadArtifactFileSchema),
 });
 
-const artifactItemSchema = z.object({
-  artifactItemId: z.string(),
-  threadId: z.string(),
-  runId: z.string(),
-  fileId: z.string(),
-  agentId: z.string(),
-  agentName: z.string().nullable().optional(),
-  agentAvatarUrl: z.string().nullable().optional(),
-  threadTitle: z.string().nullable().optional(),
-  filename: z.string(),
-  contentType: z.string(),
-  size: z.number().default(0),
-  url: z.string(),
-  assetRef: assetRefSchema.optional(),
-  previewImageUrl: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  artifactKind: hostedArtifactKindSchema.optional(),
-  googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
-});
-
-/**
- * Keyset pagination for the artifacts list. Both fields are optional so
- * un-paginated callers (older frontend bundles) still get a valid first page.
- * `cursor` is an opaque token returned as `nextCursor` from a previous page.
- */
-const artifactsListQuerySchema = z.object({
-  limit: z.coerce.number().int().positive().max(10_000).optional(),
-  cursor: z.string().optional(),
-  updatedAfter: z.string().datetime().optional(),
-});
-
-const artifactsListResponseSchema = z.object({
-  artifacts: z.array(artifactItemSchema),
-  /**
-   * True when more artifacts exist beyond this page. Retained for backward
-   * compatibility with older frontend bundles that read it; new clients follow
-   * `nextCursor` instead.
-   */
-  truncated: z.boolean(),
-  /**
-   * Opaque cursor for the next page, or null when this is the last page.
-   */
-  nextCursor: z.string().nullable(),
-  /**
-   * Database time captured before the first page was read. Incremental clients
-   * persist it only after the complete page chain has been cached.
-   */
-  syncUntil: z.string().datetime().optional(),
-});
-
 const artifactFavoritesResponseSchema = z.object({
   artifactUrls: z.array(z.string()),
 });
@@ -1275,19 +1224,6 @@ export const chatThreadArtifactsContract = c.router({
 });
 
 export const artifactsContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/artifacts",
-    headers: authHeadersSchema,
-    query: artifactsListQuerySchema,
-    responses: {
-      200: artifactsListResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary:
-      "List artifacts for the caller's current organization (keyset-paginated)",
-  },
   listFavorites: {
     method: "GET",
     path: "/api/zero/artifacts/favorites",
@@ -1415,10 +1351,8 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
-  artifactItemSchema,
   artifactFavoriteBodySchema,
   artifactFavoritesResponseSchema,
-  artifactsListResponseSchema,
   imageArtifactEditSnapshotSchema,
   imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
@@ -1493,11 +1427,9 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
-export type ArtifactItem = z.infer<typeof artifactItemSchema>;
 export type ArtifactFavoritesResponse = z.infer<
   typeof artifactFavoritesResponseSchema
 >;
-export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type ImageArtifactEditSnapshot = z.infer<
   typeof imageArtifactEditSnapshotSchema
 >;

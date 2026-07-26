@@ -582,16 +582,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         materialization: { status: "ready" },
       },
     });
-    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
-    expect(
-      artifacts.artifacts.find((artifact) => {
-        return artifact.assetRef?.id === canonicalAssetId;
-      }),
-    ).toMatchObject({
-      fileId: canonicalAssetId,
-      assetRef: { id: canonicalAssetId },
-    });
-
     mockGoogleDriveConnectorOAuth();
     const oauth = await connectorsApi.startOauth(
       actorFor({ orgId, userId }),
@@ -943,6 +933,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   it("generates a poster immediately for a Slack video Artifact", async () => {
     const { orgId, userId, runId } = await seedRunScoped();
     await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
+      [FeatureSwitchKey.Artifacts]: true,
       [FeatureSwitchKey.VideoArtifactPosters]: true,
     });
     const fileId = `F-${randomUUID().slice(0, 8)}`;
@@ -998,11 +989,13 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         );
       }),
     ).toBeTruthy();
-    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
-    const videoArtifact = artifacts.artifacts.find((artifact) => {
-      return artifact.fileId === fileId;
+    const catalog = await chatApi.listArtifactCatalog(
+      actorFor({ orgId, userId }),
+    );
+    const videoArtifact = catalog.artifacts.find((artifact) => {
+      return artifact.title === "demo.mp4";
     });
-    expect(videoArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
+    expect(videoArtifact?.thumbnail?.url).toMatch(/\/poster-v2\.jpg$/);
   });
 
   it("does not record a run association for ordinary clerk session auth", async () => {

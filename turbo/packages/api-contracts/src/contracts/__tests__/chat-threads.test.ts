@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   artifactFavoriteBodySchema,
-  artifactItemSchema,
   artifactsContract,
-  artifactsListResponseSchema,
   chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadModelSelectionContract,
@@ -307,9 +305,7 @@ describe("chat thread generation template contract", () => {
 });
 
 describe("artifacts contract", () => {
-  it("exposes an org-level generated artifacts route", () => {
-    expect(artifactsContract.list.method).toBe("GET");
-    expect(artifactsContract.list.path).toBe("/api/zero/artifacts");
+  it("exposes the artifact favorite and image-edit-snapshot routes", () => {
     expect(artifactsContract.listFavorites.method).toBe("GET");
     expect(artifactsContract.listFavorites.path).toBe(
       "/api/zero/artifacts/favorites",
@@ -336,105 +332,11 @@ describe("artifacts contract", () => {
     );
   });
 
-  it("accepts keyset pagination query params", () => {
-    const parsed = artifactsContract.list.query.safeParse({
-      limit: "50",
-      cursor: "opaque-token",
-      updatedAfter: "2026-07-20T04:00:00.000Z",
-    });
-
-    expect(parsed.success).toBe(true);
-    expect(parsed.success && parsed.data.limit).toBe(50);
-    expect(parsed.success && parsed.data.updatedAfter).toBe(
-      "2026-07-20T04:00:00.000Z",
-    );
-  });
-
-  it("accepts a minimal generated artifact item", () => {
-    const parsed = artifactItemSchema.safeParse({
-      artifactItemId: "run-1:file-1",
-      threadId: "thread-1",
-      runId: "run-1",
-      fileId: "file-1",
-      agentId: "agent-1",
-      filename: "launch-plan.html",
-      contentType: "text/html",
-      url: "https://static.vm0.io/artifacts/launch-plan.html",
-      createdAt: "2026-07-07T00:00:00.000Z",
-      updatedAt: "2026-07-07T00:00:00.000Z",
-    });
-
-    expect(parsed.success).toBe(true);
-    expect(parsed.success && parsed.data.size).toBe(0);
-  });
-
-  it("accepts artifact metadata used by filters and Drive sync UI", () => {
-    const parsed = artifactItemSchema.safeParse({
-      artifactItemId: "run-1:file-1",
-      threadId: "thread-1",
-      runId: "run-1",
-      fileId: "file-1",
-      agentId: "agent-1",
-      agentName: "Website Builder",
-      agentAvatarUrl: null,
-      threadTitle: "Launch site",
-      filename: "launch-plan.html",
-      contentType: "text/html",
-      url: "https://static.vm0.io/artifacts/launch-plan.html",
-      createdAt: "2026-07-07T00:00:00.000Z",
-      updatedAt: "2026-07-08T00:00:00.000Z",
-      artifactKind: "hosted-site",
-      googleDriveSync: {
-        status: "synced",
-        id: "drive-file-1",
-        name: "launch-plan.html",
-        webViewLink: "https://drive.google.com/file/d/drive-file-1/view",
-      },
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("requires source context for chat navigation and agent filtering", () => {
-    const parsed = artifactItemSchema.safeParse({
-      artifactItemId: "run-1:file-1",
-      runId: "run-1",
-      fileId: "file-1",
-      filename: "launch-plan.html",
-      contentType: "text/html",
-      url: "https://static.vm0.io/artifacts/launch-plan.html",
-      createdAt: "2026-07-07T00:00:00.000Z",
-      updatedAt: "2026-07-07T00:00:00.000Z",
-    });
-
-    expect(parsed.success).toBe(false);
-  });
-
-  it("accepts a keyset-paginated list response", () => {
-    const parsed = artifactsListResponseSchema.safeParse({
-      artifacts: [],
-      truncated: false,
-      nextCursor: null,
-      syncUntil: "2026-07-20T04:01:00.000Z",
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
   it("accepts artifact favorite request bodies", () => {
     const parsed = artifactFavoriteBodySchema.safeParse({
       artifactUrl: "https://static.vm0.io/artifacts/launch-plan.html",
     });
 
     expect(parsed.success).toBe(true);
-  });
-
-  it("requires nextCursor on the list response", () => {
-    const parsed = artifactsListResponseSchema.safeParse({
-      artifacts: [],
-      truncated: false,
-    });
-
-    expect(parsed.success).toBe(false);
   });
 });
