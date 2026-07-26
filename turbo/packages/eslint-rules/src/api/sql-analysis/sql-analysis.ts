@@ -6,15 +6,15 @@ import { type TypeChecker } from "typescript";
 
 import {
   isDrizzleColumnType,
-  isDrizzleSqlTag,
   isDrizzleTableType,
   isDrizzleWrapperType,
 } from "../drizzle.ts";
 import { parsePostgres } from "./postgres-parser.ts";
+import { type SqlSourceComposer, type SqlSourceVariant } from "./sql-source.ts";
 
-type DirectSqlContext = "predicate" | "statement";
+type SqlAnalysisContext = "predicate" | "statement";
 
-export type DirectSqlFinding =
+export type SqlAnalysisFinding =
   | {
       readonly helper: "and" | "eq" | "gt" | "gte" | "lt" | "lte" | "ne" | "or";
       readonly kind: "helper";
@@ -22,11 +22,12 @@ export type DirectSqlFinding =
     }
   | {
       readonly kind: "query-builder";
-      readonly node: TSESTree.TaggedTemplateExpression;
+      readonly node: TSESTree.Expression;
     };
 
-export interface DirectSqlAnalysis {
-  readonly findings: readonly DirectSqlFinding[];
+export interface SqlAnalysis {
+  readonly expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>;
+  readonly findings: readonly SqlAnalysisFinding[];
   readonly isSimpleSelect: boolean;
   readonly isTruePredicate: boolean;
 }
@@ -38,7 +39,7 @@ interface SqlMarker {
   readonly node: TSESTree.Expression;
 }
 
-interface ParsedDirectSql {
+interface ParsedSql {
   readonly markers: ReadonlyMap<string, SqlMarker>;
   readonly statement: unknown;
 }
@@ -69,7 +70,7 @@ type StructuralExpression =
 
 interface ExpressionClassification {
   readonly anchor: TSESTree.Node | undefined;
-  readonly findings: readonly DirectSqlFinding[];
+  readonly findings: readonly SqlAnalysisFinding[];
 }
 
 interface RelationMatch {
@@ -78,15 +79,9 @@ interface RelationMatch {
   readonly sourceTable: SqlMarker;
 }
 
-const EMPTY_ANALYSIS: DirectSqlAnalysis = {
-  findings: [],
-  isSimpleSelect: false,
-  isTruePredicate: false,
-};
-
 const ANALYSIS_CACHE = new WeakMap<
-  TSESTree.TaggedTemplateExpression,
-  Map<DirectSqlContext, DirectSqlAnalysis>
+  SqlSourceComposer,
+  WeakMap<TSESTree.Expression, Map<SqlAnalysisContext, SqlAnalysis>>
 >();
 
 const COMPARISON_HELPERS = new Map<
@@ -140,10 +135,6 @@ function recordProperty(
   return isRecord(result) ? result : undefined;
 }
 
-function quasiText(node: TSESTree.TemplateElement): string {
-  return node.value.cooked ?? node.value.raw;
-}
-
 function markerIsColumn(
   node: TSESTree.Expression,
   checker: TypeChecker,
@@ -188,26 +179,27 @@ function markerPrefix(quasis: readonly string[]): string {
   }
 }
 
-function parseDirectSql(
-  node: TSESTree.TaggedTemplateExpression,
-  context: DirectSqlContext,
+function parseSqlVariant(
+  variant: SqlSourceVariant,
+  context: SqlAnalysisContext,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
-): ParsedDirectSql | null {
-  if (!isDrizzleSqlTag(checker, services, node.tag)) {
-    return null;
-  }
-  const quasis = node.quasi.quasis.map(quasiText);
-  const prefix = markerPrefix(quasis);
+): ParsedSql | null {
+  const literals = variant.chunks.flatMap((chunk) => {
+    return chunk.kind === "literal" ? [chunk.text] : [];
+  });
+  const prefix = markerPrefix(literals);
   const markers = new Map<string, SqlMarker>();
-  let source = quasis[0] ?? "";
-  for (let index = 0; index < node.quasi.expressions.length; index += 1) {
-    const expression = node.quasi.expressions[index];
-    const followingQuasi = quasis[index + 1];
-    if (expression === undefined || followingQuasi === undefined) {
-      return null;
+  let source = "";
+  let markerIndex = 0;
+  for (const chunk of variant.chunks) {
+    if (chunk.kind === "literal") {
+      source += chunk.text;
+      continue;
     }
-    const name = `${prefix}${index}`;
+    const expression = chunk.expression;
+    const name = `${prefix}${markerIndex}`;
+    markerIndex += 1;
     let cachedColumn: boolean | undefined;
     let cachedTable: boolean | undefined;
     let cachedWrapper: boolean | undefined;
@@ -227,7 +219,7 @@ function parseDirectSql(
       node: expression,
     };
     markers.set(name, marker);
-    source += `"${name}"${followingQuasi}`;
+    source += `"${name}"`;
   }
 
   const parseResult = parsePostgres(
@@ -370,9 +362,9 @@ function structuralExpression(
 }
 
 function deduplicateFindings(
-  findings: readonly DirectSqlFinding[],
-): DirectSqlFinding[] {
-  const result: DirectSqlFinding[] = [];
+  findings: readonly SqlAnalysisFinding[],
+): SqlAnalysisFinding[] {
+  const result: SqlAnalysisFinding[] = [];
   const seen = new Map<TSESTree.Node, Set<string>>();
   for (const finding of findings) {
     const key =
@@ -603,14 +595,15 @@ function isTrueConstant(expression: unknown): boolean {
 }
 
 function analyzeParsed(
-  node: TSESTree.TaggedTemplateExpression,
-  context: DirectSqlContext,
-  parsed: ParsedDirectSql,
-): DirectSqlAnalysis {
+  node: TSESTree.Expression,
+  context: SqlAnalysisContext,
+  parsed: ParsedSql,
+): SqlAnalysis {
   const simpleSelect =
     context === "statement" && isSimpleSelect(parsed.statement, parsed.markers);
   if (simpleSelect) {
     return {
+      expandedTemplates: new Set(),
       findings: [{ kind: "query-builder", node }],
       isSimpleSelect: true,
       isTruePredicate: false,
@@ -631,6 +624,7 @@ function analyzeParsed(
     }),
   );
   return {
+    expandedTemplates: new Set(),
     findings,
     isSimpleSelect: false,
     isTruePredicate:
@@ -640,22 +634,90 @@ function analyzeParsed(
   };
 }
 
-export function analyzeDirectSql(
-  node: TSESTree.TaggedTemplateExpression,
-  context: DirectSqlContext,
+function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
+  if (
+    left.isSimpleSelect !== right.isSimpleSelect ||
+    left.isTruePredicate !== right.isTruePredicate ||
+    left.findings.length !== right.findings.length
+  ) {
+    return false;
+  }
+  return left.findings.every((finding, index) => {
+    const other = right.findings[index];
+    return (
+      other !== undefined &&
+      finding.kind === other.kind &&
+      (finding.kind === "query-builder" ||
+        (other.kind === "helper" && finding.helper === other.helper))
+    );
+  });
+}
+
+function emptyAnalysis(
+  expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>,
+): SqlAnalysis {
+  return {
+    expandedTemplates,
+    findings: [],
+    isSimpleSelect: false,
+    isTruePredicate: false,
+  };
+}
+
+export function analyzeSql(
+  node: TSESTree.Expression,
+  context: SqlAnalysisContext,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
-): DirectSqlAnalysis {
-  const cached = ANALYSIS_CACHE.get(node)?.get(context);
+  composer: SqlSourceComposer,
+): SqlAnalysis {
+  let composerCache = ANALYSIS_CACHE.get(composer);
+  if (composerCache === undefined) {
+    composerCache = new WeakMap();
+    ANALYSIS_CACHE.set(composer, composerCache);
+  }
+  const cached = composerCache.get(node)?.get(context);
   if (cached !== undefined) {
     return cached;
   }
-  const parsed = parseDirectSql(node, context, checker, services);
-  const analysis =
-    parsed === null ? EMPTY_ANALYSIS : analyzeParsed(node, context, parsed);
-  const nodeCache = ANALYSIS_CACHE.get(node);
+  const source = composer.compose(node);
+  let analysis: SqlAnalysis;
+  if (source === null) {
+    analysis = emptyAnalysis(new Set());
+  } else {
+    const variants: SqlAnalysis[] = [];
+    for (const variant of source.variants) {
+      const parsed = parseSqlVariant(variant, context, checker, services);
+      if (parsed === null) {
+        variants.length = 0;
+        break;
+      }
+      variants.push(analyzeParsed(node, context, parsed));
+    }
+    const first = variants[0];
+    if (
+      first === undefined ||
+      variants.some((variant) => {
+        return !sameAnalysisSignature(variant, first);
+      })
+    ) {
+      analysis = emptyAnalysis(source.expandedTemplates);
+    } else {
+      analysis = {
+        expandedTemplates: source.expandedTemplates,
+        findings: deduplicateFindings(
+          variants.flatMap((variant) => {
+            return variant.findings;
+          }),
+        ),
+        isSimpleSelect: first.isSimpleSelect,
+        isTruePredicate: first.isTruePredicate,
+      };
+    }
+  }
+  const nodeCache = composerCache.get(node);
   if (nodeCache === undefined) {
-    ANALYSIS_CACHE.set(node, new Map([[context, analysis]]));
+    composerCache.set(node, new Map([[context, analysis]]));
   } else {
     nodeCache.set(context, analysis);
   }
