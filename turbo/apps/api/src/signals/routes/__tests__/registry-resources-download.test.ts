@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
+import { findWebsiteTemplateResource } from "@vm0/core/resource-registry";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -147,6 +148,13 @@ describe("registry resource download", () => {
     ] as const;
 
     for (const archive of v2Archives) {
+      // The pinned digest must be the one the registry ships, otherwise the
+      // version ids below would be resolved for an archive nobody pulls.
+      expect(findWebsiteTemplateResource(archive.id)?.source.archive).toEqual({
+        type: "tar.gz",
+        sha256: archive.sha256,
+      });
+
       expect(
         resolvePrivateRegistryResourceArchive(
           archive.id,
