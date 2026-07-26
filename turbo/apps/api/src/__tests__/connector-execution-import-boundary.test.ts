@@ -14,21 +14,22 @@ const AUTH_PROVIDERS_SOURCE_DIR = path.join(
   CONNECTORS_SOURCE_DIR,
   "auth-providers",
 );
-const STATIC_CONNECTORS_SOURCE_DIR = path.join(
+const CONNECTOR_AUTH_METHOD_SOURCE_PATH = path.join(
   CONNECTORS_SOURCE_DIR,
-  "connectors",
+  "connector-auth-method",
 );
-const STATIC_CONNECTOR_UTILS_PATH = path.join(
+const CONNECTOR_CONFIG_SOURCE_PATH = path.join(
   CONNECTORS_SOURCE_DIR,
-  "connector-utils",
+  "connector-config",
 );
 
-function isStaticConnectorPackageImport(specifier: string): boolean {
+function isRegistryBoundConnectorPackageImport(specifier: string): boolean {
   return (
     specifier === "@vm0/connectors" ||
     specifier === "@vm0/connectors/connectors" ||
     specifier.startsWith("@vm0/connectors/connectors/") ||
-    specifier === "@vm0/connectors/connector-utils"
+    specifier === "@vm0/connectors/connector-utils" ||
+    specifier === "@vm0/connectors/connector-search"
   );
 }
 
@@ -73,19 +74,37 @@ function moduleSpecifiers(filePath: string): string[] {
     });
 }
 
-function resolvesToStaticConnectorSource(
+function resolvesToSourceModule(
+  resolvedPath: string,
+  sourcePath: string,
+): boolean {
+  return resolvedPath === sourcePath || resolvedPath === `${sourcePath}.ts`;
+}
+
+function violatesProviderImportBoundary(
   filePath: string,
   specifier: string,
 ): boolean {
   if (!specifier.startsWith(".")) {
-    return isStaticConnectorPackageImport(specifier);
+    if (
+      specifier !== "@vm0/connectors" &&
+      !specifier.startsWith("@vm0/connectors/")
+    ) {
+      return false;
+    }
+    return !(
+      specifier === "@vm0/connectors/connector-auth-method" ||
+      specifier === "@vm0/connectors/connector-config" ||
+      specifier === "@vm0/connectors/auth-providers" ||
+      specifier.startsWith("@vm0/connectors/auth-providers/")
+    );
   }
   const resolved = path.resolve(path.dirname(filePath), specifier);
   return (
-    resolved === STATIC_CONNECTORS_SOURCE_DIR ||
-    resolved.startsWith(`${STATIC_CONNECTORS_SOURCE_DIR}${path.sep}`) ||
-    resolved === STATIC_CONNECTOR_UTILS_PATH ||
-    resolved === `${STATIC_CONNECTOR_UTILS_PATH}.ts`
+    resolved !== AUTH_PROVIDERS_SOURCE_DIR &&
+    !resolved.startsWith(`${AUTH_PROVIDERS_SOURCE_DIR}${path.sep}`) &&
+    !resolvesToSourceModule(resolved, CONNECTOR_AUTH_METHOD_SOURCE_PATH) &&
+    !resolvesToSourceModule(resolved, CONNECTOR_CONFIG_SOURCE_PATH)
   );
 }
 
@@ -95,7 +114,7 @@ describe("connector execution import boundary", () => {
       (filePath) => {
         return moduleSpecifiers(filePath)
           .filter((specifier) => {
-            return resolvesToStaticConnectorSource(filePath, specifier);
+            return violatesProviderImportBoundary(filePath, specifier);
           })
           .map((specifier) => {
             return `${path.relative(AUTH_PROVIDERS_SOURCE_DIR, filePath)} -> ${specifier}`;
@@ -112,7 +131,7 @@ describe("connector execution import boundary", () => {
       return moduleSpecifiers(filePath)
         .filter((specifier) => {
           return (
-            isStaticConnectorPackageImport(specifier) &&
+            isRegistryBoundConnectorPackageImport(specifier) &&
             !isAllowedApiStaticImport(relativePath, specifier)
           );
         })
