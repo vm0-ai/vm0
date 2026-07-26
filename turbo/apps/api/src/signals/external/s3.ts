@@ -584,6 +584,51 @@ function putS3ObjectWithClient(
   });
 }
 
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+function isS3PreconditionFailedError(error: unknown): boolean {
+  const candidate = error as {
+    readonly name?: string;
+    readonly $metadata?: { readonly httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "PreconditionFailed" ||
+    candidate.$metadata?.httpStatusCode === 412
+  );
+}
+
+/**
+ * Upload an object exactly once. An existing key is an idempotent success, so
+ * callers can safely retry without changing bytes behind an immutable URL.
+ */
+export function putImmutableS3Object(
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+  signal?: AbortSignal,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    const uploaded = await settle(
+      client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+          CacheControl: IMMUTABLE_CACHE_CONTROL,
+          IfNoneMatch: "*",
+        }),
+        signal ? { abortSignal: signal } : undefined,
+      ),
+    );
+    if (!uploaded.ok && !isS3PreconditionFailedError(uploaded.error)) {
+      throw uploaded.error;
+    }
+  });
+}
+
 export function putHostedSitesS3Object(
   bucket: string,
   key: string,

@@ -121,7 +121,7 @@ export const recordHostedSiteArtifact$ = command(
     { set },
     args: RecordHostedSiteArtifactArgs,
     signal: AbortSignal,
-  ): Promise<string | null> => {
+  ): Promise<RecordedUploadedFile | null> => {
     if (!args.runId) {
       return null;
     }
@@ -184,19 +184,31 @@ export const recordHostedSiteArtifact$ = command(
             entrypoint: args.entrypoint,
             spaFallback: args.spaFallback,
           },
-          // Legacy redeploys reuse a mutable alias row, so their preview must
-          // be regenerated. Versioned rows are immutable and keep their own
-          // preview when completion is retried.
-          ...(args.deploymentVersion === null ? { previewImageUrl: null } : {}),
+          // Legacy redeploys reuse a mutable alias row. Preserve the preview
+          // when the same deployment is completed again, but clear it when a
+          // new deployment takes over that row. Versioned rows are immutable
+          // and keep their own preview.
+          ...(args.deploymentVersion === null
+            ? {
+                previewImageUrl: sql`case
+                  when ${runUploadedFiles.metadata}->>'deploymentId' = ${args.deploymentId}
+                  then ${runUploadedFiles.previewImageUrl}
+                  else null
+                end`,
+              }
+            : {}),
           updatedAt: sql`now()`,
         },
       })
-      .returning({ id: runUploadedFiles.id });
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
+      });
     signal.throwIfAborted();
 
     await set(syncArtifactCatalogForFile$, row?.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
-    return row?.id ?? null;
+    return row ?? null;
   },
 );
 

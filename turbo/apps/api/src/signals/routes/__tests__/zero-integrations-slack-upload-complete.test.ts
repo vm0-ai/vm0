@@ -993,7 +993,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       objectStore.puts.some((put) => {
         return (
           put.bucket === "test-user-artifacts" &&
-          put.key.endsWith("/poster.jpg") &&
+          put.key.endsWith("/poster-v2.jpg") &&
           put.contentType === "image/jpeg"
         );
       }),

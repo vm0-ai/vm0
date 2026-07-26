@@ -2053,13 +2053,16 @@ function buildManifest(args: {
 
 function artifactPreviewArgs(
   deployment: HostedDeploymentRow,
-  artifactRowId: string | null,
+  artifactRow: {
+    readonly id: string;
+    readonly previewImageUrl: string | null;
+  } | null,
 ): RenderArtifactPreviewArgs | null {
-  if (!artifactRowId || !deployment.runId) {
+  if (!artifactRow || artifactRow.previewImageUrl || !deployment.runId) {
     return null;
   }
   return {
-    id: artifactRowId,
+    id: artifactRow.id,
     runId: deployment.runId,
     userId: deployment.userId,
     url: deployment.artifactUrl ?? deployment.url,
@@ -2657,7 +2660,7 @@ export const completeHostedSiteDeployment$ = command(
     );
     signal.throwIfAborted();
 
-    const artifactRowId = await set(
+    const artifactRow = await set(
       recordHostedSiteArtifact$,
       hostedSiteArtifactArgs(deployment),
       signal,
@@ -2669,7 +2672,7 @@ export const completeHostedSiteDeployment$ = command(
     // empty without blocking the deployment.
     set(
       scheduleArtifactPreviewRender$,
-      artifactPreviewArgs(deployment, artifactRowId),
+      artifactPreviewArgs(deployment, artifactRow),
     );
 
     return {
