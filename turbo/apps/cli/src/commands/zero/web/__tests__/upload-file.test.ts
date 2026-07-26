@@ -327,11 +327,6 @@ describe("zero web upload-file command", () => {
           contentType:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         },
-        {
-          filename: "deck.pptx",
-          contentType:
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        },
       ] as const;
       const preparedById = new Map<
         string,
@@ -420,20 +415,11 @@ describe("zero web upload-file command", () => {
           filename: "sheet.numbers",
           contentType: "application/vnd.apple.numbers",
         },
-        {
-          filename: "slides.key",
-          contentType: "application/vnd.apple.keynote",
-        },
         { filename: "photo.heic", contentType: "image/heic" },
         { filename: "scan.tiff", contentType: "image/tiff" },
         {
           filename: "macro.xlsm",
           contentType: "application/vnd.ms-excel.sheet.macroenabled.12",
-        },
-        {
-          filename: "template.potx",
-          contentType:
-            "application/vnd.openxmlformats-officedocument.presentationml.template",
         },
         { filename: "data.xml", contentType: "application/xml" },
         { filename: "config.yaml", contentType: "application/yaml" },

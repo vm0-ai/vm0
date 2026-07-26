@@ -39,30 +39,6 @@ function artifactFile(
   };
 }
 
-function presentationHtml(): string {
-  return `<!doctype html>
-<html>
-  <head>
-    <title>Quarterly roadmap</title>
-    <script id="vm0-deck-metadata" type="application/json">
-      {
-        "kind": "presentation-html",
-        "editProtocolVersion": 1,
-        "slides": {
-          "slide-intro": { "speakerNotes": "Open with launch metrics." }
-        }
-      }
-    </script>
-  </head>
-  <body>
-    <section data-vm0-slide data-slide-id="slide-intro">
-      <h1 data-vm0-editable="text" data-vm0-edit-id="title">Quarterly roadmap</h1>
-      <p data-vm0-editable="text" data-vm0-edit-id="summary">Launch metrics are ahead of plan.</p>
-    </section>
-  </body>
-</html>`;
-}
-
 function setupHostedSiteArtifactPreview({
   artifactUrl,
   filename,
@@ -1762,20 +1738,9 @@ describe("zero attachment chips", () => {
     expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
   });
 
-  it("opens presentation artifact controls from chat message links", async () => {
+  it("opens presentation HTML preview controls from chat message links", async () => {
     const presentationUrl =
       "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";
-    const html = presentationHtml();
-    context.mocks.http.get(presentationUrl, () => {
-      return new Response(html, {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(html, {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, {
         runs: [
@@ -1813,10 +1778,12 @@ describe("zero attachment chips", () => {
     click(screen.getByLabelText("Open html preview for Quarterly roadmap"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
       expect(screen.getByLabelText("Open in split view")).toBeInTheDocument();
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByLabelText("Edit presentation"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
       "tabindex",
       "-1",
@@ -1857,13 +1824,6 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Open html preview for Quarterly roadmap"));
-    click(await screen.findByLabelText("Edit presentation"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
     });
   });
 

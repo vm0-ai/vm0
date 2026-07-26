@@ -42,20 +42,6 @@ function contentTypeFormat(contentType: string): string | null {
   return subtype.toUpperCase();
 }
 
-function isPresentationExtension(extension: string): boolean {
-  switch (extension) {
-    case "KEY":
-    case "ODP":
-    case "PPT":
-    case "PPTX": {
-      return true;
-    }
-    default: {
-      return false;
-    }
-  }
-}
-
 function isCodeExtension(extension: string): boolean {
   switch (extension) {
     case "CSS":
@@ -114,9 +100,6 @@ function artifactKindTitle(
     return "Presentation";
   }
   const extension = fileExtension(filename);
-  if (extension && isPresentationExtension(extension)) {
-    return "Presentation";
-  }
   if (extension && isCodeExtension(extension)) {
     return kind === "html" ? "Hosted site" : "Code";
   }

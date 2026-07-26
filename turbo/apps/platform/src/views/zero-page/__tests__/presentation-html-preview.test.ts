@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  patchPresentationHtml,
-  previewPresentationHtml,
-} from "../presentation-html-edit-protocol.ts";
+import { previewPresentationHtml } from "../presentation-html-preview.ts";
 
 describe("previewPresentationHtml", () => {
   it("materializes theme switcher defaults before removing scripts", () => {
@@ -428,76 +425,5 @@ describe("previewPresentationHtml", () => {
     });
 
     expect(previewHtml).toContain(":root { --accent: #ff6600; }");
-  });
-});
-
-describe("patchPresentationHtml", () => {
-  it("preserves unknown deck and slide metadata while applying edits", () => {
-    const patchedHtml = patchPresentationHtml({
-      blocks: [
-        {
-          editId: "title",
-          slideId: "slide-1",
-          tagName: "h1",
-          text: "Updated title",
-        },
-      ],
-      html: `
-        <!doctype html>
-        <html>
-          <head>
-            <script id="vm0-deck-metadata" type="application/json">
-              {
-                "kind": "presentation-html",
-                "editProtocolVersion": 1,
-                "customDeckField": { "theme": "preserve-me" },
-                "slides": {
-                  "slide-1": {
-                    "speakerNotes": "Old notes",
-                    "customSlideField": { "transition": "fade" }
-                  },
-                  "slide-2": {
-                    "speakerNotes": "Untouched notes",
-                    "customSlideField": "untouched"
-                  }
-                }
-              }
-            </script>
-          </head>
-          <body>
-            <section data-vm0-slide data-slide-id="slide-1">
-              <h1
-                data-vm0-editable="text"
-                data-vm0-edit-id="title"
-              >Original title</h1>
-            </section>
-          </body>
-        </html>
-      `,
-      slides: [
-        {
-          id: "slide-1",
-          notes: "Updated notes",
-          title: "Original title",
-        },
-      ],
-    });
-    const doc = new DOMParser().parseFromString(patchedHtml, "text/html");
-    const metadata = JSON.parse(
-      doc.getElementById("vm0-deck-metadata")?.textContent ?? "",
-    ) as Record<string, unknown>;
-
-    expect(doc.querySelector("h1")?.textContent).toBe("Updated title");
-    expect(metadata.customDeckField).toStrictEqual({ theme: "preserve-me" });
-    expect(metadata.slides).toStrictEqual({
-      "slide-1": {
-        speakerNotes: "Updated notes",
-        customSlideField: { transition: "fade" },
-      },
-      "slide-2": {
-        speakerNotes: "Untouched notes",
-        customSlideField: "untouched",
-      },
-    });
   });
 });

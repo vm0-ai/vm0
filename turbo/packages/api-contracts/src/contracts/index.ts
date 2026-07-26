@@ -647,7 +647,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
   type WebsiteGenerationTemplateRequest,
@@ -684,7 +683,6 @@ export {
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
-  type HtmlArtifactEditSnapshot,
 } from "./chat-threads";
 export {
   runnersPollContract,

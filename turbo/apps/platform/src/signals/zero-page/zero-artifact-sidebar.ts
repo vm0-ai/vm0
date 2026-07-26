@@ -24,7 +24,6 @@ import {
   clearBrowserSessionSidebarParams,
   clearChatAutomationSidebarParams,
   clearMailDraftSidebarParams,
-  PRESENTATION_EDITOR_QUERY_PARAM,
 } from "./right-sidebar-search-params.ts";
 
 // ---------------------------------------------------------------------------
@@ -43,7 +42,6 @@ export type ArtifactInboxSection = "all" | "media" | "docs" | "sites";
 const internalArtifactInboxSection$ = state<ArtifactInboxSection>("all");
 const internalArtifactInboxQuery$ = state("");
 const internalArtifactInboxSearchOpen$ = state(false);
-const internalPresentationEditorCloseDialogOpen$ = state(false);
 
 export type ArtifactPreviewKind =
   | "markdown"
@@ -116,20 +114,6 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   return { source: "url", url: raw, kind, filename: attachment.filename };
 });
 
-export const currentPresentationEditorUrl$ = computed((get) => {
-  return get(searchParams$).get(PRESENTATION_EDITOR_QUERY_PARAM);
-});
-
-export const presentationEditorCloseDialogOpen$ = computed((get) => {
-  return get(internalPresentationEditorCloseDialogOpen$);
-});
-
-export const setPresentationEditorCloseDialogOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(internalPresentationEditorCloseDialogOpen$, open);
-  },
-);
-
 function setArtifactPreviewParams(
   params: URLSearchParams,
   args: {
@@ -157,34 +141,6 @@ export const openArtifactSidebarPreview$ = command(
       url,
     });
     set(updateSearchParams$, params);
-  },
-);
-
-export const openPresentationEditor$ = command(({ get, set }, url: string) => {
-  const params = new URLSearchParams(get(searchParams$));
-  set(internalPresentationEditorCloseDialogOpen$, false);
-  params.set(PRESENTATION_EDITOR_QUERY_PARAM, url);
-  params.set(ARTIFACT_FULLSCREEN_PARAM, "1");
-  params.delete(ARTIFACT_QUERY_PARAM);
-  params.delete(ARTIFACT_INBOX_QUERY_PARAM);
-  clearChatAutomationSidebarParams(params);
-  clearMailDraftSidebarParams(params);
-  clearBrowserSessionSidebarParams(params);
-  set(updateSearchParams$, params);
-});
-
-export const closePresentationEditor$ = command(
-  ({ get, set }, publishedUrl?: string) => {
-    const params = new URLSearchParams(get(searchParams$));
-    set(internalPresentationEditorCloseDialogOpen$, false);
-    const presentationUrl = params.get(PRESENTATION_EDITOR_QUERY_PARAM);
-    if (presentationUrl === null) {
-      return;
-    }
-    params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
-    params.delete(ARTIFACT_FULLSCREEN_PARAM);
-    params.set(ARTIFACT_QUERY_PARAM, publishedUrl ?? presentationUrl);
-    set(replaceSearchParams$, params);
   },
 );
 

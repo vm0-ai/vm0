@@ -42,7 +42,6 @@ import {
   createConnectorBddApi,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
-  mockGoogleDriveSlidesUpload,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -227,11 +226,9 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await webhooks.requestAgentComplete(
-    { runId, exitCode: 0 },
-    sandboxHeaders,
-    [200],
-  );
+  await webhooks.requestAgentComplete({ runId, exitCode: 0 }, sandboxHeaders, [
+    200,
+  ]);
 }
 
 async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
@@ -1062,11 +1059,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const peer = bdd.user({ orgId: actor.orgId });
 
-    const unauthenticated = await chat.requestDeleteThread(
-      null,
-      randomUUID(),
-      [401],
-    );
+    const unauthenticated = await chat.requestDeleteThread(null, randomUUID(), [
+      401,
+    ]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
@@ -1077,11 +1072,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       code: "NOT_FOUND",
     });
 
-    const malformed = await chat.requestDeleteThread(
-      actor,
-      "not-a-uuid",
-      [400],
-    );
+    const malformed = await chat.requestDeleteThread(actor, "not-a-uuid", [
+      400,
+    ]);
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toContain("id");
 
@@ -1116,11 +1109,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       prompt: "other thread stays active",
     });
 
-    const peerDelete = await chat.requestDeleteThread(
-      peer,
-      main.threadId,
-      [404],
-    );
+    const peerDelete = await chat.requestDeleteThread(peer, main.threadId, [
+      404,
+    ]);
     expectApiError(peerDelete.body);
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
     await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
@@ -1387,11 +1378,9 @@ describe("CHAT-01 chat thread read state", () => {
     await connectorsApi.updateFeatureSwitches(owner, {
       [FeatureSwitchKey.AgentUnreadIndicators]: false,
     });
-    const disabled = await chat.requestMarkAgentThreadsRead(
-      owner,
-      agentA,
-      [403],
-    );
+    const disabled = await chat.requestMarkAgentThreadsRead(owner, agentA, [
+      403,
+    ]);
     expectApiError(disabled.body);
     expect(disabled.body.error.code).toBe("FORBIDDEN");
 
@@ -1934,12 +1923,9 @@ describe("CHAT-03 run usage messages", () => {
 
 describe("CHAT-01 chat search", () => {
   it("rejects search without an org session or the chat-message:read capability", async () => {
-    const unauthenticated = await chat.requestSearchChat(
-      null,
-      "hello",
-      {},
-      [401],
-    );
+    const unauthenticated = await chat.requestSearchChat(null, "hello", {}, [
+      401,
+    ]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
@@ -2497,106 +2483,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
-  }, 120_000);
-
-  it("supports legacy presentation uploads to Google Slides", async () => {
-    const { actor } = await entitledChatActor("Slides upload agent");
-    const objectStore = chatCallbacks.acceptChatObjectStorage();
-    const threadId = randomUUID();
-    // Browser tabs loaded before presentation export was retired can still
-    // finish an upload while the previous frontend release drains.
-    const noDrive =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [400],
-      );
-    expectApiError(noDrive.body);
-    expect(noDrive.body.error.message).toBe(
-      "Connect Google Drive before uploading to Google Slides",
-    );
-
-    // Connect Google Drive through the public OAuth routes.
-    mockGoogleDriveConnectorOAuth();
-    const start = await connectorsApi.startOauth(
-      actor,
-      "google-drive",
-      "oauth",
-    );
-    await connectorsApi.completeOauthCallback("google-drive", {
-      code: "drive-ok",
-      state: stateFromAuthorizationUrl(start.authorizationUrl),
-    });
-
-    const missingUpload =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [404],
-      );
-    expectApiError(missingUpload.body);
-    expect(missingUpload.body.error.message).toBe(
-      "Presentation upload not found",
-    );
-
-    const oversizedUploadId = randomUUID();
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      key: `artifacts/${encodeURIComponent(actor.userId)}/${oversizedUploadId}/too-large.pptx`,
-      size: 100 * 1024 * 1024 + 1,
-    });
-    const oversized =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        oversizedUploadId,
-        [400],
-      );
-    expectApiError(oversized.body);
-    expect(oversized.body.error.message).toBe(
-      "Presentation file is too large (max 100 MB)",
-    );
-
-    // A PPTX larger than Vercel's request-body limit is staged in R2, then
-    // Drive converts it into a native Google Slides deck via resumable upload.
-    const stagedPptx = new Uint8Array(5 * 1024 * 1024);
-    stagedPptx.set([0x50, 0x4b, 0x03, 0x04]);
-    const prepared = await chat.prepareUpload(actor, {
-      filename: "large-deck.pptx",
-      contentType:
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      size: stagedPptx.byteLength,
-    });
-    const stagedKey = `artifacts/${encodeURIComponent(actor.userId)}/${prepared.id}/large-deck.pptx`;
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      body: stagedPptx,
-      key: stagedKey,
-      size: stagedPptx.byteLength,
-    });
-    const uploadRecorder = mockGoogleDriveSlidesUpload();
-    const uploaded =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        prepared.id,
-        [200],
-      );
-    expect(uploaded.body).toStrictEqual({
-      id: "slides-file-1",
-      name: "deck",
-      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
-    });
-    expect(uploadRecorder.metadataBodies[0]).toContain(
-      "application/vnd.google-apps.presentation",
-    );
-    expect(uploadRecorder.uploadBodies[0]).toHaveLength(stagedPptx.byteLength);
-    expect(uploadRecorder.uploadBodies[0]?.slice(0, 4)).toStrictEqual(
-      stagedPptx.slice(0, 4),
-    );
-    expect(objectStore.deletedKeys).toContain(stagedKey);
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

@@ -65,10 +65,8 @@ export interface RegistryEntry {
   readonly targets?: readonly GenerationTarget[];
 }
 
-export interface VideoTemplateRegistryEntry extends Omit<
-  RegistryEntry,
-  "kind" | "source"
-> {
+export interface VideoTemplateRegistryEntry
+  extends Omit<RegistryEntry, "kind" | "source"> {
   readonly kind: "video-template";
   readonly source: ResourceSourceRef & {
     readonly repo: string;
@@ -755,14 +753,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create animated GIFs optimized for Slack with validators for size constraints and composable animation primitives.",
     source: { path: "skills/slack-gif-creator/SKILL.md" },
-  },
-  {
-    id: "skill:slides",
-    kind: "skill",
-    name: "Slides",
-    description:
-      "Create and edit .pptx presentation decks with PptxGenJS. Useful for sales decks, kickoff briefs, and design-system showcases.",
-    source: { path: "skills/slides/SKILL.md" },
   },
   {
     id: "skill:social-reddit-card",

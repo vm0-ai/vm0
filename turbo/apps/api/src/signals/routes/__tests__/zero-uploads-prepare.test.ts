@@ -127,6 +127,35 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.error.message).toContain("Unsupported file type");
   });
 
+  it("rejects presentation document content types", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroUploadsContract);
+    const contentTypes = [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.oasis.opendocument.presentation",
+      "application/vnd.apple.keynote",
+    ] as const;
+
+    for (const contentType of contentTypes) {
+      const response = await accept(
+        client.prepare({
+          body: {
+            filename: "deck",
+            contentType,
+            size: 10,
+          },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [400],
+      );
+      expect(response.body.error.message).toContain("Unsupported file type");
+    }
+  });
+
   it("returns presigned upload URL and final CDN URL with full body shape", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -334,11 +363,6 @@ describe("POST /api/zero/uploads/prepare", () => {
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       },
       {
-        filename: "deck.pptx",
-        contentType:
-          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      },
-      {
         filename: "document.pages",
         contentType: "application/vnd.apple.pages",
       },
@@ -347,17 +371,8 @@ describe("POST /api/zero/uploads/prepare", () => {
         contentType: "application/vnd.apple.numbers",
       },
       {
-        filename: "slides.key",
-        contentType: "application/vnd.apple.keynote",
-      },
-      {
         filename: "macro.xlsm",
         contentType: "application/vnd.ms-excel.sheet.macroenabled.12",
-      },
-      {
-        filename: "template.potx",
-        contentType:
-          "application/vnd.openxmlformats-officedocument.presentationml.template",
       },
       { filename: "doc.pdf", contentType: "application/pdf" },
       { filename: "data.xml", contentType: "application/xml" },

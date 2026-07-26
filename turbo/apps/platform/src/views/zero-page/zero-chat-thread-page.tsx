@@ -134,7 +134,6 @@ import {
   publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
-import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { BrowserSessionSidebar } from "./browser-session-sidebar.tsx";
@@ -202,10 +201,8 @@ import {
   type ArtifactInboxSection,
   type ArtifactRef,
   closeArtifact$,
-  closePresentationEditor$,
   currentArtifactInboxThreadId$,
   currentArtifactRef$,
-  currentPresentationEditorUrl$,
   openArtifactFromInbox$,
   openArtifactInbox$,
   setArtifactInboxQuery$,
@@ -2479,15 +2476,9 @@ function ArtifactResizeHandle() {
 function ChatThreadArea({
   leftThread,
   rightThread,
-  activePresentationEditorUrl,
-  artifactFullscreen,
-  presentationEditor,
 }: {
   leftThread: ChatThreadSignals | null;
   rightThread: ChatThreadSignals | null;
-  activePresentationEditorUrl: string | null;
-  artifactFullscreen: boolean;
-  presentationEditor: ReactNode;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
   const setMainThreadKeyboardFocusRef = useSet(
@@ -2499,24 +2490,16 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {activePresentationEditorUrl ? (
-        !artifactFullscreen || typeof document === "undefined" ? (
-          presentationEditor
-        ) : null
-      ) : (
+      {leftThread && (
+        <ChatThread
+          thread={leftThread}
+          onFocusFallbackRef={setMainThreadKeyboardFocusRef}
+        />
+      )}
+      {rightThread && (
         <>
-          {leftThread && (
-            <ChatThread
-              thread={leftThread}
-              onFocusFallbackRef={setMainThreadKeyboardFocusRef}
-            />
-          )}
-          {rightThread && (
-            <>
-              <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-              <ChatThread thread={rightThread} />
-            </>
-          )}
+          <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+          <ChatThread thread={rightThread} />
         </>
       )}
     </div>
@@ -2575,7 +2558,6 @@ export function ZeroChatThreadPage() {
   const automationPanelThread = [leftThread, rightThread].find((thread) => {
     return thread?.threadId === automationPanelThreadId;
   });
-  const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
   const selectedMailDraftSignals = useSelectedMailDraftSignals(
     leftThread,
     rightThread,
@@ -2584,9 +2566,6 @@ export function ZeroChatThreadPage() {
     leftThread,
     rightThread,
   );
-  const closePresentationEditor = useSet(closePresentationEditor$);
-  const artifactFullscreen = useGet(artifactFullscreen$);
-  const activePresentationEditorUrl = presentationEditorUrl;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
   const automationPanelOpen = automationPanelThread !== undefined;
@@ -2602,23 +2581,6 @@ export function ZeroChatThreadPage() {
       useGet(artifactPanelWidth$),
       useGet(artifactPanelResizing$),
     );
-  const presentationEditor = activePresentationEditorUrl ? (
-    <div
-      data-testid="presentation-editor-container"
-      className={cn(
-        "flex min-w-0 overflow-hidden bg-background",
-        artifactFullscreen
-          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
-          : "h-full w-full flex-1",
-      )}
-    >
-      <PresentationHtmlEditor
-        url={activePresentationEditorUrl}
-        onClose={closePresentationEditor}
-      />
-    </div>
-  ) : null;
-
   return (
     <>
       {/* Keep the wrapper structure stable across right panel open/close so the
@@ -2639,13 +2601,7 @@ export function ZeroChatThreadPage() {
             rightPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
           )}
         >
-          <ChatThreadArea
-            leftThread={leftThread}
-            rightThread={rightThread}
-            activePresentationEditorUrl={activePresentationEditorUrl}
-            artifactFullscreen={artifactFullscreen}
-            presentationEditor={presentationEditor}
-          />
+          <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
         </div>
         {rightPanelOpen && <ArtifactResizeHandle />}
         <div
@@ -2677,11 +2633,6 @@ export function ZeroChatThreadPage() {
         </div>
       </div>
       {lightboxUrl && <AttachmentLightbox />}
-      {activePresentationEditorUrl &&
-        artifactFullscreen &&
-        typeof document !== "undefined" &&
-        presentationEditor &&
-        createPortal(presentationEditor, document.body)}
       <ChatConnectorActionConnectModal />
     </>
   );

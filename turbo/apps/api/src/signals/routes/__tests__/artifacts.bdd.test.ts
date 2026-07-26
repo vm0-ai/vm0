@@ -219,11 +219,9 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await webhooks.requestAgentComplete(
-    { runId, exitCode: 0 },
-    sandboxHeaders,
-    [200],
-  );
+  await webhooks.requestAgentComplete({ runId, exitCode: 0 }, sandboxHeaders, [
+    200,
+  ]);
 }
 
 async function createHostedArtifact(args: {
@@ -625,7 +623,7 @@ describe("GET /api/zero/artifacts", () => {
     );
   }, 120_000);
 
-  it("generates deploy-time preview images and refreshes them after redeploy", async () => {
+  it("generates deploy-time preview images once per deployment", async () => {
     const owner = await artifactActor("Artifacts API preview image agent");
     if (!owner.actor.orgId) {
       throw new Error("Expected preview image test actor to have an org");
@@ -699,28 +697,6 @@ describe("GET /api/zero/artifacts", () => {
       firstArtifact?.previewImageUrl,
     );
     expect(snapshotRequests).toHaveLength(1);
-
-    host.captureHostedSitesS3();
-    const redeployed = await host.redeployHtml(owner.actor, {
-      url: artifact.url,
-      html: "<!doctype html><html><body>redeployed preview</body></html>",
-    });
-    await flushWaitUntilForTest();
-
-    const refreshedResponse = await chat.listArtifacts(owner.actor, {
-      updatedAfter: firstResponse.syncUntil,
-    });
-    const refreshedArtifact = refreshedResponse.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    expect(refreshedArtifact?.previewImageUrl).toContain(
-      `/preview-v3-${redeployed.deploymentId}.webp`,
-    );
-    expect(refreshedArtifact?.previewImageUrl).not.toBe(
-      firstArtifact?.previewImageUrl,
-    );
-    expect(snapshotRequests).toHaveLength(2);
-    expect(snapshotRequests[1]?.body).toMatchObject({ url: artifact.url });
   }, 120_000);
 
   it("rejects page errors and Cloudflare challenges instead of saving them as previews", async () => {

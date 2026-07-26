@@ -8,7 +8,6 @@ import {
   IconDots,
   IconExternalLink,
   IconLoader2,
-  IconPencil,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
@@ -30,7 +29,6 @@ import {
   type ArtifactRef,
   closeArtifact$,
   navigateArtifactSidebarImage$,
-  openPresentationEditor$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
@@ -70,10 +68,6 @@ import {
   shouldIgnoreImageArtifactNavigationKey,
 } from "./zero-artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
-import {
-  presentationHtmlPreviewUrl,
-  presentationHtmlRefreshVersion$,
-} from "../../signals/zero-page/presentation-html-cache-bust.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
@@ -235,7 +229,6 @@ function ArtifactSidebarContent({
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
   const closePreview = onClose ?? close;
-  const openPresentationEditor = useSet(openPresentationEditor$);
   const display = resolveArtifactDisplay(artifactRef, item);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -255,7 +248,6 @@ function ArtifactSidebarContent({
       fullscreen={fullscreen}
       imageNavigation={imageNavigation}
       onBack={onBack}
-      openPresentationEditor={openPresentationEditor}
       pageSignal={pageSignal}
       resetZoomableImageCanvasZoom={resetZoomableImageCanvasZoom}
       syncTarget={syncTarget}
@@ -270,7 +262,6 @@ type ArtifactSidebarResolvedContentProps = {
   readonly fullscreen: boolean;
   readonly imageNavigation?: ArtifactImageNavigationActions;
   readonly onBack?: () => void;
-  readonly openPresentationEditor: (url: string) => void;
   readonly pageSignal: AbortSignal;
   readonly resetZoomableImageCanvasZoom: (key: string) => void;
   readonly syncTarget?: ArtifactDownloadSyncTarget;
@@ -283,19 +274,11 @@ function ArtifactSidebarResolvedContent({
   fullscreen,
   imageNavigation,
   onBack,
-  openPresentationEditor,
   pageSignal,
   resetZoomableImageCanvasZoom,
   syncTarget,
   toggleFullscreen,
 }: ArtifactSidebarResolvedContentProps) {
-  const editPresentation =
-    display.artifactKind === "presentation-html"
-      ? () => {
-          openPresentationEditor(display.url);
-        }
-      : undefined;
-
   return (
     <ArtifactSidebarSurface fullscreen={fullscreen}>
       <ArtifactSidebarHeader
@@ -306,7 +289,6 @@ function ArtifactSidebarResolvedContent({
         syncTarget={syncTarget}
         url={display.url}
         fullscreen={fullscreen}
-        onEditPresentation={editPresentation}
         onBack={onBack}
         onToggleFullscreen={artifactSidebarFullscreenToggleAction({
           display,
@@ -546,7 +528,6 @@ function ArtifactSidebarHeader({
   url,
   fullscreen,
   onBack,
-  onEditPresentation,
   onToggleFullscreen,
   onClose,
 }: {
@@ -558,7 +539,6 @@ function ArtifactSidebarHeader({
   url?: string;
   fullscreen: boolean;
   onBack?: () => void;
-  onEditPresentation?: () => void;
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
@@ -594,7 +574,6 @@ function ArtifactSidebarHeader({
         fullscreen={fullscreen}
         kind={kind}
         onClose={onClose}
-        onEditPresentation={onEditPresentation}
         onToggleFullscreen={onToggleFullscreen}
         syncTarget={syncTarget}
         title={title}
@@ -610,7 +589,6 @@ function ArtifactSidebarActions({
   fullscreen,
   kind,
   onClose,
-  onEditPresentation,
   onToggleFullscreen,
   syncTarget,
   title,
@@ -621,7 +599,6 @@ function ArtifactSidebarActions({
   fullscreen: boolean;
   kind?: ArtifactKindForBody;
   onClose: () => void;
-  onEditPresentation?: () => void;
   onToggleFullscreen: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
@@ -633,7 +610,6 @@ function ArtifactSidebarActions({
         <ArtifactSidebarPreviewActions
           artifactKind={artifactKind}
           kind={kind}
-          onEditPresentation={onEditPresentation}
           syncTarget={syncTarget}
           title={title}
           url={url}
@@ -655,21 +631,16 @@ function ArtifactSidebarActions({
 function ArtifactSidebarPreviewActions({
   artifactKind,
   kind,
-  onEditPresentation,
   syncTarget,
   title,
   url,
 }: {
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   kind?: ArtifactKindForBody;
-  onEditPresentation?: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
   url: string;
 }) {
-  const showPresentationEdit =
-    artifactKind === "presentation-html" && onEditPresentation !== undefined;
-
   return (
     <>
       {kind === "html" && <ArtifactOpenExternalAction url={url} />}
@@ -683,28 +654,7 @@ function ArtifactSidebarPreviewActions({
         url={url}
       />
       <ArtifactActionSeparator />
-      {showPresentationEdit && (
-        <>
-          <ArtifactEditPresentationAction onClick={onEditPresentation} />
-          <ArtifactActionSeparator />
-        </>
-      )}
     </>
-  );
-}
-
-function ArtifactEditPresentationAction({ onClick }: { onClick: () => void }) {
-  return (
-    <ArtifactActionTooltip label="Edit presentation">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label="Edit presentation"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-      >
-        <IconPencil size={16} stroke={1.5} />
-      </button>
-    </ArtifactActionTooltip>
   );
 }
 
@@ -1273,20 +1223,15 @@ function ArtifactIframeBody({
   const publicUrl = publicAttachmentUrl(url);
   const src = kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
   const fullscreen = useGet(artifactFullscreen$);
-  const htmlRefreshVersion = useGet(presentationHtmlRefreshVersion$);
   const isPresentationHtml =
     kind === "html" && artifactKind === "presentation-html";
   if (kind === "html") {
-    const versionedSrc = presentationHtmlPreviewUrl(
-      publicUrl,
-      htmlRefreshVersion,
-    );
     return (
       <div className="h-full w-full">
         <AutoFocusedArtifactIframe
-          focusKey={`${versionedSrc}:${fullscreen ? "fullscreen" : "sidebar"}`}
+          focusKey={`${publicUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen && !isPresentationHtml}
-          src={versionedSrc}
+          src={publicUrl}
           title={`${filename} preview`}
           sandbox="allow-same-origin allow-scripts"
           tabIndex={isPresentationHtml ? -1 : undefined}

@@ -269,8 +269,6 @@ export function mockSlackConnectorOAuth(): void {
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
-const GOOGLE_DRIVE_UPLOAD_URL =
-  "https://www.googleapis.com/upload/drive/v3/files";
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
 
@@ -413,72 +411,6 @@ export function mockGoogleDriveFilesList(
   );
 
   return recorded;
-}
-
-interface GoogleDriveSlidesUploadOptions {
-  readonly webViewLink?: string | null;
-  readonly uploadStatus?: number;
-}
-
-interface GoogleDriveSlidesUploadRecorder {
-  /** Metadata bodies used to initiate Drive resumable uploads. */
-  readonly metadataBodies: string[];
-  /** PPTX bodies sent to Drive resumable upload sessions. */
-  readonly uploadBodies: Uint8Array[];
-}
-
-/**
- * Google Drive boundary for the "upload PPTX as native Google Slides" flow:
- * folder lookups always miss (forcing creation), folder creation succeeds, and
- * the resumable upload records metadata plus PPTX bytes before answering with
- * the converted Slides file.
- */
-export function mockGoogleDriveSlidesUpload(
-  options: GoogleDriveSlidesUploadOptions = {},
-): GoogleDriveSlidesUploadRecorder {
-  const recorder: GoogleDriveSlidesUploadRecorder = {
-    metadataBodies: [],
-    uploadBodies: [],
-  };
-  let folderCounter = 0;
-  const resumableUploadUrl = `${GOOGLE_DRIVE_UPLOAD_URL}?uploadType=resumable&upload_id=slides-upload-1`;
-
-  server.use(
-    http.get(GOOGLE_DRIVE_FILES_URL, () => {
-      return HttpResponse.json({ files: [] });
-    }),
-    http.post(GOOGLE_DRIVE_FILES_URL, async ({ request }) => {
-      const body = (await request.json()) as { name?: string };
-      folderCounter += 1;
-      return HttpResponse.json({
-        id: `drive-folder-${folderCounter}`,
-        name: body.name ?? "folder",
-      });
-    }),
-    http.post(GOOGLE_DRIVE_UPLOAD_URL, async ({ request }) => {
-      recorder.metadataBodies.push(await request.text());
-      return new HttpResponse(null, {
-        status: 200,
-        headers: { Location: resumableUploadUrl },
-      });
-    }),
-    http.put(GOOGLE_DRIVE_UPLOAD_URL, async ({ request }) => {
-      recorder.uploadBodies.push(new Uint8Array(await request.arrayBuffer()));
-      const status = options.uploadStatus ?? 200;
-      if (status !== 200) {
-        return new HttpResponse(null, { status });
-      }
-      return HttpResponse.json({
-        id: "slides-file-1",
-        name: "deck",
-        webViewLink:
-          options.webViewLink ??
-          "https://docs.google.com/presentation/d/slides-file-1/edit",
-      });
-    }),
-  );
-
-  return recorder;
 }
 
 function newGithubAppPrivateKeyBase64(): string {
@@ -1598,11 +1530,9 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: CreateCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
-      const response = await api.requestCreateCustomConnector(
-        actor,
-        body,
-        [201],
-      );
+      const response = await api.requestCreateCustomConnector(actor, body, [
+        201,
+      ]);
       expectStatus(response, 201);
       return response.body;
     },
@@ -1780,11 +1710,9 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
     ): Promise<readonly string[]> {
-      const response = await api.requestAgentCustomConnectors(
-        actor,
-        agentId,
-        [200],
-      );
+      const response = await api.requestAgentCustomConnectors(actor, agentId, [
+        200,
+      ]);
       expectStatus(response, 200);
       return response.body.enabledIds;
     },

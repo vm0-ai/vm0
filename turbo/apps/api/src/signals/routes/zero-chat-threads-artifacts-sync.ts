@@ -1,20 +1,11 @@
 import { command } from "ccstate";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import {
-  badRequestMessage,
-  isBadRequestResponse,
-  isNotFoundResponse,
-} from "../../lib/error";
-import {
-  syncArtifactToGoogleDrive$,
-  uploadPresentationToGoogleSlides$,
-} from "../services/google-drive-artifact-sync.service";
+import { isBadRequestResponse, isNotFoundResponse } from "../../lib/error";
+import { syncArtifactToGoogleDrive$ } from "../services/google-drive-artifact-sync.service";
 import type { RouteEntry } from "../route-entry";
 
 const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -51,74 +42,12 @@ const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return result;
 });
 
-const presentationUploadIdSchema = z.string().uuid();
-
-function googleSlidesUploadSource(
-  formData: FormData,
-): { readonly uploadId: string } | ReturnType<typeof badRequestMessage> {
-  const uploadId = formData.get("uploadId");
-  if (typeof uploadId === "string") {
-    const parsed = presentationUploadIdSchema.safeParse(uploadId);
-    return parsed.success
-      ? { uploadId: parsed.data }
-      : badRequestMessage("Invalid presentation upload ID");
-  }
-  return badRequestMessage("No presentation upload ID provided");
-}
-
-// Compatibility for browser tabs loaded before presentation export was
-// retired. Remove this handler after the previous frontend release can no
-// longer be active.
-const uploadGoogleSlidesInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(
-      pathParamsOf(chatThreadArtifactsContract.uploadGoogleSlides),
-    );
-    const request = get(request$);
-    const formData = await request.raw.formData();
-    signal.throwIfAborted();
-    const source = googleSlidesUploadSource(formData);
-    signal.throwIfAborted();
-    if ("status" in source) {
-      return source;
-    }
-
-    const result = await set(
-      uploadPresentationToGoogleSlides$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        threadId: params.threadId,
-        source,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (isBadRequestResponse(result)) {
-      return result;
-    }
-    if (isNotFoundResponse(result)) {
-      return result;
-    }
-    return result;
-  },
-);
-
 export const zeroChatThreadsArtifactsSyncRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadArtifactsContract.syncGoogleDrive,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       syncInner$,
-    ),
-  },
-  {
-    route: chatThreadArtifactsContract.uploadGoogleSlides,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      uploadGoogleSlidesInner$,
     ),
   },
 ];

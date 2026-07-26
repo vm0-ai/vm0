@@ -15,7 +15,6 @@ import {
   IconColumns2,
   IconFileMusic,
   IconPhoto,
-  IconPencil,
   IconLoader2,
   IconZoomReset,
   IconX,
@@ -56,14 +55,7 @@ import {
   type AttachmentArtifactMetadata,
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import {
-  openArtifactSidebarPreview$,
-  openPresentationEditor$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
-import {
-  presentationHtmlPreviewUrl,
-  presentationHtmlRefreshVersion$,
-} from "../../signals/zero-page/presentation-html-cache-bust.ts";
+import { openArtifactSidebarPreview$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   artifactPreviewUrlsMatch,
@@ -317,18 +309,6 @@ function ArtifactDialogFullscreenButton({
       ) : (
         <IconArrowsDiagonal size={18} stroke={1.8} />
       )}
-    </DialogIconButton>
-  );
-}
-
-function ArtifactDialogEditPresentationButton({
-  onClick,
-}: {
-  onClick: () => void;
-}) {
-  return (
-    <DialogIconButton ariaLabel="Edit presentation" onClick={onClick}>
-      <IconPencil size={18} stroke={1.8} />
     </DialogIconButton>
   );
 }
@@ -849,13 +829,7 @@ function ArtifactDialogHtmlBody({
   preview: AttachmentLightboxState;
 }) {
   const fullscreen = useGet(lightboxDialogFullscreen$);
-  const presentationHtmlRefreshVersion = useGet(
-    presentationHtmlRefreshVersion$,
-  );
-  const src = presentationHtmlPreviewUrl(
-    publicAttachmentUrl(preview.url),
-    presentationHtmlRefreshVersion,
-  );
+  const src = publicAttachmentUrl(preview.url);
   const isPresentationHtml =
     preview.artifact?.artifactKind === "presentation-html";
 
@@ -1056,16 +1030,10 @@ function ArtifactPreviewDialogActions({
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
-  const openPresentationEditor = useSet(openPresentationEditor$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const toggleLightboxDialogFullscreen = useSet(
     toggleLightboxDialogFullscreen$,
   );
-  const editAvailable = preview.editAvailable !== false;
-  const showPresentationEdit =
-    editAvailable &&
-    preview.kind === "html" &&
-    artifact?.artifactKind === "presentation-html";
   const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
@@ -1105,17 +1073,6 @@ function ArtifactPreviewDialogActions({
         url={preview.url}
       />
       <ArtifactActionSeparator />
-      {showPresentationEdit && (
-        <>
-          <ArtifactDialogEditPresentationButton
-            onClick={() => {
-              closeLightboxWithDialogExit();
-              openPresentationEditor(preview.url);
-            }}
-          />
-          <ArtifactActionSeparator />
-        </>
-      )}
       {showSplitView && (
         <ArtifactDialogSplitViewButton onClick={openInSplitView} />
       )}
