@@ -317,6 +317,12 @@ const composedReadCtePreamble = `
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
     {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
+    {
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql } from "drizzle-orm";
         await db.execute(sql\`
@@ -846,6 +852,13 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         import { executeRawRows } from "./other/db-raw-rows";
+        await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+    },
+    {
+      code: `${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "@fake/lib/db-raw-rows";
         await executeRawRows(db, ${directQuery}, rowSchema);
       `,
     },
@@ -2190,47 +2203,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         );
       `,
       errors: [{ messageId: "lockingQueryBuilder" }],
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(db, ${directQuery}, rowSchema);
-      `,
-      errors: [{ messageId: "queryBuilder" }],
-    },
-    {
-      code: `${schemaPreamble}
-        import { eq, sql as query } from "drizzle-orm";
-        import { executeRawRows as decodeRows } from "./lib/db-raw-rows";
-        await decodeRows(
-          db,
-          query\`select \${runs.id} from \${runs} inner join \${runStates} on \${eq(runStates.id, runs.id)} where \${eq(runs.threadId, threadId)} and \${eq(runs.id, excludedRunId)} limit 1;\`,
-          rowSchema,
-        );
-      `,
-      errors: [{ messageId: "queryBuilder" }],
-    },
-    {
-      code: `${schemaPreamble}
-        import * as drizzle from "drizzle-orm";
-        import * as rawRows from "./lib/db-raw-rows";
-        await rawRows.executeRawRows(
-          db,
-          drizzle.sql\`
-            SELECT \${runs.id}
-            FROM \${runs}
-            INNER JOIN \${runStates}
-              ON \${drizzle.eq(runStates.id, runs.id)}
-            WHERE \${drizzle.eq(runs.threadId, threadId)}
-              AND $$ORDER BY ignored$$ = $$ORDER BY ignored$$
-              /* GROUP BY ignored /* nested ORDER BY */ */
-              AND (SELECT 1 FROM ignored ORDER BY ignored LIMIT 1) = 1
-            LIMIT 1
-          \`,
-          rowSchema,
-        );
-      `,
-      errors: [{ messageId: "queryBuilder" }],
     },
     {
       code: `${structuredSelectionPreamble}

@@ -893,7 +893,7 @@ async function transitionClaimedJobToRunning(
           locked_job AS MATERIALIZED (
             SELECT
               ${runnerJobQueue.runId} AS "runId",
-              ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
+              ${lte(runnerJobQueue.expiresAt, sql`now()`)} AS "isExpired"
             FROM ${runnerJobQueue}
             INNER JOIN locked_run
               ON locked_run."id" = ${runnerJobQueue.runId}
@@ -922,9 +922,10 @@ async function transitionClaimedJobToRunning(
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
             CROSS JOIN claim_clock
-            WHERE
-              ${agentRuns.id} = locked_run."id"
-              AND ${agentRuns.status} = 'pending'
+            WHERE ${and(
+              eq(agentRuns.id, sql`locked_run."id"`),
+              eq(agentRuns.status, sql`'pending'`),
+            )}
             RETURNING
               ${agentRuns.id} AS "id",
               ${agentRuns.startedAt} AS "claimedAt"
@@ -932,17 +933,18 @@ async function transitionClaimedJobToRunning(
           deleted_job AS (
             DELETE FROM ${runnerJobQueue}
             USING locked_run, locked_job
-            WHERE
-              ${runnerJobQueue.runId} = locked_job."runId"
-              AND locked_job."runId" = locked_run."id"
-              AND (
+            WHERE ${and(
+              eq(runnerJobQueue.runId, sql`locked_job."runId"`),
+              sql`locked_job."runId" = locked_run."id"`,
+              sql`(
                 locked_run."status" <> 'pending'
                 OR EXISTS (
                   SELECT 1
                   FROM updated_run
                   WHERE updated_run."id" = locked_run."id"
                 )
-              )
+              )`,
+            )}
             RETURNING ${runnerJobQueue.runId} AS "runId"
           )
           SELECT

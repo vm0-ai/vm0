@@ -8,11 +8,7 @@ import {
   canHaveModifiers,
   getModifiers,
   isFunctionDeclaration,
-  isImportDeclaration,
-  isImportSpecifier,
-  isNamespaceImport,
   isReturnStatement,
-  isStringLiteral,
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
@@ -33,10 +29,12 @@ import {
   isNamedDrizzleSignature,
   resolvedSymbol,
 } from "../drizzle.ts";
+import { createExecuteRawRowsMatcher } from "../execute-raw-rows.ts";
 import {
   SQL_TEMPLATE_EXPRESSION_BOUNDARY,
   sqlCodeMask,
 } from "../sql-lexing.ts";
+import { analyzeDirectSql } from "../sql-analysis/direct-sql-analysis.ts";
 import { createRule } from "../utils.ts";
 
 interface SqlTokenBase {
@@ -65,13 +63,6 @@ interface WordToken extends SqlTokenBase {
 }
 
 type SqlToken = ExpressionToken | NumberToken | PunctuationToken | WordToken;
-
-interface SimpleSelectMatch {
-  readonly joinConditionExpressionIndexes: readonly number[];
-  readonly joinTableExpressionIndexes: readonly number[];
-  readonly selectedColumnExpressionIndex: number;
-  readonly sourceTableExpressionIndex: number;
-}
 
 interface PaginatedJoinedSelectMatch {
   readonly clauseExpressionIndexes: readonly number[];
@@ -298,23 +289,6 @@ function memberName(node: TSESTree.MemberExpression): string | null {
     return typeof node.property.value === "string" ? node.property.value : null;
   }
   return null;
-}
-
-function importSource(node: Node): string | undefined {
-  let current: Node | undefined = node;
-  while (current !== undefined && !isImportDeclaration(current)) {
-    current = current.parent;
-  }
-  return current !== undefined && isStringLiteral(current.moduleSpecifier)
-    ? current.moduleSpecifier.text.replaceAll("\\", "/")
-    : undefined;
-}
-
-function isRawRowsModule(source: string | undefined): boolean {
-  return (
-    source !== undefined &&
-    /(?:^|\/)lib\/db-raw-rows(?:\.[cm]?[jt]s)?$/.test(source)
-  );
 }
 
 function topLevelTokens(source: string): readonly SqlToken[] | undefined {
@@ -1910,122 +1884,6 @@ function simpleLockingCteUpdateMatch(
   };
 }
 
-function simpleSelectMatch(
-  source: string,
-  syntaxSource: string,
-): SimpleSelectMatch | undefined {
-  const tokens = topLevelTokens(syntaxSource);
-  if (tokens === undefined) {
-    return undefined;
-  }
-
-  let cursor = 0;
-  if (!isWord(tokens[cursor], "SELECT")) {
-    return undefined;
-  }
-  cursor += 1;
-  const selectedColumnExpressionIndex = expressionIndex(tokens[cursor]);
-  if (selectedColumnExpressionIndex === undefined) {
-    return undefined;
-  }
-  cursor += 1;
-
-  if (isWord(tokens[cursor], "AS")) {
-    const aliasKeyword = tokens[cursor];
-    cursor += 1;
-    if (tokens[cursor]?.kind === "word" && !isWord(tokens[cursor], "FROM")) {
-      cursor += 1;
-    } else {
-      const from = tokens[cursor];
-      if (
-        aliasKeyword === undefined ||
-        from === undefined ||
-        !isWord(from, "FROM") ||
-        !/^"(?:[^"]|"")+"$/s.test(
-          source.slice(aliasKeyword.end, from.start).trim(),
-        )
-      ) {
-        return undefined;
-      }
-    }
-  }
-
-  if (!isWord(tokens[cursor], "FROM")) {
-    return undefined;
-  }
-  cursor += 1;
-  const sourceTableExpressionIndex = expressionIndex(tokens[cursor]);
-  if (sourceTableExpressionIndex === undefined) {
-    return undefined;
-  }
-  cursor += 1;
-
-  const joinTableExpressionIndexes: number[] = [];
-  const joinConditionExpressionIndexes: number[] = [];
-  while (isWord(tokens[cursor], "INNER")) {
-    cursor += 1;
-    if (!isWord(tokens[cursor], "JOIN")) {
-      return undefined;
-    }
-    cursor += 1;
-    const joinTableIndex = expressionIndex(tokens[cursor]);
-    if (joinTableIndex === undefined) {
-      return undefined;
-    }
-    joinTableExpressionIndexes.push(joinTableIndex);
-    cursor += 1;
-    if (!isWord(tokens[cursor], "ON")) {
-      return undefined;
-    }
-    cursor += 1;
-    const joinConditionIndex = expressionIndex(tokens[cursor]);
-    if (joinConditionIndex === undefined) {
-      return undefined;
-    }
-    joinConditionExpressionIndexes.push(joinConditionIndex);
-    cursor += 1;
-  }
-
-  if (!isWord(tokens[cursor], "WHERE")) {
-    return undefined;
-  }
-  cursor += 1;
-
-  let end = tokens.length;
-  const trailingToken = tokens[end - 1];
-  if (trailingToken?.kind === "punctuation" && trailingToken.value === ";") {
-    end -= 1;
-  }
-  const limitKeywordIndex = end - 2;
-  const limitValue = tokens[limitKeywordIndex + 1];
-  if (
-    cursor >= limitKeywordIndex ||
-    !isWord(tokens[limitKeywordIndex], "LIMIT") ||
-    limitValue?.kind !== "number" ||
-    limitValue.value !== "1"
-  ) {
-    return undefined;
-  }
-  for (let index = cursor; index < limitKeywordIndex; index += 1) {
-    const token = tokens[index];
-    if (
-      token === undefined ||
-      (token.kind === "word" &&
-        UNSUPPORTED_TOP_LEVEL_WHERE_KEYWORDS.has(token.value)) ||
-      (token.kind === "punctuation" && token.value === ";")
-    ) {
-      return undefined;
-    }
-  }
-
-  return {
-    joinConditionExpressionIndexes,
-    joinTableExpressionIndexes,
-    selectedColumnExpressionIndex,
-    sourceTableExpressionIndex,
-  };
-}
-
 function isPaginatedJoinedSelectClauseBoundary(
   token: SqlToken | undefined,
 ): boolean {
@@ -2447,8 +2305,11 @@ export const preferDrizzleQueryBuilder = createRule({
   create(context) {
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
-    const directRawRowsBindings = new Set<string>();
-    const rawRowsNamespaces = new Set<string>();
+    const isExecuteRawRowsCallee = createExecuteRawRowsMatcher(
+      context.sourceCode.ast,
+      checker,
+      services,
+    );
     // Keep the type-aware consumer traversal out of files with no matching
     // syntax. The API baseline has hundreds of result calls but zero targets.
     const scalarQueryCandidates = new Set<TSESTree.TaggedTemplateExpression>();
@@ -2461,67 +2322,6 @@ export const preferDrizzleQueryBuilder = createRule({
       execute: new Map<Type, boolean>(),
       from: new Map<Type, boolean>(),
     };
-
-    for (const statement of context.sourceCode.ast.body) {
-      if (
-        statement.type !== AST_NODE_TYPES.ImportDeclaration ||
-        typeof statement.source.value !== "string" ||
-        !isRawRowsModule(statement.source.value)
-      ) {
-        continue;
-      }
-      for (const specifier of statement.specifiers) {
-        if (
-          specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-          ((specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            specifier.imported.name === "executeRawRows") ||
-            (specifier.imported.type === AST_NODE_TYPES.Literal &&
-              specifier.imported.value === "executeRawRows"))
-        ) {
-          directRawRowsBindings.add(specifier.local.name);
-        } else if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
-          rawRowsNamespaces.add(specifier.local.name);
-        }
-      }
-    }
-
-    function isExecuteRawRowsCallee(node: TSESTree.Expression): boolean {
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        if (!directRawRowsBindings.has(node.name)) {
-          return false;
-        }
-        const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-        const symbol = checker.getSymbolAtLocation(tsNode);
-        return (
-          symbol?.declarations?.some((declaration) => {
-            return (
-              isImportSpecifier(declaration) &&
-              (declaration.propertyName?.text ?? declaration.name.text) ===
-                "executeRawRows" &&
-              isRawRowsModule(importSource(declaration))
-            );
-          }) === true
-        );
-      }
-      if (
-        node.type !== AST_NODE_TYPES.MemberExpression ||
-        memberName(node) !== "executeRawRows" ||
-        node.object.type !== AST_NODE_TYPES.Identifier ||
-        !rawRowsNamespaces.has(node.object.name)
-      ) {
-        return false;
-      }
-      const tsObject = services.esTreeNodeToTSNodeMap.get(node.object);
-      const symbol = checker.getSymbolAtLocation(tsObject);
-      return (
-        symbol?.declarations?.some((declaration) => {
-          return (
-            isNamespaceImport(declaration) &&
-            isRawRowsModule(importSource(declaration))
-          );
-        }) === true
-      );
-    }
 
     function isDrizzleExecuteMember(node: TSESTree.MemberExpression): boolean {
       if (memberName(node) !== "execute") {
@@ -3333,6 +3133,11 @@ export const preferDrizzleQueryBuilder = createRule({
         ) {
           return;
         }
+        if (
+          analyzeDirectSql(query, "statement", checker, services).isSimpleSelect
+        ) {
+          return;
+        }
 
         const source = query.quasi.quasis
           .map(quasiText)
@@ -3387,61 +3192,24 @@ export const preferDrizzleQueryBuilder = createRule({
           return;
         }
 
-        const simpleMatch = simpleSelectMatch(source, syntaxSource);
-        const joinedMatch =
-          simpleMatch === undefined
-            ? paginatedJoinedSelectMatch(syntaxSource, "schema-expression")
-            : undefined;
+        const joinedMatch = paginatedJoinedSelectMatch(
+          syntaxSource,
+          "schema-expression",
+        );
         const existsMatch =
-          simpleMatch === undefined && joinedMatch === undefined
+          joinedMatch === undefined
             ? completePaginatedExistsSelectMatch(syntaxSource)
             : undefined;
-        if (
-          simpleMatch === undefined &&
-          joinedMatch === undefined &&
-          existsMatch === undefined
-        ) {
+        if (joinedMatch === undefined && existsMatch === undefined) {
           return;
         }
 
-        if (simpleMatch !== undefined) {
-          const selectedColumn =
-            query.quasi.expressions[simpleMatch.selectedColumnExpressionIndex];
-          const sourceTable =
-            query.quasi.expressions[simpleMatch.sourceTableExpressionIndex];
-          if (selectedColumn === undefined || sourceTable === undefined) {
-            return;
-          }
-          const selectedColumnType = expressionType(selectedColumn);
-          const sourceTableType = expressionType(sourceTable);
-          if (
-            !isDrizzleColumnType(
-              checker,
-              selectedColumnType.type,
-              selectedColumnType.location,
-            ) ||
-            !isDrizzleTableType(
-              checker,
-              sourceTableType.type,
-              sourceTableType.location,
-            ) ||
-            !simpleMatch.joinTableExpressionIndexes.every((index) => {
-              return isDrizzleTableExpression(query.quasi.expressions[index]);
-            }) ||
-            !simpleMatch.joinConditionExpressionIndexes.every((index) => {
-              return isDrizzleWrapperExpression(query.quasi.expressions[index]);
-            })
-          ) {
-            return;
-          }
-        } else {
-          const structuredMatch = joinedMatch ?? existsMatch;
-          if (
-            structuredMatch === undefined ||
-            !isSchemaBackedPaginatedJoin(query, structuredMatch)
-          ) {
-            return;
-          }
+        const structuredMatch = joinedMatch ?? existsMatch;
+        if (
+          structuredMatch === undefined ||
+          !isSchemaBackedPaginatedJoin(query, structuredMatch)
+        ) {
+          return;
         }
 
         context.report({

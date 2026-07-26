@@ -149,7 +149,7 @@ export async function checkCreditAmountForLockedOrg(
       reservedCredits: reserved.total,
     })
     .from(expired)
-    .innerJoin(reserved, sql`true`)
+    .crossJoin(reserved)
     .leftJoin(orgMetadata, eq(orgMetadata.orgId, args.orgId));
   signal.throwIfAborted();
 
@@ -271,7 +271,7 @@ export const checkManagedCredits$ = command(
         ),
       })
       .from(expired)
-      .innerJoin(reserved, sql`true`)
+      .crossJoin(reserved)
       .leftJoin(orgMetadata, eq(orgMetadata.orgId, args.orgId))
       .leftJoin(
         usagePricing,
