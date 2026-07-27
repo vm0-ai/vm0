@@ -51,6 +51,7 @@ _REQUEST_CONDITIONAL_HEADERS = (
 _REVALIDATION_CACHE_CONTROL = frozenset(
     ("must-revalidate", "no-cache", "no-store", "proxy-revalidate")
 )
+_NO_TRANSFORM_CACHE_CONTROL = "no-transform"
 
 _ResponseStream = Callable[[bytes], bytes | Iterable[bytes]]
 
@@ -277,9 +278,9 @@ def _request_accepts_encoded_response(headers: http.Headers) -> bool:
     return tokens != [_IDENTITY_ENCODING]
 
 
-def _cache_control_tokens(headers: http.Headers) -> set[str]:
+def _cache_control_directive_names(headers: http.Headers) -> set[str]:
     return {
-        token.strip().lower()
+        token.partition("=")[0].strip().lower()
         for value in headers.get_all("Cache-Control")
         for token in value.split(",")
         if token.strip()
@@ -289,12 +290,13 @@ def _cache_control_tokens(headers: http.Headers) -> set[str]:
 def _response_cache_control_is_unsafe(headers: http.Headers) -> bool:
     if headers.get_all("Expires") or headers.get_all("Set-Cookie"):
         return True
-    tokens = _cache_control_tokens(headers)
-    for token in tokens:
-        name = token.partition("=")[0]
-        name = name.strip()
-        if name in _REVALIDATION_CACHE_CONTROL or name in ("max-age", "s-maxage"):
-            return True
+    directive_names = _cache_control_directive_names(headers)
+    if (
+        directive_names.intersection(_REVALIDATION_CACHE_CONTROL)
+        or directive_names.intersection(("max-age", "s-maxage"))
+        or _NO_TRANSFORM_CACHE_CONTROL in directive_names
+    ):
+        return True
     return any(
         token.strip().lower() == "no-cache"
         for value in headers.get_all("Pragma")
@@ -553,6 +555,9 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
         return False
 
     state.upstream_encoding = _BROTLI_ENCODING
+    if _NO_TRANSFORM_CACHE_CONTROL in _cache_control_directive_names(flow.response.headers):
+        _reject_encoded_response(flow, state, "response_cache_control")
+        return False
     compressed_content_length = _single_bounded_content_length(flow.response.headers)
     if compressed_content_length is None or flow.response.headers.get_all("Transfer-Encoding"):
         _reject_encoded_response(flow, state, "response_size")

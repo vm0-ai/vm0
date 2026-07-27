@@ -274,6 +274,11 @@ def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
             id="positive-max-age",
         ),
         pytest.param(
+            _catalog_response(headers={"Cache-Control": "no-transform"}),
+            "response_cache_control",
+            id="identity-no-transform",
+        ),
+        pytest.param(
             _catalog_response(headers={"Expires": "Wed, 21 Oct 2037 07:28:00 GMT"}),
             "response_cache_control",
             id="expires",
@@ -467,6 +472,13 @@ def test_catalog_responses_with_trailers_are_never_cached(
             "response_size",
             "br",
             id="ambiguous-framing",
+        ),
+        pytest.param(
+            "br",
+            {"Cache-Control": "no-transform"},
+            "response_cache_control",
+            "br",
+            id="brotli-no-transform",
         ),
         pytest.param(
             "gzip",
