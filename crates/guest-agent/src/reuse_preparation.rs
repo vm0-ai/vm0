@@ -1,4 +1,32 @@
-//! Safe reclamation of runner-owned runtime state before idle reuse.
+//! Reclaims runner-owned runtime state before a completed guest enters idle reuse.
+//!
+//! This module is the guest-side safety boundary for idle admission. The runner invokes the helper
+//! as the final guest operation before parking a sandbox and admits the sandbox to the idle pool
+//! only after the helper report passes runner-side validation.
+//!
+//! Preparation proceeds in this order:
+//!
+//! 1. Validate the current runtime directory and the optional retained runtime directory.
+//! 2. Prove that the helper is contained in the sole live supervised-exec operation. The canonical
+//!    cgroup v2 base must provide the required capability files, have no enabled subtree
+//!    controllers or direct processes, contain no stale operation leaves, and be populated by the
+//!    helper's current leaf.
+//! 3. Open the runtime parent and every protected runtime directory, require them to share a mount,
+//!    and record their identities before deletion.
+//! 4. Measure rootfs capacity, recursively remove every unprotected direct child of the runtime
+//!    parent, revalidate each protected identity, and measure capacity again.
+//!
+//! Filesystem traversal is descriptor-relative and does not follow symlinks. Recursive removal
+//! refuses to cross filesystem or mount boundaries, and protected entries are checked by both name
+//! and identity so replacement races cannot redirect deletion through protected state. A symlinked
+//! stale entry is unlinked without following its target. Unsafe path, identity, or mount changes
+//! fail closed.
+//!
+//! Request validation and process-containment checks finish before filesystem mutation. Cleanup
+//! itself is not a rollback transaction: once deletion starts, a failure on a later entry,
+//! protected-identity revalidation, or the final capacity inspection can follow successful removal
+//! of earlier entries. Any helper or report failure, or insufficient capacity reported afterward,
+//! rejects the sandbox from reuse without changing the already completed run's outcome.
 
 use std::ffi::{CString, OsStr, OsString};
 use std::io::{self, Read};
@@ -80,7 +108,37 @@ struct ProtectedRuntime {
     identity: FileIdentity,
 }
 
-/// Read a bounded request from stdin and prepare the guest for reuse.
+/// Read a bounded JSON request from stdin and prepare the guest for reuse.
+///
+/// # Input
+///
+/// The input is a serialized [`ReusePreparationRequest`] no larger than 64 KiB. Its current runtime
+/// directory must be absolute and have a non-root parent. The optional retained runtime directory
+/// must meet the same requirements and share that parent. Both protected paths must name
+/// directories that can be opened before cleanup and that reside on the parent's mount.
+///
+/// # Cleanup
+///
+/// After proving process containment, this function protects the current and optional retained
+/// runtime directories and recursively removes every other direct child of their common parent.
+/// Traversal does not follow symlinks or cross mount boundaries, and the protected directory
+/// identities are revalidated after cleanup.
+///
+/// # Returns
+///
+/// On success, returns a [`ReusePreparationReport`] containing rootfs capacity observed before and
+/// after cleanup and the number of unprotected direct children removed.
+///
+/// # Errors
+///
+/// Returns [`ReusePreparationError::InvalidRequest`] for stdin, size, JSON, or protected-path
+/// validation failures; [`ReusePreparationError::Containment`] when the supervised-exec invariant
+/// cannot be proven; [`ReusePreparationError::Cleanup`] when protected state cannot be opened or
+/// revalidated or stale state cannot be safely removed; and [`ReusePreparationError::Inspection`]
+/// when rootfs capacity cannot be read.
+///
+/// Cleanup is not transactional. After removal begins, an error can be returned even though
+/// earlier stale entries were already removed.
 pub fn prepare_from_stdin() -> Result<ReusePreparationReport, ReusePreparationError> {
     let mut bytes = Vec::new();
     io::stdin()
