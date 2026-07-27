@@ -1,19 +1,22 @@
-import { IconChevronRight, IconLoader2 } from "@tabler/icons-react";
+import { IconChevronRight, IconLoader2, IconRoute } from "@tabler/icons-react";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
 } from "@vm0/api-contracts/contracts/zero-mail";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 
 import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import {
   activeSidebarMailDraftId$,
   openThreadMailDraft$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
@@ -120,6 +123,8 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
     : legacySelectedMailDraftId;
   const openSidebar = useSet(openThreadMailDraft$);
   const reloadDraft = useSet(signals.reloadDraft$);
+  const pageSignal = useGet(pageSignal$);
+  const [followUpLoadable, followUp] = useLoadableSet(signals.followUp$);
   const { connectorIcon, reconnect, reconnectDisabled, reconnecting } =
     useGmailReconnect(reloadDraft);
 
@@ -134,6 +139,10 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
   const deleted = draft.status === "deleted";
   const needsReconnect = draft.accessStatus === "reconnect";
   const selected = selectedMailDraftId === signals.mailDraftId;
+  const openDraft = () => {
+    reloadDraft();
+    openSidebar(signals.mailDraftId);
+  };
   const content = (
     <MailDraftCardContent
       draft={draft}
@@ -172,15 +181,53 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
     );
   }
 
+  if (draft.status === "sent") {
+    return (
+      <div
+        data-mail-draft-card
+        data-mail-draft-status={draft.status}
+        className={cn(
+          "w-full max-w-xl overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
+          selected ? "border-ring/60 bg-muted/20" : "border-border/70",
+        )}
+      >
+        <button
+          type="button"
+          aria-label={`Open sent email: ${draft.subject || "No subject"}`}
+          onClick={openDraft}
+          className="flex min-h-[76px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+        >
+          {content}
+        </button>
+        <div className="flex justify-end border-t border-border/60 px-3 py-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={followUpLoadable.state === "loading"}
+            onClick={() => {
+              detach(followUp(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {followUpLoadable.state === "loading" ? (
+              <IconLoader2 size={15} className="animate-spin" />
+            ) : (
+              <IconRoute size={15} />
+            )}
+            Follow up
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
       aria-label={`Open ${draft.status} email: ${draft.subject || "No subject"}`}
       data-mail-draft-card
       data-mail-draft-status={draft.status}
-      onClick={() => {
-        openSidebar(signals.mailDraftId);
-      }}
+      onClick={openDraft}
       className={cn(
         "flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         selected ? "border-ring/60 bg-muted/20" : "border-border/70",

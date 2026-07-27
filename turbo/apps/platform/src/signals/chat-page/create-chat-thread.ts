@@ -2518,11 +2518,15 @@ function createHistoryBackfillProgress(
 
 function createPagedMessages(
   threadId: string,
+  agentId$: Computed<string | null>,
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ) {
-  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
+  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(
+    threadId,
+    agentId$,
+  );
   const browserSessionCardSignals =
     createBrowserSessionCardSignalsRegistry(threadId);
   const artifactCardSignals = createArtifactCardSignalsRegistry(
@@ -2657,6 +2661,7 @@ function createPagedMessages(
 
 function createChatThreadMessagePipeline({
   threadId,
+  agentId$,
   dataSource,
   initialOptimisticEntries,
   recordScrollHeightForPrepend$,
@@ -2665,6 +2670,7 @@ function createChatThreadMessagePipeline({
   previewImageUrlsByUrl$,
 }: {
   threadId: string;
+  agentId$: Computed<string | null>;
   dataSource: ChatThreadRemote;
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[];
   recordScrollHeightForPrepend$: Command<
@@ -2680,6 +2686,7 @@ function createChatThreadMessagePipeline({
 }) {
   const pagedMessages = createPagedMessages(
     threadId,
+    agentId$,
     dataSource,
     initialOptimisticEntries,
     previewImageUrlsByUrl$,
@@ -4433,6 +4440,7 @@ export function createChatThreadSignals(
   );
   const messages = createChatThreadMessagePipeline({
     threadId,
+    agentId$: threadOwned.agentId$,
     dataSource,
     initialOptimisticEntries,
     recordScrollHeightForPrepend$,

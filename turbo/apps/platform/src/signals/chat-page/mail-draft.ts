@@ -16,26 +16,16 @@ import {
   registeredCardSignals,
 } from "./card-signal-map.ts";
 import { onRef } from "../utils.ts";
-import {
-  chatActionCallbackFromUrl,
-  runChatActionCallback$,
-} from "./action-callback.ts";
+import { runChatActionCallback$ } from "./action-callback.ts";
 import {
   createTextPreviewComputedFromBlob,
   type TextPreviewComputed,
 } from "../text-preview.ts";
 
-interface MailDraftSendCallback {
-  readonly threadId: string;
-  readonly agentId: string;
-  readonly callbackPrompt: string;
-}
-
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
   readonly originalUrl: string;
   readonly href: string;
-  readonly sendCallback: MailDraftSendCallback | null;
 }
 
 export interface MailAttachmentPreviews {
@@ -43,10 +33,7 @@ export interface MailAttachmentPreviews {
   readonly urls: ReadonlyMap<string, string | null>;
 }
 
-export interface MailDraftSignals extends Omit<
-  MailDraftDescriptor,
-  "sendCallback"
-> {
+export interface MailDraftSignals extends MailDraftDescriptor {
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
@@ -58,7 +45,7 @@ export interface MailDraftSignals extends Omit<
   readonly reloadDraft$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
-  readonly runSendCallback$: Command<Promise<void>, [AbortSignal]>;
+  readonly followUp$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
@@ -122,15 +109,6 @@ function parseUrl(value: string): URL | null {
   return URL.canParse(value) ? new URL(value) : null;
 }
 
-function parseSendCallback(url: URL): MailDraftSendCallback | null {
-  const { callbackPrompt, threadId } = chatActionCallbackFromUrl(url);
-  const agentId = url.searchParams.get("agentId");
-  if (!callbackPrompt || !threadId || !agentId) {
-    return null;
-  }
-  return { callbackPrompt, threadId, agentId };
-}
-
 export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   const url = parseUrl(value);
   if (!url) {
@@ -155,8 +133,22 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
     mailDraftId,
     originalUrl: value,
     href: `/mail/drafts/${mailDraftId}`,
-    sendCallback: parseSendCallback(url),
   };
+}
+
+function mailFollowUpPrompt(draft: ZeroMailDraft): string {
+  const recipients = Array.from(
+    new Set([...draft.to, ...draft.cc, ...draft.bcc]),
+  ).join(", ");
+  const subject = draft.subject || "(No subject)";
+  return [
+    `Set up reply tracking for the email I just sent to ${recipients} with subject "${subject}".`,
+    "Use the workflow-setup skill and check for an existing matching workflow automation first.",
+    "If none exists, create and enable a gmail-new-message automation narrowed to messages from these recipients and this subject, bound to this current chat thread.",
+    "When a reply arrives, summarize it and remind me here.",
+    "This message is my approval to create and enable the automation, so do not ask me to confirm again.",
+    "Never send an email automatically.",
+  ].join(" ");
 }
 
 function createAttachmentPreviews(
@@ -277,8 +269,8 @@ function createAttachmentPreviews(
 
 function createMailDraftSignals(
   threadId: string,
+  agentId$: Computed<string | null>,
   descriptor: MailDraftDescriptor,
-  sendCallbacks: ReadonlyMap<string, MailDraftSendCallback>,
 ): MailDraftSignals {
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
   const draftReloadVersion$ = state(0);
@@ -332,15 +324,26 @@ function createMailDraftSignals(
     signal.throwIfAborted();
     set(draftOverride$, response.body.mailDraft);
   });
-  // Resuming the chat is a separate transition from sending the email: a failed
-  // resume must not report the sent email as a failed send.
-  const runSendCallback$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      const sendCallback = sendCallbacks.get(descriptor.mailDraftId);
-      if (!sendCallback) {
-        return;
+  const followUp$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const draft = await get(draft$);
+      signal.throwIfAborted();
+      if (!draft) {
+        throw new Error("Email is no longer available");
       }
-      await set(runChatActionCallback$, sendCallback, signal);
+      const agentId = get(agentId$);
+      if (!agentId) {
+        throw new Error("Email follow-up agent is unavailable");
+      }
+      await set(
+        runChatActionCallback$,
+        {
+          threadId,
+          agentId,
+          callbackPrompt: mailFollowUpPrompt(draft),
+        },
+        signal,
+      );
     },
   );
   return {
@@ -354,31 +357,22 @@ function createMailDraftSignals(
     reloadDraft$,
     delete$,
     send$,
-    runSendCallback$,
+    followUp$,
   };
 }
 
 export function createMailDraftCardSignalsRegistry(
   threadId: string,
+  agentId$: Computed<string | null>,
 ): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
-  // One draft has one card, but the same draft can be linked by several
-  // messages and restored from the sidebar URL without its callback. The card
-  // signals are created from whichever descriptor registers first, so the send
-  // callback lives beside them and any later descriptor that carries one can
-  // still attach it. Only the chat thread that owns the card may be resumed.
-  const sendCallbacks = new Map<string, MailDraftSendCallback>();
   return {
     register(descriptor) {
-      const sendCallback = descriptor.sendCallback;
-      if (sendCallback?.threadId === threadId) {
-        sendCallbacks.set(descriptor.mailDraftId, sendCallback);
-      }
       return getOrCreateCardSignals(
         signalsByResourceKey,
         descriptor.mailDraftId,
         () => {
-          return createMailDraftSignals(threadId, descriptor, sendCallbacks);
+          return createMailDraftSignals(threadId, agentId$, descriptor);
         },
       );
     },

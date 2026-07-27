@@ -5,6 +5,7 @@ import {
   IconPaperclip,
   IconPencil,
   IconPlayerPlay,
+  IconRoute,
   IconSend,
   IconTrash,
   IconX,
@@ -976,10 +977,12 @@ function MailDraftDetail({
   const pageSignal = useGet(pageSignal$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
-  const runSendCallback = useSet(signals.runSendCallback$);
+  const [followUpLoadable, followUp] = useLoadableSet(signals.followUp$);
   const active = draft.status === "draft";
   const pending =
-    deleteLoadable.state === "loading" || sendLoadable.state === "loading";
+    deleteLoadable.state === "loading" ||
+    sendLoadable.state === "loading" ||
+    followUpLoadable.state === "loading";
   const openInGmail = draft.gmailThreadId
     ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(draft.gmailThreadId)}`
     : null;
@@ -995,9 +998,11 @@ function MailDraftDetail({
     const sendAndNotify = async () => {
       await send(pageSignal);
       toast.success("Email sent");
-      await runSendCallback(pageSignal);
     };
     detach(sendAndNotify(), Reason.DomCallback);
+  };
+  const onFollowUp = () => {
+    detach(followUp(pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -1045,6 +1050,21 @@ function MailDraftDetail({
                 <IconSend size={15} />
               )}
               Send
+            </Button>
+          ) : null}
+          {!active ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending}
+              onClick={onFollowUp}
+            >
+              {followUpLoadable.state === "loading" ? (
+                <IconLoader2 size={15} className="animate-spin" />
+              ) : (
+                <IconRoute size={15} />
+              )}
+              Follow up
             </Button>
           ) : null}
         </div>
