@@ -14,6 +14,7 @@ import {
   ensureUsagePricingRow,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { insertUsageEventHourlyFixture } from "../../../test-fixtures/usage-event-hourly";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -516,6 +517,39 @@ describe("GET /api/cron/aggregate-insights", () => {
       agentNames: ["Other usage"],
       agentCredits: { "Other usage": runlessCredits },
     });
+  });
+
+  it("aggregates compacted hourly usage without raw events", async () => {
+    const seeded = await seedInsightActor();
+    const runId = await seedCompletedRun(seeded);
+    if (!seeded.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await insertUsageEventHourlyFixture({
+      processedHour: new Date("2999-01-02T11:00:00.000Z"),
+      orgId: seeded.actor.orgId,
+      userId: seeded.actor.userId,
+      runId,
+      kind: "connector",
+      provider: "hourly-fixture",
+      category: "call",
+      quantity: 3,
+      creditsCharged: 725,
+      allowanceUnits: 0,
+      sourceEventCount: 3,
+      maxProcessedAt: activityAt(),
+    });
+    mockNow(new Date(FIXED_NOW_ISO));
+    defaultClerkMocksFor(seeded);
+
+    await runAggregation();
+
+    const data = await findInsights(seeded.actor);
+    expect(data?.creditsUsed).toBe(725);
+    expect(data?.agents).toMatchObject([{ runs: 1, credits: 725 }]);
+    expect(data?.teamUsage).toMatchObject([
+      { name: "Test User", credits: 725 },
+    ]);
   });
 
   it("excludes removed org members from team credit usage", async () => {

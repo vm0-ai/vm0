@@ -19,6 +19,11 @@ import {
 } from "../../../test-fixtures/org-plan-entitlement";
 import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
 import {
+  countUsageEventStorageByOrgFixture,
+  countUsageEventStorageByUserFixture,
+  insertUsageEventHourlyFixture,
+} from "../../../test-fixtures/usage-event-hourly";
+import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
@@ -4440,6 +4445,23 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    await insertUsageEventHourlyFixture({
+      processedHour: new Date("2026-01-01T12:00:00.000Z"),
+      orgId: orgOf(actor),
+      userId: actor.userId,
+      runId: run.runId,
+      kind: "connector",
+      provider: "org-teardown-fixture",
+      category: "call",
+      quantity: 1,
+      creditsCharged: 10,
+      allowanceUnits: 0,
+      sourceEventCount: 1,
+      maxProcessedAt: new Date("2026-01-01T12:05:00.000Z"),
+    });
+    await expect(
+      countUsageEventStorageByOrgFixture(orgOf(actor)),
+    ).resolves.toMatchObject({ hourly: 1 });
 
     await gh.installGithubApp(actor, agent.agentId, {
       oauthCode: {
@@ -4538,6 +4560,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     await waitForExpectation(async () => {
       await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
+    });
+    await waitForExpectation(async () => {
+      await expect(
+        countUsageEventStorageByOrgFixture(orgOf(actor)),
+      ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
     });
     await waitForExpectation(async () => {
       const listed = await connectors.listConnectors(actor);
@@ -4812,6 +4839,23 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    await insertUsageEventHourlyFixture({
+      processedHour: new Date("2026-01-01T12:00:00.000Z"),
+      orgId: orgOf(doomed),
+      userId: doomed.userId,
+      runId: run.runId,
+      kind: "connector",
+      provider: "user-teardown-fixture",
+      category: "call",
+      quantity: 1,
+      creditsCharged: 10,
+      allowanceUnits: 0,
+      sourceEventCount: 1,
+      maxProcessedAt: new Date("2026-01-01T12:05:00.000Z"),
+    });
+    await expect(
+      countUsageEventStorageByUserFixture(doomed.userId),
+    ).resolves.toMatchObject({ hourly: 1 });
 
     // The installation's default agent is the peer's compose, so the
     // installation itself survives the user teardown while the doomed
@@ -4905,6 +4949,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       permission: "chat:write",
       action: "deny",
     });
+    await expect(
+      countUsageEventStorageByUserFixture(doomed.userId),
+    ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();

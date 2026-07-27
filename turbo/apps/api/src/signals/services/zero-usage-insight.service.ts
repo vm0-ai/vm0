@@ -10,8 +10,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageEventFinalized } from "@vm0/db/schema/usage-event-finalized";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -41,6 +40,7 @@ import {
 } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
 
 const MODEL_USAGE_KIND = "model";
 const MODEL_TOKEN_CATEGORIES = [
@@ -314,31 +314,31 @@ function rangeToWindow(
 
 function usageBucketExpr(activityTime: SQLWrapper, p: UsageInsightSqlParams) {
   return sql`date_trunc(${p.trunc}, ${activityTime} AT TIME ZONE 'UTC' AT TIME ZONE ${p.tz})`.mapWith(
-    usageEvent.processedAt,
+    usageEventFinalized.processedHour,
   );
 }
 
 function activityTimeWindowPredicate(p: UsageInsightSqlParams) {
   return and(
-    isNotNull(usageEvent.processedAt),
-    gte(usageEvent.processedAt, p.startTs),
-    lt(usageEvent.processedAt, p.endTs),
+    isNotNull(usageEventFinalized.activityAt),
+    gte(usageEventFinalized.activityAt, p.startTs),
+    lt(usageEventFinalized.activityAt, p.endTs),
   );
 }
 
 function usageRowTokenExpr() {
   return sql`CASE
     WHEN ${and(
-      eq(usageEvent.kind, MODEL_USAGE_KIND),
-      inArray(usageEvent.category, MODEL_TOKEN_CATEGORIES),
+      eq(usageEventFinalized.kind, MODEL_USAGE_KIND),
+      inArray(usageEventFinalized.category, MODEL_TOKEN_CATEGORIES),
     )}
-    THEN ${usageEvent.quantity}
+    THEN ${usageEventFinalized.quantity}
     ELSE 0
   END::bigint`.mapWith(pgInt8ToSafeIntegerDecoder);
 }
 
 function usageCreditsExpr() {
-  return sql`COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)::bigint`.mapWith(
+  return sql`${usageEventFinalized.creditsCharged} + ${usageEventFinalized.allowanceUnits}::bigint`.mapWith(
     pgInt8ToSafeIntegerDecoder,
   );
 }
@@ -347,24 +347,18 @@ function usageRowsCte(db: Db, p: UsageInsightSqlParams) {
   return db.$with("usage_rows").as(
     db
       .select({
-        // Finalized reports assign usage to the time settlement completed.
-        activityTime: usageEvent.processedAt,
-        runId: usageEvent.runId,
-        userId: usageEvent.userId,
-        orgId: usageEvent.orgId,
+        activityTime: usageEventFinalized.processedHour,
+        runId: usageEventFinalized.runId,
+        userId: usageEventFinalized.userId,
+        orgId: usageEventFinalized.orgId,
         creditsCharged: usageCreditsExpr().as("credits_charged"),
         tokens: usageRowTokenExpr().as("tokens"),
       })
-      .from(usageEvent)
-      .leftJoin(
-        usageAllowanceAllocations,
-        eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-      )
+      .from(usageEventFinalized)
       .where(
         and(
-          eq(usageEvent.userId, p.userId),
-          eq(usageEvent.orgId, p.orgId),
-          eq(usageEvent.status, "processed"),
+          eq(usageEventFinalized.userId, p.userId),
+          eq(usageEventFinalized.orgId, p.orgId),
           activityTimeWindowPredicate(p),
         ),
       ),
@@ -402,9 +396,9 @@ function agentNameExpr() {
   END`.mapWith(pgTextDecoder);
 }
 
-function chatRankExpr(credits: SQLWrapper) {
+function chatRankExpr(credits: SQLWrapper, stableKey: SQLWrapper) {
   return sql`ROW_NUMBER() OVER (
-    ORDER BY ${desc(sum(credits))} NULLS LAST
+    ORDER BY ${desc(sum(credits))} NULLS LAST, ${stableKey} ASC
   )`.mapWith(pgInt8ToSafeIntegerDecoder);
 }
 
@@ -486,8 +480,8 @@ async function queryUsageInsightAgentBuckets(
       .groupBy(({ agentName }) => {
         return agentName;
       })
-      .orderBy(({ totalCredits }) => {
-        return desc(totalCredits);
+      .orderBy(({ agentName, totalCredits }) => {
+        return [desc(totalCredits), agentName];
       }),
   );
   const topSeven = db
@@ -610,7 +604,9 @@ async function queryUsageInsightTopChats(
         threadTitle: chatThreads.title,
         credits: safeIntegerSum(usageRows.creditsCharged).as("credits"),
         tokens: safeIntegerSum(usageRows.tokens).as("tokens"),
-        rn: chatRankExpr(usageRows.creditsCharged).as("rn"),
+        rn: chatRankExpr(usageRows.creditsCharged, zeroRuns.chatThreadId).as(
+          "rn",
+        ),
       })
       .from(usageRows)
       .innerJoin(zeroRuns, eq(zeroRuns.id, usageRows.runId))
@@ -679,7 +675,10 @@ async function queryUsageInsightTopChats(
       db
         .select({
           threadId: zeroRuns.chatThreadId,
-          rn: chatRankExpr(countUsageRows.creditsCharged).as("rn"),
+          rn: chatRankExpr(
+            countUsageRows.creditsCharged,
+            zeroRuns.chatThreadId,
+          ).as("rn"),
         })
         .from(countUsageRows)
         .innerJoin(zeroRuns, eq(zeroRuns.id, countUsageRows.runId))
@@ -713,11 +712,15 @@ export const zeroUsageInsight$ = command(
       args.options.tz,
       args.options.date,
     );
+    const normalizedWindow = normalizeFinalizedUsagePeriod({
+      start: startTs,
+      end: endTs,
+    });
     const params: UsageInsightSqlParams = {
       userId: args.userId,
       orgId: args.orgId,
-      startTs,
-      endTs,
+      startTs: normalizedWindow.start,
+      endTs: normalizedWindow.end,
       trunc,
       tz: args.options.tz,
     };

@@ -9,8 +9,7 @@ import {
   sql,
   type SQLWrapper,
 } from "drizzle-orm";
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageEventFinalized } from "@vm0/db/schema/usage-event-finalized";
 
 import {
   nullableDriverValueDecoder,
@@ -18,6 +17,7 @@ import {
   pgTextDecoder,
 } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
+import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
 
 const MODEL_USAGE_KIND = "model";
 const TOKEN_CATEGORY_INPUT = "tokens.input";
@@ -84,8 +84,9 @@ export async function getMemberUsageTotals(
   orgId: string,
   billingWindow: BillingWindow,
 ): Promise<UsageMemberTotalsRow[]> {
+  const normalizedWindow = normalizeFinalizedUsagePeriod(billingWindow);
   const totalsSelect = {
-    userId: usageEvent.userId,
+    userId: usageEventFinalized.userId,
     inputTokens: usageEventTokenSum(INPUT_TOKEN_CATEGORIES, "input_tokens"),
     outputTokens: usageEventTokenSum(OUTPUT_TOKEN_CATEGORIES, "output_tokens"),
     cacheReadInputTokens: usageEventTokenSum(
@@ -101,25 +102,20 @@ export async function getMemberUsageTotals(
 
   return await db
     .select(totalsSelect)
-    .from(usageEvent)
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
+    .from(usageEventFinalized)
     .where(
       and(
-        eq(usageEvent.orgId, orgId),
-        eq(usageEvent.status, "processed"),
-        gte(usageEvent.processedAt, billingWindow.start),
-        lt(usageEvent.processedAt, billingWindow.end),
+        eq(usageEventFinalized.orgId, orgId),
+        gte(usageEventFinalized.activityAt, normalizedWindow.start),
+        lt(usageEventFinalized.activityAt, normalizedWindow.end),
       ),
     )
-    .groupBy(usageEvent.userId);
+    .groupBy(usageEventFinalized.userId);
 }
 
 export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
   const totalsSelect = {
-    runId: usageEvent.runId,
+    runId: usageEventFinalized.runId,
     inputTokens: usageEventTokenSum(INPUT_TOKEN_CATEGORIES, "input_tokens_sum"),
     outputTokens: usageEventTokenSum(
       OUTPUT_TOKEN_CATEGORIES,
@@ -139,27 +135,24 @@ export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
     ),
     creditsCharged: usageCreditsSum("credits_sum"),
     model:
-      sql`MAX(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} THEN ${usageEvent.provider} ELSE NULL END)`
+      sql`MAX(CASE WHEN ${eq(usageEventFinalized.kind, MODEL_USAGE_KIND)} THEN ${usageEventFinalized.provider} ELSE NULL END)`
         .mapWith(nullableTextDecoder)
         .as("model"),
-    userId: max(usageEvent.userId).mapWith(pgTextDecoder).as("user_id"),
+    userId: max(usageEventFinalized.userId)
+      .mapWith(pgTextDecoder)
+      .as("user_id"),
   } satisfies Record<keyof UsageRunTotalsRow, unknown>;
 
   return db
     .select(totalsSelect)
-    .from(usageEvent)
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
+    .from(usageEventFinalized)
     .where(
       and(
-        eq(usageEvent.orgId, orgId),
-        eq(usageEvent.status, "processed"),
-        isNotNull(usageEvent.runId),
+        eq(usageEventFinalized.orgId, orgId),
+        isNotNull(usageEventFinalized.runId),
       ),
     )
-    .groupBy(usageEvent.runId)
+    .groupBy(usageEventFinalized.runId)
     .as("usage_event_run_usage_totals");
 }
 
@@ -197,9 +190,9 @@ export function mergedRunModel(events: UsageEventRunUsageTotalsSubquery) {
 
 function usageEventTokenSum(categories: readonly string[], alias: string) {
   return sql`COALESCE(SUM(CASE WHEN ${and(
-    eq(usageEvent.kind, MODEL_USAGE_KIND),
-    inArray(usageEvent.category, categories),
-  )} THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
+    eq(usageEventFinalized.kind, MODEL_USAGE_KIND),
+    inArray(usageEventFinalized.category, categories),
+  )} THEN ${usageEventFinalized.quantity} ELSE 0 END), 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }
@@ -211,7 +204,7 @@ function coalesceRunTotal(column: SQLWrapper, alias: string) {
 }
 
 function usageCreditsSum(alias: string) {
-  return sql`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`
+  return sql`COALESCE(SUM(${usageEventFinalized.creditsCharged} + ${usageEventFinalized.allowanceUnits}), 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }

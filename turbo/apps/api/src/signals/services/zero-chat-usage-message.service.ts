@@ -8,8 +8,8 @@ import {
   type ChatMessageUsageProviderBreakdown,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageEventFinalized } from "@vm0/db/schema/usage-event-finalized";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import {
@@ -26,12 +26,6 @@ const L = logger("ChatUsageMessage");
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
-const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
-  agentRuns.status,
-  zeroRuns.chatThreadId,
-  zeroRuns.runGroupId,
-  chatThreads.userId,
-] as const;
 
 function buildUsageBreakdown(
   rows: readonly {
@@ -59,69 +53,77 @@ function buildUsageBreakdown(
 }
 
 function usageCreditsExpression() {
-  return sql`COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)`;
+  return sql`${usageEventFinalized.creditsCharged} + ${usageEventFinalized.allowanceUnits}`;
 }
 
 async function loadUsageMessageContext(tx: WriteTx, runId: string) {
+  const pendingUsage = tx
+    .select({
+      count: sql`${count(usageEvent.id)}::int`
+        .mapWith(pgIntegerDecoder)
+        .as("pending_count"),
+    })
+    .from(usageEvent)
+    .where(and(eq(usageEvent.runId, runId), eq(usageEvent.status, "pending")))
+    .as("pending_usage");
+  const finalizedUsage = tx
+    .select({
+      count:
+        sql`COALESCE(${sum(usageEventFinalized.sourceEventCount)}, 0)::bigint`
+          .mapWith(pgInt8ToSafeIntegerDecoder)
+          .as("finalized_count"),
+      totalCredits: sql`COALESCE(${sum(usageCreditsExpression())}, 0)::bigint`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("total_credits"),
+      settledAt: max(usageEventFinalized.settledAt)
+        .mapWith(usageEventFinalized.settledAt)
+        .as("settled_at"),
+    })
+    .from(usageEventFinalized)
+    .where(eq(usageEventFinalized.runId, runId))
+    .as("finalized_usage");
+
   return await tx
     .select({
       status: agentRuns.status,
       chatThreadId: zeroRuns.chatThreadId,
       runGroupId: zeroRuns.runGroupId,
       userId: chatThreads.userId,
-      pendingCount:
-        sql`${count(usageEvent.id)} FILTER (WHERE ${usageEvent.status} = 'pending')::int`.mapWith(
-          pgIntegerDecoder,
-        ),
-      processedCount:
-        sql`${count(usageEvent.id)} FILTER (WHERE ${usageEvent.status} = 'processed')::int`.mapWith(
-          pgIntegerDecoder,
-        ),
-      totalCredits:
-        sql`COALESCE(${sum(usageCreditsExpression())} FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`.mapWith(
-          pgInt8ToSafeIntegerDecoder,
-        ),
+      pendingCount: pendingUsage.count,
+      processedCount: finalizedUsage.count,
+      totalCredits: finalizedUsage.totalCredits,
       settledAt: sql`COALESCE(
-        ${max(usageEvent.processedAt)} FILTER (WHERE ${usageEvent.status} = 'processed'),
-        ${max(usageEvent.createdAt)} FILTER (WHERE ${usageEvent.status} = 'processed'),
-        ${max(agentRuns.completedAt)},
-        ${max(agentRuns.createdAt)}
+        ${finalizedUsage.settledAt},
+        ${agentRuns.completedAt},
+        ${agentRuns.createdAt}
       )`.mapWith(agentRuns.createdAt),
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
-    .leftJoin(usageEvent, eq(usageEvent.runId, agentRuns.id))
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
+    .crossJoin(pendingUsage)
+    .crossJoin(finalizedUsage)
     .where(eq(agentRuns.id, runId))
-    .groupBy(...USAGE_CONTEXT_GROUP_BY_COLUMNS)
     .limit(1);
 }
 
 async function loadUsageBreakdownRows(tx: WriteTx, runId: string) {
   return await tx
     .select({
-      kind: usageEvent.kind,
+      kind: usageEventFinalized.kind,
       provider:
-        sql`COALESCE(NULLIF(${usageEvent.provider}, ''), 'unknown')`.mapWith(
-          pgTextDecoder,
-        ),
+        sql`COALESCE(NULLIF(${usageEventFinalized.provider}, ''), 'unknown')`
+          .mapWith(pgTextDecoder)
+          .as("provider"),
       credits:
         sql`COALESCE(${sum(usageCreditsExpression())}, 0)::bigint`.mapWith(
           pgInt8ToSafeIntegerDecoder,
         ),
     })
-    .from(usageEvent)
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
-    .where(and(eq(usageEvent.runId, runId), eq(usageEvent.status, "processed")))
-    .groupBy(usageEvent.kind, usageEvent.provider)
-    .orderBy(usageEvent.kind, usageEvent.provider);
+    .from(usageEventFinalized)
+    .where(eq(usageEventFinalized.runId, runId))
+    .groupBy(usageEventFinalized.kind, usageEventFinalized.provider)
+    .orderBy(usageEventFinalized.kind, usageEventFinalized.provider);
 }
 
 export const maybeEmitRunUsageMessage$ = command(

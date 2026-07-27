@@ -19,6 +19,7 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { insertUsageEventHourlyFixture } from "../../../test-fixtures/usage-event-hourly";
 import {
   holdChatMessageInsertTransactionFixture,
   insertChatMessageTransactionFixture,
@@ -1645,6 +1646,64 @@ describe("CHAT-01 chat thread read state", () => {
 });
 
 describe("CHAT-03 run usage messages", () => {
+  it("emits an aggregate-only usage message when the run completes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Hourly usage message agent",
+    );
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "record compacted usage",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
+    const processedHour = new Date(now());
+    processedHour.setUTCMinutes(0, 0, 0);
+    const maxProcessedAt = new Date(processedHour.getTime() + 25 * 60_000);
+    const provider = `hourly-chat-${randomUUID().slice(0, 8)}`;
+    await insertUsageEventHourlyFixture({
+      processedHour,
+      orgId: actor.orgId,
+      userId: actor.userId,
+      runId: run.runId,
+      kind: "connector",
+      provider,
+      category: "api_request",
+      quantity: 3,
+      creditsCharged: 7,
+      allowanceUnits: 5,
+      sourceEventCount: 2,
+      maxProcessedAt,
+    });
+
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const usageMessages = await usageMessagesForRun(
+      actor,
+      run.threadId,
+      run.runId,
+    );
+    expect(usageMessages).toHaveLength(1);
+    expect(usageMessages[0]).toMatchObject({
+      role: "assistant",
+      content: null,
+      usage: {
+        version: 1,
+        totalCredits: 12,
+        settledAt: maxProcessedAt.toISOString(),
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 12,
+            providers: [{ provider, credits: 12 }],
+          },
+        ],
+      },
+    });
+  }, 60_000);
+
   it("emits one immutable usage message per run", async () => {
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Usage message agent",

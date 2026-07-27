@@ -10,6 +10,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
+import { insertUsageEventHourlyFixture } from "../../../test-fixtures/usage-event-hourly";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -425,6 +426,83 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[2]?.source).toBe("chat");
     expect(response.body.rows[2]?.threadId).toBe(older.threadId);
     expect(response.body.rows[2]?.credits).toBe(80);
+  });
+
+  it("returns aggregate-only rows, totals, tokens, and breakdowns", async () => {
+    const fixture = await entitledRecordActor();
+    if (!fixture.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const run = await createUnthreadedRun(fixture.actor, {
+      prompt: "Hourly usage record",
+      triggerSource: "slack",
+    });
+    const processedHour = new Date(nowDate());
+    processedHour.setUTCMinutes(0, 0, 0);
+    const maxProcessedAt = new Date(processedHour.getTime() + 20 * 60_000);
+    const model = uniqueProvider("hourly-model");
+    const connector = uniqueProvider("hourly-connector");
+
+    await insertUsageEventHourlyFixture({
+      processedHour,
+      orgId: fixture.actor.orgId,
+      userId: fixture.actor.userId,
+      runId: run.runId,
+      kind: "model",
+      provider: model,
+      category: "tokens.input",
+      quantity: 50,
+      creditsCharged: 5,
+      allowanceUnits: 5,
+      sourceEventCount: 2,
+      maxProcessedAt,
+    });
+    await insertUsageEventHourlyFixture({
+      processedHour,
+      orgId: fixture.actor.orgId,
+      userId: fixture.actor.userId,
+      runId: run.runId,
+      kind: "connector",
+      provider: connector,
+      category: "api_request",
+      quantity: 2,
+      creditsCharged: 20,
+      allowanceUnits: 0,
+      sourceEventCount: 1,
+      maxProcessedAt,
+    });
+
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
+    const response = await accept(
+      apiClient().get({
+        query: { range: "today", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.totalCredits).toBe(30);
+    expect(response.body.pagination.total).toBe(1);
+    expect(response.body.rows).toStrictEqual([
+      expect.objectContaining({
+        source: "slack",
+        runId: run.runId,
+        credits: 30,
+        tokens: 50,
+        breakdown: [
+          {
+            kind: "model",
+            credits: 10,
+            providers: [{ provider: model, credits: 10 }],
+          },
+          {
+            kind: "connector",
+            credits: 20,
+            providers: [{ provider: connector, credits: 20 }],
+          },
+        ],
+      }),
+    ]);
   });
 
   it("normalizes current Workflow Automation sources without changing credits", async () => {

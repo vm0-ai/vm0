@@ -18,6 +18,7 @@ import {
   ensureUsagePricingRow,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { insertUsageEventHourlyFixture } from "../../../test-fixtures/usage-event-hourly";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -498,6 +499,62 @@ describe("GET /api/zero/usage/insight", () => {
         tokens: { others: 0 },
       },
     ]);
+  });
+
+  it("buckets mixed facts identically in a fractional-offset timezone", async () => {
+    const settledAt = new Date("2026-07-27T12:50:00.000Z");
+    mockNow(settledAt);
+    const actor = await entitledInsightActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const compose = await createInsightCompose(actor);
+    const runId = await createSourceRun(actor, compose.composeId, "cli");
+    await reportRunUsage(actor, runId, [
+      {
+        kind: "model",
+        category: "tokens.input",
+        quantity: 10,
+        credits: 5,
+      },
+    ]);
+    await processPendingUsage(actor);
+
+    const processedHour = new Date("2026-07-27T12:00:00.000Z");
+    await insertUsageEventHourlyFixture({
+      processedHour,
+      orgId: actor.orgId,
+      userId: actor.userId,
+      runId,
+      kind: "model",
+      provider: `hourly-model-${randomUUID().slice(0, 8)}`,
+      category: "tokens.output",
+      quantity: 20,
+      creditsCharged: 6,
+      allowanceUnits: 4,
+      sourceEventCount: 2,
+      maxProcessedAt: new Date("2026-07-27T12:40:00.000Z"),
+    });
+
+    authenticateInsightActor(actor);
+    const response = await accept(
+      apiClient().get({
+        query: {
+          range: "today",
+          groupBy: "source",
+          tz: "Asia/Kolkata",
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.grandTotalCredits).toBe(15);
+    expect(response.body.grandTotalTokens).toBe(30);
+    expect(response.body.buckets).toHaveLength(1);
+    expect(sumBucketSeries(response.body.buckets)).toStrictEqual({
+      others: { credits: 15, tokens: 30 },
+    });
   });
 
   it("scope isolation — other user's activity in same org is invisible", async () => {

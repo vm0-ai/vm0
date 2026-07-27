@@ -237,6 +237,9 @@ export const browserSessionInstances = pgTable(
         table.runId,
         table.status,
       ),
+      index("idx_browser_session_instances_usage_event_id").on(
+        table.usageEventId,
+      ),
       index("idx_browser_session_instances_reconcile").on(
         table.status,
         table.settledAt,

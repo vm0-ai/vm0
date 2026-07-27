@@ -6,6 +6,7 @@ import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-d
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
+import { insertUsageEventHourlyFixture } from "../../../test-fixtures/usage-event-hourly";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -707,5 +708,79 @@ describe("GET /api/zero/usage/runs", () => {
       cacheTokens: 54,
       creditsCharged: 304,
     });
+  });
+
+  it("regroups mixed raw and hourly facts for run and member usage", async () => {
+    const actor = await entitledUsageActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const run = await createBillableRun(actor);
+    await recordModelUsage(actor, run.runId, model, { input: 20 });
+    await billing.processOrgUsageEvents(actor);
+
+    const processedHour = new Date(nowDate());
+    processedHour.setUTCMinutes(0, 0, 0);
+    const maxProcessedAt = new Date(processedHour.getTime() + 30 * 60_000);
+    await insertUsageEventHourlyFixture({
+      processedHour,
+      orgId: actor.orgId,
+      userId: actor.userId,
+      runId: run.runId,
+      kind: "model",
+      provider: model,
+      category: MODEL_TOKEN_CATEGORIES.input,
+      quantity: 80,
+      creditsCharged: 70,
+      allowanceUnits: 10,
+      sourceEventCount: 2,
+      maxProcessedAt,
+    });
+    await insertUsageEventHourlyFixture({
+      processedHour,
+      orgId: actor.orgId,
+      userId: actor.userId,
+      runId: run.runId,
+      kind: "model",
+      provider: model,
+      category: MODEL_TOKEN_CATEGORIES.output,
+      quantity: 40,
+      creditsCharged: 40,
+      allowanceUnits: 0,
+      sourceEventCount: 1,
+      maxProcessedAt,
+    });
+
+    mockClerkUserLookup();
+    mocks.clerk.session(actor.userId, actor.orgId);
+
+    const runsResponse = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+    expect(runsResponse.body.runs).toHaveLength(1);
+    expect(runsResponse.body.runs[0]).toMatchObject({
+      runId: run.runId,
+      model,
+      inputTokens: 100,
+      outputTokens: 40,
+      creditsCharged: 140,
+    });
+
+    const membersResponse = await billing.readUsageMembers(actor, {
+      range: "today",
+      tz: "UTC",
+    });
+    expect(membersResponse.body.members).toStrictEqual([
+      expect.objectContaining({
+        userId: actor.userId,
+        inputTokens: 100,
+        outputTokens: 40,
+        creditsCharged: 140,
+      }),
+    ]);
   });
 });

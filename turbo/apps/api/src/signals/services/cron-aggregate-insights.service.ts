@@ -4,8 +4,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageEventFinalized } from "@vm0/db/schema/usage-event-finalized";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
@@ -37,6 +36,10 @@ import { getLocalToday, resolveUserTimezones } from "./local-day";
 import { tapError } from "../utils";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
+import {
+  ceilFinalizedUsageHour,
+  normalizeFinalizedUsagePeriod,
+} from "./finalized-usage-time";
 
 const L = logger("CronAggregateInsights");
 const OTHER_USAGE_AGENT_NAME = "Other usage";
@@ -784,6 +787,7 @@ async function queryActiveUsers(
   lookbackStart: Date,
   signal: AbortSignal,
 ): Promise<ActiveUserRow[]> {
+  const normalizedLookbackStart = ceilFinalizedUsageHour(lookbackStart);
   const [completedRuns, eventUsage] = await Promise.all([
     db
       .select({
@@ -803,21 +807,21 @@ async function queryActiveUsers(
       .groupBy(agentRuns.orgId, agentRuns.userId),
     db
       .select({
-        orgId: usageEvent.orgId,
-        userId: usageEvent.userId,
-        lastActivity: max(usageEvent.processedAt)
-          .mapWith(usageEvent.processedAt)
+        orgId: usageEventFinalized.orgId,
+        userId: usageEventFinalized.userId,
+        lastActivity: max(usageEventFinalized.maxProcessedAt)
+          .mapWith(usageEventFinalized.maxProcessedAt)
           .as("last_activity"),
       })
-      .from(usageEvent)
+      .from(usageEventFinalized)
       .where(
         and(
-          eq(usageEvent.status, "processed"),
-          gte(usageEvent.processedAt, lookbackStart),
-          isNotNull(usageEvent.processedAt),
+          gte(usageEventFinalized.activityAt, normalizedLookbackStart),
+          isNotNull(usageEventFinalized.activityAt),
+          isNotNull(usageEventFinalized.maxProcessedAt),
         ),
       )
-      .groupBy(usageEvent.orgId, usageEvent.userId),
+      .groupBy(usageEventFinalized.orgId, usageEventFinalized.userId),
   ]);
   signal.throwIfAborted();
 
@@ -929,11 +933,15 @@ async function queryUsageEventCreditRows(
   dayEnd: Date,
   signal: AbortSignal,
 ): Promise<LedgerCreditRow[]> {
-  const isRunless = isNull(usageEvent.runId);
+  const normalizedWindow = normalizeFinalizedUsagePeriod({
+    start: dayStart,
+    end: dayEnd,
+  });
+  const isRunless = isNull(usageEventFinalized.runId);
   const rows = await db
     .select({
-      orgId: usageEvent.orgId,
-      userId: usageEvent.userId,
+      orgId: usageEventFinalized.orgId,
+      userId: usageEventFinalized.userId,
       agentId:
         sql`CASE WHEN ${isRunless} THEN NULL ELSE ${zeroAgents.id}::text END`
           .mapWith(nullableTextDecoder)
@@ -943,30 +951,25 @@ async function queryUsageEventCreditRows(
           .mapWith(pgTextDecoder)
           .as("agent_name"),
       credits:
-        sql`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`
+        sql`COALESCE(SUM(${usageEventFinalized.creditsCharged} + ${usageEventFinalized.allowanceUnits}), 0)::bigint`
           .mapWith(pgInt8ToSafeIntegerDecoder)
           .as("credits"),
     })
-    .from(usageEvent)
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
-    .leftJoin(agentRuns, eq(usageEvent.runId, agentRuns.id))
+    .from(usageEventFinalized)
+    .leftJoin(agentRuns, eq(usageEventFinalized.runId, agentRuns.id))
     .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
     .where(
       and(
-        inArray(usageEvent.orgId, orgIds),
-        eq(usageEvent.status, "processed"),
-        gte(usageEvent.processedAt, dayStart),
-        lt(usageEvent.processedAt, dayEnd),
-        isNotNull(usageEvent.processedAt),
+        inArray(usageEventFinalized.orgId, orgIds),
+        gte(usageEventFinalized.activityAt, normalizedWindow.start),
+        lt(usageEventFinalized.activityAt, normalizedWindow.end),
+        isNotNull(usageEventFinalized.activityAt),
       ),
     )
     .groupBy(
-      usageEvent.orgId,
-      usageEvent.userId,
+      usageEventFinalized.orgId,
+      usageEventFinalized.userId,
       isRunless,
       zeroAgents.id,
       zeroAgents.displayName,

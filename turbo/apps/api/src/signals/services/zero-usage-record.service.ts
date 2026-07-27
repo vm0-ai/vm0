@@ -20,6 +20,7 @@ import { timestampWithoutTimeZone } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
+import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
 import { resolveEmails } from "./zero-usage.service";
 import {
   fixedRangeToPeriod,
@@ -113,7 +114,7 @@ function tokenExpr() {
     }),
     sql`, `,
   );
-  return sql`CASE WHEN ue.kind = ${MODEL_USAGE_KIND} AND ue.category IN (${list}) THEN ue.quantity ELSE 0 END`;
+  return sql`CASE WHEN uf.kind = ${MODEL_USAGE_KIND} AND uf.category IN (${list}) THEN uf.quantity ELSE 0 END`;
 }
 
 function sourceExpr() {
@@ -141,13 +142,13 @@ function usageKindExpr() {
   );
   return sql`
     CASE
-      WHEN ue.kind IN (${usageKindList}) THEN ue.kind
+      WHEN uf.kind IN (${usageKindList}) THEN uf.kind
       ELSE 'other'
     END`;
 }
 
 function usageCreditsExpr() {
-  return sql`COALESCE(ue.credits_charged, 0) + COALESCE(uaa.units_applied, 0)`;
+  return sql`uf.credits_charged + uf.allowance_units`;
 }
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
@@ -167,26 +168,26 @@ function recordWith(
     sql`, `,
   );
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
-  // Finalized reports assign usage to the time settlement completed.
-  const periodPredicate = period
+    userId === null ? sql.empty() : sql`AND uf.user_id = ${userId}`;
+  const normalizedPeriod = period
+    ? normalizeFinalizedUsagePeriod(period)
+    : null;
+  const periodPredicate = normalizedPeriod
     ? sql`
-        AND ue.processed_at >= ${timestampWithoutTimeZone(period.start)}::timestamp
-        AND ue.processed_at < ${timestampWithoutTimeZone(period.end)}::timestamp`
+        AND uf.activity_at >= ${timestampWithoutTimeZone(normalizedPeriod.start)}::timestamp
+        AND uf.activity_at < ${timestampWithoutTimeZone(normalizedPeriod.end)}::timestamp`
     : sql.empty();
   return sql`
     WITH usage_rows AS (
       SELECT
-        ue.run_id,
-        ue.user_id,
+        uf.run_id,
+        uf.user_id,
         ${usageCreditsExpr()}::bigint AS credits,
         ${tokenExpr()}::bigint AS tokens
-      FROM usage_event ue
-      LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-      WHERE ue.org_id = ${orgId}
+      FROM usage_event_finalized uf
+      WHERE uf.org_id = ${orgId}
         ${userPredicate}
-        AND ue.status = 'processed'
-        AND ue.processed_at IS NOT NULL
+        AND uf.activity_at IS NOT NULL
         ${periodPredicate}
     ),
     runs AS (
@@ -279,7 +280,7 @@ async function queryUsageRecordRows(
       SELECT row_key, source, user_id, thread_id, run_id, title, credits, tokens, last_activity
       FROM record
       ${where}
-      ORDER BY last_activity DESC
+      ORDER BY last_activity DESC, row_key
       LIMIT ${pageSize} OFFSET ${offset}
     `,
     usageRecordSqlRowSchema,
@@ -339,12 +340,14 @@ async function queryUsageRecordBreakdown(
   }
 
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
-  // Keep breakdown membership on the same settlement clock as record totals.
-  const periodPredicate = period
+    userId === null ? sql.empty() : sql`AND uf.user_id = ${userId}`;
+  const normalizedPeriod = period
+    ? normalizeFinalizedUsagePeriod(period)
+    : null;
+  const periodPredicate = normalizedPeriod
     ? sql`
-          AND ue.processed_at >= ${timestampWithoutTimeZone(period.start)}::timestamp
-          AND ue.processed_at < ${timestampWithoutTimeZone(period.end)}::timestamp`
+          AND uf.activity_at >= ${timestampWithoutTimeZone(normalizedPeriod.start)}::timestamp
+          AND uf.activity_at < ${timestampWithoutTimeZone(normalizedPeriod.end)}::timestamp`
     : sql.empty();
   const rowKeyList = sql.join(
     rowKeys.map((rowKey) => {
@@ -362,18 +365,16 @@ async function queryUsageRecordBreakdown(
         SELECT
           ${sourceSql} AS source,
           zr.chat_thread_id,
-          ue.run_id,
-          ue.user_id,
+          uf.run_id,
+          uf.user_id,
           ${kindSql} AS kind,
-          COALESCE(NULLIF(ue.provider, ''), 'unknown') AS provider,
+          COALESCE(NULLIF(uf.provider, ''), 'unknown') AS provider,
           ${usageCreditsExpr()}::bigint AS credits
-        FROM usage_event ue
-        LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-        INNER JOIN zero_runs zr ON zr.id = ue.run_id
-        WHERE ue.org_id = ${orgId}
+        FROM usage_event_finalized uf
+        INNER JOIN zero_runs zr ON zr.id = uf.run_id
+        WHERE uf.org_id = ${orgId}
           ${userPredicate}
-          AND ue.status = 'processed'
-          AND ue.processed_at IS NOT NULL
+          AND uf.activity_at IS NOT NULL
           ${periodPredicate}
       ),
       keyed AS (

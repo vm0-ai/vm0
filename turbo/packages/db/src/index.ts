@@ -28,6 +28,8 @@ import * as modelProviderAuthSessionSchema from "./schema/model-provider-auth-se
 import * as connectorOauthDeviceAuthorizationSessionSchema from "./schema/connector-oauth-device-authorization-session";
 import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
+import * as usageEventHourlySchema from "./schema/usage-event-hourly";
+import * as usageEventFinalizedSchema from "./schema/usage-event-finalized";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
@@ -161,6 +163,8 @@ export const schema = {
   ...connectorOauthDeviceAuthorizationSessionSchema,
   ...connectorOauthStateSchema,
   ...usageEventSchema,
+  ...usageEventHourlySchema,
+  ...usageEventFinalizedSchema,
   ...runBuiltInAdmissionSchema,
   ...usageDailySchema,
   ...githubInstallationSchema,
