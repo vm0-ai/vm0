@@ -27,6 +27,10 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { AttachmentLightbox } from "../zero-page/zero-attachment-chips.tsx";
 import { emptyArtifactImg } from "../zero-page/platform-assets.ts";
+import {
+  FilePreviewIcon,
+  getFilePreviewAccentClass,
+} from "../zero-page/zero-file-preview-icon.tsx";
 
 // Distance from the bottom of the scroll container at which the next page is
 // requested. The signal layer deduplicates repeated requests for one cursor.
@@ -80,6 +84,30 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
   );
 }
 
+function ArtifactCatalogFallbackPreview({
+  artifact,
+}: {
+  readonly artifact: ArtifactSummary;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br p-6",
+        getFilePreviewAccentClass(artifact.title),
+      )}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
+      <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
+      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover:scale-105">
+        <FilePreviewIcon
+          filename={artifact.title}
+          testId="artifact-catalog-file-preview-icon"
+        />
+      </div>
+    </div>
+  );
+}
+
 function ArtifactCatalogCard({
   artifact,
   onOpen,
@@ -118,6 +146,8 @@ function ArtifactCatalogCard({
             loading="lazy"
             className="h-full w-full object-cover"
           />
+        ) : artifact.kind === "file" ? (
+          <ArtifactCatalogFallbackPreview artifact={artifact} />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-muted/30" />
         )}

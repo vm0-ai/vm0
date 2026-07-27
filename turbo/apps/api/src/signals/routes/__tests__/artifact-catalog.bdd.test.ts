@@ -558,10 +558,28 @@ describe("GET /api/zero/artifacts/catalog", () => {
       filename: "notes.txt",
       contentType: "text/plain",
     });
+    await uploadFile({
+      owner,
+      prompt: "upload image",
+      filename: "reference.png",
+      contentType: "image/png",
+    });
+    await uploadFile({
+      owner,
+      prompt: "upload video",
+      filename: "demo.mp4",
+      contentType: "video/mp4",
+    });
     const site = `catalog-filter-${randomUUID().slice(0, 8)}`;
     await publishHostedSite({ owner, site });
 
     const files = await chat.listArtifactCatalog(owner.actor, { kind: "file" });
+    const images = await chat.listArtifactCatalog(owner.actor, {
+      kind: "image",
+    });
+    const videos = await chat.listArtifactCatalog(owner.actor, {
+      kind: "video",
+    });
     const sites = await chat.listArtifactCatalog(owner.actor, {
       kind: "hosted-site",
     });
@@ -571,6 +589,16 @@ describe("GET /api/zero/artifacts/catalog", () => {
         return artifact.kind;
       }),
     ).toStrictEqual(["file"]);
+    expect(
+      images.artifacts.map((artifact) => {
+        return artifact.title;
+      }),
+    ).toStrictEqual(["reference.png"]);
+    expect(
+      videos.artifacts.map((artifact) => {
+        return artifact.title;
+      }),
+    ).toStrictEqual(["demo.mp4"]);
     expect(
       sites.artifacts.map((artifact) => {
         return artifact.title;

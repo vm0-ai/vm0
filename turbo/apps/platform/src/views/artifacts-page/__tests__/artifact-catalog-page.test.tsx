@@ -124,6 +124,24 @@ describe("artifact catalog page", () => {
     expect(requestedKinds).toStrictEqual([undefined, "image"]);
   });
 
+  it("renders generic file artwork when a card has no thumbnail", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ title: "quarterly-report.pdf" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    const card = await findCard("quarterly-report.pdf");
+    expect(card.querySelector("img")).toBeNull();
+    expect(
+      screen.getByTestId("artifact-catalog-file-preview-icon"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("PDF")).toBeInTheDocument();
+  });
+
   it("appends the next page when the list is scrolled to the end", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       if (query.cursor === "cursor-2") {
