@@ -116,6 +116,53 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("Provider: fal");
   });
 
+  it("should print the complete image result as one JSON object", async () => {
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json(IMAGE_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--raw-prompt",
+      "A watercolor fox",
+      "--json",
+    ]);
+
+    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(IMAGE_RESULT)]]);
+  });
+
+  it.each([
+    ["provider listing", ["image", "--json"]],
+    ["connector guidance", ["image", "--provider", "replicate", "--json"]],
+    [
+      "prompt compilation",
+      [
+        "image",
+        "--style",
+        "image-style:ink-storefront",
+        "--prompt",
+        "A florist named Luna Floral",
+        "--compile",
+        "--json",
+      ],
+    ],
+  ])("should reject JSON output for %s", async (_mode, args) => {
+    await expect(async () => {
+      await generateCommand.parseAsync(["node", "cli", ...args]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "--json is only available for direct built-in generation",
+      ),
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
   it("should pass fal model controls to the image API", async () => {
     let capturedBody: unknown;
     server.use(
@@ -535,7 +582,7 @@ describe("zero generate image command", () => {
     expect(helpOutput).toContain("--compiled-prompt");
     expect(helpOutput).toContain("--raw-prompt");
     expect(helpOutput).not.toContain("--skip-style");
-    expect(helpOutput).not.toContain("--json");
+    expect(helpOutput).toContain("--json");
     expect(helpOutput).not.toContain("--styled ");
     expect(helpOutput).toContain("provider");
     expect(helpOutput).toContain("default");
