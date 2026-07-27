@@ -415,28 +415,6 @@ export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
   });
 }
 
-interface ResetSignalScope {
-  readonly signal: AbortSignal;
-  readonly abort: (reason?: unknown) => void;
-}
-
-export function resetSignalScope(): Command<ResetSignalScope, AbortSignal[]> {
-  const controller$ = state<AbortController | undefined>(undefined);
-
-  return command(({ get, set }, ...signals: AbortSignal[]) => {
-    get(controller$)?.abort();
-    const controller = new AbortController();
-    set(controller$, controller);
-
-    return {
-      signal: AbortSignal.any([controller.signal, ...signals]),
-      abort: (reason?: unknown) => {
-        controller.abort(reason);
-      },
-    };
-  });
-}
-
 export function onDomEventFn<T>(callback: (e: T) => void | Promise<void>) {
   return function (e: T) {
     detach(callback(e), Reason.DomCallback);
