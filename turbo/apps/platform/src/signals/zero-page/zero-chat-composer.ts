@@ -512,6 +512,7 @@ export const openPresentationTemplateDetailPreview$ = command(
         }
       }),
     );
+    signal.throwIfAborted();
 
     if (result === undefined || result === null) {
       cache.failed.add(params.item.embedUrl);
