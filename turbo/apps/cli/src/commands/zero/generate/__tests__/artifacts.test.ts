@@ -170,9 +170,14 @@ describe("zero generate source-backed artifact commands", () => {
         }),
       ]),
     );
-    expect(websiteSelection.candidates.templates).not.toEqual(
+    expect(websiteSelection.candidates.templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "template:saas-landing" }),
+        expect.objectContaining({ id: "template:web-prototype" }),
+      ]),
+    );
+    expect(websiteSelection.candidates.templates).not.toEqual(
+      expect.arrayContaining([
         expect.objectContaining({ id: "template:html-ppt-pitch-deck" }),
       ]),
     );
