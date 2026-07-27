@@ -42,7 +42,9 @@ browser_setup() {
   fi
 
   export NODE_TLS_REJECT_UNAUTHORIZED=0
-  export AGENT_BROWSER_DEFAULT_TIMEOUT=30000
+  # The daemon reads this once when the first command starts it. Per-command
+  # environment overrides do not change an already-running daemon.
+  export AGENT_BROWSER_DEFAULT_TIMEOUT=60000
   export AGENT_BROWSER_SESSION="${AGENT_BROWSER_SESSION:-${JOB_REF:-local}-sign-up}"
 
   export OTP="424242"
@@ -71,19 +73,13 @@ generate_test_email() {
 # agent-browser may surface a transient CDP context error when Clerk replaces
 # the document while a selector wait is active. Retry that transition without
 # adding a fixed delay; preserve real selector timeouts as failures.
-# Usage: wait_for_browser_target [timeout-ms] <agent-browser wait arguments...>
+# Usage: wait_for_browser_target <agent-browser wait arguments...>
 # ---------------------------------------------------------------------------
 wait_for_browser_target() {
-  local timeout_ms=30000
-  if [[ "$1" =~ ^[0-9]+$ ]]; then
-    timeout_ms="$1"
-    shift
-  fi
-
   local navigation_attempt wait_output
 
   for navigation_attempt in 1 2 3; do
-    if wait_output=$(AGENT_BROWSER_DEFAULT_TIMEOUT="$timeout_ms" agent-browser wait "$@" 2>&1); then
+    if wait_output=$(agent-browser wait "$@" 2>&1); then
       return 0
     fi
     if [[ "$wait_output" != *"Inspected target navigated or closed"* ]]; then
@@ -102,10 +98,9 @@ wait_for_browser_target() {
 # ---------------------------------------------------------------------------
 wait_for_auth_next_step() {
   local auth_path="$1"
-  local timeout_ms="${2:-45000}"
   local otp_selector='input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]'
 
-  wait_for_browser_target "$timeout_ms" --fn \
+  wait_for_browser_target --fn \
     "(() => {
       if (!window.location.pathname.includes('/${auth_path}')) return true;
       if (document.querySelector('${otp_selector}')) return true;
@@ -346,24 +341,22 @@ navigate_to_app_page() {
 
 # ---------------------------------------------------------------------------
 # wait_for_text — Wait for text to appear on page (case-insensitive)
-# Usage: wait_for_text "some text" [timeout_secs]
+# Usage: wait_for_text "some text"
 # ---------------------------------------------------------------------------
 wait_for_text() {
   local text="$1"
-  local timeout_secs="${2:-15}"
-  wait_for_browser_target "$((timeout_secs * 1000))" --text "$text"
+  wait_for_browser_target --text "$text"
 }
 
 # ---------------------------------------------------------------------------
 # wait_for_text_gone — Wait for text to disappear from page (case-insensitive)
-# Usage: wait_for_text_gone "some text" [timeout_secs]
+# Usage: wait_for_text_gone "some text"
 # ---------------------------------------------------------------------------
 wait_for_text_gone() {
   local text="$1"
-  local timeout_secs="${2:-15}"
   local text_json
   text_json=$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$text")
-  wait_for_browser_target "$((timeout_secs * 1000))" --fn \
+  wait_for_browser_target --fn \
     "!document.body.innerText.toLowerCase().includes(${text_json}.toLowerCase())"
 }
 
