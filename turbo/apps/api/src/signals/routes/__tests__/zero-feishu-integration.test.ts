@@ -1705,7 +1705,7 @@ describe("Feishu integration", () => {
     expect(wrongRunResponse.status).toBe(400);
   });
 
-  it("uses Slack-aligned session boundaries for Feishu DMs", async () => {
+  it("forks Feishu DM threads without replacing the main session", async () => {
     const fixture = await setupFeishuRunFixture({
       useAlternateInstallationDefault: true,
     });
@@ -1940,53 +1940,130 @@ describe("Feishu integration", () => {
     const followUp = await findRun(actor, "continue the Feishu task");
     await runsApi.heartbeatRunner(runnerGroup);
     const followUpClaim = await runsApi.claimRunnerJob(followUp.id);
-    expect(followUpClaim.resumeSession).toBeNull();
-    await webhooksApi.requestAgentComplete(
-      {
-        runId: followUp.id,
-        exitCode: 1,
-        error: "Cannot continue session from checkpoint",
-      },
-      { authorization: `Bearer ${followUpClaim.sandboxToken}` },
-      [200],
-    );
-    await flushWaitUntilForTest();
-    const failedReply = [...outboundMessages].reverse().find((message) => {
-      return (
-        message.kind === "send" &&
-        messageContent(message).includes(
-          "Cannot continue session from checkpoint",
-        )
-      );
+    expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    await completeRunSession({
+      runId: followUp.id,
+      sandboxToken: followUpClaim.sandboxToken,
+      sessionId: cliAgentSessionId,
+      history: `bdd continued feishu history ${followUp.id}`,
+      assistantText: "Continued canonical Feishu answer",
     });
-    expect(failedReply?.msgType).toBe("interactive");
-    const failedReplyContent = failedReply ? messageContent(failedReply) : "";
-    expect(failedReplyContent).toContain("Audit");
-    expect(failedReplyContent).toContain("Claude Sonnet");
-    expect(failedReplyContent).toContain("Responded by Feishu default agent");
-    expect(removedReactions).toHaveLength(2);
 
+    const quotedReplyMessageId = `om_${randomUUID()}`;
     await postEvent(
       callbackUrl,
       directMessage(
         appId,
-        "reply in the original Feishu thread",
+        "reply without opening a Feishu thread",
         "ou_feishu_user",
         {
+          messageId: quotedReplyMessageId,
           rootId: firstMessageId,
         },
       ),
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const threadReplyRun = await findRun(
+    const quotedReplyRun = await findRun(
       actor,
-      "reply in the original Feishu thread",
+      "reply without opening a Feishu thread",
     );
     await runsApi.heartbeatRunner(runnerGroup);
-    const threadReplyClaim = await runsApi.claimRunnerJob(threadReplyRun.id);
-    expect(threadReplyClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
-    await runsApi.requestCancelRun(actor, threadReplyRun.id, [200]);
+    const quotedReplyClaim = await runsApi.claimRunnerJob(quotedReplyRun.id);
+    expect(quotedReplyClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    await completeRunSession({
+      runId: quotedReplyRun.id,
+      sandboxToken: quotedReplyClaim.sandboxToken,
+      sessionId: cliAgentSessionId,
+      history: `bdd quoted feishu history ${quotedReplyRun.id}`,
+      assistantText: "Canonical Feishu quoted reply answer",
+    });
+    const completedQuotedReply = [...outboundMessages]
+      .reverse()
+      .find((message) => {
+        return (
+          message.kind === "send" &&
+          messageContent(message).includes(
+            "Canonical Feishu quoted reply answer",
+          )
+        );
+      });
+    expect(completedQuotedReply?.replyInThread).toBeFalsy();
+
+    const feishuThreadId = `omt_${randomUUID()}`;
+    const threadMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "open a new Feishu thread", "ou_feishu_user", {
+        messageId: threadMessageId,
+        rootId: quotedReplyMessageId,
+        threadId: feishuThreadId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadRun = await findRun(actor, "open a new Feishu thread");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const threadClaim = await runsApi.claimRunnerJob(threadRun.id);
+    expect(threadClaim.resumeSession).toBeNull();
+    const threadCliAgentSessionId = randomUUID();
+    await completeRunSession({
+      runId: threadRun.id,
+      sandboxToken: threadClaim.sandboxToken,
+      sessionId: threadCliAgentSessionId,
+      history: `bdd feishu thread history ${threadRun.id}`,
+      assistantText: "Canonical Feishu thread answer",
+    });
+    const completedThreadReply = [...outboundMessages]
+      .reverse()
+      .find((message) => {
+        return (
+          message.kind === "reply" &&
+          message.target === threadMessageId &&
+          messageContent(message).includes("Canonical Feishu thread answer")
+        );
+      });
+    expect(completedThreadReply?.replyInThread).toBeTruthy();
+
+    await postEvent(
+      callbackUrl,
+      directMessage(
+        appId,
+        "continue in the original Feishu thread",
+        "ou_feishu_user",
+        {
+          rootId: quotedReplyMessageId,
+          threadId: feishuThreadId,
+        },
+      ),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadFollowUpRun = await findRun(
+      actor,
+      "continue in the original Feishu thread",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const threadFollowUpClaim = await runsApi.claimRunnerJob(
+      threadFollowUpRun.id,
+    );
+    expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(
+      threadCliAgentSessionId,
+    );
+    await runsApi.requestCancelRun(actor, threadFollowUpRun.id, [200]);
+    await flushWaitUntilForTest();
+
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "return to the main Feishu DM"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const mainDmRun = await findRun(actor, "return to the main Feishu DM");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const mainDmClaim = await runsApi.claimRunnerJob(mainDmRun.id);
+    expect(mainDmClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
     await flushWaitUntilForTest();
 
     const client = setupApp({ context })(zeroFeishuConnectContract);
