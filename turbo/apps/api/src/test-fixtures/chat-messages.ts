@@ -771,3 +771,49 @@ export async function insertChatMessageTransactionFixture(args: {
   }
   return message;
 }
+
+/**
+ * Appends an explicit output event with a nullable compatibility payload owned
+ * by a different ChatEvent leaf. Product writers intentionally
+ * cannot create this divergent rollout shape; the fixture proves readers use
+ * `event_type` as the semantic discriminator instead of legacy payload shape.
+ */
+export async function insertOutputEventWithConflictingLegacyPayloadFixture(args: {
+  readonly threadId: string;
+  readonly runId?: string;
+  readonly content: string;
+  readonly createdAt?: Date;
+  readonly legacyPayload: "run.completed" | "usage.recorded";
+}): Promise<{ readonly id: string; readonly seqId: number }> {
+  const event = await db().transaction(async (tx) => {
+    const identity = {
+      chatThreadId: args.threadId,
+      eventType: "output.message" as const,
+      content: args.content,
+      runId: args.runId ?? null,
+      createdAt: args.createdAt,
+    };
+    const lifecyclePayloadEvent = {
+      ...identity,
+      runLifecycleEvent: "completed",
+    };
+    const usagePayloadEvent = {
+      ...identity,
+      usagePayload: {
+        version: 1 as const,
+        totalCredits: 0,
+        settledAt: (args.createdAt ?? nowDate()).toISOString(),
+        breakdown: [],
+      },
+    };
+    const inserted =
+      args.legacyPayload === "run.completed"
+        ? await insertChatEvent(tx, lifecyclePayloadEvent)
+        : await insertChatEvent(tx, usagePayloadEvent);
+    if (!inserted) {
+      throw new Error("Expected the conflicting legacy-payload event insert");
+    }
+    return inserted;
+  });
+  return event;
+}

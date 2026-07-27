@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import {
   chatThreadsContract,
+  type ChatEventResponse,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
@@ -22,6 +23,7 @@ import {
 import {
   holdChatMessageInsertTransactionFixture,
   insertChatMessageTransactionFixture,
+  insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-messages";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -193,6 +195,24 @@ async function waitForThreadMessages(
   return page;
 }
 
+async function waitForThreadEvents(
+  actor: ApiTestUser,
+  threadId: string,
+  predicate: (events: readonly ChatEventResponse[]) => boolean,
+) {
+  let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
+  await expect
+    .poll(async () => {
+      page = await chat.listThreadEvents(actor, threadId);
+      return predicate(page.events);
+    })
+    .toBe(true);
+  if (!page) {
+    throw new Error(`Expected chat thread ${threadId} events to be readable`);
+  }
+  return page;
+}
+
 async function waitForRunStatus(
   actor: ApiTestUser,
   runId: string,
@@ -253,14 +273,19 @@ function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
   });
 }
 
-async function usageMessagesForRun(
+type UsageRecordedEvent = Extract<
+  ChatEventResponse,
+  { eventType: "usage.recorded" }
+>;
+
+async function usageEventsForRun(
   actor: ApiTestUser,
   threadId: string,
   runId: string,
-): Promise<PagedChatMessage[]> {
-  const page = await chat.listThreadMessages(actor, threadId);
-  return page.messages.filter((message) => {
-    return message.runId === runId && message.usage !== undefined;
+): Promise<UsageRecordedEvent[]> {
+  const page = await chat.listThreadEvents(actor, threadId);
+  return page.events.filter((event): event is UsageRecordedEvent => {
+    return event.eventType === "usage.recorded" && event.runId === runId;
   });
 }
 
@@ -320,11 +345,9 @@ async function completeChatRunInThread(
   const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
   chatCallbacks.mockChatOutputEvents([]);
   await completeChatRunOk(run.runId, sandboxHeaders);
-  await waitForThreadMessages(actor, run.threadId, (messages) => {
-    return assistantMessages(messages).some((message) => {
-      return (
-        message.runId === run.runId && message.runLifecycleEvent === "completed"
-      );
+  await waitForThreadEvents(actor, run.threadId, (events) => {
+    return events.some((event) => {
+      return event.runId === run.runId && event.eventType === "run.completed";
     });
   });
   return run;
@@ -1150,6 +1173,44 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 });
 
 describe("CHAT-01 chat thread read state", () => {
+  it("uses event type rather than legacy lifecycle payload for read cursors", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Read cursor event type agent",
+    );
+    const run = await completeChatRunInThread(actor, runnerGroup, {
+      agentId,
+      prompt: "read cursor event type",
+    });
+    const firstRead = await chat.markThreadRead(actor, run.threadId);
+    if (!firstRead.lastReadAt) {
+      throw new Error("Expected the completed run to establish a read cursor");
+    }
+
+    const conflicting =
+      await insertOutputEventWithConflictingLegacyPayloadFixture({
+        threadId: run.threadId,
+        content: "explicit output event with stale lifecycle payload",
+        createdAt: new Date(new Date(firstRead.lastReadAt).getTime() + 1000),
+        legacyPayload: "run.completed",
+      });
+    const page = await chat.listThreadEvents(actor, run.threadId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({
+        id: conflicting.id,
+        eventType: "output.message",
+      }),
+    );
+
+    await expect(chat.listThreadUnreads(actor, agentId)).resolves.toStrictEqual(
+      [],
+    );
+    await expect(
+      chat.markThreadRead(actor, run.threadId),
+    ).resolves.toMatchObject({
+      lastReadAt: firstRead.lastReadAt,
+    });
+  }, 120_000);
+
   it("lists unread agent ids behind the agent unread feature switch", async () => {
     const {
       actor: owner,
@@ -1186,11 +1247,10 @@ describe("CHAT-01 chat thread read state", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(activeRun.runId, activeClaim.sandboxHeaders);
-    await waitForThreadMessages(owner, activeRun.threadId, (messages) => {
-      return assistantMessages(messages).some((message) => {
+    await waitForThreadEvents(owner, activeRun.threadId, (events) => {
+      return events.some((event) => {
         return (
-          message.runId === activeRun.runId &&
-          message.runLifecycleEvent === "completed"
+          event.runId === activeRun.runId && event.eventType === "run.completed"
         );
       });
     });
@@ -1348,11 +1408,11 @@ describe("CHAT-01 chat thread read state", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
-    await waitForThreadMessages(owner, runningRun.threadId, (messages) => {
-      return assistantMessages(messages).some((message) => {
+    await waitForThreadEvents(owner, runningRun.threadId, (events) => {
+      return events.some((event) => {
         return (
-          message.runId === runningRun.runId &&
-          message.runLifecycleEvent === "completed"
+          event.runId === runningRun.runId &&
+          event.eventType === "run.completed"
         );
       });
     });
@@ -1644,8 +1704,8 @@ describe("CHAT-01 chat thread read state", () => {
   }, 30_000);
 });
 
-describe("CHAT-03 run usage messages", () => {
-  it("emits one immutable usage message per run", async () => {
+describe("CHAT-03 run usage events", () => {
+  it("emits one immutable usage event per run", async () => {
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Usage message agent",
     );
@@ -1686,17 +1746,32 @@ describe("CHAT-03 run usage messages", () => {
       sandboxHeaders,
       [200],
     );
+    const conflicting =
+      await insertOutputEventWithConflictingLegacyPayloadFixture({
+        threadId,
+        runId,
+        content: "explicit output event with stale usage payload",
+        legacyPayload: "usage.recorded",
+      });
+    const page = await chat.listThreadEvents(actor, threadId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({
+        id: conflicting.id,
+        eventType: "output.message",
+      }),
+    );
+
     const billing = createBillingMediaApi(context);
     await billing.processOrgUsageEvents(actor);
 
-    let usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toHaveLength(1);
-    const usageMessage = usageMessages[0];
-    if (!usageMessage) {
-      throw new Error("Expected one usage message");
+    let usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toHaveLength(1);
+    const usageEvent = usageEvents[0];
+    if (!usageEvent) {
+      throw new Error("Expected one usage event");
     }
-    expect(usageMessage).toMatchObject({
-      role: "assistant",
+    expect(usageEvent).toMatchObject({
+      eventType: "usage.recorded",
       content: null,
       usage: {
         version: 1,
@@ -1738,8 +1813,8 @@ describe("CHAT-03 run usage messages", () => {
     );
     mockNow(new Date("2030-01-01T00:00:00.000Z"));
     await billing.processOrgUsageEvents(actor);
-    usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toStrictEqual([usageMessage]);
+    usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toStrictEqual([usageEvent]);
 
     clearMockNow();
     await webhooks.requestAgentUsageEvent(
@@ -1760,11 +1835,11 @@ describe("CHAT-03 run usage messages", () => {
     );
     mockNow(new Date("2030-01-01T00:00:01.000Z"));
     await billing.processOrgUsageEvents(actor);
-    usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toStrictEqual([usageMessage]);
+    usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toStrictEqual([usageEvent]);
   }, 60_000);
 
-  it("emits complete allowance-covered usage in one message", async () => {
+  it("emits complete allowance-covered usage in one event", async () => {
     const seededModel = await seedVm0ManagedDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     expect(seededModel).toBe(selectedModel);
@@ -1833,10 +1908,10 @@ describe("CHAT-03 run usage messages", () => {
     );
     await createBillingMediaApi(context).processOrgUsageEvents(actor);
 
-    const usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toHaveLength(1);
-    expect(usageMessages[0]).toMatchObject({
-      role: "assistant",
+    const usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]).toMatchObject({
+      eventType: "usage.recorded",
       content: null,
       usage: {
         version: 1,
@@ -1864,7 +1939,7 @@ describe("CHAT-03 run usage messages", () => {
     ).toStrictEqual({ short: 70, weekly: 70 });
   }, 60_000);
 
-  it("emits zero-credit usage messages and skips runs without usage", async () => {
+  it("emits zero-credit usage events and skips runs without usage", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Zero usage message agent",
     );
@@ -1896,11 +1971,12 @@ describe("CHAT-03 run usage messages", () => {
     await completeChatRunOk(zeroRun.runId, zeroSandboxHeaders);
     await flushWaitUntilForTest();
 
-    const zeroPage = await chat.listThreadMessages(actor, zeroRun.threadId);
-    const zeroUsageMessage = zeroPage.messages.find((message) => {
-      return message.runId === zeroRun.runId && message.usage !== undefined;
-    });
-    expect(zeroUsageMessage?.usage).toMatchObject({
+    const [zeroUsageEvent] = await usageEventsForRun(
+      actor,
+      zeroRun.threadId,
+      zeroRun.runId,
+    );
+    expect(zeroUsageEvent?.usage).toMatchObject({
       version: 1,
       totalCredits: 0,
       breakdown: [
@@ -1927,7 +2003,7 @@ describe("CHAT-03 run usage messages", () => {
     await completeChatRunOk(quietRun.runId, quietSandboxHeaders);
     await flushWaitUntilForTest();
     await expect(
-      usageMessagesForRun(actor, quietRun.threadId, quietRun.runId),
+      usageEventsForRun(actor, quietRun.threadId, quietRun.runId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 });
