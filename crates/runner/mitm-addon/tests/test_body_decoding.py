@@ -10,7 +10,6 @@ import zstandard
 
 from body_decoding import (
     can_stream_decode_usage,
-    create_stream_decode_feed,
     create_stream_decode_session,
     decode_request_body_for_network_log_capture,
     decompress_body,
@@ -41,15 +40,8 @@ def _compress_one_shot_body(encoding: str, body: bytes) -> bytes:
     raise AssertionError(f"unsupported test encoding: {encoding}")
 
 
-class TestStreamDecodeFeed:
-    """Direct tests for the bounded push-style streaming decoder."""
-
-    def test_gzip_happy_path(self, headers):
-        chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
-        assert parse is not None
-        parse(gzip.compress(b"hello world"))
-        assert b"".join(chunks) == b"hello world"
+class TestStreamDecodeSession:
+    """Direct tests for the bounded streaming decoder session lifecycle."""
 
     def test_supported_encodings_across_small_chunks(self, headers):
         plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
@@ -60,13 +52,14 @@ class TestStreamDecodeFeed:
 
         for encoding, compressed in compressed_by_encoding.items():
             chunks: list[bytes] = []
-            parse = create_stream_decode_feed(
+            session = create_stream_decode_session(
                 headers(("Content-Encoding", encoding)), chunks.append
             )
-            assert parse is not None
+            assert session is not None
             for idx in range(0, len(compressed), 3):
-                parse(compressed[idx : idx + 3])
+                session.feed(compressed[idx : idx + 3])
             assert b"".join(chunks) == plaintext, encoding
+            assert session.finish_error() is None
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_zlib_session_reports_truncated_trailer(self, headers, encoding):
@@ -91,12 +84,15 @@ class TestStreamDecodeFeed:
         else:
             compressed = zlib.compress(b"") + zlib.compress(plaintext)
         chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", encoding)), chunks.append)
-        assert parse is not None
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
 
-        parse(compressed)
+        session.feed(compressed)
 
         assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_concatenated_zlib_members_across_callbacks(self, headers, encoding):
@@ -108,40 +104,48 @@ class TestStreamDecodeFeed:
             empty_member = zlib.compress(b"")
             payload_member = zlib.compress(plaintext)
         chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", encoding)), chunks.append)
-        assert parse is not None
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
 
-        parse(empty_member)
-        parse(payload_member)
+        session.feed(empty_member)
+        session.feed(payload_member)
 
         assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
 
     def test_no_encoding_feeds_original_chunks(self, headers):
         chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(), chunks.append)
-        assert parse is not None
-        parse(b"hello")
-        parse(b" world")
+        session = create_stream_decode_session(headers(), chunks.append)
+        assert session is not None
+        session.feed(b"hello")
+        session.feed(b" world")
         assert chunks == [b"hello", b" world"]
+        assert session.finish_error() is None
 
     def test_identity_feeds_original_chunks(self, headers):
         chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", "identity")), chunks.append)
-        assert parse is not None
-        parse(b"hello")
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", "identity")), chunks.append
+        )
+        assert session is not None
+        session.feed(b"hello")
         assert chunks == [b"hello"]
+        assert session.finish_error() is None
 
     def test_gzip_high_ratio_output_is_chunked(self, headers):
         plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3 + 123)
         chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
-        assert parse is not None
+        session = create_stream_decode_session(headers(("Content-Encoding", "gzip")), chunks.append)
+        assert session is not None
 
-        parse(gzip.compress(plaintext))
+        session.feed(gzip.compress(plaintext))
 
         assert b"".join(chunks) == plaintext
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert session.finish_error() is None
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_zlib_expansion_budget_allows_exact_grace_and_empty_member(self, headers, encoding):
@@ -259,22 +263,27 @@ class TestStreamDecodeFeed:
     def test_gzip_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
         chunks: list[bytes] = []
         with mitm_ctx() as log:
-            parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
-            assert parse is not None
-            parse(b"not gzip at all")
-            parse(b"more garbage")
-            parse(b"even more")
+            session = create_stream_decode_session(
+                headers(("Content-Encoding", "gzip")), chunks.append
+            )
+            assert session is not None
+            session.feed(b"not gzip at all")
+            session.feed(b"more garbage")
+            session.feed(b"even more")
         assert log.debug.call_count == 1
         msg = log.debug.call_args[0][0]
         assert "Streaming decompression failed" in msg
         assert "gzip" in msg
         assert chunks == []
+        assert session.finish_error() == "invalid compressed body"
 
     def test_brotli_unsafe_encoding_logs_once_and_does_not_feed(self, headers, mitm_ctx):
         chunks: list[bytes] = []
         with mitm_ctx() as log:
-            parse = create_stream_decode_feed(headers(("Content-Encoding", "br")), chunks.append)
-        assert parse is None
+            session = create_stream_decode_session(
+                headers(("Content-Encoding", "br")), chunks.append
+            )
+        assert session is None
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped" in log.debug.call_args[0][0]
         assert "br" in log.debug.call_args[0][0]
@@ -283,19 +292,15 @@ class TestStreamDecodeFeed:
     def test_zstd_unsafe_encoding_logs_once_and_does_not_feed(self, headers, mitm_ctx):
         chunks: list[bytes] = []
         with mitm_ctx() as log:
-            parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert parse is None
+            session = create_stream_decode_session(
+                headers(("Content-Encoding", "zstd")), chunks.append
+            )
+        assert session is None
         assert log.debug.call_count == 1
         msg = log.debug.call_args[0][0]
         assert "Streaming decompression skipped" in msg
         assert "zstd" in msg
         assert "hard-bounded" in msg
-        assert chunks == []
-
-    def test_zstd_stream_decode_session_is_not_created(self, headers):
-        chunks: list[bytes] = []
-        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert session is None
         assert chunks == []
 
     def test_zstd_can_stream_decode_usage_is_false(self, headers, mitm_ctx):
@@ -310,19 +315,20 @@ class TestStreamDecodeFeed:
     def test_error_without_ctx_log_does_not_raise(self, headers):
         # No mitm_ctx patch — ctx.log is unavailable.  Guard must swallow.
         chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
-        assert parse is not None
-        parse(b"garbage")
-        parse(b"more garbage")
+        session = create_stream_decode_session(headers(("Content-Encoding", "gzip")), chunks.append)
+        assert session is not None
+        session.feed(b"garbage")
+        session.feed(b"more garbage")
         assert chunks == []
+        assert session.finish_error() == "invalid compressed body"
 
     def test_unsupported_encoding_logs_once_and_does_not_feed(self, headers, mitm_ctx):
         chunks: list[bytes] = []
         with mitm_ctx() as log:
-            parse = create_stream_decode_feed(
+            session = create_stream_decode_session(
                 headers(("Content-Encoding", "compress")), chunks.append
             )
-        assert parse is None
+        assert session is None
         assert log.debug.call_count == 1
         assert "unsupported content encoding" in log.debug.call_args[0][0]
         assert chunks == []
@@ -365,15 +371,18 @@ class TestStreamDecodeFeed:
         monkeypatch.setattr("body_decoding.zlib.decompressobj", factory)
         chunks: list[bytes] = []
         with mitm_ctx():
-            parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
-            assert parse is not None
-            parse(b"not gzip")
-            parse(b"more garbage")
-            parse(b"and more")
+            session = create_stream_decode_session(
+                headers(("Content-Encoding", "gzip")), chunks.append
+            )
+            assert session is not None
+            session.feed(b"not gzip")
+            session.feed(b"more garbage")
+            session.feed(b"and more")
         # Only the first chunk reaches zlib; later ones are short-circuited.
         assert len(proxies) == 1
         assert proxies[0].count == 1
         assert chunks == []
+        assert session.finish_error() == "invalid compressed body"
 
 
 class TestDecompressBody:
