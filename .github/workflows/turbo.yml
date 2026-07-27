@@ -616,31 +616,23 @@ jobs:
       - name: Check JSONB Contract Usage
         working-directory: turbo/packages/db
         run: pnpm lint:jsonb-contracts
-      - name: Check Migration History Integrity
+      - name: Check Migration Immutability
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          # SQL edits are allowed so a pending migration can be corrected after
-          # a production smoke failure. Deletions and snapshot rewrites still
-          # break the migration chain and must use a new migration instead.
-          DELETED_MIGRATIONS=$(git diff --no-renames --diff-filter=D --name-only "$BASE_REF" -- \
-            'turbo/packages/db/src/migrations/*.sql')
-          CHANGED_SNAPSHOTS=$(git diff --no-renames --diff-filter=MD --name-only "$BASE_REF" -- \
+          # Check that migration SQL files and snapshots are only added, never modified or deleted
+          CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
+            'turbo/packages/db/src/migrations/*.sql' \
             'turbo/packages/db/src/migrations/meta/*_snapshot.json')
 
           # _journal.json is modified on every new migration, so only flag deletion
-          DELETED_JOURNAL=$(git diff --no-renames --diff-filter=D --name-only "$BASE_REF" -- \
+          DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/meta/_journal.json')
 
           FAILED=0
-          if [ -n "$DELETED_MIGRATIONS" ]; then
-            echo "::error::Migration SQL files must not be deleted:"
-            echo "$DELETED_MIGRATIONS"
-            FAILED=1
-          fi
-          if [ -n "$CHANGED_SNAPSHOTS" ]; then
-            echo "::error::Migration snapshots must not be modified or deleted:"
-            echo "$CHANGED_SNAPSHOTS"
+          if [ -n "$CHANGED" ]; then
+            echo "::error::Migration files must not be modified or deleted once on main:"
+            echo "$CHANGED"
             FAILED=1
           fi
           if [ -n "$DELETED_JOURNAL" ]; then
@@ -650,7 +642,8 @@ jobs:
           fi
           if [ "$FAILED" -eq 1 ]; then
             echo ""
-            echo "Create a NEW migration instead of breaking existing migration history."
+            echo "These files may already be deployed to production."
+            echo "Create a NEW migration instead of modifying existing ones."
             exit 1
           fi
       - name: Test Migration Consistency
