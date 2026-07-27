@@ -55,13 +55,13 @@ describe("zero generate website command", () => {
     expect(stdout).toContain("template:black-slabs");
     expect(stdout).toContain("template:web-prototype-taste-editorial");
     expect(stdout).toContain(
-      "For landing pages, marketing sites, official brand or product websites, and product launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
     );
     expect(stdout).toContain(
-      "For documentation, blogs, dashboards, app or tool surfaces, email, generic prototypes, and other non-marketing HTML or website requests, select an Open Design template that matches the user's intent.",
+      "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
     );
     expect(stdout).toContain(
-      "When the request is ambiguous or does not clearly describe a marketing or official website, prefer an Open Design template.",
+      "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
     );
     expect(stdout).not.toContain("template:html-ppt-pitch-deck");
     expect(stdout).toContain(
@@ -104,11 +104,9 @@ describe("zero generate website command", () => {
     expect(stdout).toContain(
       "Selected template: template:web-prototype (Web Prototype)",
     );
-    expect(stdout).toContain(
-      "Honor the explicitly selected template; do not substitute a different template based on website intent.",
-    );
+    expect(stdout).toContain("Use the explicitly selected template.");
     expect(stdout).not.toContain(
-      "For landing pages, marketing sites, official brand or product websites, and product launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
     );
     expect(stdout).not.toContain(
       "Selected template package: zero resource pull template:web-prototype",
