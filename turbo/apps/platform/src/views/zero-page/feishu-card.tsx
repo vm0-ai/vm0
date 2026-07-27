@@ -576,7 +576,12 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
         <p className="leading-relaxed">
           Open Event Configuration. Under Subscription mode, select “Send
           notifications to developer&apos;s server”. Then open Callback
-          Configuration and paste the callback URL.
+          Configuration and paste the callback URL. After Feishu verifies it,
+          add the “Receive message v1” event (
+          <code className="font-mono text-xs text-foreground">
+            im.message.receive_v1
+          </code>
+          ).
         </p>
         <div className="mt-4">
           <FeishuGuideCarousel
@@ -603,7 +608,8 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
       </div>
       {!data?.callbackVerified ? (
         <p className="text-sm text-muted-foreground">
-          Continue after Feishu verifies the callback URL.
+          Continue after Feishu verifies the callback URL and the message event
+          is subscribed.
         </p>
       ) : null}
     </div>

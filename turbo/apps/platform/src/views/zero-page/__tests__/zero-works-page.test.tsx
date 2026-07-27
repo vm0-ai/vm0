@@ -496,7 +496,7 @@ describe("works page", () => {
         isConnected,
         appId: "cli_feishu",
         callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
-        oauthRedirectUrl: "https://app.vm0.test/connectors/feishu/callback",
+        oauthRedirectUrl: "https://api.vm0.test/api/zero/feishu/oauth/callback",
         callbackVerified,
         messageReceived: false,
         tenantKey: null,
@@ -540,6 +540,7 @@ describe("works page", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("Waiting for callback")).not.toHaveLength(0);
+      expect(document.body).toHaveTextContent("im.message.receive_v1");
       expect(context.mocks.ably.hasSubscription("feishu:changed")).toBeTruthy();
     });
 
@@ -561,7 +562,7 @@ describe("works page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByDisplayValue(
-        "https://app.vm0.test/connectors/feishu/callback",
+        "https://api.vm0.test/api/zero/feishu/oauth/callback",
       ),
     ).toBeInTheDocument();
   });

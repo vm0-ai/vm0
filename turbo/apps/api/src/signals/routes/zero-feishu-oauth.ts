@@ -18,7 +18,7 @@ import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import {
   feishuBotOpenUrl,
-  feishuOAuthApiCallbackUrl,
+  feishuOAuthAppCallbackUrl,
   feishuOAuthCallbackUrl,
   loadFeishuInstallationConfig,
 } from "../services/feishu-config";
@@ -60,6 +60,37 @@ function settingsUrl(params: Readonly<Record<string, string>>): string {
     url.searchParams.set(key, value);
   }
   return url.toString();
+}
+
+interface FeishuOAuthCallbackQuery {
+  readonly code?: string;
+  readonly error?: string;
+  readonly error_description?: string;
+  readonly responseMode?: "json";
+  readonly state?: string;
+}
+
+function appCallbackUrl(query: FeishuOAuthCallbackQuery): string {
+  const url = new URL(feishuOAuthAppCallbackUrl());
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, value);
+    }
+  }
+  return url.toString();
+}
+
+function resolveCallbackState(
+  query: FeishuOAuthCallbackQuery,
+): FeishuOAuthState | Response {
+  const state = query.state ? verifyFeishuOAuthState(query.state) : null;
+  if (!state) {
+    return jsonErrorResponse("Invalid or expired connect state");
+  }
+  if (state.callbackTarget === "app" && query.responseMode !== "json") {
+    return redirectResponse(appCallbackUrl(query));
+  }
+  return state;
 }
 
 function callbackRedirectResponse(
@@ -227,12 +258,8 @@ const connect$ = command(async ({ get }, signal: AbortSignal) => {
     state,
     query.callbackTarget,
   );
-  const redirectUri =
-    query.callbackTarget === "app"
-      ? feishuOAuthCallbackUrl()
-      : feishuOAuthApiCallbackUrl();
   authorizationUrl.searchParams.set("client_id", installation.appId);
-  authorizationUrl.searchParams.set("redirect_uri", redirectUri);
+  authorizationUrl.searchParams.set("redirect_uri", feishuOAuthCallbackUrl());
   authorizationUrl.searchParams.set("response_type", "code");
   authorizationUrl.searchParams.set("state", oauthState);
   return redirectResponse(authorizationUrl.toString());
@@ -240,9 +267,9 @@ const connect$ = command(async ({ get }, signal: AbortSignal) => {
 
 const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(zeroFeishuOauthContract.callback));
-  const state = query.state ? verifyFeishuOAuthState(query.state) : null;
-  if (!state) {
-    return jsonErrorResponse("Invalid or expired connect state");
+  const state = resolveCallbackState(query);
+  if (state instanceof Response) {
+    return state;
   }
   if (query.error) {
     return callbackRedirectResponse(
@@ -287,7 +314,7 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
     appId: config.appId,
     appSecret: config.appSecret,
     code: query.code,
-    redirectUri: state.redirectUri ?? feishuOAuthApiCallbackUrl(),
+    redirectUri: feishuOAuthCallbackUrl(),
     installationId: state.installationId,
     signal,
   });

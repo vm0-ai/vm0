@@ -1025,7 +1025,7 @@ describe("Feishu integration", () => {
     const connectUrl = status.body.installations?.[0]?.connectUrl;
     expect(connectUrl).toBeDefined();
     expect(status.body.oauthRedirectUrl).toBe(
-      `${APP_ORIGIN}/connectors/feishu/callback`,
+      "https://www.vm0.test/api/zero/feishu/oauth/callback",
     );
     if (!connectUrl) {
       throw new Error("Expected Feishu status to return an OAuth connect URL");
@@ -1057,12 +1057,25 @@ describe("Feishu integration", () => {
     expect(authorizationUrl.origin).toBe("https://accounts.feishu.cn");
     expect(authorizationUrl.searchParams.get("client_id")).toBe(appId);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      `${APP_ORIGIN}/connectors/feishu/callback`,
+      "https://www.vm0.test/api/zero/feishu/oauth/callback",
     );
     const state = authorizationUrl.searchParams.get("state");
     if (!state) {
       throw new Error("Expected Feishu authorization URL to include state");
     }
+
+    const handoffResponse = await oauthApp.request(
+      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "feishu-oauth-code",
+        state,
+      })}`,
+    );
+    expect(handoffResponse.status).toBe(307);
+    const handoffUrl = new URL(handoffResponse.headers.get("location") ?? "");
+    expect(handoffUrl.origin).toBe(APP_ORIGIN);
+    expect(handoffUrl.pathname).toBe("/connectors/feishu/callback");
+    expect(handoffUrl.searchParams.get("code")).toBe("feishu-oauth-code");
+    expect(handoffUrl.searchParams.get("state")).toBe(state);
 
     const callbackResponse = await oauthApp.request(
       `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
