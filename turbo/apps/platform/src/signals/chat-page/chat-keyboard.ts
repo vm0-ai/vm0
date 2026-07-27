@@ -67,10 +67,6 @@ function isDocumentScrollTarget(root: HTMLElement, target: EventTarget | null) {
   );
 }
 
-function hasOpenDialog(doc: Document): boolean {
-  return doc.querySelector('[role="dialog"]') !== null;
-}
-
 function isKeyboardScrollAllowedTarget(
   root: HTMLElement,
   target: EventTarget | null,
@@ -547,46 +543,5 @@ export const setChatKeyboardScrollRoot$ = onRef(
         set(thread.prepareKeyboardScroll$);
       },
     });
-  }),
-);
-
-export const setMainChatThreadKeyboardFocusRef$ = onRef(
-  command((_, el: HTMLElement, signal: AbortSignal) => {
-    const doc = el.ownerDocument;
-    const win = doc.defaultView;
-
-    const focusMainThreadIfDocumentFocused = (
-      target: EventTarget | null = doc.activeElement,
-    ) => {
-      if (
-        !el.isConnected ||
-        hasOpenDialog(doc) ||
-        !isDocumentScrollTarget(el, target)
-      ) {
-        return;
-      }
-      el.focus({ preventScroll: true });
-    };
-
-    queueMicrotask(() => {
-      if (!signal.aborted) {
-        focusMainThreadIfDocumentFocused();
-      }
-    });
-
-    doc.addEventListener(
-      "focusin",
-      (event) => {
-        focusMainThreadIfDocumentFocused(event.target);
-      },
-      { signal },
-    );
-    win?.addEventListener(
-      "focus",
-      () => {
-        focusMainThreadIfDocumentFocused();
-      },
-      { signal },
-    );
   }),
 );
