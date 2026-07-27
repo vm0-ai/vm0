@@ -144,7 +144,7 @@ pub(crate) fn resolve_history_marker_payload_from(
     Ok(payload)
 }
 
-pub fn resolve_history_marker_payload_for_diagnostics_from(
+pub(crate) fn resolve_history_marker_payload_for_diagnostics_from(
     framework: Framework,
     home_dir: &str,
     session_id_file: &str,

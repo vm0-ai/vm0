@@ -21,6 +21,7 @@ function snapshotThread(
     selectedModel: null,
     serviceTier: null,
     computerUseHostId: null,
+    cloudBrowserEnabled: false,
     ...params,
   };
 }
@@ -28,13 +29,19 @@ function snapshotThread(
 function event(
   params: Omit<
     ChatThreadEvent,
-    "id" | "createdAt" | "selectedModel" | "serviceTier" | "computerUseHostId"
+    | "id"
+    | "createdAt"
+    | "selectedModel"
+    | "serviceTier"
+    | "computerUseHostId"
+    | "cloudBrowserEnabled"
   > & {
     readonly id: string;
     readonly createdAt: string;
     readonly selectedModel?: string | null;
     readonly serviceTier?: "priority" | null;
     readonly computerUseHostId?: string | null;
+    readonly cloudBrowserEnabled?: boolean;
   },
 ): ChatThreadEvent {
   return {
@@ -42,6 +49,7 @@ function event(
     selectedModel: params.selectedModel ?? null,
     serviceTier: params.serviceTier ?? null,
     computerUseHostId: params.computerUseHostId ?? null,
+    cloudBrowserEnabled: params.cloudBrowserEnabled ?? false,
   };
 }
 
@@ -105,6 +113,7 @@ describe("replayChatThreadEvents", () => {
         selectedModel: null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
       },
     ]);
   });
@@ -246,6 +255,39 @@ describe("replayChatThreadEvents", () => {
     expect(thread).toMatchObject({
       serviceTier: "priority",
       computerUseHostId,
+      cloudBrowserEnabled: false,
+      sortAt: "2026-07-01T03:00:00.000Z",
+      updatedAt: "2026-07-01T06:00:00.000Z",
+    });
+  });
+
+  it("replays Cloud browser access through the Computer Use host event", () => {
+    const [thread] = replayChatThreadEvents(
+      [
+        snapshotThread({
+          id: "thread-a",
+          agentId: "agent-1",
+          computerUseHostId: "11111111-1111-4111-8111-111111111111",
+          sortAt: "2026-07-01T03:00:00.000Z",
+        }),
+      ],
+      [
+        event({
+          id: "event-1",
+          kind: "computer_use_host_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          computerUseHostId: null,
+          cloudBrowserEnabled: true,
+          createdAt: "2026-07-01T06:00:00.000Z",
+        }),
+      ],
+    );
+
+    expect(thread).toMatchObject({
+      computerUseHostId: null,
+      cloudBrowserEnabled: true,
       sortAt: "2026-07-01T03:00:00.000Z",
       updatedAt: "2026-07-01T06:00:00.000Z",
     });
@@ -308,6 +350,7 @@ describe("replayChatThreadEvents", () => {
         selectedModel: "claude-sonnet-4-6",
         serviceTier: "priority",
         computerUseHostId,
+        cloudBrowserEnabled: false,
       },
     ]);
   });

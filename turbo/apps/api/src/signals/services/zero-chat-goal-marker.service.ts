@@ -1,11 +1,9 @@
-import {
-  chatMessages,
-  type ChatMessageGoalEvent,
-} from "@vm0/db/schema/chat-message";
-import { and, eq, isNotNull, not, type SQL } from "drizzle-orm";
+import type { ChatMessageGoalEvent } from "@vm0/db/schema/chat-message";
+import { not, type SQL } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { insertChatEvent } from "./zero-chat-event.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -24,9 +22,9 @@ export async function appendGoalEventMarker(
     readonly event: ChatMessageGoalEvent;
   },
 ): Promise<void> {
-  await insertChatMessage(tx, {
+  await insertChatEvent(tx, {
     chatThreadId: args.chatThreadId,
-    role: "assistant",
+    eventType: "goal.changed",
     content: null,
     runId: null,
     runEventId: null,
@@ -58,10 +56,5 @@ export function clearedGoalEvent(): ChatMessageGoalEvent {
  * because the client needs markers to fold active-goal display state.
  */
 export function excludeGoalMarkerCondition() {
-  return not(
-    and(
-      eq(chatMessages.role, "assistant"),
-      isNotNull(chatMessages.goalEvent),
-    ) as SQL,
-  );
+  return not(chatEventTypeIn(["goal.changed"]) as SQL);
 }

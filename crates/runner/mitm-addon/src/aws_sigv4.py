@@ -100,6 +100,13 @@ class _SigningContext:
     expires: str | None = None
 
 
+@dataclass(frozen=True)
+class _SigningUrl:
+    text: str
+    parts: urllib.parse.SplitResult
+    query_pairs: tuple[tuple[str, str], ...]
+
+
 def sign_request(
     *,
     method: str,
@@ -131,7 +138,7 @@ def sign_request(
     """
     _validate_credentials(credentials)
     _validate_headers(headers)
-    context = _classify_request(url, headers)
+    context, signing_url = _classify_request(url, headers)
     if context.algorithm == _ASYMMETRIC_ALGORITHM:
         raise AwsSigV4SigningError("SigV4A is not supported by this runner")
     if context.algorithm != _HMAC_ALGORITHM:
@@ -147,7 +154,7 @@ def sign_request(
     if context.location is _AuthLocation.QUERY:
         return _sign_query_request(
             method=method,
-            url=url,
+            url=signing_url,
             headers=headers,
             body=body,
             credentials=credentials,
@@ -156,7 +163,7 @@ def sign_request(
         )
     return _sign_header_request(
         method=method,
-        url=url,
+        url=signing_url,
         headers=headers,
         body=body,
         credentials=credentials,
@@ -168,33 +175,38 @@ def sign_request(
 def _classify_request(
     url: str,
     headers: list[tuple[str, str]],
-) -> _SigningContext:
+) -> tuple[_SigningContext, _SigningUrl]:
     auth_header = _unique_header_value(
         headers,
         "authorization",
         "Malformed AWS authorization header",
     )
-    query_pairs = _parse_query_pairs(_split_url_for_signing(url).query)
-    query_algorithm = _unique_query_value(query_pairs, "X-Amz-Algorithm")
+    signing_url = _parse_url_for_signing(url)
+    query_algorithm = _unique_query_value(signing_url.query_pairs, "X-Amz-Algorithm")
     if auth_header and query_algorithm:
         raise AwsSigV4SigningError("Ambiguous AWS auth location")
     if query_algorithm:
-        return _classify_query_request(query_pairs, query_algorithm)
+        return _classify_query_request(signing_url.query_pairs, query_algorithm), signing_url
     if auth_header:
-        return _classify_header_request(auth_header, headers)
+        return _classify_header_request(auth_header, headers), signing_url
     raise AwsSigV4SigningError("Missing AWS SigV4 auth metadata")
 
 
-def _split_url_for_signing(url: str) -> urllib.parse.SplitResult:
+def _parse_url_for_signing(url: str) -> _SigningUrl:
     _utf8_encode(url, "AWS request URL is malformed")
     if _has_raw_whitespace(url) or _has_ascii_control(url):
         raise AwsSigV4SigningError("AWS request URL is malformed")
     if _has_malformed_percent_encoding(url):
         raise AwsSigV4SigningError("AWS request URL is malformed")
     try:
-        return urllib.parse.urlsplit(url)
+        parts = urllib.parse.urlsplit(url)
     except ValueError as e:
         raise AwsSigV4SigningError("AWS request URL is malformed") from e
+    return _SigningUrl(
+        text=url,
+        parts=parts,
+        query_pairs=tuple(_parse_query_pairs(parts.query)),
+    )
 
 
 def _classify_header_request(
@@ -227,7 +239,7 @@ def _classify_header_request(
 
 
 def _classify_query_request(
-    query_pairs: list[tuple[str, str]],
+    query_pairs: tuple[tuple[str, str], ...],
     algorithm: str,
 ) -> _SigningContext:
     credential = _unique_query_value(query_pairs, "X-Amz-Credential")
@@ -319,7 +331,7 @@ def _validate_amz_date(amz_date: str, scope: _CredentialScope) -> None:
 def _sign_header_request(
     *,
     method: str,
-    url: str,
+    url: _SigningUrl,
     headers: list[tuple[str, str]],
     body: bytes | None,
     credentials: AwsSigV4Credentials,
@@ -367,13 +379,13 @@ def _sign_header_request(
         f"SignedHeaders={signed_header_names}, "
         f"Signature={signature}"
     )
-    return url, _upsert_header(clean_headers, "authorization", authorization)
+    return url.text, _upsert_header(clean_headers, "authorization", authorization)
 
 
 def _sign_query_request(
     *,
     method: str,
-    url: str,
+    url: _SigningUrl,
     headers: list[tuple[str, str]],
     body: bytes | None,
     credentials: AwsSigV4Credentials,
@@ -412,21 +424,20 @@ def _sign_query_request(
         signed_headers=frozenset(signed_header_names.split(";")),
         signature=signature,
     )
-    return signed_url, clean_headers
+    return signed_url.text, clean_headers
 
 
 def _canonical_request(
     *,
     method: str,
-    url: str,
+    url: _SigningUrl,
     headers: list[tuple[str, str]],
     signed_headers: frozenset[str],
     payload_hash: str,
     is_s3: bool,
 ) -> tuple[str, str]:
-    parts = _split_url_for_signing(url)
-    canonical_uri = _canonical_uri(parts.path, is_s3=is_s3)
-    canonical_query = _canonical_query_string(parts.query)
+    canonical_uri = _canonical_uri(url.parts.path, is_s3=is_s3)
+    canonical_query = _canonical_query_string(url.query_pairs)
     canonical_headers, signed_header_names = _canonical_headers(headers, signed_headers)
     request = "\n".join(
         [
@@ -468,8 +479,7 @@ def _remove_dot_segments(path: str) -> str:
     return f"{leading_slash}{'/'.join(output)}{trailing_slash}"
 
 
-def _canonical_query_string(query: str) -> str:
-    pairs = _parse_query_pairs(query)
+def _canonical_query_string(pairs: tuple[tuple[str, str], ...]) -> str:
     encoded = [(_aws_quote(key), _aws_quote(value)) for key, value in pairs]
     encoded.sort()
     return "&".join(f"{key}={value}" for key, value in encoded)
@@ -590,18 +600,15 @@ def _scope_string(scope: _CredentialScope) -> str:
 
 
 def _replace_query_signing_params(
-    url: str,
+    url: _SigningUrl,
     *,
     credentials: AwsSigV4Credentials,
     context: _SigningContext,
     signed_headers: frozenset[str],
     signature: str | None,
-) -> str:
-    parts = _split_url_for_signing(url)
+) -> _SigningUrl:
     filtered = [
-        (key, value)
-        for key, value in _parse_query_pairs(parts.query)
-        if key not in _QUERY_SIGNING_PARAM_NAMES
+        (key, value) for key, value in url.query_pairs if key not in _QUERY_SIGNING_PARAM_NAMES
     ]
     filtered.extend(
         [
@@ -619,11 +626,23 @@ def _replace_query_signing_params(
         filtered.append(("X-Amz-Security-Token", credentials.session_token))
     if signature:
         filtered.append(("X-Amz-Signature", signature))
-    query = _encode_query_pairs(filtered)
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+    return _replace_query_pairs(url, filtered)
 
 
-def _encode_query_pairs(pairs: list[tuple[str, str]]) -> str:
+def _replace_query_pairs(
+    url: _SigningUrl,
+    query_pairs: list[tuple[str, str]],
+) -> _SigningUrl:
+    immutable_pairs = tuple(query_pairs)
+    parts = url.parts._replace(query=_encode_query_pairs(immutable_pairs))
+    return _SigningUrl(
+        text=parts.geturl(),
+        parts=parts,
+        query_pairs=immutable_pairs,
+    )
+
+
+def _encode_query_pairs(pairs: tuple[tuple[str, str], ...]) -> str:
     return "&".join(f"{_aws_quote(key)}={_aws_quote(value)}" for key, value in pairs)
 
 
@@ -742,7 +761,10 @@ def _unique_header_value(
     return result
 
 
-def _unique_query_value(pairs: list[tuple[str, str]], name: str) -> str | None:
+def _unique_query_value(
+    pairs: tuple[tuple[str, str], ...],
+    name: str,
+) -> str | None:
     result: str | None = None
     found = False
     for key, value in pairs:
@@ -774,8 +796,8 @@ def _upsert_header(
     return filtered
 
 
-def _host_header_value(url: str) -> str:
-    parts = _split_url_for_signing(url)
+def _host_header_value(url: _SigningUrl) -> str:
+    parts = url.parts
     try:
         hostname = parts.hostname
     except ValueError as e:

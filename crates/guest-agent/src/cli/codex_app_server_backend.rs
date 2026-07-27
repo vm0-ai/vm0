@@ -25,8 +25,8 @@ use super::codex_app_server_events::{
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    CODEX_FIXED_STARTUP_CONFIGS, CliEventIngestor, CliExecutionResult, CliRuntimeConfig,
-    HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
+    CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
+    LOG_TAG, ParsedEventAction, command,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
@@ -363,8 +363,7 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
     };
     let codex_home = PathBuf::from(runtime.codex_home());
     let child_user_env = runtime.child_user_env();
-    let mut config_overrides = runtime.codex_startup_config_overrides();
-    config_overrides.extend(CODEX_FIXED_STARTUP_CONFIGS.map(str::to_string));
+    let config_overrides = runtime.codex_startup_config_overrides();
     let mut config = CodexAppServerConfig::new(binary, codex_home)
         .with_child_env(
             runtime.home_dir.as_ref(),

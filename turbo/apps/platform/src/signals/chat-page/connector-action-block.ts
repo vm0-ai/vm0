@@ -11,9 +11,7 @@ import {
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
-  getConnectorStatusConnectLaunchMode,
-  getOnlyAvailableStatusBrowserAuthMethodDetail,
-  getOnlyAvailableStatusNoAuthMethod,
+  getConnectorStatusDirectConnectMethod,
   setSelectedConnectorRef$,
 } from "../zero-page/settings/connectors.ts";
 import { resolvePlatformOriginForTarget } from "../api-base.ts";
@@ -139,23 +137,10 @@ export function parseCustomConnectorProposalUrl(
   };
 }
 
-export function createCustomConnectorSignals(
+function createCustomConnectorSignals(
   descriptor: CustomConnectorActionDescriptor,
 ): CustomConnectorSignals {
   return descriptor;
-}
-
-function getDirectConnectMethod(connector: PublicConnectorCatalogStatusItem) {
-  const launchMode = getConnectorStatusConnectLaunchMode(connector);
-  if (launchMode === "browser-auth") {
-    const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(connector);
-    return authMethod ? { kind: "browser-auth" as const, authMethod } : null;
-  }
-  if (launchMode === "no-auth") {
-    const authMethod = getOnlyAvailableStatusNoAuthMethod(connector);
-    return authMethod ? { kind: "no-auth" as const, authMethod } : null;
-  }
-  return null;
 }
 
 type ConnectorActivationSignals = Pick<
@@ -212,7 +197,8 @@ function createConnectorActivation(
       return;
     }
 
-    const directConnectMethod = getDirectConnectMethod(connector);
+    const directConnectMethod =
+      getConnectorStatusDirectConnectMethod(connector);
     if (!directConnectMethod) {
       set(activeChatConnectorActionState$, descriptor);
       set(setSelectedConnectorRef$, descriptor.connectorRef);
@@ -260,7 +246,7 @@ function createConnectorActivation(
   });
 }
 
-export function createConnectorSignals(
+function createConnectorSignals(
   descriptor: ConnectorActionDescriptor,
 ): ConnectorSignals {
   const catalogItem$ = computed(async (get) => {

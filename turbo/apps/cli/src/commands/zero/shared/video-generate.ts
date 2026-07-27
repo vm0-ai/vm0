@@ -35,6 +35,7 @@ interface VideoOptions {
   firstFrameImageUrl?: string;
   lastFrameImageUrl?: string;
   all?: boolean;
+  json?: boolean;
 }
 
 interface VideoGenerateCommandConfig {
@@ -387,6 +388,7 @@ export function createVideoGenerateCommand(
       "--all",
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
+    .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
       "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, or kling-v3-4k",
@@ -435,7 +437,8 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ video file URL and metadata
+  Prints the generated /f/ video file URL and metadata. Use --json for the
+  complete result object.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -462,11 +465,17 @@ Models:
           provider: options.provider,
           prompt: options.prompt,
           all: options.all,
+          requireExecutionFor: options.json ? "--json" : undefined,
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
 
         if (options.template) {
+          if (options.json) {
+            throw new Error(
+              "--json is only available for direct built-in generation",
+            );
+          }
           const template = findVideoTemplate(options.template);
           if (!template) {
             throw unknownTemplateError(options.template, config.usageCommand);
@@ -511,6 +520,11 @@ Models:
           firstFrameImageUrl: options.firstFrameImageUrl,
           lastFrameImageUrl: options.lastFrameImageUrl,
         });
+
+        if (options.json) {
+          console.log(JSON.stringify(result));
+          return;
+        }
 
         console.log(chalk.green(`✓ Video generated: ${result.url}`));
         console.log(chalk.dim(`  File: ${result.filename}`));

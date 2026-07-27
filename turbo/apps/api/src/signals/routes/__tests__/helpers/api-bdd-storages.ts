@@ -9,11 +9,11 @@ import { testStorageStateRoutes } from "../../test-storage-fixture";
 import type { ApiTestUser } from "./api-bdd";
 import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 
-type StorageFixtureKind = "volume" | "artifact";
+type StorageFixtureOwner = "organization" | "user";
 
 interface BddStoragePrepareBody {
   readonly storageName: string;
-  readonly storageType: StorageFixtureKind;
+  readonly storageOwner: StorageFixtureOwner;
   readonly files: readonly BddStorageFileEntry[];
   readonly force?: boolean;
   readonly baseVersion?: string;
@@ -26,7 +26,7 @@ interface BddStoragePrepareBody {
 
 interface BddStorageCommitBody {
   readonly storageName: string;
-  readonly storageType: StorageFixtureKind;
+  readonly storageOwner: StorageFixtureOwner;
   readonly versionId: string;
   readonly files: readonly BddStorageFileEntry[];
   readonly message?: string;
@@ -34,7 +34,7 @@ interface BddStorageCommitBody {
 
 interface BddStorageDownloadQuery {
   readonly name: string;
-  readonly type: StorageFixtureKind;
+  readonly owner: StorageFixtureOwner;
   readonly version?: string;
 }
 
@@ -43,10 +43,6 @@ function requireOrgId(actor: ApiTestUser): string {
     throw new Error("Storage fixture requires an org-scoped actor");
   }
   return actor.orgId;
-}
-
-function storageOwner(kind: StorageFixtureKind): "organization" | "user" {
-  return kind === "volume" ? "organization" : "user";
 }
 
 function requestStorageState(
@@ -111,7 +107,7 @@ export function createStoragesBddApi(context: TestContext) {
         orgId: requireOrgId(actor),
         userId: actor.userId,
         storageName: body.storageName,
-        storageOwner: storageOwner(body.storageType),
+        storageOwner: body.storageOwner,
         files: fixtureFiles(body.files),
         force: body.force,
         baseVersion: body.baseVersion,
@@ -135,7 +131,7 @@ export function createStoragesBddApi(context: TestContext) {
         orgId: requireOrgId(actor),
         userId: actor.userId,
         storageName: body.storageName,
-        storageOwner: storageOwner(body.storageType),
+        storageOwner: body.storageOwner,
         versionId: body.versionId,
         files: fixtureFiles(body.files),
         message: body.message,
@@ -146,12 +142,12 @@ export function createStoragesBddApi(context: TestContext) {
       return response.committed;
     },
 
-    async listStorages(actor: ApiTestUser, kind: StorageFixtureKind) {
+    async listStorages(actor: ApiTestUser, owner: StorageFixtureOwner) {
       const response = await postAction(context, {
         action: "list",
         orgId: requireOrgId(actor),
         userId: actor.userId,
-        storageOwner: storageOwner(kind),
+        storageOwner: owner,
       });
       if (!response.storages) {
         throw new Error("Storage list action returned no result");
@@ -165,7 +161,7 @@ export function createStoragesBddApi(context: TestContext) {
         orgId: requireOrgId(actor),
         userId: actor.userId,
         storageName: query.name,
-        storageOwner: storageOwner(query.type),
+        storageOwner: query.owner,
         versionId: query.version,
       });
       if (!response.download) {

@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.148.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.13...runner-rs-v0.148.14) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** enforce auth.base forwarding deadline ([#23304](https://github.com/vm0-ai/vm0/issues/23304)) ([e2281cc](https://github.com/vm0-ai/vm0/commit/e2281cce09b32062a5149d1c5f58ffcfe692f87d))
+
+
+### Refactoring
+
+* **mitm-addon:** retire silent usage wrappers ([#23305](https://github.com/vm0-ai/vm0/issues/23305)) ([d22f885](https://github.com/vm0-ai/vm0/commit/d22f885ee86f1090729498c4589084a7e8e3cd29))
+* **mitm-addon:** retire stream decoder feed wrapper ([#23302](https://github.com/vm0-ai/vm0/issues/23302)) ([5fcc5ba](https://github.com/vm0-ai/vm0/commit/5fcc5ba79576cdfcc91b1796787740fedb21a66e))
+
+## [0.148.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.12...runner-rs-v0.148.13) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** distinguish dns readiness timeouts ([#23282](https://github.com/vm0-ai/vm0/issues/23282)) ([1593bf9](https://github.com/vm0-ai/vm0/commit/1593bf9ddbce0c4b022ed7d772b845bbcd86be1b))
+* **runner:** revalidate connector admission after auth waits ([#23245](https://github.com/vm0-ai/vm0/issues/23245)) ([0f22b78](https://github.com/vm0-ai/vm0/commit/0f22b788c878faf2bb36afd3f359af95ee1e9614))
+* **runner:** stop on unexpected kmsg monitor exit ([#23249](https://github.com/vm0-ai/vm0/issues/23249)) ([e4ec0b5](https://github.com/vm0-ai/vm0/commit/e4ec0b5f0ee8693d39c2c04d4cf45e074c7f5469))
+
+
+### Documentation
+
+* **mitm-addon:** document base url template safety contract ([#23275](https://github.com/vm0-ai/vm0/issues/23275)) ([594d78a](https://github.com/vm0-ai/vm0/commit/594d78a32ef45a4421e4875e1cfd12d3c099e735))
+* **python:** clarify observable flow drain contract ([#23252](https://github.com/vm0-ai/vm0/issues/23252)) ([f9472b4](https://github.com/vm0-ai/vm0/commit/f9472b44fc6abf09bf713c1f4ab857226478916f))
+
+
+### Performance Improvements
+
+* **mitm-addon:** cache selective json key matching ([#23279](https://github.com/vm0-ai/vm0/issues/23279)) ([097713c](https://github.com/vm0-ai/vm0/commit/097713c556a59964a243846eec676d76fefdd73e))
+* **python:** reuse sigv4 url state ([#23284](https://github.com/vm0-ai/vm0/issues/23284)) ([a8922b7](https://github.com/vm0-ai/vm0/commit/a8922b7501d779976b2a0128a396608750c1de32))
+
+## [0.148.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.11...runner-rs-v0.148.12) (2026-07-27)
+
+
+### Bug Fixes
+
+* **mitm-addon:** track implicit exception aliases ([#23191](https://github.com/vm0-ai/vm0/issues/23191)) ([f1c562b](https://github.com/vm0-ai/vm0/commit/f1c562be79547cdfb4391c001e67a1d94865efbe))
+* **runner:** reject ambiguous host authorities ([#23194](https://github.com/vm0-ai/vm0/issues/23194)) ([2810583](https://github.com/vm0-ai/vm0/commit/28105839cb41b02d45d4a78a9fa71b62551b8f12))
+
+
+### Documentation
+
+* **runner:** document fresh archive delivery lifecycle ([#23205](https://github.com/vm0-ai/vm0/issues/23205)) ([86ed1c8](https://github.com/vm0-ai/vm0/commit/86ed1c8238449e34b855ee51028c4d782cbdfb94))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+
+
+### Performance Improvements
+
+* **mitm-addon:** share websocket event type probing ([#23230](https://github.com/vm0-ai/vm0/issues/23230)) ([d71de68](https://github.com/vm0-ai/vm0/commit/d71de68e04f2d90ef3269a420ba9cd39797f62cd))
+* **python:** reuse public destination host classifications ([#23203](https://github.com/vm0-ai/vm0/issues/23203)) ([2a31839](https://github.com/vm0-ai/vm0/commit/2a318395e1009b1bef8f340d5db8985f74ac4f3a))
+* **runner:** bound network log upload lifecycle ([#23219](https://github.com/vm0-ai/vm0/issues/23219)) ([f9a6f20](https://github.com/vm0-ai/vm0/commit/f9a6f2095b24a4bbab46866be5ff5b126eb2bf9d))
+
+## [0.148.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.10...runner-rs-v0.148.11) (2026-07-27)
+
+
+### Documentation
+
+* **mitm-addon:** clarify authoritative endpoint tuple projection ([#23166](https://github.com/vm0-ai/vm0/issues/23166)) ([d24fa5b](https://github.com/vm0-ai/vm0/commit/d24fa5b7616ee20bddfe7f4daba455cbb4fd8aa6))
+* **runner:** document held-session snapshot concurrency ([#23168](https://github.com/vm0-ai/vm0/issues/23168)) ([e2a5f7c](https://github.com/vm0-ai/vm0/commit/e2a5f7cce6db3199777874753b1a45679bce81a6))
+
 ## [0.148.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.9...runner-rs-v0.148.10) (2026-07-26)
 
 ## [0.148.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.8...runner-rs-v0.148.9) (2026-07-26)

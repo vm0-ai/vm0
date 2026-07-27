@@ -16,6 +16,10 @@ import {
 } from "@vm0/api-contracts/contracts/test-runtime-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import {
+  browserProfiles,
+  browserSessions,
+} from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
@@ -23,7 +27,7 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -314,31 +318,6 @@ async function clearThreadSessionBinding(
   }
 }
 
-async function clearThreadSessionConversation(
-  db: Db,
-  threadId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [thread] = await db
-    .select({ agentSessionId: chatThreads.agentSessionId })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!thread?.agentSessionId) {
-    throw new Error("Expected a bound chat thread session");
-  }
-  const [session] = await db
-    .update(agentSessions)
-    .set({ conversationId: null })
-    .where(eq(agentSessions.id, thread.agentSessionId))
-    .returning({ id: agentSessions.id });
-  signal.throwIfAborted();
-  if (!session) {
-    throw new Error("Expected a bound agent session");
-  }
-}
-
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -522,10 +501,7 @@ async function timingStateActionResponse(
 type ThreadSessionStateAction = Extract<
   TestRuntimeStateActionBody,
   {
-    action:
-      | "read-thread-session-binding"
-      | "clear-thread-session-binding"
-      | "clear-thread-session-conversation";
+    action: "read-thread-session-binding" | "clear-thread-session-binding";
   }
 >;
 
@@ -534,8 +510,7 @@ function isThreadSessionStateAction(
 ): body is ThreadSessionStateAction {
   return (
     body.action === "read-thread-session-binding" ||
-    body.action === "clear-thread-session-binding" ||
-    body.action === "clear-thread-session-conversation"
+    body.action === "clear-thread-session-binding"
   );
 }
 
@@ -560,10 +535,6 @@ async function threadSessionStateActionResponse(
     }
     case "clear-thread-session-binding": {
       await clearThreadSessionBinding(db, body.thread_id, signal);
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "clear-thread-session-conversation": {
-      await clearThreadSessionConversation(db, body.thread_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
   }
@@ -603,6 +574,121 @@ async function insertLegacyArtifactCatalogFile(
   };
 }
 
+type PreviousApiComputerAccessAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-computer-use-host-as-previous-api" }
+>;
+
+async function setComputerUseHostAsPreviousApi(
+  db: Db,
+  body: PreviousApiComputerAccessAction,
+  signal: AbortSignal,
+) {
+  // The API version immediately before cloud browser shipped updated only
+  // computer_use_host_id. No current production route can reproduce that
+  // mixed-version writer shape.
+  const [updated] = await db
+    .update(chatThreads)
+    .set({ computerUseHostId: body.computer_use_host_id })
+    .where(eq(chatThreads.id, body.thread_id))
+    .returning({ id: chatThreads.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a chat thread for previous API host update");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+type PreviousApiBrowserProfileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-browser-profile-as-previous-api" }
+>;
+
+async function readBrowserProfileAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserProfileAction,
+  signal: AbortSignal,
+) {
+  // Keep this query limited to the columns and owner checks understood by the
+  // API version immediately before browser_thread_profiles existed.
+  const [browser] = await db
+    .select({ browserProfileId: browserSessions.browserProfileId })
+    .from(browserSessions)
+    .where(
+      and(
+        eq(browserSessions.id, body.browser_id),
+        eq(browserSessions.orgId, body.org_id),
+        eq(browserSessions.userId, body.user_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!browser) {
+    throw new Error("Expected a browser session for previous API read");
+  }
+  const [profile] = await db
+    .select({
+      id: browserProfiles.id,
+      providerProfileId: browserProfiles.providerProfileId,
+    })
+    .from(browserProfiles)
+    .where(
+      and(
+        eq(browserProfiles.id, browser.browserProfileId),
+        eq(browserProfiles.orgId, body.org_id),
+        eq(browserProfiles.userId, body.user_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!profile) {
+    throw new Error("Expected a browser profile for previous API read");
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      previous_api_browser_profile: {
+        browser_profile_id: profile.id,
+        provider_profile_id: profile.providerProfileId,
+      },
+    },
+  };
+}
+
+type CompatibilityFixtureAction =
+  | LegacyArtifactCatalogFileAction
+  | PreviousApiComputerAccessAction
+  | PreviousApiBrowserProfileAction;
+
+function isCompatibilityFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is CompatibilityFixtureAction {
+  return [
+    "insert-legacy-artifact-catalog-file",
+    "set-computer-use-host-as-previous-api",
+    "read-browser-profile-as-previous-api",
+  ].includes(body.action);
+}
+
+async function compatibilityFixtureActionResponse(
+  db: Db,
+  body: CompatibilityFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "insert-legacy-artifact-catalog-file": {
+      return await insertLegacyArtifactCatalogFile(db, body, signal);
+    }
+    case "set-computer-use-host-as-previous-api": {
+      return await setComputerUseHostAsPreviousApi(db, body, signal);
+    }
+    case "read-browser-profile-as-previous-api": {
+      return await readBrowserProfileAsPreviousApi(db, body, signal);
+    }
+  }
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -626,8 +712,8 @@ const postRuntimeStateAction$ = command(
     if (isThreadSessionStateAction(body)) {
       return await threadSessionStateActionResponse(db, body, signal);
     }
-    if (body.action === "insert-legacy-artifact-catalog-file") {
-      return await insertLegacyArtifactCatalogFile(db, body, signal);
+    if (isCompatibilityFixtureAction(body)) {
+      return await compatibilityFixtureActionResponse(db, body, signal);
     }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {

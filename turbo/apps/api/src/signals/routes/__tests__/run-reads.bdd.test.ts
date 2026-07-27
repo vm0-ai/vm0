@@ -1280,20 +1280,20 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const volumeFile = storageTextFile("data/cache.txt", "bdd volume payload");
     const prepared = await storages.prepareStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [volumeFile],
     });
     const volumeVersion = prepared.versionId;
     await storages.commitStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: volumeVersion,
       files: [volumeFile],
     });
     const refreshedVolumeArchiveSize = 23_456;
     const forcedPrepare = await storages.prepareStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [volumeFile],
       force: true,
     });
@@ -1305,7 +1305,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     storages.mockStorageObjectsExist(refreshedVolumeArchiveSize);
     await storages.commitStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: volumeVersion,
       files: [volumeFile],
     });
@@ -1806,6 +1806,11 @@ function networkHardeningRows(
       request_body_encoding: "utf-16",
       request_body_truncated: "false",
       response_body_encoding: "binary",
+      model_catalog_cache_status: "unbounded-provider-value",
+      model_catalog_cache_upstream_encoding: "gzip",
+      model_catalog_cache_entry_age_ms: "61000",
+      model_catalog_cache_validation_latency_ms: -1,
+      model_catalog_cache_eviction_count: 33,
     },
     {
       _time: "2026-06-10T12:01:00Z",
@@ -1816,6 +1821,32 @@ function networkHardeningRows(
       host: "blocked.example.com",
       port: 443,
       firewall_error: "connector_not_configured",
+      model_catalog_cache_status: "model_catalog_revalidated_200_same",
+      model_catalog_cache_upstream_encoding: "br",
+      model_catalog_cache_bypass_reason: "response_cache_control",
+      model_catalog_cache_entry_age_ms: 61_000,
+      model_catalog_cache_validation_latency_ms: 1700,
+      model_catalog_cache_eviction_count: 1,
+      upstream_binding_reason: "connector_auth",
+      upstream_binding_trusted_host: "api.github.com",
+      upstream_binding_request_host: "203.0.113.10",
+      upstream_binding_request_port: 443,
+      upstream_binding_server_connected: true,
+      upstream_binding_server_address: "203.0.113.10:443",
+      upstream_binding_server_peername: "140.82.121.4:443",
+      upstream_binding_server_sockname: "10.0.0.2:51000",
+      upstream_binding_client_sockname: "10.0.0.1:41000",
+      upstream_binding_server_id: "server-1",
+      upstream_binding_client_id: "client-1",
+      upstream_binding_direct_binding_present: true,
+      upstream_binding_direct_binding_host: "api.github.com",
+      upstream_binding_direct_binding_port: 443,
+      upstream_binding_direct_binding_kinds: "connector_auth",
+      upstream_binding_client_binding_count: 2,
+      upstream_binding_client_binding_match: true,
+      upstream_binding_client_binding_endpoint_match: false,
+      upstream_binding_client_binding_hosts:
+        "api.github.com, uploads.github.com",
     },
     {
       _time: "2026-06-10T12:02:00Z",
@@ -2286,6 +2317,32 @@ describe("RUN-04: agent run telemetry families", () => {
         host: "blocked.example.com",
         port: 443,
         firewall_error: "connector_not_configured",
+        model_catalog_cache_status: "model_catalog_revalidated_200_same",
+        model_catalog_cache_upstream_encoding: "br",
+        model_catalog_cache_bypass_reason: "response_cache_control",
+        model_catalog_cache_entry_age_ms: 61_000,
+        model_catalog_cache_validation_latency_ms: 1700,
+        model_catalog_cache_eviction_count: 1,
+        upstream_binding_reason: "connector_auth",
+        upstream_binding_trusted_host: "api.github.com",
+        upstream_binding_request_host: "203.0.113.10",
+        upstream_binding_request_port: 443,
+        upstream_binding_server_connected: true,
+        upstream_binding_server_address: "203.0.113.10:443",
+        upstream_binding_server_peername: "140.82.121.4:443",
+        upstream_binding_server_sockname: "10.0.0.2:51000",
+        upstream_binding_client_sockname: "10.0.0.1:41000",
+        upstream_binding_server_id: "server-1",
+        upstream_binding_client_id: "client-1",
+        upstream_binding_direct_binding_present: true,
+        upstream_binding_direct_binding_host: "api.github.com",
+        upstream_binding_direct_binding_port: 443,
+        upstream_binding_direct_binding_kinds: "connector_auth",
+        upstream_binding_client_binding_count: 2,
+        upstream_binding_client_binding_match: true,
+        upstream_binding_client_binding_endpoint_match: false,
+        upstream_binding_client_binding_hosts:
+          "api.github.com, uploads.github.com",
       },
     ];
     const expectedNextCursor = timeLogCursor(

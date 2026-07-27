@@ -1,7 +1,7 @@
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -65,7 +65,7 @@ interface CommitStorageForStorageInput extends CommitStorageUploadInput {
   readonly storageId: string;
 }
 
-type StorageRow = Omit<typeof storages.$inferSelect, "type">;
+type StorageRow = typeof storages.$inferSelect;
 type StorageVersionRow = typeof storageVersions.$inferSelect;
 
 function storageRowSelection() {

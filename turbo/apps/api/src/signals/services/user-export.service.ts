@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+} from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import type {
@@ -69,6 +73,10 @@ import {
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -617,13 +625,6 @@ async function collectMemoryFiles(
   return { entries, count: entries.length };
 }
 
-function exportMessageRole(role: string): "user" | "assistant" | null {
-  if (role === "user" || role === "assistant") {
-    return role;
-  }
-  return null;
-}
-
 interface ResolveSessionHistoryArgs {
   readonly hash: string | null;
   readonly encoding: string | null;
@@ -752,7 +753,7 @@ async function collectConversationMessages(
   for (const thread of threads) {
     const rows = await runtime.db
       .select({
-        role: chatMessages.role,
+        eventType: chatEventTypeSql().as("event_type"),
         content: chatMessages.content,
         structuredPrompt: effectiveChatMessageStructuredPrompt(),
         createdAt: chatMessages.createdAt,
@@ -761,17 +762,14 @@ async function collectConversationMessages(
       .where(
         and(
           eq(chatMessages.chatThreadId, thread.id),
-          inArray(chatMessages.role, ["user", "assistant"]),
+          chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
       .orderBy(asc(chatMessages.seqId));
     runtime.signal.throwIfAborted();
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
-      const role = exportMessageRole(message.role);
-      if (!role) {
-        return [];
-      }
+      const role = chatEventCompatibilityRole(message.eventType);
       const structuredPrompt =
         structuredPromptEnabled && role === "user"
           ? (message.structuredPrompt ?? undefined)
@@ -894,7 +892,7 @@ async function assembleZip(
   entries: readonly ZipEntry[],
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const archive = archiver("zip", { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const chunks: Buffer[] = [];
   const done = createDeferredPromise<Buffer>(signal);
 

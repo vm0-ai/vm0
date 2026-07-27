@@ -4,14 +4,14 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -31,7 +31,7 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorType;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
@@ -78,7 +78,7 @@ function mockPublicConnectorStatus(
   });
 }
 
-function connectorResponse(type: ConnectorType): ConnectorResponse {
+function connectorResponse(type: ConnectorRef): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
     type,
@@ -95,7 +95,7 @@ function connectorResponse(type: ConnectorType): ConnectorResponse {
   };
 }
 
-function mockConnectedConnector(type: ConnectorType): void {
+function mockConnectedConnector(type: ConnectorRef): void {
   context.mocks.data.connectors([connectorResponse(type)]);
 }
 
@@ -171,7 +171,7 @@ describe("directed connector authorize page", () => {
     const threadId = "00000000-0000-4000-a000-000000000101";
     const callbackPrompt = "Re-check Gmail, then continue";
     let continuationPrompt: string | null = null;
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       if ("prompt" in body) {
         continuationPrompt = body.prompt ?? null;
       }

@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import json
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -42,7 +43,10 @@ from firewall_auth_client import (
     FirewallAuthRequest,
     InsufficientCreditsError,
 )
-from firewall_auth_config import auth_config_injects_credentials
+from firewall_auth_config import (
+    auth_config_injects_credentials,
+    auth_config_injects_ordinary_upstream_credentials,
+)
 from logging_utils import log_proxy_entry
 from url_syntax import has_unsafe_runtime_url_syntax
 from url_utils import build_rewrite_url
@@ -61,6 +65,9 @@ class FirewallHeaderPhaseAuthResult(Enum):
 
     APPLIED = "applied"
     FALLBACK = "fallback"
+
+
+type OrdinaryUpstreamCredentialsGuard = Callable[[], bool]
 
 
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
@@ -1002,9 +1009,19 @@ def _finish_firewall_auth_result(
 
 
 async def handle_firewall_request(
-    flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+    *,
+    revalidate_ordinary_upstream_credentials: OrdinaryUpstreamCredentialsGuard,
 ) -> FirewallAuthHandlingResult:
-    """Handle firewall auth and return who owns the next response lifecycle."""
+    """Handle firewall auth and return who owns the next response lifecycle.
+
+    The required guard runs after resolution and before ordinary upstream
+    credential mutation. A rejecting caller must first create its local
+    response; this function then returns ``LOCAL_RESPONSE`` without applying
+    resolved credentials.
+    """
     try:
         _prepare_firewall_metadata(flow, allow, vm_info)
         context = _build_firewall_auth_context(flow, allow, vm_info)
@@ -1061,6 +1078,18 @@ async def handle_firewall_request(
         else:
             token_meta = _empty_firewall_auth_metadata()
 
+        if (
+            context.auth_request.auth_base is None
+            and auth_config_injects_ordinary_upstream_credentials(
+                context.allow.api_entry.get("auth")
+            )
+            and not revalidate_ordinary_upstream_credentials()
+        ):
+            return _finish_firewall_auth_result(
+                flow,
+                FirewallAuthHandlingResult.LOCAL_RESPONSE,
+            )
+
         auth_result = await _apply_resolved_firewall_auth(
             flow,
             context=context,
@@ -1081,12 +1110,16 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     vm_info: dict,
+    *,
+    revalidate_ordinary_upstream_credentials: OrdinaryUpstreamCredentialsGuard,
 ) -> FirewallHeaderPhaseAuthResult:
     """Apply successful header/query firewall auth before request streaming.
 
     This helper intentionally falls back instead of creating local responses.
     The request hook owns auth failure semantics; requestheaders() only keeps a
-    success that is safe before mitmproxy sends upstream request headers.
+    success that is safe before mitmproxy sends upstream request headers. A
+    rejected ordinary-credential guard restores the probe snapshot and falls
+    back before mutation.
     """
     auth_config = allow.api_entry.get("auth", {})
     if _auth_config_uses_body_dependent_auth(auth_config):
@@ -1147,6 +1180,15 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
     if token_meta.get("base") or token_meta.get("aws_sigv4") is not None:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_path_snapshot=request_path_snapshot,
+        )
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    if injects_credentials and not revalidate_ordinary_upstream_credentials():
         _restore_header_phase_probe_state(
             flow,
             metadata_snapshot=metadata_snapshot,

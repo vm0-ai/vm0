@@ -1,5 +1,106 @@
 # Changelog
 
+## [8.475.0](https://github.com/vm0-ai/vm0/compare/core-v8.474.0...core-v8.475.0) (2026-07-27)
+
+
+### Features
+
+* add thread-scoped cloud browser access ([#23253](https://github.com/vm0-ai/vm0/issues/23253)) ([0699a79](https://github.com/vm0-ai/vm0/commit/0699a7935ad6994b00ad97c00a7aeae307dbd4d2))
+* enable mail drafts and chat thread mentions for all users ([#23257](https://github.com/vm0-ai/vm0/issues/23257)) ([4a5de22](https://github.com/vm0-ai/vm0/commit/4a5de22f8c7636de66e2feeffba99767bec5e383))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.236.0
+    * @vm0/connectors bumped to 1.197.0
+
+## [8.474.0](https://github.com/vm0-ai/vm0/compare/core-v8.473.0...core-v8.474.0) (2026-07-27)
+
+
+### Features
+
+* enable video artifact posters globally ([#23255](https://github.com/vm0-ai/vm0/issues/23255)) ([8108428](https://github.com/vm0-ai/vm0/commit/81084289da44e07e20c2049f95c523bb4ca0d77b))
+* thread-owned chat sidebar shell behind newChatThreadSidebar switch ([#23269](https://github.com/vm0-ai/vm0/issues/23269)) ([c67c965](https://github.com/vm0-ai/vm0/commit/c67c96547fb4646b7d424a42de7f790b28e3f3a1))
+
+
+### Bug Fixes
+
+* point built-in website picker to refreshed static assets ([#23259](https://github.com/vm0-ai/vm0/issues/23259)) ([4637adb](https://github.com/vm0-ai/vm0/commit/4637adbe708f68fbcfdf99afbac0d685df9cb531))
+
+
+### Refactoring
+
+* **chat:** type the immutable event stream ([#23148](https://github.com/vm0-ai/vm0/issues/23148)) ([6cdd9c5](https://github.com/vm0-ai/vm0/commit/6cdd9c5155895556f1e9f78ced2e190dad080568))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.235.0
+    * @vm0/connectors bumped to 1.196.0
+
+## [8.473.0](https://github.com/vm0-ai/vm0/compare/core-v8.472.0...core-v8.473.0) (2026-07-27)
+
+
+### Features
+
+* **chat:** enable unread indicators for all organizations ([#23242](https://github.com/vm0-ai/vm0/issues/23242)) ([d4c22a5](https://github.com/vm0-ai/vm0/commit/d4c22a554689768a43dec1ae65afdfb4d7c16ae6))
+
+
+### Refactoring
+
+* **storage:** remove legacy type residue ([#23232](https://github.com/vm0-ai/vm0/issues/23232)) ([eeb8daa](https://github.com/vm0-ai/vm0/commit/eeb8daadad7c5c81c3cfd5cd7e08bb8b0e130f01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.1
+
+## [8.472.0](https://github.com/vm0-ai/vm0/compare/core-v8.471.1...core-v8.472.0) (2026-07-27)
+
+
+### Features
+
+* enable image style r2 globally ([#23176](https://github.com/vm0-ai/vm0/issues/23176)) ([441d729](https://github.com/vm0-ai/vm0/commit/441d729f24d98b34f570cf732d99e2f49079e2ce))
+
+
+### Bug Fixes
+
+* **website:** restore open design templates and route by intent ([#23188](https://github.com/vm0-ai/vm0/issues/23188)) ([bb40296](https://github.com/vm0-ai/vm0/commit/bb402968391ad7dc781d0702914a860c7467138b))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.0
+    * @vm0/connectors bumped to 1.195.2
+
+## [8.471.1](https://github.com/vm0-ai/vm0/compare/core-v8.471.0...core-v8.471.1) (2026-07-27)
+
+
+### Refactoring
+
+* **connectors:** make catalog consumption external-only ([#23138](https://github.com/vm0-ai/vm0/issues/23138)) ([5a79f3b](https://github.com/vm0-ai/vm0/commit/5a79f3b532a5a97cb3623bd865130c4259017707))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.3
+    * @vm0/connectors bumped to 1.195.1
+
 ## [8.471.0](https://github.com/vm0-ai/vm0/compare/core-v8.470.1...core-v8.471.0) (2026-07-26)
 
 

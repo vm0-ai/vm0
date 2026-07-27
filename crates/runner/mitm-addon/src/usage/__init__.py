@@ -28,7 +28,6 @@ from . import webhook
 from .anthropic_messages import (
     create_anthropic_messages_json_usage_extractor,
     create_anthropic_messages_sse_usage_extractor,
-    extract_anthropic_messages_usage_from_json,
     extract_anthropic_messages_usage_with_error_from_json,
 )
 from .buffer import (
@@ -51,11 +50,13 @@ from .counters import (
     write_pending_snapshot,
 )
 from .openai_responses import (
+    OpenAIResponsesEvent,
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
+    extract_openai_responses_usage_from_event,
     extract_openai_responses_usage_from_event_json,
-    extract_openai_responses_usage_from_json,
     extract_openai_responses_usage_with_error_from_json,
+    inspect_openai_responses_event_json,
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import (
@@ -74,6 +75,7 @@ from .providers.model_provider import (
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
+    "OpenAIResponsesEvent",
     "buffer_model_usage_observations",
     "buffer_source_model_usage_observations",
     "buffer_source_usage_events",
@@ -87,15 +89,15 @@ __all__ = [
     "current_usage_state_id",
     "decrement_in_flight_flows",
     "drain_usage_events_after_executor_shutdown",
-    "extract_anthropic_messages_usage_from_json",
     "extract_anthropic_messages_usage_with_error_from_json",
+    "extract_openai_responses_usage_from_event",
     "extract_openai_responses_usage_from_event_json",
-    "extract_openai_responses_usage_from_json",
     "extract_openai_responses_usage_with_error_from_json",
     "flush_usage_events",
     "has_connector_response_parser",
     "has_positive_model_provider_usage",
     "increment_in_flight_flows",
+    "inspect_openai_responses_event_json",
     "is_model_provider_usage_observable",
     "merge_openai_responses_usage_result",
     "needs_connector_response_buffer_fallback",

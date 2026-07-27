@@ -38,6 +38,37 @@ export const browserProfiles = pgTable(
   },
 );
 
+/**
+ * Thread-scoped profiles used by all new managed browsers.
+ *
+ * browserProfiles remains the compatibility store while API versions that
+ * predate thread scope can still serve traffic. New sessions dual-reference a
+ * legacy owner profile and this thread profile; current APIs always prefer the
+ * thread profile. The legacy reference can be removed only after the previous
+ * API version has fully drained.
+ */
+export const browserThreadProfiles = pgTable(
+  "browser_thread_profiles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    providerProfileId: uuid("provider_profile_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_browser_thread_profiles_thread").on(table.chatThreadId),
+      uniqueIndex("uq_browser_thread_profiles_provider_profile").on(
+        table.providerProfileId,
+      ),
+      index("idx_browser_thread_profiles_owner").on(table.orgId, table.userId),
+    ];
+  },
+);
+
 export const browserSessions = pgTable(
   "browser_sessions",
   {
@@ -55,11 +86,19 @@ export const browserSessions = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
+    /**
+     * Compatibility reference required by API versions that predate thread
+     * profiles. New sessions dual-write this and browserThreadProfileId.
+     */
     browserProfileId: uuid("browser_profile_id")
       .notNull()
       .references(() => {
         return browserProfiles.id;
       }),
+    /** Thread-scoped profile preferred by current APIs when present. */
+    browserThreadProfileId: uuid("browser_thread_profile_id").references(() => {
+      return browserThreadProfiles.id;
+    }),
     status: varchar("status", { length: 20 })
       .$type<ZeroBrowserStatus>()
       .notNull(),
@@ -96,6 +135,34 @@ export const browserSessions = pgTable(
         .where(
           sql`${table.status} IN ('creating', 'active', 'resuming', 'stopping')`,
         ),
+    ];
+  },
+);
+
+export const browserAuthorizationRequests = pgTable(
+  "browser_authorization_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    requestTokenHash: text("request_token_hash").notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: uuid("run_id").notNull(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_browser_authorization_requests_token_hash").on(
+        table.requestTokenHash,
+      ),
+      index("idx_browser_authorization_requests_owner").on(
+        table.orgId,
+        table.userId,
+      ),
+      index("idx_browser_authorization_requests_expires").on(table.expiresAt),
     ];
   },
 );

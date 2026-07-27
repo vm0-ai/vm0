@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroBillingConcurrencyCheckoutContract,
@@ -84,15 +84,22 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 }
 
 function mockQueuedThread(): void {
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId) {
-      return respond(200, { messages: [] });
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+    if (
+      query.sinceSeqId !== undefined ||
+      query.beforeSeqId !== undefined ||
+      query.sinceId !== undefined ||
+      query.beforeId !== undefined
+    ) {
+      return respond(200, { events: [] });
     }
 
     return respond(200, {
-      messages: [
+      events: [
         {
           id: "msg-previous-user",
+          threadId: THREAD_ID,
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Previous prompt",
           runId: "run-completed",
@@ -101,6 +108,8 @@ function mockQueuedThread(): void {
         },
         {
           id: "msg-previous-assistant",
+          threadId: THREAD_ID,
+          eventType: "run.completed" as const,
           role: "assistant",
           content: "Previous answer",
           runId: "run-completed",
@@ -110,6 +119,8 @@ function mockQueuedThread(): void {
         },
         {
           id: "msg-queued-marker",
+          threadId: THREAD_ID,
+          eventType: "run.queued" as const,
           role: "assistant",
           content: "Waiting in queue...",
           runId: "run-queued",

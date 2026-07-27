@@ -7,8 +7,10 @@ import {
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { composerChatThreadSuggestionsEnabled$ } from "../../signals/zero-page/composer-chat-thread-suggestions.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import {
   ChatThreadSuggestionMenu,
@@ -155,7 +157,7 @@ function WorkflowComposerPlaceholder({
   );
 }
 
-export interface TiptapWorkflowComposerProps {
+interface TiptapWorkflowComposerProps {
   readonly composer: WorkflowComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
@@ -283,6 +285,9 @@ function useComposerSuggestionMenu({
   const chatThreadSuggestionsEnabled = useGet(
     composerChatThreadSuggestionsEnabled$,
   );
+  const skillSubstringSearchEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ComposerSkillSubstringSearch] ??
+    false;
   const selectedIndex = useGet(composer.selectedSuggestionIndex$);
   const setSelectedIndex = useSet(composer.setSelectedSuggestionIndex$);
   const close = useSet(composer.closeSuggestionMenu$);
@@ -297,7 +302,11 @@ function useComposerSuggestionMenu({
   });
   const workflowSuggestions = slashRange
     ? workflows.filter((workflow) => {
-        return matchesWorkflowQuery(workflow, slashRange.query);
+        return matchesWorkflowQuery(
+          workflow,
+          slashRange.query,
+          skillSubstringSearchEnabled,
+        );
       })
     : [];
   const showWorkflows = slashRange !== null;

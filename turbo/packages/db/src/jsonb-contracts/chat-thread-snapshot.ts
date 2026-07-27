@@ -10,6 +10,7 @@ export interface ChatThreadSnapshotProjection {
   readonly selectedModel: string | null;
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
 }
 
 export type ChatThreadSnapshotProjections = ChatThreadSnapshotProjection[];

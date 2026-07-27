@@ -1,6 +1,6 @@
 {
   "name": "@vm0/cli",
-  "version": "9.258.2",
+  "version": "9.260.0",
   "private": true,
   "description": "Zero command-line interface for vm0",
   "repository": {
@@ -48,8 +48,8 @@
     "eslint": "^9.34.0",
     "json": "^11.0.0",
     "msw": "^2.13.2",
-    "oxlint": "^1.57.0",
-    "oxlint-tsgolint": "0.23.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "7.0.2001",
     "prompts": "^2.4.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

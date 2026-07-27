@@ -20,6 +20,7 @@ export enum FeatureSwitchKey {
   ExpensifyConnector = "expensifyConnector",
   GoogleContactsConnector = "googleContactsConnector",
   GoogleFormsConnector = "googleFormsConnector",
+  JoggAiConnector = "joggAiConnector",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   NetSuiteConnector = "netSuiteConnector",
@@ -69,6 +70,7 @@ export enum FeatureSwitchKey {
   AgentUnreadIndicators = "agentUnreadIndicators",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
   ComposerChatThreadSuggestions = "composerChatThreadSuggestions",
+  ComposerSkillSubstringSearch = "composerSkillSubstringSearch",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",
   FeishuIntegration = "feishuIntegration",
@@ -84,4 +86,5 @@ export enum FeatureSwitchKey {
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
   ChatHistoryBackfillProgress = "chatHistoryBackfillProgress",
+  NewChatThreadSidebar = "newChatThreadSidebar",
 }

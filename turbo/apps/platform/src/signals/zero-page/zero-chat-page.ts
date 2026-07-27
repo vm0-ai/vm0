@@ -25,14 +25,6 @@ import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { createComposerConnectorSignals } from "./zero-connectors.ts";
-
-// ---------------------------------------------------------------------------
-// Landing page local UI state for ZeroChatPage
-// ---------------------------------------------------------------------------
-
-export const chatPageInput$ = computed((get) => {
-  return get(get(talkDraft$).input$);
-});
 export const setChatPageInput$ = command(({ get, set }, value: string) => {
   set(get(talkDraft$).setInput$, value);
 });

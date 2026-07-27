@@ -84,7 +84,7 @@ import { zeroBillingRestoreRoutes } from "./routes/zero-billing-restore";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
-import { zeroChatMessagesRoutes } from "./routes/zero-chat-messages";
+import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
 import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
@@ -137,6 +137,7 @@ import { zeroScrapeRoutes } from "./routes/zero-scrape";
 import { zeroPeopleSearchRoutes } from "./routes/zero-people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
+import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
 import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
@@ -280,7 +281,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBillingStatusRoutes,
   ...zeroBankingRoutes,
   ...zeroChatThreadRoutes,
-  ...zeroChatMessagesRoutes,
+  ...zeroChatEventsRoutes,
   ...zeroClaudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
@@ -312,6 +313,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroPeopleSearchRoutes,
   ...zeroWebSearchRoutes,
   ...zeroBrowserRoutes,
+  ...zeroBrowserAuthorizationRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,

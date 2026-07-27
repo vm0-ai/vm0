@@ -284,9 +284,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
     await ap.linkViaWebhookConnectPrompt(actor, uniquePhoneHandle(), sends);
 
-    await expect(
-      storages.listStorages(actor, "artifact"),
-    ).resolves.toStrictEqual([]);
+    await expect(storages.listStorages(actor, "user")).resolves.toStrictEqual(
+      [],
+    );
   });
 
   it("dispatches linked iMessage DMs, refreshes typing, replies with plain-text completions, and controls sessions", async () => {

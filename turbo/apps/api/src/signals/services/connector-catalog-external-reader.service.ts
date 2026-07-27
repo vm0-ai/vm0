@@ -16,7 +16,6 @@ import type {
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorFeatureStates } from "@vm0/connectors/connector-auth-method";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   connectorCatalogActiveSnapshot,
@@ -41,7 +40,10 @@ import {
 import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
 import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
+import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
+import type { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
+import type { ApiDispatchTimingActionType } from "./api-dispatch-timing.service";
 
 const log = logger("connector-catalog:reader");
 
@@ -60,6 +62,7 @@ interface PrivateAuthMethodFacts {
 
 export interface AcceptedConnectorCatalogSnapshot {
   readonly identity: ExternalCatalogIdentity;
+  readonly catalogRawSize: number;
   readonly artifact: ConnectorCatalogArtifact;
   readonly connectorByRef: ReadonlyMap<
     string,
@@ -191,6 +194,24 @@ function privateMethodFacts(
   return facts;
 }
 
+async function measureCatalogLoad<T>(
+  timing: ConnectorCatalogLoadTiming | undefined,
+  actionType: ApiDispatchTimingActionType,
+  operation: () => T | Promise<T>,
+): Promise<T> {
+  return timing
+    ? await timing.measure(actionType, operation)
+    : await operation();
+}
+
+function measureCatalogLoadSync<T>(
+  timing: ConnectorCatalogLoadTiming | undefined,
+  actionType: ApiDispatchTimingActionType,
+  operation: () => T,
+): T {
+  return timing ? timing.measureSync(actionType, operation) : operation();
+}
+
 function externalCatalogJoin() {
   return and(
     eq(
@@ -216,29 +237,39 @@ async function readCurrentIdentity(args: {
   readonly db: ReadonlyDb;
   readonly sourceId: string;
   readonly capabilityDigest: string;
+  readonly timing?: ConnectorCatalogLoadTiming;
 }): Promise<ExternalCatalogIdentity | undefined> {
-  const [row] = await args.db
-    .select({
-      schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
-      catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-      catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
-    })
-    .from(connectorCatalogActiveSnapshot)
-    .innerJoin(connectorCatalogCompatibilityEvaluation, externalCatalogJoin())
-    .where(
-      and(
-        eq(connectorCatalogActiveSnapshot.sourceId, args.sourceId),
-        eq(
-          connectorCatalogActiveSnapshot.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        eq(
-          connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-          args.capabilityDigest,
-        ),
-      ),
-    )
-    .limit(1);
+  const [row] = await measureCatalogLoad(
+    args.timing,
+    "api_dispatch_connector_catalog_query_identity",
+    async () => {
+      return await args.db
+        .select({
+          schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
+          catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
+          catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
+        })
+        .from(connectorCatalogActiveSnapshot)
+        .innerJoin(
+          connectorCatalogCompatibilityEvaluation,
+          externalCatalogJoin(),
+        )
+        .where(
+          and(
+            eq(connectorCatalogActiveSnapshot.sourceId, args.sourceId),
+            eq(
+              connectorCatalogActiveSnapshot.schemaVersion,
+              SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+            ),
+            eq(
+              connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+              args.capabilityDigest,
+            ),
+          ),
+        )
+        .limit(1);
+    },
+  );
   return row
     ? {
         sourceId: args.sourceId,
@@ -253,38 +284,48 @@ async function readCurrentIdentity(args: {
 async function readCurrentCatalog(args: {
   readonly db: ReadonlyDb;
   readonly identity: ExternalCatalogIdentity;
+  readonly timing?: ConnectorCatalogLoadTiming;
 }): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
-  const [row] = await args.db
-    .select({
-      catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
-      catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
-      filteredAuthMethods:
-        connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
-    })
-    .from(connectorCatalogActiveSnapshot)
-    .innerJoin(connectorCatalogCompatibilityEvaluation, externalCatalogJoin())
-    .where(
-      and(
-        eq(connectorCatalogActiveSnapshot.sourceId, args.identity.sourceId),
-        eq(
-          connectorCatalogActiveSnapshot.schemaVersion,
-          args.identity.schemaVersion,
-        ),
-        eq(
-          connectorCatalogActiveSnapshot.catalogVersion,
-          args.identity.catalogVersion,
-        ),
-        eq(
-          connectorCatalogActiveSnapshot.catalogDigest,
-          args.identity.catalogDigest,
-        ),
-        eq(
-          connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-          args.identity.capabilityDigest,
-        ),
-      ),
-    )
-    .limit(1);
+  const [row] = await measureCatalogLoad(
+    args.timing,
+    "api_dispatch_connector_catalog_query_payload",
+    async () => {
+      return await args.db
+        .select({
+          catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
+          catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
+          filteredAuthMethods:
+            connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
+        })
+        .from(connectorCatalogActiveSnapshot)
+        .innerJoin(
+          connectorCatalogCompatibilityEvaluation,
+          externalCatalogJoin(),
+        )
+        .where(
+          and(
+            eq(connectorCatalogActiveSnapshot.sourceId, args.identity.sourceId),
+            eq(
+              connectorCatalogActiveSnapshot.schemaVersion,
+              args.identity.schemaVersion,
+            ),
+            eq(
+              connectorCatalogActiveSnapshot.catalogVersion,
+              args.identity.catalogVersion,
+            ),
+            eq(
+              connectorCatalogActiveSnapshot.catalogDigest,
+              args.identity.catalogDigest,
+            ),
+            eq(
+              connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+              args.identity.capabilityDigest,
+            ),
+          ),
+        )
+        .limit(1);
+    },
+  );
   if (!row) {
     return undefined;
   }
@@ -294,40 +335,58 @@ async function readCurrentCatalog(args: {
     catalogRawSize: row.catalogRawSize,
     catalogVersion: args.identity.catalogVersion,
     catalogDigest: args.identity.catalogDigest,
+    ...(args.timing === undefined ? {} : { timing: args.timing }),
   });
-  const filteredAuthMethods =
-    connectorCatalogFilteredAuthMethodsSchema.safeParse(
-      row.filteredAuthMethods,
-    );
-  if (!filteredAuthMethods.success) {
-    log.error("Rejected persisted connector catalog compatibility evaluation", {
-      ...identityLogFields(args.identity),
-      failureCode: "invalid-compatibility-evaluation",
-    });
-    throw new ExternalConnectorCatalogUnavailableError();
-  }
+  const filteredAuthMethods = measureCatalogLoadSync(
+    args.timing,
+    "api_dispatch_connector_catalog_validate_compatibility",
+    () => {
+      const parsed = connectorCatalogFilteredAuthMethodsSchema.safeParse(
+        row.filteredAuthMethods,
+      );
+      if (!parsed.success) {
+        log.error(
+          "Rejected persisted connector catalog compatibility evaluation",
+          {
+            ...identityLogFields(args.identity),
+            failureCode: "invalid-compatibility-evaluation",
+          },
+        );
+        throw new ExternalConnectorCatalogUnavailableError();
+      }
+      return parsed.data;
+    },
+  );
   const artifact = decoded.artifact;
 
-  return {
-    identity: args.identity,
-    artifact,
-    connectorByRef: new Map(
-      artifact.connectors.map((connector) => {
-        return [connector.connectorRef, connector];
-      }),
-    ),
-    privateMethodFacts: privateMethodFacts(artifact),
-    filteredMethodKeys: new Set(
-      filteredAuthMethods.data.map((filtered) => {
-        return authMethodKey(filtered.connectorRef, filtered.authMethodId);
-      }),
-    ),
-  };
+  return measureCatalogLoadSync(
+    args.timing,
+    "api_dispatch_connector_catalog_materialize_accepted_snapshot",
+    () => {
+      return {
+        identity: args.identity,
+        catalogRawSize: row.catalogRawSize,
+        artifact,
+        connectorByRef: new Map(
+          artifact.connectors.map((connector) => {
+            return [connector.connectorRef, connector];
+          }),
+        ),
+        privateMethodFacts: privateMethodFacts(artifact),
+        filteredMethodKeys: new Set(
+          filteredAuthMethods.map((filtered) => {
+            return authMethodKey(filtered.connectorRef, filtered.authMethodId);
+          }),
+        ),
+      };
+    },
+  );
 }
 
 async function loadCurrentCatalog(args: {
   readonly db: ReadonlyDb;
   readonly identity: ExternalCatalogIdentity;
+  readonly timing?: ConnectorCatalogLoadTiming;
 }): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
   const result = await settle(readCurrentCatalog(args));
   if (result.ok) {
@@ -357,6 +416,7 @@ function deleteInFlightCatalog(
 
 async function loadAcceptedConnectorCatalogSnapshotAttempt(
   db: ReadonlyDb,
+  timing: ConnectorCatalogLoadTiming | undefined,
 ): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
   const sourceId = connectorCatalogSource().sourceId;
   const capabilityDigest = connectorCatalogExecutableCapabilityDigest();
@@ -364,6 +424,7 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
     db,
     sourceId,
     capabilityDigest,
+    ...(timing === undefined ? {} : { timing }),
   });
   if (!currentIdentity) {
     throw new ExternalConnectorCatalogUnavailableError();
@@ -371,15 +432,22 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
   const currentKey = identityKey(currentIdentity);
   const cache = preparedCatalogCache();
   if (cache.completed?.key === currentKey) {
+    timing?.recordAcceptedCacheOutcome("hit");
     return cache.completed.catalog;
   }
 
   const existing = cache.inFlight.get(currentKey);
   if (existing) {
+    timing?.recordAcceptedCacheOutcome("in_flight");
     return await existing;
   }
 
-  const promise = loadCurrentCatalog({ db, identity: currentIdentity });
+  timing?.recordAcceptedCacheOutcome("miss");
+  const promise = loadCurrentCatalog({
+    db,
+    identity: currentIdentity,
+    ...(timing === undefined ? {} : { timing }),
+  });
   cache.inFlight.set(currentKey, promise);
   const catalog = await onRejection(promise, () => {
     deleteInFlightCatalog(cache, currentKey, promise);
@@ -394,8 +462,9 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
 
 export async function loadAcceptedConnectorCatalogSnapshot(
   db: ReadonlyDb,
+  timing?: ConnectorCatalogLoadTiming,
 ): Promise<AcceptedConnectorCatalogSnapshot> {
-  const first = await loadAcceptedConnectorCatalogSnapshotAttempt(db);
+  const first = await loadAcceptedConnectorCatalogSnapshotAttempt(db, timing);
   if (first) {
     return first;
   }
@@ -403,7 +472,7 @@ export async function loadAcceptedConnectorCatalogSnapshot(
   // The active row is intentionally the only durable catalog snapshot. If an
   // activation commits between the identity and payload queries, the old
   // identity no longer has a row; retry once against the newly active identity.
-  const second = await loadAcceptedConnectorCatalogSnapshotAttempt(db);
+  const second = await loadAcceptedConnectorCatalogSnapshotAttempt(db, timing);
   if (!second) {
     throw new ExternalConnectorCatalogUnavailableError();
   }

@@ -2,7 +2,7 @@ import { WORKFLOW_TEMPLATE_ITEMS, type WorkflowTemplateItem } from "@vm0/core";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
 import { ONBOARDING_WORKFLOW_DETAILS } from "./onboarding-workflow-details.ts";
 
-export interface OnboardingMakeOption {
+interface OnboardingMakeOption {
   readonly id: OnboardingChoice;
   readonly title: string;
   readonly description: string;

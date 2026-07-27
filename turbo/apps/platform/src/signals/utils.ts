@@ -20,14 +20,6 @@ class PromiseTracker {
 }
 
 const tracker = new PromiseTracker();
-
-export function markDetachedErrorHandled(error: unknown): unknown {
-  if ((typeof error === "object" || typeof error === "function") && error) {
-    tracker.handledErrors.add(error);
-  }
-  return error;
-}
-
 function isHandledDetachedError(error: unknown): boolean {
   return (
     (typeof error === "object" || typeof error === "function") &&
@@ -293,14 +285,6 @@ export async function withCleanup<T>(
     cleanup();
   }
 }
-
-export function toVoid<T>(p: Promise<T>): Promise<void> {
-  // This helper intentionally discards fulfillment values while preserving rejection semantics.
-  // confirmed by ethan@vm0.ai
-  // oxlint-disable-next-line promise/prefer-await-to-then
-  return p.then(() => {});
-}
-
 // ---------------------------------------------------------------------------
 // Bounded async load retry
 // ---------------------------------------------------------------------------
@@ -428,28 +412,6 @@ export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
     set(controller$, controller);
 
     return AbortSignal.any([controller.signal, ...signals]);
-  });
-}
-
-interface ResetSignalScope {
-  readonly signal: AbortSignal;
-  readonly abort: (reason?: unknown) => void;
-}
-
-export function resetSignalScope(): Command<ResetSignalScope, AbortSignal[]> {
-  const controller$ = state<AbortController | undefined>(undefined);
-
-  return command(({ get, set }, ...signals: AbortSignal[]) => {
-    get(controller$)?.abort();
-    const controller = new AbortController();
-    set(controller$, controller);
-
-    return {
-      signal: AbortSignal.any([controller.signal, ...signals]),
-      abort: (reason?: unknown) => {
-        controller.abort(reason);
-      },
-    };
   });
 }
 

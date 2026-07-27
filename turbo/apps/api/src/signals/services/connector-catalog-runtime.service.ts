@@ -29,11 +29,11 @@ import {
 import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodRuntimeMetadata,
-  type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-auth-method";
 
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
+import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import type {
   ConnectorCatalogAuthMethod,
   ConnectorCatalogSkill,
@@ -46,6 +46,8 @@ import {
   type AcceptedConnectorCatalogSnapshot,
   type ExternalCatalogIdentity,
 } from "./connector-catalog-external-reader.service";
+import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
+import { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import {
   createAcceptedConnectorServerFirewallCatalog,
   type ConnectorServerFirewallCatalog,
@@ -443,9 +445,9 @@ function runtimeMethodEntry(args: {
   };
 }
 
-function runtimeSnapshot(
+function runtimeConnectors(
   acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
-): ConnectorRuntimeSnapshot {
+): ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector> {
   const connectors = new Map<ConnectorRef, ConnectorRuntimeConnector>();
 
   for (const connector of acceptedSnapshot.artifact.connectors) {
@@ -499,6 +501,40 @@ function runtimeSnapshot(
       skill: connector.skill,
     });
   }
+  return connectors;
+}
+
+function runtimeSnapshot(
+  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
+  timing: ConnectorCatalogLoadTiming | undefined,
+): ConnectorRuntimeSnapshot {
+  const connectors = timing
+    ? timing.measureSync(
+        "api_dispatch_connector_catalog_materialize_runtime_snapshot",
+        () => {
+          return runtimeConnectors(acceptedSnapshot);
+        },
+      )
+    : runtimeConnectors(acceptedSnapshot);
+  const serverFirewalls = timing
+    ? timing.measureSync(
+        "api_dispatch_connector_catalog_materialize_server_firewalls",
+        () => {
+          return runtimeServerFirewalls(acceptedSnapshot, connectors);
+        },
+      )
+    : runtimeServerFirewalls(acceptedSnapshot, connectors);
+  return {
+    acceptedSnapshot,
+    connectors,
+    serverFirewalls,
+  };
+}
+
+function runtimeServerFirewalls(
+  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
+  connectors: ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector>,
+): ConnectorServerFirewallCatalog {
   const runtimeMethodsByRef = new Map(
     [...connectors.entries()].map(([connectorRef, connector]) => {
       return [
@@ -509,15 +545,10 @@ function runtimeSnapshot(
       ];
     }),
   );
-  const serverFirewalls = createAcceptedConnectorServerFirewallCatalog({
+  return createAcceptedConnectorServerFirewallCatalog({
     artifact: acceptedSnapshot.artifact,
     runtimeMethodsByRef,
   });
-  return {
-    acceptedSnapshot,
-    connectors,
-    serverFirewalls,
-  };
 }
 
 function runtimeSnapshotKey(identity: ExternalCatalogIdentity): string {
@@ -539,19 +570,48 @@ const runtimeSnapshotCache = singleton((): RuntimeSnapshotCache => {
   return { key: undefined, snapshot: undefined };
 });
 
-export async function loadConnectorRuntimeSnapshot(
+async function loadConnectorRuntimeSnapshotWithTiming(
   db: ReadonlyDb,
+  timing: ConnectorCatalogLoadTiming | undefined,
 ): Promise<ConnectorRuntimeSnapshot> {
-  const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(db);
+  const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(
+    db,
+    timing,
+  );
+  timing?.recordCatalogFacts({
+    rawSize: acceptedSnapshot.catalogRawSize,
+    connectorCount: acceptedSnapshot.artifact.connectors.length,
+  });
   const key = runtimeSnapshotKey(acceptedSnapshot.identity);
   const cache = runtimeSnapshotCache();
   if (cache.key === key && cache.snapshot !== undefined) {
+    timing?.recordRuntimeCacheOutcome("hit");
     return cache.snapshot;
   }
-  const snapshot = runtimeSnapshot(acceptedSnapshot);
+  timing?.recordRuntimeCacheOutcome("miss");
+  const snapshot = runtimeSnapshot(acceptedSnapshot, timing);
   cache.key = key;
   cache.snapshot = snapshot;
   return snapshot;
+}
+
+export async function loadConnectorRuntimeSnapshot(
+  db: ReadonlyDb,
+  options?: {
+    readonly timing: ApiDispatchTimingCollector;
+    readonly requestedConnectorCount: number | undefined;
+  },
+): Promise<ConnectorRuntimeSnapshot> {
+  if (options === undefined) {
+    return await loadConnectorRuntimeSnapshotWithTiming(db, undefined);
+  }
+  const timing = new ConnectorCatalogLoadTiming(
+    options.timing,
+    options.requestedConnectorCount,
+  );
+  return await timing.measureComplete(async () => {
+    return await loadConnectorRuntimeSnapshotWithTiming(db, timing);
+  });
 }
 
 export function getConnectorRuntimeConnector(

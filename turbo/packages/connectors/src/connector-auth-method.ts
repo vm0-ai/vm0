@@ -26,17 +26,11 @@ import type {
   StaticConfidentialConnectorAuthClientConfig,
   StaticPublicConnectorAuthClientConfig,
 } from "./connector-config";
-import type { FeatureSwitchKey } from "./feature-switch-key";
 
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VARIABLE_REF_PREFIX = "$vars.";
 const DEFAULT_AUTH_CODE_CALLBACK_ORIGIN: ConnectorAuthCodeCallbackOrigin =
   "web";
-
-export type ConnectorFeatureStates =
-  | Partial<Record<FeatureSwitchKey, boolean>>
-  | null
-  | undefined;
 
 export interface ConnectorManualGrantFieldNames {
   readonly secrets: readonly string[];

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
@@ -9,9 +8,10 @@ import {
   revokeSlackToken,
 } from "../slack/oauth";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("slack", "oauth");
+  return authCodeGrantFixture(["users:read", "chat:write"]);
 }
 
 describe("connector/providers/slack", () => {

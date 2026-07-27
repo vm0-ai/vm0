@@ -10,7 +10,6 @@ from mitmproxy import http
 
 import flow_metadata
 import usage
-from usage.json_probe import probe_top_level_string_field
 from usage.reporting_context import usage_reporting_context
 
 FIRST_GENERATED_RESPONSE_CREATED = "codex_proxy_first_generated_response_created"
@@ -38,14 +37,11 @@ class _RunTimingState:
 _run_states: OrderedDict[str, _RunTimingState] = OrderedDict()
 
 
-def observe_server_event(flow: http.HTTPFlow, content: bytes | str) -> None:
+def observe_server_event(flow: http.HTTPFlow, event_type: str | None) -> None:
     """Observe one server-originated Codex Responses WebSocket event."""
-    body = content.encode() if isinstance(content, str) else content
-    event_type_result = probe_top_level_string_field(body)
-    if event_type_result.status != "found" or event_type_result.value is None:
+    if event_type is None:
         return
 
-    event_type = event_type_result.value
     run_id = flow_metadata.run_id(flow.metadata)
     if not run_id:
         return

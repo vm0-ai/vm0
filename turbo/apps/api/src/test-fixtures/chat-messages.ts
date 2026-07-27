@@ -1,5 +1,7 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { and, count, eq, like, or, sql } from "drizzle-orm";
@@ -8,8 +10,8 @@ import { z } from "zod";
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { nowDate } from "../lib/time";
-import { insertChatMessage } from "../signals/services/zero-chat-message.service";
-import { createDeferredPromise } from "../signals/utils";
+import { insertChatEvent } from "../signals/services/zero-chat-event.service";
+import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
  * BDD-scoped vm0 managed key prefixes. Fixture writes below only ever touch
@@ -285,6 +287,288 @@ export async function holdOrgAdmissionLockFixture(args: {
 }
 
 /**
+ * Stages the canonical conversation clear inside an open transaction so a
+ * concurrent run still resolves the pre-clear snapshot, then blocks on this
+ * transaction when its launch commit re-reads the session row `FOR UPDATE`.
+ *
+ * Waiting on this transaction is a precise barrier for "the run captured its
+ * snapshot and reached commit". Counting waiters on the org admission key is
+ * not: the background queue drain takes that same key, so it can satisfy the
+ * barrier before the run has resolved its session at all.
+ */
+export async function holdThreadSessionConversationClearFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const [thread] = await tx
+      .select({ agentSessionId: chatThreads.agentSessionId })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .limit(1);
+    if (!thread?.agentSessionId) {
+      throw new Error("Expected a bound chat thread session");
+    }
+    const [session] = await tx
+      .update(agentSessions)
+      .set({ conversationId: null })
+      .where(eq(agentSessions.id, thread.agentSessionId))
+      .returning({ id: agentSessions.id });
+    if (!session) {
+      throw new Error("Expected a bound agent session");
+    }
+    const rows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the conversation clear holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'transactionid'
+            AND NOT waiting.granted
+            AND waiting.transactionid IN (
+              SELECT held.transactionid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'transactionid'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
+ * Replaces one canonical binding with an otherwise valid session/run pair.
+ * Product APIs cannot bind a thread to another owner's session, so this is the
+ * narrow state boundary for ownership-corruption coverage.
+ */
+export async function replaceThreadSessionBindingFixture(args: {
+  readonly threadId: string;
+  readonly sessionId: string;
+  readonly runId: string;
+}): Promise<void> {
+  const updated = await db()
+    .update(chatThreads)
+    .set({
+      agentSessionId: args.sessionId,
+      agentSessionRunId: args.runId,
+    })
+    .where(eq(chatThreads.id, args.threadId))
+    .returning({ id: chatThreads.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one chat thread session binding to be replaced");
+  }
+}
+
+/**
+ * Stages a canonical binding clear after the queue-first message row is
+ * visible. Starting this transaction earlier would block that row's parent FK
+ * check; once the row exists, the uncommitted clear remains invisible to
+ * resolution and blocks only final snapshot validation on the thread row.
+ */
+export async function holdThreadSessionBindingClearFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({ agentSessionId: null, agentSessionRunId: null })
+      .where(eq(chatThreads.id, args.threadId))
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Expected a bound chat thread session");
+    }
+    const rows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the binding clear holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
+ * Deletes one completed run to reproduce retention cleanup of binding
+ * provenance. No product endpoint exposes historical run deletion.
+ */
+export async function deleteAgentRunFixture(args: {
+  readonly runId: string;
+}): Promise<void> {
+  const deleted = await db()
+    .delete(agentRuns)
+    .where(eq(agentRuns.id, args.runId))
+    .returning({ id: agentRuns.id });
+  if (deleted.length !== 1) {
+    throw new Error("Expected one agent run to be deleted");
+  }
+}
+
+/**
+ * Alternates the bound session's conversation snapshot while consecutive run
+ * preparations reach final admission. This is the timing boundary for proving
+ * the retry limit without mocking the resolver or admission service.
+ */
+export async function holdThreadSessionConversationChangesFixture(args: {
+  readonly threadId: string;
+  readonly changeCount: number;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly releaseAll: () => void;
+  readonly done: Promise<void>;
+  readonly stagedChangeCount: () => number;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  if (args.changeCount < 1) {
+    throw new Error("Expected at least one conversation snapshot change");
+  }
+  const [boundSession] = await db()
+    .select({
+      id: agentSessions.id,
+      conversationId: agentSessions.conversationId,
+    })
+    .from(chatThreads)
+    .innerJoin(agentSessions, eq(agentSessions.id, chatThreads.agentSessionId))
+    .where(eq(chatThreads.id, args.threadId))
+    .limit(1);
+  if (!boundSession?.conversationId) {
+    throw new Error("Expected a bound chat thread conversation");
+  }
+
+  const firstStaged = createDeferredPromise<void>(args.signal);
+  const releases = Array.from({ length: args.changeCount }, () => {
+    return createDeferredPromise<void>(args.signal);
+  });
+  let currentHolderPid: number | null = null;
+  let stagedChanges = 0;
+  const done = onRejection(
+    (async () => {
+      for (let index = 0; index < args.changeCount; index += 1) {
+        const release = releases[index];
+        if (!release) {
+          throw new Error("Missing conversation snapshot release gate");
+        }
+        await db().transaction(async (tx) => {
+          const [session] = await tx
+            .update(agentSessions)
+            .set({
+              conversationId:
+                index % 2 === 0 ? null : boundSession.conversationId,
+            })
+            .where(eq(agentSessions.id, boundSession.id))
+            .returning({ id: agentSessions.id });
+          if (!session) {
+            throw new Error("Expected the bound agent session");
+          }
+          const rows = await executeRawRows(
+            tx,
+            sql`SELECT pg_backend_pid() AS "pid"`,
+            databasePidRowSchema,
+          );
+          const holderPid = rows[0]?.pid;
+          if (!holderPid) {
+            throw new Error("Expected the conversation change holder pid");
+          }
+          currentHolderPid = holderPid;
+          stagedChanges = index + 1;
+          if (!firstStaged.settled()) {
+            firstStaged.resolve(undefined);
+          }
+          await release.promise;
+        });
+        currentHolderPid = null;
+      }
+    })(),
+    (error) => {
+      if (!firstStaged.settled()) {
+        firstStaged.reject(error);
+      }
+    },
+  );
+  await firstStaged.promise;
+
+  return {
+    release: () => {
+      const release = releases[stagedChanges - 1];
+      if (release && !release.settled()) {
+        release.resolve(undefined);
+      }
+    },
+    releaseAll: () => {
+      for (const release of releases) {
+        if (!release.settled()) {
+          release.resolve(undefined);
+        }
+      }
+    },
+    done,
+    stagedChangeCount: () => {
+      return stagedChanges;
+    },
+    blockedWaiterCount: async () => {
+      return currentHolderPid === null
+        ? 0
+        : await directBlockedWaiterCount(currentHolderPid);
+    },
+  };
+}
+
+/**
  * Holds one queued user-message row so a claim and recall can reach the same
  * product lock in a test-owned order. This timing-only boundary neither creates
  * nor changes product rows and cannot block unrelated queue items.
@@ -441,9 +725,9 @@ export async function holdChatMessageInsertTransactionFixture(args: {
     if (!holderPid) {
       throw new Error("Expected the chat-message insert holder pid");
     }
-    const message = await insertChatMessage(tx, {
+    const message = await insertChatEvent(tx, {
       chatThreadId: args.threadId,
-      role: "assistant",
+      eventType: "output.message",
       content: args.content,
       runId: null,
     });
@@ -475,9 +759,9 @@ export async function insertChatMessageTransactionFixture(args: {
   readonly content: string;
 }): Promise<{ readonly id: string; readonly seqId: number }> {
   const message = await db().transaction(async (tx) => {
-    return await insertChatMessage(tx, {
+    return await insertChatEvent(tx, {
       chatThreadId: args.threadId,
-      role: "assistant",
+      eventType: "output.message",
       content: args.content,
       runId: null,
     });

@@ -12,6 +12,10 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -29,6 +33,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
@@ -37,7 +42,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -119,11 +123,14 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
@@ -143,7 +150,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
@@ -152,12 +159,15 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+      true,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);

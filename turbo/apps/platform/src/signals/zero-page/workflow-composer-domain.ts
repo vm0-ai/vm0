@@ -1,13 +1,19 @@
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-export function matchesWorkflowNameQuery(
+
+function matchesWorkflowNameQuery(
   workflowName: string,
   query: string,
+  substringSearchEnabled: boolean,
 ): boolean {
   if (!query) {
     return true;
   }
 
-  return workflowName.toLowerCase().startsWith(query.toLowerCase());
+  const normalizedName = workflowName.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+  return substringSearchEnabled
+    ? normalizedName.includes(normalizedQuery)
+    : normalizedName.startsWith(normalizedQuery);
 }
 
 export interface SlashWorkflowRange {
@@ -46,8 +52,9 @@ export function findActiveSlashWorkflowRange(
 export function matchesWorkflowQuery(
   workflow: ComposerSlashWorkflow,
   query: string,
+  substringSearchEnabled: boolean,
 ): boolean {
-  return matchesWorkflowNameQuery(workflow.name, query);
+  return matchesWorkflowNameQuery(workflow.name, query, substringSearchEnabled);
 }
 
 export function workflowTokenPattern(

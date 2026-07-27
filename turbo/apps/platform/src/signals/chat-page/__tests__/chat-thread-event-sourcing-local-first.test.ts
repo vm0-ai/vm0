@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
@@ -31,86 +31,13 @@ import {
   threadMeta,
   touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
-import { loadIndexedDbChatMessages$ } from "../chat-message-indexed-db.ts";
+import { loadIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { createRemoteChatThreadDataSource } from "../remote-chat-thread-data-source.ts";
+import { openChatIdb } from "../../external/chat-idb-store.ts";
+import { createIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
 
-const idbThreadEventStoreMock = vi.hoisted(() => {
-  let snapshot: {
-    readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-    readonly latestEventId: string | null;
-  } | null = null;
-  let events: readonly ChatThreadEvent[] = [];
-
-  const readSnapshot = vi.fn(() => {
-    return Promise.resolve(snapshot);
-  });
-  const readEvents = vi.fn(() => {
-    return Promise.resolve(events);
-  });
-  const replaceFromSnapshot = vi.fn(
-    (nextSnapshot: {
-      readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-      readonly latestEventId: string | null;
-    }) => {
-      snapshot = nextSnapshot;
-      events = [];
-      return Promise.resolve();
-    },
-  );
-  const upsertEvents = vi.fn((nextEvents: readonly ChatThreadEvent[]) => {
-    const byId = new Map(
-      events.map((event) => {
-        return [event.id, event] as const;
-      }),
-    );
-    for (const event of nextEvents) {
-      byId.set(event.id, event);
-    }
-    events = [...byId.values()];
-    return Promise.resolve();
-  });
-
-  return {
-    readSnapshot,
-    readEvents,
-    replaceFromSnapshot,
-    upsertEvents,
-    setData(args: {
-      readonly snapshot: {
-        readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-        readonly latestEventId: string | null;
-      } | null;
-      readonly events?: readonly ChatThreadEvent[];
-    }) {
-      snapshot = args.snapshot;
-      events = args.events ?? [];
-    },
-    reset() {
-      snapshot = null;
-      events = [];
-      readSnapshot.mockClear();
-      readEvents.mockClear();
-      replaceFromSnapshot.mockClear();
-      upsertEvents.mockClear();
-    },
-  };
-});
-
-vi.mock("../../external/idb-chat-thread-event-store.ts", () => {
-  return {
-    createIdbChatThreadEventStores: () => {
-      return {
-        readStore: {
-          readSnapshot: idbThreadEventStoreMock.readSnapshot,
-          readEvents: idbThreadEventStoreMock.readEvents,
-        },
-        writeStore: {
-          replaceFromSnapshot: idbThreadEventStoreMock.replaceFromSnapshot,
-          upsertEvents: idbThreadEventStoreMock.upsertEvents,
-        },
-      };
-    },
-  };
+vi.mock("idb", async () => {
+  return await vi.importActual<typeof import("idb")>("idb-real");
 });
 
 const context = testContext();
@@ -123,6 +50,32 @@ const EVENT_ID = "d0000000-0000-4000-a000-000000000001";
 const OPTIMISTIC_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 const OPTIMISTIC_MODEL_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
 
+const threadEventDb = openChatIdb("user_1", "org_1");
+const threadEventStores = createIdbChatThreadEventStores(() => {
+  return threadEventDb;
+});
+
+async function clearThreadEventCache(): Promise<void> {
+  const { clear } = threadEventStores.writeStore;
+  await clear();
+}
+
+async function seedThreadEventCache(args: {
+  readonly snapshot: {
+    readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+    readonly latestEventId: string | null;
+  } | null;
+  readonly events?: readonly ChatThreadEvent[];
+}): Promise<void> {
+  await clearThreadEventCache();
+  if (args.snapshot) {
+    await threadEventStores.writeStore.replaceFromSnapshot(
+      args.snapshot,
+      args.events ?? [],
+    );
+  }
+}
+
 function expectCallback(callback: (() => void) | null): () => void {
   expect(callback).not.toBeNull();
   if (!callback) {
@@ -132,9 +85,13 @@ function expectCallback(callback: (() => void) | null): () => void {
 }
 
 describe("chat thread event sourcing local-first list", () => {
-  afterEach(() => {
+  afterEach(async () => {
     context.store.set(setChatThreadOnlyUnread$, false);
-    idbThreadEventStoreMock.reset();
+    await clearThreadEventCache();
+  });
+
+  afterAll(async () => {
+    (await threadEventDb).close();
   });
 
   it("does not start remote event sync on signed-out pages", async () => {
@@ -166,7 +123,7 @@ describe("chat thread event sourcing local-first list", () => {
   it("renders cached thread list data while event sync is blocked", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: [
@@ -251,6 +208,7 @@ describe("chat thread event sourcing local-first list", () => {
         selectedModel: null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
       },
     ]);
     expect(eventsRequests).toBe(1);
@@ -261,7 +219,7 @@ describe("chat thread event sourcing local-first list", () => {
   it("keeps event-sourced thread state stable when incremental sync is empty", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: [
@@ -321,31 +279,28 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     const before = await context.store.get(chatThreads$);
-    const snapshotReads =
-      idbThreadEventStoreMock.readSnapshot.mock.calls.length;
-    const eventReads = idbThreadEventStoreMock.readEvents.mock.calls.length;
-    idbThreadEventStoreMock.replaceFromSnapshot.mockClear();
-    idbThreadEventStoreMock.upsertEvents.mockClear();
+    const persistedBefore = {
+      snapshot: await threadEventStores.readStore.readSnapshot(),
+      eventLog: await threadEventStores.readStore.readEventLog(),
+    };
 
     await context.store.set(syncEventDrivenChatThreads$, context.signal);
 
     const after = await context.store.get(chatThreads$);
     expect(after).toBe(before);
-    expect(idbThreadEventStoreMock.readSnapshot).toHaveBeenCalledTimes(
-      snapshotReads,
-    );
-    expect(idbThreadEventStoreMock.readEvents).toHaveBeenCalledTimes(
-      eventReads,
-    );
-    expect(idbThreadEventStoreMock.replaceFromSnapshot).not.toHaveBeenCalled();
-    expect(idbThreadEventStoreMock.upsertEvents).not.toHaveBeenCalled();
+    await expect(
+      threadEventStores.readStore.readSnapshot(),
+    ).resolves.toStrictEqual(persistedBefore.snapshot);
+    await expect(
+      threadEventStores.readStore.readEventLog(),
+    ).resolves.toStrictEqual(persistedBefore.eventLog);
   });
 
   it("filters event-sourced visible threads through unread thread ids", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
     context.store.set(setChatThreadOnlyUnread$, true);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: [
@@ -413,13 +368,14 @@ describe("chat thread event sourcing local-first list", () => {
       },
     });
 
-    const threads = await context.store.get(chatThreads$);
-
-    expect(
-      threads.map((thread) => {
-        return thread.id;
-      }),
-    ).toStrictEqual([THREAD_ID]);
+    await vi.waitFor(async () => {
+      const threads = await context.store.get(chatThreads$);
+      expect(
+        threads.map((thread) => {
+          return thread.id;
+        }),
+      ).toStrictEqual([THREAD_ID]);
+    });
     expect(unreadsRequests).toBe(1);
   });
 
@@ -443,7 +399,7 @@ describe("chat thread event sourcing local-first list", () => {
       } satisfies ChatThreadSnapshotProjection;
     });
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: snapshotThreads,
@@ -469,9 +425,11 @@ describe("chat thread event sourcing local-first list", () => {
       },
     });
 
-    const visibleThreads = await context.store.get(chatThreads$);
-
-    expect(visibleThreads).toHaveLength(snapshotThreads.length);
+    await vi.waitFor(async () => {
+      await expect(context.store.get(chatThreads$)).resolves.toHaveLength(
+        snapshotThreads.length,
+      );
+    });
     await expect(
       context.store.get(currentChatThreadListIds$),
     ).resolves.toStrictEqual(
@@ -484,7 +442,7 @@ describe("chat thread event sourcing local-first list", () => {
   it("applies optimistic selected model updates over cached thread projections", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: [
@@ -522,6 +480,11 @@ describe("chat thread event sourcing local-first list", () => {
         memberships: [{ id: "org_1" }],
       },
     });
+    await vi.waitFor(() => {
+      expect(
+        context.store.get(eventDrivenChatThread(THREAD_ID)),
+      ).not.toBeNull();
+    });
 
     context.store.set(registerOptimisticChatThreadEvent$, {
       id: OPTIMISTIC_EVENT_ID,
@@ -547,7 +510,7 @@ describe("chat thread event sourcing local-first list", () => {
   it("moves cached threads to the top from optimistic sort touches", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: [
@@ -599,9 +562,11 @@ describe("chat thread event sourcing local-first list", () => {
       },
     });
 
-    await expect(
-      context.store.get(sidebarChatThreadIds$),
-    ).resolves.toStrictEqual([OTHER_THREAD_ID, THREAD_ID]);
+    await vi.waitFor(async () => {
+      await expect(
+        context.store.get(sidebarChatThreadIds$),
+      ).resolves.toStrictEqual([OTHER_THREAD_ID, THREAD_ID]);
+    });
 
     context.store.set(touchOptimisticChatThreadSort$, {
       id: OPTIMISTIC_EVENT_ID,
@@ -621,7 +586,7 @@ describe("chat thread event sourcing local-first list", () => {
   it("uses optimistic create and model update events for event-sourced sidebar ids", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: null,
         chatThreads: [],
@@ -687,6 +652,7 @@ describe("chat thread event sourcing local-first list", () => {
         selectedModel: "claude-sonnet-4-6",
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
       },
     ]);
     expect(context.store.get(threadMeta(OPTIMISTIC_THREAD_ID))).toStrictEqual({
@@ -697,6 +663,7 @@ describe("chat thread event sourcing local-first list", () => {
       selectedModel: "claude-sonnet-4-6",
       serviceTier: null,
       computerUseHostId: null,
+      cloudBrowserEnabled: false,
     });
 
     let threadDraftRequests = 0;
@@ -709,14 +676,11 @@ describe("chat thread event sourcing local-first list", () => {
         draftAttachments: null,
       });
     });
-    context.mocks.api(
-      chatThreadMessagesContract.list,
-      ({ params, respond }) => {
-        initialMessagesRequests += 1;
-        expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
-        return respond(200, { messages: [], hasHistoryBefore: false });
-      },
-    );
+    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+      initialMessagesRequests += 1;
+      expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
+      return respond(200, { events: [], hasHistoryBefore: false });
+    });
 
     const dataSource = createRemoteChatThreadDataSource(OPTIMISTIC_THREAD_ID);
     await expect(
@@ -724,7 +688,7 @@ describe("chat thread event sourcing local-first list", () => {
     ).resolves.toBeNull();
     await expect(
       context.store.set(
-        loadIndexedDbChatMessages$,
+        loadIndexedDbChatEvents$,
         OPTIMISTIC_THREAD_ID,
         context.signal,
       ),
@@ -745,12 +709,12 @@ describe("chat thread event sourcing local-first list", () => {
     });
     await expect(
       context.store.set(
-        dataSource.listMessagesAfter$,
+        dataSource.listEventsAfter$,
         { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
         context.signal,
       ),
     ).resolves.toStrictEqual({
-      messages: [],
+      events: [],
       hasHistoryBefore: false,
     });
     expect(threadDraftRequests).toBe(1);
@@ -760,7 +724,7 @@ describe("chat thread event sourcing local-first list", () => {
   it("settles optimistic create events once the matching persisted event arrives", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: [],
@@ -800,11 +764,9 @@ describe("chat thread event sourcing local-first list", () => {
       },
     });
 
-    await vi.waitFor(() => {
-      expect(idbThreadEventStoreMock.upsertEvents).toHaveBeenCalledWith(
-        [createdEvent],
-        expect.any(AbortSignal),
-      );
+    await vi.waitFor(async () => {
+      const eventLog = await threadEventStores.readStore.readEventLog();
+      expect(eventLog.events).toContainEqual(createdEvent);
     });
     await expect(
       context.store.get(sidebarChatThreadIds$),
@@ -819,7 +781,7 @@ describe("chat thread event sourcing local-first list", () => {
   it("prefills rename dialog title from provided event-driven thread metadata", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
-    idbThreadEventStoreMock.setData({
+    await seedThreadEventCache({
       snapshot: {
         latestEventId: EVENT_ID,
         chatThreads: [

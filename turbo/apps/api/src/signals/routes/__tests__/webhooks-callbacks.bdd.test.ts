@@ -1842,7 +1842,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     expect(oversized.body.error.code).toBe("PAYLOAD_TOO_LARGE");
 
     // The committed writeback is visible through fixture-only state reads.
-    const listed = await storages.listStorages(actor, "artifact");
+    const listed = await storages.listStorages(actor, "user");
     expect(listed).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1854,7 +1854,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     );
     const downloaded = await storages.downloadStorage(actor, {
       name: storageName,
-      type: "artifact",
+      owner: "user",
     });
     expect(downloaded).toMatchObject({
       versionId: prepared.body.versionId,

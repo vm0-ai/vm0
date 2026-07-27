@@ -5,14 +5,11 @@ import json
 
 import pytest
 
-from usage import (
-    extract_openai_responses_usage_from_json,
-    extract_openai_responses_usage_with_error_from_json,
-)
+from usage import extract_openai_responses_usage_with_error_from_json
 
 
-class TestExtractOpenAIResponsesUsageFromJson:
-    """Tests for OpenAI Responses API usage extraction."""
+class TestExtractOpenAIResponsesUsageWithErrorFromJson:
+    """Tests for diagnostic OpenAI Responses JSON usage extraction."""
 
     def test_extracts_model_tokens_and_cache_details(self):
         body = json.dumps(
@@ -30,7 +27,8 @@ class TestExtractOpenAIResponsesUsageFromJson:
                 },
             }
         ).encode()
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result is not None
         assert result == {
             "message_id": "resp_123",
@@ -44,7 +42,8 @@ class TestExtractOpenAIResponsesUsageFromJson:
 
     def test_missing_cached_input_details_does_not_emit_cache_read(self):
         body = b'{"model":"gpt-5.4","usage":{"input_tokens":10,"output_tokens":5}}'
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result is not None
         assert result == {
             "model": "gpt-5.4",
@@ -67,14 +66,17 @@ class TestExtractOpenAIResponsesUsageFromJson:
                 },
             }
         ).encode()
-        assert extract_openai_responses_usage_from_json(body, None) is None
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert result is None
+        assert error is None
 
     def test_invalid_cached_input_does_not_suppress_valid_input(self):
         body = (
             b'{"model":"gpt-5.5","usage":{"input_tokens":10,'
             b'"input_tokens_details":{"cached_tokens":"bad"}}}'
         )
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result is not None
         assert result == {
             "model": "gpt-5.5",
@@ -88,7 +90,8 @@ class TestExtractOpenAIResponsesUsageFromJson:
             b'"usage":{"input_tokens":10,'
             b'"input_tokens_details":{"cache_write_tokens":10}}}'
         )
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result == {
             "message_id": "resp_cache_write",
             "model": "gpt-5.6-sol",
@@ -110,7 +113,8 @@ class TestExtractOpenAIResponsesUsageFromJson:
                 },
             }
         ).encode()
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result == {
             "model": "gpt-5.6-sol",
             "tokens.input": 8,
@@ -122,7 +126,8 @@ class TestExtractOpenAIResponsesUsageFromJson:
             b'{"model":"gpt-5.6-sol","usage":{"input_tokens":10,'
             b'"input_tokens_details":{"cached_tokens":8,"cache_write_tokens":5}}}'
         )
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result == {
             "model": "gpt-5.6-sol",
             "tokens.input": 0,
@@ -137,14 +142,15 @@ class TestExtractOpenAIResponsesUsageFromJson:
         )
         compressed = gzip.compress(original)
         headers = headers(("Content-Encoding", "gzip"))
-        result = extract_openai_responses_usage_from_json(compressed, headers)
+        result, error = extract_openai_responses_usage_with_error_from_json(compressed, headers)
+        assert error is None
         assert result == {
             "model": "gpt-5.3-codex",
             "tokens.input": 35,
             "tokens.cache_read": 7,
         }
 
-    def test_truncated_gzip_stays_silent_but_diagnostic_returns_error(self, headers):
+    def test_truncated_gzip_returns_error(self, headers):
         original = (
             b'{"model":"gpt-5.3-codex","usage":{"input_tokens":42,'
             b'"input_tokens_details":{"cached_tokens":7}}}'
@@ -152,7 +158,6 @@ class TestExtractOpenAIResponsesUsageFromJson:
         truncated = gzip.compress(original)[:10]
         headers = headers(("Content-Encoding", "gzip"))
 
-        assert extract_openai_responses_usage_from_json(truncated, headers) is None
         usage, error = extract_openai_responses_usage_with_error_from_json(truncated, headers)
         assert usage is None
         assert error == "incomplete compressed body"
@@ -162,7 +167,8 @@ class TestExtractOpenAIResponsesUsageFromJson:
             b'{"model":"gpt-5.5","usage":{"input_tokens":5,'
             b'"input_tokens_details":{"cached_tokens":7}}}'
         )
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result == {
             "model": "gpt-5.5",
             "tokens.input": 0,
@@ -191,7 +197,8 @@ class TestExtractOpenAIResponsesUsageFromJson:
                 },
             }
         ).encode()
-        result = extract_openai_responses_usage_from_json(body, None)
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        assert error is None
         assert result == {
             "message_id": "resp_large",
             "model": "gpt-5.5",

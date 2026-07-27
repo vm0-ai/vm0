@@ -47,7 +47,7 @@ export const completeOnboarding$ = command(
   },
 );
 
-export type OnboardingVideoRunResult = "run" | "checkout";
+type OnboardingVideoRunResult = "run" | "checkout";
 
 interface OnboardingVideoCheckoutInput {
   readonly prompt: string;

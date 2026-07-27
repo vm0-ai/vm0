@@ -77,7 +77,8 @@ class AuthorityValidationError(Exception):
     - ``missing_sni``: the HTTPS request had no TLS SNI.
     - ``invalid_sni``: the TLS SNI failed hostname normalization.
     - ``missing_authority``: the HTTPS request had no Host/``:authority``.
-    - ``invalid_authority``: Host/``:authority`` failed parsing or normalization.
+    - ``invalid_authority``: Host/``:authority`` was ambiguous or failed
+      parsing or normalization.
     - ``authority_mismatch``: the Host hostname did not match TLS SNI.
     - ``authority_port_mismatch``: the Host port did not match destination port.
     """
@@ -181,10 +182,11 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
 
     In transparent mode, mitmproxy's request host is the ``SO_ORIGINAL_DST``
     destination. For HTTPS, the TLS SNI is the domain authority used for
-    upstream TLS, while Host/``:authority`` is only a client assertion. Require
-    the HTTP authority to agree with SNI before using the URL for firewall
-    matching or credential injection. For non-HTTPS traffic there is no SNI
-    binding, so use the transparent destination host and do not trust Host.
+    upstream TLS, while Host/``:authority`` values are only client assertions.
+    Require every HTTP authority to agree with SNI before using the URL for
+    firewall matching or credential injection. For non-HTTPS traffic there is
+    no SNI binding, so use the transparent destination host and do not trust
+    Host.
 
     HTTPS validation failures raise ``AuthorityValidationError`` with one of
     the documented ``AuthorityValidationReason`` values.
@@ -202,6 +204,7 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
             url=_build_url(scheme, request_host, port, path),
         )
 
+    raw_host_headers = flow.request.headers.get_all("Host")
     raw_sni = getattr(flow.client_conn, "sni", None)
     sni = raw_sni.strip() if isinstance(raw_sni, str) else None
 
@@ -238,6 +241,13 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
         ) from None
 
     trusted_url = _build_url(scheme, normalized_sni, port, path)
+    if len(raw_host_headers) > 1:
+        raise _authority_validation_error(
+            "invalid_authority",
+            message="Request blocked: HTTPS request has multiple Host fields",
+            fallback_url=trusted_url,
+        )
+
     if not host_header:
         raise _authority_validation_error(
             "missing_authority",
@@ -245,29 +255,38 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
             fallback_url=trusted_url,
         )
 
-    try:
-        header_host, header_port = _parse_host_authority(host_header)
-        normalized_header_host = _normalize_hostname(header_host)
-    except (UnicodeError, ValueError):
-        raise _authority_validation_error(
-            "invalid_authority",
-            message="Request blocked: HTTPS request has invalid Host authority",
-            fallback_url=trusted_url,
-        ) from None
+    authorities = [host_header]
+    if (
+        (flow.request.is_http2 or flow.request.is_http3)
+        and flow.request.authority
+        and raw_host_headers
+    ):
+        authorities.append(raw_host_headers[0])
 
-    if normalized_header_host != normalized_sni:
-        raise _authority_validation_error(
-            "authority_mismatch",
-            message="Request blocked: Host authority does not match TLS SNI",
-            fallback_url=trusted_url,
-        )
+    for authority in authorities:
+        try:
+            header_host, header_port = _parse_host_authority(authority)
+            normalized_header_host = _normalize_hostname(header_host)
+        except (UnicodeError, ValueError):
+            raise _authority_validation_error(
+                "invalid_authority",
+                message="Request blocked: HTTPS request has invalid Host authority",
+                fallback_url=trusted_url,
+            ) from None
 
-    if header_port is not None and header_port != port:
-        raise _authority_validation_error(
-            "authority_port_mismatch",
-            message="Request blocked: Host authority port does not match destination port",
-            fallback_url=trusted_url,
-        )
+        if normalized_header_host != normalized_sni:
+            raise _authority_validation_error(
+                "authority_mismatch",
+                message="Request blocked: Host authority does not match TLS SNI",
+                fallback_url=trusted_url,
+            )
+
+        if header_port is not None and header_port != port:
+            raise _authority_validation_error(
+                "authority_port_mismatch",
+                message="Request blocked: Host authority port does not match destination port",
+                fallback_url=trusted_url,
+            )
 
     return TrustedAuthority(host=normalized_sni, port=port, url=trusted_url)
 

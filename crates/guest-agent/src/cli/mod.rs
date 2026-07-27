@@ -77,6 +77,8 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
     "features.plugins=false",
     "features.apps=false",
 ];
+const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
+    ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
 /// Maximum retained bytes for one ordinary CLI stdout record before parsing.
 ///
@@ -405,8 +407,17 @@ impl<'a> CliRuntimeConfig<'a> {
             self.codex_runtime_config.as_ref(),
             Path::new(&codex_home),
         );
+        if self.codex_runtime_config.is_none() && !self.openai_base_url.is_empty() {
+            let base_url =
+                codex_runtime_config::quote_toml_basic_string(self.openai_base_url.as_ref());
+            overrides.push(format!("openai_base_url={base_url}"));
+        }
         if self.disable_builtin_web_search {
             overrides.push(CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string());
+        }
+        overrides.extend(CODEX_FIXED_STARTUP_CONFIGS.map(str::to_string));
+        if self.codex_fast_mode {
+            overrides.extend(CODEX_FAST_MODE_STARTUP_CONFIGS.map(str::to_string));
         }
         overrides
     }

@@ -20,11 +20,14 @@ import { logger } from "../log.ts";
 import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { pathParams$ } from "../route.ts";
+import { bestEffort } from "../utils.ts";
 
 const L = logger("ChatThreadEventSourcing");
+const EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD = 100;
 
 type Stores = ReturnType<typeof createIdbChatThreadEventStores>;
 type ChatThreadsClient = InitClientReturn<ChatThreadsContract, InitClientArgs>;
+type ChatThreadEventSyncMode = "incremental" | "snapshot-rebase";
 
 interface ChatThreadEventData {
   readonly snapshot: readonly ChatThreadSnapshotProjection[];
@@ -39,12 +42,18 @@ interface ChatThreadSnapshotData {
 interface ChatThreadEventState {
   readonly snapshot: ChatThreadSnapshotData | null;
   readonly events: readonly ChatThreadEvent[];
+  readonly latestEventId: string | null;
 }
 
 interface ChatThreadEventUpdate {
   readonly state: ChatThreadEventState;
   readonly replacementSnapshot: ChatThreadSnapshotData | null;
   readonly newEvents: readonly ChatThreadEvent[];
+}
+
+interface ChatThreadEventSyncResult {
+  readonly eventCount: number;
+  readonly snapshotReplaced: boolean;
 }
 
 export interface ThreadMeta {
@@ -55,12 +64,14 @@ export interface ThreadMeta {
   readonly selectedModel: string | null;
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
 const chatThreadEventState$ = state<ChatThreadEventState>({
   snapshot: null,
   events: [],
+  latestEventId: null,
 });
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
@@ -92,13 +103,14 @@ async function readChatThreadEventState(
   store: Stores,
   signal?: AbortSignal,
 ): Promise<ChatThreadEventState> {
-  const [snapshot, events] = await Promise.all([
+  const [snapshot, eventLog] = await Promise.all([
     store.readStore.readSnapshot(signal),
-    store.readStore.readEvents(signal),
+    store.readStore.readEventLog(signal),
   ]);
   return {
     snapshot,
-    events,
+    events: eventLog.events,
+    latestEventId: eventLog.latestEventId ?? snapshot?.latestEventId ?? null,
   };
 }
 
@@ -119,26 +131,44 @@ const chatThreadEventStores$ = computed((get): Stores => {
 });
 
 const lastEventId$ = computed((get): string | null => {
-  const state = get(chatThreadEventState$);
-  return state.events.at(-1)?.id ?? state.snapshot?.latestEventId ?? null;
+  return get(chatThreadEventState$).latestEventId;
 });
 
 async function fetchRemoteSnapshot(
   client: ChatThreadsClient,
+  mode: ChatThreadEventSyncMode,
   signal?: AbortSignal,
 ): Promise<ChatThreadSnapshotData> {
   const result = await accept(
     client.snapshot({ fetchOptions: { signal } }),
     [200],
+    signal,
+    { showErrorToast: mode !== "snapshot-rebase" },
   );
   signal?.throwIfAborted();
   return result.body;
+}
+
+async function fetchRemoteEvents(
+  client: ChatThreadsClient,
+  cursor: string | null,
+  mode: ChatThreadEventSyncMode,
+  signal?: AbortSignal,
+) {
+  const request = client.events({
+    query: cursor ? { sinceEventId: cursor } : {},
+    fetchOptions: { signal },
+  });
+  return await accept(request, [200, 410], signal, {
+    showErrorToast: mode !== "snapshot-rebase",
+  });
 }
 
 async function fetchChatThreadEventUpdate(
   currentState: ChatThreadEventState,
   initialCursor: string | null,
   client: ChatThreadsClient,
+  mode: ChatThreadEventSyncMode,
   signal?: AbortSignal,
 ): Promise<ChatThreadEventUpdate | null> {
   let snapshot = currentState.snapshot;
@@ -147,26 +177,20 @@ async function fetchChatThreadEventUpdate(
   let snapshotReplaced = false;
   let newEvents: readonly ChatThreadEvent[] = [];
 
-  if (!snapshot || cursor === null) {
-    snapshot = await fetchRemoteSnapshot(client, signal);
+  if (mode === "snapshot-rebase" || !snapshot || cursor === null) {
+    snapshot = await fetchRemoteSnapshot(client, mode, signal);
     events = [];
     cursor = snapshot.latestEventId;
     snapshotReplaced = true;
   }
 
   for (let page = 0; page < 20; page++) {
-    const result = await accept(
-      client.events({
-        query: cursor ? { sinceEventId: cursor } : {},
-        fetchOptions: { signal },
-      }),
-      [200, 410],
-    );
+    const result = await fetchRemoteEvents(client, cursor, mode, signal);
     signal?.throwIfAborted();
 
     if (result.status === 410) {
       L.debug("events cursor expired, reloading snapshot");
-      snapshot = await fetchRemoteSnapshot(client, signal);
+      snapshot = await fetchRemoteSnapshot(client, mode, signal);
       events = [];
       newEvents = [];
       cursor = snapshot.latestEventId;
@@ -188,6 +212,7 @@ async function fetchChatThreadEventUpdate(
         state: {
           snapshot,
           events,
+          latestEventId: cursor,
         },
         replacementSnapshot: snapshotReplaced ? snapshot : null,
         newEvents,
@@ -201,6 +226,7 @@ async function fetchChatThreadEventUpdate(
     state: {
       snapshot,
       events,
+      latestEventId: cursor,
     },
     replacementSnapshot: snapshotReplaced ? snapshot : null,
     newEvents,
@@ -221,8 +247,12 @@ const initializeChatThreadEventState$ = command(
   },
 );
 
-export const syncEventDrivenChatThreads$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+const syncChatThreadEvents$ = command(
+  async (
+    { get, set },
+    mode: ChatThreadEventSyncMode,
+    signal: AbortSignal,
+  ): Promise<ChatThreadEventSyncResult> => {
     const store = get(chatThreadEventStores$);
     const state = get(chatThreadEventState$);
     const client = get(zeroClient$)(chatThreadsContract);
@@ -230,34 +260,63 @@ export const syncEventDrivenChatThreads$ = command(
       state,
       get(lastEventId$),
       client,
+      mode,
       signal,
     );
     signal.throwIfAborted();
     if (!update) {
-      return;
+      return {
+        eventCount: state.events.length,
+        snapshotReplaced: false,
+      };
     }
 
     if (update.replacementSnapshot) {
       await store.writeStore.replaceFromSnapshot(
         update.replacementSnapshot,
+        update.newEvents,
         signal,
       );
+    } else {
+      await store.writeStore.upsertEvents(update.newEvents, signal);
     }
-    await store.writeStore.upsertEvents(update.newEvents, signal);
     set(chatThreadEventState$, update.state);
     set(reconcileOptimisticChatThreadEvents$, {
       snapshot: update.state.snapshot?.chatThreads ?? [],
       events: update.state.events,
     });
     set(syncCurrentChatThreadDocumentTitle$, signal);
+    return {
+      eventCount: update.state.events.length,
+      snapshotReplaced: update.replacementSnapshot !== null,
+    };
+  },
+);
+
+export const syncEventDrivenChatThreads$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(syncChatThreadEvents$, "incremental", signal);
   },
 );
 
 export const subscribeEventDrivenChatThreads$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
+    let initialSnapshotRebasePending = true;
     const syncOnThreadListChanged$ = command(
       async ({ set }, signal: AbortSignal): Promise<boolean> => {
-        await set(syncEventDrivenChatThreads$, signal);
+        const result = await set(syncChatThreadEvents$, "incremental", signal);
+        if (initialSnapshotRebasePending) {
+          initialSnapshotRebasePending = false;
+          if (
+            !result.snapshotReplaced &&
+            result.eventCount > EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD
+          ) {
+            await bestEffort(
+              set(syncChatThreadEvents$, "snapshot-rebase", signal),
+              signal,
+            );
+          }
+        }
         return false;
       },
     );
@@ -347,6 +406,7 @@ export const chatThreadMetaMap$ = computed((get) => {
           selectedModel: thread.selectedModel,
           serviceTier: thread.serviceTier,
           computerUseHostId: thread.computerUseHostId,
+          cloudBrowserEnabled: thread.cloudBrowserEnabled,
         },
       ];
     }),
@@ -411,6 +471,7 @@ export const touchOptimisticChatThreadSort$ = command(
       selectedModel: null,
       serviceTier: null,
       computerUseHostId: null,
+      cloudBrowserEnabled: false,
       createdAt: args.createdAt,
     } satisfies ChatThreadEvent);
   },

@@ -79,15 +79,22 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     thread_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("clear-thread-session-conversation"),
-    thread_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("insert-legacy-artifact-catalog-file"),
     user_id: z.string(),
     org_id: z.string(),
     filename: z.string(),
     url: z.url(),
+  }),
+  z.object({
+    action: z.literal("set-computer-use-host-as-previous-api"),
+    thread_id: z.uuid(),
+    computer_use_host_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-browser-profile-as-previous-api"),
+    browser_id: z.uuid(),
+    user_id: z.string(),
+    org_id: z.string(),
   }),
 ]);
 
@@ -107,6 +114,12 @@ export const testRuntimeStateActionResponseSchema = z.object({
     })
     .optional(),
   file_id: z.uuid().optional(),
+  previous_api_browser_profile: z
+    .object({
+      browser_profile_id: z.uuid(),
+      provider_profile_id: z.uuid(),
+    })
+    .optional(),
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),

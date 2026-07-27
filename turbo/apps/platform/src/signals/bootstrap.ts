@@ -26,6 +26,7 @@ import { setupTeamsConnectPage$ } from "./zero-page/teams-connect-page.ts";
 import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
 import { setupFeishuSettingsPage$ } from "./zero-page/feishu-settings-page.ts";
+import { setupFeishuOAuthCallbackPage$ } from "./zero-page/feishu-oauth-callback-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -55,6 +56,7 @@ import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
 import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
+import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
 import { setupBrowserSessionPage$ } from "./browser-session/browser-session-page-setup.ts";
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
@@ -82,6 +84,7 @@ import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
+import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
@@ -181,8 +184,16 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupComputerUseAuthorizationPage$),
   },
   {
+    path: ROUTES.browserAuthorize,
+    setup: setupAuthPageWrapper(setupBrowserAuthorizationPage$),
+  },
+  {
     path: ROUTES.connectorCallbackResult,
     setup: setupConnectorCallbackPage$,
+  },
+  {
+    path: ROUTES.feishuOAuthCallback,
+    setup: setupFeishuOAuthCallbackPage$,
   },
   {
     path: ROUTES.connectorCallback,
@@ -513,6 +524,7 @@ export const bootstrap$ = command(
       set(setupGlobalKeyboardShortcuts$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
+      set(reloadFeatureSwitch$, signal),
     ]);
 
     signal.throwIfAborted();

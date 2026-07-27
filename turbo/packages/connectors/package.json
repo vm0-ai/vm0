@@ -1,17 +1,9 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.195.0",
+  "version": "1.197.0",
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "import": "./src/index.ts",
-      "types": "./src/index.ts"
-    },
-    "./connector-utils": {
-      "import": "./src/connector-utils.ts",
-      "types": "./src/connector-utils.ts"
-    },
     "./connector-auth-method": {
       "import": "./src/connector-auth-method.ts",
       "types": "./src/connector-auth-method.ts"
@@ -19,22 +11,6 @@
     "./connector-config": {
       "import": "./src/connector-config.ts",
       "types": "./src/connector-config.ts"
-    },
-    "./connector-search": {
-      "import": "./src/connector-search.ts",
-      "types": "./src/connector-search.ts"
-    },
-    "./static-connector-icons": {
-      "import": "./src/static-connector-icons.ts",
-      "types": "./src/static-connector-icons.ts"
-    },
-    "./connectors": {
-      "import": "./src/connectors.ts",
-      "types": "./src/connectors.ts"
-    },
-    "./connectors/*": {
-      "import": "./src/connectors/*.ts",
-      "types": "./src/connectors/*.ts"
     },
     "./feature-switch-key": {
       "import": "./src/feature-switch-key.ts",
@@ -56,32 +32,14 @@
       "import": "./src/firewall-types.ts",
       "types": "./src/firewall-types.ts"
     },
-    "./firewall-metadata": {
-      "import": "./src/firewall-metadata/index.ts",
-      "types": "./src/firewall-metadata/index.ts"
-    },
     "./firewall-metadata/policy": {
       "import": "./src/firewall-metadata/policy.ts",
       "types": "./src/firewall-metadata/policy.ts"
-    },
-    "./firewall-metadata/server": {
-      "import": "./src/firewall-metadata/server.ts",
-      "types": "./src/firewall-metadata/server.ts"
-    },
-    "./firewall-metadata/routing": {
-      "import": "./src/firewall-metadata/routing.ts",
-      "types": "./src/firewall-metadata/routing.ts"
-    },
-    "./firewall-metadata/runner-runtime": {
-      "import": "./src/firewall-metadata/runner-runtime.ts",
-      "types": "./src/firewall-metadata/runner-runtime.ts"
     },
     "./firewall-metadata/runner-runtime-catalog": {
       "import": "./src/firewall-metadata/runner-runtime-catalog.ts",
       "types": "./src/firewall-metadata/runner-runtime-catalog.ts"
     },
-    "./firewalls": null,
-    "./firewalls/*": null,
     "./auth-providers": {
       "import": "./src/auth-providers/connector-auth.ts",
       "types": "./src/auth-providers/connector-auth.ts"
@@ -136,8 +94,8 @@
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "msw": "^2.13.2",
-    "oxlint": "^1.57.0",
-    "oxlint-tsgolint": "0.23.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "7.0.2001",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"
   }

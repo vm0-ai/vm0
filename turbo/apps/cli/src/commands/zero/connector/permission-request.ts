@@ -8,7 +8,12 @@ import {
   printComputerUsePermissionGuidance,
 } from "./computer-use-guidance";
 import {
+  isBrowserPermissionTarget,
+  printBrowserPermissionGuidance,
+} from "./browser-guidance";
+import {
   ApiRequestError,
+  createBrowserAuthorizationRequest,
   createComputerUseAuthorizationRequest,
   getZeroConnectorCatalogPermissions,
 } from "../../../lib/api";
@@ -114,6 +119,44 @@ async function printComputerUsePermissionRequestMessage(): Promise<void> {
   }
 }
 
+function printBrowserAuthorizationLink(args: {
+  readonly authorizationUrl: string;
+  readonly expiresAt: string;
+}): void {
+  console.log(
+    "Cloud browser needs to be enabled for this chat thread before a run starts.",
+  );
+  console.log(
+    "Ask the user to enable the cloud browser for future runs in this thread:",
+  );
+  console.log(args.authorizationUrl);
+  console.log(
+    `This link expires at ${args.expiresAt}. Existing run tokens cannot be upgraded in place; start a new run after authorization.`,
+  );
+}
+
+async function printBrowserPermissionRequestMessage(): Promise<void> {
+  if (!process.env.ZERO_TOKEN) {
+    printBrowserPermissionGuidance();
+    return;
+  }
+  try {
+    const request = await createBrowserAuthorizationRequest();
+    printBrowserAuthorizationLink(request);
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      console.log(
+        `Cloud browser authorization link unavailable: ${error.message}`,
+      );
+      printBrowserPermissionGuidance();
+      return;
+    }
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.log(`Cloud browser authorization link unavailable: ${message}`);
+    printBrowserPermissionGuidance();
+  }
+}
+
 async function outputPermissionRequestMessage(
   connectorRef: string,
   label: string,
@@ -184,6 +227,7 @@ Examples:
 ${callbackPromptExample}  zero connector permission-request gmail --permission messages.write --agent <agent-id>
   zero connector permission-request cloudflare --permission __unknown__
   zero connector permission-request computer-use --permission computer-use:write
+  zero connector permission-request browser --permission browser:write
 
 Notes:
   - Outputs a platform URL for the user to allow the permission
@@ -202,6 +246,20 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           callbackPrompt?: string;
         },
       ) => {
+        if (
+          isBrowserPermissionTarget({
+            connectorRef,
+            permission: opts.permission,
+          })
+        ) {
+          if (opts.callbackPrompt !== undefined) {
+            throw new Error(
+              "--callback-prompt is not supported for cloud browser authorization requests",
+            );
+          }
+          await printBrowserPermissionRequestMessage();
+          return;
+        }
         if (
           isComputerUsePermissionTarget({
             connectorRef,

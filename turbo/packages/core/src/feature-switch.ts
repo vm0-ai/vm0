@@ -121,6 +121,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Google Forms connector",
     enabled: false,
   },
+  [FeatureSwitchKey.JoggAiConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the JoggAI video generation connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
@@ -386,8 +391,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
@@ -400,6 +404,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.NewChatThreadSidebar]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Thread-owned utility sidebar for chat threads: one shared shell for the artifacts list, artifact detail, email draft, browser, and automations panels. When off, the legacy search-param sidebars stay in place.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerSkillSubstringSearch]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -457,8 +474,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: false,
-    enabledUserHashes: ["032a75d8"],
+    enabled: true,
   },
   [FeatureSwitchKey.WebsiteTemplateV2]: {
     maintainer: "bingjie@vm0.ai",
@@ -471,7 +487,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.PlanUpgradeGuidance]: {
     maintainer: "ethan@vm0.ai",
@@ -499,12 +515,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",
-    description: "Show the Zero Browser command in the Zero CLI.",
+    description:
+      "Enable thread-scoped Cloud browser access in chat and the Zero CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

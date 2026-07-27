@@ -38,7 +38,7 @@ export function shouldUseStructuredPrompt(
   return enabled && document !== null && document !== undefined;
 }
 
-export interface TextMessageTemplateSnapshot {
+interface TextMessageTemplateSnapshot {
   readonly titleSnapshot: string;
   readonly template: GenerationTemplateRequest;
 }

@@ -6,6 +6,8 @@ import {
   index,
   jsonb,
   bigint,
+  boolean,
+  check,
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -59,7 +61,7 @@ export const chatThreads = pgTable(
     ),
     /**
      * Run whose final admission most recently established agentSessionId.
-     * Kept as provenance for rollout validation and future snapshot checks.
+     * Provides route provenance for session rotation and binding snapshots.
      */
     agentSessionRunId: uuid("agent_session_run_id").references(
       () => {
@@ -125,6 +127,13 @@ export const chatThreads = pgTable(
       { onDelete: "set null" },
     ),
     /**
+     * Whether this thread may use Zero's managed cloud browser.
+     * Mutually exclusive with computerUseHostId at application boundaries.
+     */
+    cloudBrowserEnabled: boolean("cloud_browser_enabled")
+      .default(false)
+      .notNull(),
+    /**
      * Timestamp at which the user pinned this thread to the top of the sidebar.
      * NULL means unpinned. Pinned threads sort above unpinned, both groups
      * keep recency ordering. Per `(user, agent)` because `chat_threads` rows
@@ -165,6 +174,10 @@ export const chatThreads = pgTable(
   },
   (table) => {
     return [
+      check(
+        "chat_threads_computer_access_check",
+        sql`NOT (${table.cloudBrowserEnabled} AND ${table.computerUseHostId} IS NOT NULL)`,
+      ),
       index("idx_chat_threads_user_compose_updated").on(
         table.userId,
         table.agentComposeId,

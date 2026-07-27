@@ -6,7 +6,7 @@ import http.client as http_client
 import io
 import threading
 import time
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from unittest.mock import patch
 
 from mitmproxy import http
@@ -27,24 +27,7 @@ __all__ = [
 _FORWARD_START_TIMEOUT_SECONDS = 2.0
 _FORWARD_CLEANUP_TIMEOUT_SECONDS = 5.0
 _ForwardResult = tuple[int, bytes, http.Headers]
-
-
-def _addrinfo(address: str, port: int):
-    if ":" in address:
-        return (
-            forwarder.socket.AF_INET6,
-            forwarder.socket.SOCK_STREAM,
-            6,
-            "",
-            (address, port, 0, 0),
-        )
-    return (
-        forwarder.socket.AF_INET,
-        forwarder.socket.SOCK_STREAM,
-        6,
-        "",
-        (address, port),
-    )
+_SocketAddress = tuple[str, int] | tuple[str, int, int, int]
 
 
 def http_response(
@@ -108,7 +91,7 @@ class FakeSocket:
     cleanup and TCP option behavior.
 
     Side-effect arguments raise at the matching boundary so tests can exercise
-    send, read, response setup, and TCP option failures.
+    send, read, and TCP option failures.
 
     Use ``request_text``, ``request_lines``, and ``request_header_values`` for
     assertions about the HTTP request that the real forwarder serialized.
@@ -120,31 +103,59 @@ class FakeSocket:
         *,
         read_side_effect: Exception | None = None,
         send_side_effect: Exception | None = None,
-        makefile_side_effect: Exception | None = None,
         setsockopt_side_effect: Exception | None = None,
+        handshake_side_effect: Exception | None = None,
         on_action: Callable[[], None] | None = None,
+        on_connect: Callable[["FakeSocket", _SocketAddress], None] | None = None,
     ) -> None:
         self._response = response
         self._read_side_effect = read_side_effect
         self._send_side_effect = send_side_effect
-        self._makefile_side_effect = makefile_side_effect
         self._setsockopt_side_effect = setsockopt_side_effect
+        self._handshake_side_effect = handshake_side_effect
         self._on_action = on_action
+        self._on_connect = on_connect
         self.sent = bytearray()
         self.response_file: FakeResponseFile | None = None
         self.closed = False
         self.close_count = 0
+        self.connect_calls: list[_SocketAddress] = []
+        self.handshake_count = 0
         self.setsockopt_calls: list[tuple[int, int, int]] = []
+        self.shutdown_calls: list[int] = []
+        self.timeout_calls: list[float | None] = []
 
     def _record_action(self) -> None:
         if self._on_action is not None:
             self._on_action()
+
+    def set_connect_callback(
+        self,
+        on_connect: Callable[["FakeSocket", _SocketAddress], None],
+    ) -> None:
+        self._on_connect = on_connect
 
     def setsockopt(self, level: int, optname: int, value: int) -> None:
         self._record_action()
         self.setsockopt_calls.append((level, optname, value))
         if self._setsockopt_side_effect is not None:
             raise self._setsockopt_side_effect
+
+    def settimeout(self, timeout: float | None) -> None:
+        self._record_action()
+        self.timeout_calls.append(timeout)
+
+    def connect(self, address: _SocketAddress) -> None:
+        self._record_action()
+        self.connect_calls.append(address)
+        if self._on_connect is not None:
+            self._on_connect(self, address)
+
+    def do_handshake(self) -> None:
+        self._record_action()
+        self.handshake_count += 1
+        if self._handshake_side_effect is not None:
+            raise self._handshake_side_effect
 
     def sendall(self, data: bytes) -> None:
         self._record_action()
@@ -154,8 +165,6 @@ class FakeSocket:
 
     def makefile(self, *_args, **_kwargs) -> FakeResponseFile:
         self._record_action()
-        if self._makefile_side_effect is not None:
-            raise self._makefile_side_effect
         self.response_file = FakeResponseFile(
             self._response,
             read_side_effect=self._read_side_effect,
@@ -167,6 +176,10 @@ class FakeSocket:
         self._record_action()
         self.closed = True
         self.close_count += 1
+
+    def shutdown(self, how: int) -> None:
+        self._record_action()
+        self.shutdown_calls.append(how)
 
     def request_text(self) -> str:
         return bytes(self.sent).decode("latin1")
@@ -185,7 +198,9 @@ class FakeSocket:
         return values
 
 
-_CreateConnection = Callable[[tuple[str, int], object, object], FakeSocket]
+_ConnectSideEffect = Callable[[_SocketAddress], None]
+_LookupSideEffect = Callable[[str], Awaitable[list[str]]]
+_SocketFactory = Callable[[], FakeSocket]
 
 
 class FakeTLSContext:
@@ -206,15 +221,23 @@ class FakeTLSContext:
         self._on_action = on_action
         self.alpn_protocols: list[str] = []
         self.post_handshake_auth = False
+        self.do_handshake_on_connect: list[bool] = []
         self.server_hostnames: list[str] = []
 
     def set_alpn_protocols(self, protocols: list[str]) -> None:
         self.alpn_protocols = protocols
 
-    def wrap_socket(self, raw_sock: FakeSocket, *, server_hostname: str):
+    def wrap_socket(
+        self,
+        raw_sock: FakeSocket,
+        *,
+        server_hostname: str,
+        do_handshake_on_connect: bool,
+    ):
         if self._on_action is not None:
             self._on_action()
         self.server_hostnames.append(server_hostname)
+        self.do_handshake_on_connect.append(do_handshake_on_connect)
         if self._wrap_side_effect is not None:
             raise self._wrap_side_effect
         return raw_sock
@@ -241,46 +264,56 @@ class FakeForwarderUpstream:
         addresses: tuple[str, ...] = ("93.184.216.34",),
         read_side_effect: Exception | None = None,
         send_side_effect: Exception | None = None,
-        makefile_side_effect: Exception | None = None,
         setsockopt_side_effect: Exception | None = None,
         wrap_side_effect: Exception | None = None,
+        handshake_side_effect: Exception | None = None,
         on_action: Callable[[], None] | None = None,
-        create_connection: _CreateConnection | None = None,
+        connect_side_effect: _ConnectSideEffect | None = None,
+        lookup_side_effect: _LookupSideEffect | None = None,
+        socket_factory: _SocketFactory | None = None,
     ) -> None:
         self._addresses = addresses
         self._response = http_response(status=status, body=body, headers=headers)
         self._read_side_effect = read_side_effect
         self._send_side_effect = send_side_effect
-        self._makefile_side_effect = makefile_side_effect
         self._setsockopt_side_effect = setsockopt_side_effect
         self._wrap_side_effect = wrap_side_effect
+        self._handshake_side_effect = handshake_side_effect
         self._on_action = on_action
-        self._create_connection = create_connection
+        self._connect_side_effect = connect_side_effect
+        self._lookup_side_effect = lookup_side_effect
+        self._socket_factory = socket_factory
         self.sockets: list[FakeSocket] = []
         self.contexts: list[FakeTLSContext] = []
-        self.getaddrinfo_calls: list[tuple[str, int]] = []
-        self.create_connection_calls: list[tuple[tuple[str, int], object, object]] = []
+        self.resolve_calls: list[str] = []
+        self.socket_calls: list[tuple[int, int]] = []
+        self.connect_calls: list[_SocketAddress] = []
 
-    def getaddrinfo(self, host: str, port: int, *_args, **_kwargs):
-        self.getaddrinfo_calls.append((host, port))
-        return [_addrinfo(address, port) for address in self._addresses]
+    async def lookup_ip(self, host: str) -> list[str]:
+        self.resolve_calls.append(host)
+        if self._lookup_side_effect is not None:
+            return await self._lookup_side_effect(host)
+        return list(self._addresses)
 
-    def create_connection(self, address: tuple[str, int], timeout, source_address):
-        self.create_connection_calls.append((address, timeout, source_address))
-        if self._create_connection is not None:
-            sock = self._create_connection(address, timeout, source_address)
-        else:
-            sock = self.make_socket()
+    def create_socket(self, family: int, kind: int) -> FakeSocket:
+        self.socket_calls.append((family, kind))
+        sock = self._socket_factory() if self._socket_factory is not None else self.make_socket()
+        sock.set_connect_callback(self._connect)
         self.sockets.append(sock)
         return sock
+
+    def _connect(self, sock: FakeSocket, address: _SocketAddress) -> None:
+        self.connect_calls.append(address)
+        if self._connect_side_effect is not None:
+            self._connect_side_effect(address)
 
     def make_socket(self) -> FakeSocket:
         return FakeSocket(
             self._response,
             read_side_effect=self._read_side_effect,
             send_side_effect=self._send_side_effect,
-            makefile_side_effect=self._makefile_side_effect,
             setsockopt_side_effect=self._setsockopt_side_effect,
+            handshake_side_effect=self._handshake_side_effect,
             on_action=self._on_action,
         )
 
@@ -311,12 +344,7 @@ class ForwarderConcurrencyHarness:
         self._workers: set[threading.Thread] = set()
         self._tasks: set[asyncio.Task[_ForwardResult]] = set()
 
-    def create_connection(
-        self,
-        _address: tuple[str, int],
-        _timeout: object,
-        _source_address: object,
-    ) -> FakeSocket:
+    def connect(self, _address: _SocketAddress) -> None:
         """Record and optionally block a worker at the connection boundary."""
         with self._condition:
             self._started += 1
@@ -331,7 +359,6 @@ class ForwarderConcurrencyHarness:
                 timeout=_FORWARD_CLEANUP_TIMEOUT_SECONDS
             ):
                 raise TimeoutError("test did not release blocked forwards")
-            return FakeSocket(http_response())
         finally:
             with self._condition:
                 self._active -= 1
@@ -418,22 +445,24 @@ def fake_forwarder_upstream(
     addresses: tuple[str, ...] = ("93.184.216.34",),
     read_side_effect: Exception | None = None,
     send_side_effect: Exception | None = None,
-    makefile_side_effect: Exception | None = None,
     setsockopt_side_effect: Exception | None = None,
     wrap_side_effect: Exception | None = None,
+    handshake_side_effect: Exception | None = None,
     on_action: Callable[[], None] | None = None,
-    create_connection: _CreateConnection | None = None,
+    connect_side_effect: _ConnectSideEffect | None = None,
+    lookup_side_effect: _LookupSideEffect | None = None,
+    socket_factory: _SocketFactory | None = None,
 ) -> Iterator[FakeForwarderUpstream]:
     """Patch auth.base DNS/connect/TLS boundaries and yield an upstream handle.
 
-    The context manager patches only ``auth_base_forwarder.socket.getaddrinfo``,
-    ``auth_base_forwarder.socket.create_connection``, and
+    The context manager patches only the forwarder's external resolver,
+    ``auth_base_forwarder.socket.socket``, and
     ``auth_base_forwarder.ssl.create_default_context``. ``addresses`` controls
     the DNS answers returned to the real forwarder before any socket is opened.
     Socket and TLS side effects raise at their matching fake boundary.
 
-    The yielded handle exposes stable assertion state: ``getaddrinfo_calls``,
-    ``create_connection_calls``, ``sockets``, ``contexts``, and ``socket`` for
+    The yielded handle exposes stable assertion state: ``resolve_calls``,
+    ``connect_calls``, ``sockets``, ``contexts``, and ``socket`` for
     the most recent connection.
     """
     upstream = FakeForwarderUpstream(
@@ -443,18 +472,20 @@ def fake_forwarder_upstream(
         addresses=addresses,
         read_side_effect=read_side_effect,
         send_side_effect=send_side_effect,
-        makefile_side_effect=makefile_side_effect,
         setsockopt_side_effect=setsockopt_side_effect,
         wrap_side_effect=wrap_side_effect,
+        handshake_side_effect=handshake_side_effect,
         on_action=on_action,
-        create_connection=create_connection,
+        connect_side_effect=connect_side_effect,
+        lookup_side_effect=lookup_side_effect,
+        socket_factory=socket_factory,
     )
     with (
-        patch.object(forwarder.socket, "getaddrinfo", side_effect=upstream.getaddrinfo),
+        patch.object(forwarder, "_dns_resolver", upstream),
         patch.object(
             forwarder.socket,
-            "create_connection",
-            side_effect=upstream.create_connection,
+            "socket",
+            side_effect=upstream.create_socket,
         ),
         patch.object(
             forwarder.ssl,
@@ -472,7 +503,7 @@ async def forwarder_concurrency_harness(
 ) -> AsyncIterator[tuple[ForwarderConcurrencyHarness, FakeForwarderUpstream]]:
     """Yield a blocked upstream harness and fully drain its workers on exit."""
     harness = ForwarderConcurrencyHarness(blocked_connections=blocked_connections)
-    with fake_forwarder_upstream(create_connection=harness.create_connection) as upstream:
+    with fake_forwarder_upstream(connect_side_effect=harness.connect) as upstream:
         try:
             yield harness, upstream
         finally:

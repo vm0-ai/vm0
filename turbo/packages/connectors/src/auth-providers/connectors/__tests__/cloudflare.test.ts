@@ -1,8 +1,8 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 import {
   buildCloudflareAuthorizationUrl,
   exchangeCloudflareCode,
@@ -16,7 +16,10 @@ function testRefreshSignal(): AbortSignal {
 }
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("cloudflare", "oauth");
+  return authCodeGrantFixture(
+    ["workers-platform.read", "workers-platform.write", "offline_access"],
+    "api",
+  );
 }
 
 describe("connector/providers/cloudflare", () => {

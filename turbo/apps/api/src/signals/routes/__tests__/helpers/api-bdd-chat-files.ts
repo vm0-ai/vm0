@@ -17,7 +17,6 @@ import {
   chatThreadsContract,
   chatThreadMessagesContract,
   type AttachFile,
-  type ArtifactFavoritesResponse,
   type ArtifactsListResponse,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
@@ -61,7 +60,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { zeroChatMessagesRoutes } from "../../zero-chat-messages";
+import { zeroChatEventsRoutes } from "../../zero-chat-events";
 import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
 import { zeroArtifactsRoutes } from "../../zero-artifacts";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
@@ -114,6 +113,7 @@ type BddSendMessageBody =
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
       readonly computerUseHostId?: string | null;
+      readonly cloudBrowserEnabled?: boolean;
       readonly clientMessageId?: string;
       readonly chatThreadSortEventId?: string;
       readonly realAgentInPreview?: boolean;
@@ -192,7 +192,7 @@ const chatFilesRoutes = [
   ...zeroChatThreadModelSelectionRoutes,
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadsArtifactsSyncRoutes,
-  ...zeroChatMessagesRoutes,
+  ...zeroChatEventsRoutes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroHostRoutes,
@@ -330,6 +330,10 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   return {
+    async getDefaultCreateThreadModel(actor: ApiTestUser): Promise<string> {
+      return await defaultCreateThreadModel(actor);
+    },
+
     mockCompletedUploadObject(
       actor: ApiTestUser,
       uploadId: string,
@@ -993,6 +997,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly limit?: number;
         readonly cursor?: string;
         readonly kind?: ArtifactCatalogKind;
+        readonly chatThreadId?: string;
       } = {},
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];
@@ -1006,19 +1011,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async requestListArtifactCatalog(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403)[],
-    ) {
-      return await accept(
-        artifactCatalogClient().list({
-          headers: authenticate(context, actor),
-          query: {},
-        }),
-        statuses,
-      );
     },
 
     async getArtifactCatalogEntry(
@@ -1048,73 +1040,6 @@ export function createChatFilesBddApi(context: TestContext) {
         statuses,
       );
     },
-
-    async listArtifactFavorites(
-      actor: ApiTestUser,
-    ): Promise<ArtifactFavoritesResponse> {
-      const response = await accept(
-        artifactsClient().listFavorites({
-          headers: authenticate(context, actor),
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async favoriteArtifact(
-      actor: ApiTestUser,
-      artifactUrl: string,
-    ): Promise<void> {
-      await accept(
-        artifactsClient().favorite({
-          headers: authenticate(context, actor),
-          body: { artifactUrl },
-        }),
-        [204],
-      );
-    },
-
-    async requestFavoriteArtifact(
-      actor: ApiTestUser | null,
-      artifactUrl: string,
-      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        artifactsClient().favorite({
-          headers: authenticate(context, actor),
-          body: { artifactUrl },
-        }),
-        statuses,
-      );
-    },
-
-    async unfavoriteArtifact(
-      actor: ApiTestUser,
-      artifactUrl: string,
-    ): Promise<void> {
-      await accept(
-        artifactsClient().unfavorite({
-          headers: authenticate(context, actor),
-          body: { artifactUrl },
-        }),
-        [204],
-      );
-    },
-
-    async requestUnfavoriteArtifact(
-      actor: ApiTestUser | null,
-      artifactUrl: string,
-      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        artifactsClient().unfavorite({
-          headers: authenticate(context, actor),
-          body: { artifactUrl },
-        }),
-        statuses,
-      );
-    },
-
     async searchChat(
       actor: ApiTestUser,
       keyword: string,
@@ -1256,6 +1181,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.computerUseHostId === undefined
                   ? {}
                   : { computerUseHostId: body.computerUseHostId }),
+                ...(body.cloudBrowserEnabled === undefined
+                  ? {}
+                  : { cloudBrowserEnabled: body.cloudBrowserEnabled }),
                 ...(body.clientMessageId === undefined
                   ? {}
                   : { clientMessageId: body.clientMessageId }),

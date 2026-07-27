@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.58.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.1...guest-agent-v0.58.2) (2026-07-27)
+
+
+### Refactoring
+
+* **guest-agent:** retire checkpoint gzip downgrade ([#23314](https://github.com/vm0-ai/vm0/issues/23314)) ([7fe12c2](https://github.com/vm0-ai/vm0/commit/7fe12c206e8e0504da52a646527221359e7b94b7))
+
+## [0.58.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.0...guest-agent-v0.58.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve codex fast mode in app server ([#23240](https://github.com/vm0-ai/vm0/issues/23240)) ([f108f48](https://github.com/vm0-ai/vm0/commit/f108f48e832d3d4d61de338bb698b6d782f1121e))
+
+
+### Documentation
+
+* **guest-agent:** document reuse preparation safety contract ([#23243](https://github.com/vm0-ai/vm0/issues/23243)) ([9437606](https://github.com/vm0-ai/vm0/commit/9437606dabaa1ae4f51bd4be04f388b66d9c0ab4))
+
+
+### Refactoring
+
+* **guest-agent:** narrow session metadata visibility ([#23244](https://github.com/vm0-ai/vm0/issues/23244)) ([fba8fff](https://github.com/vm0-ai/vm0/commit/fba8fff884be8030a1af16f5c1c108a3b28d5d22))
+
+
+### Performance Improvements
+
+* **guest-agent:** offload checkpoint history work ([#23260](https://github.com/vm0-ai/vm0/issues/23260)) ([41379e3](https://github.com/vm0-ai/vm0/commit/41379e381da2c29323f5e1e3f6a11031b81cea5e))
+
 ## [0.58.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.57.1...guest-agent-v0.58.0) (2026-07-26)
 
 

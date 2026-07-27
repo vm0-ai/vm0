@@ -18,31 +18,21 @@ import {
   buildFeishuLoginMessage,
   buildFeishuNoticeMessage,
 } from "../../lib/feishu-message-card";
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import {
   addFeishuMessageReaction,
   listFeishuChatMessages,
-  removeFeishuMessageReaction,
   replyWithFeishuMessage,
   sendFeishuMessage,
   type FeishuHistoryMessage,
   type FeishuOutboundMessage,
 } from "../external/feishu-client";
-import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
-import { onRejection, safeJsonParse, tapError } from "../utils";
-import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import type { Db } from "../external/db";
+import { nowDate } from "../external/time";
+import { safeJsonParse, tapError } from "../utils";
 import { buildFeishuConnectUrl } from "./feishu-connect-token";
-import { feishuOrgCallbackPayloadSchema } from "./feishu-org-callback-payload";
-import { formatIntegrationRunError$ } from "./integration-run-errors.service";
-import {
-  resolveIntegrationModelRouteForUser$,
-  type IntegrationModelRoutePin,
-} from "./integration-model-route.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
-import { createZeroRun$ } from "./zero-runs-create.service";
 import {
   updateUserModelPreference$,
   userModelPreference,
@@ -86,6 +76,12 @@ export interface FeishuInboundMessage {
   readonly openId: string;
   readonly text: string;
   readonly file: FeishuPromptFile | null;
+}
+
+export function shouldReplyInFeishuThread(
+  message: FeishuInboundMessage,
+): boolean {
+  return message.chatType !== "p2p" || message.threadId !== null;
 }
 
 interface FeishuAgent {
@@ -155,7 +151,7 @@ async function reply(args: {
   readonly outbound: FeishuOutboundMessage;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  if (args.message.chatType === "p2p") {
+  if (!shouldReplyInFeishuThread(args.message)) {
     await sendFeishuMessage({
       db: args.db,
       installationId: args.message.installationId,
@@ -192,6 +188,47 @@ async function replyNotice(args: {
       text: args.text,
       kind: args.kind,
     }),
+    signal: args.signal,
+  });
+}
+
+export async function replyToUnconnectedFeishuMessage(args: {
+  readonly db: Db;
+  readonly message: FeishuInboundMessage;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const commandInput = parseFeishuCommand(args.message.text);
+  if (commandInput?.name === "help") {
+    await reply({
+      db: args.db,
+      message: args.message,
+      outbound: buildFeishuHelpMessage(),
+      signal: args.signal,
+    });
+    return;
+  }
+  if (commandInput?.name === "disconnect") {
+    await reply({
+      db: args.db,
+      message: args.message,
+      outbound: buildFeishuNoticeMessage({
+        title: "Not connected",
+        text: "You are not connected.",
+        kind: "error",
+      }),
+      signal: args.signal,
+    });
+    return;
+  }
+  const connectUrl = buildFeishuConnectUrl({
+    installationId: args.message.installationId,
+    openId: args.message.openId,
+    chatId: args.message.chatId,
+  });
+  await reply({
+    db: args.db,
+    message: args.message,
+    outbound: buildFeishuLoginMessage(connectUrl),
     signal: args.signal,
   });
 }
@@ -337,13 +374,24 @@ export async function resolveEffectiveFeishuAgent(args: {
   return { status: existing ? "not_accessible" : "not_found" };
 }
 
-function sessionKey(message: FeishuInboundMessage): string {
-  if (message.chatType === "p2p") {
-    return message.chatId;
-  }
-  const threadKey =
-    message.rootId ?? message.threadId ?? message.parentId ?? message.messageId;
-  return `${message.chatId}:${threadKey}`;
+export async function replyFeishuAgentUnavailable(args: {
+  readonly db: Db;
+  readonly message: FeishuInboundMessage;
+  readonly status: "not_accessible" | "not_found";
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const text =
+    args.status === "not_accessible"
+      ? "The configured agent is not available to your Feishu account. Use `/switch` to choose an accessible agent."
+      : "The configured Feishu agent could not be found. Ask an admin to select another agent.";
+  await replyNotice({
+    db: args.db,
+    message: args.message,
+    title: "Agent unavailable",
+    text,
+    kind: "error",
+    signal: args.signal,
+  });
 }
 
 export function feishuPromptFile(args: {
@@ -582,8 +630,11 @@ export function buildFeishuSystemPrompt(args: {
   readonly message: FeishuInboundMessage;
   readonly history: string;
 }): string {
-  const typeLabel =
-    args.message.chatType === "p2p" ? "Direct message" : "Group mention";
+  const isDirectMessage = args.message.chatType === "p2p";
+  const typeLabel = isDirectMessage ? "Direct message" : "Group mention";
+  const groupIdLine = isDirectMessage
+    ? ""
+    : `Group ID: ${args.message.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`zero feishu message send\`)`;
   return [
     "# Current Integration",
     "You are currently running inside: Feishu",
@@ -591,6 +642,7 @@ export function buildFeishuSystemPrompt(args: {
     `Installation ID: ${args.message.installationId}`,
     `Tenant key: ${args.message.tenantKey}`,
     `Chat ID: ${args.message.chatId}`,
+    groupIdLine,
     `Thread ID: ${
       args.message.threadId ??
       args.message.rootId ??
@@ -996,110 +1048,27 @@ const handleConnectedCommand$ = command(
   },
 );
 
-const runFeishuAgent$ = command(
+export const dispatchConnectedFeishuCommand$ = command(
   async (
     { set },
-    args: {
-      readonly installation: FeishuDispatchInstallation;
-      readonly connection: FeishuDispatchConnection;
-      readonly message: FeishuInboundMessage;
-      readonly agent: FeishuAgent;
-      readonly sessionKey: string;
-      readonly history: FeishuPromptContext;
-      readonly modelRoute: IntegrationModelRoutePin | undefined;
-      readonly reactionId: string | undefined;
-    },
+    args: ConnectedDispatchArgs,
     signal: AbortSignal,
-  ) => {
-    return await set(
-      createZeroRun$,
+  ): Promise<boolean> => {
+    const commandInput = parseFeishuCommand(args.message.text);
+    if (!commandInput) {
+      return false;
+    }
+    await set(
+      handleConnectedCommand$,
       {
-        auth: {
-          tokenType: "session",
-          userId: args.connection.vm0UserId,
-          orgId: args.installation.orgId,
-          orgRole: "member",
-        },
-        body: {
-          prompt: args.message.text,
-          agentId: args.agent.id,
-          ...(args.modelRoute
-            ? { modelProvider: args.modelRoute.modelProviderType }
-            : {}),
-        },
-        apiStartTime: now(),
-        triggerSource: "feishu",
-        appendSystemPrompt: buildFeishuSystemPrompt({
-          message: args.message,
-          history: args.history.text,
-        }),
-        userInfoExtras: {
-          feishuDisplayName: args.connection.feishuUserName ?? undefined,
-          feishuOpenId: args.message.openId,
-        },
-        modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          args.modelRoute?.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: args.modelRoute?.selectedModel ?? undefined,
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        callbacks: [
-          {
-            internalKind: "feishu:org",
-            secret: randomBytes(32).toString("hex"),
-            payload: feishuOrgCallbackPayloadSchema.parse({
-              installationId: args.message.installationId,
-              chatId: args.message.chatId,
-              messageId: args.message.messageId,
-              connectionId: args.connection.id,
-              sessionKey: args.sessionKey,
-              agentId: args.agent.id,
-              reactionId: args.reactionId,
-              replyInThread: args.message.chatType !== "p2p",
-              files: [
-                ...(args.message.file ? [args.message.file] : []),
-                ...args.history.files,
-              ].map((file) => {
-                return {
-                  fileId: file.fileId,
-                  messageId: file.messageId,
-                  fileKey: file.fileKey,
-                  type: file.type,
-                };
-              }),
-            }),
-          },
-        ],
+        ...args,
+        command: commandInput,
       },
       signal,
     );
+    return true;
   },
 );
-
-async function clearThinkingReaction(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly reactionId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  if (!args.reactionId) {
-    return;
-  }
-  await tapError(
-    removeFeishuMessageReaction({
-      db: args.db,
-      installationId: args.message.installationId,
-      messageId: args.message.messageId,
-      reactionId: args.reactionId,
-      signal: args.signal,
-    }),
-    (error) => {
-      L.warn("Failed to clear Feishu thinking indicator", {
-        error,
-        messageId: args.message.messageId,
-      });
-    },
-  );
-}
 
 export async function addFeishuThinkingReaction(args: {
   readonly db: Db;
@@ -1124,259 +1093,3 @@ export async function addFeishuThinkingReaction(args: {
   args.signal.throwIfAborted();
   return reactionId;
 }
-
-const prepareFeishuRun$ = command(
-  async (
-    { set },
-    args: {
-      readonly db: Db;
-      readonly installation: FeishuDispatchInstallation;
-      readonly connection: FeishuDispatchConnection;
-      readonly message: FeishuInboundMessage;
-      readonly agentId: string;
-    },
-    signal: AbortSignal,
-  ) => {
-    const modelRoute = await set(
-      resolveIntegrationModelRouteForUser$,
-      {
-        orgId: args.installation.orgId,
-        userId: args.connection.vm0UserId,
-      },
-      signal,
-    );
-    const key = sessionKey(args.message);
-    const history = await loadFeishuConversationHistory({
-      db: args.db,
-      message: args.message,
-      signal,
-    });
-    signal.throwIfAborted();
-    return { modelRoute, key, history };
-  },
-);
-
-const dispatchConnectedFeishuMessage$ = command(
-  async (
-    { set },
-    args: ConnectedDispatchArgs,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const commandInput = parseFeishuCommand(args.message.text);
-    if (commandInput) {
-      await set(
-        handleConnectedCommand$,
-        {
-          db: args.db,
-          installation: args.installation,
-          connection: args.connection,
-          message: args.message,
-          command: commandInput,
-        },
-        signal,
-      );
-      return;
-    }
-
-    const effectiveAgent = await resolveEffectiveFeishuAgent({
-      db: args.db,
-      installation: args.installation,
-      connection: args.connection,
-    });
-    signal.throwIfAborted();
-    if (effectiveAgent.status !== "resolved") {
-      const text =
-        effectiveAgent.status === "not_accessible"
-          ? "The configured agent is not available to your Feishu account. Use `/switch` to choose an accessible agent."
-          : "The configured Feishu agent could not be found. Ask an admin to select another agent.";
-      await replyNotice({
-        db: args.db,
-        message: args.message,
-        title: "Agent unavailable",
-        text,
-        kind: "error",
-        signal,
-      });
-      return;
-    }
-
-    const reactionId = await addFeishuThinkingReaction({
-      db: args.db,
-      message: args.message,
-      signal,
-    });
-    const clearReaction = async () => {
-      await clearThinkingReaction({
-        db: args.db,
-        message: args.message,
-        reactionId,
-        signal,
-      });
-    };
-    const prepared = await onRejection(
-      set(
-        prepareFeishuRun$,
-        {
-          db: args.db,
-          installation: args.installation,
-          connection: args.connection,
-          message: args.message,
-          agentId: effectiveAgent.agent.id,
-        },
-        signal,
-      ),
-      clearReaction,
-    );
-    signal.throwIfAborted();
-    const result = await onRejection(
-      set(
-        runFeishuAgent$,
-        {
-          installation: args.installation,
-          connection: args.connection,
-          message: args.message,
-          agent: effectiveAgent.agent,
-          sessionKey: prepared.key,
-          history: prepared.history,
-          modelRoute: prepared.modelRoute,
-          reactionId,
-        },
-        signal,
-      ),
-      clearReaction,
-    );
-    signal.throwIfAborted();
-    if (result.status !== 201) {
-      await clearThinkingReaction({
-        db: args.db,
-        message: args.message,
-        reactionId,
-        signal,
-      });
-      const errorText = await set(
-        formatIntegrationRunError$,
-        {
-          orgId: args.installation.orgId,
-          userId: args.connection.vm0UserId,
-          code: result.body.error.code,
-          message: result.body.error.message,
-        },
-        signal,
-      );
-      await replyNotice({
-        db: args.db,
-        message: args.message,
-        title: "Run failed",
-        text: errorText,
-        kind: "error",
-        signal,
-      });
-      return;
-    }
-    if (result.body.status === "queued") {
-      const queueUrl = `${env("APP_URL")}/?queue=1`;
-      await replyNotice({
-        db: args.db,
-        message: args.message,
-        title: "Run queued",
-        text: `Concurrency limit reached. Will start automatically when a slot is available.\n\n[View queue](${queueUrl})`,
-        kind: "warning",
-        signal,
-      });
-    }
-  },
-);
-
-export const dispatchFeishuMessage$ = command(
-  async (
-    { set },
-    message: FeishuInboundMessage,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const [installation] = await db
-      .select({
-        orgId: feishuOrgInstallations.orgId,
-        ownerUserId: feishuOrgInstallations.ownerUserId,
-        defaultAgentId: feishuOrgInstallations.defaultComposeId,
-        messageReceivedAt: feishuOrgInstallations.messageReceivedAt,
-      })
-      .from(feishuOrgInstallations)
-      .where(
-        and(
-          eq(feishuOrgInstallations.id, message.installationId),
-          eq(feishuOrgInstallations.appId, message.appId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (!installation) {
-      throw new Error("Feishu installation not found");
-    }
-    await markFeishuMessageReceived({
-      db,
-      installation,
-      message,
-      signal,
-    });
-    const [connection] = await db
-      .select({
-        id: feishuOrgConnections.id,
-        vm0UserId: feishuOrgConnections.vm0UserId,
-        feishuUserName: feishuOrgConnections.feishuUserName,
-      })
-      .from(feishuOrgConnections)
-      .where(
-        and(
-          eq(feishuOrgConnections.installationId, message.installationId),
-          eq(feishuOrgConnections.feishuOpenId, message.openId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!connection) {
-      const commandInput = parseFeishuCommand(message.text);
-      if (commandInput?.name === "help") {
-        await reply({
-          db,
-          message,
-          outbound: buildFeishuHelpMessage(),
-          signal,
-        });
-        return;
-      }
-      if (commandInput?.name === "disconnect") {
-        await reply({
-          db,
-          message,
-          outbound: buildFeishuNoticeMessage({
-            title: "Not connected",
-            text: "You are not connected.",
-            kind: "error",
-          }),
-          signal,
-        });
-        return;
-      }
-      const connectUrl = buildFeishuConnectUrl({
-        installationId: message.installationId,
-        openId: message.openId,
-        chatId: message.chatId,
-      });
-      await reply({
-        db,
-        message,
-        outbound: buildFeishuLoginMessage(connectUrl),
-        signal,
-      });
-      return;
-    }
-
-    await set(
-      dispatchConnectedFeishuMessage$,
-      { db, installation, connection, message },
-      signal,
-    );
-  },
-);

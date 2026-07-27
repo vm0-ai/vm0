@@ -1039,7 +1039,17 @@ describe("Feishu integration", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const connectResponse = await oauthApp.request(connectUrl);
+    const legacyConnectResponse = await oauthApp.request(connectUrl);
+    expect(legacyConnectResponse.status).toBe(307);
+    expect(
+      new URL(
+        legacyConnectResponse.headers.get("location") ?? "",
+      ).searchParams.get("redirect_uri"),
+    ).toBe("https://www.vm0.test/api/zero/feishu/oauth/callback");
+
+    const appConnectUrl = new URL(connectUrl);
+    appConnectUrl.searchParams.set("callbackTarget", "app");
+    const connectResponse = await oauthApp.request(appConnectUrl);
     expect(connectResponse.status).toBe(307);
     const authorizationUrl = new URL(
       connectResponse.headers.get("location") ?? "",
@@ -1054,16 +1064,30 @@ describe("Feishu integration", () => {
       throw new Error("Expected Feishu authorization URL to include state");
     }
 
-    const callbackResponse = await oauthApp.request(
+    const handoffResponse = await oauthApp.request(
       `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-oauth-code",
         state,
       })}`,
     );
-    expect(callbackResponse.status).toBe(307);
-    expect(callbackResponse.headers.get("location")).toBe(
-      `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
+    expect(handoffResponse.status).toBe(307);
+    const handoffUrl = new URL(handoffResponse.headers.get("location") ?? "");
+    expect(handoffUrl.origin).toBe(APP_ORIGIN);
+    expect(handoffUrl.pathname).toBe("/connectors/feishu/callback");
+    expect(handoffUrl.searchParams.get("code")).toBe("feishu-oauth-code");
+    expect(handoffUrl.searchParams.get("state")).toBe(state);
+
+    const callbackResponse = await oauthApp.request(
+      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "feishu-oauth-code",
+        responseMode: "json",
+        state,
+      })}`,
     );
+    expect(callbackResponse.status).toBe(200);
+    await expect(callbackResponse.json()).resolves.toStrictEqual({
+      redirectUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
+    });
     await flushWaitUntilForTest();
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
@@ -1516,6 +1540,13 @@ describe("Feishu integration", () => {
         return message.kind === "send";
       })
       .map(messageContent);
+    const helpReply = requireValue(
+      outboundMessages.find((message) => {
+        return messageContent(message).includes("Zero commands");
+      }),
+      "Expected Feishu help reply",
+    );
+    expect(helpReply.msgType).toBe("text");
     expect(
       commandReplies.some((content) => {
         return content.includes("Zero commands");
@@ -1674,12 +1705,18 @@ describe("Feishu integration", () => {
     expect(wrongRunResponse.status).toBe(400);
   });
 
-  it("uses Slack-aligned session boundaries for Feishu DMs", async () => {
+  it("forks Feishu DM threads without replacing the main session", async () => {
     const fixture = await setupFeishuRunFixture({
       useAlternateInstallationDefault: true,
     });
-    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
-      fixture;
+    const {
+      actor,
+      runnerGroup,
+      appId,
+      callbackUrl,
+      defaultAgentId,
+      alternateAgentId,
+    } = fixture;
     await connectFixtureUser(fixture);
     await postEvent(callbackUrl, directMessage(appId, "/model"), {
       encrypted: true,
@@ -1795,6 +1832,8 @@ describe("Feishu integration", () => {
       "Feishu open ID: ou_feishu_user",
     );
     expect(claim.appendSystemPrompt).toContain("Scope: Direct message");
+    expect(claim.appendSystemPrompt).toContain("Chat ID: oc_feishu_dm");
+    expect(claim.appendSystemPrompt).not.toContain("Group ID:");
     expect(claim.appendSystemPrompt).toContain(
       `Installation ID: ${fixture.installationId}`,
     );
@@ -1909,53 +1948,183 @@ describe("Feishu integration", () => {
     const followUp = await findRun(actor, "continue the Feishu task");
     await runsApi.heartbeatRunner(runnerGroup);
     const followUpClaim = await runsApi.claimRunnerJob(followUp.id);
-    expect(followUpClaim.resumeSession).toBeNull();
-    await webhooksApi.requestAgentComplete(
-      {
-        runId: followUp.id,
-        exitCode: 1,
-        error: "Cannot continue session from checkpoint",
-      },
-      { authorization: `Bearer ${followUpClaim.sandboxToken}` },
-      [200],
-    );
-    await flushWaitUntilForTest();
-    const failedReply = [...outboundMessages].reverse().find((message) => {
-      return (
-        message.kind === "send" &&
-        messageContent(message).includes(
-          "Cannot continue session from checkpoint",
-        )
-      );
+    expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    await completeRunSession({
+      runId: followUp.id,
+      sandboxToken: followUpClaim.sandboxToken,
+      sessionId: cliAgentSessionId,
+      history: `bdd continued feishu history ${followUp.id}`,
+      assistantText: "Continued canonical Feishu answer",
     });
-    expect(failedReply?.msgType).toBe("interactive");
-    const failedReplyContent = failedReply ? messageContent(failedReply) : "";
-    expect(failedReplyContent).toContain("Audit");
-    expect(failedReplyContent).toContain("Claude Sonnet");
-    expect(failedReplyContent).toContain("Responded by Feishu default agent");
-    expect(removedReactions).toHaveLength(2);
 
+    const quotedReplyMessageId = `om_${randomUUID()}`;
     await postEvent(
       callbackUrl,
       directMessage(
         appId,
-        "reply in the original Feishu thread",
+        "reply without opening a Feishu thread",
         "ou_feishu_user",
         {
+          messageId: quotedReplyMessageId,
           rootId: firstMessageId,
         },
       ),
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const threadReplyRun = await findRun(
+    const quotedReplyRun = await findRun(
       actor,
-      "reply in the original Feishu thread",
+      "reply without opening a Feishu thread",
     );
     await runsApi.heartbeatRunner(runnerGroup);
-    const threadReplyClaim = await runsApi.claimRunnerJob(threadReplyRun.id);
-    expect(threadReplyClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
-    await runsApi.requestCancelRun(actor, threadReplyRun.id, [200]);
+    const quotedReplyClaim = await runsApi.claimRunnerJob(quotedReplyRun.id);
+    expect(quotedReplyClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    await completeRunSession({
+      runId: quotedReplyRun.id,
+      sandboxToken: quotedReplyClaim.sandboxToken,
+      sessionId: cliAgentSessionId,
+      history: `bdd quoted feishu history ${quotedReplyRun.id}`,
+      assistantText: "Canonical Feishu quoted reply answer",
+    });
+    const completedQuotedReply = [...outboundMessages]
+      .reverse()
+      .find((message) => {
+        return (
+          message.kind === "send" &&
+          messageContent(message).includes(
+            "Canonical Feishu quoted reply answer",
+          )
+        );
+      });
+    expect(completedQuotedReply?.replyInThread).toBeFalsy();
+
+    await postEvent(callbackUrl, directMessage(appId, "/switch default"), {
+      encrypted: true,
+    });
+    await flushWaitUntilForTest();
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "use the switched Feishu agent"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const switchedAgentRun = await findRun(
+      actor,
+      "use the switched Feishu agent",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const switchedAgentClaim = await runsApi.claimRunnerJob(
+      switchedAgentRun.id,
+    );
+    expect(switchedAgentClaim.environment?.ZERO_AGENT_ID).toBe(defaultAgentId);
+    expect(switchedAgentClaim.resumeSession).toBeNull();
+    await completeRunSession({
+      runId: switchedAgentRun.id,
+      sandboxToken: switchedAgentClaim.sandboxToken,
+      sessionId: randomUUID(),
+      history: `bdd switched feishu history ${switchedAgentRun.id}`,
+      assistantText: "Switched canonical Feishu answer",
+    });
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, `/switch ${alternateAgentId}`),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+
+    const feishuThreadId = `omt_${randomUUID()}`;
+    const threadMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "open a new Feishu thread", "ou_feishu_user", {
+        messageId: threadMessageId,
+        rootId: quotedReplyMessageId,
+        threadId: feishuThreadId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadRun = await findRun(actor, "open a new Feishu thread");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const threadClaim = await runsApi.claimRunnerJob(threadRun.id);
+    expect(threadClaim.resumeSession).toBeNull();
+    const threadCliAgentSessionId = randomUUID();
+    await completeRunSession({
+      runId: threadRun.id,
+      sandboxToken: threadClaim.sandboxToken,
+      sessionId: threadCliAgentSessionId,
+      history: `bdd feishu thread history ${threadRun.id}`,
+      assistantText: "Canonical Feishu thread answer",
+    });
+    const completedThreadReply = [...outboundMessages]
+      .reverse()
+      .find((message) => {
+        return (
+          message.kind === "reply" &&
+          message.target === threadMessageId &&
+          messageContent(message).includes("Canonical Feishu thread answer")
+        );
+      });
+    expect(completedThreadReply?.replyInThread).toBeTruthy();
+
+    const threadHelpMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "/help", "ou_feishu_user", {
+        messageId: threadHelpMessageId,
+        rootId: quotedReplyMessageId,
+        threadId: feishuThreadId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadHelpReply = [...outboundMessages].reverse().find((message) => {
+      return (
+        message.kind === "reply" &&
+        message.target === threadHelpMessageId &&
+        messageContent(message).includes("Zero commands")
+      );
+    });
+    expect(threadHelpReply?.replyInThread).toBeTruthy();
+
+    await postEvent(
+      callbackUrl,
+      directMessage(
+        appId,
+        "continue in the original Feishu thread",
+        "ou_feishu_user",
+        {
+          threadId: feishuThreadId,
+        },
+      ),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadFollowUpRun = await findRun(
+      actor,
+      "continue in the original Feishu thread",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const threadFollowUpClaim = await runsApi.claimRunnerJob(
+      threadFollowUpRun.id,
+    );
+    expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(
+      threadCliAgentSessionId,
+    );
+    await runsApi.requestCancelRun(actor, threadFollowUpRun.id, [200]);
+    await flushWaitUntilForTest();
+
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "return to the main Feishu DM"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const mainDmRun = await findRun(actor, "return to the main Feishu DM");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const mainDmClaim = await runsApi.claimRunnerJob(mainDmRun.id);
+    expect(mainDmClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
     await flushWaitUntilForTest();
 
     const client = setupApp({ context })(zeroFeishuConnectContract);
@@ -1977,11 +2146,19 @@ describe("Feishu integration", () => {
       "second concurrent Feishu task",
       "queued Feishu task",
     ] as const;
+    const queuedMessageId = `om_${randomUUID()}`;
     for (const [index, prompt] of prompts.entries()) {
       await postEvent(
         callbackUrl,
         directMessage(appId, prompt, "ou_feishu_user", {
           chatId: `oc_feishu_concurrent_${index}`,
+          ...(index === 2
+            ? {
+                messageId: queuedMessageId,
+                rootId: `om_${randomUUID()}`,
+                threadId: `omt_${randomUUID()}`,
+              }
+            : {}),
         }),
         {
           encrypted: true,
@@ -1992,6 +2169,11 @@ describe("Feishu integration", () => {
 
     const queueNotice = outboundMessages.find((message) => {
       return messageContent(message).includes("Run queued");
+    });
+    expect(queueNotice).toMatchObject({
+      kind: "reply",
+      target: queuedMessageId,
+      replyInThread: true,
     });
     expect(queueNotice?.msgType).toBe("interactive");
     const queueNoticeContent = queueNotice ? messageContent(queueNotice) : "";
@@ -2011,6 +2193,148 @@ describe("Feishu integration", () => {
       await runsApi.requestCancelRun(actor, run.id, [200]);
     }
     await flushWaitUntilForTest();
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("keeps Feishu group control cases out of runs and resumes queued tasks through the canonical session", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
+    const secondOpenId = "ou_feishu_canonical_group_user";
+    const secondActor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    await enableFeishuIntegration(secondActor, {
+      [FeatureSwitchKey.ZeroDebug]: true,
+    });
+
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "unconnected group task", {
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.some((message) => {
+        return (
+          message.kind === "reply" &&
+          messageContent(message).includes("Connect your account")
+        );
+      }),
+    ).toBeTruthy();
+    expect(
+      (await runsApi.listAgentRuns(secondActor, { limit: 20 })).runs.some(
+        (run) => {
+          return run.prompt === "unconnected group task";
+        },
+      ),
+    ).toBeFalsy();
+
+    await connectFixtureUser(fixture, secondActor, secondOpenId);
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "/help", { openId: secondOpenId }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.some((message) => {
+        return messageContent(message).includes("Zero commands");
+      }),
+    ).toBeTruthy();
+
+    await authOrgApi.updateAgentMetadata(actor, defaultAgentId, {
+      visibility: "private",
+    });
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "unavailable group task", {
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.some((message) => {
+        return messageContent(message).includes("Agent unavailable");
+      }),
+    ).toBeTruthy();
+    const controlRuns = await runsApi.listAgentRuns(secondActor, { limit: 20 });
+    expect(
+      controlRuns.runs.some((run) => {
+        return [
+          "unconnected group task",
+          "/help",
+          "unavailable group task",
+        ].includes(run.prompt);
+      }),
+    ).toBeFalsy();
+
+    await authOrgApi.updateAgentMetadata(actor, defaultAgentId, {
+      visibility: "public",
+    });
+    outboundMessages = [];
+    const firstMessageId = `om_${randomUUID()}`;
+    const firstPrompt = "first canonical group task";
+    const secondPrompt = "second queued canonical group task";
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, firstPrompt, {
+        messageId: firstMessageId,
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const firstRun = await findRun(secondActor, firstPrompt);
+
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, secondPrompt, {
+        rootId: firstMessageId,
+        threadId: `omt_${randomUUID()}`,
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      (await runsApi.listAgentRuns(secondActor, { limit: 20 })).runs.some(
+        (run) => {
+          return run.prompt === secondPrompt;
+        },
+      ),
+    ).toBeFalsy();
+
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
+    const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
+    await completeRunSession({
+      runId: firstRun.id,
+      sandboxToken: firstClaim.sandboxToken,
+      sessionId: firstCliSessionId,
+      history: `bdd feishu canonical group history ${firstRun.id}`,
+      assistantText: "First canonical group answer",
+    });
+
+    const secondRun = await findRun(secondActor, secondPrompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
+    expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
+    await runsApi.requestCancelRun(secondActor, secondRun.id, [200]);
+    await flushWaitUntilForTest();
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const client = setupApp({ context })(zeroFeishuConnectContract);
     await accept(
       client.removeInstallation({
@@ -2103,6 +2427,10 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
     expect(groupClaim.appendSystemPrompt).toContain("Scope: Group mention");
+    expect(groupClaim.appendSystemPrompt).toContain("Chat ID: oc_feishu_group");
+    expect(groupClaim.appendSystemPrompt).toContain(
+      "Group ID: oc_feishu_group (same as Chat ID; use it directly as the `--chat` value for `zero feishu message send`)",
+    );
     expect(groupClaim.appendSystemPrompt).toContain(
       "# Recent Channel Messages",
     );

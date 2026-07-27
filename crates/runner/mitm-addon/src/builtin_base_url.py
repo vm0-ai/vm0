@@ -1,4 +1,12 @@
-"""Builtin firewall base URL template resolution."""
+"""Resolve built-in firewall base URL templates at the runner trust boundary.
+
+Connector definitions and their base URL variables are first validated in
+``turbo/packages/connectors/src/firewall-types.ts``. The runner nevertheless treats
+execution-supplied values as untrusted and independently checks every substitution
+before registry firewalls can use the resolved base. ``registry_firewalls`` converts
+``BuiltinBaseUrlResolutionError`` into invalid firewall configuration; credentialed
+transport and built-in host-policy validation are a subsequent registry step.
+"""
 
 import re
 import urllib.parse
@@ -378,6 +386,25 @@ def resolve_base_url_template(
     base: str,
     vars_map: dict[str, str],
 ) -> str:
+    """Resolve runtime variables into a safe built-in firewall base URL.
+
+    Variables may supply the whole base, optionally followed by a fixed path suffix;
+    a complete authority or authority fragment; a numeric port; or a path segment.
+    Query or fragment placement and other unsupported positions fail closed.
+
+    Values reject unsafe URL syntax and may introduce only the raw or percent-encoded
+    structure allowed by their position. Path values are repeatedly decoded to reject
+    nested structure and unsafe segments, and the complete resolved base must be valid
+    firewall config.
+
+    Returns:
+        The resolved firewall base URL.
+
+    Raises:
+        BuiltinBaseUrlResolutionError: If a referenced value is missing or empty,
+            a value or position violates the safety contract, or the resolved base
+            is invalid.
+    """
     resolved_parts: list[str] = []
     last_index = 0
     for match in _BASE_URL_VAR_PATTERN.finditer(base):

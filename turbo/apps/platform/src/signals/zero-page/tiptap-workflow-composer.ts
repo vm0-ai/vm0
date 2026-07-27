@@ -206,6 +206,7 @@ export interface WorkflowComposerSignals {
   readonly prepareTemplateInsertion$: Command<void, []>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
+  readonly selectOrAppendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
     Promise<WorkflowComposerSubmissionSnapshot>,
     [AbortSignal]
@@ -1866,7 +1867,46 @@ function createInsertTextCommands(editor: Editor) {
       .scrollIntoView()
       .run();
   });
-  const appendText$ = command((_context, value: string) => {
+
+  const selectText = (value: string): boolean => {
+    const text = value.trim();
+    if (!text) {
+      return false;
+    }
+
+    let textRun = "";
+    let textRunStart = -1;
+    let textRunEnd = -1;
+    let selection: { from: number; to: number } | null = null;
+    editor.state.doc.descendants((node, position) => {
+      if (selection || !node.isText || !node.text) {
+        return;
+      }
+      if (position === textRunEnd) {
+        textRun += node.text;
+      } else {
+        textRun = node.text;
+        textRunStart = position;
+      }
+      textRunEnd = position + node.nodeSize;
+
+      const matchIndex = textRun.indexOf(text);
+      if (matchIndex !== -1) {
+        selection = {
+          from: textRunStart + matchIndex,
+          to: textRunStart + matchIndex + text.length,
+        };
+      }
+    });
+    if (!selection) {
+      return false;
+    }
+
+    editor.chain().focus().setTextSelection(selection).scrollIntoView().run();
+    return true;
+  };
+
+  const appendText = (value: string) => {
     const text = value.trim();
     if (!text) {
       return;
@@ -1875,8 +1915,23 @@ function createInsertTextCommands(editor: Editor) {
     const textblock = activeTextblock(editor);
     const content = textblock?.value.trimEnd() ? `\n${text}` : text;
     editor.commands.insertContent(content);
+  };
+
+  const appendText$ = command((_context, value: string) => {
+    appendText(value);
   });
-  return { insertText$, insertPromptMarkdown$, appendText$ };
+  const selectOrAppendText$ = command((_context, value: string) => {
+    if (!selectText(value)) {
+      appendText(value);
+    }
+  });
+
+  return {
+    insertText$,
+    insertPromptMarkdown$,
+    appendText$,
+    selectOrAppendText$,
+  };
 }
 
 function inlineTemplateNode(

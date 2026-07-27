@@ -4,12 +4,13 @@ import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-s
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  chatEventResponse,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
-  type PagedChatMessage,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -24,9 +25,12 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import type { ZeroClientFactory } from "../../../signals/api-client.ts";
 import { syncArtifactFileToGoogleDrive } from "../../../signals/chat-page/artifact-google-drive-sync.ts";
+import {
+  chatThreadSidebarResizing$,
+  chatThreadSidebarWidth$,
+} from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { resetSignal } from "../../../signals/utils.ts";
-import { artifactPanelWidth$ } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -64,10 +68,11 @@ function setupChatThread({
     },
   ]);
 
-  const messages: PagedChatMessage[] = [
+  const messages: ChatEvent[] = [
     {
       id: "msg-artifact-user",
-      role: "user",
+      threadId: THREAD_ID,
+      eventType: "input.prompt" as const,
       content: "Show me the artifact",
       runId: "run-artifact",
       seqId: 1,
@@ -76,7 +81,8 @@ function setupChatThread({
     },
     {
       id: "msg-artifact-assistant",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "output.message" as const,
       content,
       runId: "run-artifact",
       seqId: 2,
@@ -84,7 +90,8 @@ function setupChatThread({
     },
     {
       id: "msg-artifact-completed",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "run.completed" as const,
       content: null,
       runId: "run-artifact",
       runLifecycleEvent: "completed",
@@ -118,11 +125,19 @@ function setupChatThread({
       latestEventId: "00000000-0000-4000-8000-000000000001",
     });
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId || query.beforeSeqId) {
-      return respond(200, { messages: [] });
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+    if (
+      query.sinceSeqId ||
+      query.beforeSeqId ||
+      query.sinceId ||
+      query.beforeId
+    ) {
+      return respond(200, { events: [] });
     }
-    return respond(200, { messages, hasHistoryBefore: false });
+    return respond(200, {
+      events: messages.map(chatEventResponse),
+      hasHistoryBefore: false,
+    });
   });
   if (artifactFiles) {
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -347,7 +362,7 @@ describe("zero artifact sidebar", () => {
     });
   });
 
-  it("resizes the artifact preview pane and persists the width", async () => {
+  it("resizes the sidebar through a document drag mask and resets each drag endpoint", async () => {
     const markdownUrl =
       "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
     context.mocks.http.get(markdownUrl, () => {
@@ -366,7 +381,7 @@ describe("zero artifact sidebar", () => {
     });
 
     const resizeHandle = screen.getByRole("separator", {
-      name: "Resize preview panel",
+      name: "Resize sidebar",
     });
     const splitContainer = resizeHandle.parentElement;
     if (!splitContainer) {
@@ -390,26 +405,73 @@ describe("zero artifact sidebar", () => {
     };
 
     expect(
-      splitContainer.style.getPropertyValue("--artifact-panel-width"),
+      splitContainer.style.getPropertyValue("--chat-thread-sidebar-width"),
     ).toBe("min(760px, 48vw)");
 
     fireEvent.pointerDown(resizeHandle, { clientX: 760 });
-    fireEvent.pointerMove(window, { clientX: 700 });
+
+    const dragMask = document.querySelector<HTMLElement>(
+      "[data-chat-thread-sidebar-resize-mask]",
+    );
+    expect(dragMask).not.toBeNull();
+    if (!dragMask) {
+      throw new Error("Chat thread sidebar drag mask not found");
+    }
+    expect(dragMask.parentElement).toBe(document.body);
+    expect(dragMask.style.position).toBe("fixed");
+    expect(dragMask.style.inset).toBe("0");
+    expect(dragMask.style.zIndex).toBe("2147483647");
+    expect(dragMask.style.cursor).toBe("col-resize");
+    expect(dragMask.style.userSelect).toBe("none");
+    expect(dragMask.style.touchAction).toBe("none");
+    expect(context.store.get(chatThreadSidebarResizing$)).toBeTruthy();
+    expect(document.body.style.cursor).toBe("");
+    expect(document.body.style.userSelect).toBe("");
+
+    fireEvent.pointerMove(dragMask, { clientX: 700 });
 
     await waitFor(() => {
       expect(
-        splitContainer.style.getPropertyValue("--artifact-panel-width"),
+        splitContainer.style.getPropertyValue("--chat-thread-sidebar-width"),
       ).toBe("clamp(400px, 700px, calc(100% - 600px))");
-      expect(context.store.get(artifactPanelWidth$)).toBe(700);
+      expect(context.store.get(chatThreadSidebarWidth$)).toBe(700);
     });
-    expect(document.body.style.cursor).toBe("col-resize");
-    expect(document.body.style.userSelect).toBe("none");
 
-    fireEvent.pointerUp(window);
+    fireEvent.pointerUp(dragMask);
 
     await waitFor(() => {
-      expect(document.body.style.cursor).toBe("");
-      expect(document.body.style.userSelect).toBe("");
+      expect(
+        document.querySelector("[data-chat-thread-sidebar-resize-mask]"),
+      ).not.toBeInTheDocument();
+      expect(context.store.get(chatThreadSidebarResizing$)).toBeFalsy();
+    });
+
+    fireEvent.pointerDown(resizeHandle, { clientX: 700 });
+    const cancelMask = document.querySelector<HTMLElement>(
+      "[data-chat-thread-sidebar-resize-mask]",
+    );
+    if (!cancelMask) {
+      throw new Error("Chat thread sidebar cancel mask not found");
+    }
+    fireEvent.pointerCancel(cancelMask);
+
+    await waitFor(() => {
+      expect(cancelMask).not.toBeInTheDocument();
+      expect(context.store.get(chatThreadSidebarResizing$)).toBeFalsy();
+    });
+
+    fireEvent.pointerDown(resizeHandle, { clientX: 700 });
+    const blurMask = document.querySelector<HTMLElement>(
+      "[data-chat-thread-sidebar-resize-mask]",
+    );
+    if (!blurMask) {
+      throw new Error("Chat thread sidebar blur mask not found");
+    }
+    fireEvent(window, new Event("blur"));
+
+    await waitFor(() => {
+      expect(blurMask).not.toBeInTheDocument();
+      expect(context.store.get(chatThreadSidebarResizing$)).toBeFalsy();
     });
   });
 
