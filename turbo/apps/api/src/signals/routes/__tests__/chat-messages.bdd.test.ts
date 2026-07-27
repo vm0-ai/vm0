@@ -9,7 +9,7 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatEventsContract,
   chatMessagesContract,
