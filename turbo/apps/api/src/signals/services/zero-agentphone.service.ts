@@ -13,7 +13,7 @@ import {
   normalizeRunModelId,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";

@@ -4,7 +4,7 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { agentRuns } from "@vm0/db/schema/agent-run";

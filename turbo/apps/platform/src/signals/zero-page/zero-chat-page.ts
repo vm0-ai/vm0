@@ -15,7 +15,7 @@ import {
   resolveModelFirstUserDefaultSelection,
 } from "./model-default-selection.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   codexFastModeLocalDefault$,
   setCodexFastModeLocalDefault$,

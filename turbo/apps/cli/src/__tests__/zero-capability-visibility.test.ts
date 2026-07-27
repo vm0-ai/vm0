@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 

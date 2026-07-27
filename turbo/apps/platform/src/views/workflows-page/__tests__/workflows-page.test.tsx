@@ -17,7 +17,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { afterEach, describe, expect, it } from "vitest";
 

@@ -46,7 +46,7 @@ import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
