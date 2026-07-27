@@ -1052,6 +1052,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["report"],
   },
   {
+    id: "template:web-prototype-taste-editorial",
+    kind: "template",
+    name: "Taste Editorial Web Prototype",
+    description:
+      "Editorial-minimalist web prototype with warm monochrome canvas, serif display type, hairline borders, pastel chips, and ambient micro-motion.",
+    source: { path: "design-templates/web-prototype-taste-editorial" },
+    targets: ["website"],
+  },
+  {
     id: "template:audio-jingle",
     kind: "template",
     name: "Audio Jingle",
@@ -1059,6 +1068,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       "Audio generation skill — jingles, beds, voiceover, and sound effects. Routes music requests to Suno V5 / Udio / Lyria, speech to MiniMax TTS / FishAudio / ElevenLabs V3, and SFX to ElevenLabs SFX or AudioCraft. Output is one MP3/WAV file…",
     source: { path: "design-templates/audio-jingle" },
     targets: ["intro-video"],
+  },
+  {
+    id: "template:blog-post",
+    kind: "template",
+    name: "Blog Post",
+    description:
+      "A long-form article / blog post — masthead, hero image placeholder, article body with figures and pull quotes, author byline, related posts.",
+    source: { path: "design-templates/blog-post" },
+    targets: ["website"],
   },
   {
     id: "template:clinical-case-report",
@@ -1077,12 +1095,22 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       "Run a 5-dimension expert design review on any HTML artifact in the project — Philosophy / Visual hierarchy / Detail / Functionality / Innovation, each scored 0–10. Outputs a single self-contained HTML report with a radar chart, evidence…",
     source: { path: "design-templates/critique" },
     targets: [
+      "website",
       "dashboard-design",
       "report",
       "docs-design",
       "poster",
       "mobile-app-design",
     ],
+  },
+  {
+    id: "template:dating-web",
+    kind: "template",
+    name: "Dating Web",
+    description:
+      "A consumer-feeling dating / matchmaking dashboard — left rail navigation, ticker bar of community signals, headline KPIs, a 30-day mutual-matches bar chart, and a match-rate trend block. Editorial typography, restrained accent.",
+    source: { path: "design-templates/dating-web" },
+    targets: ["website"],
   },
   {
     id: "template:dcf-valuation",
@@ -1100,7 +1128,16 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'A two-spread digital e-guide preview — page 1 is a cover (display title, author, "What\'s inside" stats, table of contents teaser); page 2 is a spread (lesson body with pull-quote and a step list). Lifestyle / creator brand tone.',
     source: { path: "design-templates/digital-eguide" },
-    targets: ["docs-design"],
+    targets: ["website", "docs-design"],
+  },
+  {
+    id: "template:email-marketing",
+    kind: "template",
+    name: "Email Marketing",
+    description:
+      "A brand product-launch email — masthead with wordmark, hero image block, headline lockup with skewed-italic accent, body copy, primary CTA, and a specifications grid. Pure HTML email layout (centered single column, table fallback).",
+    source: { path: "design-templates/email-marketing" },
+    targets: ["website"],
   },
   {
     id: "template:eng-runbook",
@@ -1127,7 +1164,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A multi-frame gamified mobile-app prototype — three phone frames on a dark showcase stage. Frame 1: cover / poster, Frame 2: today's quests with XP ribbons and a level bar, Frame 3: quest detail. Vivid quest tiles, level ribbon, bottom t…",
     source: { path: "design-templates/gamified-app" },
-    targets: ["mobile-app-design"],
+    targets: ["website", "mobile-app-design"],
   },
   {
     id: "template:github-dashboard",
@@ -1244,6 +1281,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   },
 
   {
+    id: "template:kami-landing",
+    kind: "template",
+    name: "Kami Landing",
+    description:
+      "Produce a print-grade single-page kami (紙 / 纸) document — warm parchment canvas, ink-blue accent, serif at one weight, no italic, no cool grays. The output reads like a professional white paper or studio one-pager, not an app UI. Multili…",
+    source: { path: "design-templates/kami-landing" },
+    targets: ["website"],
+  },
+  {
     id: "template:kanban-board",
     kind: "template",
     name: "Kanban Board",
@@ -1268,7 +1314,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create refreshable, auditable artifacts backed by connector or local data. Trigger when the user asks for live dashboards, refreshable reports, synced views, or reusable data-backed artifacts.",
     source: { path: "design-templates/live-artifact" },
-    targets: ["dashboard-design", "report"],
+    targets: ["dashboard-design", "report", "website"],
   },
   {
     id: "template:live-dashboard",
@@ -1315,6 +1361,16 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/motion-frames" },
     targets: ["intro-video"],
   },
+  {
+    id: "template:open-design-landing",
+    kind: "template",
+    name: "Editorial Landing",
+    description:
+      "Single-page editorial landing site in the Atelier Zero visual language (Monocle / Apartamento / Études collage). Composes from a typed inputs.json with optional gpt-image-2 assets.",
+    source: { path: "design-templates/open-design-landing" },
+    targets: ["website"],
+  },
+
   {
     id: "template:orbit-general",
     kind: "template",
@@ -1369,6 +1425,26 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/pm-spec" },
     targets: ["docs-design"],
   },
+  {
+    id: "template:pricing-page",
+    kind: "template",
+    name: "Pricing Page",
+    description:
+      "A standalone pricing page — header, plan tiers, feature comparison table, and an FAQ.",
+    source: { path: "design-templates/pricing-page" },
+    targets: ["website"],
+  },
+
+  {
+    id: "template:saas-landing",
+    kind: "template",
+    name: "Saas Landing",
+    description:
+      "Single-page SaaS landing with hero, features, social proof, pricing, and CTA. Respects the active DESIGN.md color/typography/layout tokens.",
+    source: { path: "design-templates/saas-landing" },
+    targets: ["website"],
+  },
+
   {
     id: "template:social-carousel",
     kind: "template",
@@ -1430,6 +1506,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       "Wrap any HTML artifact with a side panel of live, parameterized controls — accent color, type scale, density, motion, theme — that rewrite CSS custom properties in real time and persist to localStorage. Lets the user explore variants of…",
     source: { path: "design-templates/tweaks" },
     targets: [
+      "website",
       "dashboard-design",
       "report",
       "docs-design",
@@ -1447,13 +1524,49 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["intro-video"],
   },
   {
+    id: "template:waitlist-page",
+    kind: "template",
+    name: "Waitlist Page",
+    description:
+      "Minimal pre-launch landing with email capture, brand logo, and optional decorative layer. Reads DESIGN.md for colors, typography, and layout rules.",
+    source: { path: "design-templates/waitlist-page" },
+    targets: ["website"],
+  },
+  {
+    id: "template:web-prototype",
+    kind: "template",
+    name: "Web Prototype",
+    description:
+      "General-purpose desktop web prototype. Single self-contained HTML file built by copying the seed `assets/template.html` and pasting section layouts from `references/layouts.md`. Default for any landing / marketing / docs / SaaS page when…",
+    source: { path: "design-templates/web-prototype" },
+    targets: ["website"],
+  },
+  {
+    id: "template:web-prototype-taste-brutalist",
+    kind: "template",
+    name: "Web Prototype Taste Brutalist",
+    description:
+      "Swiss industrial-print web prototype. Newsprint canvas, monolithic black grotesque, viewport-bleeding numerals, hairline grid dividers, hazard-red accent, ASCII syntax decoration. Distilled from Leonxlnx/taste-skill `brutalist-skill` (Sw…",
+    source: { path: "design-templates/web-prototype-taste-brutalist" },
+    targets: ["website"],
+  },
+  {
+    id: "template:web-prototype-taste-soft",
+    kind: "template",
+    name: "Web Prototype Taste Soft",
+    description:
+      "Apple-tier soft web prototype. Silver/cream canvas, double-bezel cards, button-in-button CTAs, generous squircle radii, spring motion, ambient mesh. Distilled from Leonxlnx/taste-skill `soft-skill` + sections 4–8 of `taste-skill`.",
+    source: { path: "design-templates/web-prototype-taste-soft" },
+    targets: ["website"],
+  },
+  {
     id: "template:wireframe-sketch",
     kind: "template",
     name: "Wireframe Sketch",
     description:
       "A hand-drawn wireframe exploration — graph-paper background, marker / pencil tone, multiple tab labels for variants, sticky-note annotations, scribbled chart placeholders, hatched fills. Reads like a designer's whiteboard before any pixe…",
     source: { path: "design-templates/wireframe-sketch" },
-    targets: ["mobile-app-design", "dashboard-design"],
+    targets: ["website", "mobile-app-design", "dashboard-design"],
   },
   {
     id: "template:x-research",

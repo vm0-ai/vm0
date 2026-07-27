@@ -146,6 +146,17 @@ ${formatRegistryListing(templates, "website templates")}`;
         resolvedTemplate = entry;
       }
 
+      const templateSelectionRules = resolvedTemplate
+        ? [
+            "Honor the explicitly selected template; do not substitute a different template based on website intent.",
+          ]
+        : [
+            "For landing pages, marketing sites, official brand or product websites, and product launch pages, select a vm0 built-in website template.",
+            "For documentation, blogs, dashboards, app or tool surfaces, email, generic prototypes, and other non-marketing HTML or website requests, select an Open Design template that matches the user's intent.",
+            "Treat candidates with a source.archive as vm0 built-in website templates; candidates without an archive are Open Design templates resolved from the pinned registry source.",
+            "When the request is ambiguous or does not clearly describe a marketing or official website, prefer an Open Design template.",
+          ];
+
       const packet = createHtmlArtifactAuthoringPacket({
         kind: "website",
         prompt,
@@ -162,6 +173,7 @@ ${formatRegistryListing(templates, "website templates")}`;
         ],
         artifactRules: [
           "Build the usable website as the first screen; do not output a landing-page plan.",
+          ...templateSelectionRules,
           "If it is a marketing site, make the product or offer visible in the first viewport.",
           "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
           "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
