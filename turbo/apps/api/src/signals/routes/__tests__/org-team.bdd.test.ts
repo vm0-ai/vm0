@@ -4,6 +4,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   createAuthOrgAgentsBddApi,
@@ -421,7 +422,7 @@ describe("ORG-02: membership admin matrix", () => {
           {
             role: "org:admin",
             publicUserData: {},
-            createdAt: Date.now(),
+            createdAt: now(),
           },
         ],
       },
@@ -441,7 +442,7 @@ describe("ORG-02: membership admin matrix", () => {
               {
                 id: `request-${shortId()}`,
                 public_user_data: {},
-                created_at: Date.now(),
+                created_at: now(),
               },
             ],
           });
