@@ -3,6 +3,7 @@
 import asyncio
 import contextvars
 import errno
+import http.client as http_client
 import multiprocessing
 import ssl
 import threading
@@ -844,15 +845,21 @@ class TestAuthBaseForwarderResourceCleanup:
         assert upstream.socket.closed
 
     async def test_closes_connection_when_getresponse_raises(self):
+        def create_connection(
+            _address: tuple[str, int],
+            _timeout: object,
+            _source_address: object,
+        ) -> FakeSocket:
+            return FakeSocket(b"not an HTTP response\r\n")
+
         with (
-            fake_forwarder_upstream(
-                makefile_side_effect=ConnectionError("response failed")
-            ) as upstream,
-            pytest.raises(ConnectionError, match="response failed"),
+            fake_forwarder_upstream(create_connection=create_connection) as upstream,
+            pytest.raises(http_client.BadStatusLine),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
 
-        assert upstream.socket.response_file is None
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.closed
         assert upstream.socket.closed
 
 
