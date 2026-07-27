@@ -377,9 +377,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -420,9 +417,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -436,40 +430,6 @@ describe("chat composer models", () => {
     await user.keyboard("{Backspace>4/}alpha");
 
     await waitFor(() => {
-      expect(
-        screen.queryByTestId("chat-thread-suggestion-menu"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps @ chat thread suggestions behind the feature switch", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    mockThread();
-    mockComposerThreadSnapshot([
-      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
-      {
-        id: SUGGESTED_THREAD_ID,
-        agentId: AGENT_ID,
-        title: "Project Alpha",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerChatThreadSuggestions]: false,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("@alpha");
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("@alpha");
       expect(
         screen.queryByTestId("chat-thread-suggestion-menu"),
       ).not.toBeInTheDocument();

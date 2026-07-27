@@ -8180,8 +8180,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.PlanUpgradeGuidance]: true,
       [FeatureSwitchKey.ZeroFinance]: true,
-      [FeatureSwitchKey.ZeroMail]: true,
-      [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
       [FeatureSwitchKey.CodexSessionPruning]: false,
       [FeatureSwitchKey.ClaudeSessionPruning]: false,
     });

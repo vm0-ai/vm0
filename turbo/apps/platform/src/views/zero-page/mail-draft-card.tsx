@@ -1,5 +1,4 @@
 import { IconChevronRight, IconLoader2 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
@@ -8,10 +7,7 @@ import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/ze
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 
-import {
-  featureSwitch$,
-  newChatThreadSidebarEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import {
@@ -114,7 +110,7 @@ function MailDraftCardContent({
   );
 }
 
-function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
+export function MailDraftCard({ signals }: MailDraftCardProps) {
   const draftLoadable = useLastLoadable(signals.draft$);
   const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const legacySelectedMailDraftId = useGet(currentMailDraftId$);
@@ -194,11 +190,4 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
       {content}
     </button>
   );
-}
-
-export function MailDraftCard(props: MailDraftCardProps) {
-  const featureSwitches = useGet(featureSwitch$);
-  return featureSwitches[FeatureSwitchKey.ZeroMail] ? (
-    <EnabledMailDraftCard {...props} />
-  ) : null;
 }

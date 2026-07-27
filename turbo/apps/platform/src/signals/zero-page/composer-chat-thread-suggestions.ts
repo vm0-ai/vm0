@@ -1,7 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
   ChatThreadSuggestionRange,
   ComposerChatThreadSuggestion,
@@ -15,25 +13,16 @@ export interface ComposerChatThreadSuggestionResult {
   readonly chatThreads: readonly ComposerChatThreadSuggestion[];
 }
 
-export const composerChatThreadSuggestionsEnabled$ = computed(
-  (get): boolean => {
-    return (
-      get(featureSwitch$)[FeatureSwitchKey.ComposerChatThreadSuggestions] ??
-      false
-    );
-  },
-);
-
 export function createComposerChatThreadSuggestions(
   activeRange$: Computed<ChatThreadSuggestionRange | null>,
   agentId$: Computed<Promise<string | null>>,
 ): Computed<Promise<ComposerChatThreadSuggestionResult>> {
   return computed(async (get): Promise<ComposerChatThreadSuggestionResult> => {
     const range = get(activeRange$);
-    if (!range || !get(composerChatThreadSuggestionsEnabled$)) {
+    if (!range) {
       return {
         agentId: null,
-        query: range?.query ?? null,
+        query: null,
         chatThreads: [],
       };
     }

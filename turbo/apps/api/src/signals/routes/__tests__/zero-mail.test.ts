@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 
 import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -16,7 +15,6 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   seedConnectorStorageRow,
@@ -270,9 +268,6 @@ async function seedGmailMailCardFixture() {
     state,
   });
   await runs.enableAgentConnectors(actor, agent.agentId, ["gmail"]);
-  await updateFeatureSwitchesForUser(context, actorWithOrg, {
-    [FeatureSwitchKey.ZeroMail]: true,
-  });
   mocks.clerk.session(actor.userId, actorWithOrg.orgId);
   return { actor, agent, thread };
 }
