@@ -12,7 +12,7 @@ import {
   resolvePlatformEnvironment,
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
-import { bestEffort, createDeferredPromise, onDomEventFn } from "./utils.ts";
+import { bestEffort, onDomEventFn } from "./utils.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -323,44 +323,36 @@ export const clerkInstance$ = computed(() => {
     subscribeToStatus(event, handler, { ...options, notify: true });
   };
 
+  // Both VM0 signals and @clerk/react need the loaded instance. Share the
+  // first load instead of issuing concurrent bootstrap requests.
+  const loadClerk = clerkInstance.load.bind(clerkInstance);
+  let loadPromise: Promise<void> | undefined;
+  clerkInstance.load = (options) => {
+    loadPromise ??= loadClerk(options);
+    return loadPromise;
+  };
+
   return clerkInstance;
 });
 
 /**
  * Loaded Clerk instance for consumers that need authentication state.
- *
- * The React provider owns `load()`. Calling it here as well races two loads of
- * the same instance and can leave the provider's status stuck at "loading".
  */
-export const clerk$ = computed(async (get, { signal }) => {
+export const clerk$ = computed(async (get) => {
   const clerkInstance = get(clerkInstance$);
-
-  if (clerkInstance.loaded) {
-    return clerkInstance;
-  }
-
-  const loaded = createDeferredPromise<void>(signal);
-  const handleStatus = (status: Clerk["status"]) => {
-    if (status === "error") {
-      clerkInstance.off("status", handleStatus);
-      loaded.reject(new Error("Clerk failed to load"));
-      return;
-    }
-    if (!clerkInstance.loaded) {
-      return;
-    }
-    clerkInstance.off("status", handleStatus);
-    loaded.resolve();
-  };
-  signal.addEventListener(
-    "abort",
-    () => {
-      clerkInstance.off("status", handleStatus);
-    },
-    { once: true },
-  );
-  clerkInstance.on("status", handleStatus, { notify: true });
-  await loaded.promise;
+  const satelliteConfig = resolveClerkSatelliteConfig();
+  await clerkInstance.load({
+    ui,
+    ...(satelliteConfig
+      ? {
+          isSatellite: true,
+          satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+        }
+      : {}),
+    signInUrl: resolveAppAuthUrl("/sign-in"),
+    signUpUrl: resolveAppAuthUrl("/sign-up"),
+    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+  });
 
   return clerkInstance;
 });

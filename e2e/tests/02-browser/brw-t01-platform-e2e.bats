@@ -88,13 +88,33 @@ wait_for_auth_completion() {
 
 open_auth_form() {
   local url="$1"
-  shift
+  local target_expression="$2"
 
   agent-browser open "$url"
-  if ! wait_for_browser_target --timeout-seconds 30 "$@"; then
-    report_clerk_bootstrap_failure
+  if wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+    return
+  fi
+
+  report_auth_page_failure
+
+  # A failed app module request leaves the static HTML bootstrap skeleton in
+  # place before Clerk exists. Recover that transport failure once without
+  # masking a Clerk form stall after the application has started.
+  if [[ "$(agent-browser eval \
+    "Boolean(
+      document.getElementById('app-bootstrap-skeleton')
+      && typeof window.Clerk === 'undefined'
+    )")" != "true" ]]; then
     return 1
   fi
+
+  echo "# App bootstrap did not complete; reloading once" >&3
+  agent-browser reload
+  if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+    report_auth_page_failure
+    return 1
+  fi
+  echo "# App bootstrap recovered after reload" >&3
 }
 
 # ===========================================================================
@@ -105,7 +125,7 @@ open_auth_form() {
   local sign_up_url
   sign_up_url="$(auth_url "/sign-up")"
   echo "# Navigating to $sign_up_url" >&3
-  open_auth_form "$sign_up_url" --fn \
+  open_auth_form "$sign_up_url" \
     "Boolean(
       document.querySelector('input[name=\"emailAddress\"]')
       && document.querySelector('input[name=\"password\"]')
@@ -148,7 +168,7 @@ open_auth_form() {
   local sign_in_url
   sign_in_url="$(auth_url "/sign-in")"
   echo "# Navigating to $sign_in_url" >&3
-  open_auth_form "$sign_in_url" --fn \
+  open_auth_form "$sign_in_url" \
     "!window.location.pathname.includes('/sign-in')
       || Boolean(document.querySelector('input[name=\"identifier\"]'))"
 

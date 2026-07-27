@@ -93,36 +93,62 @@ seed_preview_bypass_cookies() {
 }
 
 # ---------------------------------------------------------------------------
-# report_clerk_bootstrap_failure — Emit fast, redacted failure diagnostics
+# report_auth_page_failure — Emit fast, redacted failure diagnostics
 # Keeps normal runs quiet and avoids screenshots/snapshots.
 # ---------------------------------------------------------------------------
-report_clerk_bootstrap_failure() {
-  echo "# Clerk page state:" >&3
+report_auth_page_failure() {
+  echo "# Auth page state:" >&3
   agent-browser eval \
     '({
       url: location.origin + location.pathname,
       readyState: document.readyState,
       text: (document.body?.innerText ?? "").slice(0, 500),
+      bootstrapSkeleton: Boolean(
+        document.getElementById("app-bootstrap-skeleton")
+      ),
       clerkDefined: typeof window.Clerk !== "undefined",
       clerkLoaded: window.Clerk?.loaded ?? null,
       serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
+      navigation: performance.getEntriesByType("navigation").map((entry) => ({
+        status: entry.responseStatus ?? null,
+        duration: Math.round(entry.duration),
+        domInteractive: Math.round(entry.domInteractive),
+        loadEventEnd: Math.round(entry.loadEventEnd),
+      })),
       resources: performance.getEntriesByType("resource")
         .map((entry) => {
           const url = new URL(entry.name);
           return {
             host: url.host,
             path: url.pathname,
+            type: entry.initiatorType,
             status: entry.responseStatus ?? null,
             duration: Math.round(entry.duration),
           };
         })
         .filter((entry) =>
-          entry.host.includes("clerk") || entry.host.includes("accounts")
-        ),
+          entry.status >= 400
+          || entry.duration >= 5000
+          || entry.host.includes("clerk")
+          || entry.host.includes("accounts")
+        )
+        .slice(-50),
+      scripts: Array.from(document.scripts)
+        .map((script) => script.src)
+        .filter(Boolean)
+        .map((src) => {
+          const url = new URL(src);
+          return { host: url.host, path: url.pathname };
+        }),
     })' >&3 2>&1 || true
 
   echo "# Browser errors:" >&3
   agent-browser errors 2>&1 \
+    | sed -E 's/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | tail -80 >&3 || true
+
+  echo "# Failed network requests:" >&3
+  agent-browser network requests --status 400-599 2>&1 \
     | sed -E 's/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
     | tail -80 >&3 || true
 
