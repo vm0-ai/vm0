@@ -3848,8 +3848,9 @@ function RecommendedFollowupList({
   thread: ChatThreadSignals;
   source: RecommendedFollowupSource;
 }) {
-  const sendMessage = useSet(thread.sendMessage$);
-  const rootSignal = useGet(rootSignal$);
+  const selectOrAppendComposerText = useSet(
+    thread.workflowComposer.selectOrAppendText$,
+  );
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
   };
@@ -3864,16 +3865,7 @@ function RecommendedFollowupList({
       followupCount: source.followups.length,
       followup,
     });
-    detach(
-      sendMessage(
-        followup.prompt,
-        {
-          includeDraftAttachments: false,
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
-    );
+    selectOrAppendComposerText(followup.prompt);
   };
 
   return (
