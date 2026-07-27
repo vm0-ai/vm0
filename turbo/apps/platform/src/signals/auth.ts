@@ -26,7 +26,7 @@ const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
 
 type AllowedAuthRedirectOrigin = string | RegExp;
 
-export interface ClerkSatelliteConfig {
+interface ClerkSatelliteConfig {
   readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
   readonly isSatellite: true;
   readonly satelliteAutoSync: true;
@@ -80,7 +80,7 @@ export function resolveWebOrigin(): string {
   return deriveServiceOrigin(origin, "www");
 }
 
-export function resolveAppOrigin(): string {
+function resolveAppOrigin(): string {
   const origin = location.origin;
   return !origin || origin === "null" ? "" : origin;
 }

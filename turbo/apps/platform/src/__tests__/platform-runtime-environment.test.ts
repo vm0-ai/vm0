@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { isOkouProductionHostname } from "../lib/platform-host.ts";
 
 const PREVIEW_PLAUSIBLE_URL = "https://preview.plausible.example/js/script.js";
 const PRODUCTION_PLAUSIBLE_URL =
@@ -156,9 +157,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
-    expect(
-      runtime.platformHost.isOkouProductionHostname("okou.ai.evil.example"),
-    ).toBeFalsy();
+    expect(isOkouProductionHostname("okou.ai.evil.example")).toBeFalsy();
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
       clerkPublishableKey: PRODUCTION_CLERK_KEY,

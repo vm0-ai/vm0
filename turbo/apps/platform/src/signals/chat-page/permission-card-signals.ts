@@ -33,7 +33,7 @@ export interface PermissionCardSignalsRegistry {
   resolve(resourceKey: string): PermissionSignals;
 }
 
-export function createPermissionSignals(
+function createPermissionSignals(
   descriptor: PermissionActionDescriptor,
 ): PermissionSignals {
   return {

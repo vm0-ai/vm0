@@ -23,9 +23,7 @@ export const ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL =
 export const ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL =
   "Requires an Apple silicon Mac";
 
-export type ZeroDesktopDownloadSupportStatus =
-  | "available"
-  | "unsupported-intel-mac";
+type ZeroDesktopDownloadSupportStatus = "available" | "unsupported-intel-mac";
 
 interface UserAgentDataValues {
   readonly architecture?: string;
@@ -63,7 +61,7 @@ function isIntelArchitecture(architecture: string | undefined): boolean {
   );
 }
 
-export async function isUnsupportedIntelMacForZeroDesktop(
+async function isUnsupportedIntelMacForZeroDesktop(
   navigatorRef: ZeroDesktopNavigator | null | undefined = typeof navigator ===
   "undefined"
     ? undefined

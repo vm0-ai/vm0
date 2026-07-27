@@ -67,7 +67,7 @@ export function automationKindLabel(
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
-export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 
 export const GMAIL_TEXT_FIELDS: readonly {
   readonly field: GmailTextField;
@@ -165,9 +165,7 @@ function textMatcherParts(
   return parts;
 }
 
-export function formatGmailMatchSummary(
-  config: GmailNewMessageEventConfig,
-): string {
+function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
   const match = config.match;
   if (!match) {
     return "all inbound messages";

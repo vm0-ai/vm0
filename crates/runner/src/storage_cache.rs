@@ -158,6 +158,13 @@ struct CacheTargetGroup {
     archive_size: Option<u64>,
 }
 
+/// Runner-wide admission control for fresh archive delivery.
+///
+/// Clones share one semaphore, so concurrent executor attempts draw from the
+/// same `FRESH_DELIVERY_RUNNER_LIMIT`. For an admitted archive, the owned
+/// permit follows the downloaded body through atomic cache publication and
+/// remains held until the guest staging attempt completes. This bounds
+/// retained runner-owned archive bodies across runs, not only active fetches.
 #[derive(Clone)]
 pub(crate) struct FreshArchiveDeliveryAdmission {
     permits: Arc<Semaphore>,
@@ -214,6 +221,18 @@ enum FreshArchiveResolved {
     },
 }
 
+/// In-flight runner ownership for archives selected from one fresh storage plan.
+///
+/// Fetch tasks start before sandbox creation, but a completed fetch waits on
+/// its apply gate until guest storage application resolves this delivery. The
+/// delivery then owns any atomic cache publication tasks until they finish.
+///
+/// Callers must either pass this value with its original plan to
+/// `populate_cache_with_fresh_delivery` or call
+/// [`Self::cancel_and_drain`] before abandoning or replacing that plan.
+/// Implicit `Drop` is not equivalent cleanup: it aborts fetches but detaches
+/// already-started publication so an atomic fsync/rename transaction is not
+/// cancelled midway.
 pub(crate) struct FreshArchiveDelivery {
     cancel: CancellationToken,
     apply: Vec<oneshot::Sender<()>>,
@@ -221,6 +240,12 @@ pub(crate) struct FreshArchiveDelivery {
     publications: JoinSet<FreshArchivePublicationTaskResult>,
 }
 
+/// A fresh storage plan paired with the delivery prepared for its plan inputs.
+///
+/// The plan and delivery must remain together. A retry that changes the
+/// workspace-image selection must drain the previous delivery and rebuild both
+/// values; a retry such as DNS-only sandbox replacement may retain the pair
+/// when the plan inputs are unchanged.
 pub(crate) struct PreparedFreshStorage {
     pub(crate) plan: StoragePlan,
     pub(crate) delivery: FreshArchiveDelivery,
@@ -238,6 +263,18 @@ impl Drop for FreshArchiveDelivery {
 }
 
 impl FreshArchiveDelivery {
+    /// Cancels and awaits delivery work when its prepared plan will not be applied.
+    ///
+    /// Callers use this for sandbox preparation failure, replacement after a
+    /// workspace-image retry, a plan with no guest work, pre-spawn failure, or
+    /// cancellation. It closes pending apply gates, aborts and joins fetch
+    /// tasks, and then waits for publication tasks that have already started.
+    /// Fetches can be cancelled before publication, but an atomic fsync/rename
+    /// transaction must be allowed to finish.
+    ///
+    /// Unlike implicit `Drop`, this keeps publication in normal awaited
+    /// teardown and records cancellation and drain telemetry when owned work
+    /// exists.
     pub(crate) async fn cancel_and_drain(&mut self, telemetry: &mut JobTelemetry) {
         let started_at = Instant::now();
         let had_owned_work =
@@ -1231,6 +1268,25 @@ fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
         .collect()
 }
 
+/// Starts bounded runner-owned archive delivery for one fresh storage plan.
+///
+/// The executor calls this after workspace-image selection fixes the plan and
+/// before sandbox creation, allowing eligible full-archive fetches to overlap
+/// VM startup. Preparation examines at most `FRESH_DELIVERY_SCAN_LIMIT` target
+/// groups, admits at most `FRESH_DELIVERY_PER_RUN_LIMIT`, and draws each
+/// admission from the shared `FRESH_DELIVERY_RUNNER_LIMIT`.
+///
+/// Each admitted group acquires its cache-writer flock before fetching. After
+/// validating a complete response, the fetch waits on a one-shot apply gate;
+/// resolving the delivery opens that gate only when guest storage application
+/// begins. The writer stays owned through atomic cache publication. Successful
+/// publication transfers the runner-wide permit and complete body into guest
+/// staging, where both stay owned through the attempt.
+///
+/// The returned delivery may own no work when no group is admitted. In every
+/// case, the caller must keep it paired with this plan and either resolve it
+/// through `populate_cache_with_fresh_delivery` or call
+/// [`FreshArchiveDelivery::cancel_and_drain`] before abandoning the plan.
 pub(crate) async fn prepare_fresh_archive_delivery(
     plan: &StoragePlan,
     home: &HomePaths,

@@ -43,7 +43,7 @@ import { equalArrays, equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 
-export interface AgentDialogItem {
+interface AgentDialogItem {
   readonly id: string;
   readonly displayName?: string | null;
 }

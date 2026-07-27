@@ -9,11 +9,8 @@ import type { ComposerSlashWorkflow } from "../../signals/zero-page/workflow-com
 
 export {
   buildComposerSlashWorkflows,
-  findActiveSlashWorkflowRange,
   matchesWorkflowQuery,
-  workflowTokenPattern,
   type ComposerSlashWorkflow,
-  type SlashWorkflowRange,
 } from "../../signals/zero-page/workflow-composer-domain.ts";
 
 function slashWorkflowOptionId(workflowName: string): string {
