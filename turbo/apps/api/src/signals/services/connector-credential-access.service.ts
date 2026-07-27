@@ -22,7 +22,7 @@ import type { ReadonlyDb } from "../external/db";
 import {
   getConnectorRuntimeMethod,
   type ConnectorRuntimeMethod,
-  type ConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
 
 /**
@@ -78,7 +78,7 @@ export function connectorCredentialStorageIsCompatible(args: {
 }
 
 export function resolveConnectorCredentialAccess(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
   readonly stored: ConnectorCredentialStoredIdentity;
 }): ConnectorCredentialAccessResult {
   const runtimeMethod = getConnectorRuntimeMethod({
@@ -226,7 +226,7 @@ export function connectorCredentialVariableReadCondition(args: {
 export function connectorCredentialStoredSecretDisplayInfo(args: {
   readonly access: ConnectorCredentialAccess;
   readonly name: string;
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
 }): {
   readonly environmentNames: readonly string[];
   readonly label: string;

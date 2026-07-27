@@ -41,7 +41,11 @@ import {
   readOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
-import { API_TEST_CONNECTOR_FIREWALL_CONFIGS } from "../../../test-fixtures/connector-catalog";
+import {
+  API_TEST_CONNECTOR_FIREWALL_CONFIGS,
+  installApiTestConnectorCatalog,
+  mutateApiTestConnectorCatalogRuntimeProjection,
+} from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
   createBddApi,
@@ -266,6 +270,7 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_load_agent",
   "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
   "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+  "api_dispatch_pre_create_zero_load_connector_runtime_selection",
   "api_dispatch_pre_create_zero_resolve_firewall_metadata",
   "api_dispatch_pre_create_zero_build_create_run_args",
 ] as const;
@@ -1025,6 +1030,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_load_connector_runtime_selection",
+    ]);
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
@@ -1158,6 +1166,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "full_legacy",
+        connector_runtime_cache_status: "not_applicable",
+      }),
+    );
     expectApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchSpanKind(
       timingEvents,
@@ -5306,6 +5325,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       modelProvider: "anthropic-api-key",
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "empty",
+        connector_runtime_cache_status: "not_applicable",
+        connector_runtime_requested_count_bucket: "0",
+      }),
+    );
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
@@ -5348,6 +5379,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       }),
     );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "empty",
+        connector_runtime_cache_status: "not_applicable",
+        connector_runtime_requested_count_bucket: "0",
+      }),
+    );
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
@@ -7803,6 +7846,179 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
+  it("isolates scoped projection rows, reuses them warm, and falls back for a malformed selected row", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+
+    await bdd.completeOnboarding(actor);
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    // No production API can create a partially corrupt projection. The
+    // fixture creates that state; assertions stay on run API output and
+    // telemetry.
+    await mutateApiTestConnectorCatalogRuntimeProjection({
+      kind: "malformed-row",
+      connectorRef: "cloudinary",
+    });
+    onTestFinished(async () => {
+      await installApiTestConnectorCatalog();
+    });
+
+    const scopedAgent = await bdd.createAgent(actor, {
+      displayName: "Scoped projection agent",
+      visibility: "private",
+    });
+    await api.enableAgentConnectors(actor, scopedAgent.agentId, [
+      "base44",
+      "google-ads",
+    ]);
+    const first = await api.createRun(actor, {
+      agentId: scopedAgent.agentId,
+      prompt: "use the scoped projection",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(first.runId),
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "projection",
+        connector_runtime_cache_status: "miss",
+        connector_runtime_requested_count_bucket: "2_4",
+      }),
+    );
+    await api.requestCancelRun(actor, first.runId, [200]);
+
+    const second = await api.createRun(actor, {
+      agentId: scopedAgent.agentId,
+      prompt: "reuse the scoped projection",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(second.runId),
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "projection",
+        connector_runtime_cache_status: "hit",
+        connector_runtime_requested_count_bucket: "2_4",
+      }),
+    );
+    await api.requestCancelRun(actor, second.runId, [200]);
+
+    const malformedAgent = await bdd.createAgent(actor, {
+      displayName: "Malformed projection fallback agent",
+      visibility: "private",
+    });
+    await api.enableAgentConnectors(actor, malformedAgent.agentId, [
+      "cloudinary",
+    ]);
+    const fallback = await api.createRun(actor, {
+      agentId: malformedAgent.agentId,
+      prompt: "fall back to the complete catalog",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(fallback.runId),
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "full_fallback",
+        connector_runtime_cache_status: "not_applicable",
+        connector_runtime_fallback_reason: "malformed",
+        connector_runtime_requested_count_bucket: "1",
+      }),
+    );
+    await api.requestCancelRun(actor, fallback.runId, [200]);
+  });
+
+  it("falls back for every projection readiness and selected-row integrity failure", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+
+    await bdd.completeOnboarding(actor);
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    onTestFinished(async () => {
+      await installApiTestConnectorCatalog();
+    });
+
+    const cases = [
+      {
+        connectorRef: "airtable",
+        reason: "absent",
+        mutation: { kind: "absent" },
+      },
+      {
+        connectorRef: "figma",
+        reason: "stale",
+        mutation: { kind: "stale" },
+      },
+      {
+        connectorRef: "gitlab",
+        reason: "unsupported",
+        mutation: { kind: "unsupported" },
+      },
+      {
+        connectorRef: "linear",
+        reason: "incomplete",
+        mutation: { kind: "delete-row", connectorRef: "linear" },
+      },
+      {
+        connectorRef: "neon",
+        reason: "digest_mismatch",
+        mutation: { kind: "digest-mismatch", connectorRef: "neon" },
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      await installApiTestConnectorCatalog();
+      const agent = await bdd.createAgent(actor, {
+        displayName: `Projection fallback ${testCase.reason}`,
+        visibility: "private",
+      });
+      await api.enableAgentConnectors(actor, agent.agentId, [
+        testCase.connectorRef,
+      ]);
+      await mutateApiTestConnectorCatalogRuntimeProjection(testCase.mutation);
+      const run = await api.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: `exercise ${testCase.reason} fallback`,
+        modelProvider: "anthropic-api-key",
+      });
+      expect(
+        singleApiDispatchEvent(
+          apiDispatchTimingEventsForRun(run.runId),
+          "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+        ),
+      ).toStrictEqual(
+        expect.objectContaining({
+          connector_runtime_source: "full_fallback",
+          connector_runtime_cache_status: "not_applicable",
+          connector_runtime_fallback_reason: testCase.reason,
+          connector_runtime_requested_count_bucket: "1",
+        }),
+      );
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
+  });
+
   it("injects agent identity, tool hints, and user info into the runner context", async () => {
     const appUrl = "https://app.example.test";
     mockEnv("APP_URL", appUrl);
@@ -7879,6 +8095,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expectApiDispatchActions(timingEvents, [
       "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
       "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+      "api_dispatch_pre_create_zero_load_connector_runtime_selection",
       "api_dispatch_pre_create_zero_resolve_firewall_metadata",
     ]);
     expect(
@@ -7902,6 +8119,18 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
         zero_bootstrap_total_row_count_bucket: "5_8",
         zero_bootstrap_workflow_candidate_count_bucket: "1",
         zero_bootstrap_workflow_winner_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "projection",
+        connector_runtime_cache_status: expect.stringMatching(/^(hit|miss)$/u),
+        connector_runtime_requested_count_bucket: "1",
       }),
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [

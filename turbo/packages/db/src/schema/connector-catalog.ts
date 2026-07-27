@@ -12,7 +12,10 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ConnectorCatalogFilteredAuthMethods } from "@vm0/db/jsonb-contracts/connector-catalog";
+import type {
+  ConnectorCatalogFilteredAuthMethods,
+  ConnectorCatalogRuntimeProjection,
+} from "@vm0/db/jsonb-contracts/connector-catalog";
 
 export const CONNECTOR_CATALOG_ATTEMPT_OUTCOMES = [
   "accepted",
@@ -204,6 +207,11 @@ export const connectorCatalogActiveSnapshot = pgTable(
     catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
     catalogRawSize: integer("catalog_raw_size").notNull(),
     catalogGzip: byteaColumn("catalog_gzip").notNull(),
+    runtimeProjectionVersion: integer("runtime_projection_version"),
+    runtimeProjectionCatalogDigest: varchar(
+      "runtime_projection_catalog_digest",
+      { length: 71 },
+    ),
     activatedAt: timestamp("activated_at").notNull(),
   },
   (table) => {
@@ -231,6 +239,73 @@ export const connectorCatalogActiveSnapshot = pgTable(
       check(
         "connector_catalog_active_snapshot_catalog_digest_valid",
         sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+      check(
+        "connector_catalog_active_snapshot_runtime_projection_complete",
+        sql`(
+          ${table.runtimeProjectionVersion} IS NULL
+          AND ${table.runtimeProjectionCatalogDigest} IS NULL
+        ) OR (
+          ${table.runtimeProjectionVersion} IS NOT NULL
+          AND ${table.runtimeProjectionCatalogDigest} IS NOT NULL
+          AND ${table.runtimeProjectionVersion} > 0
+          AND ${table.runtimeProjectionCatalogDigest} ~ '^sha256:[a-f0-9]{64}$'
+        )`,
+      ),
+    ];
+  },
+);
+
+export const connectorCatalogRuntimeProjection = pgTable(
+  "connector_catalog_runtime_projection",
+  {
+    sourceId: varchar("source_id", { length: 64 }).notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
+    catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
+    projectionVersion: integer("projection_version").notNull(),
+    connectorRef: varchar("connector_ref", { length: 64 }).notNull(),
+    connectorDigest: varchar("connector_digest", { length: 71 }).notNull(),
+    connector: jsonb("connector")
+      .$type<ConnectorCatalogRuntimeProjection>()
+      .notNull(),
+  },
+  (table) => {
+    return [
+      primaryKey({
+        name: "connector_catalog_runtime_projection_pk",
+        columns: [
+          table.sourceId,
+          table.schemaVersion,
+          table.catalogVersion,
+          table.catalogDigest,
+          table.projectionVersion,
+          table.connectorRef,
+        ],
+      }),
+      foreignKey({
+        name: "connector_catalog_runtime_projection_sync_state_fk",
+        columns: [table.sourceId, table.schemaVersion],
+        foreignColumns: [
+          connectorCatalogSyncState.sourceId,
+          connectorCatalogSyncState.schemaVersion,
+        ],
+      }),
+      check(
+        "connector_catalog_runtime_projection_schema_version_positive",
+        sql`${table.schemaVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_runtime_projection_version_positive",
+        sql`${table.projectionVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_runtime_projection_catalog_digest_valid",
+        sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+      check(
+        "connector_catalog_runtime_projection_connector_digest_valid",
+        sql`${table.connectorDigest} ~ '^sha256:[a-f0-9]{64}$'`,
       ),
     ];
   },

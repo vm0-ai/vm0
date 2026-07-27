@@ -47,6 +47,7 @@ import {
   type ConnectorCatalogRejectionAuthority,
   type ConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-rejection-authority";
+import { persistConnectorCatalogRuntimeProjection } from "./connector-catalog-runtime-projection.service";
 import {
   connectorCatalogSkillFailure,
   prepareConnectorCatalogSkills,
@@ -664,6 +665,12 @@ async function commitCandidate(args: {
         signal: args.signal,
       });
       await activateCandidate({ ...args, db: tx });
+      await persistConnectorCatalogRuntimeProjection({
+        db: tx,
+        sourceId: args.sourceId,
+        identity: args.candidate.identity,
+        artifact: args.candidate.artifact,
+      });
       await persistConnectorCatalogCompatibility({
         db: tx,
         sourceId: args.sourceId,

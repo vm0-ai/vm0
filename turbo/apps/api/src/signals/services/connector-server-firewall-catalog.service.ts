@@ -20,10 +20,7 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 
-import type {
-  ConnectorCatalogArtifact,
-  ConnectorCatalogArtifactConnector,
-} from "./connector-catalog-artifacts/artifacts";
+import type { ConnectorCatalogArtifactConnector } from "./connector-catalog-artifacts/artifacts";
 import {
   connectorCatalogFirewallConfig,
   deriveConnectorCatalogFirewallPermissions,
@@ -401,9 +398,9 @@ function acceptedRoutingMetadata(
 }
 
 function acceptedServerFirewalls(
-  artifact: ConnectorCatalogArtifact,
+  connectors: readonly ConnectorCatalogArtifactConnector[],
 ): readonly AcceptedServerFirewall[] {
-  return artifact.connectors.flatMap((connector) => {
+  return connectors.flatMap((connector) => {
     if (connector.firewall.kind === "none") {
       return [];
     }
@@ -493,13 +490,13 @@ function acceptedFixedHostOwners(
 }
 
 export function createAcceptedConnectorServerFirewallCatalog(args: {
-  readonly artifact: ConnectorCatalogArtifact;
+  readonly connectors: readonly ConnectorCatalogArtifactConnector[];
   readonly runtimeMethodsByRef: ReadonlyMap<
     ConnectorRef,
     readonly ConnectorAuthMethodRuntimeConfig[]
   >;
 }): ConnectorServerFirewallCatalog {
-  const firewalls = acceptedServerFirewalls(args.artifact);
+  const firewalls = acceptedServerFirewalls(args.connectors);
   const entries = acceptedEntries({
     firewalls,
     runtimeMethodsByRef: args.runtimeMethodsByRef,

@@ -44,7 +44,11 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { mockApiTestConnectorProviderConfiguration } from "../../../test-fixtures/connector-catalog";
+import {
+  mockApiTestConnectorProviderConfiguration,
+  mutateApiTestConnectorCatalogRuntimeProjection,
+  readApiTestConnectorCatalogRuntimeProjectionState,
+} from "../../../test-fixtures/connector-catalog";
 import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
@@ -1516,6 +1520,55 @@ describe("connector catalog cron authentication and initial state", () => {
 });
 
 describe("connector catalog valid lifecycle", () => {
+  it("persists and reconciles the active per-connector runtime projection", async () => {
+    configureSource();
+    const first = buildRelease({ version: "2026-07-15.projection-1" });
+    const second = buildRelease({
+      version: "2026-07-15.projection-2",
+      label: "External Test Projection Updated",
+    });
+    serveObjects(catalogObjects([first, second], first));
+
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+    // Projection persistence has no production read or corruption surface.
+    // The fixture only creates that otherwise-unreachable state.
+    const firstProjection =
+      await readApiTestConnectorCatalogRuntimeProjectionState();
+    expect(firstProjection).toMatchObject({
+      projectionVersion: 1,
+      projectionCatalogDigest: firstProjection.activeCatalogDigest,
+    });
+    expect(firstProjection.rows).toStrictEqual([
+      {
+        catalogVersion: first.version,
+        connectorRef: first.connectorRef,
+        connectorDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      },
+    ]);
+
+    await mutateApiTestConnectorCatalogRuntimeProjection({ kind: "clear" });
+    mockNow(new Date("2026-07-15T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    const reconciledProjection =
+      await readApiTestConnectorCatalogRuntimeProjectionState();
+    expect(reconciledProjection.rows).toStrictEqual([
+      expect.objectContaining({ connectorRef: first.connectorRef }),
+    ]);
+
+    serveObjects(catalogObjects([first, second], second));
+    mockNow(new Date("2026-07-15T08:02:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+    const secondProjection =
+      await readApiTestConnectorCatalogRuntimeProjectionState();
+    expect(secondProjection.rows).toStrictEqual([
+      {
+        catalogVersion: second.version,
+        connectorRef: second.connectorRef,
+        connectorDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      },
+    ]);
+  });
+
   it("accepts, advances, rolls back, and serves the active database snapshot", async () => {
     const bucket = configureSource();
     const first = buildRelease({ version: "2026-07-15.1" });
@@ -5086,6 +5139,8 @@ describe("connector catalog executable compatibility", () => {
       ],
     });
     const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
+    const projectionBeforeCapabilityChange =
+      await readApiTestConnectorCatalogRuntimeProjectionState();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
@@ -5134,6 +5189,11 @@ describe("connector catalog executable compatibility", () => {
       stale: false,
       filteredAuthMethods: [],
     });
+    const projectionAfterCapabilityChange =
+      await readApiTestConnectorCatalogRuntimeProjectionState();
+    expect(projectionAfterCapabilityChange).toStrictEqual(
+      projectionBeforeCapabilityChange,
+    );
     expect(configured.body.filtering.capabilityDigest).not.toBe(firstDigest);
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body.connectors,

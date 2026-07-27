@@ -29,6 +29,7 @@ import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   completeAgentRun$,
+  connectorRuntimeSelectionTimingDimensions,
   isQueueFirstRunClaimLost,
   isThreadSessionSnapshotStale,
   prepareAgentRun$,
@@ -60,8 +61,9 @@ import {
 } from "./zero-run-bootstrap-context.service";
 import type { RunWorkflowRef } from "./zero-workflow-data.service";
 import {
-  loadConnectorRuntimeSnapshot,
-  type ConnectorRuntimeSnapshot,
+  loadConnectorRuntimeSelection,
+  type ConnectorRuntimeSelection,
+  type ConnectorRuntimeSelectionLoad,
 } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
 import type { QueueFirstRunAssociation } from "./zero-chat-queued-message.service";
@@ -852,7 +854,28 @@ async function loadZeroRunPostAuthorizationContext(
   );
   signal.throwIfAborted();
 
-  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);
+  let measuredConnectorRuntimeLoad: ConnectorRuntimeSelectionLoad | undefined;
+  const connectorRuntimeLoad = await measureZeroPreCreate(
+    args.timing,
+    "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+    async () => {
+      const loaded = await loadConnectorRuntimeSelection(
+        db,
+        bootstrapContext.allowedConnectorTypes,
+      );
+      measuredConnectorRuntimeLoad = loaded;
+      return loaded;
+    },
+    () => {
+      return measuredConnectorRuntimeLoad
+        ? connectorRuntimeSelectionTimingDimensions(
+            measuredConnectorRuntimeLoad,
+            bootstrapContext.allowedConnectorTypes.length,
+          )
+        : undefined;
+    },
+  );
+  const connectorCatalogSnapshot = connectorRuntimeLoad.selection;
   signal.throwIfAborted();
   const runPermissionPolicies = await measureZeroPreCreate(
     args.timing,
@@ -1025,7 +1048,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly zeroMailEnabled: boolean;
   readonly zeroPeopleSearchEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorTypes: readonly ConnectorRef[];
   readonly allowedCustomConnectorIds: readonly string[];

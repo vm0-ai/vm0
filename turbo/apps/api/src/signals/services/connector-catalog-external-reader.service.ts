@@ -583,17 +583,13 @@ function connectorCatalogDetail(
   };
 }
 
-export function getAcceptedConnectorCatalogResolutionDetail(args: {
-  readonly snapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectorRef: string;
-}): PublicConnectorCatalogDetail | null {
-  const connector = args.snapshot.connectorByRef.get(args.connectorRef);
-  return connector
-    ? connectorCatalogDetail({
-        connector,
-        authMethods: connector.authMethods,
-      })
-    : null;
+export function getConnectorCatalogResolutionDetail(
+  connector: ConnectorCatalogArtifactConnector,
+): PublicConnectorCatalogDetail {
+  return connectorCatalogDetail({
+    connector,
+    authMethods: connector.authMethods,
+  });
 }
 
 export function listAcceptedConnectorCatalogAvailableRefs(args: {
@@ -608,16 +604,6 @@ export function listAcceptedConnectorCatalogAvailableRefs(args: {
       return entry.connector.connectorRef;
     })
     .sort();
-}
-
-export function acceptedConnectorCatalogMethodIsCompatible(args: {
-  readonly snapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectorRef: string;
-  readonly authMethodId: string;
-}): boolean {
-  return !args.snapshot.filteredMethodKeys.has(
-    authMethodKey(args.connectorRef, args.authMethodId),
-  );
 }
 
 function categoryMetadataForConnectors(

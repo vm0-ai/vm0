@@ -4,8 +4,10 @@ import { createStore } from "ccstate";
 import { getConnectorAuthProviderRegistrationCapabilities } from "@vm0/connectors/auth-providers";
 import {
   connectorCatalogActiveSnapshot,
+  connectorCatalogRuntimeProjection,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
+import { and, eq } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../lib/env";
 import { writeDb$ } from "../signals/external/db";
@@ -23,6 +25,7 @@ import {
   connectorCatalogExecutableCapabilityState,
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
+import { persistConnectorCatalogRuntimeProjection } from "../signals/services/connector-catalog-runtime-projection.service";
 import { connectorCatalogSource } from "../signals/services/connector-catalog-source";
 import { API_TEST_CONNECTOR_CATALOG_ARTIFACT } from "./connector-catalog-artifact";
 
@@ -131,6 +134,15 @@ export async function installApiTestConnectorCatalog(): Promise<void> {
         ],
         set: snapshotValues,
       });
+    await persistConnectorCatalogRuntimeProjection({
+      db: tx,
+      sourceId: source.sourceId,
+      identity: {
+        catalogVersion: API_TEST_CONNECTOR_CATALOG_VERSION,
+        catalogDigest,
+      },
+      artifact: API_TEST_CONNECTOR_CATALOG,
+    });
     await persistConnectorCatalogCompatibility({
       db: tx,
       sourceId: source.sourceId,
@@ -142,4 +154,191 @@ export async function installApiTestConnectorCatalog(): Promise<void> {
       capability,
     });
   });
+}
+
+interface ApiTestConnectorCatalogRuntimeProjectionState {
+  readonly activeCatalogDigest: string;
+  readonly projectionVersion: number | null;
+  readonly projectionCatalogDigest: string | null;
+  readonly rows: readonly {
+    readonly catalogVersion: string;
+    readonly connectorRef: string;
+    readonly connectorDigest: string;
+  }[];
+}
+
+type ApiTestConnectorCatalogRuntimeProjectionMutation =
+  | { readonly kind: "clear" | "absent" | "stale" | "unsupported" }
+  | {
+      readonly kind: "delete-row" | "malformed-row" | "digest-mismatch";
+      readonly connectorRef: string;
+    };
+
+export async function readApiTestConnectorCatalogRuntimeProjectionState(): Promise<ApiTestConnectorCatalogRuntimeProjectionState> {
+  const sourceId = connectorCatalogSource().sourceId;
+  const db = store.set(writeDb$);
+  const [active] = await db
+    .select({
+      catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
+      projectionVersion:
+        connectorCatalogActiveSnapshot.runtimeProjectionVersion,
+      projectionCatalogDigest:
+        connectorCatalogActiveSnapshot.runtimeProjectionCatalogDigest,
+    })
+    .from(connectorCatalogActiveSnapshot)
+    .where(
+      and(
+        eq(connectorCatalogActiveSnapshot.sourceId, sourceId),
+        eq(
+          connectorCatalogActiveSnapshot.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+      ),
+    )
+    .limit(1);
+  if (!active) {
+    throw new Error("Expected an active connector catalog test fixture");
+  }
+  const rows = await db
+    .select({
+      catalogVersion: connectorCatalogRuntimeProjection.catalogVersion,
+      connectorRef: connectorCatalogRuntimeProjection.connectorRef,
+      connectorDigest: connectorCatalogRuntimeProjection.connectorDigest,
+    })
+    .from(connectorCatalogRuntimeProjection)
+    .where(
+      and(
+        eq(connectorCatalogRuntimeProjection.sourceId, sourceId),
+        eq(
+          connectorCatalogRuntimeProjection.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+      ),
+    )
+    .orderBy(connectorCatalogRuntimeProjection.connectorRef);
+  return {
+    activeCatalogDigest: active.catalogDigest,
+    projectionVersion: active.projectionVersion,
+    projectionCatalogDigest: active.projectionCatalogDigest,
+    rows,
+  };
+}
+
+export async function mutateApiTestConnectorCatalogRuntimeProjection(
+  mutation: ApiTestConnectorCatalogRuntimeProjectionMutation,
+): Promise<void> {
+  const sourceId = connectorCatalogSource().sourceId;
+  const db = store.set(writeDb$);
+  const activeWhere = and(
+    eq(connectorCatalogActiveSnapshot.sourceId, sourceId),
+    eq(
+      connectorCatalogActiveSnapshot.schemaVersion,
+      SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+    ),
+  );
+  const projectionWhere = and(
+    eq(connectorCatalogRuntimeProjection.sourceId, sourceId),
+    eq(
+      connectorCatalogRuntimeProjection.schemaVersion,
+      SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+    ),
+  );
+  switch (mutation.kind) {
+    case "clear": {
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(connectorCatalogRuntimeProjection)
+          .where(projectionWhere);
+        await tx
+          .update(connectorCatalogActiveSnapshot)
+          .set({
+            runtimeProjectionVersion: null,
+            runtimeProjectionCatalogDigest: null,
+          })
+          .where(activeWhere);
+      });
+      return;
+    }
+    case "absent": {
+      await db
+        .update(connectorCatalogActiveSnapshot)
+        .set({
+          runtimeProjectionVersion: null,
+          runtimeProjectionCatalogDigest: null,
+        })
+        .where(activeWhere);
+      return;
+    }
+    case "stale": {
+      await db
+        .update(connectorCatalogActiveSnapshot)
+        .set({
+          runtimeProjectionVersion: 1,
+          runtimeProjectionCatalogDigest: `sha256:${"0".repeat(64)}`,
+        })
+        .where(activeWhere);
+      return;
+    }
+    case "unsupported": {
+      const [active] = await db
+        .select({ catalogDigest: connectorCatalogActiveSnapshot.catalogDigest })
+        .from(connectorCatalogActiveSnapshot)
+        .where(activeWhere)
+        .limit(1);
+      if (!active) {
+        throw new Error("Expected an active connector catalog test fixture");
+      }
+      await db
+        .update(connectorCatalogActiveSnapshot)
+        .set({
+          runtimeProjectionVersion: 2,
+          runtimeProjectionCatalogDigest: active.catalogDigest,
+        })
+        .where(activeWhere);
+      return;
+    }
+    case "delete-row": {
+      await db
+        .delete(connectorCatalogRuntimeProjection)
+        .where(
+          and(
+            projectionWhere,
+            eq(
+              connectorCatalogRuntimeProjection.connectorRef,
+              mutation.connectorRef,
+            ),
+          ),
+        );
+      return;
+    }
+    case "malformed-row": {
+      await db
+        .update(connectorCatalogRuntimeProjection)
+        .set({ connector: { connectorRef: mutation.connectorRef } })
+        .where(
+          and(
+            projectionWhere,
+            eq(
+              connectorCatalogRuntimeProjection.connectorRef,
+              mutation.connectorRef,
+            ),
+          ),
+        );
+      return;
+    }
+    case "digest-mismatch": {
+      await db
+        .update(connectorCatalogRuntimeProjection)
+        .set({ connectorDigest: `sha256:${"0".repeat(64)}` })
+        .where(
+          and(
+            projectionWhere,
+            eq(
+              connectorCatalogRuntimeProjection.connectorRef,
+              mutation.connectorRef,
+            ),
+          ),
+        );
+    }
+  }
 }

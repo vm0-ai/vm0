@@ -169,9 +169,11 @@ import {
 } from "./connector-credential-status.service";
 import {
   getConnectorRuntimeConnector,
+  loadConnectorRuntimeSelection,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeMethod,
-  type ConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
+  type ConnectorRuntimeSelectionLoad,
 } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialSecretReadCondition,
@@ -882,7 +884,7 @@ function buildLegacySystemSkillVolumes(
 
 function buildConnectorSkillVolumes(
   connectorTypes: readonly ConnectorRef[],
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] {
   return connectorTypes.flatMap((connectorRef) => {
@@ -927,7 +929,7 @@ function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
     readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] | undefined {
@@ -2342,7 +2344,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
   allowedConnectorTypes: readonly ConnectorRef[] | undefined,
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
   const validRows = rows.flatMap((row) => {
@@ -2964,7 +2966,7 @@ async function loadStoredConnectorMaterializationPlan(
     readonly userId: string;
     readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
@@ -3133,7 +3135,7 @@ async function loadStoredConnectorSnapshotRows(
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
   readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
     args.connectorRows,
@@ -3156,7 +3158,7 @@ function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
     readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3241,7 +3243,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     readonly userId: string;
     readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
@@ -3617,7 +3619,7 @@ function allAllowPolicyForPermissions(
 }
 
 async function loadRequiredFirewallPermissionIndex(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
   readonly connectorRef: string;
 }): Promise<ConnectorServerFirewallPermissionIndex> {
   const index = await args.snapshot.serverFirewalls.loadPermissionIndex(
@@ -3632,7 +3634,7 @@ async function loadRequiredFirewallPermissionIndex(args: {
 }
 
 function getRequiredFirewallExecutionMetadata(
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   connectorRef: string,
 ): ConnectorServerFirewallExecutionMetadata {
   const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorRef);
@@ -3866,7 +3868,7 @@ function applyBuiltinConnectorMetadataPolicies(
 }
 
 async function buildPermissionManifest(args: {
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
@@ -5093,6 +5095,26 @@ function countBucket(count: number): (typeof COUNT_BUCKET_DIMENSIONS)[number] {
   return "17_plus";
 }
 
+export function connectorRuntimeSelectionTimingDimensions(
+  load: ConnectorRuntimeSelectionLoad,
+  requestedConnectorCount: number | undefined,
+): ApiDispatchTimingDimensions {
+  return {
+    connector_runtime_source: load.source,
+    connector_runtime_cache_status: load.cacheStatus,
+    ...(requestedConnectorCount === undefined
+      ? {}
+      : {
+          connector_runtime_requested_count_bucket: countBucket(
+            requestedConnectorCount,
+          ),
+        }),
+    ...(load.fallbackReason === undefined
+      ? {}
+      : { connector_runtime_fallback_reason: load.fallbackReason }),
+  };
+}
+
 function storedConnectorTimingDimensions(args: {
   readonly scopeSource: ConnectorScopeSource;
   readonly connectorCount?: number;
@@ -6049,7 +6071,7 @@ async function loadRunConnectorContexts(
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
   },
-  connectorCatalogSnapshot: ConnectorRuntimeSnapshot,
+  connectorCatalogSnapshot: ConnectorRuntimeSelection,
   featureSwitchContext: FeatureSwitchContext,
   timing?: ApiDispatchTimingCollector,
 ): Promise<{
@@ -6176,7 +6198,7 @@ function validateRunEnvironmentReferences(args: {
 }
 
 async function buildPreparedPermissionManifest(args: {
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly body: CreateRunBody;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
@@ -6207,7 +6229,7 @@ async function buildPreparedPermissionManifest(args: {
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -6249,12 +6271,12 @@ interface PreparedRuntimeContext {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
   readonly connectorScope: EffectiveConnectorScope;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
 }
 
 function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
 ): EffectiveConnectorScope {
   if (scope.allowedConnectorTypes === undefined) {
     return scope;
@@ -6463,7 +6485,7 @@ async function prepareRunConnectorContexts(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<
   Awaited<ReturnType<typeof loadRunConnectorContexts>> | CreateRunErrorResult
@@ -6503,7 +6525,7 @@ async function prepareRunRuntimeContext(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly bodyContext: PreparedRunBodyContext;
@@ -6632,18 +6654,48 @@ async function prepareRunRuntimeContext(args: {
 
 async function connectorCatalogSnapshotForRun(args: {
   readonly db: Db;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
-}): Promise<ConnectorRuntimeSnapshot> {
-  return (
-    args.preloadedConnectorCatalogSnapshot ??
-    (await loadConnectorRuntimeSnapshot(args.db))
+  readonly connectorScope: EffectiveConnectorScope;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<ConnectorRuntimeSelection> {
+  if (args.preloadedConnectorCatalogSnapshot !== undefined) {
+    return args.preloadedConnectorCatalogSnapshot;
+  }
+  let measuredLoad: ConnectorRuntimeSelectionLoad | undefined;
+  const loaded = await args.timing.measure(
+    "api_dispatch_prepare_context_load_connector_runtime_selection",
+    "nested",
+    async () => {
+      const result =
+        args.connectorScope.allowedConnectorTypes === undefined
+          ? {
+              selection: await loadConnectorRuntimeSnapshot(args.db),
+              source: "full_legacy" as const,
+              cacheStatus: "not_applicable" as const,
+            }
+          : await loadConnectorRuntimeSelection(
+              args.db,
+              args.connectorScope.allowedConnectorTypes,
+            );
+      measuredLoad = result;
+      return result;
+    },
+    () => {
+      return measuredLoad
+        ? connectorRuntimeSelectionTimingDimensions(
+            measuredLoad,
+            args.connectorScope.allowedConnectorTypes?.length,
+          )
+        : undefined;
+    },
   );
+  return loaded.selection;
 }
 
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -6681,7 +6733,7 @@ function prepareRunContext(input: {
   readonly signal: AbortSignal;
   readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly preloadedConnectorCatalogSnapshot:
-    | ConnectorRuntimeSnapshot
+    | ConnectorRuntimeSelection
     | undefined;
 }): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
   const {
@@ -7118,7 +7170,7 @@ interface PrepareAgentRunArgs {
   readonly timing: ApiDispatchTimingCollector;
   readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
 }
 
 interface CompleteAgentRunArgs {
