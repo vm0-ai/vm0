@@ -2,7 +2,8 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 
-const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const TOKEN_RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const FAPI_RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 const MAX_TOKEN_RETRIES = 5;
 const MAX_FAPI_RETRIES = 3;
 const BASE_DELAY_MS = 500;
@@ -66,7 +67,7 @@ async function createTestingToken() {
     }
 
     if (
-      !RETRYABLE_STATUS_CODES.has(response.status) ||
+      !TOKEN_RETRYABLE_STATUS_CODES.has(response.status) ||
       attempt === MAX_TOKEN_RETRIES
     ) {
       throw new Error(
@@ -149,7 +150,7 @@ class CdpClient {
 function createFetchRetryScript(frontendApi) {
   return `(() => {
     const originalFetch = window.fetch.bind(window);
-    const retryableStatuses = new Set(${JSON.stringify([...RETRYABLE_STATUS_CODES])});
+    const retryableStatuses = new Set(${JSON.stringify([...FAPI_RETRYABLE_STATUS_CODES])});
     const frontendApiOrigin = ${JSON.stringify(`https://${frontendApi}`)};
     const maxRetries = ${MAX_FAPI_RETRIES};
     const baseDelayMs = ${BASE_DELAY_MS};
@@ -166,8 +167,21 @@ function createFetchRetryScript(frontendApi) {
       }
 
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-        const attemptInput = input instanceof Request ? input.clone() : input;
-        const response = await originalFetch(attemptInput, init);
+        let response;
+        try {
+          const attemptInput = input instanceof Request ? input.clone() : input;
+          response = await originalFetch(attemptInput, init);
+        } catch (error) {
+          if (attempt === maxRetries) {
+            throw error;
+          }
+
+          const delayMs =
+            baseDelayMs * 2 ** attempt + Math.random() * jitterMaxMs;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+
         if (!retryableStatuses.has(response.status) || attempt === maxRetries) {
           return response;
         }
@@ -180,6 +194,64 @@ function createFetchRetryScript(frontendApi) {
       throw new Error("Clerk Frontend API retry loop exhausted");
     };
   })();`;
+}
+
+async function handlePausedResponse(client, sessionId, params) {
+  const { requestId, responseStatusCode, responseStatusText } = params;
+  try {
+    const { body, base64Encoded } = await client.send(
+      "Fetch.getResponseBody",
+      { requestId },
+      sessionId,
+    );
+    const decodedBody = base64Encoded
+      ? Buffer.from(body, "base64").toString("utf8")
+      : body;
+    let json;
+    try {
+      json = JSON.parse(decodedBody);
+    } catch {
+      await client.send("Fetch.continueResponse", { requestId }, sessionId);
+      return;
+    }
+
+    let changed = false;
+    if (json?.response?.captcha_bypass === false) {
+      json.response.captcha_bypass = true;
+      changed = true;
+    }
+    if (json?.client?.captcha_bypass === false) {
+      json.client.captcha_bypass = true;
+      changed = true;
+    }
+
+    if (!changed) {
+      await client.send("Fetch.continueResponse", { requestId }, sessionId);
+      return;
+    }
+
+    const responseHeaders = (params.responseHeaders ?? []).filter(
+      ({ name }) =>
+        !["content-encoding", "content-length"].includes(name.toLowerCase()),
+    );
+    const fulfillParams = {
+      requestId,
+      responseCode: responseStatusCode,
+      responseHeaders,
+      body: Buffer.from(JSON.stringify(json)).toString("base64"),
+    };
+    if (responseStatusText) {
+      fulfillParams.responsePhrase = responseStatusText;
+    }
+
+    await client.send("Fetch.fulfillRequest", fulfillParams, sessionId);
+    console.log(
+      `normalized captcha bypass ${new URL(params.request.url).pathname}`,
+    );
+  } catch (error) {
+    console.error(`Failed to inspect Clerk response: ${error.message}`);
+    await client.send("Fetch.continueResponse", { requestId }, sessionId);
+  }
 }
 
 async function intercept(configPath) {
@@ -212,6 +284,15 @@ async function intercept(configPath) {
       return;
     }
 
+    if (typeof message.params.responseStatusCode === "number") {
+      void handlePausedResponse(client, sessionId, message.params).catch(
+        (error) => {
+          console.error(`Failed to continue Clerk response: ${error.message}`);
+        },
+      );
+      return;
+    }
+
     const { requestId, request } = message.params;
     const url = new URL(request.url);
     url.searchParams.set("__clerk_testing_token", config.testingToken);
@@ -235,7 +316,10 @@ async function intercept(configPath) {
   await client.send(
     "Fetch.enable",
     {
-      patterns: [{ urlPattern: frontendApiPattern, requestStage: "Request" }],
+      patterns: [
+        { urlPattern: frontendApiPattern, requestStage: "Request" },
+        { urlPattern: frontendApiPattern, requestStage: "Response" },
+      ],
     },
     sessionId,
   );
