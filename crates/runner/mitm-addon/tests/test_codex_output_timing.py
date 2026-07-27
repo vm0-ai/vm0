@@ -212,13 +212,14 @@ def test_server_websocket_event_type_is_probed_once(
         if event == "call" and frame.f_code is probe_code:
             probe_calls += 1
 
+    previous_profile = sys.getprofile()
     with mitm_ctx():
         mitm_addon.responseheaders(flow)
         sys.setprofile(count_probe)
         try:
             feed_websocket_server_message(flow, _event("response.output_text.delta"))
         finally:
-            sys.setprofile(None)
+            sys.setprofile(previous_profile)
 
     assert probe_calls == 1
 
