@@ -108,7 +108,7 @@ class FakeSocket:
     cleanup and TCP option behavior.
 
     Side-effect arguments raise at the matching boundary so tests can exercise
-    send, read, response setup, and TCP option failures.
+    send, read, and TCP option failures.
 
     Use ``request_text``, ``request_lines``, and ``request_header_values`` for
     assertions about the HTTP request that the real forwarder serialized.
@@ -120,14 +120,12 @@ class FakeSocket:
         *,
         read_side_effect: Exception | None = None,
         send_side_effect: Exception | None = None,
-        makefile_side_effect: Exception | None = None,
         setsockopt_side_effect: Exception | None = None,
         on_action: Callable[[], None] | None = None,
     ) -> None:
         self._response = response
         self._read_side_effect = read_side_effect
         self._send_side_effect = send_side_effect
-        self._makefile_side_effect = makefile_side_effect
         self._setsockopt_side_effect = setsockopt_side_effect
         self._on_action = on_action
         self.sent = bytearray()
@@ -154,8 +152,6 @@ class FakeSocket:
 
     def makefile(self, *_args, **_kwargs) -> FakeResponseFile:
         self._record_action()
-        if self._makefile_side_effect is not None:
-            raise self._makefile_side_effect
         self.response_file = FakeResponseFile(
             self._response,
             read_side_effect=self._read_side_effect,
@@ -241,7 +237,6 @@ class FakeForwarderUpstream:
         addresses: tuple[str, ...] = ("93.184.216.34",),
         read_side_effect: Exception | None = None,
         send_side_effect: Exception | None = None,
-        makefile_side_effect: Exception | None = None,
         setsockopt_side_effect: Exception | None = None,
         wrap_side_effect: Exception | None = None,
         on_action: Callable[[], None] | None = None,
@@ -251,7 +246,6 @@ class FakeForwarderUpstream:
         self._response = http_response(status=status, body=body, headers=headers)
         self._read_side_effect = read_side_effect
         self._send_side_effect = send_side_effect
-        self._makefile_side_effect = makefile_side_effect
         self._setsockopt_side_effect = setsockopt_side_effect
         self._wrap_side_effect = wrap_side_effect
         self._on_action = on_action
@@ -279,7 +273,6 @@ class FakeForwarderUpstream:
             self._response,
             read_side_effect=self._read_side_effect,
             send_side_effect=self._send_side_effect,
-            makefile_side_effect=self._makefile_side_effect,
             setsockopt_side_effect=self._setsockopt_side_effect,
             on_action=self._on_action,
         )
@@ -418,7 +411,6 @@ def fake_forwarder_upstream(
     addresses: tuple[str, ...] = ("93.184.216.34",),
     read_side_effect: Exception | None = None,
     send_side_effect: Exception | None = None,
-    makefile_side_effect: Exception | None = None,
     setsockopt_side_effect: Exception | None = None,
     wrap_side_effect: Exception | None = None,
     on_action: Callable[[], None] | None = None,
@@ -443,7 +435,6 @@ def fake_forwarder_upstream(
         addresses=addresses,
         read_side_effect=read_side_effect,
         send_side_effect=send_side_effect,
-        makefile_side_effect=makefile_side_effect,
         setsockopt_side_effect=setsockopt_side_effect,
         wrap_side_effect=wrap_side_effect,
         on_action=on_action,
