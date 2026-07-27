@@ -1368,17 +1368,25 @@ async def test_matching_sni_and_host_allows_bound_firewall_auth(
 
 
 @pytest.mark.parametrize("http_version", ["HTTP/2.0", "HTTP/3"])
-async def test_pseudo_authority_without_host_allows_firewall_auth(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, http_version
+@pytest.mark.parametrize("regular_host", [None, "api.github.com"], ids=["authority-only", "host"])
+async def test_valid_pseudo_authority_allows_firewall_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    http_version,
+    regular_host,
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
+    request_headers = headers() if regular_host is None else headers(("Host", regular_host))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
         sni="api.github.com",
         path="/repos",
-        request_headers=headers(),
+        request_headers=request_headers,
     )
     flow.request.http_version = http_version
     flow.request.authority = "api.github.com"
@@ -1397,8 +1405,30 @@ async def test_pseudo_authority_without_host_allows_firewall_auth(
 
 
 @pytest.mark.parametrize("http_version", ["HTTP/2.0", "HTTP/3"])
-async def test_pseudo_authority_takes_precedence_over_host_header(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, http_version
+@pytest.mark.parametrize(
+    ("pseudo_authority", "regular_host"),
+    [
+        pytest.param(
+            "attacker.example.com",
+            "api.github.com",
+            id="pseudo-authority-mismatch",
+        ),
+        pytest.param(
+            "api.github.com",
+            "attacker.example.com",
+            id="regular-host-mismatch",
+        ),
+    ],
+)
+async def test_rejects_disagreement_between_pseudo_authority_and_host(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    http_version,
+    pseudo_authority,
+    regular_host,
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
@@ -1407,10 +1437,10 @@ async def test_pseudo_authority_takes_precedence_over_host_header(
         host="203.0.113.10",
         sni="api.github.com",
         path="/repos",
-        request_headers=headers(("Host", "api.github.com")),
+        request_headers=headers(("Host", regular_host)),
     )
     flow.request.http_version = http_version
-    flow.request.authority = "attacker.example.com"
+    flow.request.authority = pseudo_authority
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -1423,7 +1453,7 @@ async def test_pseudo_authority_takes_precedence_over_host_header(
     body = json.loads(flow.response.content)
     assert body["error"] == "authority_mismatch"
     assert body["sni"] == "api.github.com"
-    assert body["host_header"] == "attacker.example.com"
+    assert body["host_header"] == pseudo_authority
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "authority_mismatch"
     assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
@@ -1857,8 +1887,32 @@ async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
+@pytest.mark.parametrize(
+    ("http_version", "pseudo_authority", "expected_host_header"),
+    [
+        pytest.param(
+            "HTTP/1.1",
+            "",
+            "attacker.example.com, api.github.com",
+            id="http1",
+        ),
+        pytest.param(
+            "HTTP/3",
+            "api.github.com",
+            "api.github.com",
+            id="http3",
+        ),
+    ],
+)
 async def test_rejects_duplicate_host_authority_before_firewall_auth(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    http_version,
+    pseudo_authority,
+    expected_host_header,
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
@@ -1868,10 +1922,14 @@ async def test_rejects_duplicate_host_authority_before_firewall_auth(
         sni="api.github.com",
         path="/repos",
         request_headers=headers(
-            ("Host", "api.github.com"),
             ("Host", "attacker.example.com"),
+            ("Host", "api.github.com"),
         ),
     )
+    flow.request.http_version = http_version
+    flow.request.authority = pseudo_authority
+    original_headers = tuple(flow.request.headers.fields)
+    original_path = flow.request.path
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -1884,10 +1942,12 @@ async def test_rejects_duplicate_host_authority_before_firewall_auth(
     body = json.loads(flow.response.content)
     assert body["error"] == "invalid_authority"
     assert body["sni"] == "api.github.com"
-    assert body["host_header"] == "api.github.com, attacker.example.com"
+    assert body["host_header"] == expected_host_header
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
     assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert tuple(flow.request.headers.fields) == original_headers
+    assert flow.request.path == original_path
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
