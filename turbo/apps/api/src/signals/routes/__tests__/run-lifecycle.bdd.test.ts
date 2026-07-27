@@ -41,7 +41,14 @@ import {
   readOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
-import { API_TEST_CONNECTOR_FIREWALL_CONFIGS } from "../../../test-fixtures/connector-catalog";
+import {
+  API_TEST_CONNECTOR_FIREWALL_CONFIGS,
+  API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+  installApiTestConnectorCatalog,
+  mockApiTestConnectorProviderConfiguration,
+  readApiTestConnectorCatalogValidationVersion,
+  setApiTestConnectorCatalogValidationVersion,
+} from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
   createBddApi,
@@ -243,13 +250,15 @@ const API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES = [
   "api_dispatch_connector_catalog_decompress",
   "api_dispatch_connector_catalog_verify_digest",
   "api_dispatch_connector_catalog_decode_json",
-  "api_dispatch_connector_catalog_validate_schema",
-  "api_dispatch_connector_catalog_validate_public_projection",
-  "api_dispatch_connector_catalog_validate_relationships",
   "api_dispatch_connector_catalog_validate_compatibility",
   "api_dispatch_connector_catalog_materialize_accepted_snapshot",
   "api_dispatch_connector_catalog_materialize_runtime_snapshot",
   "api_dispatch_connector_catalog_materialize_server_firewalls",
+] as const;
+const API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES = [
+  "api_dispatch_connector_catalog_validate_schema",
+  "api_dispatch_connector_catalog_validate_public_projection",
+  "api_dispatch_connector_catalog_validate_relationships",
 ] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES = [
   ...API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
@@ -799,6 +808,12 @@ function expectConnectorCatalogLoadTiming(args: {
   readonly acceptedCacheOutcome: "hit" | "miss" | "in_flight";
   readonly runtimeCacheOutcome: "hit" | "miss";
   readonly requestedConnectorCount: "known" | "not_applicable";
+  readonly validation:
+    | { readonly outcome: "attested" | "not_run" }
+    | {
+        readonly outcome: "full_fallback";
+        readonly fallbackReason: "missing_version" | "unsupported_version";
+      };
 }): void {
   const event = singleApiDispatchEvent(
     args.events,
@@ -809,8 +824,17 @@ function expectConnectorCatalogLoadTiming(args: {
       span_kind: "nested",
       connector_catalog_accepted_cache_outcome: args.acceptedCacheOutcome,
       connector_catalog_runtime_cache_outcome: args.runtimeCacheOutcome,
+      connector_catalog_validation_outcome: args.validation.outcome,
     }),
   );
+  const expectedValidationDimensions =
+    args.validation.outcome === "full_fallback"
+      ? ["full_fallback", args.validation.fallbackReason]
+      : [args.validation.outcome, undefined];
+  expect([
+    event.connector_catalog_validation_outcome,
+    event.connector_catalog_validation_fallback_reason,
+  ]).toStrictEqual(expectedValidationDimensions);
   expect(CONNECTOR_CATALOG_RAW_SIZE_BUCKETS).toContain(
     event.connector_catalog_raw_size_bucket,
   );
@@ -1098,7 +1122,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
+      validation: { outcome: "attested" },
     });
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    );
     expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(
       timingEvents,
@@ -1252,6 +1281,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "hit",
       runtimeCacheOutcome: "hit",
       requestedConnectorCount: "known",
+      validation: { outcome: "not_run" },
     });
     for (const event of warmTimingEvents) {
       expect(event).toStrictEqual(
@@ -1267,6 +1297,206 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
+  });
+
+  it("fully validates legacy catalog attestations before caching them", async () => {
+    const api = createRunsApi(context);
+    onTestFinished(async () => {
+      mockApiTestConnectorProviderConfiguration();
+      await installApiTestConnectorCatalog();
+    });
+
+    const missingCatalogVersion = `api-test-missing-validation-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: missingCatalogVersion,
+    });
+    await setApiTestConnectorCatalogValidationVersion(null);
+    const missingVersionActor = await entitledRunActor();
+    const missingVersionPrompt = "legacy connector catalog validation marker";
+    const missingVersionRun = await api.createRun(missingVersionActor.actor, {
+      agentId: missingVersionActor.agentId,
+      prompt: missingVersionPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const missingVersionEvents = apiDispatchTimingEventsForRun(
+      missingVersionRun.runId,
+    );
+    expectApiDispatchActions(
+      missingVersionEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    );
+    expectConnectorCatalogLoadTiming({
+      events: missingVersionEvents,
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      validation: {
+        outcome: "full_fallback",
+        fallbackReason: "missing_version",
+      },
+    });
+    await expect(
+      readApiTestConnectorCatalogValidationVersion(),
+    ).resolves.toBeNull();
+    expectApiDispatchTimingEventsNotToLeak(missingVersionEvents, [
+      missingCatalogVersion,
+      missingVersionPrompt,
+      missingVersionActor.agentId,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
+    ]);
+
+    const unsupportedCatalogVersion = `api-test-unsupported-validation-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: unsupportedCatalogVersion,
+    });
+    const unsupportedValidationVersion =
+      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION + 1;
+    await setApiTestConnectorCatalogValidationVersion(
+      unsupportedValidationVersion,
+    );
+    const unsupportedVersionActor = await entitledRunActor();
+    const unsupportedVersionPrompt =
+      "unsupported connector catalog validation marker";
+    const unsupportedVersionRun = await api.createRun(
+      unsupportedVersionActor.actor,
+      {
+        agentId: unsupportedVersionActor.agentId,
+        prompt: unsupportedVersionPrompt,
+        modelProvider: "anthropic-api-key",
+      },
+    );
+    const unsupportedVersionEvents = apiDispatchTimingEventsForRun(
+      unsupportedVersionRun.runId,
+    );
+    expectApiDispatchActions(
+      unsupportedVersionEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    );
+    expectConnectorCatalogLoadTiming({
+      events: unsupportedVersionEvents,
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      validation: {
+        outcome: "full_fallback",
+        fallbackReason: "unsupported_version",
+      },
+    });
+    await expect(readApiTestConnectorCatalogValidationVersion()).resolves.toBe(
+      unsupportedValidationVersion,
+    );
+    expectApiDispatchTimingEventsNotToLeak(unsupportedVersionEvents, [
+      unsupportedCatalogVersion,
+      unsupportedVersionPrompt,
+      unsupportedVersionActor.agentId,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
+    ]);
+
+    const cachedActor = await entitledRunActor();
+    const cachedPrompt = "cached connector catalog fallback";
+    const cachedRun = await api.createRun(cachedActor.actor, {
+      agentId: cachedActor.agentId,
+      prompt: cachedPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const cachedEvents = apiDispatchTimingEventsForRun(cachedRun.runId);
+    expectApiDispatchActions(
+      cachedEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      cachedEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      cachedEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    );
+    expectConnectorCatalogLoadTiming({
+      events: cachedEvents,
+      acceptedCacheOutcome: "hit",
+      runtimeCacheOutcome: "hit",
+      requestedConnectorCount: "known",
+      validation: { outcome: "not_run" },
+    });
+    expectApiDispatchTimingEventsNotToLeak(cachedEvents, [
+      unsupportedCatalogVersion,
+      cachedPrompt,
+      cachedActor.agentId,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
+    ]);
+
+    const concurrentCatalogVersion = `api-test-concurrent-attested-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: concurrentCatalogVersion,
+    });
+    const concurrentActor = await entitledRunActor();
+    const firstConcurrentPrompt = "first concurrent attested catalog load";
+    const secondConcurrentPrompt = "second concurrent attested catalog load";
+    const [firstConcurrentRun, secondConcurrentRun] = await Promise.all([
+      api.createRun(concurrentActor.actor, {
+        agentId: concurrentActor.agentId,
+        prompt: firstConcurrentPrompt,
+        modelProvider: "anthropic-api-key",
+      }),
+      api.createRun(concurrentActor.actor, {
+        agentId: concurrentActor.agentId,
+        prompt: secondConcurrentPrompt,
+        modelProvider: "anthropic-api-key",
+      }),
+    ]);
+    const concurrentEvents = [
+      apiDispatchTimingEventsForRun(firstConcurrentRun.runId),
+      apiDispatchTimingEventsForRun(secondConcurrentRun.runId),
+    ];
+    const concurrentLoadEvents = concurrentEvents.map((events) => {
+      return singleApiDispatchEvent(
+        events,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      );
+    });
+    const concurrentAcceptedOutcomes = concurrentLoadEvents.map((event) => {
+      return event.connector_catalog_accepted_cache_outcome;
+    });
+    expect(
+      concurrentAcceptedOutcomes.filter((outcome) => {
+        return outcome === "miss";
+      }),
+    ).toHaveLength(1);
+    expect(
+      concurrentAcceptedOutcomes.filter((outcome) => {
+        return outcome === "hit" || outcome === "in_flight";
+      }),
+    ).toHaveLength(1);
+    expect(
+      concurrentLoadEvents.map((event) => {
+        return event.connector_catalog_validation_outcome;
+      }),
+    ).toHaveLength(2);
+    expect(
+      new Set(
+        concurrentLoadEvents.map((event) => {
+          return event.connector_catalog_validation_outcome;
+        }),
+      ),
+    ).toStrictEqual(new Set(["attested", "not_run"]));
+    for (const events of concurrentEvents) {
+      expectNoApiDispatchActions(
+        events,
+        API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+      );
+      expectApiDispatchTimingEventsNotToLeak(events, [
+        concurrentCatalogVersion,
+        firstConcurrentPrompt,
+        secondConcurrentPrompt,
+        concurrentActor.agentId,
+        "test-oauth-secret",
+        "fixture-confidential-secret",
+      ]);
+    }
   });
 
   it("retains direct plan admission and emits direct create timing", async () => {
@@ -1311,6 +1541,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(["hit", "miss"]).toContain(
       connectorCatalogLoadEvent.connector_catalog_runtime_cache_outcome,
+    );
+    expect(connectorCatalogLoadEvent.connector_catalog_validation_outcome).toBe(
+      connectorCatalogLoadEvent.connector_catalog_accepted_cache_outcome ===
+        "miss"
+        ? "attested"
+        : "not_run",
+    );
+    expect(connectorCatalogLoadEvent).not.toHaveProperty(
+      "connector_catalog_validation_fallback_reason",
     );
     expect(CONNECTOR_CATALOG_RAW_SIZE_BUCKETS).toContain(
       connectorCatalogLoadEvent.connector_catalog_raw_size_bucket,

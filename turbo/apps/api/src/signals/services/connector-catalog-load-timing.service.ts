@@ -6,6 +6,13 @@ import type {
 
 type AcceptedConnectorCatalogCacheOutcome = "hit" | "miss" | "in_flight";
 type ConnectorRuntimeSnapshotCacheOutcome = "hit" | "miss";
+type ConnectorCatalogValidationResult =
+  | { readonly outcome: "attested" }
+  | {
+      readonly outcome: "full_fallback";
+      readonly fallbackReason: "missing_version" | "unsupported_version";
+    }
+  | { readonly outcome: "not_run" };
 
 type ConnectorCatalogCountBucket =
   | "0"
@@ -81,6 +88,7 @@ export class ConnectorCatalogLoadTiming {
     | AcceptedConnectorCatalogCacheOutcome
     | undefined;
   private runtimeCacheOutcome: ConnectorRuntimeSnapshotCacheOutcome | undefined;
+  private validationResult: ConnectorCatalogValidationResult | undefined;
   private catalogRawSize: number | undefined;
   private connectorCount: number | undefined;
 
@@ -105,6 +113,10 @@ export class ConnectorCatalogLoadTiming {
     outcome: ConnectorRuntimeSnapshotCacheOutcome,
   ): void {
     this.runtimeCacheOutcome = outcome;
+  }
+
+  recordValidationResult(result: ConnectorCatalogValidationResult): void {
+    this.validationResult = result;
   }
 
   recordCatalogFacts(args: {
@@ -151,6 +163,17 @@ export class ConnectorCatalogLoadTiming {
         ? {}
         : {
             connector_catalog_runtime_cache_outcome: this.runtimeCacheOutcome,
+          }),
+      ...(this.validationResult === undefined
+        ? {}
+        : {
+            connector_catalog_validation_outcome: this.validationResult.outcome,
+            ...(this.validationResult.outcome === "full_fallback"
+              ? {
+                  connector_catalog_validation_fallback_reason:
+                    this.validationResult.fallbackReason,
+                }
+              : {}),
           }),
       ...(this.catalogRawSize === undefined
         ? {}

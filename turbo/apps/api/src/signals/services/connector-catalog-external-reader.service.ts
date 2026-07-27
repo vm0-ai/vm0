@@ -34,7 +34,9 @@ import {
   type ConnectorCatalogAuthMethod,
 } from "./connector-catalog-artifacts/artifacts";
 import {
+  CONNECTOR_CATALOG_VALIDATION_VERSION,
   connectorCatalogArtifactFailureCode,
+  decodeAttestedConnectorCatalogSnapshot,
   decodeConnectorCatalogSnapshot,
 } from "./connector-catalog-artifacts/loader";
 import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
@@ -294,6 +296,8 @@ async function readCurrentCatalog(args: {
         .select({
           catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
           catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
+          catalogValidationVersion:
+            connectorCatalogCompatibilityEvaluation.catalogValidationVersion,
           filteredAuthMethods:
             connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
         })
@@ -330,13 +334,29 @@ async function readCurrentCatalog(args: {
     return undefined;
   }
 
-  const decoded = decodeConnectorCatalogSnapshot({
+  const decodeArgs = {
     catalogGzip: row.catalogGzip,
     catalogRawSize: row.catalogRawSize,
     catalogVersion: args.identity.catalogVersion,
     catalogDigest: args.identity.catalogDigest,
     ...(args.timing === undefined ? {} : { timing: args.timing }),
-  });
+  };
+  const validationVersionIsCurrent =
+    row.catalogValidationVersion === CONNECTOR_CATALOG_VALIDATION_VERSION;
+  if (validationVersionIsCurrent) {
+    args.timing?.recordValidationResult({ outcome: "attested" });
+  } else {
+    args.timing?.recordValidationResult({
+      outcome: "full_fallback",
+      fallbackReason:
+        row.catalogValidationVersion === null
+          ? "missing_version"
+          : "unsupported_version",
+    });
+  }
+  const decoded = validationVersionIsCurrent
+    ? decodeAttestedConnectorCatalogSnapshot(decodeArgs)
+    : decodeConnectorCatalogSnapshot(decodeArgs);
   const filteredAuthMethods = measureCatalogLoadSync(
     args.timing,
     "api_dispatch_connector_catalog_validate_compatibility",
@@ -433,12 +453,14 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
   const cache = preparedCatalogCache();
   if (cache.completed?.key === currentKey) {
     timing?.recordAcceptedCacheOutcome("hit");
+    timing?.recordValidationResult({ outcome: "not_run" });
     return cache.completed.catalog;
   }
 
   const existing = cache.inFlight.get(currentKey);
   if (existing) {
     timing?.recordAcceptedCacheOutcome("in_flight");
+    timing?.recordValidationResult({ outcome: "not_run" });
     return await existing;
   }
 

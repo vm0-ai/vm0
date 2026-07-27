@@ -28,7 +28,10 @@ import {
   type ConnectorCatalogArtifact,
   type ConnectorCatalogAuthMethod,
 } from "./connector-catalog-artifacts/artifacts";
-import { decodeConnectorCatalogSnapshot } from "./connector-catalog-artifacts/loader";
+import {
+  CONNECTOR_CATALOG_VALIDATION_VERSION,
+  decodeConnectorCatalogSnapshot,
+} from "./connector-catalog-artifacts/loader";
 import { connectorCatalogSource } from "./connector-catalog-source";
 
 const COMPATIBILITY_REASON_ORDER = [
@@ -315,6 +318,8 @@ export async function persistConnectorCatalogCompatibility(args: {
     artifact: args.artifact,
     capability: args.capability,
   });
+  const evaluatedAt = nowDate();
+  const persistedFilteredAuthMethods = [...filteredAuthMethods];
   await args.db
     .insert(connectorCatalogCompatibilityEvaluation)
     .values({
@@ -323,10 +328,24 @@ export async function persistConnectorCatalogCompatibility(args: {
       catalogVersion: args.identity.catalogVersion,
       catalogDigest: args.identity.catalogDigest,
       executableCapabilityDigest: args.capability.digest,
-      evaluatedAt: nowDate(),
-      filteredAuthMethods: [...filteredAuthMethods],
+      catalogValidationVersion: CONNECTOR_CATALOG_VALIDATION_VERSION,
+      evaluatedAt,
+      filteredAuthMethods: persistedFilteredAuthMethods,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: [
+        connectorCatalogCompatibilityEvaluation.sourceId,
+        connectorCatalogCompatibilityEvaluation.schemaVersion,
+        connectorCatalogCompatibilityEvaluation.catalogVersion,
+        connectorCatalogCompatibilityEvaluation.catalogDigest,
+        connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+      ],
+      set: {
+        catalogValidationVersion: CONNECTOR_CATALOG_VALIDATION_VERSION,
+        evaluatedAt,
+        filteredAuthMethods: persistedFilteredAuthMethods,
+      },
+    });
 }
 
 async function lockSyncState(db: Db, sourceId: string): Promise<boolean> {
@@ -400,8 +419,8 @@ async function reconcileCompatibility(args: {
 
   const [existing] = await args.db
     .select({
-      capabilityDigest:
-        connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+      catalogValidationVersion:
+        connectorCatalogCompatibilityEvaluation.catalogValidationVersion,
     })
     .from(connectorCatalogCompatibilityEvaluation)
     .where(
@@ -426,7 +445,9 @@ async function reconcileCompatibility(args: {
       ),
     )
     .limit(1);
-  if (existing !== undefined) {
+  if (
+    existing?.catalogValidationVersion === CONNECTOR_CATALOG_VALIDATION_VERSION
+  ) {
     return;
   }
 

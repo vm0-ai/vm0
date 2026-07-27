@@ -4950,6 +4950,13 @@
       "when": 1785205907968,
       "tag": "0706_skinny_random",
       "breakpoints": true
+    },
+    {
+      "idx": 707,
+      "version": "7",
+      "when": 1785209861867,
+      "tag": "0707_special_patriot",
+      "breakpoints": true
     }
   ]
 }

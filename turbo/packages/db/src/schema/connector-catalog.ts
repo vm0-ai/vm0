@@ -246,6 +246,7 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
     executableCapabilityDigest: varchar("executable_capability_digest", {
       length: 71,
     }).notNull(),
+    catalogValidationVersion: integer("catalog_validation_version"),
     evaluatedAt: timestamp("evaluated_at").notNull(),
     filteredAuthMethods: jsonb("filtered_auth_methods")
       .$type<ConnectorCatalogFilteredAuthMethods>()
@@ -282,6 +283,10 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
       check(
         "connector_catalog_compatibility_catalog_digest_valid",
         sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+      check(
+        "connector_catalog_compat_validation_version_positive",
+        sql`${table.catalogValidationVersion} IS NULL OR ${table.catalogValidationVersion} > 0`,
       ),
     ];
   },
