@@ -1524,24 +1524,29 @@ jobs:
           )
           echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
 
+          check_preview_asset() {
+            local probe_file="$1"
+            local relative_path="${probe_file#"$PAGES_DIST"/}"
+            local content_type
+            content_type="$(curl \
+              --fail \
+              --silent \
+              --max-time 10 \
+              --output /dev/null \
+              --write-out "%{content_type}" \
+              "${PAGES_URL%/}/${relative_path}" 2>/dev/null || true)"
+            if [[ "$content_type" != *javascript* ]]; then
+              printf "%s\n" "$relative_path"
+            fi
+          }
+          export -f check_preview_asset
+
           ready_passes=0
           for attempt in {1..60}; do
             not_ready_files="$(
               printf '%s\0' "${probe_files[@]}" |
-                xargs -0 -r -n 1 -P 16 bash -c '
-                  probe_file="$1"
-                  relative_path="${probe_file#"$PAGES_DIST"/}"
-                  content_type="$(curl \
-                    --fail \
-                    --silent \
-                    --max-time 10 \
-                    --output /dev/null \
-                    --write-out "%{content_type}" \
-                    "${PAGES_URL%/}/${relative_path}" 2>/dev/null || true)"
-                  if [[ "$content_type" != *javascript* ]]; then
-                    printf "%s\n" "$relative_path"
-                  fi
-                ' _
+                xargs -0 -r -n 1 -P 16 \
+                  bash -c "check_preview_asset \"\$1\"" _
             )"
 
             if [[ -z "$not_ready_files" ]]; then
