@@ -186,8 +186,8 @@ describe("organization invoices settings", () => {
         expect(screen.getByText("$20.00")).toBeInTheDocument();
       });
       expect(
-        screen.queryByLabelText("Download March 2026 invoice"),
-      ).not.toBeInTheDocument();
+        screen.getAllByLabelText("Download March 2026 invoice")[0],
+      ).toHaveAttribute("href", "https://billing.stripe.com/invoice/test");
 
       await user.click(buttonByText("Download receipts"));
       expect(

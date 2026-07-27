@@ -17,6 +17,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import type { FormEvent } from "react";
@@ -34,7 +38,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 
-const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem] gap-x-6 items-center";
+const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 
 function formatDate(unixTimestamp: number): string {
   return new Date(unixTimestamp * 1000).toLocaleDateString("en-US");
@@ -88,6 +92,9 @@ function InvoiceRowsSkeleton() {
               </div>
               <Skeleton className="h-4 w-20" />
               <Skeleton className="h-4 w-14" />
+              <div className="flex justify-end">
+                <Skeleton className="h-7 w-7 rounded-lg" />
+              </div>
             </div>
           </div>
         );
@@ -281,12 +288,17 @@ export function OrgInvoicesTab() {
           <div className="text-left">Invoice</div>
           <div className="text-left">Date</div>
           <div className="text-left">Amount</div>
+          <div />
         </div>
         <div className="h-0 zero-border-t mx-4" />
 
         {loading && <InvoiceRowsSkeleton />}
 
         {invoices.map((inv, i) => {
+          const invoiceMonth = new Intl.DateTimeFormat("en-US", {
+            month: "long",
+            year: "numeric",
+          }).format(new Date(inv.date * 1000));
           return (
             <div key={inv.id}>
               {i > 0 && <div className="h-0 zero-border-t mx-4" />}
@@ -307,6 +319,34 @@ export function OrgInvoicesTab() {
                 </div>
                 <div className="text-left text-sm text-foreground tabular-nums">
                   {formatAmount(inv.amount)}
+                </div>
+                <div className="flex justify-end">
+                  {inv.hostedInvoiceUrl ? (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <a
+                            href={inv.hostedInvoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            aria-label={`Download ${invoiceMonth} invoice`}
+                          >
+                            <IconDownload size={14} stroke={1.5} />
+                          </a>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="text-xs">
+                            Download {invoiceMonth} invoice
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <span className="flex h-7 w-7 items-center justify-center text-muted-foreground/30">
+                      <IconDownload size={14} stroke={1.5} />
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
