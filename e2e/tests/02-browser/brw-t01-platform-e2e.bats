@@ -110,22 +110,35 @@ open_auth_form() {
     fi
 
     report_auth_page_failure
-    local failed_script_url
-    failed_script_url="$(agent-browser eval \
-      "performance.getEntriesByType('resource').find(
-        (entry) => {
-          const resourceUrl = new URL(entry.name);
-          return resourceUrl.origin === location.origin
-            && entry.initiatorType === 'script'
-            && entry.responseStatus >= 400;
-        }
-      )?.name ?? ''" | jq -r '.')"
-    if [[ -z "$failed_script_url" ]] \
-      || ! wait_for_javascript_target --timeout-seconds 60 "$failed_script_url"; then
+    local failed_script_urls_json
+    failed_script_urls_json="$(agent-browser eval \
+      "Array.from(new Set(
+        performance.getEntriesByType('resource')
+          .filter((entry) => {
+            const resourceUrl = new URL(entry.name);
+            return resourceUrl.origin === location.origin
+              && entry.initiatorType === 'script'
+              && entry.responseStatus >= 400;
+          })
+          .map((entry) => entry.name)
+      ))")"
+    local -a failed_script_urls
+    mapfile -t failed_script_urls < <(
+      jq -r '.[]' <<< "$failed_script_urls_json"
+    )
+    if (( ${#failed_script_urls[@]} == 0 )); then
       return 1
     fi
+    local failed_script_url
+    for failed_script_url in "${failed_script_urls[@]}"; do
+      if ! wait_for_javascript_target \
+        --timeout-seconds 60 \
+        "$failed_script_url"; then
+        return 1
+      fi
+    done
 
-    echo "# Failed app script is available; reloading once" >&3
+    echo "# Failed app scripts are available; reloading once" >&3
     agent-browser reload
     if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
       report_auth_page_failure

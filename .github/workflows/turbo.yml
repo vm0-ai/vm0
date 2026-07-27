@@ -1470,38 +1470,90 @@ jobs:
           set -euo pipefail
 
           mapfile -t probe_files < <(
-            find "$PAGES_DIST/assets" \
-              -maxdepth 1 \
-              -type f \
-              \( -name 'index-*.js' -o -name 'Route-*.js' \) \
-              -print
+            node --input-type=module - "$PAGES_DIST/assets" <<'NODE'
+          import { readdir, readFile } from "node:fs/promises";
+          import path from "node:path";
+
+          const assetsDirectory = process.argv[2];
+          const assetNames = await readdir(assetsDirectory);
+          const javascriptAssets = new Set(
+            assetNames.filter((assetName) => assetName.endsWith(".js")),
+          );
+          const rootPrefixes = ["index-", "Route-", "SignIn-", "SignUp-"];
+          const roots = [...javascriptAssets].filter((assetName) =>
+            rootPrefixes.some((prefix) => assetName.startsWith(prefix)),
+          );
+
+          for (const prefix of rootPrefixes) {
+            if (!roots.some((assetName) => assetName.startsWith(prefix))) {
+              throw new Error(`Could not identify ${prefix} preview assets`);
+            }
+          }
+
+          const queuedAssets = [...roots];
+          const reachableAssets = new Set();
+          const relativeImportPattern =
+            /["']\.\/([^"'?#]+\.js)(?:[?#][^"']*)?["']/g;
+
+          while (queuedAssets.length > 0) {
+            const assetName = queuedAssets.pop();
+            if (!assetName || reachableAssets.has(assetName)) {
+              continue;
+            }
+            reachableAssets.add(assetName);
+
+            const source = await readFile(
+              path.join(assetsDirectory, assetName),
+              "utf8",
+            );
+            for (const match of source.matchAll(relativeImportPattern)) {
+              const dependencyName = match[1];
+              if (
+                javascriptAssets.has(dependencyName) &&
+                !reachableAssets.has(dependencyName)
+              ) {
+                queuedAssets.push(dependencyName);
+              }
+            }
+          }
+
+          for (const assetName of [...reachableAssets].sort()) {
+            console.log(path.join(assetsDirectory, assetName));
+          }
+          NODE
           )
-          if (( ${#probe_files[@]} < 2 )); then
-            echo "::error::Could not identify app entry and Clerk route assets"
-            exit 1
-          fi
+          echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
 
+          ready_passes=0
           for attempt in {1..60}; do
-            all_ready=true
-            for probe_file in "${probe_files[@]}"; do
-              relative_path="${probe_file#"$PAGES_DIST"/}"
-              content_type="$(curl \
-                --fail \
-                --silent \
-                --show-error \
-                --max-time 10 \
-                --header "Cache-Control: no-cache" \
-                --output /dev/null \
-                --write-out "%{content_type}" \
-                "${PAGES_URL%/}/${relative_path}" || true)"
-              if [[ "$content_type" != *javascript* ]]; then
-                all_ready=false
-                echo "::warning::Preview asset is not ready (attempt ${attempt}/60): ${relative_path}"
-                break
-              fi
-            done
+            not_ready_files="$(
+              printf '%s\0' "${probe_files[@]}" |
+                xargs -0 -r -n 1 -P 16 bash -c '
+                  probe_file="$1"
+                  relative_path="${probe_file#"$PAGES_DIST"/}"
+                  content_type="$(curl \
+                    --fail \
+                    --silent \
+                    --max-time 10 \
+                    --output /dev/null \
+                    --write-out "%{content_type}" \
+                    "${PAGES_URL%/}/${relative_path}" 2>/dev/null || true)"
+                  if [[ "$content_type" != *javascript* ]]; then
+                    printf "%s\n" "$relative_path"
+                  fi
+                ' _
+            )"
 
-            if [[ "$all_ready" == "true" ]]; then
+            if [[ -z "$not_ready_files" ]]; then
+              ((ready_passes += 1))
+            else
+              ready_passes=0
+              first_not_ready="${not_ready_files%%$'\n'*}"
+              not_ready_count="$(wc -l <<< "$not_ready_files")"
+              echo "::warning::${not_ready_count} preview assets are not ready (attempt ${attempt}/60); first: ${first_not_ready}"
+            fi
+
+            if (( ready_passes >= 2 )); then
               echo "Cloudflare Pages preview assets are ready"
               exit 0
             fi

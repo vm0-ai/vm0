@@ -225,7 +225,9 @@ wait_for_browser_target() {
 }
 
 # ---------------------------------------------------------------------------
-# wait_for_javascript_target — Poll a fixed URL until it returns JavaScript
+# wait_for_javascript_target — Poll a fixed URL from the current browser until
+# it returns JavaScript. A successful fetch also warms the page's service
+# worker cache before the caller reloads.
 # Usage: wait_for_javascript_target [--timeout-seconds <seconds>] <url>
 # ---------------------------------------------------------------------------
 wait_for_javascript_target() {
@@ -236,22 +238,27 @@ wait_for_javascript_target() {
   fi
 
   local url="${1:?wait URL is required}"
+  local url_json
+  url_json=$(node -e \
+    'process.stdout.write(JSON.stringify(process.argv[1]))' \
+    "$url")
   local wait_started="$SECONDS"
   while (( SECONDS - wait_started < wait_timeout_seconds )); do
-    local content_type
-    content_type="$(curl \
-      --fail \
-      --silent \
-      --show-error \
-      --max-time 5 \
-      --header "Cache-Control: no-cache" \
-      --output /dev/null \
-      --write-out "%{content_type}" \
-      "$url" 2>/dev/null || true)"
-    if [[ "$content_type" == *javascript* ]]; then
+    local target_ready
+    target_ready="$(agent-browser eval \
+      "(async () => {
+        try {
+          const response = await fetch(${url_json}, { cache: 'reload' });
+          const contentType = response.headers.get('content-type') ?? '';
+          return response.ok && contentType.includes('javascript');
+        } catch {
+          return false;
+        }
+      })()" 2>/dev/null || true)"
+    if [[ "$target_ready" == "true" ]]; then
       return 0
     fi
-    sleep 1
+    sleep 0.5
   done
 
   echo "Wait timed out after $((wait_timeout_seconds * 1000))ms: JavaScript URL ${url}" >&2
