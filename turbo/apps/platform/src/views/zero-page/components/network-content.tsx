@@ -395,6 +395,10 @@ const networkLogDetailFields = {
     "Model Catalog Cache Status",
     "model_catalog_cache_status",
   ),
+  model_catalog_cache_upstream_encoding: detailField(
+    "Model Catalog Upstream Encoding",
+    "model_catalog_cache_upstream_encoding",
+  ),
   model_catalog_cache_bypass_reason: detailField(
     "Model Catalog Cache Bypass Reason",
     "model_catalog_cache_bypass_reason",

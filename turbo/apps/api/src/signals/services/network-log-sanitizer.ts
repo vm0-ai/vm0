@@ -3,6 +3,7 @@ import {
   modelCatalogCacheEvictionCountSchema,
   modelCatalogCacheMillisecondsSchema,
   modelCatalogCacheStatusSchema,
+  modelCatalogCacheUpstreamEncodingSchema,
   networkLogActionSchema,
   networkLogEntrySchema,
   type NetworkLogEntry,
@@ -72,6 +73,13 @@ function modelCatalogCacheBypassReasonValue(
   value: unknown,
 ): NetworkLogEntry["model_catalog_cache_bypass_reason"] | undefined {
   const parsed = modelCatalogCacheBypassReasonSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function modelCatalogCacheUpstreamEncodingValue(
+  value: unknown,
+): NetworkLogEntry["model_catalog_cache_upstream_encoding"] | undefined {
+  const parsed = modelCatalogCacheUpstreamEncodingSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -196,6 +204,10 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     model_catalog_cache_status: modelCatalogCacheStatusValue(
       event.model_catalog_cache_status,
     ),
+    model_catalog_cache_upstream_encoding:
+      modelCatalogCacheUpstreamEncodingValue(
+        event.model_catalog_cache_upstream_encoding,
+      ),
     model_catalog_cache_bypass_reason: modelCatalogCacheBypassReasonValue(
       event.model_catalog_cache_bypass_reason,
     ),

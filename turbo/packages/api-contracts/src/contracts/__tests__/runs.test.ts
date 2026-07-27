@@ -43,6 +43,7 @@ describe("network log model catalog cache telemetry", () => {
       networkLogEntrySchema.safeParse({
         ...baseEntry,
         model_catalog_cache_status: "model_catalog_revalidated_200_same",
+        model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_bypass_reason: "response_cache_control",
         model_catalog_cache_entry_age_ms: 61_000,
         model_catalog_cache_validation_latency_ms: 1700,
@@ -56,6 +57,12 @@ describe("network log model catalog cache telemetry", () => {
       networkLogEntrySchema.safeParse({
         ...baseEntry,
         model_catalog_cache_status: "credential-specific-value",
+      }).success,
+    ).toBe(false);
+    expect(
+      networkLogEntrySchema.safeParse({
+        ...baseEntry,
+        model_catalog_cache_upstream_encoding: "gzip",
       }).success,
     ).toBe(false);
     expect(

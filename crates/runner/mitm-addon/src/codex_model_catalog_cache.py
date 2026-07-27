@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from mitmproxy import http
 
+import body_decoding
 import flow_metadata
 
 FRESH_SECONDS = 60.0
@@ -19,6 +20,7 @@ MAX_ENTRY_BYTES = 1024 * 1024
 MAX_ENTRIES = 32
 MAX_TOTAL_BYTES = 16 * 1024 * 1024
 MAX_IN_FLIGHT_REQUESTS = MAX_TOTAL_BYTES // MAX_ENTRY_BYTES
+_MAX_CONTENT_LENGTH_DIGITS = len(str(MAX_ENTRY_BYTES))
 
 _FIREWALL_NAME = "model-provider:codex-oauth-token"
 _CATALOG_HOST = "chatgpt.com"
@@ -33,9 +35,11 @@ _ASCII_CONTROL_BOUNDARY = 0x20
 _ASCII_DELETE = 0x7F
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_OK = 200
-_HTTP_STATUS_NOT_MODIFIED = 304
+_HTTP_STATUS_BAD_GATEWAY = 502
 _FLOW_STATE = "_codex_model_catalog_cache_state"
 _FLOW_TELEMETRY = "_codex_model_catalog_cache_telemetry"
+_BROTLI_ENCODING = "br"
+_IDENTITY_ENCODING = "identity"
 _REQUEST_CONDITIONAL_HEADERS = (
     "If-Match",
     "If-Modified-Since",
@@ -63,7 +67,6 @@ class _CacheEntry:
     content_type: str
     etag: str = field(repr=False)
     validated_at: float
-    generation: int
 
 
 @dataclass
@@ -73,15 +76,16 @@ class _FlowTelemetry:
     entry_age_ms: int | None = None
     validation_latency_ms: int | None = None
     eviction_count: int = 0
+    upstream_encoding: str | None = None
 
 
 @dataclass
 class _FlowState:
     key: _CacheKey
     request_started_at: float
-    expected_generation: int | None
-    expected_etag: str | None = field(repr=False)
     entry_age_ms: int | None
+    upstream_encoding: str | None = None
+    compressed_content_length: int | None = None
     capture: bytearray | None = field(default=None, repr=False)
     capture_overflow: bool = False
     downstream_stream: _ResponseStream | None = field(default=None, repr=False)
@@ -92,7 +96,6 @@ class _FlowState:
 
 _entries: OrderedDict[_CacheKey, _CacheEntry] = OrderedDict()
 _owned_body_bytes = 0
-_generation = 0
 _active_flow_states = 0
 _process_hmac_key = secrets.token_bytes(32)
 
@@ -103,12 +106,6 @@ def _bounded_milliseconds(seconds: float) -> int:
 
 def _age_milliseconds(entry: _CacheEntry, now: float) -> int:
     return _bounded_milliseconds(now - entry.validated_at)
-
-
-def _next_generation() -> int:
-    global _generation
-    _generation += 1
-    return _generation
 
 
 def _remove_entry(key: _CacheKey) -> bool:
@@ -254,14 +251,20 @@ def _single_usable_etag(headers: http.Headers) -> str | None:
     return _usable_etag_value(values[0])
 
 
-def _header_has_non_identity_encoding(headers: http.Headers) -> bool:
+def _single_content_encoding(headers: http.Headers) -> str | None:
     values = headers.get_all("Content-Encoding")
     if not values:
-        return False
+        return _IDENTITY_ENCODING
     tokens = [
         token.strip().lower() for value in values for token in value.split(",") if token.strip()
     ]
-    return tokens != ["identity"]
+    if len(tokens) != 1:
+        return None
+    return tokens[0]
+
+
+def _header_has_non_identity_encoding(headers: http.Headers) -> bool:
+    return _single_content_encoding(headers) != _IDENTITY_ENCODING
 
 
 def _request_accepts_encoded_response(headers: http.Headers) -> bool:
@@ -271,7 +274,7 @@ def _request_accepts_encoded_response(headers: http.Headers) -> bool:
     tokens = [
         token.strip().lower() for value in values for token in value.split(",") if token.strip()
     ]
-    return tokens != ["identity"]
+    return tokens != [_IDENTITY_ENCODING]
 
 
 def _cache_control_tokens(headers: http.Headers) -> set[str]:
@@ -314,12 +317,28 @@ def _content_length(headers: http.Headers) -> int | None:
     if not values:
         return None
     parts = [part.strip() for value in values for part in value.split(",")]
-    if not parts or any(not part.isascii() or not part.isdecimal() for part in parts):
+    if not parts or any(
+        not part.isascii() or not part.isdecimal() or len(part) > _MAX_CONTENT_LENGTH_DIGITS
+        for part in parts
+    ):
         return -1
     lengths = {int(part) for part in parts}
     if len(lengths) != 1:
         return -1
     return lengths.pop()
+
+
+def _single_bounded_content_length(headers: http.Headers) -> int | None:
+    values = headers.get_all("Content-Length")
+    if len(values) != 1:
+        return None
+    value = values[0].strip()
+    if not value.isascii() or not value.isdecimal() or len(value) > _MAX_CONTENT_LENGTH_DIGITS:
+        return None
+    content_length = int(value)
+    if content_length == 0 or content_length > MAX_ENTRY_BYTES:
+        return None
+    return content_length
 
 
 def _set_telemetry(
@@ -330,6 +349,7 @@ def _set_telemetry(
     entry_age_ms: int | None = None,
     validation_latency_ms: int | None = None,
     eviction_count: int = 0,
+    upstream_encoding: str | None = None,
 ) -> None:
     flow.metadata[_FLOW_TELEMETRY] = _FlowTelemetry(
         status=status,
@@ -337,14 +357,7 @@ def _set_telemetry(
         entry_age_ms=entry_age_ms,
         validation_latency_ms=validation_latency_ms,
         eviction_count=eviction_count,
-    )
-
-
-def _not_stored_status(state: _FlowState) -> str:
-    return (
-        "model_catalog_revalidation_not_stored"
-        if state.expected_generation is not None
-        else "model_catalog_cold_not_stored"
+        upstream_encoding=upstream_encoding,
     )
 
 
@@ -358,10 +371,11 @@ def _set_not_stored(
     completed_at = time.monotonic() if now is None else now
     _set_telemetry(
         flow,
-        _not_stored_status(state),
+        "model_catalog_cold_not_stored",
         bypass_reason=reason,
         entry_age_ms=state.entry_age_ms,
         validation_latency_ms=_bounded_milliseconds(completed_at - state.request_started_at),
+        upstream_encoding=state.upstream_encoding,
     )
 
 
@@ -448,39 +462,24 @@ def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> None:
                 entry_age_ms=entry_age_ms,
             )
             return
-        if not _reserve_flow_capacity():
-            _set_telemetry(
-                flow,
-                "model_catalog_bypass",
-                bypass_reason="request_capacity",
-                entry_age_ms=entry_age_ms,
-            )
-            return
-        _entries.move_to_end(key)
-        flow.request.headers["If-None-Match"] = entry.etag
-        state = _FlowState(
-            key=key,
-            request_started_at=now,
-            expected_generation=entry.generation,
-            expected_etag=entry.etag,
+        _remove_entry(key)
+    else:
+        entry_age_ms = None
+    if not _reserve_flow_capacity():
+        _set_telemetry(
+            flow,
+            "model_catalog_bypass",
+            bypass_reason="request_capacity",
             entry_age_ms=entry_age_ms,
         )
-    else:
-        if not _reserve_flow_capacity():
-            _set_telemetry(
-                flow,
-                "model_catalog_bypass",
-                bypass_reason="request_capacity",
-            )
-            return
-        state = _FlowState(
-            key=key,
-            request_started_at=now,
-            expected_generation=None,
-            expected_etag=None,
-            entry_age_ms=None,
-        )
+        return
+    state = _FlowState(
+        key=key,
+        request_started_at=now,
+        entry_age_ms=entry_age_ms,
+    )
     flow.metadata[_FLOW_STATE] = state
+    flow.request.headers["Accept-Encoding"] = _BROTLI_ENCODING
 
 
 def _response_headers_bypass_reason(response: http.Response) -> str | None:
@@ -505,98 +504,66 @@ def _response_headers_bypass_reason(response: http.Response) -> str | None:
     return None
 
 
-def _current_expected_entry(state: _FlowState) -> _CacheEntry | None:
-    entry = _entries.get(state.key)
-    if entry is None or entry.generation != state.expected_generation:
-        return None
-    return entry
-
-
 def _renew_entry(key: _CacheKey, entry: _CacheEntry, now: float) -> _CacheEntry:
     renewed = _CacheEntry(
         body=entry.body,
         content_type=entry.content_type,
         etag=entry.etag,
         validated_at=now,
-        generation=_next_generation(),
     )
     _replace_entry(key, renewed)
     return renewed
 
 
-def _handle_not_modified(flow: http.HTTPFlow, state: _FlowState) -> None:
-    now = time.monotonic()
-    entry = _current_expected_entry(state)
-    response = flow.response
-    response_etag_values = response.headers.get_all("ETag") if response is not None else []
-    response_etag = _single_usable_etag(response.headers) if response is not None else None
-    if (
-        state.expected_etag is None
-        or (response_etag_values and response_etag is None)
-        or (response_etag is not None and response_etag != state.expected_etag)
-    ):
-        _set_not_stored(flow, state, "response_etag", now=now)
-        flow.response = http.Response.make(
-            502,
-            b"Codex model catalog cache validator mismatch",
-            {"Content-Type": "text/plain"},
-        )
-        state.finalized = True
-        return
+def _discard_upstream_response_body(_chunk: bytes) -> bytes:
+    return b""
 
-    if entry is None:
-        current_entry = _entries.get(state.key)
-        if current_entry is None:
-            _set_not_stored(flow, state, "concurrent_change", now=now)
-            flow.response = http.Response.make(
-                502,
-                b"Codex model catalog cache validation state changed",
-                {"Content-Type": "text/plain"},
-            )
-            state.finalized = True
-            return
-        _entries.move_to_end(state.key)
-        flow.response = _make_catalog_response(current_entry)
-        _set_telemetry(
-            flow,
-            _not_stored_status(state),
-            bypass_reason="concurrent_change",
-            entry_age_ms=state.entry_age_ms,
-            validation_latency_ms=_bounded_milliseconds(now - state.request_started_at),
-        )
-        state.finalized = True
-        return
 
-    renewed = _renew_entry(state.key, entry, now)
-    flow.response = _make_catalog_response(renewed)
-    _set_telemetry(
-        flow,
-        "model_catalog_revalidated_304",
-        entry_age_ms=state.entry_age_ms,
-        validation_latency_ms=_bounded_milliseconds(now - state.request_started_at),
-    )
+def _reject_encoded_response(
+    flow: http.HTTPFlow,
+    state: _FlowState,
+    reason: str,
+) -> None:
+    _set_not_stored(flow, state, reason)
     state.finalized = True
+    _release_flow_capacity(state)
+    flow.response = http.Response.make(
+        _HTTP_STATUS_BAD_GATEWAY,
+        b"",
+        {"Content-Type": "text/plain"},
+    )
+    flow.response.stream = _discard_upstream_response_body
 
 
 def handle_response_headers(flow: http.HTTPFlow) -> bool:
-    """Handle a catalog 304 and return whether normal response streaming is needed."""
+    """Select identity streaming or bounded Brotli buffering for a catalog miss."""
     state = flow.metadata.get(_FLOW_STATE)
     telemetry = flow.metadata.get(_FLOW_TELEMETRY)
     if isinstance(telemetry, _FlowTelemetry) and telemetry.status == "model_catalog_fresh_hit":
         return False
     if not isinstance(state, _FlowState) or flow.response is None:
         return True
-    if (
-        flow.response.status_code == _HTTP_STATUS_NOT_MODIFIED
-        and state.expected_generation is not None
-    ):
+
+    encoding = _single_content_encoding(flow.response.headers)
+    if encoding == _IDENTITY_ENCODING:
+        state.upstream_encoding = _IDENTITY_ENCODING
+        bypass_reason = _response_headers_bypass_reason(flow.response)
+        if bypass_reason is not None:
+            _set_not_stored(flow, state, bypass_reason)
+        return True
+    if encoding != _BROTLI_ENCODING:
+        _reject_encoded_response(flow, state, "response_encoding")
         return False
 
-    bypass_reason = _response_headers_bypass_reason(flow.response)
-    if bypass_reason is not None:
-        _set_not_stored(flow, state, bypass_reason)
-        return True
-    return True
+    state.upstream_encoding = _BROTLI_ENCODING
+    compressed_content_length = _single_bounded_content_length(flow.response.headers)
+    if compressed_content_length is None or flow.response.headers.get_all("Transfer-Encoding"):
+        _reject_encoded_response(flow, state, "response_size")
+        return False
+
+    state.compressed_content_length = compressed_content_length
+    flow.response.stream = False
+    return False
 
 
 def wrap_response_stream(flow: http.HTTPFlow) -> None:
@@ -605,6 +572,7 @@ def wrap_response_stream(flow: http.HTTPFlow) -> None:
     if (
         not isinstance(state, _FlowState)
         or state.finalized
+        or state.upstream_encoding != _IDENTITY_ENCODING
         or flow.response is None
         or _response_headers_bypass_reason(flow.response) is not None
     ):
@@ -671,15 +639,41 @@ def _validated_response_body(
     return body, content_type, etag
 
 
-def _expected_generation_is_current(state: _FlowState) -> bool:
-    entry = _entries.get(state.key)
-    if state.expected_generation is None:
-        return entry is None
-    return entry is not None and entry.generation == state.expected_generation
+def _normalize_buffered_brotli_response(
+    response: http.Response,
+    state: _FlowState,
+) -> str | None:
+    if state.upstream_encoding != _BROTLI_ENCODING:
+        return None
+    compressed = response.raw_content
+    if (
+        compressed is None
+        or state.compressed_content_length is None
+        or len(compressed) != state.compressed_content_length
+        or response.trailers
+    ):
+        return "response_body"
+
+    decoded, decode_error = body_decoding.decompress_json_usage_body(
+        compressed,
+        response.headers,
+        max_output=MAX_ENTRY_BYTES,
+    )
+    if decode_error == body_decoding.DECODED_BODY_LIMIT_EXCEEDED:
+        return "response_size"
+    if decode_error is not None:
+        return "response_encoding"
+
+    response.headers.pop("Content-Encoding", None)
+    response.headers.pop("Content-Length", None)
+    response.headers.pop("Transfer-Encoding", None)
+    response.content = decoded
+    state.capture = bytearray(decoded)
+    return None
 
 
 def finalize_response(flow: http.HTTPFlow) -> None:
-    """Validate and atomically install a complete streamed catalog response."""
+    """Normalize, validate, and install one complete catalog response."""
     state = flow.metadata.get(_FLOW_STATE)
     if not isinstance(state, _FlowState) or state.finalized:
         return
@@ -691,17 +685,20 @@ def finalize_response(flow: http.HTTPFlow) -> None:
         if response is None:
             _set_not_stored(flow, state, "response_missing", now=now)
             return
-        if (
-            response.status_code == _HTTP_STATUS_NOT_MODIFIED
-            and state.expected_generation is not None
-        ):
-            _handle_not_modified(flow, state)
+        decode_failure = _normalize_buffered_brotli_response(response, state)
+        if decode_failure is not None:
+            _set_not_stored(flow, state, decode_failure, now=now)
+            flow.response = http.Response.make(
+                _HTTP_STATUS_BAD_GATEWAY,
+                b"",
+                {"Content-Type": "text/plain"},
+            )
             return
         validated = _validated_response_body(response, state)
         if isinstance(validated, str):
             _set_not_stored(flow, state, validated, now=now)
             return
-        if not _expected_generation_is_current(state):
+        if state.key in _entries:
             _set_not_stored(flow, state, "concurrent_change", now=now)
             return
 
@@ -711,29 +708,22 @@ def finalize_response(flow: http.HTTPFlow) -> None:
             content_type=content_type,
             etag=etag,
             validated_at=now,
-            generation=_next_generation(),
         )
         evictions = _replace_entry(state.key, entry)
-        validation_latency_ms = _bounded_milliseconds(now - state.request_started_at)
-        if state.expected_generation is None:
-            status = "model_catalog_cold_stored"
-        elif etag == state.expected_etag:
-            status = "model_catalog_revalidated_200_same"
-        else:
-            status = "model_catalog_revalidated_200_changed"
         _set_telemetry(
             flow,
-            status,
+            "model_catalog_cold_stored",
             entry_age_ms=state.entry_age_ms,
-            validation_latency_ms=validation_latency_ms,
+            validation_latency_ms=_bounded_milliseconds(now - state.request_started_at),
             eviction_count=evictions,
+            upstream_encoding=state.upstream_encoding,
         )
     finally:
         _release_flow_capacity(state)
 
 
 def handle_error(flow: http.HTTPFlow) -> None:
-    """Record an upstream failure without serving a retained stale entry."""
+    """Record an upstream catalog failure."""
     state = flow.metadata.get(_FLOW_STATE)
     if not isinstance(state, _FlowState) or state.finalized:
         return
@@ -801,6 +791,8 @@ def add_network_log_fields(flow: http.HTTPFlow, entry: dict[str, object]) -> Non
         entry["model_catalog_cache_validation_latency_ms"] = telemetry.validation_latency_ms
     if telemetry.eviction_count:
         entry["model_catalog_cache_eviction_count"] = telemetry.eviction_count
+    if telemetry.upstream_encoding is not None:
+        entry["model_catalog_cache_upstream_encoding"] = telemetry.upstream_encoding
 
 
 def release_flow_state(flow: http.HTTPFlow) -> None:
@@ -814,9 +806,8 @@ def release_flow_state(flow: http.HTTPFlow) -> None:
 
 def reset_for_tests() -> None:
     """Reset process cache ownership between tests."""
-    global _active_flow_states, _generation, _owned_body_bytes, _process_hmac_key
+    global _active_flow_states, _owned_body_bytes, _process_hmac_key
     _entries.clear()
     _owned_body_bytes = 0
-    _generation = 0
     _active_flow_states = 0
     _process_hmac_key = secrets.token_bytes(32)

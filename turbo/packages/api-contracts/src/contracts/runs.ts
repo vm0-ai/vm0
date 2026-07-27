@@ -753,6 +753,8 @@ const modelCatalogCacheBypassReasonSchema = z.enum([
   "transport_error",
 ]);
 
+const modelCatalogCacheUpstreamEncodingSchema = z.enum(["identity", "br"]);
+
 const modelCatalogCacheMillisecondsSchema = z
   .number()
   .int()
@@ -779,6 +781,8 @@ const networkLogEntrySchema = z.object({
   response_size: z.number().optional(),
   browser_user_agent: z.boolean().optional(),
   model_catalog_cache_status: modelCatalogCacheStatusSchema.optional(),
+  model_catalog_cache_upstream_encoding:
+    modelCatalogCacheUpstreamEncodingSchema.optional(),
   model_catalog_cache_bypass_reason:
     modelCatalogCacheBypassReasonSchema.optional(),
   model_catalog_cache_entry_age_ms:
@@ -1008,6 +1012,7 @@ export {
   networkLogActionSchema,
   modelCatalogCacheStatusSchema,
   modelCatalogCacheBypassReasonSchema,
+  modelCatalogCacheUpstreamEncodingSchema,
   modelCatalogCacheMillisecondsSchema,
   modelCatalogCacheEvictionCountSchema,
   networkLogEntrySchema,
