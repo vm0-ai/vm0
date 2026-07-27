@@ -33,6 +33,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,

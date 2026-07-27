@@ -20,6 +20,7 @@ export enum FeatureSwitchKey {
   ExpensifyConnector = "expensifyConnector",
   GoogleContactsConnector = "googleContactsConnector",
   GoogleFormsConnector = "googleFormsConnector",
+  JoggAiConnector = "joggAiConnector",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   NetSuiteConnector = "netSuiteConnector",
