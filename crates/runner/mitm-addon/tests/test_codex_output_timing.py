@@ -1,8 +1,10 @@
 """Tests for default Codex provider-output timing observations."""
 
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import FrameType
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +23,7 @@ from tests.model_provider_websocket_helpers import (
 )
 from tests.usage_helpers import CapturedWebhookRequest, UsageWebhookServer
 from tests.webhook_test_helpers import QueuedUsageExecutor
+from usage import json_probe
 
 _TELEMETRY_PATH = "/api/webhooks/agent/telemetry"
 _FIRST_GENERATED_RESPONSE_CREATED = "codex_proxy_first_generated_response_created"
@@ -193,6 +196,31 @@ def test_irrelevant_websocket_messages_do_not_report_timings(
         mitm_addon.websocket_message(unobservable)
 
     assert _timing_requests(usage_webhook_server) == []
+
+
+def test_server_websocket_event_type_is_probed_once(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+) -> None:
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    probe_code = json_probe.probe_top_level_string_field.__code__
+    probe_calls = 0
+
+    def count_probe(frame: FrameType, event: str, _arg: object) -> None:
+        nonlocal probe_calls
+        if event == "call" and frame.f_code is probe_code:
+            probe_calls += 1
+
+    with mitm_ctx():
+        mitm_addon.responseheaders(flow)
+        sys.setprofile(count_probe)
+        try:
+            feed_websocket_server_message(flow, _event("response.output_text.delta"))
+        finally:
+            sys.setprofile(None)
+
+    assert probe_calls == 1
 
 
 def test_saturated_delivery_retries_with_original_observation_times(
