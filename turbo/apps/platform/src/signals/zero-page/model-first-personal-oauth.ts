@@ -14,11 +14,11 @@ import {
   modelPolicyAllowedForPlan,
 } from "./model-plan-capabilities.ts";
 
-export type PersonalOauthProviderType =
+type PersonalOauthProviderType =
   | "claude-code-oauth-token"
   | "codex-oauth-token";
 
-export type PersonalModelProviderStatus =
+type PersonalModelProviderStatus =
   | {
       status: "connected";
       providerType: PersonalOauthProviderType;
@@ -35,7 +35,7 @@ export type PersonalModelProviderStatus =
       modelLabel: string;
     };
 
-export type PersonalModelProviderStatusByModel = Readonly<
+type PersonalModelProviderStatusByModel = Readonly<
   Record<string, PersonalModelProviderStatus>
 >;
 

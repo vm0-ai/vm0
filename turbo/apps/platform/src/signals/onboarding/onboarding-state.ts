@@ -115,7 +115,7 @@ export const setOnboardingImageVariant$ = command(
   },
 );
 
-export const resetOnboardingUi$ = command(({ set }) => {
+const resetOnboardingUi$ = command(({ set }) => {
   set(internalOnboardingUi$, emptyOnboardingUiState());
 });
 

@@ -17,7 +17,7 @@ type ArtifactGoogleDriveSyncParams = {
   readonly threadId: string;
 } & ArtifactGoogleDriveSyncFile;
 
-export type ArtifactGoogleDriveSyncFile = {
+type ArtifactGoogleDriveSyncFile = {
   readonly runId: string;
   readonly fileId: string;
   readonly filename?: string | undefined;
@@ -219,26 +219,5 @@ export const waitForGoogleDriveAuthorization$ = command(
       { topic: "connector:changed", loopCommand$: authorizationReady$ },
       signal,
     );
-  },
-);
-
-export const waitForGoogleDriveAndSyncArtifacts$ = command(
-  async (
-    { get, set },
-    params: ArtifactGoogleDriveSyncFilesParams & { readonly agentId: string },
-    signal: AbortSignal,
-  ) => {
-    await set(
-      waitForGoogleDriveAuthorization$,
-      { agentId: params.agentId, authorizeConnected: true },
-      signal,
-    );
-    signal.throwIfAborted();
-    await syncArtifactFilesToGoogleDrive({
-      createClient: get(zeroClient$),
-      threadId: params.threadId,
-      files: params.files,
-      signal,
-    });
   },
 );

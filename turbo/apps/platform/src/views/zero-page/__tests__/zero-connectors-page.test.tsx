@@ -24,11 +24,10 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  ConnectorRegistryAuthMethodId,
-  ConnectorType,
-} from "@vm0/connectors/connectors";
+  ConnectorAuthMethodId,
+  ConnectorRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
@@ -176,8 +175,8 @@ function teamAgent(
 
 function mockConnectors(
   connectors: {
-    type: ConnectorType;
-    authMethod?: ConnectorRegistryAuthMethodId;
+    type: ConnectorRef;
+    authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     connectionStatus?: ConnectorResponse["connectionStatus"];
     reconnectReason?: ConnectorResponse["reconnectReason"];

@@ -3,7 +3,6 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -11,13 +10,17 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const FEISHU_CONNECTOR_ICON_URL = "https://icons.example.test/lark.svg";
 
 function feishuConnectorStatus(): PublicConnectorCatalogStatusItem {
   return {
     connectorRef: "lark",
     label: "Feishu",
     description: "Connect Feishu to VM0.",
-    icon: getStaticConnectorIconMetadata("lark"),
+    icon: {
+      url: FEISHU_CONNECTOR_ICON_URL,
+      invertInDarkMode: false,
+    },
     category: "communication",
     generation: [],
     tags: [],
@@ -70,10 +73,7 @@ describe("feishu OAuth callback page", () => {
     if (!(connectorIcon instanceof HTMLImageElement)) {
       throw new Error("Feishu connector icon not found");
     }
-    expect(connectorIcon).toHaveAttribute(
-      "src",
-      getStaticConnectorIconMetadata("lark").url,
-    );
+    expect(connectorIcon).toHaveAttribute("src", FEISHU_CONNECTOR_ICON_URL);
     await waitFor(() => {
       expect(locationAssign.calls).toStrictEqual([redirectUrl]);
     });

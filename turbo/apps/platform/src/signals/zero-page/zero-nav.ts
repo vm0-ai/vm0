@@ -21,7 +21,7 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
   });
 });
 
-export const navigateToNewChat$ = command(
+const navigateToNewChat$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const agentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
@@ -91,7 +91,7 @@ const navigateToPinnedAgent$ = command(
   },
 );
 
-export const navigateAdjacentPinnedAgent$ = command(
+const navigateAdjacentPinnedAgent$ = command(
   async (
     { get, set },
     direction: PinnedAgentShortcutDirection,

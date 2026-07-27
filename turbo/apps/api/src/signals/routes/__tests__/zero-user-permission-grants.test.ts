@@ -8,7 +8,7 @@ import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
