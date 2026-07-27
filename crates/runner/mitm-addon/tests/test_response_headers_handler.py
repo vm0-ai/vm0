@@ -109,6 +109,61 @@ class TestResponseHeadersHandler:
         assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
     @pytest.mark.parametrize(
+        "firewall_billable",
+        [False, None],
+        ids=["false", "absent"],
+    )
+    def test_rejects_and_strips_signed_model_usage_pricing_without_billable_context(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        firewall_billable: bool | None,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, _FIXED_TIME)
+        if firewall_billable is None:
+            del flow.metadata[metadata_keys.FIREWALL_BILLABLE]
+        else:
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
+        "authorization_values",
+        [
+            (),
+            ("Bearer proxy-secret", "Bearer proxy-secret"),
+            ("Basic proxy-secret",),
+            ("Bearer ",),
+        ],
+        ids=["missing", "duplicate", "non-bearer", "empty-bearer"],
+    )
+    def test_rejects_and_strips_signed_model_usage_pricing_with_invalid_authorization(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        authorization_values: tuple[str, ...],
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, _FIXED_TIME)
+        del flow.request.headers["authorization"]
+        for value in authorization_values:
+            flow.request.headers.add("authorization", value)
+        assert flow.request.headers.get_all("authorization") == list(authorization_values)
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
         "duplicate_header",
         ["x-vm0-usage-pricing", "x-vm0-usage-pricing-signature"],
         ids=["pricing", "signature"],
