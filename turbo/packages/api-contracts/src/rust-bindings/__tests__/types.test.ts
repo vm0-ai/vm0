@@ -399,7 +399,7 @@ describe("Rust type bindings", () => {
     ]);
 
     expect(rendered).toContain("pub delivery_mode: String,");
-    expect(rendered).not.toContain("pub enum RequestStorageType");
+    expect(rendered).not.toContain("pub enum RequestDeliveryMode");
   });
 
   it("renames Rust keyword fields", () => {
