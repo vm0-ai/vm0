@@ -1,5 +1,31 @@
 # Changelog
 
+## [8.474.0](https://github.com/vm0-ai/vm0/compare/core-v8.473.0...core-v8.474.0) (2026-07-27)
+
+
+### Features
+
+* enable video artifact posters globally ([#23255](https://github.com/vm0-ai/vm0/issues/23255)) ([8108428](https://github.com/vm0-ai/vm0/commit/81084289da44e07e20c2049f95c523bb4ca0d77b))
+* thread-owned chat sidebar shell behind newChatThreadSidebar switch ([#23269](https://github.com/vm0-ai/vm0/issues/23269)) ([c67c965](https://github.com/vm0-ai/vm0/commit/c67c96547fb4646b7d424a42de7f790b28e3f3a1))
+
+
+### Bug Fixes
+
+* point built-in website picker to refreshed static assets ([#23259](https://github.com/vm0-ai/vm0/issues/23259)) ([4637adb](https://github.com/vm0-ai/vm0/commit/4637adbe708f68fbcfdf99afbac0d685df9cb531))
+
+
+### Refactoring
+
+* **chat:** type the immutable event stream ([#23148](https://github.com/vm0-ai/vm0/issues/23148)) ([6cdd9c5](https://github.com/vm0-ai/vm0/commit/6cdd9c5155895556f1e9f78ced2e190dad080568))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.235.0
+    * @vm0/connectors bumped to 1.196.0
+
 ## [8.473.0](https://github.com/vm0-ai/vm0/compare/core-v8.472.0...core-v8.473.0) (2026-07-27)
 
 

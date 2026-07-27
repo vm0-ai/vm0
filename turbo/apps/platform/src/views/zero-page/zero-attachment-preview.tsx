@@ -7,8 +7,8 @@ import {
   IconVideo,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
-import type { Computed } from "ccstate";
 import { detach, Reason } from "../../signals/utils.ts";
+import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   openAudioLightboxOrArtifact$,
@@ -82,7 +82,7 @@ type TextPreviewProps = {
   filename: string;
   url: string;
   kind: "text" | "json";
-  text$?: Computed<Promise<string>>;
+  text$?: TextPreviewComputed;
 };
 
 const MEDIA_PREVIEW_CARD_CLASS =
@@ -90,8 +90,15 @@ const MEDIA_PREVIEW_CARD_CLASS =
 const MEDIA_PREVIEW_CARD_HOVER_CLASS =
   "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
-function TextPreview({ filename, kind, url }: TextPreviewProps) {
-  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
+function TextPreview({ filename, kind, text$, url }: TextPreviewProps) {
+  return (
+    <AttachmentAnchorChip
+      filename={filename}
+      url={url}
+      kind={kind}
+      text$={text$}
+    />
+  );
 }
 
 type AttachmentAnchorChipKind =
@@ -158,10 +165,12 @@ function AttachmentAnchorChip({
   filename,
   url,
   kind,
+  text$,
 }: {
   filename: string;
   url: string;
   kind: AttachmentAnchorChipKind;
+  text$?: TextPreviewComputed;
 }) {
   const publicUrl = publicAttachmentUrl(url);
   const openDocument = useSet(openDocumentLightboxOrArtifact$);
@@ -176,7 +185,12 @@ function AttachmentAnchorChip({
         }
         event.preventDefault();
         event.currentTarget.blur();
-        openDocument({ kind, url, filename });
+        openDocument({
+          kind,
+          url,
+          filename,
+          ...(text$ ? { text$ } : {}),
+        });
       }}
       aria-label={`Open ${kind} preview for ${filename}`}
       title={filename}
@@ -307,12 +321,14 @@ function DocumentThumbnailPreview({
   kind,
   previewImagePending,
   previewImageUrl,
+  text$,
   url,
 }: {
   filename: string;
   kind: "markdown" | "csv" | "pdf" | "html";
   previewImagePending?: boolean;
   previewImageUrl?: string;
+  text$?: TextPreviewComputed;
   url: string;
 }) {
   if (kind === "html") {
@@ -326,7 +342,14 @@ function DocumentThumbnailPreview({
     );
   }
 
-  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
+  return (
+    <AttachmentAnchorChip
+      filename={filename}
+      url={url}
+      kind={kind}
+      text$={text$}
+    />
+  );
 }
 
 function FileThumbnailPreview({
@@ -513,7 +536,7 @@ export function AttachmentPreview({
   text$,
 }: {
   attachment: ChatAttachmentDescriptor;
-  text$?: Computed<Promise<string>>;
+  text$?: TextPreviewComputed;
 }) {
   const kind = classifyChatAttachment(attachment);
 
@@ -524,6 +547,7 @@ export function AttachmentPreview({
           filename={attachment.filename}
           url={attachment.url}
           kind="markdown"
+          text$={text$}
         />
       );
     }
@@ -553,6 +577,7 @@ export function AttachmentPreview({
           filename={attachment.filename}
           url={attachment.url}
           kind="csv"
+          text$={text$}
         />
       );
     }

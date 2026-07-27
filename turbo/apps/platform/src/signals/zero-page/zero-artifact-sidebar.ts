@@ -11,11 +11,13 @@ import {
 } from "../chat-page/parse-body-blocks.ts";
 import {
   type AttachmentArtifactMetadata,
+  type AttachmentDocumentLightboxInput,
   openAudioLightbox$ as openAudioLightboxModal$,
   openDocumentLightbox$ as openDocumentLightboxModal$,
   openImageLightbox$ as openImageLightboxModal$,
   openVideoLightbox$ as openVideoLightboxModal$,
 } from "./zero-attachment-chips.ts";
+import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
 import {
   ARTIFACT_FULLSCREEN_PARAM,
   ARTIFACT_INBOX_QUERY_PARAM,
@@ -113,6 +115,20 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   const kind = classifyChatAttachment(attachment);
   return { source: "url", url: raw, kind, filename: attachment.filename };
 });
+
+export const currentArtifactText$ = computed(
+  (get, { signal }): Promise<string> => {
+    const artifact = get(currentArtifactRef$);
+    if (
+      !artifact ||
+      artifact.source !== "url" ||
+      !isTextPreviewKind(artifact.kind)
+    ) {
+      throw new Error("Current artifact is not a text preview");
+    }
+    return fetchPreviewText(artifact.url, signal);
+  },
+);
 
 function setArtifactPreviewParams(
   params: URLSearchParams,
@@ -286,15 +302,7 @@ export const openAudioLightboxOrArtifact$ = command(
 );
 
 export const openDocumentLightboxOrArtifact$ = command(
-  (
-    { set },
-    value: {
-      kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
-      url: string;
-      filename: string;
-      artifact?: AttachmentArtifactMetadata;
-    },
-  ) => {
+  ({ set }, value: AttachmentDocumentLightboxInput) => {
     set(openDocumentLightboxModal$, value);
   },
 );

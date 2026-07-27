@@ -3410,11 +3410,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await expect(
       readThreadSessionBinding(context, first.threadId),
-    ).resolves.toMatchObject({
-      agent_session_id: firstBinding.agent_session_id,
-      agent_session_run_id: first.runId,
-      run_session_id: firstBinding.agent_session_id,
-    });
+    ).resolves.toStrictEqual(firstBinding);
   }, 90_000);
 
   it("rotates from the latest session run when binding provenance is deleted", async () => {
