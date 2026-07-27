@@ -190,8 +190,8 @@ export interface WorkflowComposerSignals {
   readonly insertPromptMarkdown$: Command<void, [string]>;
   readonly insertStructuredPrompt$: Command<void, [UserMessageDocument]>;
   readonly insertText$: Command<void, [string]>;
-  readonly selectText$: Command<boolean, [string]>;
   readonly appendText$: Command<void, [string]>;
+  readonly selectOrAppendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
     Promise<WorkflowComposerSubmissionSnapshot>,
     [AbortSignal]
@@ -1653,7 +1653,8 @@ function createInsertTextCommands(editor: Editor) {
       .scrollIntoView()
       .run();
   });
-  const selectText$ = command((_context, value: string): boolean => {
+
+  const selectText = (value: string): boolean => {
     const text = value.trim();
     if (!text) {
       return false;
@@ -1689,8 +1690,9 @@ function createInsertTextCommands(editor: Editor) {
 
     editor.chain().focus().setTextSelection(selection).scrollIntoView().run();
     return true;
-  });
-  const appendText$ = command((_context, value: string) => {
+  };
+
+  const appendText = (value: string) => {
     const text = value.trim();
     if (!text) {
       return;
@@ -1699,8 +1701,23 @@ function createInsertTextCommands(editor: Editor) {
     const textblock = activeTextblock(editor);
     const content = textblock?.value.trimEnd() ? `\n${text}` : text;
     editor.commands.insertContent(content);
+  };
+
+  const appendText$ = command((_context, value: string) => {
+    appendText(value);
   });
-  return { insertText$, insertPromptMarkdown$, selectText$, appendText$ };
+  const selectOrAppendText$ = command((_context, value: string) => {
+    if (!selectText(value)) {
+      appendText(value);
+    }
+  });
+
+  return {
+    insertText$,
+    insertPromptMarkdown$,
+    appendText$,
+    selectOrAppendText$,
+  };
 }
 
 function createInsertStructuredPromptCommand(editor: Editor) {

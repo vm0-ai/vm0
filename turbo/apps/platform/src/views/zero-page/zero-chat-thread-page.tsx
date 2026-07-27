@@ -3848,10 +3848,9 @@ function RecommendedFollowupList({
   thread: ChatThreadSignals;
   source: RecommendedFollowupSource;
 }) {
-  const selectComposerText = useSet(thread.workflowComposer.selectText$);
-  const appendComposerText = useSet(thread.workflowComposer.appendText$);
-  const queueDraftSync = useSet(thread.queueDraftSync$);
-  const pageSignal = useGet(pageSignal$);
+  const selectOrAppendComposerText = useSet(
+    thread.workflowComposer.selectOrAppendText$,
+  );
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
   };
@@ -3866,10 +3865,7 @@ function RecommendedFollowupList({
       followupCount: source.followups.length,
       followup,
     });
-    if (!selectComposerText(followup.prompt)) {
-      appendComposerText(followup.prompt);
-      detach(queueDraftSync(pageSignal), Reason.DomCallback);
-    }
+    selectOrAppendComposerText(followup.prompt);
   };
 
   return (
