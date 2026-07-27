@@ -744,6 +744,7 @@ function mixedNetworkLogs(): NetworkLogEntry[] {
       upstream_binding_client_binding_endpoint_match: false,
       upstream_binding_client_binding_hosts:
         "api.github.com, uploads.github.com",
+      request_body_truncated: true,
     },
     {
       timestamp: "2026-03-10T14:56:12.000Z",
@@ -2059,6 +2060,8 @@ describe("activity detail polling", () => {
       expect(renderedDetails).toStrictEqual(
         Object.fromEntries(expectedDetails),
       );
+      expect(screen.getByText("Request Body")).toBeInTheDocument();
+      expect(screen.getByText("truncated")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Type filter"));

@@ -49,7 +49,12 @@ function CollapsibleSection({
           />
           <span className="text-xs font-medium text-foreground">{title}</span>
           {badge && <InlineBadge color="muted">{badge}</InlineBadge>}
-          {truncated && <InlineBadge color="warning">truncated</InlineBadge>}
+          {truncated === true && (
+            <InlineBadge color="warning">truncated</InlineBadge>
+          )}
+          {truncated === false && (
+            <InlineBadge color="muted">complete</InlineBadge>
+          )}
           {copyText && (
             <span
               className="ml-auto"
@@ -147,11 +152,23 @@ function filterHeaders(
   return Object.keys(filtered).length > 0 ? filtered : null;
 }
 
-function BinaryBadge({ title }: { title: string }) {
+function BodyMetadata({
+  title,
+  encoding,
+  truncated,
+}: {
+  title: string;
+  encoding: NetworkLogEntry["request_body_encoding"];
+  truncated: boolean | undefined;
+}) {
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="font-medium">{title}</span>
-      <InlineBadge color="muted">binary</InlineBadge>
+      {encoding && <InlineBadge color="muted">{encoding}</InlineBadge>}
+      {truncated === true && (
+        <InlineBadge color="warning">truncated</InlineBadge>
+      )}
+      {truncated === false && <InlineBadge color="muted">complete</InlineBadge>}
     </div>
   );
 }
@@ -161,18 +178,22 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
   const responseHeaders = filterHeaders(entry.response_headers);
   const requestBody = entry.request_body ?? null;
   const responseBody = entry.response_body ?? null;
-  const requestBodyBinary =
-    !requestBody && entry.request_body_encoding === "binary";
-  const responseBodyBinary =
-    !responseBody && entry.response_body_encoding === "binary";
+  const requestBodyMetadata =
+    !requestBody &&
+    (entry.request_body_encoding !== undefined ||
+      entry.request_body_truncated !== undefined);
+  const responseBodyMetadata =
+    !responseBody &&
+    (entry.response_body_encoding !== undefined ||
+      entry.response_body_truncated !== undefined);
 
   if (
     !requestHeaders &&
     !responseHeaders &&
     !requestBody &&
     !responseBody &&
-    !requestBodyBinary &&
-    !responseBodyBinary
+    !requestBodyMetadata &&
+    !responseBodyMetadata
   ) {
     return null;
   }
@@ -190,7 +211,13 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
           truncated={entry.request_body_truncated}
         />
       )}
-      {requestBodyBinary && <BinaryBadge title="Request Body" />}
+      {requestBodyMetadata && (
+        <BodyMetadata
+          title="Request Body"
+          encoding={entry.request_body_encoding}
+          truncated={entry.request_body_truncated}
+        />
+      )}
       {responseHeaders && (
         <HeadersSection title="Response Headers" headers={responseHeaders} />
       )}
@@ -202,7 +229,13 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
           truncated={entry.response_body_truncated}
         />
       )}
-      {responseBodyBinary && <BinaryBadge title="Response Body" />}
+      {responseBodyMetadata && (
+        <BodyMetadata
+          title="Response Body"
+          encoding={entry.response_body_encoding}
+          truncated={entry.response_body_truncated}
+        />
+      )}
     </div>
   );
 }
