@@ -113,13 +113,7 @@ fn start_guest(socket_path: &str) -> JoinHandle<io::Result<()>> {
 
 fn cleanup_guest(guest: &mut Option<JoinHandle<io::Result<()>>>, timeout: Duration) {
     if let Some(g) = guest.take() {
-        let Some(result) = try_join_guest_with_timeout(g, timeout) else {
-            eprintln!(
-                "guest thread did not terminate within {timeout:?} after host disconnect during cleanup"
-            );
-            return;
-        };
-        let _ = result;
+        let _ = try_join_guest_with_timeout(g, timeout);
     }
 }
 
