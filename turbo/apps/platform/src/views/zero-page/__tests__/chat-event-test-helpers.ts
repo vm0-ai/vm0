@@ -210,7 +210,7 @@ const mockChatEventOverrides = {
   },
 } satisfies Record<ChatEventType, MockChatEventOverrides>;
 
-export function normalizeMockChatEvent(
+function normalizeMockChatEvent(
   message: MockChatEventInput,
   fallbackId: string,
   fallbackSeqId = 1,

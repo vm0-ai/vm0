@@ -21,12 +21,6 @@ import type { ChatMessage } from "./chat-message-types.ts";
 
 export { type ZeroChatAttachment } from "../zero-page/chat-draft.ts";
 
-// ---------------------------------------------------------------------------
-// Re-export paged message types from @vm0/core
-// ---------------------------------------------------------------------------
-
-export type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
-
 export type EnrichedChatMessage = ChatMessage & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;

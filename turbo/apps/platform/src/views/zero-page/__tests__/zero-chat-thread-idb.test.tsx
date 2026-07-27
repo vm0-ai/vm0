@@ -165,9 +165,9 @@ describe("zero chat thread IndexedDB fallback", () => {
     mockSidebarThread();
     const runtimeDb = await primeRuntimeChatDb();
 
-    let messageListRequests = 0;
+    const messageListRequested = context.mocks.deferred<void>();
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      messageListRequests += 1;
+      messageListRequested.resolve();
       if (query.sinceSeqId || query.sinceId) {
         return respond(200, { events: [] });
       }
@@ -197,9 +197,9 @@ describe("zero chat thread IndexedDB fallback", () => {
 
     try {
       setupChatPage();
+      await messageListRequested.promise;
 
       await waitFor(() => {
-        expect(messageListRequests).toBeGreaterThan(0);
         expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
       });
 
@@ -216,7 +216,6 @@ describe("zero chat thread IndexedDB fallback", () => {
       expect(
         screen.queryByText("Send a message to start the conversation"),
       ).not.toBeInTheDocument();
-      expect(messageListRequests).toBeGreaterThan(0);
     } finally {
       runtimeDb.close();
     }
@@ -229,18 +228,18 @@ describe("zero chat thread IndexedDB fallback", () => {
     const runtimeDb = await primeRuntimeChatDb();
 
     const initialMessageList = context.mocks.deferred<void>();
-    let messageListRequests = 0;
+    const messageListRequested = context.mocks.deferred<void>();
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
-      messageListRequests += 1;
+      messageListRequested.resolve();
       await initialMessageList.promise;
       return respond(200, { events: [], hasHistoryBefore: false });
     });
 
     try {
       setupChatPage();
+      await messageListRequested.promise;
 
       await waitFor(() => {
-        expect(messageListRequests).toBeGreaterThan(0);
         expect(document.querySelector("[data-chat-skeleton]")).toBeInstanceOf(
           HTMLElement,
         );

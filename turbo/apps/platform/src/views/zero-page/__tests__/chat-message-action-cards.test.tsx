@@ -1089,9 +1089,7 @@ describe("chat message action cards", () => {
           messages: [
             {
               id: "c0000000-0000-4000-a000-000000000034",
-              threadId: rightThreadId,
               seqId: 1,
-              eventType: "output.message" as const,
               role: "assistant",
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
               createdAt,
