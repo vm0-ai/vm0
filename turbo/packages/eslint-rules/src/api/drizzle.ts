@@ -95,6 +95,7 @@ export function isNamedDrizzleSignature(
 
 interface RuntimeColumnDefinition {
   readonly databaseName: string;
+  readonly hasExplicitName: boolean;
   readonly propertyName: string;
 }
 
@@ -142,6 +143,7 @@ function sameRuntimeColumns(
       return (
         other !== undefined &&
         column.databaseName === other.databaseName &&
+        column.hasExplicitName === other.hasExplicitName &&
         column.propertyName === other.propertyName
       );
     })
@@ -487,6 +489,7 @@ function staticRuntimeColumns(
     }
     definitions.push({
       databaseName: builderName === "" ? propertyName : builderName,
+      hasExplicitName: builderName !== "",
       propertyName,
     });
   }
@@ -736,6 +739,9 @@ export interface DrizzleTableColumnMetadata {
 
 export interface DrizzleTableMetadata {
   readonly columns: ReadonlyMap<string, DrizzleTableColumnMetadata>;
+  // The database type erases dialect casing. Only explicitly named columns
+  // have an identifier that is invariant across every compatible database.
+  readonly explicitRuntimeColumnNames: ReadonlySet<string>;
   readonly hasDirectTableConfig: boolean;
   readonly hasRuntimeColumnOrder: boolean;
   readonly name: string;
@@ -970,6 +976,7 @@ function concreteDrizzleTableMetadata(
   }
   return {
     columns,
+    explicitRuntimeColumnNames: new Set(),
     hasDirectTableConfig: configType.aliasSymbol === undefined,
     hasRuntimeColumnOrder: false,
     name,
@@ -986,9 +993,16 @@ function sameTableMetadata(
     left.schema !== right.schema ||
     left.hasDirectTableConfig !== right.hasDirectTableConfig ||
     left.hasRuntimeColumnOrder !== right.hasRuntimeColumnOrder ||
+    left.explicitRuntimeColumnNames.size !==
+      right.explicitRuntimeColumnNames.size ||
     left.columns.size !== right.columns.size
   ) {
     return false;
+  }
+  for (const name of left.explicitRuntimeColumnNames) {
+    if (!right.explicitRuntimeColumnNames.has(name)) {
+      return false;
+    }
   }
   const rightColumns = [...right.columns];
   let index = 0;
@@ -1078,7 +1092,16 @@ export function getStableDrizzleTableMetadata(
     columns.set(column.databaseName, column);
   }
   return columns.size === metadata.columns.size
-    ? { ...metadata, columns, hasRuntimeColumnOrder: true }
+    ? {
+        ...metadata,
+        columns,
+        explicitRuntimeColumnNames: new Set(
+          runtimeColumns.flatMap((column) => {
+            return column.hasExplicitName ? [column.databaseName] : [];
+          }),
+        ),
+        hasRuntimeColumnOrder: true,
+      }
     : metadata;
 }
 

@@ -3083,6 +3083,7 @@ function mappedWritableColumnNames(
           : new Set(["location", "name"]),
       ) ||
       column?.isWritable !== true ||
+      !table.explicitRuntimeColumnNames.has(target.name) ||
       names.has(target.name)
     ) {
       return undefined;
@@ -3474,6 +3475,7 @@ function conflictColumnNames(
       element.nulls_ordering !== "SORTBY_NULLS_DEFAULT" ||
       !hasOnlyKeys(element, new Set(["name", "nulls_ordering", "ordering"])) ||
       !table.columns.has(element.name) ||
+      !table.explicitRuntimeColumnNames.has(element.name) ||
       names.has(element.name)
     ) {
       return undefined;

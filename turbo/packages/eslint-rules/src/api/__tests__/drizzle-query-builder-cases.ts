@@ -1486,6 +1486,38 @@ const queryBuilderCases = {
       `,
     },
     {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const implicitRows = pgTable("implicit_rows", {
+          id: integer().primaryKey(),
+          value: integer().notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            implicitRows: typeof implicitRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const ids: readonly number[];
+        declare const id: number;
+        declare const value: number;
+        await db.execute(sql\`
+          UPDATE \${implicitRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(ids)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          INSERT INTO \${implicitRows} (id, value)
+          VALUES (\${id}, \${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
+        \`);
+      `,
+    },
+    {
       code: `${upsertPreamble}
         import { sql } from "drizzle-orm";
         const query = sql\`
@@ -3049,6 +3081,26 @@ const queryBuilderCases = {
         await db.execute(sql\`
           DELETE FROM \${conversations}
           WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { pgTable, timestamp } from "drizzle-orm/pg-core";
+        const cleanupRows = pgTable("cleanup_rows", {
+          expiresAt: timestamp().notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            cleanupRows: typeof cleanupRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const cutoff: Date;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
         \`);
       `,
       errors: [{ messageId: "deleteQueryBuilder" }],
