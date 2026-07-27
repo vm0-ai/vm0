@@ -234,6 +234,43 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_assemble",
   "api_dispatch_build_stored_execution_context",
 ] as const;
+const API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES = [
+  "api_dispatch_connector_catalog_load_runtime_snapshot",
+  "api_dispatch_connector_catalog_query_identity",
+] as const;
+const API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES = [
+  "api_dispatch_connector_catalog_query_payload",
+  "api_dispatch_connector_catalog_decompress",
+  "api_dispatch_connector_catalog_verify_digest",
+  "api_dispatch_connector_catalog_decode_json",
+  "api_dispatch_connector_catalog_validate_schema",
+  "api_dispatch_connector_catalog_validate_public_projection",
+  "api_dispatch_connector_catalog_validate_relationships",
+  "api_dispatch_connector_catalog_validate_compatibility",
+  "api_dispatch_connector_catalog_materialize_accepted_snapshot",
+  "api_dispatch_connector_catalog_materialize_runtime_snapshot",
+  "api_dispatch_connector_catalog_materialize_server_firewalls",
+] as const;
+const API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES = [
+  ...API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+  ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+] as const;
+const CONNECTOR_CATALOG_COUNT_BUCKETS = [
+  "0",
+  "1",
+  "2_4",
+  "5_8",
+  "9_16",
+  "17_plus",
+] as const;
+const CONNECTOR_CATALOG_RAW_SIZE_BUCKETS = [
+  "0_255_kib",
+  "256_511_kib",
+  "512_1023_kib",
+  "1_2_mib",
+  "2_4_mib",
+  "4_8_mib",
+] as const;
 const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
@@ -757,6 +794,38 @@ function expectApiDispatchTimingEventsNotToLeak(
   }
 }
 
+function expectConnectorCatalogLoadTiming(args: {
+  readonly events: readonly Record<string, unknown>[];
+  readonly acceptedCacheOutcome: "hit" | "miss" | "in_flight";
+  readonly runtimeCacheOutcome: "hit" | "miss";
+  readonly requestedConnectorCount: "known" | "not_applicable";
+}): void {
+  const event = singleApiDispatchEvent(
+    args.events,
+    "api_dispatch_connector_catalog_load_runtime_snapshot",
+  );
+  expect(event).toStrictEqual(
+    expect.objectContaining({
+      span_kind: "nested",
+      connector_catalog_accepted_cache_outcome: args.acceptedCacheOutcome,
+      connector_catalog_runtime_cache_outcome: args.runtimeCacheOutcome,
+    }),
+  );
+  expect(CONNECTOR_CATALOG_RAW_SIZE_BUCKETS).toContain(
+    event.connector_catalog_raw_size_bucket,
+  );
+  expect(CONNECTOR_CATALOG_COUNT_BUCKETS).toContain(
+    event.connector_catalog_connector_count_bucket,
+  );
+  const requestedCountBuckets =
+    args.requestedConnectorCount === "known"
+      ? CONNECTOR_CATALOG_COUNT_BUCKETS
+      : ["not_applicable"];
+  expect(requestedCountBuckets).toContain(
+    event.connector_catalog_requested_connector_count_bucket,
+  );
+}
+
 function expectDirectAblyClaimTimingEvents(args: {
   readonly events: readonly Record<string, unknown>[];
   readonly runId: string;
@@ -1015,6 +1084,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
+      "nested",
+    );
+    expectConnectorCatalogLoadTiming({
+      events: timingEvents,
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+    });
     expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(
       timingEvents,
@@ -1131,7 +1215,58 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
       expect(["top_level", "nested"]).toContain(event.span_kind);
     }
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      agentId,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
+    ]);
+
+    const {
+      actor: warmActor,
+      agentId: warmAgentId,
+      runnerGroup: warmRunnerGroup,
+    } = await entitledRunActor();
+    const warmPrompt = "warm catalog timing should not leak prompt";
+    const warmCreated = await api.createRun(warmActor, {
+      agentId: warmAgentId,
+      prompt: warmPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const warmTimingEvents = apiDispatchTimingEventsForRun(warmCreated.runId);
+    expectApiDispatchActions(
+      warmTimingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      warmTimingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      warmTimingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+      "nested",
+    );
+    expectConnectorCatalogLoadTiming({
+      events: warmTimingEvents,
+      acceptedCacheOutcome: "hit",
+      runtimeCacheOutcome: "hit",
+      requestedConnectorCount: "known",
+    });
+    for (const event of warmTimingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          runner_group: warmRunnerGroup,
+          run_id: warmCreated.runId,
+        }),
+      );
+    }
+    expectApiDispatchTimingEventsNotToLeak(warmTimingEvents, [
+      warmPrompt,
+      warmAgentId,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
+    ]);
   });
 
   it("retains direct plan admission and emits direct create timing", async () => {
@@ -1158,6 +1293,34 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+      "nested",
+    );
+    const connectorCatalogLoadEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+    );
+    expect(["hit", "miss", "in_flight"]).toContain(
+      connectorCatalogLoadEvent.connector_catalog_accepted_cache_outcome,
+    );
+    expect(["hit", "miss"]).toContain(
+      connectorCatalogLoadEvent.connector_catalog_runtime_cache_outcome,
+    );
+    expect(CONNECTOR_CATALOG_RAW_SIZE_BUCKETS).toContain(
+      connectorCatalogLoadEvent.connector_catalog_raw_size_bucket,
+    );
+    expect(CONNECTOR_CATALOG_COUNT_BUCKETS).toContain(
+      connectorCatalogLoadEvent.connector_catalog_connector_count_bucket,
+    );
+    expect(
+      connectorCatalogLoadEvent.connector_catalog_requested_connector_count_bucket,
+    ).toBe("not_applicable");
     expectApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchSpanKind(
       timingEvents,
@@ -1208,6 +1371,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
       headVersionId,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
