@@ -535,7 +535,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -581,7 +581,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -725,7 +725,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
