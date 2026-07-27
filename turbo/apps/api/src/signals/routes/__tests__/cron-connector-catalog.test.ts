@@ -47,7 +47,6 @@ import { server } from "../../../mocks/server";
 import {
   mockApiTestConnectorProviderConfiguration,
   mutateApiTestConnectorCatalogRuntimeProjection,
-  readApiTestConnectorCatalogRuntimeProjectionState,
 } from "../../../test-fixtures/connector-catalog";
 import {
   deleteOrgPlanEntitlementFixture,
@@ -105,6 +104,34 @@ const STEAM_TEST_ID = "76561198000000000";
 
 type JsonRecord = Record<string, unknown>;
 type JsonMutation = (value: JsonRecord) => void;
+
+function apiDispatchTimingEventForRun(
+  runId: string,
+  actionType: string,
+): JsonRecord {
+  const event = context.mocks.axiom.sdkIngest.mock.calls
+    .flatMap((call) => {
+      const dataset = call[0];
+      const events = call[1];
+      if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+        return [];
+      }
+      return events.filter((candidate): candidate is JsonRecord => {
+        return (
+          typeof candidate === "object" &&
+          candidate !== null &&
+          !Array.isArray(candidate) &&
+          candidate.run_id === runId &&
+          candidate.op_type === actionType
+        );
+      });
+    })
+    .at(0);
+  if (!event) {
+    throw new Error(`Missing ${actionType} timing for run ${runId}`);
+  }
+  return event;
+}
 
 interface ReleaseFixtureOptions {
   readonly version: string;
@@ -1520,55 +1547,6 @@ describe("connector catalog cron authentication and initial state", () => {
 });
 
 describe("connector catalog valid lifecycle", () => {
-  it("persists and reconciles the active per-connector runtime projection", async () => {
-    configureSource();
-    const first = buildRelease({ version: "2026-07-15.projection-1" });
-    const second = buildRelease({
-      version: "2026-07-15.projection-2",
-      label: "External Test Projection Updated",
-    });
-    serveObjects(catalogObjects([first, second], first));
-
-    expect((await syncCatalog()).body.outcome).toBe("accepted");
-    // Projection persistence has no production read or corruption surface.
-    // The fixture only creates that otherwise-unreachable state.
-    const firstProjection =
-      await readApiTestConnectorCatalogRuntimeProjectionState();
-    expect(firstProjection).toMatchObject({
-      projectionVersion: 1,
-      projectionCatalogDigest: firstProjection.activeCatalogDigest,
-    });
-    expect(firstProjection.rows).toStrictEqual([
-      {
-        catalogVersion: first.version,
-        connectorRef: first.connectorRef,
-        connectorDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
-      },
-    ]);
-
-    await mutateApiTestConnectorCatalogRuntimeProjection({ kind: "clear" });
-    mockNow(new Date("2026-07-15T08:01:00.000Z"));
-    expect((await syncCatalog()).body.outcome).toBe("unchanged");
-    const reconciledProjection =
-      await readApiTestConnectorCatalogRuntimeProjectionState();
-    expect(reconciledProjection.rows).toStrictEqual([
-      expect.objectContaining({ connectorRef: first.connectorRef }),
-    ]);
-
-    serveObjects(catalogObjects([first, second], second));
-    mockNow(new Date("2026-07-15T08:02:00.000Z"));
-    expect((await syncCatalog()).body.outcome).toBe("accepted");
-    const secondProjection =
-      await readApiTestConnectorCatalogRuntimeProjectionState();
-    expect(secondProjection.rows).toStrictEqual([
-      {
-        catalogVersion: second.version,
-        connectorRef: second.connectorRef,
-        connectorDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
-      },
-    ]);
-  });
-
   it("accepts, advances, rolls back, and serves the active database snapshot", async () => {
     const bucket = configureSource();
     const first = buildRelease({ version: "2026-07-15.1" });
@@ -2428,17 +2406,25 @@ describe("connector catalog valid lifecycle", () => {
   it("materializes external runtime bindings for runs and firewall auth", async () => {
     const connectorRef = "external-runtime";
     configureSource();
-    const release = buildRelease({
-      version: "2026-07-15.external-run-materialization",
-      connectorRef,
-      label: "External Runtime",
-      generatedFirewall: true,
-      mutateFirewall: (artifact) => {
-        const connector = firstRecord(artifact.connectors, "connectors");
-        recordValue(connector.firewall, "firewall").billable = true;
-      },
-    });
-    serveObjects(catalogObjects([release], release));
+    const buildRuntimeRelease = (version: string) => {
+      return buildRelease({
+        version,
+        connectorRef,
+        label: "External Runtime",
+        generatedFirewall: true,
+        mutateFirewall: (artifact) => {
+          const connector = firstRecord(artifact.connectors, "connectors");
+          recordValue(connector.firewall, "firewall").billable = true;
+        },
+      });
+    };
+    const release = buildRuntimeRelease(
+      "2026-07-15.external-run-materialization-1",
+    );
+    const replacement = buildRuntimeRelease(
+      "2026-07-15.external-run-materialization-2",
+    );
+    serveObjects(catalogObjects([release, replacement], release));
     await syncCatalog();
 
     const runs = createRunsApi(context);
@@ -2454,12 +2440,12 @@ describe("connector catalog valid lifecycle", () => {
       displayName: "External catalog runtime agent",
       visibility: "private",
     });
-    const created: { runId?: string } = {};
+    const activeRunIds = new Set<string>();
     const cleanupConnector = createConnectorCleanup(actor, connectorRef);
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      if (created.runId) {
-        await runs.requestCancelRun(actor, created.runId, [200, 404]);
+      for (const runId of activeRunIds) {
+        await runs.requestCancelRun(actor, runId, [200, 404]);
       }
       await cleanupConnector();
       await bdd.deleteAgent(actor, agent.agentId);
@@ -2472,7 +2458,7 @@ describe("connector catalog valid lifecycle", () => {
       agent.agentId,
     );
 
-    const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
+    const callsBeforeRuntimeReads = context.mocks.s3.send.mock.calls.length;
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const check = await accept(
       setupApp({ context })(zeroConnectorCheckContract).check({
@@ -2528,12 +2514,50 @@ describe("connector catalog valid lifecycle", () => {
     expect(grants.body).toMatchObject([
       { connectorRef, permission: "items.read", action: "deny" },
     ]);
+    const activatedRun = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "Use the activated connector runtime projection",
+      modelProvider: "anthropic-api-key",
+    });
+    activeRunIds.add(activatedRun.runId);
+    expect(
+      apiDispatchTimingEventForRun(
+        activatedRun.runId,
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toMatchObject({
+      connector_runtime_source: "projection",
+      connector_runtime_cache_status: "miss",
+    });
+    await runs.requestCancelRun(actor, activatedRun.runId, [200]);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(
+      callsBeforeRuntimeReads,
+    );
+
+    serveObjects(catalogObjects([release, replacement], replacement));
+    mockNow(new Date("2026-07-15T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+    // No production API can create an incomplete derived projection.
+    await mutateApiTestConnectorCatalogRuntimeProjection({ kind: "clear" });
+    mockNow(new Date("2026-07-15T08:02:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+
+    const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
       prompt: "Use the externally sourced connector credential",
       modelProvider: "anthropic-api-key",
     });
-    created.runId = run.runId;
+    activeRunIds.add(run.runId);
+    expect(
+      apiDispatchTimingEventForRun(
+        run.runId,
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toMatchObject({
+      connector_runtime_source: "projection",
+      connector_runtime_cache_status: "miss",
+    });
     await runs.heartbeatRunner(runnerGroup);
     await expect
       .poll(
@@ -5139,8 +5163,6 @@ describe("connector catalog executable compatibility", () => {
       ],
     });
     const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
-    const projectionBeforeCapabilityChange =
-      await readApiTestConnectorCatalogRuntimeProjectionState();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
@@ -5189,11 +5211,6 @@ describe("connector catalog executable compatibility", () => {
       stale: false,
       filteredAuthMethods: [],
     });
-    const projectionAfterCapabilityChange =
-      await readApiTestConnectorCatalogRuntimeProjectionState();
-    expect(projectionAfterCapabilityChange).toStrictEqual(
-      projectionBeforeCapabilityChange,
-    );
     expect(configured.body.filtering.capabilityDigest).not.toBe(firstDigest);
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body.connectors,

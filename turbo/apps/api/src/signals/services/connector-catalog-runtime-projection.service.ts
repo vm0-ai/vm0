@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { connectorCatalogFilteredAuthMethodsSchema } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import {
+  connectorCatalogFilteredAuthMethodsSchema,
+  type ConnectorCatalogFilteredAuthMethod,
+} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorCatalogActiveSnapshot,
@@ -44,7 +47,7 @@ export interface ConnectorCatalogRuntimeProjectionIdentity {
 
 export interface ConnectorCatalogRuntimeProjectionReadyIdentity {
   readonly identity: ConnectorCatalogRuntimeProjectionIdentity;
-  readonly filteredMethodKeys: ReadonlySet<string>;
+  readonly filteredAuthMethods: readonly ConnectorCatalogFilteredAuthMethod[];
 }
 
 type ConnectorCatalogRuntimeProjectionIdentityRead =
@@ -100,10 +103,6 @@ function connectorCatalogRuntimeProjectionDigest(
 ): string {
   const canonical = JSON.stringify(canonicalJsonValue(connector));
   return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
-}
-
-function filteredMethodKey(connectorRef: string, authMethodId: string): string {
-  return `${connectorRef}\0${authMethodId}`;
 }
 
 export async function persistConnectorCatalogRuntimeProjection(args: {
@@ -277,11 +276,7 @@ export async function readConnectorCatalogRuntimeProjectionIdentity(
         capabilityDigest: current.capabilityDigest,
         projectionVersion: current.projectionVersion,
       },
-      filteredMethodKeys: new Set(
-        filteredAuthMethods.data.map((method) => {
-          return filteredMethodKey(method.connectorRef, method.authMethodId);
-        }),
-      ),
+      filteredAuthMethods: filteredAuthMethods.data,
     },
   };
 }

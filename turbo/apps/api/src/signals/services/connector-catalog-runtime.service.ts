@@ -651,7 +651,11 @@ async function buildProjectedRuntimeSelection(args: {
   return {
     selection: runtimeSelection({
       acceptedConnectors: rows.connectors,
-      filteredMethodKeys: args.projection.filteredMethodKeys,
+      filteredMethodKeys: new Set(
+        args.projection.filteredAuthMethods.map((method) => {
+          return methodKey(method.connectorRef, method.authMethodId);
+        }),
+      ),
     }),
     source: "projection",
     cacheStatus: "miss",

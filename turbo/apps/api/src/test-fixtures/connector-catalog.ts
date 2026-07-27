@@ -156,73 +156,12 @@ export async function installApiTestConnectorCatalog(): Promise<void> {
   });
 }
 
-interface ApiTestConnectorCatalogRuntimeProjectionState {
-  readonly activeCatalogDigest: string;
-  readonly projectionVersion: number | null;
-  readonly projectionCatalogDigest: string | null;
-  readonly rows: readonly {
-    readonly catalogVersion: string;
-    readonly connectorRef: string;
-    readonly connectorDigest: string;
-  }[];
-}
-
 type ApiTestConnectorCatalogRuntimeProjectionMutation =
   | { readonly kind: "clear" | "absent" | "stale" | "unsupported" }
   | {
       readonly kind: "delete-row" | "malformed-row" | "digest-mismatch";
       readonly connectorRef: string;
     };
-
-export async function readApiTestConnectorCatalogRuntimeProjectionState(): Promise<ApiTestConnectorCatalogRuntimeProjectionState> {
-  const sourceId = connectorCatalogSource().sourceId;
-  const db = store.set(writeDb$);
-  const [active] = await db
-    .select({
-      catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
-      projectionVersion:
-        connectorCatalogActiveSnapshot.runtimeProjectionVersion,
-      projectionCatalogDigest:
-        connectorCatalogActiveSnapshot.runtimeProjectionCatalogDigest,
-    })
-    .from(connectorCatalogActiveSnapshot)
-    .where(
-      and(
-        eq(connectorCatalogActiveSnapshot.sourceId, sourceId),
-        eq(
-          connectorCatalogActiveSnapshot.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-      ),
-    )
-    .limit(1);
-  if (!active) {
-    throw new Error("Expected an active connector catalog test fixture");
-  }
-  const rows = await db
-    .select({
-      catalogVersion: connectorCatalogRuntimeProjection.catalogVersion,
-      connectorRef: connectorCatalogRuntimeProjection.connectorRef,
-      connectorDigest: connectorCatalogRuntimeProjection.connectorDigest,
-    })
-    .from(connectorCatalogRuntimeProjection)
-    .where(
-      and(
-        eq(connectorCatalogRuntimeProjection.sourceId, sourceId),
-        eq(
-          connectorCatalogRuntimeProjection.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-      ),
-    )
-    .orderBy(connectorCatalogRuntimeProjection.connectorRef);
-  return {
-    activeCatalogDigest: active.catalogDigest,
-    projectionVersion: active.projectionVersion,
-    projectionCatalogDigest: active.projectionCatalogDigest,
-    rows,
-  };
-}
 
 export async function mutateApiTestConnectorCatalogRuntimeProjection(
   mutation: ApiTestConnectorCatalogRuntimeProjectionMutation,
