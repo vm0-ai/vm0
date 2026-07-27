@@ -22,6 +22,7 @@ export const ROUTES = {
   connectors: "/connectors",
   customConnectorProposal: "/connectors/custom/proposal",
   computerUseAuthorize: "/computer-use/authorize/:requestToken",
+  feishuOAuthCallback: "/connectors/feishu/callback",
   connectorCallback: "/connectors/:type/callback",
   connectorCallbackResult: "/connectors/:type/callback/:status",
   connectorRedirecting: "/connectors/:type/redirecting",

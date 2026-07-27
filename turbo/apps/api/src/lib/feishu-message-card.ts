@@ -95,28 +95,22 @@ export function buildFeishuWelcomeMessage(args: {
 }
 
 export function buildFeishuHelpMessage(): FeishuOutboundMessage {
-  return cardMessage({
-    title: "Zero commands",
-    template: "blue",
-    summary: "Available Zero commands for Feishu.",
-    elements: [
-      {
-        tag: "markdown",
-        content: [
-          "• `/help` — Show this help",
-          "• `/connect` — Connect your VM0 account",
-          "• `/disconnect` — Disconnect your VM0 account",
-          "• `/switch` — Choose which agent responds",
-          "• `/model` — Choose your model",
-        ].join("\n"),
-      },
-      {
-        tag: "markdown",
-        content:
-          "Send a task in a direct message, or mention the bot with a task in a group chat.",
-      },
-    ],
-  });
+  return {
+    msgType: "text",
+    content: {
+      text: [
+        "Zero commands",
+        "",
+        "/help — Show this help",
+        "/connect — Connect your VM0 account",
+        "/disconnect — Disconnect your VM0 account",
+        "/switch — Choose which agent responds",
+        "/model — Choose your model",
+        "",
+        "Send a task in a direct message, or mention the bot with a task in a group chat.",
+      ].join("\n"),
+    },
+  };
 }
 
 export function buildFeishuNoticeMessage(args: {
