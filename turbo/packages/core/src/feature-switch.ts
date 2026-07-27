@@ -392,8 +392,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
     maintainer: "ethan@vm0.ai",
@@ -491,8 +490,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",
