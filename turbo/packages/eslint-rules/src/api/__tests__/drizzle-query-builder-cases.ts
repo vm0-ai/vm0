@@ -476,6 +476,36 @@ const queryBuilderCases = {
       `,
     },
     {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { pgSchema, text, timestamp } from "drizzle-orm/pg-core";
+        const audit = pgSchema("audit");
+        const schemaCacheRows = audit.table("cache_rows", {
+          cacheKey: text("cache_key").primaryKey(),
+          lastRequestedAt: timestamp("last_requested_at").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            schemaCacheRows: typeof schemaCacheRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const issuedAt: Date;
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${schemaCacheRows.cacheKey}
+            FROM \${schemaCacheRows}
+            WHERE true
+            ORDER BY \${schemaCacheRows.cacheKey}
+            FOR UPDATE OF \${schemaCacheRows}
+          )
+          UPDATE \${schemaCacheRows}
+          SET last_requested_at = \${issuedAt}
+          FROM locked
+          WHERE true
+        \`);
+      `,
+    },
+    {
       code: `${unnestUpdatePreamble}
         import { sql } from "drizzle-orm";
         const query = sql\`

@@ -3439,6 +3439,10 @@ function isLockingCteUpdate(
   return (
     cte !== undefined &&
     body !== undefined &&
+    // PostgreSQL requires an unqualified relation name after `FOR UPDATE OF`,
+    // while Drizzle renders schema-backed tables as `"schema"."table"` in
+    // both raw interpolation and the locking builder.
+    table.schema === undefined &&
     hasTableColumnOrder(assignmentNames, table) &&
     hasNoPotentialOnUpdateColumns(table) &&
     exactCteRelation(update.fromClause[0], cte.ctename) &&
