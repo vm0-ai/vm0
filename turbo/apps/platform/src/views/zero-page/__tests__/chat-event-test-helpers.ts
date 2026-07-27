@@ -115,6 +115,18 @@ const mockChatEventOverrides = {
       generationTemplate: message.generationTemplate,
     };
   },
+  "input.automation": (message, id) => {
+    return {
+      content: null,
+      automationId:
+        message.automationId ?? "00000000-0000-4000-8000-000000000010",
+      triggerSource: message.triggerSource ?? "workflow-event",
+      triggerBrief:
+        message.triggerBrief === undefined
+          ? `Automation event ${id}`
+          : message.triggerBrief,
+    };
+  },
   "input.rejected": (message) => {
     return {
       error: message.error ?? "Mock input rejected",
@@ -177,6 +189,15 @@ const mockChatEventOverrides = {
       error: message.error,
       runLifecycleEvent: "cancelled",
     };
+  },
+  "queue.automation_paused": (message) => {
+    return {
+      content: null,
+      pauseReason: message.pauseReason ?? null,
+    };
+  },
+  "queue.automation_resumed": () => {
+    return { content: null };
   },
   "control.interrupt": (message, id) => {
     return {
