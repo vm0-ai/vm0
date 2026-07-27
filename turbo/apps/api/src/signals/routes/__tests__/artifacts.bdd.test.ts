@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";

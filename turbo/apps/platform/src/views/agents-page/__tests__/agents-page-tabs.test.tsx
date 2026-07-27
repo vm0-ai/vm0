@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {

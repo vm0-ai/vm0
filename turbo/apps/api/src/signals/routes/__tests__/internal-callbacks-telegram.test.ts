@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type {
   TestTelegramStateActionBody,

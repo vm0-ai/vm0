@@ -17,7 +17,7 @@ import {
   IconFlask,
   IconCoins,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

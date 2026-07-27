@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatThreadModelSelectionContract,
   chatThreadsContract,

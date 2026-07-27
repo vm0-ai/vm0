@@ -189,16 +189,18 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    // Simulate the API version serving during migration: it does not know
-    // about seq_id and relies on the temporary database allocator.
+    // Simulate the previous typed API version serving during migration: it
+    // writes event_type but does not know about seq_id and relies on the
+    // temporary database allocator.
     const message = await client.query<{ id: string; seqId: string }>(
       `
         INSERT INTO "chat_messages" (
           "chat_thread_id",
           "role",
-          "content"
+          "content",
+          "event_type"
         )
-        VALUES ($1, 'user', 'append-only migration test')
+        VALUES ($1, 'user', 'append-only migration test', 'input.prompt')
         RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId],
@@ -213,9 +215,15 @@ async function validateChatEventSourcesAreAppendOnly(
         INSERT INTO "chat_messages" (
           "chat_thread_id",
           "role",
-          "content"
+          "content",
+          "event_type"
         )
-        VALUES ($1, 'assistant', 'second legacy API migration test')
+        VALUES (
+          $1,
+          'assistant',
+          'second typed API migration test',
+          'output.message'
+        )
         RETURNING "seq_id" AS "seqId"
       `,
       [threadId],
@@ -1528,9 +1536,12 @@ async function applyMigrationsUpToInTransaction(
 const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 696;
 const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 697;
 const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 698;
+const CHAT_EVENT_TYPE_CONTRACT_MIGRATION = 701;
 
-async function validateChatEventTypeBackfill(): Promise<void> {
-  console.log("=== Validate populated ChatEvent type backfill ===\n");
+async function validateChatEventTypeBackfillAndContract(): Promise<void> {
+  console.log(
+    "=== Validate populated ChatEvent type backfill and contract ===\n",
+  );
 
   const testDb = "migration_chat_event_type_backfill_test";
   const testDbUrl = createTestDbUrl(testDb);
@@ -1678,19 +1689,95 @@ async function validateChatEventTypeBackfill(): Promise<void> {
         rowId: promptId,
       });
 
-      const legacyWrite = await client.query<{ eventType: string | null }>(
+      const rolloutTailWrite = await client.query<{
+        eventType: string | null;
+        id: string;
+      }>(
         `
           INSERT INTO "chat_messages" (
             "chat_thread_id",
             "role",
             "content"
           )
-          VALUES ($1, 'user', 'legacy writer after migration')
-          RETURNING "event_type" AS "eventType"
+          VALUES ($1, 'user', 'rollout-tail writer before contract')
+          RETURNING "id", "event_type" AS "eventType"
         `,
         [threadId],
       );
-      assert.equal(legacyWrite.rows[0]?.eventType, null);
+      const rolloutTailId = rolloutTailWrite.rows[0]?.id;
+      assert.ok(rolloutTailId);
+      assert.equal(rolloutTailWrite.rows[0]?.eventType, null);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_CONTRACT_MIGRATION,
+      );
+
+      const contractedTail = await client.query<{ eventType: string }>(
+        `
+          SELECT "event_type" AS "eventType"
+          FROM "chat_messages"
+          WHERE "id" = $1
+        `,
+        [rolloutTailId],
+      );
+      assert.equal(contractedTail.rows[0]?.eventType, "input.prompt");
+
+      const contractState = await client.query<{
+        constraintValidated: boolean;
+        eventTypeNotNull: boolean;
+      }>(`
+        SELECT
+          attribute.attnotnull AS "eventTypeNotNull",
+          event_type_constraint.convalidated AS "constraintValidated"
+        FROM pg_catalog.pg_attribute AS attribute
+        INNER JOIN pg_catalog.pg_class AS relation
+          ON relation.oid = attribute.attrelid
+        INNER JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = relation.relnamespace
+        INNER JOIN pg_catalog.pg_constraint AS event_type_constraint
+          ON event_type_constraint.conrelid = relation.oid
+          AND event_type_constraint.conname = 'chat_messages_event_type_check'
+        WHERE namespace.nspname = 'public'
+          AND relation.relname = 'chat_messages'
+          AND attribute.attname = 'event_type'
+      `);
+      assert.deepEqual(contractState.rows, [
+        { constraintValidated: true, eventTypeNotNull: true },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23502",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'NULL event type after contract', NULL)
+        `,
+        values: [threadId],
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'unsupported event type after contract', 'unsupported.event')
+        `,
+        values: [threadId],
+      });
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: rolloutTailId,
+      });
     } finally {
       await client.end();
     }
@@ -1699,7 +1786,7 @@ async function validateChatEventTypeBackfill(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Historical rows are classified and append-only protection remains active\n",
+    "   ✅ Rollout-tail rows are classified, event_type is contracted, and append-only protection remains active\n",
   );
 }
 
@@ -3977,7 +4064,7 @@ async function main(): Promise<void> {
     await validateSlackLegacySchemaContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
-    await validateChatEventTypeBackfill();
+    await validateChatEventTypeBackfillAndContract();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
