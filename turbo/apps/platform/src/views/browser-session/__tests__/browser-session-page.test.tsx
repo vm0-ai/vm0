@@ -28,8 +28,8 @@ function browserSession(
     proxyCountryCode: null,
     timeoutMinutes: 240,
     maxCredits: 500,
-    grossCredits: 12,
-    creditsCharged: 12,
+    grossCredits: 0,
+    creditsCharged: 0,
     idleExpiresAt: "2026-07-24T10:10:00.000Z",
     suspendedAt: null,
     suspensionReason: null,
@@ -77,6 +77,8 @@ describe("browser session page", () => {
           suspendedAt: "2026-07-24T10:12:00.000Z",
           suspensionReason: "idle",
           idleExpiresAt: null,
+          grossCredits: 12,
+          creditsCharged: 12,
         }),
       });
     });
