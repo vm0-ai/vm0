@@ -1,12 +1,7 @@
 import { clerk } from "@clerk/testing/playwright";
 import type { Page } from "@playwright/test";
 
-export interface HostedAuthSession {
-  readonly token: string;
-}
-
-export interface HostedAuthOptions {
-  readonly followRedirect?: boolean;
+export interface ClerkTestingSignInOptions {
   readonly activeOrganizationId?: string;
 }
 
@@ -32,55 +27,12 @@ export async function refreshClerkSessionToken(
   }
 }
 
-export async function signInThroughHostedAuth(
+export async function signInWithClerkTestingHelper(
   page: Page,
   email: string,
   appUrl: string,
-  options: HostedAuthOptions = {},
-): Promise<HostedAuthSession> {
-  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForURL((url) => url.pathname.includes("/sign-in"), {
-    timeout: 30_000,
-  });
-
-  const authUrl = page.url();
-  const redirectUrl = redirectUrlFromAuthUrl(new URL(authUrl));
-  return await signInWithClerkTestingHelper(
-    page,
-    email,
-    appUrl,
-    authUrl,
-    redirectUrl,
-    options,
-  );
-}
-
-export async function signInFromCurrentHostedAuthPage(
-  page: Page,
-  email: string,
-  options: HostedAuthOptions = {},
-): Promise<HostedAuthSession> {
-  const authUrl = page.url();
-  const appUrl = new URL(authUrl).origin;
-  const redirectUrl = redirectUrlFromAuthUrl(new URL(authUrl));
-  return await signInWithClerkTestingHelper(
-    page,
-    email,
-    appUrl,
-    authUrl,
-    redirectUrl,
-    options,
-  );
-}
-
-async function signInWithClerkTestingHelper(
-  page: Page,
-  email: string,
-  appUrl: string,
-  authUrl: string,
-  redirectUrl: string | null,
-  options: HostedAuthOptions,
-): Promise<HostedAuthSession> {
+  options: ClerkTestingSignInOptions,
+): Promise<void> {
   const helperUrl = new URL("/_/skeleton", appUrl);
   await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.Clerk?.loaded), undefined, {
@@ -96,9 +48,7 @@ async function signInWithClerkTestingHelper(
 
   console.log("[e2e] signing in with Clerk testing helper", {
     currentUrl: page.url(),
-    authUrl,
     email,
-    redirectUrl,
     ...clerkStateBefore,
   });
 
@@ -141,13 +91,7 @@ async function signInWithClerkTestingHelper(
     ...clerkState,
   });
 
-  if (redirectUrl && options.followRedirect !== false) {
-    await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
-  } else {
-    await gotoAboutBlankAfterClerkNavigation(page);
-  }
-
-  return { token };
+  await gotoAboutBlankAfterClerkNavigation(page);
 }
 
 async function gotoAboutBlankAfterClerkNavigation(page: Page): Promise<void> {
@@ -170,21 +114,5 @@ function isAboutBlankInterruptedByRedirect(error: unknown): boolean {
     error.message.includes(
       'Navigation to "about:blank" is interrupted by another navigation',
     )
-  );
-}
-
-function redirectUrlFromAuthUrl(url: URL): string | null {
-  const searchRedirect = url.searchParams.get("redirect_url");
-  if (searchRedirect) {
-    return searchRedirect;
-  }
-
-  const hashQueryStart = url.hash.indexOf("?");
-  if (hashQueryStart === -1) {
-    return null;
-  }
-
-  return new URLSearchParams(url.hash.slice(hashQueryStart + 1)).get(
-    "redirect_url",
   );
 }
