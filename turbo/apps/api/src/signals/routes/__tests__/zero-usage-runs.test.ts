@@ -288,7 +288,7 @@ describe("GET /api/zero/usage/runs", () => {
       input: 2000,
       output: 1000,
     });
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
@@ -325,7 +325,7 @@ describe("GET /api/zero/usage/runs", () => {
       input: 999,
       output: 999,
     });
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
@@ -397,7 +397,7 @@ describe("GET /api/zero/usage/runs", () => {
       input: 100,
       output: 50,
     });
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(otherActor);
 
     mockClerkUserLookup();
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
@@ -429,7 +429,7 @@ describe("GET /api/zero/usage/runs", () => {
         output: (index + 1) * 10,
       });
     }
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
@@ -473,7 +473,7 @@ describe("GET /api/zero/usage/runs", () => {
     });
     await recordModelUsage(actor, actorRun.runId, model, { output: 50 });
     await recordModelUsage(member, memberRun.runId, model, { output: 100 });
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
@@ -504,7 +504,7 @@ describe("GET /api/zero/usage/runs", () => {
     });
     await recordModelUsage(actor, included.runId, model, { output: 50 });
     await recordModelUsage(actor, excluded.runId, model, { output: 100 });
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
@@ -547,7 +547,7 @@ describe("GET /api/zero/usage/runs", () => {
     for (const run of [before, inside, endBoundary, after]) {
       await recordModelUsage(actor, run.runId, model, { output: 50 });
     }
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
@@ -580,7 +580,7 @@ describe("GET /api/zero/usage/runs", () => {
       createdAt: createdAt(2),
     });
     await recordModelUsage(actor, processed.runId, model, { output: 50 });
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     const pending = await createBillableRun(actor, {
       createdAt: createdAt(1),
@@ -600,6 +600,38 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.runs[0]?.creditsCharged).toBe(50);
   });
 
+  it("processes usage events only for the requested organization", async () => {
+    const actor = await entitledUsageActor();
+    const otherActor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const run = await createBillableRun(actor);
+    const otherRun = await createBillableRun(otherActor);
+    await recordModelUsage(actor, run.runId, model, { output: 50 });
+    await recordModelUsage(otherActor, otherRun.runId, model, { output: 100 });
+
+    await billing.processOrgUsageEvents(actor);
+
+    const response = await billing.readUsageRuns(actor, [200]);
+    const otherResponse = await billing.readUsageRuns(otherActor, [200]);
+
+    await billing.processOrgUsageEvents(otherActor);
+
+    if (response.status !== 200 || otherResponse.status !== 200) {
+      throw new Error("Expected usage runs reads to succeed");
+    }
+    expect(response.body.runs).toHaveLength(1);
+    expect(response.body.runs[0]).toMatchObject({
+      runId: run.runId,
+      creditsCharged: 50,
+    });
+    expect(otherResponse.body).toStrictEqual({
+      runs: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
+    });
+  });
+
   // Run-less usage events (built-in generation charges without a run) are
   // exercised through their own product surfaces in zero-image-io-generate
   // tests; the agent usage-event webhook always requires a run.
@@ -613,7 +645,7 @@ describe("GET /api/zero/usage/runs", () => {
     const run = await createBillableRun(actor);
     await recordModelUsage(actor, run.runId, model, { input: 300 });
     await recordConnectorUsage(actor, run.runId, connectorProvider, 2);
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
@@ -653,7 +685,7 @@ describe("GET /api/zero/usage/runs", () => {
       cacheRead: 11,
       cacheCreation: 13,
     });
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     // A later, still-pending event must not contribute to the totals.
     await recordModelUsage(actor, run.runId, model, { input: 9999 });

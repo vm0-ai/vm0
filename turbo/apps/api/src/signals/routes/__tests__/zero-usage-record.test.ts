@@ -379,7 +379,7 @@ describe("GET /api/zero/usage/record", () => {
       25,
     );
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -449,7 +449,7 @@ describe("GET /api/zero/usage/record", () => {
       );
     }
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -512,7 +512,7 @@ describe("GET /api/zero/usage/record", () => {
     );
     await recordImageUsage(fixture.actor, deletedNewer.runId, imageProvider, 1);
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     await chatApi.deleteThread(fixture.actor, deletedOlder.threadId);
     await chatApi.deleteThread(fixture.actor, deletedNewer.threadId);
 
@@ -584,7 +584,7 @@ describe("GET /api/zero/usage/record", () => {
       12,
     );
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const slackResponse = await accept(
@@ -628,7 +628,7 @@ describe("GET /api/zero/usage/record", () => {
       output: 5,
     });
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -669,7 +669,7 @@ describe("GET /api/zero/usage/record", () => {
       );
     }
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -707,7 +707,7 @@ describe("GET /api/zero/usage/record", () => {
     await recordImageUsage(fixture.actor, run.runId, imageProvider, 4);
     await recordConnectorUsage(fixture.actor, run.runId, connectorProvider, 2);
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(

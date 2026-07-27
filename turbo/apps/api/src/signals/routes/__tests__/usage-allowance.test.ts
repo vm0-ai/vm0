@@ -198,8 +198,8 @@ async function recordPendingUsage(args: {
   });
 }
 
-async function processUsageEvents(): Promise<void> {
-  await createBillingMediaApi(context).processUsageEvents();
+async function processOrgUsageEvents(actor: ApiTestUser): Promise<void> {
+  await createBillingMediaApi(context).processOrgUsageEvents(actor);
 }
 
 async function readOrgCredits(actor: ApiTestUser): Promise<number> {
@@ -241,9 +241,7 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    // Another Vitest worker can settle this org through the shared test DB, so
-    // verify persisted billing behavior instead of a worker-local Ably mock.
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(10);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
@@ -270,7 +268,7 @@ describe("Usage Allowance", () => {
       quantity: 50,
     });
 
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(70);
     await expect(readRunCreditsCharged(actor, firstRun.runId)).resolves.toBe(
@@ -306,7 +304,7 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(80);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
@@ -334,7 +332,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 100,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     mockNow(addHours(startedAt, 1));
     const secondRun = await createVm0Run(actor, agentId, "same short window");
@@ -344,7 +342,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 50,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(50);
     await expect(readRunCreditsCharged(actor, firstRun.runId)).resolves.toBe(
@@ -377,7 +375,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 100,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     mockNow(addHours(startedAt, 6));
     const secondRun = await createVm0Run(actor, agentId, "fresh short window");
@@ -387,7 +385,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 50,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
@@ -413,7 +411,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 80,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     mockNow(addDays(startedAt, 8));
     const secondRun = await createVm0Run(actor, agentId, "fresh weekly window");
@@ -423,7 +421,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 50,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     // A continued weekly window would only have 40 units left (120 - 80), so
     // full coverage of the 50-unit event proves the weekly window refreshed.
@@ -454,7 +452,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 10,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(10);
   });
 
@@ -476,7 +474,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 1,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     const rejected = await api.requestCreateRun(
       actor,
@@ -521,7 +519,7 @@ describe("Usage Allowance", () => {
       provider,
       quantity: 2,
     });
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     const denied = await accept(client.resolve({ headers, body }), [402]);
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
@@ -563,7 +561,7 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
@@ -593,7 +591,7 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
@@ -620,7 +618,7 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(20);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
@@ -653,7 +651,7 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
@@ -687,7 +685,7 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    await processUsageEvents();
+    await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(20);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
-import { cronProcessUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
+import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
@@ -54,6 +54,7 @@ import {
   mockStripeClient,
 } from "../../../external/stripe-client";
 import { modelStatsContract } from "../../model-stats";
+import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -110,10 +111,6 @@ interface AutoRechargeUpdateBody {
   readonly enabled: boolean;
   readonly threshold?: number;
   readonly amount?: number;
-}
-
-interface CronHeaders {
-  readonly authorization: string;
 }
 
 type CheckoutStatus = 200 | 400 | 401 | 403 | 500 | 503;
@@ -211,10 +208,6 @@ function stripeInvoices(value: unknown): readonly StripeInvoice[] {
       typeof invoice.amount_paid === "number"
     );
   });
-}
-
-function cronHeaders(): CronHeaders {
-  return { authorization: "Bearer test-cron-secret" };
 }
 
 export function createBillingMediaApi(context: TestContext) {
@@ -543,9 +536,18 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async processUsageEvents() {
-      const client = setupApp({ context })(cronProcessUsageEventsContract);
-      return await accept(client.process({ headers: cronHeaders() }), [200]);
+    async processOrgUsageEvents(actor: ApiTestUser) {
+      if (!actor.orgId) {
+        throw new Error("Cannot process usage without an organization");
+      }
+      const client = setupApp({
+        context,
+        routes: testUsageSettlementRoutes,
+      })(testUsageSettlementContract);
+      return await accept(
+        client.process({ body: { org_id: actor.orgId } }),
+        [200],
+      );
     },
 
     async recordSignupAttribution(actor: ApiTestUser) {

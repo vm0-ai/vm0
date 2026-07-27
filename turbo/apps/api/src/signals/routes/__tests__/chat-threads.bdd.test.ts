@@ -1686,7 +1686,7 @@ describe("CHAT-03 run usage messages", () => {
       [200],
     );
     const billing = createBillingMediaApi(context);
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     let usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toHaveLength(1);
@@ -1736,7 +1736,7 @@ describe("CHAT-03 run usage messages", () => {
       [200],
     );
     mockNow(new Date("2030-01-01T00:00:00.000Z"));
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toStrictEqual([usageMessage]);
 
@@ -1758,7 +1758,7 @@ describe("CHAT-03 run usage messages", () => {
       [200],
     );
     mockNow(new Date("2030-01-01T00:00:01.000Z"));
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toStrictEqual([usageMessage]);
   }, 60_000);
@@ -1830,7 +1830,7 @@ describe("CHAT-03 run usage messages", () => {
       sandboxHeaders,
       [200],
     );
-    await createBillingMediaApi(context).processUsageEvents();
+    await createBillingMediaApi(context).processOrgUsageEvents(actor);
 
     const usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toHaveLength(1);

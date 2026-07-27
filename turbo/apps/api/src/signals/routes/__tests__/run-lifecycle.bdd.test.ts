@@ -10114,7 +10114,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
       { authorization: `Bearer ${claim.sandboxToken}` },
       [200],
     );
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     const usageRuns = await billing.readUsageRuns(actor, [200]);
     if (usageRuns.status !== 200) {
@@ -10160,7 +10160,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
       sandboxHeaders,
       [200],
     );
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     const usageRuns = await billing.readUsageRuns(actor, [200]);
     if (usageRuns.status !== 200) {
@@ -10278,7 +10278,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
       { authorization: `Bearer ${memberClaim.sandboxToken}` },
       [200],
     );
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(actor);
 
     const aggregated = await billing.readUsageMembers(actor, {
       range: "7d",
