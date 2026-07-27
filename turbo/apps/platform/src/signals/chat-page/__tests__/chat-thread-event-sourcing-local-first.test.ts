@@ -69,8 +69,10 @@ async function seedThreadEventCache(args: {
 }): Promise<void> {
   await clearThreadEventCache();
   if (args.snapshot) {
-    await threadEventStores.writeStore.replaceFromSnapshot(args.snapshot);
-    await threadEventStores.writeStore.upsertEvents([...(args.events ?? [])]);
+    await threadEventStores.writeStore.replaceFromSnapshot(
+      args.snapshot,
+      args.events ?? [],
+    );
   }
 }
 

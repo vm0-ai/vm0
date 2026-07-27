@@ -14,7 +14,6 @@ import {
   IconUserCircle,
   IconShield,
   IconUsers,
-  IconAdjustmentsHorizontal,
   IconSearch,
   IconX,
   IconMessageCircle,
@@ -40,7 +39,6 @@ import {
   SelectValue,
 } from "@vm0/ui";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
-import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
@@ -80,7 +78,7 @@ import {
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { ConnectorCard } from "../zero-page/components/settings/connector-card.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
 import type { PermissionDraftIntent } from "../../signals/zero-page/settings/permission-draft-intent.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
@@ -308,98 +306,6 @@ function resolveSound(sound: string): Tone {
     : "professional";
 }
 
-// ---------------------------------------------------------------------------
-// PermissionRow — single connector toggle row inside the authorization tab
-// ---------------------------------------------------------------------------
-
-function PermissionRow({
-  connector,
-  enabled,
-  onToggle,
-  loading,
-  showManage,
-  onManage,
-  isLast,
-}: {
-  connector: PublicConnectorCatalogStatusItem;
-  enabled: boolean;
-  onToggle: (checked: boolean) => void;
-  loading?: boolean;
-  showManage?: boolean;
-  onManage?: () => void;
-  isLast?: boolean;
-}) {
-  return (
-    <>
-      <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors">
-        <ConnectorIcon icon={connector.icon} size={20} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground">
-              {connector.label}
-            </span>
-            {connector.connection?.externalUsername && (
-              <span className="text-xs text-muted-foreground">
-                @{connector.connection.externalUsername}
-              </span>
-            )}
-          </div>
-          {connector.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-              {connector.description
-                .replace(/^Connect your \w+ account to /i, "")
-                .replace(/^access /i, "")
-                .replace(/^create /i, "Create ")
-                .replace(/^./, (c) => {
-                  return c.toUpperCase();
-                })}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {showManage && (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      onManage?.();
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onManage?.();
-                      }
-                    }}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    aria-label={`Manage ${connector.label} permissions`}
-                  >
-                    <IconAdjustmentsHorizontal size={15} stroke={1.5} />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p className="text-xs">Manage permissions</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          <LoadingSwitch
-            checked={enabled}
-            onCheckedChange={(checked) => {
-              return onToggle(checked);
-            }}
-            loading={loading}
-            ariaLabel={`${enabled ? "Revoke" : "Grant"} ${connector.label} access`}
-          />
-        </div>
-      </div>
-      {!isLast && <div className="mx-5 border-b border-border/50" />}
-    </>
-  );
-}
-
 function PermissionListSkeleton() {
   return (
     <div className="mx-auto max-w-[900px]">
@@ -553,8 +459,9 @@ function ConnectedConnectorPermissions({
         {filteredConnectors.length > 0 ? (
           filteredConnectors.map((c, i) => {
             return (
-              <PermissionRow
+              <ConnectorCard
                 key={c.connectorRef}
+                variant="permission"
                 connector={c}
                 enabled={authorizedSet.has(c.connectorRef)}
                 onToggle={onDomEventFn(async (checked) => {

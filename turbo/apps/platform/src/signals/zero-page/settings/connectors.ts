@@ -98,6 +98,16 @@ export type ConnectorCatalogBrowserAuthMethodDetail =
     readonly grantKind: BrowserAuthGrantKind;
   };
 
+type ConnectorStatusDirectConnectMethod =
+  | {
+      readonly kind: "browser-auth";
+      readonly authMethod: PublicConnectorCatalogAuthMethodDetail;
+    }
+  | {
+      readonly kind: "no-auth";
+      readonly authMethod: ConnectorAuthMethodId;
+    };
+
 export function manualGrantInputValuesForMethod(
   method: Pick<PublicConnectorCatalogAuthMethodDetail, "manualFields">,
   values: Readonly<Record<string, string>>,
@@ -201,13 +211,7 @@ export function hasConnectorStatusBrowserAuthGrant(
 export function getConnectorStatusConnectLaunchMode(
   connector: PublicConnectorCatalogStatusItem,
 ): ConnectorConnectLaunchMode {
-  if (getOnlyAvailableStatusBrowserAuthMethod(connector)) {
-    return "browser-auth";
-  }
-  if (getOnlyAvailableStatusNoAuthMethod(connector)) {
-    return "no-auth";
-  }
-  return "modal";
+  return getConnectorStatusDirectConnectMethod(connector)?.kind ?? "modal";
 }
 
 export function getAvailableStatusAuthCodeAuthMethod(
@@ -284,6 +288,18 @@ export function getOnlyAvailableStatusNoAuthMethod(
     return null;
   }
   return getAvailableStatusNoAuthMethod(connector, method.id);
+}
+
+export function getConnectorStatusDirectConnectMethod(
+  connector: PublicConnectorCatalogStatusItem,
+): ConnectorStatusDirectConnectMethod | null {
+  const browserAuthMethod =
+    getOnlyAvailableStatusBrowserAuthMethodDetail(connector);
+  if (browserAuthMethod) {
+    return { kind: "browser-auth", authMethod: browserAuthMethod };
+  }
+  const noAuthMethod = getOnlyAvailableStatusNoAuthMethod(connector);
+  return noAuthMethod ? { kind: "no-auth", authMethod: noAuthMethod } : null;
 }
 
 function connectorTokenExpiresAtMs(

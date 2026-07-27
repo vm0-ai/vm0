@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.148.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.12...runner-rs-v0.148.13) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** distinguish dns readiness timeouts ([#23282](https://github.com/vm0-ai/vm0/issues/23282)) ([1593bf9](https://github.com/vm0-ai/vm0/commit/1593bf9ddbce0c4b022ed7d772b845bbcd86be1b))
+* **runner:** revalidate connector admission after auth waits ([#23245](https://github.com/vm0-ai/vm0/issues/23245)) ([0f22b78](https://github.com/vm0-ai/vm0/commit/0f22b788c878faf2bb36afd3f359af95ee1e9614))
+* **runner:** stop on unexpected kmsg monitor exit ([#23249](https://github.com/vm0-ai/vm0/issues/23249)) ([e4ec0b5](https://github.com/vm0-ai/vm0/commit/e4ec0b5f0ee8693d39c2c04d4cf45e074c7f5469))
+
+
+### Documentation
+
+* **mitm-addon:** document base url template safety contract ([#23275](https://github.com/vm0-ai/vm0/issues/23275)) ([594d78a](https://github.com/vm0-ai/vm0/commit/594d78a32ef45a4421e4875e1cfd12d3c099e735))
+* **python:** clarify observable flow drain contract ([#23252](https://github.com/vm0-ai/vm0/issues/23252)) ([f9472b4](https://github.com/vm0-ai/vm0/commit/f9472b44fc6abf09bf713c1f4ab857226478916f))
+
+
+### Performance Improvements
+
+* **mitm-addon:** cache selective json key matching ([#23279](https://github.com/vm0-ai/vm0/issues/23279)) ([097713c](https://github.com/vm0-ai/vm0/commit/097713c556a59964a243846eec676d76fefdd73e))
+* **python:** reuse sigv4 url state ([#23284](https://github.com/vm0-ai/vm0/issues/23284)) ([a8922b7](https://github.com/vm0-ai/vm0/commit/a8922b7501d779976b2a0128a396608750c1de32))
+
 ## [0.148.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.11...runner-rs-v0.148.12) (2026-07-27)
 
 
