@@ -2,10 +2,12 @@ import { Buffer } from "node:buffer";
 
 import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { testMailDraftStateRoutes } from "../test-mail-draft-state";
 import { createBddApi } from "./helpers/api-bdd";
@@ -701,5 +703,117 @@ describe("POST /api/zero/mail/drafts/link", () => {
       [200],
     );
     expect(unlinked.body.exists).toBeFalsy();
+  });
+
+  it("sets up reply tracking without starting an agent run", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    mockGmailDraftApi();
+
+    const linked = await linkDraft(fixture);
+    await accept(
+      client().sendDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+
+    mockOptionalEnv(
+      "GMAIL_PUBSUB_TOPIC_NAME",
+      "projects/test/topics/gmail-replies",
+    );
+    server.use(
+      http.post(`${GMAIL_API_BASE}/watch`, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer gmail-mail-card-token",
+        );
+        return HttpResponse.json({
+          historyId: "101",
+          expiration: "4102444800000",
+        });
+      }),
+    );
+
+    const created = await accept(
+      client().createFollowUp({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(created.body.mailDraftId).toBe(linked.body.mailDraftId);
+
+    const active = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(active.body.mailDraft.followUp).toStrictEqual({
+      status: "active",
+      automationId: created.body.automationId,
+    });
+
+    const automations = await accept(
+      setupApp({ context })(zeroWorkflowAutomationsContract).listForChatThread({
+        headers: authHeaders(),
+        params: { threadId: fixture.thread.id },
+      }),
+      [200],
+    );
+    expect(automations.body).toHaveLength(1);
+    expect(automations.body[0]).toMatchObject({
+      id: created.body.automationId,
+      kind: "event",
+      enabled: true,
+      eventType: "gmail-new-message",
+      eventConfig: {
+        provider: "gmail",
+        event: "new_message",
+        threadId: GMAIL_THREAD_ID,
+        match: {
+          from: {
+            containsAny: ["recipient@example.com", "copy@example.com"],
+          },
+          subject: { contains: "Attachment review" },
+        },
+      },
+      chatThreadId: fixture.thread.id,
+      workflow: {
+        agentId: fixture.agent.agentId,
+        displayName: "Mail reply follow-ups",
+      },
+    });
+
+    const messages = await chat.listThreadMessages(
+      fixture.actor,
+      fixture.thread.id,
+    );
+    expect(messages.messages).toStrictEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content:
+          "Reply tracking is on. When a reply arrives, I’ll let you know in this chat.",
+      }),
+    ]);
+
+    const repeated = await accept(
+      client().createFollowUp({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(repeated.body).toStrictEqual({
+      mailDraftId: linked.body.mailDraftId,
+      automationId: created.body.automationId,
+    });
+    expect(
+      (await chat.listThreadMessages(fixture.actor, fixture.thread.id))
+        .messages,
+    ).toHaveLength(1);
   });
 });

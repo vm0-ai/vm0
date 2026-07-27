@@ -2018,7 +2018,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain(
       "`zero workflow automation list <workflow>` shows one workflow's triggers",
     );
-    expect(appendSystemPrompt).toContain(
+    expect(appendSystemPrompt).not.toContain(
       "A message sent by the email card's Follow up action is explicit approval",
     );
     expect(appendSystemPrompt).toContain(

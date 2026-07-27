@@ -1,4 +1,9 @@
-import { IconChevronRight, IconLoader2, IconRoute } from "@tabler/icons-react";
+import {
+  IconChevronRight,
+  IconCircleCheck,
+  IconLoader2,
+  IconRoute,
+} from "@tabler/icons-react";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
@@ -6,11 +11,13 @@ import type {
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { Button, cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 
 import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
+import type {
+  MailDraftFollowUpState,
+  MailDraftSignals,
+} from "../../signals/chat-page/mail-draft.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import {
   activeSidebarMailDraftId$,
@@ -113,6 +120,106 @@ function MailDraftCardContent({
   );
 }
 
+function followUpDescription(state: MailDraftFollowUpState): string {
+  switch (state) {
+    case "active": {
+      return "Replies are tracked and will be reported in this chat.";
+    }
+    case "paused": {
+      return "Reply tracking is currently paused.";
+    }
+    case "submitting": {
+      return "Setting up reply tracking…";
+    }
+    case "idle": {
+      return "Track replies and get notified in this chat.";
+    }
+  }
+}
+
+function followUpButtonLabel(state: MailDraftFollowUpState): string {
+  switch (state) {
+    case "active": {
+      return "Tracking replies";
+    }
+    case "paused": {
+      return "Tracking paused";
+    }
+    case "submitting": {
+      return "Setting up…";
+    }
+    case "idle": {
+      return "Follow up";
+    }
+  }
+}
+
+function FollowUpIcon({ state }: { readonly state: MailDraftFollowUpState }) {
+  if (state === "submitting") {
+    return <IconLoader2 size={15} className="animate-spin" />;
+  }
+  return state === "active" ? (
+    <IconCircleCheck size={15} />
+  ) : (
+    <IconRoute size={15} />
+  );
+}
+
+function SentMailDraftCard({
+  draft,
+  gmailIcon,
+  selected,
+  followUpState,
+  onOpen,
+  onFollowUp,
+}: {
+  readonly draft: ZeroMailDraft;
+  readonly gmailIcon: PublicConnectorCatalogIcon | undefined;
+  readonly selected: boolean;
+  readonly followUpState: MailDraftFollowUpState;
+  readonly onOpen: () => void;
+  readonly onFollowUp: () => void;
+}) {
+  return (
+    <div
+      data-mail-draft-card
+      data-mail-draft-status={draft.status}
+      className={cn(
+        "w-full max-w-xl overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
+        selected ? "border-ring/60 bg-muted/20" : "border-border/70",
+      )}
+    >
+      <button
+        type="button"
+        aria-label={`Open sent email: ${draft.subject || "No subject"}`}
+        onClick={onOpen}
+        className="flex min-h-[76px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+      >
+        <MailDraftCardContent
+          draft={draft}
+          gmailIcon={gmailIcon}
+          reconnecting={false}
+        />
+      </button>
+      <div className="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-2">
+        <p className="text-xs text-muted-foreground">
+          {followUpDescription(followUpState)}
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={followUpState !== "idle"}
+          onClick={onFollowUp}
+        >
+          <FollowUpIcon state={followUpState} />
+          {followUpButtonLabel(followUpState)}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function MailDraftCard({ signals }: MailDraftCardProps) {
   const draftLoadable = useLastLoadable(signals.draft$);
   const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
@@ -124,7 +231,8 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
   const openSidebar = useSet(openThreadMailDraft$);
   const reloadDraft = useSet(signals.reloadDraft$);
   const pageSignal = useGet(pageSignal$);
-  const [followUpLoadable, followUp] = useLoadableSet(signals.followUp$);
+  const localFollowUpState = useGet(signals.followUpState$);
+  const followUp = useSet(signals.followUp$);
   const { connectorIcon, reconnect, reconnectDisabled, reconnecting } =
     useGmailReconnect(reloadDraft);
 
@@ -136,6 +244,10 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
   }
 
   const draft = draftLoadable.data;
+  const followUpState =
+    localFollowUpState === "submitting"
+      ? localFollowUpState
+      : (draft.followUp?.status ?? localFollowUpState);
   const deleted = draft.status === "deleted";
   const needsReconnect = draft.accessStatus === "reconnect";
   const selected = selectedMailDraftId === signals.mailDraftId;
@@ -183,41 +295,16 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
 
   if (draft.status === "sent") {
     return (
-      <div
-        data-mail-draft-card
-        data-mail-draft-status={draft.status}
-        className={cn(
-          "w-full max-w-xl overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
-          selected ? "border-ring/60 bg-muted/20" : "border-border/70",
-        )}
-      >
-        <button
-          type="button"
-          aria-label={`Open sent email: ${draft.subject || "No subject"}`}
-          onClick={openDraft}
-          className="flex min-h-[76px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
-        >
-          {content}
-        </button>
-        <div className="flex justify-end border-t border-border/60 px-3 py-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={followUpLoadable.state === "loading"}
-            onClick={() => {
-              detach(followUp(pageSignal), Reason.DomCallback);
-            }}
-          >
-            {followUpLoadable.state === "loading" ? (
-              <IconLoader2 size={15} className="animate-spin" />
-            ) : (
-              <IconRoute size={15} />
-            )}
-            Follow up
-          </Button>
-        </div>
-      </div>
+      <SentMailDraftCard
+        draft={draft}
+        gmailIcon={connectorIcon}
+        selected={selected}
+        followUpState={followUpState}
+        onOpen={openDraft}
+        onFollowUp={() => {
+          detach(followUp(pageSignal), Reason.DomCallback);
+        }}
+      />
     );
   }
 

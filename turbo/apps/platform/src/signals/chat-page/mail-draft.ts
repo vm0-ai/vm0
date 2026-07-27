@@ -1,4 +1,11 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -15,12 +22,17 @@ import {
   getOrCreateCardSignals,
   registeredCardSignals,
 } from "./card-signal-map.ts";
-import { onRef } from "../utils.ts";
-import { runChatActionCallback$ } from "./action-callback.ts";
+import { onRef, withCleanup } from "../utils.ts";
 import {
   createTextPreviewComputedFromBlob,
   type TextPreviewComputed,
 } from "../text-preview.ts";
+
+export type MailDraftFollowUpState =
+  | "idle"
+  | "submitting"
+  | "active"
+  | "paused";
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
@@ -45,6 +57,7 @@ export interface MailDraftSignals extends MailDraftDescriptor {
   readonly reloadDraft$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
+  readonly followUpState$: Computed<MailDraftFollowUpState>;
   readonly followUp$: Command<Promise<void>, [AbortSignal]>;
 }
 
@@ -52,6 +65,7 @@ export interface MailDraftCardSignalsRegistry {
   register(descriptor: MailDraftDescriptor): MailDraftSignals;
   resolve(resourceKey: string): MailDraftSignals;
   entries(): ReadonlyMap<string, MailDraftSignals>;
+  readonly reload$: Command<void, []>;
 }
 
 export const emptyMailDraftSignalsById$ = computed<
@@ -134,21 +148,6 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
     originalUrl: value,
     href: `/mail/drafts/${mailDraftId}`,
   };
-}
-
-function mailFollowUpPrompt(draft: ZeroMailDraft): string {
-  const recipients = Array.from(
-    new Set([...draft.to, ...draft.cc, ...draft.bcc]),
-  ).join(", ");
-  const subject = draft.subject || "(No subject)";
-  return [
-    `Set up reply tracking for the email I just sent to ${recipients} with subject "${subject}".`,
-    "Use the workflow-setup skill and check for an existing matching workflow automation first.",
-    "If none exists, create and enable a gmail-new-message automation narrowed to messages from these recipients and this subject, bound to this current chat thread.",
-    "When a reply arrives, summarize it and remind me here.",
-    "This message is my approval to create and enable the automation, so do not ask me to confirm again.",
-    "Never send an email automatically.",
-  ].join(" ");
 }
 
 function createAttachmentPreviews(
@@ -267,11 +266,22 @@ function createAttachmentPreviews(
   };
 }
 
-function createMailDraftSignals(
-  threadId: string,
-  agentId$: Computed<string | null>,
+interface MailDraftResourceSignals
+  extends Pick<
+    MailDraftSignals,
+    "draft$" | "sidebarDraft$" | "reloadDraft$" | "followUpState$"
+  > {
+  readonly followUpStateValue$: State<MailDraftFollowUpState>;
+  readonly draftOverride$: State<ZeroMailDraft | null | undefined>;
+}
+
+function createMailDraftResourceSignals(
   descriptor: MailDraftDescriptor,
-): MailDraftSignals {
+): MailDraftResourceSignals {
+  const followUpStateValue$ = state<MailDraftFollowUpState>("idle");
+  const followUpState$ = computed((get) => {
+    return get(followUpStateValue$);
+  });
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
   const draftReloadVersion$ = state(0);
   const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
@@ -290,16 +300,29 @@ function createMailDraftSignals(
     return response.status === 200 ? response.body.mailDraft : null;
   });
   const sidebarDraft$ = draft$;
-  const attachmentPreviews = createAttachmentPreviews(
-    descriptor,
-    sidebarDraft$,
-  );
   const reloadDraft$ = command(({ set }) => {
     set(draftOverride$, undefined);
+    set(followUpStateValue$, (current) => {
+      return current === "submitting" ? current : "idle";
+    });
     set(draftReloadVersion$, (version) => {
       return version + 1;
     });
   });
+  return {
+    followUpStateValue$,
+    draftOverride$,
+    draft$,
+    sidebarDraft$,
+    reloadDraft$,
+    followUpState$,
+  };
+}
+
+function createMailDraftMutationSignals(
+  descriptor: MailDraftDescriptor,
+  resources: MailDraftResourceSignals,
+): Pick<MailDraftSignals, "delete$" | "send$" | "followUp$"> {
   const delete$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await accept(
@@ -310,7 +333,7 @@ function createMailDraftSignals(
         [204],
       );
       signal.throwIfAborted();
-      set(draftOverride$, null);
+      set(resources.draftOverride$, null);
     },
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -322,57 +345,90 @@ function createMailDraftSignals(
       [200],
     );
     signal.throwIfAborted();
-    set(draftOverride$, response.body.mailDraft);
+    set(resources.draftOverride$, response.body.mailDraft);
   });
   const followUp$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const draft = await get(draft$);
-      signal.throwIfAborted();
-      if (!draft) {
-        throw new Error("Email is no longer available");
+      if (get(resources.followUpStateValue$) !== "idle") {
+        return;
       }
-      const agentId = get(agentId$);
-      if (!agentId) {
-        throw new Error("Email follow-up agent is unavailable");
-      }
-      await set(
-        runChatActionCallback$,
-        {
-          threadId,
-          agentId,
-          callbackPrompt: mailFollowUpPrompt(draft),
+      set(resources.followUpStateValue$, "submitting");
+      await withCleanup(
+        (async () => {
+          const draft = await get(resources.draft$);
+          signal.throwIfAborted();
+          if (!draft) {
+            throw new Error("Email is no longer available");
+          }
+          if (draft.followUp) {
+            set(resources.followUpStateValue$, draft.followUp.status);
+            return;
+          }
+          await accept(
+            get(zeroClient$)(zeroMailContract).createFollowUp({
+              params: { mailDraftId: descriptor.mailDraftId },
+              body: {},
+              fetchOptions: { signal },
+            }),
+            [200],
+          );
+          set(resources.reloadDraft$);
+          set(resources.followUpStateValue$, "active");
+        })(),
+        () => {
+          set(resources.followUpStateValue$, (current) => {
+            return current === "submitting" ? "idle" : current;
+          });
         },
-        signal,
       );
     },
+  );
+  return { delete$, send$, followUp$ };
+}
+
+function createMailDraftSignals(
+  threadId: string,
+  descriptor: MailDraftDescriptor,
+): MailDraftSignals {
+  const resources = createMailDraftResourceSignals(descriptor);
+  const mutations = createMailDraftMutationSignals(descriptor, resources);
+  const attachmentPreviews = createAttachmentPreviews(
+    descriptor,
+    resources.sidebarDraft$,
   );
   return {
     mailDraftId: descriptor.mailDraftId,
     originalUrl: descriptor.originalUrl,
     href: descriptor.href,
     threadId,
-    draft$,
-    sidebarDraft$,
+    draft$: resources.draft$,
+    sidebarDraft$: resources.sidebarDraft$,
     ...attachmentPreviews,
-    reloadDraft$,
-    delete$,
-    send$,
-    followUp$,
+    reloadDraft$: resources.reloadDraft$,
+    delete$: mutations.delete$,
+    send$: mutations.send$,
+    followUpState$: resources.followUpState$,
+    followUp$: mutations.followUp$,
   };
 }
 
 export function createMailDraftCardSignalsRegistry(
   threadId: string,
-  agentId$: Computed<string | null>,
 ): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
+  const reload$ = command(({ set }) => {
+    for (const signals of signalsByResourceKey.values()) {
+      set(signals.reloadDraft$);
+    }
+  });
   return {
+    reload$,
     register(descriptor) {
       return getOrCreateCardSignals(
         signalsByResourceKey,
         descriptor.mailDraftId,
         () => {
-          return createMailDraftSignals(threadId, agentId$, descriptor);
+          return createMailDraftSignals(threadId, descriptor);
         },
       );
     },

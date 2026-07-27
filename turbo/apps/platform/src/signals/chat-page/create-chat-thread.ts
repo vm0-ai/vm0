@@ -2518,15 +2518,11 @@ function createHistoryBackfillProgress(
 
 function createPagedMessages(
   threadId: string,
-  agentId$: Computed<string | null>,
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ) {
-  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(
-    threadId,
-    agentId$,
-  );
+  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
   const browserSessionCardSignals =
     createBrowserSessionCardSignalsRegistry(threadId);
   const artifactCardSignals = createArtifactCardSignalsRegistry(
@@ -2651,6 +2647,7 @@ function createPagedMessages(
     messageRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
+    reloadMailDrafts$: mailDraftCardSignals.reload$,
     browserSessionCardSignalsById$,
     artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
       return artifactCardSignals.find(url);
@@ -2661,7 +2658,6 @@ function createPagedMessages(
 
 function createChatThreadMessagePipeline({
   threadId,
-  agentId$,
   dataSource,
   initialOptimisticEntries,
   recordScrollHeightForPrepend$,
@@ -2670,7 +2666,6 @@ function createChatThreadMessagePipeline({
   previewImageUrlsByUrl$,
 }: {
   threadId: string;
-  agentId$: Computed<string | null>;
   dataSource: ChatThreadRemote;
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[];
   recordScrollHeightForPrepend$: Command<
@@ -2686,7 +2681,6 @@ function createChatThreadMessagePipeline({
 }) {
   const pagedMessages = createPagedMessages(
     threadId,
-    agentId$,
     dataSource,
     initialOptimisticEntries,
     previewImageUrlsByUrl$,
@@ -2812,6 +2806,7 @@ interface RunTrackingDeps {
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   settleMessageSync$: Command<Promise<void>, []>;
   reloadArtifacts$: Command<void, []>;
+  reloadMailDrafts$: Command<void, []>;
   reloadComposerWorkflows$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   automationSignals: Pick<
@@ -2999,6 +2994,7 @@ function createOnSubscribedCommand({
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
+  reloadMailDrafts$,
   reloadComposerWorkflows$,
   markThreadReadIfNeeded$,
 }: Pick<
@@ -3007,15 +3003,22 @@ function createOnSubscribedCommand({
   | "syncRemoteMessages$"
   | "settleMessageSync$"
   | "reloadArtifacts$"
+  | "reloadMailDrafts$"
   | "reloadComposerWorkflows$"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<void>, [AbortSignal]> {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
+  const hasSubscribed$ = state(false);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadArtifacts$);
+    if (get(hasSubscribed$)) {
+      set(reloadMailDrafts$);
+    } else {
+      set(hasSubscribed$, true);
+    }
     await Promise.all([
       set(reloadComposerWorkflows$, signal),
       get(optimisticCreateUnsettled$)
@@ -3072,6 +3075,7 @@ function createRunTracking({
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
+  reloadMailDrafts$,
   reloadComposerWorkflows$,
   autoScroll$,
   automationSignals,
@@ -3098,6 +3102,7 @@ function createRunTracking({
     syncRemoteMessages$,
     settleMessageSync$,
     reloadArtifacts$,
+    reloadMailDrafts$,
     reloadComposerWorkflows$,
     markThreadReadIfNeeded$,
   });
@@ -3109,6 +3114,7 @@ function createRunTracking({
 
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
+      set(reloadMailDrafts$);
       return false;
     });
 
@@ -4440,7 +4446,6 @@ export function createChatThreadSignals(
   );
   const messages = createChatThreadMessagePipeline({
     threadId,
-    agentId$: threadOwned.agentId$,
     dataSource,
     initialOptimisticEntries,
     recordScrollHeightForPrepend$,
@@ -4459,6 +4464,7 @@ export function createChatThreadSignals(
     syncRemoteMessages$: messages.syncRemoteMessages$,
     settleMessageSync$: messages.settleMessageSync$,
     reloadArtifacts$: artifact.reloadArtifacts$,
+    reloadMailDrafts$: messages.reloadMailDrafts$,
     reloadComposerWorkflows$: composer.workflowComposer.reloadWorkflows$,
     autoScroll$: scrollSignals.autoScroll$,
     automationSignals: threadOwned,

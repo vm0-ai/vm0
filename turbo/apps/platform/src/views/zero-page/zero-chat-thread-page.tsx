@@ -2299,10 +2299,34 @@ function HeaderGmailNewMessageAutomationEditForm({
         );
       }}
     >
+      {automation.eventConfig.threadId ? (
+        <div className="grid grid-cols-3 gap-2">
+          <input
+            aria-label="Thread ID field"
+            value="Thread ID"
+            readOnly
+            className={HEADER_AUTOMATION_FIELD_CLASS}
+          />
+          <input
+            aria-label="Thread ID operator"
+            value="Is"
+            readOnly
+            className={HEADER_AUTOMATION_FIELD_CLASS}
+          />
+          <input
+            name="threadId"
+            aria-label="Thread ID value"
+            defaultValue={automation.eventConfig.threadId}
+            disabled={saving}
+            required
+            className={HEADER_AUTOMATION_FIELD_CLASS}
+          />
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
           return (
-            <div key={field} className="grid grid-cols-2 gap-2">
+            <div key={field} className="grid grid-cols-3 gap-2">
               <input
                 name={`${field}Contains`}
                 aria-label={`${label} contains`}
@@ -2313,6 +2337,18 @@ function HeaderGmailNewMessageAutomationEditForm({
                 )}
                 disabled={saving}
                 placeholder={`${label} contains`}
+                className={HEADER_AUTOMATION_FIELD_CLASS}
+              />
+              <input
+                name={`${field}ContainsAny`}
+                aria-label={`${label} contains any`}
+                defaultValue={gmailMatcherDefaultValue(
+                  automation.eventConfig,
+                  field,
+                  "containsAny",
+                )}
+                disabled={saving}
+                placeholder={`${label} contains any`}
                 className={HEADER_AUTOMATION_FIELD_CLASS}
               />
               <input

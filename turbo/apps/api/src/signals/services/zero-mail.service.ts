@@ -11,12 +11,20 @@ import {
   type ZeroMailDraftStatus,
   type ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
+import type { GmailNewMessageEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
+import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { connectorAuthMethodHasRequiredScopes } from "@vm0/connectors/connector-auth-method";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { mailDrafts } from "@vm0/db/schema/mail-draft";
 import { userConnectors } from "@vm0/db/schema/user-connector";
+import {
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { convert } from "html-to-text";
 import { z } from "zod";
 
@@ -26,6 +34,8 @@ import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
@@ -37,6 +47,12 @@ import {
   refreshConnectorCredentialAccess,
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
+import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
+import {
+  createWorkflowAutomation$,
+  enableWorkflowAutomation$,
+  type AutomationResult,
+} from "./zero-workflow-automation.service";
 
 const L = logger("api:zero-mail");
 
@@ -45,6 +61,17 @@ const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS = 60 * 60 * 1000;
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const GMAIL_ACCESS_TOKEN_ENV = "GMAIL_TOKEN";
 const oauthScopesSchema = z.array(z.string());
+const MAIL_FOLLOW_UP_WORKFLOW_DISPLAY_NAME = "Mail reply follow-ups";
+const MAIL_FOLLOW_UP_WORKFLOW_DESCRIPTION =
+  "Summarize tracked email replies in their originating chat.";
+const MAIL_FOLLOW_UP_WORKFLOW_INSTRUCTION = [
+  "A reply to an email the user asked to track has arrived.",
+  "Read the Gmail thread to understand the new reply, summarize it in this chat, and highlight decisions or next steps.",
+  "If a response is warranted, prepare a linked Gmail draft for the user to review.",
+  "Never send an email automatically.",
+].join(" ");
+const MAIL_FOLLOW_UP_CONFIRMATION =
+  "Reply tracking is on. When a reply arrives, I’ll let you know in this chat.";
 
 interface GmailMessagePart {
   readonly partId: string;
@@ -144,6 +171,25 @@ export type ZeroMailDraftLinkMutationResult =
   | MailDraftLinkResult
   | MailDraftErrorResult;
 
+type MailFollowUpSetupErrorResult = {
+  readonly kind: "not_found" | "conflict" | "forbidden" | "bad_request";
+  readonly message: string;
+};
+
+type MailFollowUpWorkflowResult =
+  | { readonly kind: "ok"; readonly workflowId: string }
+  | MailFollowUpSetupErrorResult;
+
+export type ZeroMailFollowUpSetupResult =
+  | {
+      readonly kind: "ok";
+      readonly mailDraftId: string;
+      readonly automationId: string;
+      readonly chatThreadId: string;
+      readonly messageSeqId: number | undefined;
+    }
+  | MailFollowUpSetupErrorResult;
+
 type ZeroMailDraftAttachmentResult =
   | MailDraftAttachmentResult
   | MailDraftErrorResult;
@@ -151,6 +197,10 @@ type ZeroMailDraftAttachmentResult =
 const reconnectMailError = Object.freeze({
   kind: "conflict" as const,
   message: "Reconnect Gmail before continuing",
+});
+const noMailFollowUpRecipientsError = Object.freeze({
+  kind: "conflict" as const,
+  message: "The sent email has no recipients to track",
 });
 
 interface MailDraftRow {
@@ -162,6 +212,8 @@ interface MailDraftRow {
   readonly gmailThreadId: string;
   readonly gmailMessageId: string;
   readonly sentGmailMessageId: string | null;
+  readonly followUpAutomationId: string | null;
+  readonly followUpAutomationEnabled: boolean | null;
   readonly status: ZeroMailDraftStatus;
   readonly senderName: string | null;
   readonly senderAddress: string;
@@ -180,6 +232,8 @@ interface StoredMailDraftRow {
   readonly gmailThreadId: string | null;
   readonly gmailMessageId: string | null;
   readonly sentGmailMessageId: string | null;
+  readonly followUpAutomationId: string | null;
+  readonly followUpAutomationEnabled: boolean | null;
   readonly status: ZeroMailDraftStatus | null;
   readonly senderName: string | null;
   readonly senderAddress: string | null;
@@ -387,6 +441,8 @@ async function loadOwnedMailDraft(args: {
       gmailThreadId: mailDrafts.gmailThreadId,
       gmailMessageId: mailDrafts.gmailMessageId,
       sentGmailMessageId: mailDrafts.sentGmailMessageId,
+      followUpAutomationId: mailDrafts.followUpAutomationId,
+      followUpAutomationEnabled: zeroWorkflowAutomations.enabled,
       status: mailDrafts.status,
       senderName: mailDrafts.senderName,
       senderAddress: mailDrafts.senderAddress,
@@ -398,6 +454,10 @@ async function loadOwnedMailDraft(args: {
     .from(mailDrafts)
     .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
     .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .leftJoin(
+      zeroWorkflowAutomations,
+      eq(zeroWorkflowAutomations.id, mailDrafts.followUpAutomationId),
+    )
     .where(
       and(
         eq(mailDrafts.id, args.mailDraftId),
@@ -968,6 +1028,14 @@ function responseDraft(args: {
     gmailThreadId: args.row.gmailThreadId,
     gmailMessageId: args.row.gmailMessageId,
     sentGmailMessageId: args.row.sentGmailMessageId ?? undefined,
+    followUp:
+      args.row.followUpAutomationId === null
+        ? undefined
+        : {
+            status:
+              args.row.followUpAutomationEnabled === true ? "active" : "paused",
+            automationId: args.row.followUpAutomationId,
+          },
     createdAt: args.row.createdAt.toISOString(),
     updatedAt: args.row.updatedAt.toISOString(),
     sentAt: args.row.sentAt?.toISOString(),
@@ -1817,6 +1885,433 @@ export const sendZeroMailDraft$ = command(
         details: gmail.current.details,
         detailAvailable: true,
       }),
+    );
+  },
+);
+
+function mailFollowUpWorkflowName(chatThreadId: string): string {
+  return `mail-reply-follow-up-${chatThreadId}`;
+}
+
+function mailFollowUpAutomationFailure(
+  result: Exclude<AutomationResult, { readonly kind: "ok" }>,
+): MailFollowUpSetupErrorResult {
+  switch (result.kind) {
+    case "not-found": {
+      return {
+        kind: "not_found",
+        message: "Mail follow-up workflow not found",
+      };
+    }
+    case "forbidden": {
+      return { kind: "forbidden", message: result.message };
+    }
+    case "conflict": {
+      return { kind: "conflict", message: result.message };
+    }
+    case "team-required":
+    case "bad-request": {
+      return { kind: "bad_request", message: result.message };
+    }
+    case "deleted": {
+      throw new Error("Mail follow-up automation was deleted during setup");
+    }
+  }
+}
+
+const ensureMailFollowUpWorkflow$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly agentId: string;
+      readonly chatThreadId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<MailFollowUpWorkflowResult> => {
+    const writeDb = set(writeDb$);
+    const name = mailFollowUpWorkflowName(args.chatThreadId);
+    const currentTime = nowDate();
+    const result = await writeDb.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: zeroWorkflows.id })
+        .from(zeroWorkflows)
+        .where(
+          and(
+            eq(zeroWorkflows.orgId, args.orgId),
+            eq(zeroWorkflows.agentId, args.agentId),
+            eq(zeroWorkflows.ownerUserId, args.userId),
+            eq(zeroWorkflows.visibility, "private"),
+            eq(zeroWorkflows.name, name),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        const [binding] = await tx
+          .select({
+            chatThreadId: workflowUserAutomationThreads.chatThreadId,
+          })
+          .from(workflowUserAutomationThreads)
+          .where(
+            and(
+              eq(workflowUserAutomationThreads.orgId, args.orgId),
+              eq(workflowUserAutomationThreads.userId, args.userId),
+              eq(workflowUserAutomationThreads.workflowId, existing.id),
+            ),
+          )
+          .limit(1);
+        if (
+          binding?.chatThreadId &&
+          binding.chatThreadId !== args.chatThreadId
+        ) {
+          return {
+            kind: "conflict" as const,
+            message: "Mail follow-up workflow is bound to another chat",
+          };
+        }
+        await tx
+          .insert(workflowUserAutomationThreads)
+          .values({
+            orgId: args.orgId,
+            userId: args.userId,
+            workflowId: existing.id,
+            chatThreadId: args.chatThreadId,
+            createdAt: currentTime,
+            updatedAt: currentTime,
+          })
+          .onConflictDoUpdate({
+            target: [
+              workflowUserAutomationThreads.orgId,
+              workflowUserAutomationThreads.userId,
+              workflowUserAutomationThreads.workflowId,
+            ],
+            set: {
+              chatThreadId: args.chatThreadId,
+              updatedAt: currentTime,
+            },
+          });
+        return {
+          kind: "ok" as const,
+          workflowId: existing.id,
+        };
+      }
+
+      const workflowId = randomUUID();
+      await tx.insert(zeroWorkflows).values({
+        id: workflowId,
+        orgId: args.orgId,
+        agentId: args.agentId,
+        name,
+        visibility: "private",
+        instruction: MAIL_FOLLOW_UP_WORKFLOW_INSTRUCTION,
+        ownerUserId: args.userId,
+        displayName: MAIL_FOLLOW_UP_WORKFLOW_DISPLAY_NAME,
+        description: MAIL_FOLLOW_UP_WORKFLOW_DESCRIPTION,
+        createdBy: args.userId,
+        updatedBy: args.userId,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+      });
+      await tx.insert(workflowUserAutomationThreads).values({
+        orgId: args.orgId,
+        userId: args.userId,
+        workflowId,
+        chatThreadId: args.chatThreadId,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+      });
+      return { kind: "ok" as const, workflowId };
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return result;
+    }
+
+    // Keep the fixed workflow executable and repair a prior partial setup if
+    // storage upload failed after its database row was created.
+    await set(
+      uploadVolumeServerSide$,
+      {
+        orgId: args.orgId,
+        storageName: getCustomSkillStorageName(result.workflowId),
+        files: [
+          {
+            path: "SKILL.md",
+            content: synthesizeWorkflowSkillMd({
+              name,
+              description: MAIL_FOLLOW_UP_WORKFLOW_DESCRIPTION,
+              instruction: MAIL_FOLLOW_UP_WORKFLOW_INSTRUCTION,
+            }),
+          },
+        ],
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return { kind: "ok", workflowId: result.workflowId };
+  },
+);
+
+function mailFollowUpEventConfig(
+  draft: ZeroMailDraft,
+): GmailNewMessageEventConfig | null {
+  const recipients = Array.from(
+    new Set([...draft.to, ...draft.cc, ...draft.bcc]),
+  );
+  if (recipients.length === 0) {
+    return null;
+  }
+  const subject = draft.subject.trim();
+  return {
+    provider: "gmail",
+    event: "new_message",
+    threadId: draft.gmailThreadId,
+    match: {
+      from: { containsAny: recipients },
+      ...(subject ? { subject: { contains: subject } } : {}),
+    },
+  };
+}
+
+function existingMailFollowUpResult(
+  row: MailDraftRow,
+): ZeroMailFollowUpSetupResult | null {
+  if (!row.followUpAutomationId) {
+    return null;
+  }
+  return {
+    kind: "ok",
+    mailDraftId: row.id,
+    automationId: row.followUpAutomationId,
+    chatThreadId: row.chatThreadId,
+    messageSeqId: undefined,
+  };
+}
+
+const linkMailFollowUp$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly mailDraftId: string;
+      readonly automationId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ZeroMailFollowUpSetupResult> => {
+    const result = await set(writeDb$).transaction(async (tx) => {
+      const [source] = await tx
+        .select({
+          mailDraftId: mailDrafts.id,
+          chatThreadId: chatThreads.id,
+          followUpAutomationId: mailDrafts.followUpAutomationId,
+        })
+        .from(mailDrafts)
+        .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
+        .innerJoin(
+          agentComposes,
+          eq(agentComposes.id, chatThreads.agentComposeId),
+        )
+        .where(
+          and(
+            eq(mailDrafts.id, args.mailDraftId),
+            eq(chatThreads.userId, args.userId),
+            eq(agentComposes.orgId, args.orgId),
+            eq(mailDrafts.status, "sent"),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!source) {
+        return {
+          kind: "not_found" as const,
+          message: "Sent email not found",
+        };
+      }
+      if (
+        source.followUpAutomationId !== null &&
+        source.followUpAutomationId !== args.automationId
+      ) {
+        return {
+          kind: "conflict" as const,
+          message: "Mail follow-up is already linked to another automation",
+        };
+      }
+      if (source.followUpAutomationId === args.automationId) {
+        return {
+          kind: "ok" as const,
+          mailDraftId: source.mailDraftId,
+          automationId: args.automationId,
+          chatThreadId: source.chatThreadId,
+          messageSeqId: undefined,
+        };
+      }
+
+      await tx
+        .update(mailDrafts)
+        .set({
+          followUpAutomationId: args.automationId,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(mailDrafts.id, source.mailDraftId));
+      const message = await insertChatEvent(tx, {
+        chatThreadId: source.chatThreadId,
+        eventType: "output.message",
+        content: MAIL_FOLLOW_UP_CONFIRMATION,
+      });
+      if (!message) {
+        throw new Error("Failed to append mail follow-up confirmation");
+      }
+      await touchChatThreadLastMessageAt(
+        tx,
+        source.chatThreadId,
+        message.createdAt,
+      );
+      return {
+        kind: "ok" as const,
+        mailDraftId: source.mailDraftId,
+        automationId: args.automationId,
+        chatThreadId: source.chatThreadId,
+        messageSeqId: message.seqId,
+      };
+    });
+    signal.throwIfAborted();
+    return result;
+  },
+);
+
+export const setupZeroMailFollowUp$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly memberRole: string;
+      readonly mailDraftId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ZeroMailFollowUpSetupResult> => {
+    const row = await loadOwnedMailDraft({
+      db: get(db$),
+      orgId: args.orgId,
+      userId: args.userId,
+      mailDraftId: args.mailDraftId,
+    });
+    signal.throwIfAborted();
+    if (!row || row.status !== "sent") {
+      return { kind: "not_found", message: "Sent email not found" };
+    }
+    const existingFollowUp = existingMailFollowUpResult(row);
+    if (existingFollowUp) {
+      return existingFollowUp;
+    }
+
+    const draftResult = await set(
+      getZeroMailDraft$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        mailDraftId: args.mailDraftId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (draftResult.kind !== "ok") {
+      return draftResult;
+    }
+    if (draftResult.mailDraft.accessStatus === "reconnect") {
+      return reconnectMailError;
+    }
+    const eventConfig = mailFollowUpEventConfig(draftResult.mailDraft);
+    if (!eventConfig) {
+      return noMailFollowUpRecipientsError;
+    }
+
+    const workflow = await set(
+      ensureMailFollowUpWorkflow$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: row.agentId,
+        chatThreadId: row.chatThreadId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (workflow.kind !== "ok") {
+      return workflow;
+    }
+
+    const writeDb = set(writeDb$);
+    const [existing] = await writeDb
+      .select({
+        id: zeroWorkflowAutomations.id,
+        enabled: zeroWorkflowAutomations.enabled,
+      })
+      .from(zeroWorkflowAutomations)
+      .where(
+        and(
+          eq(zeroWorkflowAutomations.orgId, args.orgId),
+          eq(zeroWorkflowAutomations.workflowId, workflow.workflowId),
+          eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+          eq(zeroWorkflowAutomations.kind, "event"),
+          eq(zeroWorkflowAutomations.eventType, "gmail-new-message"),
+          eq(zeroWorkflowAutomations.eventConfig, eventConfig),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    const member = { userId: args.userId, role: args.memberRole };
+    let automationId: string;
+    if (existing) {
+      if (!existing.enabled) {
+        const enabled = await set(
+          enableWorkflowAutomation$,
+          {
+            orgId: args.orgId,
+            member,
+            automationId: existing.id,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        if (enabled.kind !== "ok") {
+          return mailFollowUpAutomationFailure(enabled);
+        }
+      }
+      automationId = existing.id;
+    } else {
+      const created = await set(
+        createWorkflowAutomation$,
+        {
+          orgId: args.orgId,
+          member,
+          workflowId: workflow.workflowId,
+          eventType: "gmail-new-message",
+          eventConfig,
+          enabled: true,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (created.kind !== "ok") {
+        return mailFollowUpAutomationFailure(created);
+      }
+      automationId = created.summary.id;
+    }
+
+    return await set(
+      linkMailFollowUp$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        mailDraftId: args.mailDraftId,
+        automationId,
+      },
+      signal,
     );
   },
 );

@@ -977,12 +977,20 @@ function MailDraftDetail({
   const pageSignal = useGet(pageSignal$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
-  const [followUpLoadable, followUp] = useLoadableSet(signals.followUp$);
+  const localFollowUpState = useGet(signals.followUpState$);
+  const followUp = useSet(signals.followUp$);
+  const followUpState =
+    localFollowUpState === "submitting"
+      ? localFollowUpState
+      : (draft.followUp?.status ?? localFollowUpState);
+  const followUpSubmitting = followUpState === "submitting";
+  const followUpActive = followUpState === "active";
+  const followUpPaused = followUpState === "paused";
   const active = draft.status === "draft";
   const pending =
     deleteLoadable.state === "loading" ||
     sendLoadable.state === "loading" ||
-    followUpLoadable.state === "loading";
+    followUpSubmitting;
   const openInGmail = draft.gmailThreadId
     ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(draft.gmailThreadId)}`
     : null;
@@ -1056,15 +1064,23 @@ function MailDraftDetail({
             <Button
               type="button"
               size="sm"
-              disabled={pending}
+              disabled={pending || followUpState !== "idle"}
               onClick={onFollowUp}
             >
-              {followUpLoadable.state === "loading" ? (
+              {followUpSubmitting ? (
                 <IconLoader2 size={15} className="animate-spin" />
+              ) : followUpActive ? (
+                <IconCircleCheck size={15} />
               ) : (
                 <IconRoute size={15} />
               )}
-              Follow up
+              {followUpActive
+                ? "Tracking replies"
+                : followUpPaused
+                  ? "Tracking paused"
+                  : followUpSubmitting
+                    ? "Setting up…"
+                    : "Follow up"}
             </Button>
           ) : null}
         </div>

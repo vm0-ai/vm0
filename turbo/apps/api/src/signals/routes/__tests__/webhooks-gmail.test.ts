@@ -644,6 +644,24 @@ describe("POST /api/webhooks/gmail", () => {
           eventConfig: {
             provider: "gmail",
             event: "new_message",
+            threadId: "gmail-thread-1",
+            match: { subject: { contains: "invoice" } },
+          },
+        },
+      }),
+      [201],
+    );
+    const unrelatedThread = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            threadId: "gmail-thread-2",
             match: { subject: { contains: "invoice" } },
           },
         },
@@ -681,6 +699,11 @@ describe("POST /api/webhooks/gmail", () => {
         lastRunAt: expect.any(String),
       },
     );
+    await expect(
+      readAutomation(actor, unrelatedThread.body.id),
+    ).resolves.toMatchObject({
+      lastRunAt: null,
+    });
     const [runId] = await workflowRunIds(actor, chatThreadId);
     if (!runId) {
       throw new Error("Expected a dispatched Gmail workflow run");

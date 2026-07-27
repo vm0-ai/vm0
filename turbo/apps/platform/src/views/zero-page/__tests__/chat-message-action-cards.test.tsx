@@ -1,8 +1,5 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import {
-  chatEventsContract,
-  chatThreadMessagesContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
@@ -245,14 +242,6 @@ async function confirmPermissionAction(
 }
 
 const MAIL_FOLLOW_UP_SUBJECT = "July receipts";
-const MAIL_FOLLOW_UP_PROMPT = [
-  `Set up reply tracking for the email I just sent to recipient@example.com with subject "${MAIL_FOLLOW_UP_SUBJECT}".`,
-  "Use the workflow-setup skill and check for an existing matching workflow automation first.",
-  "If none exists, create and enable a gmail-new-message automation narrowed to messages from these recipients and this subject, bound to this current chat thread.",
-  "When a reply arrives, summarize it and remind me here.",
-  "This message is my approval to create and enable the automation, so do not ask me to confirm again.",
-  "Never send an email automatically.",
-].join(" ");
 
 async function waitForMailDraftCard(): Promise<HTMLElement> {
   let card: HTMLElement | undefined;
@@ -278,12 +267,20 @@ function mailFollowUpScenario(args: {
   readonly threadId: string;
   readonly mailDraftId: string;
   readonly sentPrompts: { prompt: string; threadId?: string }[];
+  readonly followUpRequests: string[];
 } {
   const { threadId, mailDraftId } = args;
   const createdAt = "2026-07-14T10:00:00.000Z";
   const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
   const sentPrompts: { prompt: string; threadId?: string }[] = [];
+  const followUpRequests: string[] = [];
   let sent = false;
+  let followUp:
+    | {
+        readonly status: "active";
+        readonly automationId: string;
+      }
+    | undefined;
   const mailDraft = (status: "draft" | "sent") => {
     return {
       version: 3 as const,
@@ -303,6 +300,7 @@ function mailFollowUpScenario(args: {
         ? {
             sentGmailMessageId: "gmail-sent-message-id",
             sentAt: "2026-07-14T10:01:00.000Z",
+            ...(followUp ? { followUp } : {}),
           }
         : {}),
       references: [],
@@ -330,6 +328,17 @@ function mailFollowUpScenario(args: {
       mailDraft: mailDraft("sent"),
     });
   });
+  context.mocks.api(zeroMailContract.createFollowUp, ({ params, respond }) => {
+    followUpRequests.push(params.mailDraftId);
+    followUp = {
+      status: "active",
+      automationId: "c0000000-0000-4000-a000-000000000044",
+    };
+    return respond(200, {
+      mailDraftId,
+      automationId: followUp.automationId,
+    });
+  });
   mockChatLifecycle(context, {
     threadId,
     threadTitle: "Mail follow-up",
@@ -347,7 +356,12 @@ function mailFollowUpScenario(args: {
     },
   });
 
-  return { threadId, mailDraftId, sentPrompts };
+  return {
+    threadId,
+    mailDraftId,
+    sentPrompts,
+    followUpRequests,
+  };
 }
 
 function selectMailText(element: HTMLElement): void {
@@ -939,9 +953,13 @@ describe("chat message action cards", () => {
     await user.click(await waitForButtonByText("Follow up", sidebar));
 
     await waitFor(() => {
-      expect(scenario.sentPrompts).toStrictEqual([
-        { prompt: MAIL_FOLLOW_UP_PROMPT, threadId: scenario.threadId },
-      ]);
+      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
+      expect(scenario.sentPrompts).toStrictEqual([]);
+      expect(
+        queryAllByRoleFast("button").filter((button) => {
+          return button.textContent?.trim() === "Tracking replies";
+        }),
+      ).toHaveLength(2);
     });
   });
 
@@ -964,30 +982,22 @@ describe("chat message action cards", () => {
     await user.click(await waitForButtonByText("Follow up", sidebar));
 
     await waitFor(() => {
-      expect(scenario.sentPrompts).toStrictEqual([
-        { prompt: MAIL_FOLLOW_UP_PROMPT, threadId: scenario.threadId },
-      ]);
+      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
+      expect(scenario.sentPrompts).toStrictEqual([]);
     });
   });
 
-  it("keeps the email sent when the follow-up message cannot be delivered", async () => {
+  it("keeps the email sent when reply tracking cannot be enabled", async () => {
     const user = userEvent.setup({ delay: null });
     const scenario = mailFollowUpScenario({
       threadId: "c0000000-0000-4000-a000-000000000061",
       mailDraftId: "c0000000-0000-4000-a000-000000000062",
     });
-    // This case overrides the chat send route, so scenario.sentPrompts stays
-    // empty by construction; rejectedPrompts is what records the attempt.
-    const rejectedPrompts: {
-      prompt: string | undefined;
-      threadId: string | undefined;
-    }[] = [];
-    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
-      rejectedPrompts.push({ prompt: body.prompt, threadId: body.threadId });
-      return respond(402, {
+    context.mocks.api(zeroMailContract.createFollowUp, ({ respond }) => {
+      return respond(409, {
         error: {
-          message: "Insufficient credits",
-          code: "INSUFFICIENT_CREDITS",
+          message: "Failed to enable reply tracking",
+          code: "CONFLICT",
         },
       });
     });
@@ -1010,11 +1020,11 @@ describe("chat message action cards", () => {
     });
     await user.click(await waitForButtonByText("Follow up", sidebar));
     await waitFor(() => {
-      expect(rejectedPrompts).toStrictEqual([
-        { prompt: MAIL_FOLLOW_UP_PROMPT, threadId: scenario.threadId },
-      ]);
+      expect(
+        screen.getByText("Failed to enable reply tracking"),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByText("Insufficient credits")).toBeInTheDocument();
+    expect(scenario.sentPrompts).toStrictEqual([]);
   });
 
   it("does not offer follow-up when the email fails to send", async () => {
@@ -1084,9 +1094,8 @@ describe("chat message action cards", () => {
     await user.click(await waitForButtonByText("Follow up", document));
 
     await waitFor(() => {
-      expect(scenario.sentPrompts).toStrictEqual([
-        { prompt: MAIL_FOLLOW_UP_PROMPT, threadId: scenario.threadId },
-      ]);
+      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
+      expect(scenario.sentPrompts).toStrictEqual([]);
     });
   });
 
