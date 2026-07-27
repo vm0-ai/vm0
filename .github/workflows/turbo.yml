@@ -168,7 +168,6 @@ jobs:
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect.outputs.migration-changed }}
-      migration-added: ${{ steps.detect.outputs.migration-added }}
       crates-changed: ${{ steps.detect.outputs.crates-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect.outputs.e2e-changed }}
@@ -236,16 +235,6 @@ jobs:
           else
             echo "No migration, schema, or JSONB contract changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if git diff --diff-filter=A --name-only "$BASE_REF" HEAD -- \
-            'turbo/packages/db/src/migrations/*.sql' |
-            grep -q .; then
-            echo "New migration SQL detected"
-            echo "migration-added=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No new migration SQL"
-            echo "migration-added=false" >> "$GITHUB_OUTPUT"
           fi
 
           if printf '%s\n' "$CHANGED_FILES" | grep -q "^crates/"; then
@@ -627,23 +616,31 @@ jobs:
       - name: Check JSONB Contract Usage
         working-directory: turbo/packages/db
         run: pnpm lint:jsonb-contracts
-      - name: Check Migration Immutability
+      - name: Check Migration History Integrity
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          # Check that migration SQL files and snapshots are only added, never modified or deleted
-          CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
-            'turbo/packages/db/src/migrations/*.sql' \
+          # SQL edits are allowed so a pending migration can be corrected after
+          # a production smoke failure. Deletions and snapshot rewrites still
+          # break the migration chain and must use a new migration instead.
+          DELETED_MIGRATIONS=$(git diff --no-renames --diff-filter=D --name-only "$BASE_REF" -- \
+            'turbo/packages/db/src/migrations/*.sql')
+          CHANGED_SNAPSHOTS=$(git diff --no-renames --diff-filter=MD --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/meta/*_snapshot.json')
 
           # _journal.json is modified on every new migration, so only flag deletion
-          DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
+          DELETED_JOURNAL=$(git diff --no-renames --diff-filter=D --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/meta/_journal.json')
 
           FAILED=0
-          if [ -n "$CHANGED" ]; then
-            echo "::error::Migration files must not be modified or deleted once on main:"
-            echo "$CHANGED"
+          if [ -n "$DELETED_MIGRATIONS" ]; then
+            echo "::error::Migration SQL files must not be deleted:"
+            echo "$DELETED_MIGRATIONS"
+            FAILED=1
+          fi
+          if [ -n "$CHANGED_SNAPSHOTS" ]; then
+            echo "::error::Migration snapshots must not be modified or deleted:"
+            echo "$CHANGED_SNAPSHOTS"
             FAILED=1
           fi
           if [ -n "$DELETED_JOURNAL" ]; then
@@ -653,8 +650,7 @@ jobs:
           fi
           if [ "$FAILED" -eq 1 ]; then
             echo ""
-            echo "These files may already be deployed to production."
-            echo "Create a NEW migration instead of modifying existing ones."
+            echo "Create a NEW migration instead of breaking existing migration history."
             exit 1
           fi
       - name: Test Migration Consistency
@@ -672,7 +668,7 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       (
-        needs.prepare.outputs.migration-added == 'true' ||
+        needs.prepare.outputs.migration-changed == 'true' ||
         github.head_ref == 'ci/pr-production-migration-smoke'
       )
     runs-on: ubuntu-latest
