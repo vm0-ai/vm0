@@ -7,7 +7,6 @@ import {
   type State,
 } from "ccstate";
 import { resetSignal, tapError } from "../utils.ts";
-import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import type {
@@ -531,10 +530,8 @@ export function createDraftSignals(): DraftSignals {
 }
 
 // ---------------------------------------------------------------------------
-// Draft storage — per-thread map + talk-page singleton
+// Draft storage — talk-page singleton
 // ---------------------------------------------------------------------------
-
-const internalDraftMap$ = state<Record<string, DraftSignals>>({});
 
 const internalTalkDraft$ = state(createDraftSignals());
 
@@ -544,92 +541,4 @@ export const talkDraft$ = computed((get) => {
 
 export const setTalkDraft$ = command(({ set }, draft: DraftSignals) => {
   set(internalTalkDraft$, draft);
-});
-
-/**
- * The current draft for the active route.
- * Returns `talkDraft$` when there is no chatThreadId (talk page / landing),
- * or the thread's draft from the map.
- */
-const currentDraft$ = computed((get) => {
-  const threadId = get(currentChatThreadId$);
-  if (!threadId) {
-    return get(talkDraft$);
-  }
-  return get(internalDraftMap$)[threadId] ?? null;
-});
-
-const zeroChatInput$ = computed((get) => {
-  const draft = get(currentDraft$);
-  return draft ? get(draft.input$) : "";
-});
-
-export const zeroChatAttachments$ = computed((get) => {
-  const draft = get(currentDraft$);
-  return draft ? get(draft.attachments$) : [];
-});
-
-export const uploadZeroAttachment$ = command(
-  async ({ get, set }, file: File, signal: AbortSignal) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      await set(draft.uploadAttachment$, file, signal);
-    }
-  },
-);
-
-export const restoreZeroAttachments$ = command(
-  ({ get, set }, attachments: PersistedAttachment[]) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      set(draft.restoreAttachments$, attachments);
-    }
-  },
-);
-
-export const removeZeroAttachment$ = command(
-  ({ get, set }, attachment: ZeroChatAttachment) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      set(draft.removeAttachment$, attachment);
-    }
-  },
-);
-
-export const zeroDragOver$ = computed((get) => {
-  const draft = get(currentDraft$);
-  return draft ? get(draft.dragOver$) : false;
-});
-
-export const setZeroDragOver$ = command(({ get, set }, value: boolean) => {
-  const draft = get(currentDraft$);
-  if (draft) {
-    set(draft.setDragOver$, value);
-  }
-});
-
-export const appendZeroChatInput$ = command(({ get, set }, value: string) => {
-  const draft = get(currentDraft$);
-  if (draft) {
-    set(draft.appendInput$, value);
-  }
-});
-
-export const setZeroChatInputSyncTarget$ = command(
-  ({ get, set }, target: DraftInputSyncTarget | null) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      set(draft.setInputSyncTarget$, target);
-    }
-  },
-);
-
-/**
- * True when the current draft has content to send: either non-empty text or
- * at least one attachment. Used as single source of truth for send enablement.
- */
-export const canSendZeroChat$ = computed((get) => {
-  return (
-    get(zeroChatInput$).trim() !== "" || get(zeroChatAttachments$).length > 0
-  );
 });

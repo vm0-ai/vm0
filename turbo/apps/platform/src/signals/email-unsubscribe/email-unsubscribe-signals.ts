@@ -4,7 +4,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 
-export type EmailUnsubscribeStatus = "idle" | "submitting" | "done" | "error";
+type EmailUnsubscribeStatus = "idle" | "submitting" | "done" | "error";
 
 export const emailUnsubscribeToken$ = computed((get) => {
   return get(searchParams$).get("token") ?? "";

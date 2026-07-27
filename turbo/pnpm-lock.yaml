@@ -91,9 +91,6 @@ importers:
       '@vitest/ui':
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
-      '@vm0/firewalls-generator':
-        specifier: workspace:*
-        version: link:packages/firewalls-generator
       dotenv-cli:
         specifier: ^11.0.0
         version: 11.0.0
@@ -955,34 +952,6 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(happy-dom@20.9.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/firewalls-generator:
-    dependencies:
-      '@vm0/api-contracts':
-        specifier: workspace:*
-        version: link:../api-contracts
-      '@vm0/connectors':
-        specifier: workspace:*
-        version: link:../connectors
-    devDependencies:
-      '@types/node':
-        specifier: 24.3.0
-        version: 24.3.0
-      '@vm0/typescript-config':
-        specifier: workspace:*
-        version: link:../typescript-config
-      tsx:
-        specifier: ^4.19.4
-        version: 4.21.0
-      typescript:
-        specifier: 6.0.3
-        version: 6.0.3
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(happy-dom@20.9.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
-      yaml:
-        specifier: '>=2.8.3'
-        version: 2.8.3
 
   packages/proxy: {}
 

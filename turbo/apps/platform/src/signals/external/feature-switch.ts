@@ -68,7 +68,7 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   );
 });
 
-export const reloadFeatureSwitch$ = command(
+const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const identity = await get(authenticatedIdentity$);
     signal.throwIfAborted();

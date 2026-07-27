@@ -1,11 +1,3 @@
-import {
-  CONNECTOR_TYPE_KEYS,
-  type ConnectorAuthMethodConfig,
-  type ConnectorRegistryAuthMethodId,
-  type ConnectorType,
-  CONNECTOR_TYPES,
-  connectorDisplayCategoryMetadataForItems,
-} from "@vm0/connectors/connectors";
 import type {
   ConnectorAuthMethodId,
   ConnectorRef,
@@ -22,7 +14,6 @@ import {
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogPermissionDetail,
-  type PublicConnectorCatalogPermissionSummary,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
@@ -34,25 +25,16 @@ import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import {
-  getAvailableConnectorAuthMethodIds,
-  getConnectorAuthMethod,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorGenerationTypes,
-  getConnectorTags,
-  hasRequiredConnectorAuthMethodScopes,
-  type ConnectorFeatureStates,
-} from "@vm0/connectors/connector-utils";
-import {
-  getFirewallPermissionSummary,
-  loadFirewallPermissionMetadata,
-} from "@vm0/connectors/firewall-metadata";
-import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../../signals/external/feature-switch.ts";
 import { mockApi } from "../msw-contract.ts";
-
-const MOCK_CONNECTOR_TYPE_SET = new Set<string>(CONNECTOR_TYPE_KEYS);
+import {
+  testConnectorCatalogCategoryMetadata,
+  testConnectorCatalogDefinitions,
+  testConnectorPermissionDetails,
+  testConnectorRefs,
+  type TestConnectorCatalogDefinition,
+} from "./connector-catalog-fixtures.ts";
 
 let mockConnectors: ConnectorResponse[] = [];
 type MockOauthDeviceAuthSessionStartResponse = Omit<
@@ -186,85 +168,17 @@ function resetMockOauthDeviceAuth(): void {
   mockExternalCodeSessionStartResponse = undefined;
 }
 
-function mockFeatureStates(): ConnectorFeatureStates {
+function mockFeatureStates(): Readonly<Record<string, boolean>> {
   const raw = globalThis.localStorage?.getItem(FEATURE_SWITCH_CACHE_KEY);
   return raw
     ? (JSON.parse(raw) as Record<string, boolean>)
     : getAllFeatureStates({});
 }
 
-function isMockConnectorType(type: string): type is ConnectorType {
-  return MOCK_CONNECTOR_TYPE_SET.has(type);
-}
-
-function mockPermissionSummary(
-  type: ConnectorType,
-): PublicConnectorCatalogPermissionSummary {
-  const summary = getFirewallPermissionSummary(type);
-  return {
-    hasPermissions: summary?.hasPermissions ?? false,
-    permissionCount: summary?.permissionCount ?? 0,
-    hasCategories: summary?.hasCategories ?? false,
-    hasDefaultPolicyOverrides: summary?.hasDefaultPolicyOverrides ?? false,
-  };
-}
-
-async function mockPermissionDetail(
+function mockPermissionDetail(
   connectorRef: string,
-): Promise<PublicConnectorCatalogPermissionDetail | null> {
-  if (!isMockConnectorType(connectorRef)) {
-    return null;
-  }
-
-  const authMethods = getAvailableConnectorAuthMethodIds(
-    connectorRef,
-    mockFeatureStates(),
-    { apiAuthMethodPolicy: "include" },
-  );
-  if (authMethods.length === 0) {
-    return null;
-  }
-
-  const metadata = await loadFirewallPermissionMetadata(connectorRef);
-  if (!metadata) {
-    return null;
-  }
-
-  return {
-    connectorRef,
-    label: metadata.label,
-    icon: getStaticConnectorIconMetadata(connectorRef),
-    permissionCount: metadata.permissionCount,
-    permissions: metadata.permissions.map((permission) => {
-      return {
-        name: permission.name,
-        ...(permission.description
-          ? { description: permission.description }
-          : {}),
-      };
-    }),
-    categories: metadata.categories
-      ? {
-          categories: { ...metadata.categories.categories },
-          displayOrder: [...metadata.categories.displayOrder],
-        }
-      : null,
-    defaultPolicy: {
-      permissionDefault: metadata.defaultPolicy.permissionDefault,
-      ...(metadata.defaultPolicy.permissionOverrides
-        ? {
-            permissionOverrides: Object.fromEntries(
-              Object.entries(metadata.defaultPolicy.permissionOverrides).map(
-                ([policy, permissions]) => {
-                  return [policy, [...permissions]];
-                },
-              ),
-            ),
-          }
-        : {}),
-      unknownPolicy: metadata.defaultPolicy.unknownPolicy,
-    },
-  };
+): PublicConnectorCatalogPermissionDetail | null {
+  return testConnectorPermissionDetails.get(connectorRef) ?? null;
 }
 
 function mockConnectionForCatalogStatus(
@@ -282,78 +196,54 @@ function mockConnectionForCatalogStatus(
 }
 
 function mockSingleAuthCodeAuthMethodId(
-  type: ConnectorType,
-  authMethods: readonly ConnectorRegistryAuthMethodId[],
-): ConnectorRegistryAuthMethodId | null {
+  authMethods: readonly PublicConnectorCatalogAuthMethodDetail[],
+): ConnectorAuthMethodId | null {
   const [authMethod] = authMethods;
   if (authMethods.length !== 1 || !authMethod) {
     return null;
   }
-  return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code"
-    ? authMethod
-    : null;
+  return authMethod.grantKind === "auth-code" ? authMethod.id : null;
 }
 
 function mockConnectorAuthMethodSupportsRefresh(
-  type: ConnectorType,
-  authMethod: string,
+  definition: TestConnectorCatalogDefinition,
+  authMethod: ConnectorAuthMethodId,
 ): boolean {
-  return (
-    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
-    "refresh-token"
+  return Boolean(
+    definition.authMethods.find((method) => {
+      return method.detail.id === authMethod;
+    })?.supportsRefresh,
   );
 }
 
-function mockManualFieldsForCatalog(
-  method: ConnectorAuthMethodConfig,
-): PublicConnectorCatalogAuthMethodDetail["manualFields"] {
-  if (method.grant.kind !== "manual") {
-    return [];
-  }
-  return Object.values(method.grant.fields).map((field) => {
-    return {
-      id: field.publicId,
-      label: field.label,
-      required: field.required,
-      placeholder: field.placeholder ?? null,
-      inputType: field.storage === "variable" ? "text" : "password",
-    };
+function mockConnectorHasRequiredScopes(
+  definition: TestConnectorCatalogDefinition,
+  connector: ConnectorResponse,
+): boolean {
+  const method = definition.authMethods.find((candidate) => {
+    return candidate.detail.id === connector.authMethod;
   });
-}
-
-function mockStartOptionsForCatalog(
-  method: ConnectorAuthMethodConfig,
-): PublicConnectorCatalogAuthMethodDetail["startOptions"] {
-  if (method.grant.kind !== "device-auth") {
-    return [];
+  if (!method || method.requiredScopes.length === 0) {
+    return true;
   }
-  return Object.values(method.grant.startOptions ?? {}).map((option) => {
-    return {
-      id: option.publicId,
-      kind: option.kind,
-      label: option.label,
-      required: option.required,
-      defaultValue: option.defaultValue ?? null,
-      options: option.options.map((choice) => {
-        return { value: choice.value, label: choice.label };
-      }),
-    };
+  const storedScopes = connector.oauthScopes;
+  if (!storedScopes) {
+    return false;
+  }
+  const storedScopeSet = new Set(storedScopes);
+  return method.requiredScopes.every((scope) => {
+    return storedScopeSet.has(scope);
   });
 }
 
 function mockConnectorCatalogStatusItem(
-  type: ConnectorType,
-  authMethods: readonly ConnectorRegistryAuthMethodId[],
+  definition: TestConnectorCatalogDefinition,
+  authMethods: readonly PublicConnectorCatalogAuthMethodDetail[],
   connector: ConnectorResponse | null,
 ): PublicConnectorCatalogStatusItem {
-  const config = CONNECTOR_TYPES[type];
   const scopeMismatch =
     connector !== null &&
-    !hasRequiredConnectorAuthMethodScopes(
-      type,
-      connector.authMethod,
-      connector.oauthScopes,
-    );
+    !mockConnectorHasRequiredScopes(definition, connector);
   let connectionStatus: PublicConnectorCatalogConnectionStatus =
     "not-connected";
   if (connector !== null) {
@@ -366,42 +256,25 @@ function mockConnectorCatalogStatusItem(
   }
 
   return {
-    connectorRef: type,
-    label: config.label,
-    description: config.helpText,
-    icon: getStaticConnectorIconMetadata(type),
-    category: config.category,
-    generation: [...getConnectorGenerationTypes(type)],
-    tags: [...getConnectorTags(type)],
-    authMethods: authMethods.flatMap((authMethod) => {
-      const method = getConnectorAuthMethod(type, authMethod);
-      return method
-        ? [
-            {
-              id: authMethod,
-              label: method.label,
-              description: method.helpText ?? null,
-              grantKind: method.grant.kind,
-              manualFields: mockManualFieldsForCatalog(method),
-              startOptions: mockStartOptionsForCatalog(method),
-            },
-          ]
-        : [];
-    }),
-    permissionSummary: mockPermissionSummary(type),
+    connectorRef: definition.connectorRef,
+    label: definition.label,
+    description: definition.description,
+    icon: definition.icon,
+    category: definition.category,
+    generation: [...definition.generation],
+    tags: [...definition.tags],
+    authMethods: [...authMethods],
+    permissionSummary: definition.permissionSummary,
     connection: mockConnectionForCatalogStatus(connector),
     connected: connector !== null,
     connectionStatus,
     scopeMismatch,
     authMethodSupportsRefresh:
       connector !== null &&
-      mockConnectorAuthMethodSupportsRefresh(type, connector.authMethod),
+      mockConnectorAuthMethodSupportsRefresh(definition, connector.authMethod),
     tokenExpiresAt: connector?.tokenExpiresAt ?? null,
-    singleAuthCodeAuthMethodId: mockSingleAuthCodeAuthMethodId(
-      type,
-      authMethods,
-    ),
-    connectNotice: null,
+    singleAuthCodeAuthMethodId: mockSingleAuthCodeAuthMethodId(authMethods),
+    connectNotice: definition.connectNotice,
   };
 }
 
@@ -412,20 +285,21 @@ function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
     }),
   );
   const featureStates = mockFeatureStates();
-  return CONNECTOR_TYPE_KEYS.flatMap((type) => {
-    const authMethods = getAvailableConnectorAuthMethodIds(
-      type,
-      featureStates,
-      { apiAuthMethodPolicy: "include" },
-    );
+  return testConnectorCatalogDefinitions.flatMap((definition) => {
+    const authMethods = definition.authMethods.flatMap((method) => {
+      return method.featureSwitch === undefined ||
+        featureStates[method.featureSwitch] === true
+        ? [method.detail]
+        : [];
+    });
     if (authMethods.length === 0) {
       return [];
     }
     return [
       mockConnectorCatalogStatusItem(
-        type,
+        definition,
         authMethods,
-        connectorsByType.get(type) ?? null,
+        connectorsByType.get(definition.connectorRef) ?? null,
       ),
     ];
   });
@@ -435,7 +309,7 @@ export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {
       connectors: mockConnectors,
-      configuredTypes: [...CONNECTOR_TYPE_KEYS],
+      configuredTypes: [...testConnectorRefs],
       connectorProvidedBindings: [],
     });
   }),
@@ -444,7 +318,7 @@ export const apiConnectorsHandlers = [
     const connectors = mockConnectorCatalogStatus();
     return respond(200, {
       connectors,
-      categoryMetadata: connectorDisplayCategoryMetadataForItems(connectors),
+      categoryMetadata: testConnectorCatalogCategoryMetadata,
     });
   }),
 
@@ -490,18 +364,15 @@ export const apiConnectorsHandlers = [
     });
   }),
 
-  mockApi(
-    zeroConnectorCatalogContract.permissions,
-    async ({ params, respond }) => {
-      const permissions = await mockPermissionDetail(params.connectorRef);
-      if (!permissions) {
-        return respond(404, {
-          error: { message: "Connector not found", code: "NOT_FOUND" },
-        });
-      }
-      return respond(200, { permissions });
-    },
-  ),
+  mockApi(zeroConnectorCatalogContract.permissions, ({ params, respond }) => {
+    const permissions = mockPermissionDetail(params.connectorRef);
+    if (!permissions) {
+      return respond(404, {
+        error: { message: "Connector not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, { permissions });
+  }),
 
   mockApi(zeroConnectorsByTypeContract.delete, ({ params, respond }) => {
     const type = params.type;

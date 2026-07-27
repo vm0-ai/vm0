@@ -422,7 +422,7 @@ export const focusChatThreadContainer$ = command(
   },
 );
 
-export const scrollCurrentThread$ = command(
+const scrollCurrentThread$ = command(
   (
     { set },
     thread: ChatThreadSignals,

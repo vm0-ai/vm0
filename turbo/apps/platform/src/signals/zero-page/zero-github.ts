@@ -18,7 +18,7 @@ interface GithubIntegrationMissingData extends GithubInstallationNotFoundRespons
   readonly connectUrl: string;
 }
 
-export type GithubIntegrationData =
+type GithubIntegrationData =
   | (GithubInstallationResponse & { readonly isInstalled: true })
   | GithubIntegrationMissingData;
 

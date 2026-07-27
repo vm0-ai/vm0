@@ -400,7 +400,7 @@ function PermissionRow({
   );
 }
 
-export function PermissionListSkeleton() {
+function PermissionListSkeleton() {
   return (
     <div className="mx-auto max-w-[900px]">
       <div className="zero-card animate-pulse">
@@ -427,7 +427,7 @@ export function PermissionListSkeleton() {
   );
 }
 
-export function PermissionGrantsError() {
+function PermissionGrantsError() {
   return (
     <div className="mx-auto max-w-[900px]">
       <div className="zero-card px-5 py-4 text-sm text-destructive">
@@ -437,7 +437,7 @@ export function PermissionGrantsError() {
   );
 }
 
-export function NoConnectedConnectors() {
+function NoConnectedConnectors() {
   return (
     <>
       <div className="zero-card py-8 flex flex-col items-center gap-3">
@@ -462,7 +462,7 @@ export function NoConnectedConnectors() {
   );
 }
 
-export function ConnectedConnectorPermissions({
+function ConnectedConnectorPermissions({
   filteredConnectors,
   authorizedSet,
   search,
@@ -583,7 +583,7 @@ export function ConnectedConnectorPermissions({
   );
 }
 
-export function AgentPermissionsDrawer({
+function AgentPermissionsDrawer({
   targetId,
   targetKind = "agent",
   connectorRef,
