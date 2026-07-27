@@ -12,6 +12,7 @@
     {
       "files": [
         "eslint.config.mjs",
+        "scripts/bench-p90-reporter.ts",
         "src/index.ts",
         "vite.config.ts",
         "vitest.config.ts"
