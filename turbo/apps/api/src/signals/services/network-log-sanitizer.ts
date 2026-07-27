@@ -4,6 +4,7 @@ import {
   modelCatalogCacheMillisecondsSchema,
   modelCatalogCacheStatusSchema,
   modelCatalogCacheUpstreamEncodingSchema,
+  modelCatalogPrefetchRoleSchema,
   networkLogActionSchema,
   networkLogEntrySchema,
   type NetworkLogEntry,
@@ -80,6 +81,13 @@ function modelCatalogCacheUpstreamEncodingValue(
   value: unknown,
 ): NetworkLogEntry["model_catalog_cache_upstream_encoding"] | undefined {
   const parsed = modelCatalogCacheUpstreamEncodingSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function modelCatalogPrefetchRoleValue(
+  value: unknown,
+): NetworkLogEntry["model_catalog_prefetch_role"] | undefined {
+  const parsed = modelCatalogPrefetchRoleSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -220,6 +228,9 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
       ),
     model_catalog_cache_eviction_count: modelCatalogCacheEvictionCountValue(
       event.model_catalog_cache_eviction_count,
+    ),
+    model_catalog_prefetch_role: modelCatalogPrefetchRoleValue(
+      event.model_catalog_prefetch_role,
     ),
     dns_event: stringValue(event.dns_event),
     dns_query_type: stringValue(event.dns_query_type),

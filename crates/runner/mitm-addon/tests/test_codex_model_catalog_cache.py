@@ -1,5 +1,6 @@
 """Integration coverage for the runner-process Codex model catalog cache."""
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -127,8 +128,8 @@ def _catalog_response(
     )
 
 
-def _prepare_miss(flow: http.HTTPFlow) -> None:
-    catalog_cache.prepare_request(flow, request_end_stream=True)
+async def _prepare_miss(flow: http.HTTPFlow) -> None:
+    await catalog_cache.prepare_request(flow, request_end_stream=True)
     assert flow.response is None
     assert flow.request.headers["Accept-Encoding"] == "br"
     assert "If-None-Match" not in flow.request.headers
@@ -149,22 +150,22 @@ def _finish_response(flow: http.HTTPFlow) -> dict[str, object]:
     return telemetry
 
 
-def _install_catalog(
+async def _install_catalog(
     flow: http.HTTPFlow,
     *,
     body: bytes = _CATALOG_BODY,
     etag: str = _CATALOG_ETAG,
     encoding: str = "br",
 ) -> dict[str, object]:
-    _prepare_miss(flow)
+    await _prepare_miss(flow)
     flow.response = _catalog_response(body=body, etag=etag, encoding=encoding)
     return _finish_response(flow)
 
 
-def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_flow):
+async def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_flow):
     with patch.object(catalog_cache.time, "monotonic", return_value=100.0) as monotonic:
         cold = _catalog_flow(real_flow)
-        assert _install_catalog(cold) == {
+        assert await _install_catalog(cold) == {
             "model_catalog_cache_status": "model_catalog_cold_stored",
             "model_catalog_cache_validation_latency_ms": 0,
             "model_catalog_cache_upstream_encoding": "br",
@@ -172,7 +173,7 @@ def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_flow):
 
         monotonic.return_value = 150.0
         hit = _catalog_flow(real_flow)
-        catalog_cache.prepare_request(hit, request_end_stream=True)
+        await catalog_cache.prepare_request(hit, request_end_stream=True)
         assert hit.response is not None
         assert hit.response.status_code == 200
         assert hit.response.content == _CATALOG_BODY
@@ -193,32 +194,33 @@ def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_flow):
             _catalog_flow(real_flow, version="0.146.0"),
         ]
         for isolated in isolated_flows:
-            _prepare_miss(isolated)
+            await _prepare_miss(isolated)
 
         monotonic.return_value = 161.0
         expired = _catalog_flow(real_flow)
-        _prepare_miss(expired)
+        await _prepare_miss(expired)
 
         for flow in (*isolated_flows, expired):
             catalog_cache.handle_error(flow)
 
 
-def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
+async def test_brotli_miss_without_length_is_cached_and_passed_through(real_flow):
     brotli_flow = _catalog_flow(real_flow)
-    _prepare_miss(brotli_flow)
+    await _prepare_miss(brotli_flow)
     brotli_flow.response = _catalog_response(encoding="br")
-    compressed_length = len(brotli_flow.response.raw_content or b"")
+    compressed_body = brotli_flow.response.raw_content or b""
+    del brotli_flow.response.headers["Content-Length"]
 
     mitm_addon.responseheaders(brotli_flow)
-    assert brotli_flow.response.stream is False
+    assert callable(brotli_flow.response.stream)
     assert brotli_flow.response.headers["Content-Encoding"] == "br"
-    assert brotli_flow.response.headers["Content-Length"] == str(compressed_length)
+    assert "Content-Length" not in brotli_flow.response.headers
+    assert response_stream(brotli_flow)(compressed_body) == compressed_body
 
     catalog_cache.finalize_response(brotli_flow)
     assert brotli_flow.response.status_code == 200
-    assert brotli_flow.response.raw_content == _CATALOG_BODY
-    assert brotli_flow.response.headers["Content-Length"] == str(len(_CATALOG_BODY))
-    assert "Content-Encoding" not in brotli_flow.response.headers
+    assert brotli_flow.response.raw_content == compressed_body
+    assert brotli_flow.response.headers["Content-Encoding"] == "br"
     brotli_telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(brotli_flow, brotli_telemetry)
     brotli_latency = brotli_telemetry.pop("model_catalog_cache_validation_latency_ms")
@@ -228,9 +230,14 @@ def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
         "model_catalog_cache_status": "model_catalog_cold_stored",
         "model_catalog_cache_upstream_encoding": "br",
     }
+    brotli_hit = _catalog_flow(real_flow)
+    await catalog_cache.prepare_request(brotli_hit, request_end_stream=True)
+    assert brotli_hit.response is not None
+    assert brotli_hit.response.content == _CATALOG_BODY
+    assert "Content-Encoding" not in brotli_hit.response.headers
 
     identity_flow = _catalog_flow(real_flow, version="identity-fallback")
-    identity_telemetry = _install_catalog(identity_flow, encoding="identity")
+    identity_telemetry = await _install_catalog(identity_flow, encoding="identity")
     assert identity_flow.response is not None
     assert response_streaming.streamed_response_size(identity_flow) == len(_CATALOG_BODY)
     assert identity_flow.response.raw_content == _CATALOG_BODY
@@ -241,6 +248,27 @@ def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
         "model_catalog_cache_status": "model_catalog_cold_stored",
         "model_catalog_cache_upstream_encoding": "identity",
     }
+
+
+async def test_set_cookie_is_not_replayed_from_cached_brotli_response(real_flow):
+    cold = _catalog_flow(real_flow, version="set-cookie")
+    await _prepare_miss(cold)
+    cold.response = _catalog_response(
+        encoding="br",
+        headers={"Set-Cookie": "catalog_session=opaque; Secure"},
+    )
+    del cold.response.headers["Content-Length"]
+
+    telemetry = _finish_response(cold)
+
+    assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
+    assert cold.response.headers["Set-Cookie"] == "catalog_session=opaque; Secure"
+
+    hit = _catalog_flow(real_flow, version="set-cookie")
+    await catalog_cache.prepare_request(hit, request_end_stream=True)
+    assert hit.response is not None
+    assert hit.response.content == _CATALOG_BODY
+    assert "Set-Cookie" not in hit.response.headers
 
 
 @pytest.mark.parametrize(
@@ -282,11 +310,6 @@ def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
             _catalog_response(headers={"Expires": "Wed, 21 Oct 2037 07:28:00 GMT"}),
             "response_cache_control",
             id="expires",
-        ),
-        pytest.param(
-            _catalog_response(headers={"Set-Cookie": "catalog_session=opaque; Secure"}),
-            "response_cache_control",
-            id="set-cookie",
         ),
         pytest.param(
             _catalog_response(headers={"Pragma": "extension, no-cache"}),
@@ -344,13 +367,13 @@ def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
         ),
     ],
 )
-def test_invalid_identity_responses_pass_through_without_installing(
+async def test_invalid_identity_responses_pass_through_without_installing(
     real_flow,
     response: http.Response,
     reason: str,
 ):
     flow = _catalog_flow(real_flow)
-    _prepare_miss(flow)
+    await _prepare_miss(flow)
     flow.response = response
     original_status = response.status_code
     original_body = response.raw_content
@@ -369,11 +392,11 @@ def test_invalid_identity_responses_pass_through_without_installing(
     }
 
     retry = _catalog_flow(real_flow)
-    _prepare_miss(retry)
+    await _prepare_miss(retry)
     catalog_cache.handle_error(retry)
 
 
-def test_json_nesting_bound_ignores_structural_characters_inside_strings(real_flow):
+async def test_json_nesting_bound_ignores_structural_characters_inside_strings(real_flow):
     body = json.dumps(
         {
             "models": [],
@@ -383,11 +406,11 @@ def test_json_nesting_bound_ignores_structural_characters_inside_strings(real_fl
     ).encode()
     flow = _catalog_flow(real_flow, version="string-syntax")
 
-    telemetry = _install_catalog(flow, body=body)
+    telemetry = await _install_catalog(flow, body=body)
 
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
     hit = _catalog_flow(real_flow, version="string-syntax")
-    catalog_cache.prepare_request(hit, request_end_stream=True)
+    await catalog_cache.prepare_request(hit, request_end_stream=True)
     assert hit.response is not None
     assert hit.response.content == body
 
@@ -430,14 +453,14 @@ def test_json_nesting_bound_ignores_structural_characters_inside_strings(real_fl
         ),
     ],
 )
-def test_invalid_buffered_brotli_becomes_502_before_client_delivery(
+async def test_invalid_streamed_brotli_passes_through_without_installing(
     real_flow,
     wire_body: bytes,
     declared_length: int | None,
     reason: str,
 ):
     flow = _catalog_flow(real_flow)
-    _prepare_miss(flow)
+    await _prepare_miss(flow)
     length = len(wire_body) if declared_length is None else declared_length
     flow.response = tutils.tresp(
         status_code=200,
@@ -454,12 +477,13 @@ def test_invalid_buffered_brotli_becomes_502_before_client_delivery(
 
     mitm_addon.responseheaders(flow)
     assert flow.response.status_code == 200
-    assert flow.response.stream is False
+    assert callable(flow.response.stream)
+    assert response_stream(flow)(wire_body) == wire_body
     catalog_cache.finalize_response(flow)
 
-    assert flow.response.status_code == 502
-    assert flow.response.raw_content == b""
-    assert "Content-Encoding" not in flow.response.headers
+    assert flow.response.status_code == 200
+    assert flow.response.raw_content == wire_body
+    assert flow.response.headers["Content-Encoding"] == "br"
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(flow, telemetry)
     validation_latency = telemetry.pop("model_catalog_cache_validation_latency_ms")
@@ -473,56 +497,51 @@ def test_invalid_buffered_brotli_becomes_502_before_client_delivery(
 
 
 @pytest.mark.parametrize(
-    ("body", "expected_status", "reason"),
+    "body",
     [
         pytest.param(
             b'{"items":[]}',
-            502,
-            "response_shape",
             id="invalid-catalog",
         ),
         pytest.param(
             _CATALOG_BODY,
-            200,
-            "response_cache_control",
             id="valid-non-cacheable-catalog",
         ),
     ],
 )
-def test_brotli_catalog_validation_precedes_cache_policy(
+async def test_brotli_cache_policy_bypasses_body_validation(
     real_flow,
     body: bytes,
-    expected_status: int,
-    reason: str,
 ):
-    flow = _catalog_flow(real_flow, version=f"cache-policy-{expected_status}")
-    _prepare_miss(flow)
+    flow = _catalog_flow(real_flow, version=f"cache-policy-{len(body)}")
+    await _prepare_miss(flow)
     flow.response = _catalog_response(
         body=body,
         etag=None,
         encoding="br",
         headers={"Cache-Control": "no-store"},
     )
+    wire_body = flow.response.raw_content
 
     telemetry = _finish_response(flow)
 
-    assert flow.response.status_code == expected_status
-    assert flow.response.raw_content == (body if expected_status == 200 else b"")
+    assert flow.response.status_code == 200
+    assert flow.response.raw_content == wire_body
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_not_stored"
-    assert telemetry["model_catalog_cache_bypass_reason"] == reason
+    assert telemetry["model_catalog_cache_bypass_reason"] == "response_cache_control"
 
-    retry = _catalog_flow(real_flow, version=f"cache-policy-{expected_status}")
-    _prepare_miss(retry)
+    retry = _catalog_flow(real_flow, version=f"cache-policy-{len(body)}")
+    await _prepare_miss(retry)
     catalog_cache.handle_error(retry)
 
 
 @pytest.mark.parametrize("encoding", ["identity", "br"])
-def test_catalog_responses_with_trailers_are_never_cached(
+async def test_catalog_responses_with_trailers_are_never_cached(
     real_flow,
     encoding: str,
 ):
     flow = _catalog_flow(real_flow, version=f"trailers-{encoding}")
-    _prepare_miss(flow)
+    await _prepare_miss(flow)
     flow.response = _catalog_response(encoding=encoding)
     flow.response.trailers = header_map({"Digest": "sha-256=:opaque:"})
 
@@ -530,16 +549,13 @@ def test_catalog_responses_with_trailers_are_never_cached(
 
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_not_stored"
     assert telemetry["model_catalog_cache_bypass_reason"] == "response_body"
-    if encoding == "br":
-        assert flow.response.status_code == 502
-        assert flow.response.raw_content == b""
-    else:
-        assert flow.response.status_code == 200
-        assert flow.response.raw_content == _CATALOG_BODY
-        assert flow.response.trailers is not None
+    assert flow.response.status_code == 200
+    expected_body = brotli.compress(_CATALOG_BODY) if encoding == "br" else _CATALOG_BODY
+    assert flow.response.raw_content == expected_body
+    assert flow.response.trailers is not None
 
     retry = _catalog_flow(real_flow, version=f"trailers-{encoding}")
-    _prepare_miss(retry)
+    await _prepare_miss(retry)
     catalog_cache.handle_error(retry)
 
 
@@ -548,15 +564,8 @@ def test_catalog_responses_with_trailers_are_never_cached(
     [
         pytest.param(
             "br",
-            {"Content-Length": ""},
-            "response_size",
-            "br",
-            id="missing-length",
-        ),
-        pytest.param(
-            "br",
             {"Content-Length": "0"},
-            "response_size",
+            "response_body",
             "br",
             id="empty-encoded-body",
         ),
@@ -597,7 +606,7 @@ def test_catalog_responses_with_trailers_are_never_cached(
         ),
     ],
 )
-def test_unsafe_encoded_headers_use_bounded_502_drain(
+async def test_unsafe_encoded_headers_pass_through_without_caching(
     real_flow,
     encoding: str,
     headers: dict[str, str],
@@ -605,7 +614,7 @@ def test_unsafe_encoded_headers_use_bounded_502_drain(
     expected_encoding: str | None,
 ):
     flow = _catalog_flow(real_flow, version=f"unsafe-{encoding}-{reason}")
-    _prepare_miss(flow)
+    await _prepare_miss(flow)
     response = _catalog_response(encoding=encoding, headers=headers)
     if headers.get("Content-Length") == "":
         del response.headers["Content-Length"]
@@ -613,9 +622,13 @@ def test_unsafe_encoded_headers_use_bounded_502_drain(
 
     mitm_addon.responseheaders(flow)
 
-    assert flow.response.status_code == 502
+    assert flow.response.status_code == 200
     assert callable(flow.response.stream)
-    assert response_stream(flow)(b"x" * (catalog_cache.MAX_ENTRY_BYTES + 1)) == b""
+    wire_body = response.raw_content or b""
+    assert response_stream(flow)(wire_body) == wire_body
+    catalog_cache.finalize_response(flow)
+    assert flow.response.status_code == 200
+    assert flow.response.raw_content == wire_body
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(flow, telemetry)
     validation_latency = telemetry.pop("model_catalog_cache_validation_latency_ms")
@@ -630,47 +643,235 @@ def test_unsafe_encoded_headers_use_bounded_502_drain(
     assert telemetry == expected
 
 
-def test_complete_decoded_body_bound_and_concurrent_install_ownership(real_flow):
+async def test_complete_decoded_body_bound_and_exact_singleflight(real_flow):
     prefix = b'{"models":[],"padding":"'
     suffix = b'"}'
     exact_body = (
         prefix + b"x" * (catalog_cache.MAX_ENTRY_BYTES - len(prefix) - len(suffix)) + suffix
     )
     exact = _catalog_flow(real_flow, version="exact-cap")
-    assert _install_catalog(exact, body=exact_body)["model_catalog_cache_status"] == (
+    assert (await _install_catalog(exact, body=exact_body))["model_catalog_cache_status"] == (
         "model_catalog_cold_stored"
     )
     exact_hit = _catalog_flow(real_flow, version="exact-cap")
-    catalog_cache.prepare_request(exact_hit, request_end_stream=True)
+    await catalog_cache.prepare_request(exact_hit, request_end_stream=True)
     assert exact_hit.response is not None
     assert exact_hit.response.content == exact_body
 
     first = _catalog_flow(real_flow, version="concurrent")
     second = _catalog_flow(real_flow, version="concurrent")
-    _prepare_miss(first)
-    _prepare_miss(second)
-    first_body = b'{"models":[{"slug":"first"}]}'
-    second_body = b'{"models":[{"slug":"second"}]}'
-    first.response = _catalog_response(body=first_body, encoding="br")
-    second.response = _catalog_response(body=second_body, etag='"catalog-v2"', encoding="br")
+    await _prepare_miss(first)
+    second_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(second, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not second_prepare.done()
+    assert second.request.headers["Accept-Encoding"] == "identity"
 
+    first_body = b'{"models":[{"slug":"first"}]}'
+    first.response = _catalog_response(body=first_body, encoding="br")
     assert _finish_response(first)["model_catalog_cache_status"] == "model_catalog_cold_stored"
-    second_telemetry = _finish_response(second)
-    assert second_telemetry["model_catalog_cache_status"] == "model_catalog_cold_not_stored"
-    assert second_telemetry["model_catalog_cache_bypass_reason"] == "concurrent_change"
+    await second_prepare
+    assert second.response is not None
+    assert second.response.content == first_body
+    second_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(second, second_telemetry)
+    assert second_telemetry["model_catalog_cache_status"] == "model_catalog_fresh_hit"
 
     hit = _catalog_flow(real_flow, version="concurrent")
-    catalog_cache.prepare_request(hit, request_end_stream=True)
+    await catalog_cache.prepare_request(hit, request_end_stream=True)
     assert hit.response is not None
     assert hit.response.content == first_body
 
 
-def test_transport_error_after_expiry_never_serves_old_entry(real_flow):
+async def test_prefetch_marker_is_stripped_and_roles_distinguish_consumers(real_flow):
+    prefetch = _catalog_flow(
+        real_flow,
+        version="prefetched",
+        extra_headers={"X-VM0-Codex-Model-Catalog-Prefetch": "1"},
+    )
+    catalog_cache.capture_and_strip_prefetch_marker(prefetch)
+    assert "X-VM0-Codex-Model-Catalog-Prefetch" not in prefetch.request.headers
+    await _prepare_miss(prefetch)
+
+    in_flight_consumer = _catalog_flow(real_flow, version="prefetched")
+    consumer_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(in_flight_consumer, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not consumer_prepare.done()
+
+    prefetch.response = _catalog_response(encoding="br")
+    prefetch_telemetry = _finish_response(prefetch)
+    assert prefetch_telemetry["model_catalog_prefetch_role"] == "producer"
+
+    await consumer_prepare
+    in_flight_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(in_flight_consumer, in_flight_telemetry)
+    assert in_flight_telemetry["model_catalog_prefetch_role"] == "inflight_consumer"
+
+    completed_consumer = _catalog_flow(real_flow, version="prefetched")
+    await catalog_cache.prepare_request(completed_consumer, request_end_stream=True)
+    completed_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(completed_consumer, completed_telemetry)
+    assert completed_telemetry["model_catalog_prefetch_role"] == "completed_consumer"
+    catalog_cache.release_flow_state(prefetch)
+    assert "_codex_model_catalog_prefetch_request" not in prefetch.metadata
+
+
+async def test_failed_prefetch_releases_consumer_to_retry_upstream(real_flow):
+    prefetch = _catalog_flow(
+        real_flow,
+        version="prefetch-failure",
+        extra_headers={"X-VM0-Codex-Model-Catalog-Prefetch": "1"},
+    )
+    catalog_cache.capture_and_strip_prefetch_marker(prefetch)
+    await _prepare_miss(prefetch)
+
+    consumer = _catalog_flow(real_flow, version="prefetch-failure")
+    consumer_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(consumer, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not consumer_prepare.done()
+
+    prefetch.error = Error("upstream reset")
+    catalog_cache.handle_error(prefetch)
+    await consumer_prepare
+
+    assert consumer.response is None
+    assert consumer.request.headers["Accept-Encoding"] == "br"
+    consumer_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(consumer, consumer_telemetry)
+    assert consumer_telemetry == {}
+    catalog_cache.handle_error(consumer)
+
+
+async def test_released_owner_wakes_singleflight_follower(real_flow):
+    owner = _catalog_flow(real_flow, version="released-owner")
+    await _prepare_miss(owner)
+    follower = _catalog_flow(real_flow, version="released-owner")
+    follower_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(follower, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not follower_prepare.done()
+
+    catalog_cache.release_flow_state(owner)
+    await follower_prepare
+
+    assert follower.response is None
+    assert follower.request.headers["Accept-Encoding"] == "br"
+    catalog_cache.handle_error(follower)
+
+
+async def test_cancelled_follower_does_not_cancel_singleflight_owner(real_flow):
+    owner = _catalog_flow(real_flow, version="cancelled-follower")
+    await _prepare_miss(owner)
+
+    cancelled_follower = asyncio.create_task(
+        catalog_cache.prepare_request(
+            _catalog_flow(real_flow, version="cancelled-follower"),
+            request_end_stream=True,
+        )
+    )
+    await asyncio.sleep(0)
+    cancelled_follower.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled_follower
+
+    surviving_follower = _catalog_flow(real_flow, version="cancelled-follower")
+    surviving_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(surviving_follower, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not surviving_prepare.done()
+
+    owner.response = _catalog_response(encoding="br")
+    _finish_response(owner)
+    await surviving_prepare
+    assert surviving_follower.response is not None
+    assert surviving_follower.response.content == _CATALOG_BODY
+
+
+async def test_singleflight_waiter_bound_bypasses_excess_requests(real_flow):
+    owner = _catalog_flow(real_flow, version="waiter-capacity")
+    await _prepare_miss(owner)
+    waiters = [
+        asyncio.create_task(
+            catalog_cache.prepare_request(
+                _catalog_flow(real_flow, version="waiter-capacity"),
+                request_end_stream=True,
+            )
+        )
+        for _ in range(catalog_cache.MAX_WAITERS_PER_KEY)
+    ]
+    await asyncio.sleep(0)
+    assert all(not waiter.done() for waiter in waiters)
+
+    overflow = _catalog_flow(real_flow, version="waiter-capacity")
+    await catalog_cache.prepare_request(overflow, request_end_stream=True)
+    overflow_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(overflow, overflow_telemetry)
+    assert overflow_telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_capacity",
+    }
+
+    for waiter in waiters:
+        waiter.cancel()
+    await asyncio.gather(*waiters, return_exceptions=True)
+    catalog_cache.handle_error(owner)
+
+
+async def test_singleflight_total_waiter_bound_spans_catalog_keys(real_flow):
+    owner_count = (
+        catalog_cache.MAX_TOTAL_WAITERS + catalog_cache.MAX_WAITERS_PER_KEY - 1
+    ) // catalog_cache.MAX_WAITERS_PER_KEY
+    owners = [
+        _catalog_flow(real_flow, version=f"total-waiter-capacity-{index}")
+        for index in range(owner_count)
+    ]
+    for owner in owners:
+        await _prepare_miss(owner)
+
+    waiters = [
+        asyncio.create_task(
+            catalog_cache.prepare_request(
+                _catalog_flow(
+                    real_flow,
+                    version=f"total-waiter-capacity-{index // catalog_cache.MAX_WAITERS_PER_KEY}",
+                ),
+                request_end_stream=True,
+            )
+        )
+        for index in range(catalog_cache.MAX_TOTAL_WAITERS)
+    ]
+    await asyncio.sleep(0)
+    assert all(not waiter.done() for waiter in waiters)
+
+    overflow = _catalog_flow(real_flow, version="total-waiter-capacity-0")
+    await catalog_cache.prepare_request(overflow, request_end_stream=True)
+    overflow_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(overflow, overflow_telemetry)
+    assert overflow_telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_capacity",
+    }
+
+    for waiter in waiters:
+        waiter.cancel()
+    await asyncio.gather(*waiters, return_exceptions=True)
+    for owner in owners:
+        catalog_cache.handle_error(owner)
+
+
+async def test_transport_error_after_expiry_never_serves_old_entry(real_flow):
     with patch.object(catalog_cache.time, "monotonic", return_value=100.0) as monotonic:
-        _install_catalog(_catalog_flow(real_flow))
+        await _install_catalog(_catalog_flow(real_flow))
         monotonic.return_value = 161.0
         flow = _catalog_flow(real_flow)
-        _prepare_miss(flow)
+        await _prepare_miss(flow)
         flow.error = Error("upstream reset")
 
         catalog_cache.handle_error(flow)
@@ -686,15 +887,15 @@ def test_transport_error_after_expiry_never_serves_old_entry(real_flow):
         assert flow.response is None
 
         retry = _catalog_flow(real_flow)
-        _prepare_miss(retry)
+        await _prepare_miss(retry)
         catalog_cache.handle_error(retry)
 
 
-def test_authenticated_models_etag_confirmation_and_partitioned_invalidation(real_flow):
+async def test_authenticated_models_etag_confirmation_and_partitioned_invalidation(real_flow):
     with patch.object(catalog_cache.time, "monotonic", return_value=100.0) as monotonic:
-        _install_catalog(_catalog_flow(real_flow))
-        _install_catalog(_catalog_flow(real_flow, auth_value="auth-b"))
-        _install_catalog(
+        await _install_catalog(_catalog_flow(real_flow))
+        await _install_catalog(_catalog_flow(real_flow, auth_value="auth-b"))
+        await _install_catalog(
             _catalog_flow(real_flow, version="0.144.0"),
             etag='"catalog-legacy"',
         )
@@ -710,11 +911,11 @@ def test_authenticated_models_etag_confirmation_and_partitioned_invalidation(rea
         }
 
         confirmed_hit = _catalog_flow(real_flow)
-        catalog_cache.prepare_request(confirmed_hit, request_end_stream=True)
+        await catalog_cache.prepare_request(confirmed_hit, request_end_stream=True)
         assert confirmed_hit.response is not None
 
         invalidated_version = _catalog_flow(real_flow, version="0.144.0")
-        _prepare_miss(invalidated_version)
+        await _prepare_miss(invalidated_version)
         catalog_cache.handle_error(invalidated_version)
 
         invalidation = _responses_flow(real_flow, etag='"catalog-v2"')
@@ -726,42 +927,42 @@ def test_authenticated_models_etag_confirmation_and_partitioned_invalidation(rea
         }
 
         invalidated = _catalog_flow(real_flow)
-        _prepare_miss(invalidated)
+        await _prepare_miss(invalidated)
         catalog_cache.handle_error(invalidated)
 
         other_credential = _catalog_flow(real_flow, auth_value="auth-b")
-        catalog_cache.prepare_request(other_credential, request_end_stream=True)
+        await catalog_cache.prepare_request(other_credential, request_end_stream=True)
         assert other_credential.response is not None
 
 
-def test_failed_responses_etag_does_not_invalidate_catalog(real_flow):
-    _install_catalog(_catalog_flow(real_flow))
+async def test_failed_responses_etag_does_not_invalidate_catalog(real_flow):
+    await _install_catalog(_catalog_flow(real_flow))
 
     failed_response = _responses_flow(real_flow, etag='"catalog-v2"', status=401)
     mitm_addon.responseheaders(failed_response)
 
     hit = _catalog_flow(real_flow)
-    catalog_cache.prepare_request(hit, request_end_stream=True)
+    await catalog_cache.prepare_request(hit, request_end_stream=True)
     assert hit.response is not None
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(failed_response, telemetry)
     assert telemetry == {}
 
 
-def test_count_and_byte_bounds_evict_least_recent_entries(real_flow):
+async def test_count_and_byte_bounds_evict_least_recent_entries(real_flow):
     small_body = b'{"models":[]}'
     for index in range(catalog_cache.MAX_ENTRIES + 1):
-        _install_catalog(
+        await _install_catalog(
             _catalog_flow(real_flow, version=f"count-{index}"),
             body=small_body,
             etag=f'"count-{index}"',
         )
 
     count_oldest = _catalog_flow(real_flow, version="count-0")
-    _prepare_miss(count_oldest)
+    await _prepare_miss(count_oldest)
     catalog_cache.handle_error(count_oldest)
     count_newest = _catalog_flow(real_flow, version=f"count-{catalog_cache.MAX_ENTRIES}")
-    catalog_cache.prepare_request(count_newest, request_end_stream=True)
+    await catalog_cache.prepare_request(count_newest, request_end_stream=True)
     assert count_newest.response is not None
 
     catalog_cache.reset_for_tests()
@@ -770,30 +971,30 @@ def test_count_and_byte_bounds_evict_least_recent_entries(real_flow):
     assert len(large_body) <= catalog_cache.MAX_ENTRY_BYTES
     entry_count = catalog_cache.MAX_TOTAL_BYTES // len(large_body) + 1
     for index in range(entry_count):
-        _install_catalog(
+        await _install_catalog(
             _catalog_flow(real_flow, version=f"bytes-{index}"),
             body=large_body,
             etag=f'"bytes-{index}"',
         )
 
     byte_oldest = _catalog_flow(real_flow, version="bytes-0")
-    _prepare_miss(byte_oldest)
+    await _prepare_miss(byte_oldest)
     catalog_cache.handle_error(byte_oldest)
     byte_newest = _catalog_flow(real_flow, version=f"bytes-{entry_count - 1}")
-    catalog_cache.prepare_request(byte_newest, request_end_stream=True)
+    await catalog_cache.prepare_request(byte_newest, request_end_stream=True)
     assert byte_newest.response is not None
 
 
-def test_in_flight_capacity_bypasses_without_changing_request_encoding(real_flow):
+async def test_in_flight_capacity_bypasses_without_changing_request_encoding(real_flow):
     active_flows = [
         _catalog_flow(real_flow, version=f"active-{index}")
         for index in range(catalog_cache.MAX_IN_FLIGHT_REQUESTS)
     ]
     for flow in active_flows:
-        _prepare_miss(flow)
+        await _prepare_miss(flow)
 
     overflow = _catalog_flow(real_flow, version="overflow")
-    catalog_cache.prepare_request(overflow, request_end_stream=True)
+    await catalog_cache.prepare_request(overflow, request_end_stream=True)
     overflow_telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(overflow, overflow_telemetry)
     assert overflow_telemetry == {
@@ -804,19 +1005,19 @@ def test_in_flight_capacity_bypasses_without_changing_request_encoding(real_flow
 
     catalog_cache.handle_error(active_flows.pop())
     admitted = _catalog_flow(real_flow, version="admitted")
-    telemetry = _install_catalog(admitted)
+    telemetry = await _install_catalog(admitted)
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
 
     for flow in active_flows:
         catalog_cache.handle_error(flow)
 
 
-def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
+async def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
     conditional = _catalog_flow(
         real_flow,
         extra_headers={"If-None-Match": '"guest-etag"'},
     )
-    catalog_cache.prepare_request(conditional, request_end_stream=True)
+    await catalog_cache.prepare_request(conditional, request_end_stream=True)
     assert conditional.response is None
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(conditional, telemetry)
@@ -833,13 +1034,13 @@ def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
     assert callable(unrelated.response.stream)
 
 
-def test_unbounded_request_content_length_is_rejected_without_parsing(real_flow):
+async def test_unbounded_request_content_length_is_rejected_without_parsing(real_flow):
     flow = _catalog_flow(
         real_flow,
         extra_headers={"Content-Length": "9" * 5000},
     )
 
-    catalog_cache.prepare_request(flow, request_end_stream=True)
+    await catalog_cache.prepare_request(flow, request_end_stream=True)
 
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(flow, telemetry)
@@ -868,7 +1069,7 @@ def test_unbounded_request_content_length_is_rejected_without_parsing(real_flow)
         ),
     ],
 )
-def test_unsafe_catalog_requests_never_enter_cache(
+async def test_unsafe_catalog_requests_never_enter_cache(
     real_flow,
     method: str,
     request_end_stream: bool,
@@ -886,7 +1087,7 @@ def test_unsafe_catalog_requests_never_enter_cache(
     if original_url is not None:
         flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
 
-    catalog_cache.prepare_request(flow, request_end_stream=request_end_stream)
+    await catalog_cache.prepare_request(flow, request_end_stream=request_end_stream)
 
     assert flow.response is None
     assert flow.request.headers["Accept-Encoding"] == "identity"
@@ -958,6 +1159,7 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
                 "Host": "chatgpt.com",
                 "Accept-Encoding": "identity",
                 "Content-Length": "0",
+                "X-VM0-Codex-Model-Catalog-Prefetch": "1",
             }
         ),
     )
@@ -967,8 +1169,10 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     ):
         await mitm_addon.request(request_flow)
     assert request_flow.request.headers["Accept-Encoding"] == "br"
+    assert "X-VM0-Codex-Model-Catalog-Prefetch" not in request_flow.request.headers
     request_flow.response = _catalog_response(encoding="br")
-    _finish_response(request_flow)
+    request_telemetry = _finish_response(request_flow)
+    assert request_telemetry["model_catalog_prefetch_role"] == "producer"
 
     header_registry = _write_codex_registry(tmp_path, capture=True)
     header_flow = real_flow(
@@ -981,6 +1185,7 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
             {
                 "Host": "chatgpt.com",
                 "Accept-Encoding": "identity",
+                "X-VM0-Codex-Model-Catalog-Prefetch": "1",
             }
         ),
     )
@@ -996,9 +1201,10 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     assert header_flow.response.status_code == 200
     assert header_flow.response.content == _CATALOG_BODY
     assert header_flow.response.stream is False
+    assert "X-VM0-Codex-Model-Catalog-Prefetch" not in header_flow.request.headers
 
 
-def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
+async def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -1009,9 +1215,11 @@ def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
         account="sensitive-account",
     )
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-    _prepare_miss(flow)
+    await _prepare_miss(flow)
     flow.response = _catalog_response(encoding="br")
     mitm_addon.responseheaders(flow)
+    compressed_body = flow.response.raw_content or b""
+    assert response_stream(flow)(compressed_body) == compressed_body
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -1020,7 +1228,7 @@ def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
     assert entry["model_catalog_cache_status"] == "model_catalog_cold_stored"
     assert entry["model_catalog_cache_upstream_encoding"] == "br"
     assert entry["model_catalog_cache_validation_latency_ms"] >= 0
-    assert entry["response_size"] == len(_CATALOG_BODY)
+    assert entry["response_size"] == len(compressed_body)
     serialized = json.dumps(entry)
     assert "sensitive-auth" not in serialized
     assert "sensitive-account" not in serialized
@@ -1028,8 +1236,9 @@ def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
     assert "gpt-test" not in serialized
     assert "_codex_model_catalog_cache_state" not in flow.metadata
     assert "_codex_model_catalog_cache_telemetry" not in flow.metadata
+    assert "_codex_model_catalog_prefetch_request" not in flow.metadata
     assert flow.response is not None
     assert flow.response.status_code == 200
-    assert flow.response.raw_content == _CATALOG_BODY
-    assert "Content-Encoding" not in flow.response.headers
+    assert flow.response.raw_content == compressed_body
+    assert flow.response.headers["Content-Encoding"] == "br"
     assert flow.response.stream is False

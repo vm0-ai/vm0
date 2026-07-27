@@ -755,6 +755,12 @@ const modelCatalogCacheBypassReasonSchema = z.enum([
 
 const modelCatalogCacheUpstreamEncodingSchema = z.enum(["identity", "br"]);
 
+const modelCatalogPrefetchRoleSchema = z.enum([
+  "producer",
+  "completed_consumer",
+  "inflight_consumer",
+]);
+
 const modelCatalogCacheMillisecondsSchema = z
   .number()
   .int()
@@ -791,6 +797,7 @@ const networkLogEntrySchema = z.object({
     modelCatalogCacheMillisecondsSchema.optional(),
   model_catalog_cache_eviction_count:
     modelCatalogCacheEvictionCountSchema.optional(),
+  model_catalog_prefetch_role: modelCatalogPrefetchRoleSchema.optional(),
   dns_event: z.string().optional(),
   dns_query_type: z.string().optional(),
   dns_result: z.string().optional(),
@@ -1013,6 +1020,7 @@ export {
   modelCatalogCacheStatusSchema,
   modelCatalogCacheBypassReasonSchema,
   modelCatalogCacheUpstreamEncodingSchema,
+  modelCatalogPrefetchRoleSchema,
   modelCatalogCacheMillisecondsSchema,
   modelCatalogCacheEvictionCountSchema,
   networkLogEntrySchema,

@@ -26,6 +26,7 @@ use tokio_util::sync::CancellationToken;
 mod active_input;
 mod agent_run;
 mod cli_framework;
+mod codex_model_catalog_prefetch;
 mod diagnostics;
 mod env;
 mod guest_state;

@@ -48,6 +48,7 @@ describe("network log model catalog cache telemetry", () => {
         model_catalog_cache_entry_age_ms: 61_000,
         model_catalog_cache_validation_latency_ms: 1700,
         model_catalog_cache_eviction_count: 1,
+        model_catalog_prefetch_role: "inflight_consumer",
       }).success,
     ).toBe(true);
   });
@@ -69,6 +70,12 @@ describe("network log model catalog cache telemetry", () => {
       networkLogEntrySchema.safeParse({
         ...baseEntry,
         model_catalog_cache_bypass_reason: "provider-body-details",
+      }).success,
+    ).toBe(false);
+    expect(
+      networkLogEntrySchema.safeParse({
+        ...baseEntry,
+        model_catalog_prefetch_role: "account-specific-value",
       }).success,
     ).toBe(false);
   });
