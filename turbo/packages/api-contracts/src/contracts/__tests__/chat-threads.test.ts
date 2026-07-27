@@ -13,7 +13,6 @@ import {
   chatEventSchema,
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-  pagedChatMessageSchema,
   userMessageDocumentSchema,
 } from "../chat-threads";
 

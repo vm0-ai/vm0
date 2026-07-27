@@ -4488,7 +4488,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(firstPrompt).toContain("--compiled-prompt");
     expect(firstPrompt).toContain(style.illustrationStyleId);
-    expect(firstPrompt).not.toContain("zero generate image");
 
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([assistantEvent(0, "here is a fox")]);

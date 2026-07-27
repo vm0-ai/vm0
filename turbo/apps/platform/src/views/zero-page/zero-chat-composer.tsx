@@ -5009,6 +5009,15 @@ function inlineComposerTemplatePicker({
   };
 }
 
+function structuredPromptInlineTemplatesEnabled(
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return (
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] === true &&
+    featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] === true
+  );
+}
+
 function composerTemplateAttachmentLifecycleKey(
   attachment: ComposerTemplateAttachment | undefined,
 ): string {
@@ -6623,9 +6632,7 @@ export function useZeroChatComposer({
   const structuredPromptEnabled =
     featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
   const inlineTemplatesEnabled =
-    structuredPromptEnabled &&
-    (featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-      false);
+    structuredPromptInlineTemplatesEnabled(featureSwitches);
 
   const resolved = useResolvedComposerSignals(
     draft,

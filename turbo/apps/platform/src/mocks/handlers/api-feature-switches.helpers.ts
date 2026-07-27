@@ -25,6 +25,7 @@ export function setMockFeatureSwitches(
         switches: sanitized,
         effectiveSwitches: sanitized,
         supportsStructuredFeedbackParts: true,
+        supportsStructuredInlineTemplates: true,
       });
     }),
   );
