@@ -449,6 +449,50 @@ def test_invalid_buffered_brotli_becomes_502_before_client_delivery(
     }
 
 
+@pytest.mark.parametrize(
+    ("body", "expected_status", "reason"),
+    [
+        pytest.param(
+            b'{"items":[]}',
+            502,
+            "response_shape",
+            id="invalid-catalog",
+        ),
+        pytest.param(
+            _CATALOG_BODY,
+            200,
+            "response_cache_control",
+            id="valid-non-cacheable-catalog",
+        ),
+    ],
+)
+def test_brotli_catalog_validation_precedes_cache_policy(
+    real_flow,
+    body: bytes,
+    expected_status: int,
+    reason: str,
+):
+    flow = _catalog_flow(real_flow, version=f"cache-policy-{expected_status}")
+    _prepare_miss(flow)
+    flow.response = _catalog_response(
+        body=body,
+        etag=None,
+        encoding="br",
+        headers={"Cache-Control": "no-store"},
+    )
+
+    telemetry = _finish_response(flow)
+
+    assert flow.response.status_code == expected_status
+    assert flow.response.raw_content == (body if expected_status == 200 else b"")
+    assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_not_stored"
+    assert telemetry["model_catalog_cache_bypass_reason"] == reason
+
+    retry = _catalog_flow(real_flow, version=f"cache-policy-{expected_status}")
+    _prepare_miss(retry)
+    catalog_cache.handle_error(retry)
+
+
 @pytest.mark.parametrize("encoding", ["identity", "br"])
 def test_catalog_responses_with_trailers_are_never_cached(
     real_flow,

@@ -631,7 +631,10 @@ def _validated_response_body(
     state: _FlowState,
 ) -> tuple[bytes, str, str] | str:
     bypass_reason = _response_headers_bypass_reason(response)
-    if bypass_reason is not None:
+    if bypass_reason is not None and (
+        state.upstream_encoding != _BROTLI_ENCODING
+        or bypass_reason in ("response_status", "response_content_type")
+    ):
         return bypass_reason
     if response.trailers:
         return "response_body"
@@ -652,6 +655,8 @@ def _validated_response_body(
         return "response_json"
     if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
         return "response_shape"
+    if bypass_reason is not None:
+        return bypass_reason
 
     content_type = response.headers.get("Content-Type", "")
     etag = _single_usable_etag(response.headers)
