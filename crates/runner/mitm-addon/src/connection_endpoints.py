@@ -39,7 +39,9 @@ def authoritative_connected_endpoint(endpoint: object) -> tuple[str, int] | None
     The endpoint must have an ``address_pair`` shape and its host must parse as an IPv4 or IPv6
     literal. DNS names, malformed endpoints, loopback addresses, and unspecified addresses return
     ``None``. Other parsed IP address categories are not filtered: ``authoritative`` describes
-    connected endpoint evidence, not public routability. Accepted endpoints are returned unchanged.
+    connected endpoint evidence, not public routability. Accepted inputs return their first
+    ``(host, port)`` pair. Additional tuple elements are discarded, while the host and port values
+    themselves are not normalized.
     """
     endpoint_pair = address_pair(endpoint)
     if endpoint_pair is None:
