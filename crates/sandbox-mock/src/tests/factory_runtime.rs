@@ -115,6 +115,7 @@ async fn runtime_provider_creates_runtime() {
         .create_runtime(RuntimeConfig {
             proxy_port: None,
             dns_port: None,
+            guest_dns_netfilter_trace: false,
         })
         .await
         .unwrap();

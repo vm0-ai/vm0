@@ -36,6 +36,8 @@ DNS_ISOLATION_HOST_IF=""
 DNS_ISOLATION_LOCK_FD=""
 SPOOF_NS=""
 SPOOF_IP=""
+NETFILTER_TRACE_FILE=""
+NETFILTER_TRACE_PID=""
 POOL_LOCK_GUARD_DIR=""
 POOL_LOCK_HOLDER_PID=""
 POOL_LOCK_RELEASE_FD=""
@@ -105,6 +107,32 @@ cleanup_spoof_address() {
   fi
   SPOOF_NS=""
   SPOOF_IP=""
+}
+
+stop_netfilter_trace() {
+  local pid status
+  if [ -n "$NETFILTER_TRACE_PID" ]; then
+    pid=$NETFILTER_TRACE_PID
+    NETFILTER_TRACE_PID=""
+    sudo kill -TERM "$pid" 2>/dev/null || true
+    if wait "$pid"; then
+      :
+    else
+      status=$?
+      case "$status" in
+        130 | 137 | 143) ;;
+        *) return "$status" ;;
+      esac
+    fi
+  fi
+}
+
+start_netfilter_trace() {
+  NETFILTER_TRACE_FILE=$(mktemp "/tmp/vm0-${SVC}-netfilter-trace.XXXXXX")
+  sudo xtables-monitor --trace --ipv4 >"$NETFILTER_TRACE_FILE" 2>&1 &
+  NETFILTER_TRACE_PID=$!
+  sudo kill -0 "$NETFILTER_TRACE_PID" 2>/dev/null \
+    || fail "xtables-monitor exited before DNS trace probes"
 }
 
 cleanup_pool_lock_guard() {
@@ -190,8 +218,49 @@ sock.close()
 PY
 }
 
+send_dns_trace_probes() {
+  local namespace=$1 destination_ip=$2
+  sudo ip netns exec "$namespace" python3 - "$destination_ip" <<'PY'
+import socket
+import struct
+import sys
+
+destination = sys.argv[1]
+query = bytes.fromhex(
+    "123401000001000000000000"
+    "0d766d302d72656164696e657373"
+    "07696e76616c69640000010001"
+)
+
+udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+udp.settimeout(2)
+udp.sendto(query, (destination, 53))
+response, _ = udp.recvfrom(4096)
+assert response[:2] == query[:2] and response[2] & 128
+udp.close()
+
+tcp = socket.create_connection((destination, 53), 2)
+tcp.sendall(struct.pack("!H", len(query)) + query)
+header = tcp.recv(2)
+assert len(header) == 2
+length = struct.unpack("!H", header)[0]
+response = b""
+while len(response) < length:
+    chunk = tcp.recv(length - len(response))
+    assert chunk
+    response += chunk
+assert response[:2] == query[:2] and response[2] & 128
+tcp.close()
+PY
+}
+
 cleanup() {
   echo "--- Cleanup ---"
+  stop_netfilter_trace || true
+  if [ -n "$NETFILTER_TRACE_FILE" ]; then
+    rm -f "$NETFILTER_TRACE_FILE"
+    NETFILTER_TRACE_FILE=""
+  fi
   cleanup_spoof_address
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
   cleanup_pool_lock_guard
@@ -467,6 +536,123 @@ VICTIM_DNS_RULE=$(printf '%s\n' "$NAT_RULES" \
   || fail "victim DNS redirect is not bound to $VICTIM_IF"
 [ "$(rule_value "$VICTIM_DNS_RULE" -s)" = "$VICTIM_CIDR" ] \
   || fail "victim DNS redirect does not use the exact peer"
+
+ATTACKER_UDP_TRACE_RULE=$(printf '%s\n' "$RAW_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-j TRACE" \
+  | grep -F -- "-p udp" \
+  | head -n 1 || true)
+ATTACKER_TCP_TRACE_RULE=$(printf '%s\n' "$RAW_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-j TRACE" \
+  | grep -F -- "-p tcp" \
+  | head -n 1 || true)
+[ -n "$ATTACKER_UDP_TRACE_RULE" ] \
+  || fail "attacker UDP DNS trace rule not found"
+[ -n "$ATTACKER_TCP_TRACE_RULE" ] \
+  || fail "attacker TCP DNS trace rule not found"
+for trace_rule in "$ATTACKER_UDP_TRACE_RULE" "$ATTACKER_TCP_TRACE_RULE"; do
+  [ "$(rule_value "$trace_rule" -i)" = "$ATTACKER_IF" ] \
+    || fail "DNS trace rule is not bound to $ATTACKER_IF: $trace_rule"
+  [ "$(rule_value "$trace_rule" -s)" = "$ATTACKER_CIDR" ] \
+    || fail "DNS trace rule does not use the exact attacker peer: $trace_rule"
+  [ "$(rule_value "$trace_rule" -d)" = "8.8.8.8/32" ] \
+    || fail "DNS trace rule does not use the readiness destination: $trace_rule"
+  [ "$(rule_value "$trace_rule" --dport)" = 53 ] \
+    || fail "DNS trace rule does not use DNS port 53: $trace_rule"
+done
+case "$(rule_value "$ATTACKER_UDP_TRACE_RULE" --length)" in
+  67 | 67:67) ;;
+  *) fail "UDP DNS trace rule does not use the readiness packet length" ;;
+esac
+if printf '%s\n' "$ATTACKER_TCP_TRACE_RULE" \
+  | grep -F -- "--length" >/dev/null; then
+  fail "TCP DNS trace rule unexpectedly requires a fixed packet length"
+fi
+
+start_netfilter_trace
+UDP_TRACE_EVENT=""
+TCP_TRACE_EVENT=""
+for _ in $(seq 1 3); do
+  send_dns_trace_probes "$ATTACKER_NS" "8.8.8.8" \
+    || fail "DNS trace probes failed"
+  for _ in $(seq 1 20); do
+    UDP_TRACE_EVENT=$(grep -F -- "raw:PREROUTING:" "$NETFILTER_TRACE_FILE" \
+      | grep -F -- "-p udp" \
+      | grep -F -- "--dport 53" \
+      | grep -E -- "--length 67(:67)?([[:space:]]|$)" \
+      | grep -F -- "--comment ${ATTACKER_NS}" \
+      | grep -F -- "-j TRACE" \
+      | tail -n 1 || true)
+    TCP_TRACE_EVENT=$(grep -F -- "nat:PREROUTING:" "$NETFILTER_TRACE_FILE" \
+      | grep -F -- "-p tcp" \
+      | grep -F -- "--dport 53" \
+      | grep -F -- "--comment ${ATTACKER_NS}" \
+      | grep -F -- "-j REDIRECT" \
+      | head -n 1 || true)
+    if [ -n "$UDP_TRACE_EVENT" ] && [ -n "$TCP_TRACE_EVENT" ]; then
+      UDP_TRACE_ID=$(printf '%s\n' "$UDP_TRACE_EVENT" | awk '{print $3}')
+      TCP_TRACE_ID=$(printf '%s\n' "$TCP_TRACE_EVENT" | awk '{print $3}')
+      if grep -E "TRACE: 2 ${UDP_TRACE_ID} filter:INPUT:policy:ACCEPT" \
+        "$NETFILTER_TRACE_FILE" >/dev/null \
+        && grep -E "TRACE: 2 ${TCP_TRACE_ID} filter:INPUT:policy:ACCEPT" \
+          "$NETFILTER_TRACE_FILE" >/dev/null; then
+        break 2
+      fi
+    fi
+    sudo kill -0 "$NETFILTER_TRACE_PID" 2>/dev/null \
+      || fail "xtables-monitor exited while capturing DNS probes"
+    sleep 0.05
+  done
+done
+[ -n "$UDP_TRACE_EVENT" ] \
+  || fail "xtables-monitor did not capture the UDP readiness TRACE rule"
+[ -n "$TCP_TRACE_EVENT" ] \
+  || fail "xtables-monitor did not capture the TCP DNS redirect TRACE rule"
+stop_netfilter_trace || fail "xtables-monitor failed while capturing DNS probes"
+UDP_TRACE_ID=$(printf '%s\n' "$UDP_TRACE_EVENT" | awk '{print $3}')
+TCP_TRACE_ID=$(printf '%s\n' "$TCP_TRACE_EVENT" | awk '{print $3}')
+UDP_TRACE_PACKET=$(grep -E \
+  "PACKET: 2 ${UDP_TRACE_ID} .*IN=${ATTACKER_IF} .*SRC=${ATTACKER_PEER} .*DST=8\\.8\\.8\\.8 .*LEN=67 .*(DPT|DPORT)=53([[:space:]]|$)" \
+  "$NETFILTER_TRACE_FILE" | head -n 1 || true)
+TCP_TRACE_PACKET=$(grep -E \
+  "PACKET: 2 ${TCP_TRACE_ID} .*IN=${ATTACKER_IF} .*SRC=${ATTACKER_PEER} .*DST=8\\.8\\.8\\.8 .*(DPT|DPORT)=53([[:space:]]|$)" \
+  "$NETFILTER_TRACE_FILE" | head -n 1 || true)
+[ -n "$UDP_TRACE_PACKET" ] \
+  || fail "xtables-monitor did not capture the exact UDP readiness packet"
+[ -n "$TCP_TRACE_PACKET" ] \
+  || fail "xtables-monitor did not capture the TCP DNS packet"
+TRACE_DNS_FILTER_COMMENT="${RUNNER_POOL_PREFIX%-}-dns"
+for trace_identity in "UDP:$UDP_TRACE_ID" "TCP:$TCP_TRACE_ID"; do
+  protocol=${trace_identity%%:*}
+  trace_id=${trace_identity#*:}
+  case "$protocol" in
+    UDP) trace_protocol=udp ;;
+    TCP) trace_protocol=tcp ;;
+    *) fail "unknown DNS trace protocol: $protocol" ;;
+  esac
+  grep -E "TRACE: 2 ${trace_id} raw:PREROUTING:" \
+    "$NETFILTER_TRACE_FILE" >/dev/null \
+    || fail "$protocol DNS trace did not reach root raw PREROUTING"
+  grep -E "TRACE: 2 ${trace_id} nat:PREROUTING:" \
+    "$NETFILTER_TRACE_FILE" >/dev/null \
+    || fail "$protocol DNS trace did not reach root nat PREROUTING"
+  POOL_INPUT_TRACE_EVENT=$(grep -E \
+    "TRACE: 2 ${trace_id} filter:INPUT:rule:.*:CONTINUE " \
+    "$NETFILTER_TRACE_FILE" \
+    | grep -F -- "-p ${trace_protocol}" \
+    | grep -F -- "--dport ${DNS_PORT}" \
+    | grep -F -- "--comment ${TRACE_DNS_FILTER_COMMENT}" \
+    | head -n 1 || true)
+  [ -n "$POOL_INPUT_TRACE_EVENT" ] \
+    || fail "$protocol DNS trace did not reach the exact pool INPUT rule"
+  grep -E "TRACE: 2 ${trace_id} filter:INPUT:policy:ACCEPT" \
+    "$NETFILTER_TRACE_FILE" >/dev/null \
+    || fail "$protocol DNS trace did not reach the accepting INPUT policy"
+done
+rm -f "$NETFILTER_TRACE_FILE"
+NETFILTER_TRACE_FILE=""
+echo "PASS: root DNS netfilter trace"
 
 ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
   | grep -F -- "$ATTACKER_NS" \
@@ -1802,10 +1988,15 @@ if sudo ip6tables-save -t filter \
 fi
 RAW_RULES_AFTER_STOP=$(sudo iptables-save -t raw) \
   || fail "failed to read raw rules after runner stop"
-LEAKED_SOURCE_GUARDS=$(printf '%s\n' "$RAW_RULES_AFTER_STOP" \
+LEAKED_TRACE_RULES=$(printf '%s\n' "$RAW_RULES_AFTER_STOP" \
+  | grep -F -- "$RUNNER_POOL_PREFIX" \
+  | grep -F -- "-j TRACE" || true)
+[ -z "$LEAKED_TRACE_RULES" ] \
+  || fail "DNS trace rules leaked after runner stop: $LEAKED_TRACE_RULES"
+LEAKED_NAMESPACE_RAW_RULES=$(printf '%s\n' "$RAW_RULES_AFTER_STOP" \
   | grep -F -- "$RUNNER_POOL_PREFIX" || true)
-[ -z "$LEAKED_SOURCE_GUARDS" ] \
-  || fail "IPv4 source guards leaked after runner stop: $LEAKED_SOURCE_GUARDS"
+[ -z "$LEAKED_NAMESPACE_RAW_RULES" ] \
+  || fail "IPv4 namespace raw rules leaked after runner stop: $LEAKED_NAMESPACE_RAW_RULES"
 NAMESPACES_AFTER_STOP=$(sudo ip netns list) \
   || fail "failed to read network namespaces after runner stop"
 LEAKED_NAMESPACES=$(printf '%s\n' "$NAMESPACES_AFTER_STOP" \

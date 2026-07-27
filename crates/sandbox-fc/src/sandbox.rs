@@ -41,6 +41,7 @@ use crate::factory::InvariantConfig;
 use crate::guest_dns_failure_diagnostics::{
     GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_diagnostics,
 };
+use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceAttachment;
 use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceBaseline;
 use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceTarget;
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
@@ -546,6 +547,10 @@ impl SandboxNetwork {
         self.info.attachment_generation()
     }
 
+    fn guest_dns_netfilter_trace(&self) -> &GuestDnsNetfilterTraceAttachment {
+        self.info.guest_dns_netfilter_trace()
+    }
+
     fn reuse_eligible(&self) -> bool {
         self.lease.as_ref().is_some_and(NetnsLease::reuse_eligible)
     }
@@ -645,9 +650,18 @@ impl FirecrackerSandbox {
     pub(crate) fn dns_network_evidence_target_for_reuse(
         &self,
     ) -> Option<GuestDnsNetworkEvidenceTarget> {
-        (self.factory_config.dns_port.is_some() && self.network.reuse_eligible()).then(|| {
-            GuestDnsNetworkEvidenceTarget::new(self.network.name(), self.network.host_device())
-        })
+        self.factory_config
+            .dns_port
+            .filter(|_| self.network.reuse_eligible())
+            .map(|dns_port| {
+                GuestDnsNetworkEvidenceTarget::new(
+                    self.network.name(),
+                    self.network.host_device(),
+                    self.network.peer_ip(),
+                    dns_port,
+                    self.network.guest_dns_netfilter_trace(),
+                )
+            })
     }
 
     fn current_state(&self) -> SandboxState {
@@ -1309,6 +1323,7 @@ impl FirecrackerSandbox {
                             dns_port,
                             attachment_generation: self.network.attachment_generation(),
                             readiness_attempts: error.attempts,
+                            root_netfilter_trace: self.network.guest_dns_netfilter_trace(),
                             network_evidence_baseline: self.guest_dns_network_baseline.as_deref(),
                             startup_mode: if self.factory_config.snapshot.is_some() {
                                 "snapshot_restore"
