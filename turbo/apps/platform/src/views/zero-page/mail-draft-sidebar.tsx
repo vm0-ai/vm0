@@ -15,6 +15,7 @@ import type {
   ZeroMailDraft,
   ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Button } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
@@ -23,6 +24,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   openImageLightbox$,
@@ -975,6 +977,7 @@ function MailDraftDetail({
   readonly close: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const featureSwitches = useGet(featureSwitch$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
   const localFollowUpState = useGet(signals.followUpState$);
@@ -986,6 +989,8 @@ function MailDraftDetail({
   const followUpSubmitting = followUpState === "submitting";
   const followUpActive = followUpState === "active";
   const followUpPaused = followUpState === "paused";
+  const followUpEnabled =
+    featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
   const active = draft.status === "draft";
   const pending =
     deleteLoadable.state === "loading" ||
@@ -1060,7 +1065,7 @@ function MailDraftDetail({
               Send
             </Button>
           ) : null}
-          {!active ? (
+          {!active && followUpEnabled ? (
             <Button
               type="button"
               size="sm"

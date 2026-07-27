@@ -4,6 +4,7 @@ import {
   IconLoader2,
   IconRoute,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
@@ -12,7 +13,10 @@ import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/ze
 import { Button, cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 
-import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  newChatThreadSidebarEnabled$,
+} from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import type {
   MailDraftFollowUpState,
@@ -29,6 +33,10 @@ import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
 interface MailDraftCardProps {
   readonly signals: MailDraftSignals;
+}
+
+interface EnabledMailDraftCardProps extends MailDraftCardProps {
+  readonly followUpEnabled: boolean;
 }
 
 function statusLabel(status: ZeroMailDraftStatus): string {
@@ -220,7 +228,10 @@ function SentMailDraftCard({
   );
 }
 
-export function MailDraftCard({ signals }: MailDraftCardProps) {
+function EnabledMailDraftCard({
+  signals,
+  followUpEnabled,
+}: EnabledMailDraftCardProps) {
   const draftLoadable = useLastLoadable(signals.draft$);
   const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const legacySelectedMailDraftId = useGet(currentMailDraftId$);
@@ -293,7 +304,7 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
     );
   }
 
-  if (draft.status === "sent") {
+  if (draft.status === "sent" && followUpEnabled) {
     return (
       <SentMailDraftCard
         draft={draft}
@@ -322,5 +333,17 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
     >
       {content}
     </button>
+  );
+}
+
+export function MailDraftCard(props: MailDraftCardProps) {
+  const featureSwitches = useGet(featureSwitch$);
+  return (
+    <EnabledMailDraftCard
+      {...props}
+      followUpEnabled={
+        featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] ?? false
+      }
+    />
   );
 }

@@ -223,6 +223,19 @@ interface MailDraftRow {
   readonly sentAt: Date | null;
 }
 
+interface MailFollowUpAutomationRow {
+  readonly id: string;
+  readonly enabled: boolean;
+}
+
+type MailFollowUpAutomationResolution =
+  | {
+      readonly kind: "existing";
+      readonly automation: MailFollowUpAutomationRow;
+    }
+  | { readonly kind: "create"; readonly workflowId: string }
+  | MailFollowUpSetupErrorResult;
+
 interface StoredMailDraftRow {
   readonly id: string;
   readonly agentId: string;
@@ -1919,6 +1932,33 @@ function mailFollowUpAutomationFailure(
   }
 }
 
+const ensureMailFollowUpAutomationEnabled$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly memberRole: string;
+      readonly automationId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<MailFollowUpSetupErrorResult | null> => {
+    const enabled = await set(
+      enableWorkflowAutomation$,
+      {
+        orgId: args.orgId,
+        member: { userId: args.userId, role: args.memberRole },
+        automationId: args.automationId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return enabled.kind === "ok"
+      ? null
+      : mailFollowUpAutomationFailure(enabled);
+  },
+);
+
 const ensureMailFollowUpWorkflow$ = command(
   async (
     { set },
@@ -2073,9 +2113,104 @@ function mailFollowUpEventConfig(
   };
 }
 
+async function loadMatchingMailFollowUpAutomation(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly eventConfig: GmailNewMessageEventConfig;
+}): Promise<MailFollowUpAutomationRow | null> {
+  const [existing] = await args.db
+    .select({
+      id: zeroWorkflowAutomations.id,
+      enabled: zeroWorkflowAutomations.enabled,
+    })
+    .from(zeroWorkflowAutomations)
+    .innerJoin(
+      workflowUserAutomationThreads,
+      and(
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowAutomations.ownerUserId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
+          zeroWorkflowAutomations.workflowId,
+        ),
+      ),
+    )
+    .where(
+      and(
+        eq(zeroWorkflowAutomations.orgId, args.orgId),
+        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(zeroWorkflowAutomations.kind, "event"),
+        eq(zeroWorkflowAutomations.eventType, "gmail-new-message"),
+        eq(zeroWorkflowAutomations.eventConfig, args.eventConfig),
+        eq(workflowUserAutomationThreads.chatThreadId, args.chatThreadId),
+      ),
+    )
+    .limit(1);
+  return existing ?? null;
+}
+
+const resolveMailFollowUpAutomation$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly agentId: string;
+      readonly chatThreadId: string;
+      readonly eventConfig: GmailNewMessageEventConfig;
+    },
+    signal: AbortSignal,
+  ): Promise<MailFollowUpAutomationResolution> => {
+    const writeDb = set(writeDb$);
+    const existing = await loadMatchingMailFollowUpAutomation({
+      db: writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      chatThreadId: args.chatThreadId,
+      eventConfig: args.eventConfig,
+    });
+    signal.throwIfAborted();
+    if (existing) {
+      return { kind: "existing", automation: existing };
+    }
+
+    const workflow = await set(
+      ensureMailFollowUpWorkflow$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.agentId,
+        chatThreadId: args.chatThreadId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (workflow.kind !== "ok") {
+      return workflow;
+    }
+
+    const createdConcurrently = await loadMatchingMailFollowUpAutomation({
+      db: writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      chatThreadId: args.chatThreadId,
+      eventConfig: args.eventConfig,
+    });
+    signal.throwIfAborted();
+    return createdConcurrently
+      ? { kind: "existing", automation: createdConcurrently }
+      : { kind: "create", workflowId: workflow.workflowId };
+  },
+);
+
 function existingMailFollowUpResult(
   row: MailDraftRow,
-): ZeroMailFollowUpSetupResult | null {
+): Extract<ZeroMailFollowUpSetupResult, { readonly kind: "ok" }> | null {
   if (!row.followUpAutomationId) {
     return null;
   }
@@ -2203,6 +2338,21 @@ export const setupZeroMailFollowUp$ = command(
     }
     const existingFollowUp = existingMailFollowUpResult(row);
     if (existingFollowUp) {
+      if (row.followUpAutomationEnabled === false) {
+        const error = await set(
+          ensureMailFollowUpAutomationEnabled$,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            memberRole: args.memberRole,
+            automationId: existingFollowUp.automationId,
+          },
+          signal,
+        );
+        if (error) {
+          return error;
+        }
+      }
       return existingFollowUp;
     }
 
@@ -2227,67 +2377,47 @@ export const setupZeroMailFollowUp$ = command(
       return noMailFollowUpRecipientsError;
     }
 
-    const workflow = await set(
-      ensureMailFollowUpWorkflow$,
+    const resolution = await set(
+      resolveMailFollowUpAutomation$,
       {
         orgId: args.orgId,
         userId: args.userId,
         agentId: row.agentId,
         chatThreadId: row.chatThreadId,
+        eventConfig,
       },
       signal,
     );
     signal.throwIfAborted();
-    if (workflow.kind !== "ok") {
-      return workflow;
+    if (resolution.kind !== "existing" && resolution.kind !== "create") {
+      return resolution;
     }
 
-    const writeDb = set(writeDb$);
-    const [existing] = await writeDb
-      .select({
-        id: zeroWorkflowAutomations.id,
-        enabled: zeroWorkflowAutomations.enabled,
-      })
-      .from(zeroWorkflowAutomations)
-      .where(
-        and(
-          eq(zeroWorkflowAutomations.orgId, args.orgId),
-          eq(zeroWorkflowAutomations.workflowId, workflow.workflowId),
-          eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-          eq(zeroWorkflowAutomations.kind, "event"),
-          eq(zeroWorkflowAutomations.eventType, "gmail-new-message"),
-          eq(zeroWorkflowAutomations.eventConfig, eventConfig),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    const member = { userId: args.userId, role: args.memberRole };
     let automationId: string;
-    if (existing) {
-      if (!existing.enabled) {
-        const enabled = await set(
-          enableWorkflowAutomation$,
+    if (resolution.kind === "existing") {
+      if (!resolution.automation.enabled) {
+        const error = await set(
+          ensureMailFollowUpAutomationEnabled$,
           {
             orgId: args.orgId,
-            member,
-            automationId: existing.id,
+            userId: args.userId,
+            memberRole: args.memberRole,
+            automationId: resolution.automation.id,
           },
           signal,
         );
-        signal.throwIfAborted();
-        if (enabled.kind !== "ok") {
-          return mailFollowUpAutomationFailure(enabled);
+        if (error) {
+          return error;
         }
       }
-      automationId = existing.id;
+      automationId = resolution.automation.id;
     } else {
       const created = await set(
         createWorkflowAutomation$,
         {
           orgId: args.orgId,
-          member,
-          workflowId: workflow.workflowId,
+          member: { userId: args.userId, role: args.memberRole },
+          workflowId: resolution.workflowId,
           eventType: "gmail-new-message",
           eventConfig,
           enabled: true,
