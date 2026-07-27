@@ -1,15 +1,24 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
 
 use super::test_support::{
     MOCK_REQUEST_READ_TIMEOUT, MockFirecrackerApi, MockRequest, MockResponse, read_mock_request,
 };
 use super::{ApiClient, ApiError};
 use crate::config::RateLimiterConfig;
+
+struct DropNotify(Arc<Notify>);
+
+impl Drop for DropNotify {
+    fn drop(&mut self) {
+        self.0.notify_one();
+    }
+}
 
 fn assert_request(request: &MockRequest, method: &str, path: &str) {
     assert_eq!(request.method, method, "raw request: {}", request.raw);
@@ -138,6 +147,64 @@ async fn mock_firecracker_api_drains_captured_requests_without_waiting() {
     assert_request(&requests[0], "PATCH", "/balloon");
     assert_request(&requests[1], "PATCH", "/balloon");
     assert!(api.drain_requests().is_empty());
+}
+
+#[tokio::test]
+async fn mock_firecracker_api_handler_serves_concurrently_and_owns_tasks() {
+    let handler_entered = Arc::new(Notify::new());
+    let release_handler = Arc::new(Notify::new());
+    let handler_dropped = Arc::new(Notify::new());
+    let mut api = MockFirecrackerApi::with_handler({
+        let handler_entered = Arc::clone(&handler_entered);
+        let release_handler = Arc::clone(&release_handler);
+        let handler_dropped = Arc::clone(&handler_dropped);
+        move |request| {
+            let handler_entered = Arc::clone(&handler_entered);
+            let release_handler = Arc::clone(&release_handler);
+            let handler_dropped = Arc::clone(&handler_dropped);
+            async move {
+                if request.method == "GET" && request.path == "/balloon/statistics" {
+                    let _drop_notify = DropNotify(handler_dropped);
+                    handler_entered.notify_one();
+                    release_handler.notified().await;
+                    MockResponse::ok_body(
+                        r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#,
+                    )
+                } else {
+                    MockResponse::no_content()
+                }
+            }
+        }
+    });
+    let socket_path = api.socket_path().to_path_buf();
+    let stats_client = ApiClient::new(&socket_path).unwrap();
+    let stats_request = tokio::spawn(async move { stats_client.get_balloon_statistics().await });
+
+    tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, handler_entered.notified())
+        .await
+        .expect("timed out waiting for gated handler");
+
+    let patch_client = ApiClient::new(&socket_path).unwrap();
+    tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, patch_client.patch_balloon(123))
+        .await
+        .expect("second request blocked behind gated handler")
+        .unwrap();
+
+    let requests = api.drain_requests();
+    assert_eq!(requests.len(), 2, "captured requests: {requests:#?}");
+    assert_request(&requests[0], "GET", "/balloon/statistics");
+    assert_request(&requests[1], "PATCH", "/balloon");
+
+    drop(api);
+    tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, handler_dropped.notified())
+        .await
+        .expect("gated handler outlived mock API");
+
+    let result = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, stats_request)
+        .await
+        .expect("gated client did not exit after mock API drop")
+        .unwrap();
+    assert!(result.is_err());
 }
 
 #[test]
