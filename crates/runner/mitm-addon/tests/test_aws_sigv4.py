@@ -1,6 +1,7 @@
 """AWS SigV4 signer boundary tests."""
 
 import urllib.parse
+from unittest.mock import patch
 
 import pytest
 
@@ -103,6 +104,63 @@ def _presigned_url(
     timestamp: str = DEFAULT_SIGV4_TIMESTAMP,
 ) -> str:
     return aws_sigv4_presigned_url(host, date=timestamp[:8], timestamp=timestamp)
+
+
+@pytest.mark.parametrize(
+    ("url", "headers"),
+    [
+        pytest.param(
+            "https://sts.amazonaws.com/",
+            _header_auth_headers(),
+            id="header",
+        ),
+        pytest.param(
+            _presigned_url(STS_HOST),
+            [("Host", STS_HOST)],
+            id="presigned",
+        ),
+    ],
+)
+def test_sign_request_splits_input_url_once(
+    url: str,
+    headers: list[tuple[str, str]],
+) -> None:
+    real_urlsplit = urllib.parse.urlsplit
+    with patch.object(urllib.parse, "urlsplit", wraps=real_urlsplit) as urlsplit:
+        sign_request(
+            method="GET",
+            url=url,
+            headers=headers,
+            body=None,
+            credentials=_credentials(),
+        )
+
+    urlsplit.assert_called_once_with(url)
+
+
+def test_presigned_query_preserves_ordinary_pairs() -> None:
+    url = aws_sigv4_presigned_url(
+        STS_HOST,
+        leading_query="Tag=one&Tag=two&Flag",
+    )
+
+    signed_url, _headers = sign_request(
+        method="GET",
+        url=url,
+        headers=[("Host", STS_HOST)],
+        body=None,
+        credentials=_credentials(),
+    )
+
+    assert signed_url == (
+        "https://sts.amazonaws.com/?Tag=one&Tag=two&Flag="
+        "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
+        "&X-Amz-Credential=AKIDEXAMPLE%2F20260101%2Fus-east-1%2Fsts%2Faws4_request"
+        "&X-Amz-Date=20260101T000000Z"
+        "&X-Amz-Expires=60"
+        "&X-Amz-SignedHeaders=host"
+        "&X-Amz-Signature=9245f52c735ed2e7286981a0013837d6c69b227b74cee0a9611b3f0257fc1c68"
+    )
 
 
 @pytest.mark.parametrize("amz_date", _INVALID_SEMANTIC_SIGV4_TIMESTAMPS)
