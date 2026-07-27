@@ -13,6 +13,7 @@ describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplateV2, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
@@ -114,15 +115,11 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       true,
     );
@@ -150,7 +147,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
@@ -158,15 +154,12 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
-      true,
-    );
     expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);

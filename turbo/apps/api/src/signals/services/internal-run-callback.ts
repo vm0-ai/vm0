@@ -6,6 +6,7 @@ export const internalRunCallbackKinds = [
   "morning-brief:email",
   "slack:chat",
   "feishu:chat",
+  "teams:chat",
   "feishu:org",
   "teams:org",
   "telegram",
@@ -45,6 +46,7 @@ function isInternalRunCallbackKind(
     case "morning-brief:email":
     case "slack:chat":
     case "feishu:chat":
+    case "teams:chat":
     case "feishu:org":
     case "teams:org":
     case "telegram":

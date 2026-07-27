@@ -193,6 +193,12 @@ const dispatchInternalCallback$ = command(
           error: "Feishu chat delivery callbacks are inline-only",
         };
       }
+      case "teams:chat": {
+        return {
+          success: false,
+          error: "Teams chat delivery callbacks are inline-only",
+        };
+      }
       case "teams:org": {
         return await set(
           handleTeamsOrgInternalCallback$,
@@ -330,6 +336,7 @@ async function dispatchRunCallbacks(
           notInArray(agentRunCallbacks.internalKind, [
             "slack:chat",
             "feishu:chat",
+            "teams:chat",
             "slack:org",
           ]),
         ),
@@ -406,6 +413,7 @@ export const dispatchRunCallbacks$ = command(
             notInArray(agentRunCallbacks.internalKind, [
               "slack:chat",
               "feishu:chat",
+              "teams:chat",
               "slack:org",
             ]),
           ),
@@ -571,6 +579,12 @@ async function dispatchInternalCallbackWithoutCcstate(
       return {
         success: false,
         error: "Feishu chat delivery callbacks are inline-only",
+      };
+    }
+    case "teams:chat": {
+      return {
+        success: false,
+        error: "Teams chat delivery callbacks are inline-only",
       };
     }
     case "teams:org": {

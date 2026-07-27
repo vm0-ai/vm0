@@ -463,6 +463,7 @@ export async function staleChatThreadQueueThreadIds(
             "user_message",
             "slack_user_message",
             "feishu_user_message",
+            "teams_user_message",
           ]),
           and(
             eq(chatMessageQueue.itemType, "workflow_event"),

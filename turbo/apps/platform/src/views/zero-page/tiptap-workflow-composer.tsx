@@ -9,7 +9,6 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
-import { composerChatThreadSuggestionsEnabled$ } from "../../signals/zero-page/composer-chat-thread-suggestions.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import {
@@ -282,9 +281,6 @@ function useComposerSuggestionMenu({
   const slashRange = useGet(composer.activeSlashRange$);
   const chatThreadRange = useGet(composer.activeChatThreadSuggestionRange$);
   const chatThreadResult = useLastResolved(composer.chatThreadSuggestions$);
-  const chatThreadSuggestionsEnabled = useGet(
-    composerChatThreadSuggestionsEnabled$,
-  );
   const skillSubstringSearchEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ComposerSkillSubstringSearch] ??
     false;
@@ -311,7 +307,6 @@ function useComposerSuggestionMenu({
     : [];
   const showWorkflows = slashRange !== null;
   const chatThreads =
-    chatThreadSuggestionsEnabled &&
     chatThreadRange &&
     chatThreadResult &&
     chatThreadResult.agentId === currentAgentId &&
