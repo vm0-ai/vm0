@@ -8,12 +8,7 @@ import {
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
 } from "./chat-idb-schema.ts";
-import {
-  ChatIdbTimeoutError,
-  disabledChatIdbError,
-  logChatIdbDisabled,
-  withChatIdbTimeout,
-} from "./chat-idb-safe.ts";
+import { disabledChatIdbError, logChatIdbDisabled } from "./chat-idb-safe.ts";
 
 const L = logger("ChatMessageIndexedDb");
 
@@ -174,16 +169,12 @@ function createIdbMessageStores(getChatIdb: GetDb) {
       throw disabledChatIdbError(dbName);
     }
 
-    // IDB open is a cache fast path; timeout/rejection disables it for this tab.
+    // IDB open is a cache fast path; rejection disables it for this tab.
     // eslint-disable-next-line no-restricted-syntax
     try {
-      return await withChatIdbTimeout("messages:openDB", () => {
-        return getChatIdb();
-      });
+      return await getChatIdb();
     } catch (error) {
-      if (!(error instanceof ChatIdbTimeoutError)) {
-        disableForSession(error);
-      }
+      disableForSession(error);
       throw error;
     }
   }

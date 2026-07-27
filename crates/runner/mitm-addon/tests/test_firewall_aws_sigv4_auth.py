@@ -21,6 +21,7 @@ from tests.aws_sigv4_helpers import (
     quote_sigv4_value,
     resolved_aws_sigv4_credentials,
 )
+from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
 from tests.firewall_aws_sigv4_helpers import (
     FAR_FUTURE_EXPIRES_AT,
     assert_sigv4_failed_closed,
@@ -521,7 +522,9 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
     )
 
     with mitm_ctx():
-        result = await auth.handle_firewall_request(flow, allow, dict(vm_info))
+        result = await handle_firewall_request_without_upstream_admission(
+            flow, allow, dict(vm_info)
+        )
 
     assert_sigv4_failed_closed(result, flow, "Invalid AWS secret access key")
 
@@ -546,7 +549,7 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
     )
 
     with mitm_ctx():
-        result = await auth.handle_firewall_request(
+        result = await handle_firewall_request_without_upstream_admission(
             flow,
             allow,
             dict(vm_info),
@@ -624,7 +627,9 @@ async def test_header_sigv4_seeded_cache_matches_allow_context_identity(
     )
 
     with mitm_ctx():
-        result = await auth.handle_firewall_request(flow, allow, dict(vm_info))
+        result = await handle_firewall_request_without_upstream_admission(
+            flow, allow, dict(vm_info)
+        )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is True
@@ -690,7 +695,9 @@ async def test_header_sigv4_without_trusted_original_url_fails_closed(
     )
 
     with mitm_ctx():
-        result = await auth.handle_firewall_request(flow, allow, dict(vm_info))
+        result = await handle_firewall_request_without_upstream_admission(
+            flow, allow, dict(vm_info)
+        )
 
     assert_sigv4_failed_closed(result, flow, "AWS request URL is unavailable")
 
@@ -722,7 +729,9 @@ async def test_header_sigv4_with_malformed_current_request_target_fails_closed(
     )
 
     with mitm_ctx():
-        result = await auth.handle_firewall_request(flow, allow, dict(vm_info))
+        result = await handle_firewall_request_without_upstream_admission(
+            flow, allow, dict(vm_info)
+        )
 
     assert_sigv4_failed_closed(result, flow, "AWS request URL is malformed")
 
@@ -745,7 +754,9 @@ async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
     )
 
     with mitm_ctx():
-        result = await auth.handle_firewall_request(flow, allow, dict(vm_info))
+        result = await handle_firewall_request_without_upstream_admission(
+            flow, allow, dict(vm_info)
+        )
 
     assert_sigv4_failed_closed(result, flow, "Invalid AWS session token")
 
