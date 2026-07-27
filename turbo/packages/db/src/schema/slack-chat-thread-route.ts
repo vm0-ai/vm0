@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
 import {
-  check,
   pgTable,
   text,
   timestamp,
@@ -12,13 +10,9 @@ import {
 import { chatThreads } from "./chat-thread";
 import { slackOrgConnections } from "./slack-org-connection";
 
-export type SlackChatThreadRouteBackend = "legacy" | "canonical";
-
 /**
  * Sticky canonical chat ownership for one VM0 user's view of a physical Slack
- * thread. The backend column remains temporarily so the next production
- * release can contract the legacy schema after every API reader stops
- * depending on it.
+ * thread.
  */
 export const slackChatThreadRoutes = pgTable(
   "slack_chat_thread_routes",
@@ -35,25 +29,14 @@ export const slackChatThreadRoutes = pgTable(
     channelId: varchar("channel_id", { length: 255 }).notNull(),
     threadTs: varchar("thread_ts", { length: 255 }).notNull(),
     userId: text("user_id").notNull(),
-    backend: varchar("backend", { length: 16 })
-      .$type<SlackChatThreadRouteBackend>()
-      .default("canonical")
-      .notNull(),
-    chatThreadId: uuid("chat_thread_id").references(
-      () => {
-        return chatThreads.id;
-      },
-      { onDelete: "cascade" },
-    ),
-    /**
-     * The first canonical event that promoted a legacy route. A nullable
-     * marker pairs with the event's message timestamp to distinguish late
-     * retries of pre-cutover legacy events from canonical events.
-     */
-    legacyCutoverEventId: text("legacy_cutover_event_id"),
-    legacyCutoverMessageTs: varchar("legacy_cutover_message_ts", {
-      length: 255,
-    }),
+    chatThreadId: uuid("chat_thread_id")
+      .notNull()
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -63,11 +46,6 @@ export const slackChatThreadRoutes = pgTable(
         table.channelId,
         table.threadTs,
         table.userId,
-      ),
-      check(
-        "chk_slack_chat_thread_routes_backend_thread",
-        sql`(${table.backend} = 'legacy' AND ${table.chatThreadId} IS NULL)
-          OR (${table.backend} = 'canonical' AND ${table.chatThreadId} IS NOT NULL)`,
       ),
     ];
   },

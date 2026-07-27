@@ -189,7 +189,6 @@ async function countCanonicalSlackMentioners(args: {
         eq(slackOrgConnections.slackWorkspaceId, args.workspaceId),
         eq(slackChatThreadRoutes.channelId, args.channelId),
         eq(slackChatThreadRoutes.threadTs, args.threadTs),
-        isNotNull(slackChatThreadRoutes.chatThreadId),
       ),
     );
   return row?.count ?? 0;

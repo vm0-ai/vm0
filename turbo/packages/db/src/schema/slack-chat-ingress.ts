@@ -16,7 +16,6 @@ export type SlackChatIngressStatus =
   | "pending"
   | "processing"
   | "processed"
-  | "ignored"
   | "failed";
 
 /**
@@ -51,7 +50,7 @@ export const slackChatIngress = pgTable(
       uniqueIndex("idx_slack_chat_ingress_event_id").on(table.eventId),
       check(
         "chk_slack_chat_ingress_status",
-        sql`${table.status} IN ('pending', 'processing', 'processed', 'ignored', 'failed')`,
+        sql`${table.status} IN ('pending', 'processing', 'processed', 'failed')`,
       ),
       check(
         "chk_slack_chat_ingress_retry_count",

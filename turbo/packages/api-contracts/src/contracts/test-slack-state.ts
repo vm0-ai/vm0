@@ -33,13 +33,6 @@ export const testSlackStatePostBodySchema = z.object({
   org_name: z.string().optional(),
   seed_secret_names: z.array(z.string()).optional(),
   seed_variables: z.record(z.string(), z.string()).optional(),
-  previous_writer_route: z
-    .object({
-      connection_id: z.string().uuid(),
-      channel_id: z.string(),
-      thread_ts: z.string(),
-    })
-    .optional(),
 });
 
 export const testSlackStatePostResponseSchema = z.object({
@@ -81,10 +74,7 @@ export const testSlackStateResponseSchema = z.object({
       channelId: z.string(),
       threadTs: z.string(),
       userId: z.string(),
-      backend: z.enum(["legacy", "canonical"]),
-      chatThreadId: z.string().nullable(),
-      legacyCutoverEventId: z.string().nullable(),
-      legacyCutoverMessageTs: z.string().nullable(),
+      chatThreadId: z.string(),
       createdAt: z.string(),
     }),
   ),
@@ -94,13 +84,7 @@ export const testSlackStateResponseSchema = z.object({
       routeId: z.string(),
       eventId: z.string(),
       payload: z.string(),
-      status: z.enum([
-        "pending",
-        "processing",
-        "processed",
-        "ignored",
-        "failed",
-      ]),
+      status: z.enum(["pending", "processing", "processed", "failed"]),
       retryCount: z.number(),
       lastError: z.string().nullable(),
       createdAt: z.string(),

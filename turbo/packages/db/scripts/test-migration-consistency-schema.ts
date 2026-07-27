@@ -3008,6 +3008,206 @@ async function validateSlackChatThreadRouteBackfill(): Promise<void> {
   }
 }
 
+async function validateSlackLegacySchemaContraction(): Promise<void> {
+  console.log("=== Phase 1.76: Validate legacy Slack schema contraction ===\n");
+  const testDb = "migration_slack_legacy_schema_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const connectionId = "51000000-0000-4000-8000-000000000001";
+  const sessionId = "51000000-0000-4000-8000-000000000002";
+  const routeId = "51000000-0000-4000-8000-000000000003";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 693);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        INSERT INTO "slack_org_installations" (
+          "slack_workspace_id",
+          "encrypted_bot_token",
+          "bot_user_id"
+        )
+        VALUES (
+          'legacy-contraction-workspace',
+          'encrypted-token',
+          'legacy-contraction-bot'
+        )
+      `);
+      await client.query(
+        `
+          INSERT INTO "slack_org_connections" (
+            "id",
+            "slack_user_id",
+            "slack_workspace_id",
+            "vm0_user_id"
+          )
+          VALUES (
+            $1,
+            'legacy-contraction-slack-user',
+            'legacy-contraction-workspace',
+            'legacy-contraction-user'
+          )
+        `,
+        [connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_org_thread_sessions" (
+            "id",
+            "connection_id",
+            "slack_channel_id",
+            "slack_thread_ts"
+          )
+          VALUES ($1, $2, 'legacy-channel', '1000.000001')
+        `,
+        [sessionId, connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_chat_thread_routes" (
+            "id",
+            "connection_id",
+            "channel_id",
+            "thread_ts",
+            "user_id",
+            "backend",
+            "chat_thread_id",
+            "legacy_cutover_event_id",
+            "legacy_cutover_message_ts"
+          )
+          VALUES (
+            $1,
+            $2,
+            'legacy-channel',
+            '1000.000001',
+            'legacy-contraction-user',
+            'legacy',
+            NULL,
+            'legacy-cutover-event',
+            '1000.000002'
+          )
+        `,
+        [routeId, connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_chat_ingress" (
+            "route_id",
+            "event_id",
+            "payload"
+          )
+          VALUES (
+            $1,
+            'legacy-retry-event',
+            '{"event":{"ts":"1000.000001"}}'
+          )
+        `,
+        [routeId],
+      );
+      await client.query(`
+        INSERT INTO "user_feature_switches" (
+          "org_id",
+          "user_id",
+          "switches"
+        )
+        VALUES (
+          'legacy-contraction-org',
+          'legacy-contraction-user',
+          '{
+            "canonicalSlackIngress": false,
+            "canonicalSlackWebVisibility": true,
+            "canonicalSlackAssets": false,
+            "unrelatedSwitch": true
+          }'::jsonb
+        )
+      `);
+
+      await applyMigrationsUpTo(client, 695);
+
+      const [legacyState, routeColumns, switches] = await Promise.all([
+        client.query<{
+          ingress_exists: boolean;
+          legacy_classifier: string | null;
+          legacy_session_table: string | null;
+          route_canonicalizer: string | null;
+          route_exists: boolean;
+        }>(
+          `
+            SELECT
+              EXISTS (
+                SELECT 1
+                FROM "slack_chat_ingress"
+                WHERE "event_id" = 'legacy-retry-event'
+              ) AS "ingress_exists",
+              to_regprocedure(
+                'classify_legacy_slack_cutover_ingress()'
+              )::text AS "legacy_classifier",
+              to_regclass(
+                'public.slack_org_thread_sessions'
+              )::text AS "legacy_session_table",
+              to_regprocedure(
+                'canonicalize_slack_chat_thread_route()'
+              )::text AS "route_canonicalizer",
+              EXISTS (
+                SELECT 1
+                FROM "slack_chat_thread_routes"
+                WHERE "id" = $1
+              ) AS "route_exists"
+          `,
+          [routeId],
+        ),
+        client.query<{ column_name: string; is_nullable: "NO" | "YES" }>(`
+          SELECT "column_name", "is_nullable"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = 'public'
+            AND "table_name" = 'slack_chat_thread_routes'
+          ORDER BY "ordinal_position"
+        `),
+        client.query<{ switches: Record<string, boolean> }>(`
+          SELECT "switches"
+          FROM "user_feature_switches"
+          WHERE "org_id" = 'legacy-contraction-org'
+            AND "user_id" = 'legacy-contraction-user'
+        `),
+      ]);
+
+      assert.deepEqual(legacyState.rows, [
+        {
+          ingress_exists: false,
+          legacy_classifier: null,
+          legacy_session_table: null,
+          route_canonicalizer: null,
+          route_exists: false,
+        },
+      ]);
+      assert.deepEqual(routeColumns.rows, [
+        { column_name: "id", is_nullable: "NO" },
+        { column_name: "connection_id", is_nullable: "NO" },
+        { column_name: "channel_id", is_nullable: "NO" },
+        { column_name: "thread_ts", is_nullable: "NO" },
+        { column_name: "user_id", is_nullable: "NO" },
+        { column_name: "chat_thread_id", is_nullable: "NO" },
+        { column_name: "created_at", is_nullable: "NO" },
+      ]);
+      assert.deepEqual(switches.rows, [
+        {
+          switches: {
+            unrelatedSwitch: true,
+          },
+        },
+      ]);
+      console.log(
+        "   ✅ Legacy Slack rows, schema, triggers, and feature overrides are removed\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -3502,6 +3702,7 @@ async function main(): Promise<void> {
     await validateLegacyMemoryCleanup();
     await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
+    await validateSlackLegacySchemaContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
 

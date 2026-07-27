@@ -1354,7 +1354,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(context.mocks.slack.fetchFile).not.toHaveBeenCalled();
   });
 
-  it("promotes previous-writer routes and deduplicates canonical retries", async () => {
+  it("deduplicates canonical Slack retries", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -1406,29 +1406,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       event_id: eventId,
       event,
     });
-    const installedState = await integrations.readSlackTestState(teamId);
-    const connectionId = installedState.connections[0]?.id;
-    if (!connectionId) {
-      throw new Error("Expected a connected Slack test user");
-    }
-    await integrations.seedSlackRouteThroughPreviousWriter({
-      actor,
-      teamId,
-      connectionId,
-      channelId,
-      threadTs,
-    });
-    const legacyState = await integrations.readSlackTestState(teamId);
-    expect(legacyState.chat_thread_routes).toStrictEqual([
-      expect.objectContaining({
-        channelId,
-        threadTs,
-        backend: "legacy",
-        chatThreadId: null,
-      }),
-    ]);
-    expect(legacyState.chat_ingress).toHaveLength(0);
-
     await integrations.requestSlackEvent(
       eventBody,
       integrations.signedSlackIngressHeaders(eventBody),
@@ -1452,10 +1429,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channelId,
       threadTs,
       userId: actor.userId,
-      backend: "canonical",
       chatThreadId: expect.any(String),
-      legacyCutoverEventId: null,
-      legacyCutoverMessageTs: null,
     });
     expect(state.chat_ingress).toHaveLength(1);
     expect(state.chat_ingress[0]).toMatchObject({
@@ -1600,7 +1574,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(state.chat_thread_routes[0]).toMatchObject({
       channelId,
       threadTs,
-      backend: "canonical",
     });
     expect(state.chat_ingress).toHaveLength(2);
     expect(state.chat_ingress).toStrictEqual(
@@ -1617,9 +1590,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return ingress.eventId;
       }),
     ).toStrictEqual(expect.arrayContaining([eventId, stickyEventId]));
-    // The previous deployed reader matches only `user_message`. Keeping Slack
-    // work on its own enum value prevents that reader from claiming a new
-    // Slack row during a rolling deploy, while the new reader handles both.
+    // Slack work keeps a dedicated item type so queue ownership preserves its
+    // integration trigger source alongside web messages.
     expect(state.chat_message_queue).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1879,7 +1851,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(run2.result?.agentSessionId).toBe(webSessionId);
   });
 
-  it("admits a later promoted-route retry after its first ingress insert fails", async () => {
+  it("admits a later canonical-route retry after its first ingress insert fails", async () => {
     const actor = bdd.user();
     const blockerActor = bdd.user();
     runs.acceptStorageDownloads();
@@ -1903,30 +1875,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     const channelId = "C_BDD_CANONICAL_RETRY_RECOVERY";
     const threadTs = "3100.000100";
-    const targetInstalledState = await integrations.readSlackTestState(
-      targetInstallation.teamId,
-    );
-    const targetConnectionId = targetInstalledState.connections[0]?.id;
-    if (!targetConnectionId) {
-      throw new Error("Expected a connected target Slack test user");
-    }
-    await integrations.seedSlackRouteThroughPreviousWriter({
-      actor,
-      teamId: targetInstallation.teamId,
-      connectionId: targetConnectionId,
-      channelId,
-      threadTs,
-    });
-
-    const cutoverEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
-    const cutoverBody = JSON.stringify({
+    const initialEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const initialBody = JSON.stringify({
       type: "event_callback",
       team_id: targetInstallation.teamId,
-      event_id: cutoverEventId,
+      event_id: initialEventId,
       event: {
         type: "app_mention",
         user: slackUserId,
-        text: `<@${targetInstallation.botUserId}> promote this route`,
+        text: `<@${targetInstallation.botUserId}> create this route`,
         ts: "3100.000200",
         thread_ts: threadTs,
         channel: channelId,
@@ -1934,8 +1891,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
       },
     });
     await integrations.requestSlackEvent(
-      cutoverBody,
-      integrations.signedSlackIngressHeaders(cutoverBody),
+      initialBody,
+      integrations.signedSlackIngressHeaders(initialBody),
       [200],
     );
     await flushWaitUntilForTest();
@@ -2006,7 +1963,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(targetState.chat_ingress).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          eventId: cutoverEventId,
+          eventId: initialEventId,
           status: "processed",
         }),
         expect.objectContaining({
@@ -2041,7 +1998,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
   });
 
-  it("promotes retry-only previous-writer routes into canonical ingress", async () => {
+  it("routes retry-only Slack events through canonical ingress", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -2053,20 +2010,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
     });
-    const legacyThreadTs = "2900.000300";
-    const channelId = "C_BDD_LEGACY_INGRESS";
-    const installedState = await integrations.readSlackTestState(teamId);
-    const connectionId = installedState.connections[0]?.id;
-    if (!connectionId) {
-      throw new Error("Expected a connected Slack test user");
-    }
-    await integrations.seedSlackRouteThroughPreviousWriter({
-      actor,
-      teamId,
-      connectionId,
-      channelId,
-      threadTs: legacyThreadTs,
-    });
+    const threadTs = "2900.000300";
+    const channelId = "C_BDD_RETRY_INGRESS";
     const retryEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
     const retryBody = JSON.stringify({
       type: "event_callback",
@@ -2076,7 +2021,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         type: "app_mention",
         user: slackUserId,
         text: "retry this route through canonical ingress",
-        ts: legacyThreadTs,
+        ts: threadTs,
         channel: channelId,
         channel_type: "channel",
       },
@@ -2095,11 +2040,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(state.chat_thread_routes).toHaveLength(1);
     expect(state.chat_thread_routes[0]).toMatchObject({
       channelId,
-      threadTs: legacyThreadTs,
-      backend: "canonical",
+      threadTs,
       chatThreadId: expect.any(String),
-      legacyCutoverEventId: null,
-      legacyCutoverMessageTs: null,
     });
     expect(state.chat_ingress).toStrictEqual([
       expect.objectContaining({
@@ -2112,7 +2054,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenCalledWith({
       channel_id: channelId,
-      thread_ts: legacyThreadTs,
+      thread_ts: threadTs,
       status: "is thinking...",
     });
   });
