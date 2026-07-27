@@ -344,7 +344,7 @@ function prepareManualGrantConnect(
     if (!value) {
       if (config.required) {
         missingRequiredNames.push(
-          normalizedValuesResult.errorNamesByPrivateName[name] ?? name,
+          normalizedValuesResult.publicIdsByPrivateName[name] ?? name,
         );
       }
       continue;

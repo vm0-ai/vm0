@@ -46,7 +46,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
       params: { type: "openai" },
       body: {
         authMethod: "api-token",
-        values: { OPENAI_TOKEN: "sk-test-token" },
+        values: { apiKey: "sk-test-token" },
       },
       headers: authHeaders(),
     }),
@@ -62,8 +62,8 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
       body: {
         authMethod: "api-token",
         values: {
-          GITLAB_TOKEN: "gl-test-token",
-          GITLAB_HOST: "gitlab.example.com",
+          accessToken: "gl-test-token",
+          host: "gitlab.example.com",
         },
       },
       headers: authHeaders(),

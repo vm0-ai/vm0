@@ -126,7 +126,7 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
   it("returns an empty diff for manual auth connectors", async () => {
     const actor = bdd.user();
     await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
-      OPENAI_TOKEN: "sk-bdd-scope-diff",
+      apiKey: "sk-bdd-scope-diff",
     });
 
     await expect(

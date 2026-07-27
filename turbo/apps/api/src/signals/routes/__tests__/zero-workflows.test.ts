@@ -290,10 +290,10 @@ describe("zero workflows", () => {
     });
 
     await connectManualGrant(viewer, "runtime", "api-token", {
-      RUNTIME_API_KEY: "runtime-readiness-test",
+      apiKey: "runtime-readiness-test",
     });
     await connectManualGrant(viewer, "gitlab", "api-token", {
-      GITLAB_TOKEN: "gitlab-readiness-test",
+      accessToken: "gitlab-readiness-test",
     });
     await api.enableAgentConnectors(viewer, agent.agentId, ["gitlab"]);
 

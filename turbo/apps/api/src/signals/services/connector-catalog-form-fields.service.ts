@@ -3,14 +3,12 @@ import type {
   ConnectorDeviceAuthStartOptionConfig,
   ConnectorDeviceAuthStartOptions,
   ConnectorDeviceAuthStartOptionsConfig,
-  ConnectorManualGrantFieldConfig,
 } from "@vm0/connectors/connector-config";
 import { parseConnectorDeviceAuthStartOptionsConfig } from "@vm0/connectors/connector-auth-method";
 
 interface PublicManualGrantFieldDescriptor {
   readonly publicId: string;
   readonly privateName: string;
-  readonly config: ConnectorManualGrantFieldConfig;
 }
 
 interface PublicDeviceAuthStartOptionDescriptor {
@@ -23,7 +21,7 @@ type ManualGrantSubmittedValuesNormalizationResult =
   | {
       readonly ok: true;
       readonly values: Readonly<Record<string, string>>;
-      readonly errorNamesByPrivateName: Readonly<Record<string, string>>;
+      readonly publicIdsByPrivateName: Readonly<Record<string, string>>;
     }
   | { readonly ok: false; readonly message: string };
 
@@ -34,7 +32,7 @@ type DeviceAuthStartOptionsNormalizationResult =
     }
   | { readonly ok: false; readonly message: string };
 
-function formatPublicFieldList(names: readonly string[]): string {
+function formatFieldList(names: readonly string[]): string {
   return [...names].sort().join(", ");
 }
 
@@ -48,7 +46,6 @@ function publicManualGrantFieldDescriptors(
     return {
       publicId: config.publicId,
       privateName,
-      config,
     };
   });
 }
@@ -107,64 +104,26 @@ function normalizeManualGrantSubmittedValuesFromDescriptors(args: {
       return [descriptor.publicId, descriptor];
     }),
   );
-  const descriptorByPrivateName = new Map(
-    descriptors.map((descriptor) => {
-      return [descriptor.privateName, descriptor];
-    }),
-  );
   const normalizedValues = new Map<string, string>();
-  const seenPrivateNames = new Set<string>();
   const unknownNames: string[] = [];
-  const ambiguousPublicNames: string[] = [];
-  let usesPublicIds = false;
 
   for (const [submittedName, value] of Object.entries(args.values)) {
-    const publicDescriptor = descriptorByPublicId.get(submittedName);
-    const legacyDescriptor = descriptorByPrivateName.get(submittedName);
-    const descriptor = publicDescriptor ?? legacyDescriptor;
-
+    const descriptor = descriptorByPublicId.get(submittedName);
     if (!descriptor) {
       unknownNames.push(submittedName);
       continue;
     }
 
-    if (
-      publicDescriptor &&
-      legacyDescriptor &&
-      publicDescriptor.privateName !== legacyDescriptor.privateName
-    ) {
-      usesPublicIds = true;
-      ambiguousPublicNames.push(publicDescriptor.publicId);
-      continue;
-    }
-
-    if (publicDescriptor) {
-      usesPublicIds = true;
-    }
-
-    if (seenPrivateNames.has(descriptor.privateName)) {
-      ambiguousPublicNames.push(descriptor.publicId);
-      continue;
-    }
-
-    seenPrivateNames.add(descriptor.privateName);
     normalizedValues.set(descriptor.privateName, value);
   }
 
   if (unknownNames.length > 0) {
     return {
       ok: false,
-      message: `Unknown manual grant field(s): ${formatPublicFieldList(
-        unknownNames,
-      )}`,
-    };
-  }
-
-  if (ambiguousPublicNames.length > 0) {
-    return {
-      ok: false,
-      message: `Ambiguous manual grant field(s): ${formatPublicFieldList(
-        ambiguousPublicNames,
+      message: `Unknown manual grant field(s). Expected: ${formatFieldList(
+        descriptors.map((descriptor) => {
+          return descriptor.publicId;
+        }),
       )}`,
     };
   }
@@ -172,12 +131,9 @@ function normalizeManualGrantSubmittedValuesFromDescriptors(args: {
   return {
     ok: true,
     values: Object.fromEntries(normalizedValues),
-    errorNamesByPrivateName: Object.fromEntries(
+    publicIdsByPrivateName: Object.fromEntries(
       descriptors.map((descriptor) => {
-        return [
-          descriptor.privateName,
-          usesPublicIds ? descriptor.publicId : descriptor.privateName,
-        ];
+        return [descriptor.privateName, descriptor.publicId];
       }),
     ),
   };
@@ -189,9 +145,6 @@ export function normalizeDeviceAuthStartOptionsWithMethod(args: {
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
 }): DeviceAuthStartOptionsNormalizationResult {
-  if (!args.options) {
-    return { ok: true, options: undefined };
-  }
   const descriptors =
     args.method.grant.kind === "device-auth"
       ? publicDeviceAuthStartOptionDescriptors(args.method.grant)
@@ -200,10 +153,6 @@ export function normalizeDeviceAuthStartOptionsWithMethod(args: {
     authMethodId: args.authMethodId,
     connectorRef: args.connectorRef,
     descriptors,
-    startOptions:
-      args.method.grant.kind === "device-auth"
-        ? args.method.grant.startOptions
-        : undefined,
     options: args.options,
   });
 }
@@ -213,7 +162,6 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
   readonly connectorRef: string;
   readonly descriptors: readonly PublicDeviceAuthStartOptionDescriptor[] | null;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
-  readonly startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined;
 }): DeviceAuthStartOptionsNormalizationResult {
   if (!args.options) {
     return { ok: true, options: undefined };
@@ -226,53 +174,22 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
     };
   }
 
-  const descriptorByPublicId = new Map(
-    descriptors.map((descriptor) => {
-      return [descriptor.publicId, descriptor];
-    }),
-  );
-  const descriptorByPrivateName = new Map(
-    descriptors.map((descriptor) => {
-      return [descriptor.privateName, descriptor];
-    }),
-  );
-  const normalizedOptions = new Map<string, string>();
-  const seenPrivateNames = new Set<string>();
-  const ambiguousPublicNames: string[] = [];
-
-  for (const [submittedName, value] of Object.entries(args.options)) {
-    const publicDescriptor = descriptorByPublicId.get(submittedName);
-    const legacyDescriptor = descriptorByPrivateName.get(submittedName);
-    const descriptor = publicDescriptor ?? legacyDescriptor;
-
-    if (!descriptor) {
-      normalizedOptions.set(submittedName, value);
-      continue;
-    }
-
-    if (
-      publicDescriptor &&
-      legacyDescriptor &&
-      publicDescriptor.privateName !== legacyDescriptor.privateName
-    ) {
-      ambiguousPublicNames.push(publicDescriptor.publicId);
-      continue;
-    }
-
-    if (seenPrivateNames.has(descriptor.privateName)) {
-      ambiguousPublicNames.push(descriptor.publicId);
-      continue;
-    }
-
-    seenPrivateNames.add(descriptor.privateName);
-    normalizedOptions.set(descriptor.privateName, value);
-  }
-
-  if (ambiguousPublicNames.length > 0) {
+  const startOptionsByPublicId: ConnectorDeviceAuthStartOptionsConfig =
+    Object.fromEntries(
+      descriptors.map((descriptor) => {
+        return [descriptor.publicId, descriptor.config];
+      }),
+    );
+  const hasUnknownName = Object.keys(args.options).some((name) => {
+    return !Object.hasOwn(startOptionsByPublicId, name);
+  });
+  if (hasUnknownName && descriptors.length > 0) {
     return {
       ok: false,
-      message: `Ambiguous device-auth start option(s): ${formatPublicFieldList(
-        ambiguousPublicNames,
+      message: `${args.connectorRef} ${args.authMethodId} device-auth start option(s) must use public IDs: ${formatFieldList(
+        descriptors.map((descriptor) => {
+          return descriptor.publicId;
+        }),
       )}`,
     };
   }
@@ -280,10 +197,19 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
   const parsed = parseConnectorDeviceAuthStartOptionsConfig({
     connectorRef: args.connectorRef,
     authMethodId: args.authMethodId,
-    startOptions: args.startOptions,
-    options: Object.fromEntries(normalizedOptions),
+    startOptions: startOptionsByPublicId,
+    options: args.options,
   });
-  return parsed.success
-    ? { ok: true, options: parsed.options }
-    : { ok: false, message: parsed.message };
+  if (!parsed.success) {
+    return { ok: false, message: parsed.message };
+  }
+
+  const normalizedOptions: Record<string, string> = {};
+  for (const descriptor of descriptors) {
+    const value = parsed.options[descriptor.publicId];
+    if (value !== undefined) {
+      normalizedOptions[descriptor.privateName] = value;
+    }
+  }
+  return { ok: true, options: normalizedOptions };
 }

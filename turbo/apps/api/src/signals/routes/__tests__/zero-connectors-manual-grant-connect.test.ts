@@ -136,7 +136,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { type: "openai" },
-        body: { authMethod: "api-token", values: { OPENAI_TOKEN: "sk-test" } },
+        body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: {},
       }),
       [401],
@@ -152,7 +152,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { type: "openai" },
-        body: { authMethod: "api-token", values: { OPENAI_TOKEN: "sk-test" } },
+        body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [401],
@@ -173,7 +173,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
           authorization: "Bearer clerk-session",
           "content-type": "application/json",
         },
-        body: JSON.stringify({ values: { OPENAI_TOKEN: "sk-test" } }),
+        body: JSON.stringify({ values: { apiKey: "sk-test" } }),
       },
     );
 
@@ -238,7 +238,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         params: { type: "openai" },
         body: {
           authMethod: "api-token",
-          values: { OPENAI_TOKEN: " sk-test\n" },
+          values: { apiKey: " sk-test\n" },
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -260,35 +260,6 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     });
   });
 
-  it("connects a first-time manual grant connector using public field ids", async () => {
-    const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
-
-    const response = await accept(
-      client.connect({
-        params: { type: "openai" },
-        body: {
-          authMethod: "api-token",
-          values: { apiKey: " sk-test\n" },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      type: "openai",
-      authMethod: "api-token",
-      connectionStatus: "connected",
-    });
-    const stored = await readConnector(fixture, "openai");
-    expect(stored.body).toMatchObject({
-      type: "openai",
-      authMethod: "api-token",
-      connectionStatus: "connected",
-    });
-  });
-
   it("connects Zendesk manual grant fields through the API", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
@@ -299,9 +270,9 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            ZENDESK_API_TOKEN: " zendesk\n-token ",
-            ZENDESK_EMAIL: " support@example.com ",
-            ZENDESK_SUBDOMAIN: " example ",
+            apiToken: " zendesk\n-token ",
+            email: " support@example.com ",
+            subdomain: " example ",
           },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -350,9 +321,9 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            ZENDESK_API_TOKEN: "zendesk-token",
-            ZENDESK_EMAIL: "support@example.com",
-            ZENDESK_SUBDOMAIN: "example",
+            apiToken: "zendesk-token",
+            email: "support@example.com",
+            subdomain: "example",
           },
         },
         headers: authHeaders(),
@@ -404,7 +375,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         },
         body: JSON.stringify({
           authMethod: "api-token",
-          values: { OPENAI_TOKEN: "replacement" },
+          values: { apiKey: "replacement" },
         }),
       },
     );
@@ -442,64 +413,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     });
   });
 
-  it("connects Zendesk manual grant fields using public field ids", async () => {
-    const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
-
-    const response = await accept(
-      client.connect({
-        params: { type: "zendesk" },
-        body: {
-          authMethod: "api-token",
-          values: {
-            apiToken: " zendesk\n-token ",
-            email: " support@example.com ",
-            subdomain: " example ",
-          },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      type: "zendesk",
-      authMethod: "api-token",
-      connectionStatus: "connected",
-    });
-    const stored = await readConnector(fixture, "zendesk");
-    expect(stored.body.authMethod).toBe("api-token");
-  });
-
-  it("accepts a full URL host field for manual grant connectors", async () => {
-    const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
-
-    const response = await accept(
-      client.connect({
-        params: { type: "insforge" },
-        body: {
-          authMethod: "api-token",
-          values: {
-            INSFORGE_API_KEY: "ik_test-key",
-            INSFORGE_DOMAIN: "https://9ksx253h.us-west.insforge.app/api/",
-          },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      type: "insforge",
-      authMethod: "api-token",
-      connectionStatus: "connected",
-    });
-    const stored = await readConnector(fixture, "insforge");
-    expect(stored.body.authMethod).toBe("api-token");
-  });
-
-  it("normalizes host fields submitted with public field ids", async () => {
+  it("normalizes a full URL host field for manual grant connectors", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
@@ -528,36 +442,6 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   });
 
   it("connects Lark app credentials through the API", async () => {
-    const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
-
-    const response = await accept(
-      client.connect({
-        params: { type: "lark" },
-        body: {
-          authMethod: "api-token",
-          values: {
-            LARK_APP_ID: " cli_a123 ",
-            LARK_APP_SECRET: " lark-app-secret\n",
-          },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      type: "lark",
-      authMethod: "api-token",
-      connectionStatus: "connected",
-      reconnectReason: null,
-      tokenExpiresAt: null,
-    });
-    const stored = await readConnector(fixture, "lark");
-    expect(stored.body.connectionStatus).toBe("connected");
-  });
-
-  it("connects Lark secret and variable fields using public field ids", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
@@ -596,8 +480,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            LARK_APP_ID: "cli_old",
-            LARK_APP_SECRET: "old-lark-app-secret",
+            appId: "cli_old",
+            appSecret: "old-lark-app-secret",
           },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -611,8 +495,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            LARK_APP_ID: "cli_new",
-            LARK_APP_SECRET: "new-lark-app-secret",
+            appId: "cli_new",
+            appSecret: "new-lark-app-secret",
           },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -641,9 +525,9 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            TEST_OAUTH_TOKEN: "old-manual-test-oauth-token",
-            TEST_OAUTH_API_TOKEN_INPUT_VAR: "old-input-variable",
-            TEST_OAUTH_API_TENANT_ID: "old-tenant",
+            apiToken: "old-manual-test-oauth-token",
+            inputVariable: "old-input-variable",
+            tenantId: "old-tenant",
           },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -657,9 +541,9 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            TEST_OAUTH_TOKEN: "manual-test-oauth-token",
-            TEST_OAUTH_API_TOKEN_INPUT_VAR: "manual-input-variable",
-            TEST_OAUTH_API_TENANT_ID: "manual-tenant",
+            apiToken: "manual-test-oauth-token",
+            inputVariable: "manual-input-variable",
+            tenantId: "manual-tenant",
           },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -672,44 +556,6 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   });
 
   it("replaces GitLab manual grant when optional fields are omitted", async () => {
-    const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
-    await accept(
-      client.connect({
-        params: { type: "gitlab" },
-        body: {
-          authMethod: "api-token",
-          values: {
-            GITLAB_TOKEN: "old-token",
-            GITLAB_HOST: "gitlab.example.com",
-          },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    await accept(
-      client.connect({
-        params: { type: "gitlab" },
-        body: {
-          authMethod: "api-token",
-          values: { GITLAB_TOKEN: "new-token" },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const stored = await readConnector(fixture, "gitlab");
-    expect(stored.body).toMatchObject({
-      type: "gitlab",
-      authMethod: "api-token",
-      connectionStatus: "connected",
-    });
-  });
-
-  it("replaces GitLab manual grant using public field ids when optional fields are omitted", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
     await accept(
@@ -747,7 +593,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     });
   });
 
-  it("rejects ambiguous public and legacy keys for the same field", async () => {
+  it("rejects private field names and identifies the public field id", async () => {
     await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
@@ -756,10 +602,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         params: { type: "openai" },
         body: {
           authMethod: "api-token",
-          values: {
-            apiKey: "sk-public",
-            OPENAI_TOKEN: "sk-legacy",
-          },
+          values: { OPENAI_TOKEN: "sk-private" },
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -767,33 +610,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body.error.message).toContain("apiKey");
-    expect(response.body.error.message).not.toContain("sk-public");
-    expect(response.body.error.message).not.toContain("sk-legacy");
-  });
-
-  it("rejects unknown fields without echoing submitted values", async () => {
-    await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
-
-    const response = await accept(
-      client.connect({
-        params: { type: "openai" },
-        body: {
-          authMethod: "api-token",
-          values: {
-            OPENAI_TOKEN: "sk-test",
-            EXTRA_TOKEN: "secret-value-should-not-echo",
-          },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toContain("EXTRA_TOKEN");
-    expect(response.body.error.message).not.toContain(
-      "secret-value-should-not-echo",
-    );
+    expect(response.body.error.message).not.toContain("OPENAI_TOKEN");
+    expect(response.body.error.message).not.toContain("sk-private");
   });
 
   it("rejects unknown public fields without echoing submitted values", async () => {
@@ -815,7 +633,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [400],
     );
 
-    expect(response.body.error.message).toContain("unknownField");
+    expect(response.body.error.message).toContain("apiKey");
+    expect(response.body.error.message).not.toContain("unknownField");
     expect(response.body.error.message).not.toContain(
       "secret-value-should-not-echo",
     );
@@ -834,26 +653,11 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [400],
     );
 
-    expect(response.body.error.message).toContain("OPENAI_TOKEN");
+    expect(response.body.error.message).toContain("apiKey");
+    expect(response.body.error.message).not.toContain("OPENAI_TOKEN");
   });
 
-  it("rejects required fields that sanitize to empty", async () => {
-    await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
-
-    const response = await accept(
-      client.connect({
-        params: { type: "openai" },
-        body: { authMethod: "api-token", values: { OPENAI_TOKEN: " \n\t " } },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toContain("OPENAI_TOKEN");
-  });
-
-  it("rejects public required fields that sanitize to empty without private field names", async () => {
+  it("rejects required fields that sanitize to empty without private field names", async () => {
     await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
@@ -895,7 +699,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { type: "stripe" },
-        body: { authMethod: "oauth", values: { STRIPE_TOKEN: "sk_test_key" } },
+        body: { authMethod: "oauth", values: { apiKey: "sk_test_key" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -916,8 +720,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            BENTO_CLOUD_API_KEY: "bento-token",
-            BENTO_CLOUD_API_ENDPOINT: "https://example.bentoml.test",
+            apiToken: "bento-token",
+            endpoint: "https://example.bentoml.test",
           },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -959,7 +763,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     await accept(
       client.connect({
         params: { type: "openai" },
-        body: { authMethod: "api-token", values: { OPENAI_TOKEN: "sk-test" } },
+        body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -985,8 +789,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         body: {
           authMethod: "api-token",
           values: {
-            BENTO_CLOUD_API_KEY: "bento-token",
-            BENTO_CLOUD_API_ENDPOINT: "https://example.bentoml.test",
+            apiToken: "bento-token",
+            endpoint: "https://example.bentoml.test",
           },
         },
         headers: { authorization: "Bearer clerk-session" },
