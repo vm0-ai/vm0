@@ -1470,6 +1470,7 @@ async function runCompletedChatCallbackSideEffects(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly lastResultText: string | null;
   readonly followupContext: readonly ChatCompletionContextMessage[];
   readonly structuredPromptEnabled: boolean;
@@ -1510,11 +1511,7 @@ async function runCompletedChatCallbackSideEffects(args: {
   })();
 
   const pushStep = (async () => {
-    const goal = await loadActiveGoalForThread(args.db, {
-      orgId: args.chatThread.orgId,
-      threadId: args.chatThread.chatThreadId,
-    });
-    if (goal !== null) {
+    if (args.suppressWebPushForActiveGoal) {
       return;
     }
 
@@ -1595,13 +1592,10 @@ async function runFailedChatCallbackSideEffects(args: {
   readonly db: Db;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly displayErrorMessage: string;
 }): Promise<void> {
-  const goal = await loadActiveGoalForThread(args.db, {
-    orgId: args.chatThread.orgId,
-    threadId: args.chatThread.chatThreadId,
-  });
-  if (goal !== null) {
+  if (args.suppressWebPushForActiveGoal) {
     return;
   }
 
@@ -1875,6 +1869,18 @@ async function chatThreadForRunFromDb(
     userId: row.userId,
     orgId: row.orgId,
   };
+}
+
+async function runHasActiveGoal(db: Db, runId: string): Promise<boolean> {
+  const chatThread = await chatThreadForRunFromDb(db, runId);
+  if (!chatThread) {
+    return false;
+  }
+  const goal = await loadActiveGoalForThread(db, {
+    orgId: chatThread.orgId,
+    threadId: chatThread.chatThreadId,
+  });
+  return goal !== null;
 }
 
 async function loadAgentForAutoSend(
@@ -2736,6 +2742,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
@@ -2799,6 +2806,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         runId: args.runId,
         run: args.run,
         chatThread: args.chatThread,
+        suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
         lastResultText: completed.lastResultText,
         followupContext: completed.followupContext,
         structuredPromptEnabled,
@@ -2821,6 +2829,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly errorMessage: string;
   readonly dependencies: ChatCallbackDependencies;
   readonly timing: ChatCallbackPreCreateTimingCollector;
@@ -2868,6 +2877,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         db: args.db,
         run: args.run,
         chatThread: args.chatThread,
+        suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
         displayErrorMessage: failed.displayErrorMessage,
       });
     },
@@ -3029,6 +3039,7 @@ interface TerminalChatCallbackArgs {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
 }
@@ -3104,6 +3115,7 @@ async function processTerminalChatCallback(
           runId,
           run,
           chatThread,
+          suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
           dependencies: args.dependencies,
           timing,
           signal: args.signal,
@@ -3116,6 +3128,7 @@ async function processTerminalChatCallback(
           runId,
           run,
           chatThread,
+          suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
           errorMessage: terminalCallbackErrorMessage(
             args.callback.error,
             run.error,
@@ -3237,6 +3250,8 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       slackDelivery: args.runInput.slackDelivery,
       feishuDelivery: args.runInput.feishuDelivery,
     };
+    const suppressWebPushForActiveGoal = await runHasActiveGoal(db, runId);
+    args.signal.throwIfAborted();
     await processTerminalChatCallback({
       db,
       callback: {
@@ -3246,20 +3261,22 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
         payload,
       },
       payload,
+      suppressWebPushForActiveGoal,
       dependencies: withoutQueuedRunDependency(args.dependencies),
       signal: args.signal,
     });
   };
 }
 
-function handleChatInternalCallback(args: {
+async function handleChatInternalCallback(args: {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
-}):
+}): Promise<
   | { readonly success: true }
-  | { readonly success: false; readonly error: string } {
+  | { readonly success: false; readonly error: string }
+> {
   const payload = chatCallbackPayloadSchema.safeParse(args.callback.payload);
   if (!payload.success) {
     return {
@@ -3293,6 +3310,15 @@ function handleChatInternalCallback(args: {
     return { success: true };
   }
 
+  // Goal continuation runs after this callback is acknowledged and may pause a
+  // failed goal before the background notification step starts. Snapshot the
+  // goal state here so the Push decision reflects the moment the run ended.
+  const suppressWebPushForActiveGoal = await runHasActiveGoal(
+    args.db,
+    args.callback.runId,
+  );
+  args.signal.throwIfAborted();
+
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
@@ -3308,6 +3334,7 @@ function handleChatInternalCallback(args: {
         db: args.db,
         callback: args.callback,
         payload: payload.data,
+        suppressWebPushForActiveGoal,
         dependencies: args.dependencies,
         signal: backgroundSignal,
       }),
