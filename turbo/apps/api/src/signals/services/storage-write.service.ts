@@ -65,7 +65,7 @@ interface CommitStorageForStorageInput extends CommitStorageUploadInput {
   readonly storageId: string;
 }
 
-type StorageRow = Omit<typeof storages.$inferSelect, "type">;
+type StorageRow = typeof storages.$inferSelect;
 type StorageVersionRow = typeof storageVersions.$inferSelect;
 
 function storageRowSelection() {
