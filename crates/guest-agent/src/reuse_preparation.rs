@@ -1,7 +1,7 @@
 //! Reclaims runner-owned runtime state before a completed guest enters idle reuse.
 //!
 //! This module is the guest-side safety boundary for idle admission. The runner invokes the helper
-//! as the final guest operation before parking a sandbox and admits the sandbox to the idle pool
+//! as part of the final guest exec before parking a sandbox and admits the sandbox to the idle pool
 //! only after the helper report passes runner-side validation.
 //!
 //! Preparation proceeds in this order:
@@ -16,11 +16,11 @@
 //! 4. Measure rootfs capacity, recursively remove every unprotected direct child of the runtime
 //!    parent, revalidate each protected identity, and measure capacity again.
 //!
-//! Filesystem traversal is descriptor-relative and does not follow symlinks. Recursive removal
-//! refuses to cross filesystem or mount boundaries, and protected entries are checked by both name
-//! and identity so replacement races cannot redirect deletion through protected state. A symlinked
-//! stale entry is unlinked without following its target. Unsafe path, identity, or mount changes
-//! fail closed.
+//! Runtime paths are opened component by component without following symlinks, and child opens and
+//! deletions are descriptor-relative. Recursive removal refuses to cross filesystem or mount
+//! boundaries, and protected entries are checked by both name and identity so replacement races
+//! cannot redirect deletion through protected state. A symlinked stale entry is unlinked without
+//! following its target. Unsafe path, identity, or mount changes fail closed.
 //!
 //! Request validation and process-containment checks finish before filesystem mutation. Cleanup
 //! itself is not a rollback transaction: once deletion starts, a failure on a later entry,
