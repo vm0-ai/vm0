@@ -1908,6 +1908,68 @@ describe("connector catalog valid lifecycle", () => {
       [503],
     );
     expect(identityResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const nonObjectRelease = buildRelease({
+      version: "2026-07-27.attested-non-object-corruption",
+    });
+    serveObjects(catalogObjects([nonObjectRelease], nonObjectRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: nonObjectRelease.version,
+      rawBytes: Buffer.from("null"),
+      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+    });
+    const nonObjectResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(nonObjectResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const schemaRelease = buildRelease({
+      version: "2026-07-27.attested-schema-corruption",
+    });
+    serveObjects(catalogObjects([schemaRelease], schemaRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: schemaRelease.version,
+      rawBytes: jsonBytes({
+        artifactSchemaVersion: 2,
+        catalogVersion: schemaRelease.version,
+      }),
+      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+    });
+    const schemaResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(schemaResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const shapeRelease = buildRelease({
+      version: "2026-07-27.attested-shape-corruption",
+    });
+    serveObjects(catalogObjects([shapeRelease], shapeRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: shapeRelease.version,
+      rawBytes: jsonBytes({
+        artifactSchemaVersion: 1,
+      }),
+      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+    });
+    const shapeResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(shapeResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
   });
 
   it("keeps stale semantic and compatibility corruption fail closed", async () => {
