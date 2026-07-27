@@ -7,6 +7,7 @@ import {
 import {
   canHaveModifiers,
   getModifiers,
+  isAsExpression,
   isArrowFunction,
   isBlock,
   isCallExpression,
@@ -14,16 +15,21 @@ import {
   isFunctionDeclaration,
   isFunctionExpression,
   isIdentifier,
+  isNonNullExpression,
   isNoSubstitutionTemplateLiteral,
+  isParenthesizedExpression,
   isPropertyAccessExpression,
   isReturnStatement,
+  isSatisfiesExpression,
   isSpreadElement,
   isTaggedTemplateExpression,
   isTemplateExpression,
+  isTypeAssertionExpression,
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
   SyntaxKind,
+  TypeFlags,
   type Expression as TypeScriptExpression,
   type Node,
   type Signature,
@@ -106,6 +112,16 @@ const STRUCTURED_RESULT_ARGUMENT = new Map<string, number>([
 ]);
 
 const RELATIONAL_QUERY_METHODS = new Set(["findFirst", "findMany"]);
+
+const WRITE_BUILDER_DATABASE_PROPERTIES = [
+  "$with",
+  "delete",
+  "execute",
+  "insert",
+  "select",
+  "update",
+  "with",
+] as const;
 
 export const preferDrizzleApis = createRule({
   name: "prefer-drizzle-apis",
@@ -199,7 +215,7 @@ export const preferDrizzleApis = createRule({
         parent?.type === AST_NODE_TYPES.CallExpression &&
         parent.arguments.length === 1 &&
         parent.arguments[0] === use &&
-        isDrizzleMethodCall(parent, "execute")
+        isDirectDrizzleDatabaseExecuteCall(parent)
       );
     }
 
@@ -388,6 +404,121 @@ export const preferDrizzleApis = createRule({
       }
       const declaration = resolvedCallSignature(node)?.declaration;
       return declaration !== undefined && isDrizzleDeclaration(declaration);
+    }
+
+    function typeHasDirectDrizzleProperty(
+      type: Type,
+      property: string,
+    ): boolean {
+      if (type.isUnion()) {
+        return type.types.every((member) => {
+          return typeHasDirectDrizzleProperty(member, property);
+        });
+      }
+      if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+        const constraint = checker.getBaseConstraintOfType(type);
+        return (
+          constraint !== undefined &&
+          typeHasDirectDrizzleProperty(constraint, property)
+        );
+      }
+      const symbol = resolvedSymbol(
+        checker,
+        checker.getPropertyOfType(type, property),
+      );
+      return (
+        symbol?.declarations !== undefined &&
+        symbol.declarations.length > 0 &&
+        symbol.declarations.every(isDrizzleDeclaration)
+      );
+    }
+
+    function isDirectDrizzleDatabaseType(type: Type): boolean {
+      if (type.isUnion()) {
+        return type.types.every(isDirectDrizzleDatabaseType);
+      }
+      if (type.isIntersection()) {
+        return type.types.some(isDirectDrizzleDatabaseType);
+      }
+      if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+        const constraint = checker.getBaseConstraintOfType(type);
+        return (
+          constraint !== undefined && isDirectDrizzleDatabaseType(constraint)
+        );
+      }
+      const symbol = resolvedSymbol(checker, type.getSymbol());
+      return (
+        symbol?.declarations !== undefined &&
+        symbol.declarations.length > 0 &&
+        symbol.declarations.every(isDrizzleDeclaration)
+      );
+    }
+
+    function hasUnassertedDatabaseReceiverOrigin(
+      node: Node,
+      visited: Set<TypeScriptSymbol>,
+    ): boolean {
+      if (isAsExpression(node) || isTypeAssertionExpression(node)) {
+        return false;
+      }
+      if (
+        isNonNullExpression(node) ||
+        isParenthesizedExpression(node) ||
+        isSatisfiesExpression(node)
+      ) {
+        return hasUnassertedDatabaseReceiverOrigin(node.expression, visited);
+      }
+      if (isPropertyAccessExpression(node)) {
+        return hasUnassertedDatabaseReceiverOrigin(node.expression, visited);
+      }
+      if (!isIdentifier(node)) {
+        return true;
+      }
+      const symbol = resolvedSymbol(checker, checker.getSymbolAtLocation(node));
+      if (
+        symbol === undefined ||
+        visited.has(symbol) ||
+        symbol.declarations === undefined ||
+        symbol.declarations.length === 0
+      ) {
+        return false;
+      }
+      visited.add(symbol);
+      const stable = symbol.declarations.every((declaration) => {
+        if (!isVariableDeclaration(declaration)) {
+          return true;
+        }
+        if (declaration.initializer === undefined) {
+          return true;
+        }
+        return (
+          isVariableDeclarationList(declaration.parent) &&
+          (declaration.parent.flags & NodeFlags.Const) !== 0 &&
+          hasUnassertedDatabaseReceiverOrigin(declaration.initializer, visited)
+        );
+      });
+      visited.delete(symbol);
+      return stable;
+    }
+
+    function isDirectDrizzleDatabaseExecuteCall(
+      node: TSESTree.CallExpression,
+    ): boolean {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        !isDrizzleMethodCall(node, "execute")
+      ) {
+        return false;
+      }
+      const receiver = services.esTreeNodeToTSNodeMap.get(node.callee.object);
+      const receiverType = checker.getTypeAtLocation(receiver);
+      return (
+        hasUnassertedDatabaseReceiverOrigin(receiver, new Set()) &&
+        isDirectDrizzleDatabaseType(receiverType) &&
+        WRITE_BUILDER_DATABASE_PROPERTIES.every((property) => {
+          return typeHasDirectDrizzleProperty(receiverType, property);
+        })
+      );
     }
 
     function methodReturnsDrizzleProperty(

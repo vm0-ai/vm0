@@ -953,6 +953,50 @@ const queryBuilderCases = {
     },
     {
       code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const wrappedDb: { execute: typeof db.execute } = {
+          execute: db.execute,
+        };
+        await wrappedDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        type WriteFacade = Pick<
+          DrizzleDatabase,
+          "$with" | "delete" | "execute" | "insert" | "select" | "update" | "with"
+        >;
+        declare const writeFacade: WriteFacade;
+        await writeFacade.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const assertedDb = {
+          execute: db.execute,
+        } as unknown as DrizzleDatabase;
+        await assertedDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
         function sql(
           strings: TemplateStringsArray,
           ...values: readonly unknown[]
@@ -2693,6 +2737,17 @@ const queryBuilderCases = {
           WHERE \${cleanupRows.expiresAt} <= \${cutoff}
         \`;
         await db.execute(query);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const database = db;
+        await database.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
       `,
       errors: [{ messageId: "deleteQueryBuilder" }],
     },
