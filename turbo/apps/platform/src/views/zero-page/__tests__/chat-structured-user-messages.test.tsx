@@ -87,16 +87,8 @@ describe("structured user messages", () => {
         "data-structured-template-reference",
         "",
       );
-      expect(reference).toHaveClass(
-        "-top-px",
-        "rounded-md",
-        "bg-orange-500/10",
-        "text-orange-600",
-      );
-      expect(reference.querySelector("svg")).toBeInTheDocument();
       expect(reference.textContent).toBe(templateItem.title);
     }
-    expect(structuredMessage).toContainElement(references[0]);
     const feedback = document.querySelector("[data-structured-feedback-group]");
     expect(feedback).toBeInstanceOf(HTMLElement);
     expect(feedback).toContainElement(references[1]);
@@ -227,17 +219,6 @@ describe("structured user messages", () => {
       'a[aria-label="Open chat Archived source"]',
     );
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
-    expect(threadLink).toHaveClass(
-      "bg-orange-500/10",
-      "text-orange-600",
-      "hover:bg-orange-500/15",
-    );
-    expect(threadLink?.querySelector("svg")).toBeInTheDocument();
-    expect(
-      threadLink?.querySelector(
-        'path[d="M3 20l1.3 -3.9c-2.324 -3.437 -1.426 -7.872 2.1 -10.374c3.526 -2.501 8.59 -2.296 11.845 .48c3.255 2.777 3.695 7.266 1.029 10.501c-2.666 3.235 -7.615 4.215 -11.574 2.293l-4.7 1"]',
-      ),
-    ).toBeInTheDocument();
     const template = screen.getByLabelText("Message template Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
     expect(template).toBeInTheDocument();

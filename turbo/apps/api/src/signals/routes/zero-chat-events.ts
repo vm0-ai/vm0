@@ -2471,9 +2471,11 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.generationTemplate,
-      explicitTemplates: featureSwitches.structuredPromptInlineTemplatesEnabled
-        ? runtimeBody.generationTemplates
-        : undefined,
+      explicitTemplates:
+        featureSwitches.structuredPromptInlineTemplatesEnabled &&
+        runtimeBody.structuredPrompt !== undefined
+          ? runtimeBody.generationTemplates
+          : undefined,
       websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,
       imageStyleR2Enabled: featureSwitches.imageStyleR2Enabled,
     });

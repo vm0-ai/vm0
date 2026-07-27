@@ -4281,6 +4281,44 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
+  it("keeps legacy single-template context when inline templates are enabled", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a dog",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.prompt).toBe("draw a dog");
+    const systemPrompt = run.appendSystemPrompt ?? "";
+    expect(systemPrompt).toContain("# Artifact Template Context");
+    expect(systemPrompt).toContain(style.illustrationStyleId);
+    expect(systemPrompt).not.toContain("# Inline Templates");
+    expect(systemPrompt).not.toContain("[Template #1:");
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
