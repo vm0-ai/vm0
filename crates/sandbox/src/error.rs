@@ -31,7 +31,10 @@ pub enum SandboxError {
 
     /// A created sandbox failed the guest-path DNS readiness admission check.
     #[error("sandbox start failed: {message}")]
-    GuestDnsReadiness { message: String },
+    GuestDnsReadiness {
+        reason: SandboxGuestDnsReadinessReason,
+        message: String,
+    },
 
     /// The requested action is invalid for the current runtime, factory, or
     /// sandbox state.
@@ -71,6 +74,19 @@ pub enum SandboxInitializationPhase {
     Factory,
     /// Per-sandbox allocation before sandbox start.
     SandboxAllocation,
+}
+
+/// Root-cause category for a guest-path DNS readiness failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SandboxGuestDnsReadinessReason {
+    /// The guest readiness process reached its own timeout and terminated.
+    ProcessTimeout,
+    /// The host stopped waiting before receiving a terminal guest result.
+    Deadline,
+    /// The guest completed the probe but DNS resolution did not become ready.
+    DnsPath,
+    /// The readiness probe failed for another reason.
+    Other,
 }
 
 impl fmt::Display for SandboxInitializationPhase {

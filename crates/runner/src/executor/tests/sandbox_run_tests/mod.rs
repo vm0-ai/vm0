@@ -13,7 +13,8 @@ use guest_contracts::diagnostics::{
 };
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessControlMode, ProcessExit,
-    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory, SandboxId,
+    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory,
+    SandboxGuestDnsReadinessReason, SandboxId,
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
