@@ -38,9 +38,11 @@ import {
 import {
   addFeishuThinkingReaction,
   buildFeishuSystemPrompt,
-  dispatchFeishuMessage$,
+  dispatchConnectedFeishuCommand$,
   loadFeishuConversationHistory,
   markFeishuMessageReceived,
+  replyFeishuAgentUnavailable,
+  replyToUnconnectedFeishuMessage,
   resolveEffectiveFeishuAgent,
   type FeishuDispatchConnection,
   type FeishuDispatchInstallation,
@@ -211,17 +213,6 @@ async function markIngressFailed(
         eq(feishuChatIngress.status, "processing"),
       ),
     );
-}
-
-async function dispatchLegacyFeishuIngress(args: {
-  readonly db: Db;
-  readonly ingressId: string;
-  readonly dispatch: () => Promise<void>;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await args.dispatch();
-  args.signal.throwIfAborted();
-  await markIngressProcessed(args.db, args.ingressId);
 }
 
 interface PersistedCanonicalFeishuIngress {
@@ -399,10 +390,15 @@ async function notifyQueuedFeishuRun(args: {
 async function processClaimedIngress(args: {
   readonly db: Db;
   readonly ingressId: string;
-  readonly dispatchLegacy: (
-    message: FeishuInboundMessage,
+  readonly dispatchConnectedCommand: (
+    context: {
+      readonly db: Db;
+      readonly installation: FeishuDispatchInstallation;
+      readonly connection: FeishuDispatchConnection;
+      readonly message: FeishuInboundMessage;
+    },
     signal: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   readonly resolveModelRoute: (
     orgId: string,
     userId: string,
@@ -430,15 +426,24 @@ async function processClaimedIngress(args: {
   });
   const connection = await loadConnection(args.db, message);
   args.signal.throwIfAborted();
-  if (!connection || message.text.trimStart().startsWith("/")) {
-    await dispatchLegacyFeishuIngress({
+  if (!connection) {
+    await replyToUnconnectedFeishuMessage({
       db: args.db,
-      ingressId: ingress.ingressId,
-      dispatch: () => {
-        return args.dispatchLegacy(message, args.signal);
-      },
+      message,
       signal: args.signal,
     });
+    args.signal.throwIfAborted();
+    await markIngressProcessed(args.db, ingress.ingressId);
+    return null;
+  }
+
+  const commandHandled = await args.dispatchConnectedCommand(
+    { db: args.db, installation, connection, message },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  if (commandHandled) {
+    await markIngressProcessed(args.db, ingress.ingressId);
     return null;
   }
 
@@ -449,14 +454,14 @@ async function processClaimedIngress(args: {
   });
   args.signal.throwIfAborted();
   if (effectiveAgent.status !== "resolved") {
-    await dispatchLegacyFeishuIngress({
+    await replyFeishuAgentUnavailable({
       db: args.db,
-      ingressId: ingress.ingressId,
-      dispatch: () => {
-        return args.dispatchLegacy(message, args.signal);
-      },
+      message,
+      status: effectiveAgent.status,
       signal: args.signal,
     });
+    args.signal.throwIfAborted();
+    await markIngressProcessed(args.db, ingress.ingressId);
     return null;
   }
 
@@ -522,8 +527,8 @@ export const processCanonicalFeishuIngress$ = command(
       processClaimedIngress({
         db,
         ingressId: args.ingressId,
-        dispatchLegacy: async (message, inputSignal) => {
-          await set(dispatchFeishuMessage$, message, inputSignal);
+        dispatchConnectedCommand: (context, inputSignal) => {
+          return set(dispatchConnectedFeishuCommand$, context, inputSignal);
         },
         resolveModelRoute: (orgId, userId, inputSignal) => {
           return set(

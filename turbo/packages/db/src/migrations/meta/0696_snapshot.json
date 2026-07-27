@@ -1,5 +1,5 @@
 {
-  "id": "c1ec0d05-943e-49aa-aa0e-4208d6e817b8",
+  "id": "cc4245d3-cb34-4771-88e4-5ab8f2061d8e",
   "prevId": "cdac21be-2a6f-4450-9965-5d4c2d248801",
   "version": "7",
   "dialect": "postgresql",
@@ -3927,12 +3927,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "event_type": {
-          "name": "event_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "role": {
           "name": "role",
           "type": "text",
@@ -4276,12 +4270,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chat_messages_event_type_check": {
-          "name": "chat_messages_event_type_check",
-          "value": "\"chat_messages\".\"event_type\" IS NULL OR \"chat_messages\".\"event_type\" IN (\n          'input.prompt',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'goal.changed',\n          'usage.recorded'\n        )"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.chat_output_materializations": {
@@ -16408,12 +16397,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "storage_type": {
-          "name": "storage_type",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -16627,12 +16610,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "type": {
-          "name": "type",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -16713,39 +16690,6 @@
             },
             {
               "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_storages_org_user_name_type": {
-          "name": "idx_storages_org_user_name_type",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -152,11 +152,11 @@ function buildStorageSeedSql(
   // populating the final archive-size metadata for the same shared object.
   return `
   INSERT INTO storages (
-    id, org_id, user_id, name, type, s3_prefix, size, file_count, updated_at
+    id, org_id, user_id, name, s3_prefix, size, file_count, updated_at
   )
   SELECT
-    "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", 'volume',
-    "s3Prefix", "storageSize", "storageFileCount", seeded_at
+    "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", "s3Prefix",
+    "storageSize", "storageFileCount", seeded_at
   FROM dev_seed_skill_volumes
   ON CONFLICT (org_id, user_id, name) DO UPDATE SET
     s3_prefix = excluded.s3_prefix,

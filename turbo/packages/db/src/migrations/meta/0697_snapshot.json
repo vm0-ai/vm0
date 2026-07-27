@@ -1,6 +1,6 @@
 {
-  "id": "797842c0-2732-4fae-9f93-657bd2dfb3e9",
-  "prevId": "c1ec0d05-943e-49aa-aa0e-4208d6e817b8",
+  "id": "c549e291-0ffc-48ec-a49e-3a22129fd045",
+  "prevId": "cc4245d3-cb34-4771-88e4-5ab8f2061d8e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -16408,12 +16408,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "storage_type": {
-          "name": "storage_type",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -16627,12 +16621,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "type": {
-          "name": "type",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -16713,39 +16701,6 @@
             },
             {
               "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_storages_org_user_name_type": {
-          "name": "idx_storages_org_user_name_type",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
