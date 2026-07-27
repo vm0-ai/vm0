@@ -296,40 +296,95 @@ async fn read_full<R: tokio::io::AsyncRead + Unpin>(
 #[cfg(test)]
 mod tests {
     use std::{
-        io::Cursor,
-        sync::{Arc, Mutex},
+        io::{self, Cursor},
+        pin::Pin,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        },
+        task::{Context, Poll},
         time::Duration,
     };
 
-    use tokio::sync::Notify;
+    use tokio::{
+        io::{AsyncRead, ReadBuf},
+        sync::{Notify, mpsc},
+    };
 
     use super::*;
 
+    struct WindowGuardReader {
+        inner: Cursor<Vec<u8>>,
+        blocked_at: u64,
+        queued_read_allowed: Arc<AtomicBool>,
+    }
+
+    impl AsyncRead for WindowGuardReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            if self.inner.position() >= self.blocked_at
+                && !self.queued_read_allowed.load(Ordering::SeqCst)
+            {
+                return Poll::Ready(Err(io::Error::other(
+                    "multipart scheduler read a queued part before an upload slot was released",
+                )));
+            }
+
+            Pin::new(&mut self.inner).poll_read(cx, buf)
+        }
+    }
+
     #[tokio::test]
-    async fn multipart_scheduler_returns_parts_ordered_after_out_of_order_completion() {
-        let completion_order = Arc::new(Mutex::new(Vec::new()));
-        let allow_part_one = Arc::new(Notify::new());
+    async fn multipart_scheduler_bounds_concurrency_and_returns_parts_ordered() {
+        let queued_read_allowed = Arc::new(AtomicBool::new(false));
+        let reader = WindowGuardReader {
+            inner: Cursor::new(b"aaaabbbbcccc".to_vec()),
+            blocked_at: 8,
+            queued_read_allowed: Arc::clone(&queued_read_allowed),
+        };
+        let releases = Arc::new([
+            Arc::new(Notify::new()),
+            Arc::new(Notify::new()),
+            Arc::new(Notify::new()),
+        ]);
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak_in_flight = Arc::new(AtomicUsize::new(0));
+        let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+        let (completed_tx, mut completed_rx) = mpsc::unbounded_channel();
 
         let upload = {
-            let completion_order = Arc::clone(&completion_order);
-            let allow_part_one = Arc::clone(&allow_part_one);
+            let releases = Arc::clone(&releases);
+            let in_flight = Arc::clone(&in_flight);
+            let peak_in_flight = Arc::clone(&peak_in_flight);
             move |part_number: i32, chunk: bytes::Bytes| {
-                let completion_order = Arc::clone(&completion_order);
-                let allow_part_one = Arc::clone(&allow_part_one);
+                let releases = Arc::clone(&releases);
+                let in_flight = Arc::clone(&in_flight);
+                let peak_in_flight = Arc::clone(&peak_in_flight);
+                let started_tx = started_tx.clone();
+                let completed_tx = completed_tx.clone();
                 async move {
-                    match part_number {
-                        1 => {
-                            assert_eq!(&chunk[..], b"aaaa");
-                            allow_part_one.notified().await;
-                            completion_order.lock().unwrap().push(part_number);
-                        }
-                        2 => {
-                            assert_eq!(&chunk[..], b"bbbb");
-                            completion_order.lock().unwrap().push(part_number);
-                            allow_part_one.notify_one();
-                        }
+                    let (expected_chunk, release_index): (&[u8], usize) = match part_number {
+                        1 => (b"aaaa", 0),
+                        2 => (b"bbbb", 1),
+                        3 => (b"cccc", 2),
                         _ => panic!("unexpected part_number {part_number}"),
-                    }
+                    };
+                    assert_eq!(chunk.as_ref(), expected_chunk);
+
+                    let active = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak_in_flight.fetch_max(active, Ordering::SeqCst);
+                    started_tx.send(part_number).expect("send start event");
+
+                    releases[release_index].notified().await;
+
+                    let previous_active = in_flight.fetch_sub(1, Ordering::SeqCst);
+                    assert!(previous_active > 0, "in-flight upload count underflow");
+                    completed_tx
+                        .send(part_number)
+                        .expect("send completion event");
 
                     Ok(CompletedPart::builder()
                         .e_tag(format!("etag-{part_number}"))
@@ -339,10 +394,39 @@ mod tests {
             }
         };
 
-        let parts = tokio::time::timeout(
-            Duration::from_secs(5),
-            upload_parts_streaming_with(Cursor::new(b"aaaabbbb".to_vec()), 4, 2, upload),
-        )
+        let controller = async {
+            let mut initial_parts = vec![
+                started_rx.recv().await.expect("first upload should start"),
+                started_rx.recv().await.expect("second upload should start"),
+            ];
+            initial_parts.sort_unstable();
+            assert_eq!(initial_parts, vec![1, 2]);
+            assert_eq!(in_flight.load(Ordering::SeqCst), 2);
+            assert_eq!(peak_in_flight.load(Ordering::SeqCst), 2);
+            assert!(matches!(
+                started_rx.try_recv(),
+                Err(mpsc::error::TryRecvError::Empty)
+            ));
+
+            queued_read_allowed.store(true, Ordering::SeqCst);
+            releases[1].notify_one();
+            assert_eq!(completed_rx.recv().await, Some(2));
+            assert_eq!(started_rx.recv().await, Some(3));
+            assert_eq!(in_flight.load(Ordering::SeqCst), 2);
+            assert_eq!(peak_in_flight.load(Ordering::SeqCst), 2);
+
+            releases[2].notify_one();
+            assert_eq!(completed_rx.recv().await, Some(3));
+            releases[0].notify_one();
+            assert_eq!(completed_rx.recv().await, Some(1));
+            assert_eq!(in_flight.load(Ordering::SeqCst), 0);
+            Ok::<(), R2Error>(())
+        };
+        let scheduler = upload_parts_streaming_with(reader, 4, 2, upload);
+
+        let (parts, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::try_join!(scheduler, controller)
+        })
         .await
         .expect("multipart scheduler test timed out")
         .expect("multipart scheduler failed");
@@ -358,8 +442,11 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             completed_parts,
-            vec![(1, "etag-1".to_string()), (2, "etag-2".to_string())]
+            vec![
+                (1, "etag-1".to_string()),
+                (2, "etag-2".to_string()),
+                (3, "etag-3".to_string()),
+            ]
         );
-        assert_eq!(*completion_order.lock().unwrap(), vec![2, 1]);
     }
 }
