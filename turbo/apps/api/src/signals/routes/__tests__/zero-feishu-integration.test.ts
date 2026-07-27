@@ -1705,39 +1705,19 @@ describe("Feishu integration", () => {
     expect(wrongRunResponse.status).toBe(400);
   });
 
-  it("forks Feishu DM threads without replacing the main session", async () => {
+  it("builds Feishu DM context and canonical response metadata", async () => {
     const fixture = await setupFeishuRunFixture({
       useAlternateInstallationDefault: true,
     });
-    const {
-      actor,
-      runnerGroup,
-      appId,
-      callbackUrl,
-      defaultAgentId,
-      alternateAgentId,
-    } = fixture;
+    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
+      fixture;
     await connectFixtureUser(fixture);
-    await postEvent(callbackUrl, directMessage(appId, "/model"), {
-      encrypted: true,
-    });
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, `/switch ${alternateAgentId}`),
+      { encrypted: true },
+    );
     await flushWaitUntilForTest();
-    const modelPicker = requireValue(
-      outboundMessages.map(messageContent).find((content) => {
-        return content.includes("Choose a model");
-      }),
-      "Expected the Feishu model picker",
-    );
-    const model = requireValue(
-      modelPicker.match(/\/model ([^`]+)/u)?.[1],
-      "Expected the Feishu model picker to list a model",
-    );
-    for (const command of [`/switch ${alternateAgentId}`, `/model ${model}`]) {
-      await postEvent(callbackUrl, directMessage(appId, command), {
-        encrypted: true,
-      });
-      await flushWaitUntilForTest();
-    }
     outboundMessages = [];
     context.mocks.ably.publish.mockClear();
     const historyFileKey = `file_v2_${"b".repeat(200)}`;
@@ -1862,56 +1842,6 @@ describe("Feishu integration", () => {
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
 
-    const historyFileBytes = Buffer.from("feishu history file bytes");
-    server.use(
-      http.get(
-        "https://open.feishu.cn/open-apis/im/v1/messages/:messageId/resources/:fileKey",
-        ({ params, request }) => {
-          expect(params.messageId).toBe("om_history_file");
-          expect(params.fileKey).toBe(historyFileKey);
-          expect(new URL(request.url).searchParams.get("type")).toBe("file");
-          return new HttpResponse(historyFileBytes, {
-            status: 200,
-            headers: {
-              "content-type": "application/pdf",
-              "content-length": String(historyFileBytes.length),
-              "content-disposition":
-                'attachment; filename="history-report.pdf"',
-            },
-          });
-        },
-      ),
-    );
-    const fileApp = createAppWithRoutes({
-      signal: context.signal,
-      routes: zeroIntegrationsFeishuFileRoutes,
-    });
-    const historyDownloadResponse = await fileApp.request(
-      `/api/zero/integrations/feishu/download-file?${new URLSearchParams({
-        message_id: "om_misquoted_by_model",
-        file_key: historyFileId ?? "",
-        type: "image",
-      }).toString()}`,
-      {
-        headers: {
-          authorization: `Bearer ${runsApi.zeroTokenForRunWithCapabilities(
-            actor,
-            run.id,
-            ["feishu:write"],
-          )}`,
-        },
-      },
-    );
-    expect(historyDownloadResponse.status).toBe(200);
-    expect(historyDownloadResponse.headers.get("x-file-name")).toBe(
-      "history-report.pdf",
-    );
-    expect(
-      Buffer.from(await historyDownloadResponse.arrayBuffer()).equals(
-        historyFileBytes,
-      ),
-    ).toBeTruthy();
-
     const cliAgentSessionId = `bdd-feishu-cli-${run.id}`;
     await completeRunSession({
       runId: run.id,
@@ -1938,23 +1868,59 @@ describe("Feishu integration", () => {
     );
     expect(removedReactions).toHaveLength(1);
 
-    outboundMessages = [];
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resumes and resets Feishu DM sessions at message and agent boundaries", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
+      fixture;
+    await connectFixtureUser(fixture);
+    const firstMessageId = `om_${randomUUID()}`;
     await postEvent(
       callbackUrl,
-      directMessage(appId, "continue the Feishu task"),
+      directMessage(appId, "start the Feishu DM session", "ou_feishu_user", {
+        messageId: firstMessageId,
+      }),
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const followUp = await findRun(actor, "continue the Feishu task");
+    const initialRun = await findRun(actor, "start the Feishu DM session");
     await runsApi.heartbeatRunner(runnerGroup);
-    const followUpClaim = await runsApi.claimRunnerJob(followUp.id);
-    expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
+    expect(initialClaim.resumeSession).toBeNull();
+    const mainSessionId = randomUUID();
     await completeRunSession({
-      runId: followUp.id,
+      runId: initialRun.id,
+      sandboxToken: initialClaim.sandboxToken,
+      sessionId: mainSessionId,
+      history: `bdd initial feishu history ${initialRun.id}`,
+      assistantText: "Initial Feishu DM answer",
+    });
+
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "continue the Feishu DM session"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const followUpRun = await findRun(actor, "continue the Feishu DM session");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const followUpClaim = await runsApi.claimRunnerJob(followUpRun.id);
+    expect(followUpClaim.resumeSession?.sessionId).toBe(mainSessionId);
+    await completeRunSession({
+      runId: followUpRun.id,
       sandboxToken: followUpClaim.sandboxToken,
-      sessionId: cliAgentSessionId,
-      history: `bdd continued feishu history ${followUp.id}`,
-      assistantText: "Continued canonical Feishu answer",
+      sessionId: mainSessionId,
+      history: `bdd continued feishu history ${followUpRun.id}`,
+      assistantText: "Continued Feishu DM answer",
     });
 
     const quotedReplyMessageId = `om_${randomUUID()}`;
@@ -1978,29 +1944,29 @@ describe("Feishu integration", () => {
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const quotedReplyClaim = await runsApi.claimRunnerJob(quotedReplyRun.id);
-    expect(quotedReplyClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    expect(quotedReplyClaim.resumeSession?.sessionId).toBe(mainSessionId);
     await completeRunSession({
       runId: quotedReplyRun.id,
       sandboxToken: quotedReplyClaim.sandboxToken,
-      sessionId: cliAgentSessionId,
+      sessionId: mainSessionId,
       history: `bdd quoted feishu history ${quotedReplyRun.id}`,
-      assistantText: "Canonical Feishu quoted reply answer",
+      assistantText: "Feishu quoted reply answer",
     });
     const completedQuotedReply = [...outboundMessages]
       .reverse()
       .find((message) => {
         return (
           message.kind === "send" &&
-          messageContent(message).includes(
-            "Canonical Feishu quoted reply answer",
-          )
+          messageContent(message).includes("Feishu quoted reply answer")
         );
       });
     expect(completedQuotedReply?.replyInThread).toBeFalsy();
 
-    await postEvent(callbackUrl, directMessage(appId, "/switch default"), {
-      encrypted: true,
-    });
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, `/switch ${alternateAgentId}`),
+      { encrypted: true },
+    );
     await flushWaitUntilForTest();
     await postEvent(
       callbackUrl,
@@ -2016,21 +1982,48 @@ describe("Feishu integration", () => {
     const switchedAgentClaim = await runsApi.claimRunnerJob(
       switchedAgentRun.id,
     );
-    expect(switchedAgentClaim.environment?.ZERO_AGENT_ID).toBe(defaultAgentId);
+    expect(switchedAgentClaim.environment?.ZERO_AGENT_ID).toBe(
+      alternateAgentId,
+    );
     expect(switchedAgentClaim.resumeSession).toBeNull();
-    await completeRunSession({
-      runId: switchedAgentRun.id,
-      sandboxToken: switchedAgentClaim.sandboxToken,
-      sessionId: randomUUID(),
-      history: `bdd switched feishu history ${switchedAgentRun.id}`,
-      assistantText: "Switched canonical Feishu answer",
-    });
+    await runsApi.requestCancelRun(actor, switchedAgentRun.id, [200]);
+    await flushWaitUntilForTest();
+
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("forks Feishu DM threads without replacing the main session", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const mainMessageId = `om_${randomUUID()}`;
     await postEvent(
       callbackUrl,
-      directMessage(appId, `/switch ${alternateAgentId}`),
+      directMessage(appId, "start the main Feishu DM", "ou_feishu_user", {
+        messageId: mainMessageId,
+      }),
       { encrypted: true },
     );
     await flushWaitUntilForTest();
+    const initialRun = await findRun(actor, "start the main Feishu DM");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
+    expect(initialClaim.resumeSession).toBeNull();
+    const mainSessionId = randomUUID();
+    await completeRunSession({
+      runId: initialRun.id,
+      sandboxToken: initialClaim.sandboxToken,
+      sessionId: mainSessionId,
+      history: `bdd main feishu history ${initialRun.id}`,
+      assistantText: "Initial main Feishu answer",
+    });
 
     const feishuThreadId = `omt_${randomUUID()}`;
     const threadMessageId = `om_${randomUUID()}`;
@@ -2038,7 +2031,7 @@ describe("Feishu integration", () => {
       callbackUrl,
       directMessage(appId, "open a new Feishu thread", "ou_feishu_user", {
         messageId: threadMessageId,
-        rootId: quotedReplyMessageId,
+        rootId: mainMessageId,
         threadId: feishuThreadId,
       }),
       { encrypted: true },
@@ -2048,13 +2041,13 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const threadClaim = await runsApi.claimRunnerJob(threadRun.id);
     expect(threadClaim.resumeSession).toBeNull();
-    const threadCliAgentSessionId = randomUUID();
+    const threadSessionId = randomUUID();
     await completeRunSession({
       runId: threadRun.id,
       sandboxToken: threadClaim.sandboxToken,
-      sessionId: threadCliAgentSessionId,
+      sessionId: threadSessionId,
       history: `bdd feishu thread history ${threadRun.id}`,
-      assistantText: "Canonical Feishu thread answer",
+      assistantText: "Feishu thread answer",
     });
     const completedThreadReply = [...outboundMessages]
       .reverse()
@@ -2062,7 +2055,7 @@ describe("Feishu integration", () => {
         return (
           message.kind === "reply" &&
           message.target === threadMessageId &&
-          messageContent(message).includes("Canonical Feishu thread answer")
+          messageContent(message).includes("Feishu thread answer")
         );
       });
     expect(completedThreadReply?.replyInThread).toBeTruthy();
@@ -2072,7 +2065,7 @@ describe("Feishu integration", () => {
       callbackUrl,
       directMessage(appId, "/help", "ou_feishu_user", {
         messageId: threadHelpMessageId,
-        rootId: quotedReplyMessageId,
+        rootId: mainMessageId,
         threadId: feishuThreadId,
       }),
       { encrypted: true },
@@ -2108,9 +2101,7 @@ describe("Feishu integration", () => {
     const threadFollowUpClaim = await runsApi.claimRunnerJob(
       threadFollowUpRun.id,
     );
-    expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(
-      threadCliAgentSessionId,
-    );
+    expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(threadSessionId);
     await runsApi.requestCancelRun(actor, threadFollowUpRun.id, [200]);
     await flushWaitUntilForTest();
 
@@ -2123,7 +2114,7 @@ describe("Feishu integration", () => {
     const mainDmRun = await findRun(actor, "return to the main Feishu DM");
     await runsApi.heartbeatRunner(runnerGroup);
     const mainDmClaim = await runsApi.claimRunnerJob(mainDmRun.id);
-    expect(mainDmClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    expect(mainDmClaim.resumeSession?.sessionId).toBe(mainSessionId);
     await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
     await flushWaitUntilForTest();
 

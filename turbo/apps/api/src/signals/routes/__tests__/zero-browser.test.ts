@@ -101,6 +101,7 @@ function providerBrowser(
     readonly status?: "active" | "stopped";
     readonly browserCost?: string;
     readonly proxyCost?: string;
+    readonly proxyUsedMb?: string;
   } = {},
 ) {
   const status = args.status ?? "active";
@@ -117,9 +118,18 @@ function providerBrowser(
     timeoutAt: isoAt(240 * MINUTE_MS),
     startedAt: isoAt(0),
     finishedAt: status === "stopped" ? isoAt(10 * MINUTE_MS) : null,
-    proxyUsedMb: args.proxyCost === "0.1" ? "20" : "0",
-    proxyCost: args.proxyCost ?? "0",
-    browserCost: args.browserCost ?? "0.0003333333333333333333333333333",
+    // These defaults mirror Browser Use v3 active and stopped responses.
+    proxyUsedMb:
+      args.proxyUsedMb ??
+      (status === "active" ? "0" : "4.98114681243896440625"),
+    proxyCost:
+      args.proxyCost ??
+      (status === "active" ? "0" : "0.000972880236804485235595703125"),
+    browserCost:
+      args.browserCost ??
+      (status === "active"
+        ? "0.001666666666666666666666666666"
+        : "0.005333333333333333333333333333"),
     agentSessionId: null,
     recordingUrl: null,
   };
@@ -886,8 +896,9 @@ describe("zero browser route", () => {
           return HttpResponse.json(
             providerBrowser(providerId, {
               status: "stopped",
-              browserCost: providerId === providerIds[0] ? "0.00333" : "0.1",
-              proxyCost: providerId === providerIds[0] ? "0.1" : "0",
+              browserCost: providerId === providerIds[0] ? "+0.00333" : "0.1",
+              proxyCost: providerId === providerIds[0] ? ".1" : "0.",
+              proxyUsedMb: providerId === providerIds[0] ? "20" : "0",
             }),
           );
         },
@@ -1140,9 +1151,15 @@ describe("zero browser route", () => {
       }),
       http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
         providerStops += 1;
-        return HttpResponse.json(
-          providerBrowser(String(params.id), { status: "stopped" }),
-        );
+        return HttpResponse.json({
+          id: String(params.id),
+          status: "stopped",
+          timeoutAt: isoAt(240 * MINUTE_MS),
+          startedAt: isoAt(0),
+          proxyUsedMb: null,
+          proxyCost: null,
+          browserCost: null,
+        });
       }),
     );
 
@@ -1154,7 +1171,12 @@ describe("zero browser route", () => {
     // Reclaim the first browser, then open a second one in the same thread so
     // the older card points at a browser that is no longer the current one.
     mockNow(STARTED_AT_MS + 11 * MINUTE_MS);
-    await reconcileBrowsers();
+    const reclaimed = await reconcileBrowsers();
+    expect(reclaimed.body).toMatchObject({
+      stopped: 1,
+      settled: 1,
+      errors: 0,
+    });
     expect(providerStops).toBe(1);
     const replacement = await accept(
       client().create({
