@@ -12,8 +12,9 @@ use crate::session_history_identity::{
     FinalSessionHistoryIdentityBuildError, build_final_session_history_identity,
 };
 use api_contracts::generated::constants::runners::{
-    RESUME_SESSION_HISTORY_MAX_BYTES, SESSION_HISTORY_ENCODING_IDENTITY,
-    SESSION_HISTORY_ENCODING_ZSTD, SESSION_HISTORY_GZIP_MIN_BYTES,
+    RESUME_SESSION_HISTORY_MAX_BYTES, SESSION_HISTORY_ENCODING_GZIP,
+    SESSION_HISTORY_ENCODING_IDENTITY, SESSION_HISTORY_ENCODING_ZSTD,
+    SESSION_HISTORY_GZIP_MIN_BYTES,
 };
 use api_contracts::generated::types::{
     runners::storage::ArtifactEntryMissingRootPolicy, webhooks::agent::checkpoints,
@@ -540,8 +541,15 @@ async fn upload_session_history(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
-    if requested_encoding == SESSION_HISTORY_ENCODING_ZSTD
-        && response_encoding != Some(SESSION_HISTORY_ENCODING_ZSTD)
+    // Existing content-addressed blobs retain their persisted encoding; no upload occurs.
+    let zstd_response_encoding_is_compatible = response_encoding
+        == Some(SESSION_HISTORY_ENCODING_ZSTD)
+        || (existing
+            && matches!(
+                response_encoding,
+                Some(SESSION_HISTORY_ENCODING_IDENTITY | SESSION_HISTORY_ENCODING_GZIP)
+            ));
+    if requested_encoding == SESSION_HISTORY_ENCODING_ZSTD && !zstd_response_encoding_is_compatible
     {
         return Err(AgentError::Checkpoint(
             "Prepare-history response did not acknowledge zstd session history".into(),

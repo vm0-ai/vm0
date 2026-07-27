@@ -1128,7 +1128,7 @@ async fn success_checkpoint_rejects_missing_zstd_encoding_acknowledgement()
 }
 
 #[tokio::test]
-async fn success_checkpoint_rejects_existing_zstd_with_mismatched_encoding_acknowledgement()
+async fn success_checkpoint_rejects_new_zstd_with_mismatched_encoding_acknowledgement()
 -> Result<(), Box<dyn std::error::Error>> {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -1137,7 +1137,7 @@ async fn success_checkpoint_rejects_existing_zstd_with_mismatched_encoding_ackno
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
     let _history_dir =
-        write_literal_session_history("zstd-mismatched-ack-session", &history).unwrap();
+        write_literal_session_history("zstd-new-mismatched-ack-session", &history).unwrap();
 
     let history_hash = hex::encode(Sha256::digest(&history));
     let history_size = history.len();
@@ -1153,12 +1153,14 @@ async fn success_checkpoint_rejects_existing_zstd_with_mismatched_encoding_ackno
         then.status(200)
             .header("Content-Type", "application/json")
             .json_body(json!({
-                "existing": true,
+                "presignedUrl": server.url("/test/zstd-new-mismatched-ack-upload"),
+                "existing": false,
                 "encoding": "identity"
             }));
     });
     let upload_mock = server.mock(|when, then| {
-        when.method(PUT);
+        when.method(PUT)
+            .path("/test/zstd-new-mismatched-ack-upload");
         then.status(200);
     });
     let checkpoint_mock = server.mock(|when, then| {
@@ -1179,6 +1181,61 @@ async fn success_checkpoint_rejects_existing_zstd_with_mismatched_encoding_ackno
     zstd_prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn success_checkpoint_accepts_existing_gzip_for_zstd_history()
+-> Result<(), Box<dyn std::error::Error>> {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let runtime = runtime_from_process_env().unwrap();
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let _history_dir =
+        write_literal_session_history("zstd-existing-gzip-session", &history).unwrap();
+
+    let history_hash = hex::encode(Sha256::digest(&history));
+    let history_size = history.len();
+    let zstd_size = zstd_session_history_for_test(&history)?.len();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(r#"{"runId":"test-run-001"}"#)
+            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"encodedSize":{zstd_size}}}"#))
+            .json_body_includes(r#"{"encoding":"zstd"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "existing": true,
+                "encoding": "gzip"
+            }));
+    });
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT);
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionId":"zstd-existing-gzip-session"}"#)
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-existing-gzip"}));
+    });
+
+    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
+
+    assert!(result.is_ok());
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(1).await;
     Ok(())
 }
 
