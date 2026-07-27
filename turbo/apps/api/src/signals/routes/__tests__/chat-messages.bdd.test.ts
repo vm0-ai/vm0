@@ -4001,7 +4001,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(firstPrompt).toContain("Follow the returned packet completely");
     expect(firstPrompt).toContain(
-      "If the source is unavailable, stop without generating",
+      "If the R2 source is unavailable, stop without generating; do not fall back to GitHub.",
     );
     expect(firstPrompt).toContain("--compiled-prompt");
     expect(firstPrompt).toContain(style.illustrationStyleId);
