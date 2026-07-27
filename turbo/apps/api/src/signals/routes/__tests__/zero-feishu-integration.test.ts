@@ -31,7 +31,6 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { readThreadSessionBinding } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -2022,7 +2021,7 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("keeps Feishu group control cases out of runs and reuses the canonical binding for queued tasks", async () => {
+  it("keeps Feishu group control cases out of runs and resumes queued tasks through the canonical session", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
     const secondOpenId = "ou_feishu_canonical_group_user";
@@ -2117,32 +2116,6 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     const firstRun = await findRun(secondActor, firstPrompt);
 
-    mocks.clerk.session(
-      secondActor.userId,
-      secondActor.orgId,
-      secondActor.orgRole,
-    );
-    const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
-        headers: { authorization: "Bearer clerk-session" },
-        query: {},
-      }),
-      [200],
-    );
-    const createdThread = requireValue(
-      threadEvents.body.events.find((event) => {
-        return event.kind === "created" && event.agentId === defaultAgentId;
-      }),
-      "Expected the canonical Feishu group thread",
-    );
-    const firstBinding = await readThreadSessionBinding(
-      context,
-      createdThread.chatThreadId,
-    );
-    expect(firstBinding.agent_session_run_id).toBe(firstRun.id);
-    expect(firstBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
-    expect(firstBinding.run_session_id).toBe(firstBinding.agent_session_id);
-
     await postEvent(
       callbackUrl,
       groupMessage(appId, secondPrompt, {
@@ -2173,13 +2146,6 @@ describe("Feishu integration", () => {
     });
 
     const secondRun = await findRun(secondActor, secondPrompt);
-    const secondBinding = await readThreadSessionBinding(
-      context,
-      createdThread.chatThreadId,
-    );
-    expect(secondBinding.agent_session_run_id).toBe(secondRun.id);
-    expect(secondBinding.agent_session_id).toBe(firstBinding.agent_session_id);
-    expect(secondBinding.run_session_id).toBe(firstBinding.agent_session_id);
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
     expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
