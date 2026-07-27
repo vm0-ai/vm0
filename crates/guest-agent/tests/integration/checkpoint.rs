@@ -1,5 +1,4 @@
 use crate::support::*;
-use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
 };
@@ -17,7 +16,7 @@ use std::{
 };
 use std::{
     ffi::OsString,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Seek, SeekFrom, Write},
 };
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
 
@@ -327,12 +326,6 @@ fn zstd_session_history_for_test(history: &[u8]) -> std::io::Result<Vec<u8>> {
     zstd::stream::encode_all(history, 3)
 }
 
-fn gzip_session_history_for_test(history: &[u8]) -> std::io::Result<Vec<u8>> {
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
-    encoder.write_all(history)?;
-    encoder.finish()
-}
-
 fn high_entropy_history(size: usize) -> Vec<u8> {
     let mut state = 0x6a09e667f3bcc909_u64;
     let mut bytes = Vec::with_capacity(size);
@@ -344,11 +337,6 @@ fn high_entropy_history(size: usize) -> Vec<u8> {
         bytes.push((value >> 56) as u8);
     }
     bytes
-}
-
-fn long_distance_repeated_history() -> Vec<u8> {
-    let chunk = high_entropy_history(64 * 1024);
-    [chunk.as_slice(), chunk.as_slice()].concat()
 }
 
 fn upload_zstd_validation_response(
@@ -364,23 +352,6 @@ fn upload_zstd_validation_response(
     } else {
         http_status(400)
     }
-}
-
-fn upload_gzip_validation_response(
-    req: &HttpMockRequest,
-    expected_body: &[u8],
-) -> HttpMockResponse {
-    if request_header_absent(req, "authorization")
-        && request_header_absent(req, "x-vercel-protection-bypass")
-        && req.body_ref() != expected_body
-    {
-        let mut decoded = Vec::new();
-        let decode_result = GzDecoder::new(req.body_ref()).read_to_end(&mut decoded);
-        if decode_result.is_ok() && decoded == expected_body {
-            return http_status(200);
-        }
-    }
-    http_status(400)
 }
 
 // =========================================================================
@@ -1048,7 +1019,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata()
 }
 
 #[tokio::test]
-async fn success_checkpoint_downgrades_to_gzip_when_zstd_prepare_is_rejected()
+async fn success_checkpoint_propagates_zstd_prepare_bad_request()
 -> Result<(), Box<dyn std::error::Error>> {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -1056,7 +1027,7 @@ async fn success_checkpoint_downgrades_to_gzip_when_zstd_prepare_is_rejected()
     let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
-    let _history_dir = write_literal_session_history("fallback-gzip-session", &history).unwrap();
+    let _history_dir = write_literal_session_history("zstd-bad-request-session", &history).unwrap();
 
     let history_hash = hex::encode(Sha256::digest(&history));
     let history_size = history.len();
@@ -1073,56 +1044,37 @@ async fn success_checkpoint_downgrades_to_gzip_when_zstd_prepare_is_rejected()
             .header("Content-Type", "application/json")
             .json_body(json!({
                 "error": {
-                    "message": "Invalid enum value. Expected identity | gzip"
+                    "message": "Session history encoded size does not match the existing blob"
                 }
             }));
     });
-    let gzip_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"gzip"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "presignedUrl": server.url("/test/success-gzip-history-upload"),
-                "existing": false,
-                "encoding": "gzip"
-            }));
-    });
-    let upload_body = history.clone();
     let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/success-gzip-history-upload")
-            .header("Content-Type", "application/octet-stream");
-        then.respond_with(move |req| upload_gzip_validation_response(req, &upload_body));
+        when.method(PUT);
+        then.status(200);
     });
     let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"fallback-gzip-session"}"#)
-            .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
-            ));
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-success-gzip"}));
+            .json_body(json!({"checkpointId": "unexpected"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
 
-    assert!(result.is_ok());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Session history encoded size does not match the existing blob"),
+        "expected prepare-history error to propagate, got: {err}"
+    );
     zstd_prepare_mock.assert_calls_async(1).await;
-    gzip_prepare_mock.assert_calls_async(1).await;
-    upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
     Ok(())
 }
 
 #[tokio::test]
-async fn success_checkpoint_downgrades_when_zstd_prepare_is_not_acknowledged()
+async fn success_checkpoint_rejects_missing_zstd_encoding_acknowledgement()
 -> Result<(), Box<dyn std::error::Error>> {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -1154,53 +1106,29 @@ async fn success_checkpoint_downgrades_when_zstd_prepare_is_not_acknowledged()
         when.method(PUT).path("/test/zstd-unack-history-upload");
         then.status(200);
     });
-    let gzip_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"gzip"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "presignedUrl": server.url("/test/zstd-unack-gzip-history-upload"),
-                "existing": false,
-                "encoding": "gzip"
-            }));
-    });
-    let upload_body = history.clone();
-    let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/zstd-unack-gzip-history-upload")
-            .header("Content-Type", "application/octet-stream");
-        then.respond_with(move |req| upload_gzip_validation_response(req, &upload_body));
-    });
     let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"zstd-unack-session"}"#)
-            .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
-            ));
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-zstd-unack"}));
+            .json_body(json!({"checkpointId": "unexpected"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
 
-    assert!(result.is_ok());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Prepare-history response did not acknowledge zstd"),
+        "expected zstd acknowledgement failure, got: {err}"
+    );
     zstd_prepare_mock.assert_calls_async(1).await;
     zstd_upload_mock.assert_calls_async(0).await;
-    gzip_prepare_mock.assert_calls_async(1).await;
-    upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(0).await;
     Ok(())
 }
 
 #[tokio::test]
-async fn success_checkpoint_rejects_gzip_prepare_without_encoding_acknowledgement()
+async fn success_checkpoint_rejects_existing_zstd_with_mismatched_encoding_acknowledgement()
 -> Result<(), Box<dyn std::error::Error>> {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -1208,7 +1136,8 @@ async fn success_checkpoint_rejects_gzip_prepare_without_encoding_acknowledgemen
     let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
-    let _history_dir = write_literal_session_history("gzip-unack-session", &history).unwrap();
+    let _history_dir =
+        write_literal_session_history("zstd-mismatched-ack-session", &history).unwrap();
 
     let history_hash = hex::encode(Sha256::digest(&history));
     let history_size = history.len();
@@ -1221,30 +1150,15 @@ async fn success_checkpoint_rejects_gzip_prepare_without_encoding_acknowledgemen
             .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
             .json_body_includes(format!(r#"{{"encodedSize":{zstd_size}}}"#))
             .json_body_includes(r#"{"encoding":"zstd"}"#);
-        then.status(400)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "error": {
-                    "message": "Invalid enum value. Expected identity | gzip"
-                }
-            }));
-    });
-    let gzip_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"gzip"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
             .json_body(json!({
-                "presignedUrl": server.url("/test/gzip-unack-history-upload"),
-                "existing": false
+                "existing": true,
+                "encoding": "identity"
             }));
     });
     let upload_mock = server.mock(|when, then| {
-        when.method(PUT).path("/test/gzip-unack-history-upload");
+        when.method(PUT);
         then.status(200);
     });
     let checkpoint_mock = server.mock(|when, then| {
@@ -1259,165 +1173,18 @@ async fn success_checkpoint_rejects_gzip_prepare_without_encoding_acknowledgemen
     let err = result.unwrap_err();
     assert!(
         err.to_string()
-            .contains("Prepare-history response did not acknowledge gzip"),
-        "expected gzip acknowledgement failure, got: {err}"
+            .contains("Prepare-history response did not acknowledge zstd"),
+        "expected zstd acknowledgement failure, got: {err}"
     );
     zstd_prepare_mock.assert_calls_async(1).await;
-    gzip_prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
     Ok(())
 }
 
 #[tokio::test]
-async fn success_checkpoint_rejects_existing_gzip_without_encoding_acknowledgement()
--> Result<(), Box<dyn std::error::Error>> {
-    let api = SharedApiMock::new().await;
-    let server = api.server();
-
-    let runtime = runtime_from_process_env().unwrap();
-    let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
-    let _history_dir =
-        write_literal_session_history("gzip-existing-unack-session", &history).unwrap();
-
-    let history_hash = hex::encode(Sha256::digest(&history));
-    let history_size = history.len();
-    let zstd_size = zstd_session_history_for_test(&history)?.len();
-    let zstd_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(format!(r#"{{"encodedSize":{zstd_size}}}"#))
-            .json_body_includes(r#"{"encoding":"zstd"}"#);
-        then.status(400)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "error": {
-                    "message": "Invalid enum value. Expected identity | gzip"
-                }
-            }));
-    });
-    let gzip_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"gzip"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "existing": true
-            }));
-    });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected"}));
-    });
-
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
-
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("Prepare-history response did not acknowledge gzip"),
-        "expected gzip acknowledgement failure, got: {err}"
-    );
-    zstd_prepare_mock.assert_calls_async(1).await;
-    gzip_prepare_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(0).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn success_checkpoint_rejects_legacy_gzip_when_not_smaller_than_identity()
--> Result<(), Box<dyn std::error::Error>> {
-    let api = SharedApiMock::new().await;
-    let server = api.server();
-
-    let runtime = runtime_from_process_env().unwrap();
-    let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = long_distance_repeated_history();
-    let _history_dir =
-        write_literal_session_history("gzip-not-beneficial-session", &history).unwrap();
-
-    let zstd_history = zstd_session_history_for_test(&history)?;
-    let gzip_history = gzip_session_history_for_test(&history)?;
-    assert!(
-        zstd_history.len() < history.len(),
-        "test fixture must be zstd-beneficial"
-    );
-    assert!(
-        gzip_history.len() >= history.len(),
-        "test fixture must not be gzip-beneficial"
-    );
-
-    let history_hash = hex::encode(Sha256::digest(&history));
-    let history_size = history.len();
-    let zstd_size = zstd_history.len();
-    let zstd_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(format!(r#"{{"encodedSize":{zstd_size}}}"#))
-            .json_body_includes(r#"{"encoding":"zstd"}"#);
-        then.status(400)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "error": {
-                    "message": "Invalid enum value. Expected identity | gzip"
-                }
-            }));
-    });
-    let gzip_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"encoding":"gzip"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "presignedUrl": server.url("/test/unexpected-gzip-history-upload"),
-                "existing": false,
-                "encoding": "gzip"
-            }));
-    });
-    let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/unexpected-gzip-history-upload");
-        then.status(200);
-    });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected"}));
-    });
-
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
-
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("legacy gzip session history was not smaller than identity"),
-        "expected gzip fallback compression failure, got: {err}"
-    );
-    zstd_prepare_mock.assert_calls_async(1).await;
-    gzip_prepare_mock.assert_calls_async(0).await;
-    upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn success_checkpoint_does_not_downgrade_zstd_auth_failure()
--> Result<(), Box<dyn std::error::Error>> {
+async fn success_checkpoint_propagates_zstd_auth_failure() -> Result<(), Box<dyn std::error::Error>>
+{
     let api = SharedApiMock::new().await;
     let server = api.server();
 
@@ -1446,19 +1213,8 @@ async fn success_checkpoint_does_not_downgrade_zstd_auth_failure()
                 }
             }));
     });
-    let gzip_prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"encoding":"gzip"}"#);
-        then.status(200).json_body(json!({
-            "presignedUrl": server.url("/test/unexpected-gzip-history-upload"),
-            "existing": false,
-            "encoding": "gzip"
-        }));
-    });
     let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/unexpected-gzip-history-upload");
+        when.method(PUT);
         then.status(200);
     });
     let checkpoint_mock = server.mock(|when, then| {
@@ -1477,7 +1233,6 @@ async fn success_checkpoint_does_not_downgrade_zstd_auth_failure()
         "expected auth failure to propagate, got: {err}"
     );
     zstd_prepare_mock.assert_calls_async(1).await;
-    gzip_prepare_mock.assert_calls_async(0).await;
     upload_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
     Ok(())
