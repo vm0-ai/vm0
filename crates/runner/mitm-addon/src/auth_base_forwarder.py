@@ -22,8 +22,8 @@ from contextlib import suppress
 from enum import Enum, auto
 from typing import NamedTuple, Protocol
 
+import mitmproxy_rs
 from mitmproxy import http
-from mitmproxy_rs import dns as mitmproxy_rs_dns
 
 import flow_metadata_keys as metadata_keys
 import public_destination
@@ -834,7 +834,7 @@ def _get_dns_resolver() -> _AddressResolver:
 
     resolver = _dns_resolver
     if resolver is None:
-        resolver = mitmproxy_rs_dns.DnsResolver()
+        resolver = mitmproxy_rs.dns.DnsResolver()
         _dns_resolver = resolver
     return resolver
 
