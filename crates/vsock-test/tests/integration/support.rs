@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -40,8 +41,7 @@ pub(crate) fn start_raw_guest_connection() -> (RawGuestHandle, UnixStream) {
 }
 
 pub(crate) fn join_raw_guest_connection(handle: RawGuestHandle) {
-    handle
-        .join()
+    join_guest_with_timeout(handle)
         .expect("raw guest connection thread panicked")
         .expect("raw guest connection returned an error");
 }
@@ -111,22 +111,32 @@ fn start_guest(socket_path: &str) -> JoinHandle<io::Result<()>> {
     })
 }
 
-fn cleanup_guest(guest: &mut Option<JoinHandle<io::Result<()>>>) {
+fn cleanup_guest(guest: &mut Option<JoinHandle<io::Result<()>>>, timeout: Duration) {
     if let Some(g) = guest.take() {
-        let _ = g.join();
+        let _ = try_join_guest_with_timeout(g, timeout);
     }
 }
 
 fn join_guest_with_timeout(guest: JoinHandle<io::Result<()>>) -> thread::Result<io::Result<()>> {
+    try_join_guest_with_timeout(guest, GUEST_FINISH_TIMEOUT).unwrap_or_else(|| {
+        panic!(
+            "guest thread did not terminate within {GUEST_FINISH_TIMEOUT:?} after host disconnect"
+        )
+    })
+}
+
+fn try_join_guest_with_timeout(
+    guest: JoinHandle<io::Result<()>>,
+    timeout: Duration,
+) -> Option<thread::Result<io::Result<()>>> {
     let started = Instant::now();
     while !guest.is_finished() {
-        assert!(
-            started.elapsed() < GUEST_FINISH_TIMEOUT,
-            "guest thread did not terminate within {GUEST_FINISH_TIMEOUT:?} after host disconnect",
-        );
+        if started.elapsed() >= timeout {
+            return None;
+        }
         thread::sleep(Duration::from_millis(10));
     }
-    guest.join()
+    Some(guest.join())
 }
 
 fn create_temp_dir(prefix: &str) -> tempfile::TempDir {
@@ -183,7 +193,8 @@ pub(crate) fn captured_output_bytes(output: &ExecOwnedCapturedOutput) -> &[u8] {
 
 /// Test harness: creates temp dir, starts guest thread, connects host.
 ///
-/// Implements `Drop` to clean up temp dirs and join guest threads even on panic.
+/// Implements `Drop` to clean up temp dirs and wait a bounded time for guest threads,
+/// including during panic unwinding.
 pub(crate) struct Harness {
     pub(crate) dir: std::path::PathBuf,
     _dir_guard: tempfile::TempDir,
@@ -216,11 +227,11 @@ impl Harness {
         let host = match host_task.await {
             Ok(Ok(host)) => host,
             Ok(Err(err)) => {
-                cleanup_guest(&mut guest);
+                cleanup_guest(&mut guest, GUEST_FINISH_TIMEOUT);
                 panic!("host connection failed: {err}");
             }
             Err(err) => {
-                cleanup_guest(&mut guest);
+                cleanup_guest(&mut guest, GUEST_FINISH_TIMEOUT);
                 panic!("host listener task failed: {err}");
             }
         };
@@ -315,9 +326,9 @@ fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
 
 impl Drop for Harness {
     fn drop(&mut self) {
-        // Drop host first to close the connection, then join guest thread.
+        // Drop host first to close the connection, then wait briefly for the guest thread.
         drop(self.host.take());
-        cleanup_guest(&mut self.guest);
+        cleanup_guest(&mut self.guest, GUEST_FINISH_TIMEOUT);
     }
 }
 
@@ -330,10 +341,57 @@ fn cleanup_guest_joins_guest() {
         Ok(())
     }));
 
-    cleanup_guest(&mut guest);
+    cleanup_guest(&mut guest, GUEST_FINISH_TIMEOUT);
 
     assert!(guest.is_none());
     assert!(guest_finished.load(Ordering::SeqCst));
+}
+
+#[test]
+fn cleanup_guest_returns_after_timeout_for_stalled_guest() {
+    const CLEANUP_TIMEOUT: Duration = Duration::from_millis(20);
+    const WATCHDOG_TIMEOUT: Duration = Duration::from_secs(5);
+
+    let (guest_started_tx, guest_started_rx) = mpsc::channel();
+    let (release_guest_tx, release_guest_rx) = mpsc::channel();
+    let (guest_finished_tx, guest_finished_rx) = mpsc::channel();
+    let guest = thread::spawn(move || {
+        guest_started_tx.send(()).expect("report guest start");
+        release_guest_rx.recv().expect("wait for guest release");
+        guest_finished_tx.send(()).expect("report guest completion");
+        Ok(())
+    });
+    guest_started_rx
+        .recv_timeout(WATCHDOG_TIMEOUT)
+        .expect("guest should reach blocked state");
+
+    let (cleanup_finished_tx, cleanup_finished_rx) = mpsc::channel();
+    let cleanup_thread = thread::spawn(move || {
+        let mut guest = Some(guest);
+        cleanup_guest(&mut guest, CLEANUP_TIMEOUT);
+        cleanup_finished_tx
+            .send(guest.is_none())
+            .expect("report cleanup completion");
+    });
+
+    let cleanup_result = cleanup_finished_rx.recv_timeout(WATCHDOG_TIMEOUT);
+    release_guest_tx.send(()).expect("release stalled guest");
+    guest_finished_rx
+        .recv_timeout(WATCHDOG_TIMEOUT)
+        .expect("guest should finish after release");
+    if matches!(&cleanup_result, Err(mpsc::RecvTimeoutError::Timeout)) {
+        cleanup_finished_rx
+            .recv_timeout(WATCHDOG_TIMEOUT)
+            .expect("cleanup should finish after guest release");
+    }
+    cleanup_thread
+        .join()
+        .expect("cleanup helper thread should not panic");
+
+    assert!(
+        matches!(cleanup_result, Ok(true)),
+        "cleanup did not consume the guest handle before the watchdog: {cleanup_result:?}"
+    );
 }
 
 #[test]
