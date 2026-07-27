@@ -15,7 +15,7 @@ export interface WebsiteTemplateItem {
 // Curated user-facing website picker catalog backed by vm0 private R2
 // packages.
 const WEBSITE_TEMPLATE_PREVIEW_BASE_URL =
-  "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260708-5f944f83";
+  "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260727-ccff774";
 
 export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
   {
