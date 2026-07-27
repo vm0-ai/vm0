@@ -126,12 +126,16 @@ export const preferDrizzleApis = createRule({
         "Use Drizzle crossJoinLateral(...) for this equivalent lateral join.",
       composedCteQueryBuilder:
         "Use Drizzle $with(...), select(), joins, grouping, ordering, and set-operation builders for this complete locally composed read query.",
+      deleteQueryBuilder:
+        "Use Drizzle delete(...).where(...) for this complete schema-backed delete query.",
       emptyFragment:
         "Use Drizzle sql.empty() for this intentionally empty SQL fragment.",
       existsQueryBuilder:
         "Use a Drizzle select builder and row existence check for this complete schema-backed EXISTS query.",
       lockingQueryBuilder:
         "Use a Drizzle select builder with .for(...) for this complete locking query.",
+      lockingCteUpdateQueryBuilder:
+        "Use Drizzle $with(...), a locking select builder, and update(...).from(...) for this complete locking update query.",
       queryBuilder:
         "Use a Drizzle select builder for this complete schema-backed query.",
       scalarCteQueryBuilder:
@@ -139,6 +143,10 @@ export const preferDrizzleApis = createRule({
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
+      unnestUpdateQueryBuilder:
+        "Use Drizzle update(...).set(...).from(...).where(...) for this complete unnest-backed update query.",
+      upsertQueryBuilder:
+        "Use Drizzle insert(...).values(...).onConflictDoUpdate(...) for this complete schema-backed upsert.",
       existencePredicate:
         "Use Drizzle {{helper}}(...) with a select builder for this equivalent existence predicate.",
     },
@@ -178,10 +186,22 @@ export const preferDrizzleApis = createRule({
     );
     const sqlCapabilityChecks: SqlCapabilityChecks = {
       acceptsOptionalSql,
+      allowsWriteQueryBuilder,
       hasDirectResultMapping: hasDirectMapWith,
       hasParameterListOrigin,
       isInlineParameterList: isInlineParameterListSqlJoin,
     };
+
+    function allowsWriteQueryBuilder(node: TSESTree.Expression): boolean {
+      const use = outerTransparentNode(node);
+      const parent = use.parent;
+      return (
+        parent?.type === AST_NODE_TYPES.CallExpression &&
+        parent.arguments.length === 1 &&
+        parent.arguments[0] === use &&
+        isDrizzleMethodCall(parent, "execute")
+      );
+    }
 
     function acceptsOptionalSql(node: TSESTree.Expression): boolean {
       if (isRelationalWhereCallbackResult(node)) {
@@ -287,15 +307,23 @@ export const preferDrizzleApis = createRule({
             messageId:
               finding.capability === "composed-cte"
                 ? "composedCteQueryBuilder"
-                : finding.capability === "exists"
-                  ? "existsQueryBuilder"
-                  : finding.capability === "locking"
-                    ? "lockingQueryBuilder"
-                    : finding.capability === "scalar-cte"
-                      ? "scalarCteQueryBuilder"
-                      : finding.capability === "structured-scalar"
-                        ? "structuredScalarQuery"
-                        : "queryBuilder",
+                : finding.capability === "delete"
+                  ? "deleteQueryBuilder"
+                  : finding.capability === "exists"
+                    ? "existsQueryBuilder"
+                    : finding.capability === "locking"
+                      ? "lockingQueryBuilder"
+                      : finding.capability === "locking-cte-update"
+                        ? "lockingCteUpdateQueryBuilder"
+                        : finding.capability === "scalar-cte"
+                          ? "scalarCteQueryBuilder"
+                          : finding.capability === "structured-scalar"
+                            ? "structuredScalarQuery"
+                            : finding.capability === "unnest-update"
+                              ? "unnestUpdateQueryBuilder"
+                              : finding.capability === "upsert"
+                                ? "upsertQueryBuilder"
+                                : "queryBuilder",
           });
         } else if (finding.kind === "empty-fragment") {
           context.report({
@@ -315,8 +343,13 @@ export const preferDrizzleApis = createRule({
     }
 
     function memberName(node: TSESTree.MemberExpression): string | undefined {
-      return !node.computed && node.property.type === AST_NODE_TYPES.Identifier
-        ? node.property.name
+      if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
+        return node.property.name;
+      }
+      return node.computed &&
+        node.property.type === AST_NODE_TYPES.Literal &&
+        typeof node.property.value === "string"
+        ? node.property.value
         : undefined;
     }
 

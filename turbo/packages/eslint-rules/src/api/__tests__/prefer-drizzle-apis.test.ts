@@ -676,16 +676,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
-        const statement = sql\`
-          DELETE FROM \${users}
-          WHERE \${users.id} = \${1}
-        \`;
-        await db.execute(statement);
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
         import { alias } from "drizzle-orm/pg-core";
         const otherUsers = alias(users, "other_users");
         const relation = sql\`

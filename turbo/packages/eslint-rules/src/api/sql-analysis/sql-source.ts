@@ -36,7 +36,6 @@ import {
   isDrizzleSymbol,
   resolvedSymbol,
 } from "../drizzle.ts";
-import { SQL_TEMPLATE_EXPRESSION_BOUNDARY } from "../sql-lexing.ts";
 
 const MAX_SOURCE_VARIANTS = 16;
 const MAX_COMPOSITION_STEPS = 256;
@@ -65,18 +64,6 @@ export interface SqlSource {
   readonly expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>;
   readonly hasLocalExpansion: boolean;
   readonly variants: readonly SqlSourceVariant[];
-}
-
-export interface LegacySqlSource {
-  readonly expressions: readonly TSESTree.Expression[];
-  readonly literalRanges: readonly SqlLiteralRange[];
-  readonly source: string;
-}
-
-export interface SqlLiteralRange {
-  readonly depth: number;
-  readonly end: number;
-  readonly start: number;
 }
 
 export interface SqlSourceComposer {
@@ -300,25 +287,6 @@ function expressionSource(
       },
     ],
   };
-}
-
-export function renderLegacySqlSource(
-  variant: SqlSourceVariant,
-): LegacySqlSource {
-  const expressions: TSESTree.Expression[] = [];
-  const literalRanges: SqlLiteralRange[] = [];
-  let source = "";
-  for (const chunk of variant.chunks) {
-    if (chunk.kind === "literal") {
-      const start = source.length;
-      source += chunk.text;
-      literalRanges.push({ depth: chunk.depth, end: source.length, start });
-    } else {
-      source += SQL_TEMPLATE_EXPRESSION_BOUNDARY;
-      expressions.push(chunk.expression);
-    }
-  }
-  return { expressions, literalRanges, source };
 }
 
 export function createSqlSourceComposer(

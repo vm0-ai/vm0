@@ -5,15 +5,26 @@ import {
   type ParserServicesWithTypeInformation,
   type TSESTree,
 } from "@typescript-eslint/utils";
-import { TypeFlags, type Type, type TypeChecker } from "typescript";
+import {
+  TypeFlags,
+  type Symbol as TypeScriptSymbol,
+  type Type,
+  type TypeChecker,
+} from "typescript";
 
 import {
+  getDrizzleColumnMetadata,
+  getDrizzleTableMetadata,
+  isDrizzleArrayParameter,
   isDrizzleColumnType,
   isDrizzleArrayOperandType,
   isDrizzlePatternOperandType,
   isDrizzleSelectType,
   isDrizzleTableType,
   isDrizzleWrapperType,
+  resolvedSymbol,
+  type DrizzleTableColumnMetadata,
+  type DrizzleTableMetadata,
 } from "../drizzle.ts";
 import { parsePostgres } from "./postgres-parser.ts";
 import {
@@ -30,13 +41,17 @@ export type SqlAnalysisContext =
   | "statement"
   | "structured-selection";
 
-type ReadQueryCapability =
+type QueryCapability =
   | "composed-cte"
+  | "delete"
   | "exists"
   | "locking"
+  | "locking-cte-update"
   | "scalar-cte"
   | "select"
-  | "structured-scalar";
+  | "structured-scalar"
+  | "unnest-update"
+  | "upsert";
 
 export type SqlAnalysisFinding =
   | {
@@ -54,13 +69,14 @@ export type SqlAnalysisFinding =
       readonly node: TSESTree.Node;
     }
   | {
-      readonly capability: ReadQueryCapability;
+      readonly capability: QueryCapability;
       readonly kind: "query-builder";
       readonly node: TSESTree.Expression;
     };
 
 export interface SqlCapabilityChecks {
   acceptsOptionalSql(node: TSESTree.Expression): boolean;
+  allowsWriteQueryBuilder(node: TSESTree.Expression): boolean;
   hasDirectResultMapping(node: TSESTree.Expression): boolean;
   hasParameterListOrigin(node: TSESTree.Expression): boolean;
   isInlineParameterList(node: TSESTree.Expression): boolean;
@@ -68,6 +84,9 @@ export interface SqlCapabilityChecks {
 
 const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
   acceptsOptionalSql(): boolean {
+    return false;
+  },
+  allowsWriteQueryBuilder(): boolean {
     return false;
   },
   hasDirectResultMapping(): boolean {
@@ -96,7 +115,7 @@ interface SqlFindingSignature {
   readonly isPartial: boolean;
   readonly kind: SqlAnalysisFinding["kind"];
   readonly ownsResultMapping: boolean;
-  readonly readQueryCapability: ReadQueryCapability | undefined;
+  readonly queryCapability: QueryCapability | undefined;
 }
 
 type SqlHelper =
@@ -137,6 +156,16 @@ type SqlHelper =
 
 interface SqlMarker {
   readonly chunk: SqlSourceChunk;
+  readonly columnMetadata:
+    | Readonly<
+        Omit<
+          DrizzleTableColumnMetadata,
+          "isWritable" | "propertyName" | "propertySymbol"
+        >
+      >
+    | undefined;
+  readonly expressionSymbol: TypeScriptSymbol | undefined;
+  readonly isArrayParameter: boolean;
   readonly isArrayOperand: boolean;
   readonly isBoundScalar: boolean;
   readonly isColumn: boolean;
@@ -147,6 +176,7 @@ interface SqlMarker {
   readonly isTable: boolean;
   readonly isWrapper: boolean;
   readonly node: TSESTree.Expression;
+  readonly tableMetadata: DrizzleTableMetadata | undefined;
 }
 
 interface ParsedSql {
@@ -389,6 +419,43 @@ function recordProperty(
   return isRecord(result) ? result : undefined;
 }
 
+function markerExpressionSymbol(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): TypeScriptSymbol | undefined {
+  const symbolNode =
+    node.type === AST_NODE_TYPES.MemberExpression ? node.property : node;
+  const tsNode = services.esTreeNodeToTSNodeMap.get(symbolNode);
+  return resolvedSymbol(checker, checker.getSymbolAtLocation(tsNode));
+}
+
+function markerColumnMetadata(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): SqlMarker["columnMetadata"] {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return getDrizzleColumnMetadata(
+    checker,
+    checker.getTypeAtLocation(tsNode),
+    tsNode,
+  );
+}
+
+function markerTableMetadata(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): DrizzleTableMetadata | undefined {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return getDrizzleTableMetadata(
+    checker,
+    checker.getTypeAtLocation(tsNode),
+    tsNode,
+  );
+}
+
 function markerIsColumn(
   node: TSESTree.Expression,
   checker: TypeChecker,
@@ -587,17 +654,39 @@ function parseSqlVariant(
       selectCandidateNames.add(name);
     }
     precedingLiteral = "";
+    let cachedArrayParameter: boolean | undefined;
     let cachedArrayOperand: boolean | undefined;
     let cachedBoundScalar: boolean | undefined;
     let cachedColumn: boolean | undefined;
+    let cachedColumnMetadata: SqlMarker["columnMetadata"] | null | undefined;
+    let cachedExpressionSymbol: TypeScriptSymbol | null | undefined;
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
+    let cachedTableMetadata: DrizzleTableMetadata | null | undefined;
     let cachedWrapper: boolean | undefined;
     const marker: SqlMarker = {
       chunk,
+      get columnMetadata(): SqlMarker["columnMetadata"] {
+        cachedColumnMetadata ??=
+          markerColumnMetadata(expression, checker, services) ?? null;
+        return cachedColumnMetadata ?? undefined;
+      },
+      get expressionSymbol(): TypeScriptSymbol | undefined {
+        cachedExpressionSymbol ??=
+          markerExpressionSymbol(expression, checker, services) ?? null;
+        return cachedExpressionSymbol ?? undefined;
+      },
+      get isArrayParameter(): boolean {
+        cachedArrayParameter ??= isDrizzleArrayParameter(
+          checker,
+          services,
+          expression,
+        );
+        return cachedArrayParameter;
+      },
       get isArrayOperand(): boolean {
         cachedArrayOperand ??= markerIsArrayOperand(
           expression,
@@ -651,6 +740,11 @@ function parseSqlVariant(
         return cachedWrapper;
       },
       node: expression,
+      get tableMetadata(): DrizzleTableMetadata | undefined {
+        cachedTableMetadata ??=
+          markerTableMetadata(expression, checker, services) ?? null;
+        return cachedTableMetadata ?? undefined;
+      },
     };
     markers.set(name, marker);
   }
@@ -2839,7 +2933,7 @@ function readQueryCapability(
   context: SqlAnalysisContext,
   hasLocalExpansion: boolean,
   parsed: ParsedSql,
-): ReadQueryCapability | undefined {
+): QueryCapability | undefined {
   const select = selectStatement(parsed.statement);
   if (select === undefined) {
     return undefined;
@@ -2875,6 +2969,554 @@ function readQueryCapability(
     return "select";
   }
   return undefined;
+}
+
+const WRITE_RELATION_KEYS = new Set([
+  "inh",
+  "location",
+  "relname",
+  "relpersistence",
+]);
+
+function writeTargetMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.relname !== "string" ||
+    value.inh !== true ||
+    value.relpersistence !== "p" ||
+    !hasOnlyKeys(value, WRITE_RELATION_KEYS)
+  ) {
+    return undefined;
+  }
+  const marker = markers.get(value.relname);
+  return marker?.tableMetadata === undefined ? undefined : marker;
+}
+
+function markerBelongsToTable(
+  marker: SqlMarker | undefined,
+  table: DrizzleTableMetadata,
+): boolean {
+  const column = marker?.columnMetadata;
+  const tableColumn =
+    column === undefined ? undefined : table.columns.get(column.databaseName);
+  return (
+    marker !== undefined &&
+    column !== undefined &&
+    column.tableName === table.name &&
+    tableColumn !== undefined &&
+    tableColumn.propertySymbol === marker.expressionSymbol
+  );
+}
+
+function sameMarkerSymbol(
+  first: SqlMarker | undefined,
+  ...rest: readonly (SqlMarker | undefined)[]
+): boolean {
+  const symbol = first?.expressionSymbol;
+  return (
+    symbol !== undefined &&
+    rest.every((marker) => {
+      return marker?.expressionSymbol === symbol;
+    })
+  );
+}
+
+function mappedWritableColumnNames(
+  values: unknown,
+  table: DrizzleTableMetadata,
+  requireValue: boolean,
+): readonly string[] | undefined {
+  if (!Array.isArray(values) || values.length === 0) {
+    return undefined;
+  }
+  const names = new Set<string>();
+  for (const value of values) {
+    const target = recordProperty(value, "ResTarget");
+    const column =
+      typeof target?.name === "string"
+        ? table.columns.get(target.name)
+        : undefined;
+    if (
+      target === undefined ||
+      typeof target.name !== "string" ||
+      (requireValue ? target.val === undefined : target.val !== undefined) ||
+      !hasOnlyKeys(
+        target,
+        requireValue
+          ? new Set(["location", "name", "val"])
+          : new Set(["location", "name"]),
+      ) ||
+      column?.isWritable !== true ||
+      names.has(target.name)
+    ) {
+      return undefined;
+    }
+    names.add(target.name);
+  }
+  return [...names];
+}
+
+function hasTableColumnOrder(
+  names: readonly string[],
+  table: DrizzleTableMetadata,
+): boolean {
+  const positions = new Map<string, number>();
+  let index = 0;
+  for (const name of table.columns.keys()) {
+    positions.set(name, index);
+    index += 1;
+  }
+  let previous = -1;
+  for (const name of names) {
+    const position = positions.get(name);
+    if (position === undefined || position <= previous) {
+      return false;
+    }
+    previous = position;
+  }
+  return true;
+}
+
+function coversDefaultedWritableColumns(
+  names: readonly string[],
+  table: DrizzleTableMetadata,
+): boolean {
+  const included = new Set(names);
+  return [...table.columns.values()].every((column) => {
+    return (
+      !column.isWritable ||
+      !column.hasDefault ||
+      included.has(column.databaseName)
+    );
+  });
+}
+
+function isSingleTargetDelete(
+  statement: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const payload = recordProperty(statement, "stmt");
+  const deletion = recordProperty(payload, "DeleteStmt");
+  return (
+    deletion !== undefined &&
+    hasOnlyKeys(deletion, new Set(["relation", "whereClause"])) &&
+    writeTargetMarker(deletion.relation, markers) !== undefined &&
+    deletion.whereClause !== undefined
+  );
+}
+
+function arrayCastMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  const cast = recordProperty(value, "TypeCast");
+  const typeName = isRecord(cast?.typeName) ? cast.typeName : undefined;
+  if (
+    cast?.arg === undefined ||
+    typeName === undefined ||
+    !hasOnlyKeys(cast, new Set(["arg", "location", "typeName"])) ||
+    !scalarCastTypeName(typeName) ||
+    !Array.isArray(typeName.arrayBounds) ||
+    typeName.arrayBounds.length !== 1
+  ) {
+    return undefined;
+  }
+  const bound = recordProperty(typeName.arrayBounds[0], "Integer");
+  if (
+    bound?.ival !== -1 ||
+    !hasOnlyKeys(bound, new Set(["ival"])) ||
+    !isRecord(typeName.arrayBounds[0]) ||
+    !hasOnlyKeys(typeName.arrayBounds[0], new Set(["Integer"]))
+  ) {
+    return undefined;
+  }
+  const marker = columnMarker(cast.arg, markers);
+  return marker?.isArrayParameter === true ? marker : undefined;
+}
+
+function supportedUnnestRelation(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const range = recordProperty(value, "RangeFunction");
+  if (
+    range === undefined ||
+    !hasOnlyKeys(range, new Set(["alias", "functions"])) ||
+    !Array.isArray(range.functions) ||
+    range.functions.length !== 1
+  ) {
+    return false;
+  }
+  const functionList = recordProperty(range.functions[0], "List");
+  if (
+    functionList === undefined ||
+    !hasOnlyKeys(functionList, new Set(["items"])) ||
+    !Array.isArray(functionList.items) ||
+    functionList.items.length !== 2 ||
+    !isRecord(functionList.items[1]) ||
+    !hasOnlyKeys(functionList.items[1], new Set())
+  ) {
+    return false;
+  }
+  const call = recordProperty(functionList.items[0], "FuncCall");
+  const name = functionName(functionList.items[0]);
+  if (
+    call === undefined ||
+    name?.length !== 1 ||
+    name[0]?.toLowerCase() !== "unnest" ||
+    call.funcformat !== "COERCE_EXPLICIT_CALL" ||
+    !hasOnlyKeys(
+      call,
+      new Set(["args", "funcformat", "funcname", "location"]),
+    ) ||
+    !Array.isArray(call.args) ||
+    call.args.length === 0 ||
+    !call.args.every((argument) => {
+      return arrayCastMarker(argument, markers) !== undefined;
+    })
+  ) {
+    return false;
+  }
+  const alias = isRecord(range.alias) ? range.alias : undefined;
+  if (
+    alias === undefined ||
+    typeof alias.aliasname !== "string" ||
+    !hasOnlyKeys(alias, new Set(["aliasname", "colnames"])) ||
+    !Array.isArray(alias.colnames) ||
+    alias.colnames.length !== call.args.length
+  ) {
+    return false;
+  }
+  const columnNames = alias.colnames.map(stringNodeValue);
+  return (
+    columnNames.every((column): column is string => {
+      return column !== undefined;
+    }) && new Set(columnNames).size === columnNames.length
+  );
+}
+
+function isUnnestUpdate(
+  statement: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const payload = recordProperty(statement, "stmt");
+  const update = recordProperty(payload, "UpdateStmt");
+  if (
+    update === undefined ||
+    !hasOnlyKeys(
+      update,
+      new Set(["fromClause", "relation", "targetList", "whereClause"]),
+    ) ||
+    update.whereClause === undefined ||
+    !Array.isArray(update.fromClause) ||
+    update.fromClause.length !== 1
+  ) {
+    return false;
+  }
+  const target = writeTargetMarker(update.relation, markers);
+  const assignmentNames =
+    target?.tableMetadata === undefined
+      ? undefined
+      : mappedWritableColumnNames(
+          update.targetList,
+          target.tableMetadata,
+          true,
+        );
+  return (
+    target?.tableMetadata !== undefined &&
+    assignmentNames !== undefined &&
+    hasTableColumnOrder(assignmentNames, target.tableMetadata) &&
+    coversDefaultedWritableColumns(assignmentNames, target.tableMetadata) &&
+    supportedUnnestRelation(update.fromClause[0], markers)
+  );
+}
+
+function lockingSortMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  const sort = recordProperty(value, "SortBy");
+  if (
+    sort === undefined ||
+    (sort.sortby_dir !== "SORTBY_DEFAULT" &&
+      sort.sortby_dir !== "SORTBY_ASC" &&
+      sort.sortby_dir !== "SORTBY_DESC") ||
+    sort.sortby_nulls !== "SORTBY_NULLS_DEFAULT" ||
+    !hasOnlyKeys(
+      sort,
+      new Set(["location", "node", "sortby_dir", "sortby_nulls"]),
+    )
+  ) {
+    return undefined;
+  }
+  return columnMarker(sort.node, markers);
+}
+
+interface LockingCteBody {
+  readonly lockTable: SqlMarker;
+  readonly orderColumn: SqlMarker;
+  readonly selectedColumn: SqlMarker;
+  readonly sourceTable: SqlMarker;
+}
+
+function lockingCteBody(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): LockingCteBody | undefined {
+  const select = recordProperty(value, "SelectStmt");
+  if (
+    select === undefined ||
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    select.whereClause === undefined ||
+    !hasOnlyKeys(
+      select,
+      new Set([
+        "fromClause",
+        "limitOption",
+        "lockingClause",
+        "op",
+        "sortClause",
+        "targetList",
+        "whereClause",
+      ]),
+    ) ||
+    !Array.isArray(select.targetList) ||
+    select.targetList.length !== 1 ||
+    !Array.isArray(select.fromClause) ||
+    select.fromClause.length !== 1 ||
+    !Array.isArray(select.sortClause) ||
+    select.sortClause.length !== 1 ||
+    !Array.isArray(select.lockingClause) ||
+    select.lockingClause.length !== 1
+  ) {
+    return undefined;
+  }
+  const selectedTarget = recordProperty(select.targetList[0], "ResTarget");
+  const selectedColumn =
+    selectedTarget?.val === undefined ||
+    !hasOnlyKeys(selectedTarget, new Set(["location", "val"]))
+      ? undefined
+      : columnMarker(selectedTarget.val, markers);
+  const sourceTable = directRangeMarker(select.fromClause[0], markers, false);
+  const orderColumn = lockingSortMarker(select.sortClause[0], markers);
+  const lock = recordProperty(select.lockingClause[0], "LockingClause");
+  if (
+    lock === undefined ||
+    lock.strength !== "LCS_FORUPDATE" ||
+    lock.waitPolicy !== "LockWaitBlock" ||
+    !hasOnlyKeys(lock, new Set(["lockedRels", "strength", "waitPolicy"])) ||
+    !Array.isArray(lock.lockedRels) ||
+    lock.lockedRels.length !== 1
+  ) {
+    return undefined;
+  }
+  const lockTable = directRangeMarker(lock.lockedRels[0], markers, false);
+  return selectedColumn !== undefined &&
+    sourceTable?.tableMetadata !== undefined &&
+    orderColumn !== undefined &&
+    lockTable?.tableMetadata !== undefined
+    ? { lockTable, orderColumn, selectedColumn, sourceTable }
+    : undefined;
+}
+
+function exactCteRelation(value: unknown, name: string): boolean {
+  const range = recordProperty(value, "RangeVar");
+  return (
+    range !== undefined &&
+    range.relname === name &&
+    range.inh === true &&
+    range.relpersistence === "p" &&
+    hasOnlyKeys(range, WRITE_RELATION_KEYS)
+  );
+}
+
+function isLockingCteUpdate(
+  statement: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const payload = recordProperty(statement, "stmt");
+  const update = recordProperty(payload, "UpdateStmt");
+  if (
+    update === undefined ||
+    !hasOnlyKeys(
+      update,
+      new Set([
+        "fromClause",
+        "relation",
+        "targetList",
+        "whereClause",
+        "withClause",
+      ]),
+    ) ||
+    update.whereClause === undefined ||
+    !Array.isArray(update.fromClause) ||
+    update.fromClause.length !== 1
+  ) {
+    return false;
+  }
+  const targetTable = writeTargetMarker(update.relation, markers);
+  const table = targetTable?.tableMetadata;
+  const withClause = isRecord(update.withClause)
+    ? update.withClause
+    : undefined;
+  const assignmentNames =
+    table === undefined
+      ? undefined
+      : mappedWritableColumnNames(update.targetList, table, true);
+  if (
+    table === undefined ||
+    withClause === undefined ||
+    withClause.recursive === true ||
+    !hasOnlyKeys(withClause, new Set(["ctes", "location", "recursive"])) ||
+    !Array.isArray(withClause.ctes) ||
+    withClause.ctes.length !== 1 ||
+    assignmentNames === undefined
+  ) {
+    return false;
+  }
+  const cte = commonTableExpression(withClause.ctes[0]);
+  const body = lockingCteBody(cte?.ctequery, markers);
+  return (
+    cte !== undefined &&
+    body !== undefined &&
+    hasTableColumnOrder(assignmentNames, table) &&
+    coversDefaultedWritableColumns(assignmentNames, table) &&
+    exactCteRelation(update.fromClause[0], cte.ctename) &&
+    sameMarkerSymbol(targetTable, body.sourceTable, body.lockTable) &&
+    sameMarkerSymbol(body.selectedColumn, body.orderColumn) &&
+    markerBelongsToTable(body.selectedColumn, table)
+  );
+}
+
+function valuesRow(value: unknown): readonly unknown[] | undefined {
+  const list = recordProperty(value, "List");
+  return list !== undefined &&
+    hasOnlyKeys(list, new Set(["items"])) &&
+    Array.isArray(list.items)
+    ? list.items
+    : undefined;
+}
+
+function conflictColumnNames(
+  value: unknown,
+  table: DrizzleTableMetadata,
+): readonly string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) {
+    return undefined;
+  }
+  const names = new Set<string>();
+  for (const item of value) {
+    const element = recordProperty(item, "IndexElem");
+    if (
+      element === undefined ||
+      typeof element.name !== "string" ||
+      element.ordering !== "SORTBY_DEFAULT" ||
+      element.nulls_ordering !== "SORTBY_NULLS_DEFAULT" ||
+      !hasOnlyKeys(element, new Set(["name", "nulls_ordering", "ordering"])) ||
+      !table.columns.has(element.name) ||
+      names.has(element.name)
+    ) {
+      return undefined;
+    }
+    names.add(element.name);
+  }
+  return [...names];
+}
+
+function isSingleRowUpsert(
+  statement: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const payload = recordProperty(statement, "stmt");
+  const insert = recordProperty(payload, "InsertStmt");
+  if (
+    insert === undefined ||
+    insert.override !== "OVERRIDING_NOT_SET" ||
+    !hasOnlyKeys(
+      insert,
+      new Set([
+        "cols",
+        "onConflictClause",
+        "override",
+        "relation",
+        "selectStmt",
+      ]),
+    )
+  ) {
+    return false;
+  }
+  const target = writeTargetMarker(insert.relation, markers);
+  const table = target?.tableMetadata;
+  const insertColumns =
+    table === undefined
+      ? undefined
+      : mappedWritableColumnNames(insert.cols, table, false);
+  const select = recordProperty(insert.selectStmt, "SelectStmt");
+  if (
+    table === undefined ||
+    insertColumns === undefined ||
+    select === undefined ||
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(select, new Set(["limitOption", "op", "valuesLists"])) ||
+    !Array.isArray(select.valuesLists) ||
+    select.valuesLists.length !== 1
+  ) {
+    return false;
+  }
+  const values = valuesRow(select.valuesLists[0]);
+  if (
+    values === undefined ||
+    values.length !== insertColumns.length ||
+    values.some((value) => {
+      return recordProperty(value, "SetToDefault") !== undefined;
+    })
+  ) {
+    return false;
+  }
+  const conflict = isRecord(insert.onConflictClause)
+    ? insert.onConflictClause
+    : undefined;
+  const inference = isRecord(conflict?.infer) ? conflict.infer : undefined;
+  const updateColumns =
+    conflict === undefined
+      ? undefined
+      : mappedWritableColumnNames(conflict.targetList, table, true);
+  return (
+    conflict !== undefined &&
+    conflict.action === "ONCONFLICT_UPDATE" &&
+    hasOnlyKeys(
+      conflict,
+      new Set(["action", "infer", "location", "targetList"]),
+    ) &&
+    inference !== undefined &&
+    hasOnlyKeys(inference, new Set(["indexElems", "location"])) &&
+    conflictColumnNames(inference.indexElems, table) !== undefined &&
+    updateColumns !== undefined &&
+    hasTableColumnOrder(insertColumns, table) &&
+    hasTableColumnOrder(updateColumns, table) &&
+    coversDefaultedWritableColumns(insertColumns, table) &&
+    coversDefaultedWritableColumns(updateColumns, table)
+  );
+}
+
+function writeQueryCapability(parsed: ParsedSql): QueryCapability | undefined {
+  if (isSingleTargetDelete(parsed.statement, parsed.markers)) {
+    return "delete";
+  }
+  if (isUnnestUpdate(parsed.statement, parsed.markers)) {
+    return "unnest-update";
+  }
+  if (isLockingCteUpdate(parsed.statement, parsed.markers)) {
+    return "locking-cte-update";
+  }
+  return isSingleRowUpsert(parsed.statement, parsed.markers)
+    ? "upsert"
+    : undefined;
 }
 
 function predicateExpression(statement: unknown): unknown {
@@ -3459,17 +4101,18 @@ function analyzeParsed(
   node: TSESTree.Expression,
   context: SqlAnalysisContext,
   hasLocalExpansion: boolean,
+  allowsWriteQueryBuilder: boolean,
   parsed: ParsedSql,
   variant: SqlSourceVariant,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   capabilities: SqlCapabilityChecks,
 ): SqlAnalysis {
-  const queryCapability = readQueryCapability(
-    context,
-    hasLocalExpansion,
-    parsed,
-  );
+  const queryCapability =
+    readQueryCapability(context, hasLocalExpansion, parsed) ??
+    (context === "statement" && allowsWriteQueryBuilder
+      ? writeQueryCapability(parsed)
+      : undefined);
   if (queryCapability !== undefined) {
     return {
       expandedTemplates: new Set(),
@@ -3481,7 +4124,7 @@ function analyzeParsed(
           isPartial: false,
           kind: "query-builder",
           ownsResultMapping: false,
-          readQueryCapability: queryCapability,
+          queryCapability,
         },
       ],
       findings: [{ capability: queryCapability, kind: "query-builder", node }],
@@ -3569,7 +4212,7 @@ function analyzeParsed(
               isPartial: finding.isPartial,
               kind: finding.kind,
               ownsResultMapping,
-              readQueryCapability: undefined,
+              queryCapability: undefined,
             },
           };
         });
@@ -3587,7 +4230,7 @@ function analyzeParsed(
                 isPartial: finding.isPartial,
                 kind: finding.kind,
                 ownsResultMapping,
-                readQueryCapability: undefined,
+                queryCapability: undefined,
               },
             },
           ];
@@ -3614,7 +4257,7 @@ function analyzeParsed(
               isPartial: finding.isPartial,
               kind: finding.kind,
               ownsResultMapping,
-              readQueryCapability: undefined,
+              queryCapability: undefined,
             },
           },
         ];
@@ -3656,7 +4299,7 @@ function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
       finding.isPartial === other.isPartial &&
       finding.kind === other.kind &&
       finding.ownsResultMapping === other.ownsResultMapping &&
-      finding.readQueryCapability === other.readQueryCapability
+      finding.queryCapability === other.queryCapability
     );
   });
 }
@@ -3700,10 +4343,12 @@ function emptyTemplateFindings(
 
 const SQL_CAPABILITY_TOKEN =
   /(?:<>|>=|<=|@>|<@|&&|(?<![-=>])=(?!=|>)|(?<![-@>])>|<(?![@=>])|\b(?:AND|ASC|AVG|BETWEEN|COUNT|DESC|EXISTS|ILIKE|IN|IS|LIKE|MAX|MIN|NOT|NULL|OR|SUM|TRUE)\b)/i;
+const WRITE_CAPABILITY_TOKEN = /\b(?:DELETE|INSERT|UPDATE)\b/i;
 
 function variantMightContainCapability(
   variant: SqlSourceVariant,
   context: SqlAnalysisContext,
+  allowsWriteQueryBuilder: boolean,
 ): boolean {
   const literalSource = variant.chunks
     .map((chunk) => {
@@ -3713,8 +4358,17 @@ function variantMightContainCapability(
   return (
     SQL_CAPABILITY_TOKEN.test(literalSource) ||
     ((context === "statement" || context === "structured-selection") &&
-      /\bSELECT\b/i.test(literalSource))
+      /\bSELECT\b/i.test(literalSource)) ||
+    (allowsWriteQueryBuilder && WRITE_CAPABILITY_TOKEN.test(literalSource))
   );
+}
+
+function variantMightContainWriteCapability(
+  variant: SqlSourceVariant,
+): boolean {
+  return variant.chunks.some((chunk) => {
+    return chunk.kind === "literal" && WRITE_CAPABILITY_TOKEN.test(chunk.text);
+  });
 }
 
 export function analyzeSql(
@@ -3740,6 +4394,10 @@ export function analyzeSql(
     analysis = emptyAnalysis(new Set());
   } else {
     const emptyFindings = emptyTemplateFindings(source.variants, node);
+    const allowsWriteQueryBuilder =
+      context === "statement" &&
+      source.variants.some(variantMightContainWriteCapability) &&
+      capabilities.allowsWriteQueryBuilder(node);
     if (emptyFindings !== undefined) {
       analysis = {
         expandedTemplates: source.expandedTemplates,
@@ -3751,7 +4409,7 @@ export function analyzeSql(
             isPartial: false,
             kind: finding.kind,
             ownsResultMapping: false,
-            readQueryCapability: undefined,
+            queryCapability: undefined,
           };
         }),
         findings: emptyFindings,
@@ -3760,7 +4418,11 @@ export function analyzeSql(
       };
     } else if (
       !source.variants.some((variant) => {
-        return variantMightContainCapability(variant, context);
+        return variantMightContainCapability(
+          variant,
+          context,
+          allowsWriteQueryBuilder,
+        );
       })
     ) {
       analysis = emptyAnalysis(source.expandedTemplates);
@@ -3783,6 +4445,7 @@ export function analyzeSql(
             node,
             context,
             source.hasLocalExpansion,
+            allowsWriteQueryBuilder,
             parsed,
             variant,
             checker,

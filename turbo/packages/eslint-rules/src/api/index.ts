@@ -9,7 +9,6 @@ import { noSqlRaw } from "./rules/no-sql-raw.ts";
 import { noTestViMocks } from "./rules/no-test-vi-mocks.ts";
 import { noUnsafeSqlInterpolation } from "./rules/no-unsafe-sql-interpolation.ts";
 import { preferDrizzleApis } from "./rules/prefer-drizzle-apis.ts";
-import { preferDrizzleQueryBuilder } from "./rules/prefer-drizzle-query-builder.ts";
 import { requireExecuteRowSchema } from "./rules/require-execute-row-schema.ts";
 import { requireSqlResultMapping } from "./rules/require-sql-result-mapping.ts";
 import { signalCheckAwait } from "./rules/signal-check-await.ts";
@@ -31,7 +30,6 @@ export const apiLintPlugin = {
     "no-test-vi-mocks": noTestViMocks,
     "no-unsafe-sql-interpolation": noUnsafeSqlInterpolation,
     "prefer-drizzle-apis": preferDrizzleApis,
-    "prefer-drizzle-query-builder": preferDrizzleQueryBuilder,
     "require-execute-row-schema": requireExecuteRowSchema,
     "require-sql-result-mapping": requireSqlResultMapping,
     "signal-check-await": signalCheckAwait,
