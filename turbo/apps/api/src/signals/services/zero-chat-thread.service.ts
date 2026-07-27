@@ -321,9 +321,9 @@ const eventColumns = {
 function chatMessageMetadataSubquery(db: Pick<Db, "select">) {
   return db
     .select({
-      triggerSource: sql`${zeroRuns.triggerSource}`
+      runTriggerSource: sql`${zeroRuns.triggerSource}`
         .mapWith(nullableTriggerSourceDecoder)
-        .as("trigger_source"),
+        .as("run_trigger_source"),
       workflowId: sql`${zeroWorkflows.id}`
         .mapWith(zeroWorkflows.id)
         .as("workflow_id"),
@@ -412,7 +412,7 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
       ...eventColumns,
       triggerSource: sql`COALESCE(
         ${chatMessages.triggerSource},
-        ${metadata.triggerSource}
+        ${metadata.runTriggerSource}
       )`
         .mapWith(nullableTriggerSourceDecoder)
         .as("trigger_source"),
