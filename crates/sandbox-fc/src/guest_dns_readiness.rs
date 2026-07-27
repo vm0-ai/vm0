@@ -437,7 +437,6 @@ mod tests {
 
         tokio::time::pause();
         tokio::time::advance(Duration::from_millis(1_600)).await;
-        tokio::time::resume();
         send_result(&mut guest, &first, ExecTermination::TimedOut, b"", false).await;
 
         let second = read_message(&mut guest).await;
@@ -469,7 +468,6 @@ mod tests {
 
         tokio::time::pause();
         tokio::time::advance(Duration::from_millis(250)).await;
-        tokio::time::resume();
         send_result(
             &mut guest,
             &first,
