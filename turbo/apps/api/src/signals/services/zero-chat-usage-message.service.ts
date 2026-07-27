@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, count, eq, isNotNull, max, sql, sum } from "drizzle-orm";
+import { and, count, eq, max, sql, sum } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -20,6 +20,7 @@ import {
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 
 const L = logger("ChatUsageMessage");
@@ -154,19 +155,19 @@ export const maybeEmitRunUsageMessage$ = command(
         return null;
       }
 
-      const [existingUsageMessage] = await tx
+      const [existingUsageEvent] = await tx
         .select({ id: chatMessages.id })
         .from(chatMessages)
         .where(
           and(
             eq(chatMessages.runId, runId),
-            isNotNull(chatMessages.usagePayload),
+            chatEventTypeIn(["usage.recorded"]),
           ),
         )
         .limit(1);
       signal.throwIfAborted();
 
-      if (existingUsageMessage) {
+      if (existingUsageEvent) {
         return null;
       }
 
