@@ -9,6 +9,7 @@
 #
 # Optional env vars:
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
+#   VERCEL_AUTOMATION_BYPASS_SECRET — Seed preview bypass cookies
 
 # ---------------------------------------------------------------------------
 # url_is_on_app — Check if a URL's hostname matches the expected app hostname
@@ -51,7 +52,110 @@ browser_setup() {
     export E2E_ACCOUNT
   fi
 
-  AGENT_BROWSER_IGNORE_HTTPS_ERRORS=true agent-browser set viewport 1920 1080
+  AGENT_BROWSER_IGNORE_HTTPS_ERRORS=true \
+    agent-browser set viewport 1920 1080 || return
+
+  seed_preview_bypass_cookies || return
+}
+
+# ---------------------------------------------------------------------------
+# seed_preview_bypass_cookies — Seed Vercel bypass on API and app hosts
+# Setting both cookies directly avoids booting Clerk on an intermediate app
+# navigation before the auth page opens.
+# ---------------------------------------------------------------------------
+seed_preview_bypass_cookies() {
+  if [[ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+    return
+  fi
+
+  local base_url
+  for base_url in "$VM0_API_BACKEND_URL" "${VM0_AUTH_URL:-}"; do
+    if [[ -z "$base_url" ]]; then
+      continue
+    fi
+
+    local cookie_args=(
+      --url "${base_url%/}/"
+      --sameSite Lax
+    )
+    if [[ "$base_url" == https://* ]]; then
+      cookie_args+=(--secure)
+    fi
+
+    if ! agent-browser cookies set \
+      "x-vercel-protection-bypass" \
+      "$VERCEL_AUTOMATION_BYPASS_SECRET" \
+      "${cookie_args[@]}" >/dev/null 2>&1; then
+      echo "Failed to seed preview automation bypass" >&2
+      return 1
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# report_auth_page_failure — Emit fast, redacted failure diagnostics
+# Keeps normal runs quiet and avoids screenshots/snapshots.
+# ---------------------------------------------------------------------------
+report_auth_page_failure() {
+  echo "# Auth page state:" >&3
+  agent-browser eval \
+    '({
+      url: location.origin + location.pathname,
+      readyState: document.readyState,
+      text: (document.body?.innerText ?? "").slice(0, 500),
+      bootstrapSkeleton: Boolean(
+        document.getElementById("app-bootstrap-skeleton")
+      ),
+      clerkDefined: typeof window.Clerk !== "undefined",
+      clerkLoaded: window.Clerk?.loaded ?? null,
+      serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
+      navigation: performance.getEntriesByType("navigation").map((entry) => ({
+        status: entry.responseStatus ?? null,
+        duration: Math.round(entry.duration),
+        domInteractive: Math.round(entry.domInteractive),
+        loadEventEnd: Math.round(entry.loadEventEnd),
+      })),
+      resources: performance.getEntriesByType("resource")
+        .map((entry) => {
+          const url = new URL(entry.name);
+          return {
+            host: url.host,
+            path: url.pathname,
+            type: entry.initiatorType,
+            status: entry.responseStatus ?? null,
+            duration: Math.round(entry.duration),
+          };
+        })
+        .filter((entry) =>
+          entry.status >= 400
+          || entry.duration >= 5000
+          || entry.host.includes("clerk")
+          || entry.host.includes("accounts")
+        )
+        .slice(-50),
+      scripts: Array.from(document.scripts)
+        .map((script) => script.src)
+        .filter(Boolean)
+        .map((src) => {
+          const url = new URL(src);
+          return { host: url.host, path: url.pathname };
+        }),
+    })' >&3 2>&1 || true
+
+  echo "# Browser errors:" >&3
+  agent-browser errors 2>&1 \
+    | sed -E 's/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | tail -80 >&3 || true
+
+  echo "# Failed network requests:" >&3
+  agent-browser network requests --status 400-599 2>&1 \
+    | sed -E 's/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | tail -80 >&3 || true
+
+  echo "# Browser console:" >&3
+  agent-browser console 2>&1 \
+    | sed -E 's/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | tail -80 >&3 || true
 }
 
 # ---------------------------------------------------------------------------
@@ -117,6 +221,47 @@ wait_for_browser_target() {
   done
 
   echo "Wait timed out after $((wait_timeout_seconds * 1000))ms: ${description}" >&2
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# wait_for_javascript_target — Poll a fixed URL from the current browser until
+# it returns JavaScript. A successful fetch also warms the page's service
+# worker cache before the caller reloads.
+# Usage: wait_for_javascript_target [--timeout-seconds <seconds>] <url>
+# ---------------------------------------------------------------------------
+wait_for_javascript_target() {
+  local wait_timeout_seconds=60
+  if [[ "${1:-}" == "--timeout-seconds" ]]; then
+    wait_timeout_seconds="${2:?wait timeout is required}"
+    shift 2
+  fi
+
+  local url="${1:?wait URL is required}"
+  local url_json
+  url_json=$(node -e \
+    'process.stdout.write(JSON.stringify(process.argv[1]))' \
+    "$url")
+  local wait_started="$SECONDS"
+  while (( SECONDS - wait_started < wait_timeout_seconds )); do
+    local target_ready
+    target_ready="$(agent-browser eval \
+      "(async () => {
+        try {
+          const response = await fetch(${url_json}, { cache: 'reload' });
+          const contentType = response.headers.get('content-type') ?? '';
+          return response.ok && contentType.includes('javascript');
+        } catch {
+          return false;
+        }
+      })()" 2>/dev/null || true)"
+    if [[ "$target_ready" == "true" ]]; then
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "Wait timed out after $((wait_timeout_seconds * 1000))ms: JavaScript URL ${url}" >&2
   return 1
 }
 

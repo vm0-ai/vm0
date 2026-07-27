@@ -2,7 +2,7 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../__tests__/mock-auth.ts";
+import { mockedClerk, mockedClerkLoad } from "../../__tests__/mock-auth.ts";
 import {
   deriveServiceOrigin,
   getAllowedAuthRedirectOrigins,
@@ -211,7 +211,7 @@ describe("platform auth redirects", () => {
     });
 
     expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key");
-    expect(mockedClerk.load).toHaveBeenCalledWith({
+    expect(mockedClerkLoad).toHaveBeenCalledWith({
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
@@ -244,7 +244,7 @@ describe("platform auth redirects", () => {
     expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key", {
       domain: "app.okou.ai",
     });
-    expect(mockedClerk.load).toHaveBeenCalledWith({
+    expect(mockedClerkLoad).toHaveBeenCalledWith({
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       isSatellite: true,
       satelliteAutoSync: true,

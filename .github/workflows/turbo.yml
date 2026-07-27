@@ -1462,6 +1462,118 @@ jobs:
             "$PAGES_CUSTOM_DOMAIN" \
             "$PAGES_BRANCH"
 
+      - name: Wait for Cloudflare Pages preview assets
+        env:
+          PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
+          PAGES_URL: ${{ steps.pages-custom-domain.outputs.url || steps.pages-preview.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t probe_files < <(
+            node --input-type=module - "$PAGES_DIST/assets" <<'NODE'
+          import { readdir, readFile } from "node:fs/promises";
+          import path from "node:path";
+
+          const assetsDirectory = process.argv[2];
+          const assetNames = await readdir(assetsDirectory);
+          const javascriptAssets = new Set(
+            assetNames.filter((assetName) => assetName.endsWith(".js")),
+          );
+          const rootPrefixes = ["index-", "Route-", "SignIn-", "SignUp-"];
+          const roots = [...javascriptAssets].filter((assetName) =>
+            rootPrefixes.some((prefix) => assetName.startsWith(prefix)),
+          );
+
+          for (const prefix of rootPrefixes) {
+            if (!roots.some((assetName) => assetName.startsWith(prefix))) {
+              throw new Error(`Could not identify ${prefix} preview assets`);
+            }
+          }
+
+          const queuedAssets = [...roots];
+          const reachableAssets = new Set();
+          const relativeImportPattern =
+            /["']\.\/([^"'?#]+\.js)(?:[?#][^"']*)?["']/g;
+
+          while (queuedAssets.length > 0) {
+            const assetName = queuedAssets.pop();
+            if (!assetName || reachableAssets.has(assetName)) {
+              continue;
+            }
+            reachableAssets.add(assetName);
+
+            const source = await readFile(
+              path.join(assetsDirectory, assetName),
+              "utf8",
+            );
+            for (const match of source.matchAll(relativeImportPattern)) {
+              const dependencyName = match[1];
+              if (
+                javascriptAssets.has(dependencyName) &&
+                !reachableAssets.has(dependencyName)
+              ) {
+                queuedAssets.push(dependencyName);
+              }
+            }
+          }
+
+          for (const assetName of [...reachableAssets].sort()) {
+            console.log(path.join(assetsDirectory, assetName));
+          }
+          NODE
+          )
+          echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
+
+          probe_curl_args=()
+          for probe_file in "${probe_files[@]}"; do
+            relative_path="${probe_file#"$PAGES_DIST"/}"
+            probe_curl_args+=(
+              --output /dev/null
+              --url "${PAGES_URL%/}/${relative_path}"
+            )
+          done
+
+          ready_passes=0
+          for attempt in {1..60}; do
+            probe_results="$(curl \
+              --silent \
+              --max-time 10 \
+              --parallel \
+              --parallel-immediate \
+              --parallel-max 16 \
+              --write-out $'%{http_code}|%{content_type}|%{url_effective}\n' \
+              "${probe_curl_args[@]}" 2>/dev/null || true)"
+            probe_result_count="$(grep -c '|' <<< "$probe_results")"
+            not_ready_files="$(
+              while IFS='|' read -r status content_type asset_url; do
+                if [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
+                  printf "%s\n" "${asset_url#"${PAGES_URL%/}/"}"
+                fi
+              done <<< "$probe_results"
+            )"
+            if (( probe_result_count != ${#probe_files[@]} )); then
+              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
+            fi
+
+            if [[ -z "$not_ready_files" ]]; then
+              ((ready_passes += 1))
+            else
+              ready_passes=0
+              first_not_ready="${not_ready_files%%$'\n'*}"
+              not_ready_count="$(wc -l <<< "$not_ready_files")"
+              echo "::warning::${not_ready_count} preview assets are not ready (attempt ${attempt}/60); first: ${first_not_ready}"
+            fi
+
+            if (( ready_passes >= 2 )); then
+              echo "Cloudflare Pages preview assets are ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::Cloudflare Pages preview assets did not become ready"
+          exit 1
+
       - name: Record Cloudflare Pages preview
         env:
           PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
@@ -1602,6 +1714,7 @@ jobs:
           VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
   cli-e2e-02-playwright:
     runs-on: ubuntu-latest

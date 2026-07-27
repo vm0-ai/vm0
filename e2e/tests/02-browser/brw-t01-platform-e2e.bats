@@ -22,6 +22,9 @@ load '../../helpers/setup'
 load '../../helpers/browser'
 
 setup_file() {
+  BROWSER_SESSION_PREFIX="${JOB_REF:-local}-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
+  export BROWSER_SESSION_PREFIX
+  export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-up"
   browser_setup
 
   # Generate a password for sign-up
@@ -88,20 +91,83 @@ wait_for_auth_completion() {
 
 open_auth_form() {
   local url="$1"
-  local auth_path="$2"
-  shift 2
+  local target_expression="$2"
+  local failed_script_expression
+  failed_script_expression="performance.getEntriesByType('resource').some(
+    (entry) => {
+      const resourceUrl = new URL(entry.name);
+      return resourceUrl.origin === location.origin
+        && entry.initiatorType === 'script'
+        && entry.responseStatus >= 400;
+    }
+  )"
 
   agent-browser open "$url"
-  if wait_for_browser_target --timeout-seconds 30 "$@" 2>/dev/null; then
+  if wait_for_browser_target --timeout-seconds 30 --fn \
+    "Boolean(${target_expression}) || Boolean(${failed_script_expression})"; then
+    if [[ "$(agent-browser eval "Boolean(${target_expression})")" == "true" ]]; then
+      return
+    fi
+
+    report_auth_page_failure
+    local failed_script_urls_json
+    failed_script_urls_json="$(agent-browser eval \
+      "Array.from(new Set(
+        performance.getEntriesByType('resource')
+          .filter((entry) => {
+            const resourceUrl = new URL(entry.name);
+            return resourceUrl.origin === location.origin
+              && entry.initiatorType === 'script'
+              && entry.responseStatus >= 400;
+          })
+          .map((entry) => entry.name)
+      ))")"
+    local -a failed_script_urls
+    mapfile -t failed_script_urls < <(
+      jq -r '.[]' <<< "$failed_script_urls_json"
+    )
+    if (( ${#failed_script_urls[@]} == 0 )); then
+      return 1
+    fi
+    local failed_script_url
+    for failed_script_url in "${failed_script_urls[@]}"; do
+      if ! wait_for_javascript_target \
+        --timeout-seconds 60 \
+        "$failed_script_url"; then
+        return 1
+      fi
+    done
+
+    echo "# Failed app scripts are available; reloading once" >&3
+    agent-browser reload
+    if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+      report_auth_page_failure
+      return 1
+    fi
+    echo "# Auth form recovered after app script propagation" >&3
     return
   fi
 
-  echo "# Clerk ${auth_path} form did not mount in 30s; retrying in a fresh session" >&3
-  agent-browser close 2>/dev/null || true
-  export AGENT_BROWSER_SESSION="${JOB_REF:-local}-${auth_path}-retry"
-  browser_setup
-  agent-browser open "$url"
-  wait_for_browser_target --timeout-seconds 30 "$@"
+  report_auth_page_failure
+
+  # A failed app module request leaves the static HTML bootstrap skeleton in
+  # place before Clerk exists. Recover that transport failure once without
+  # masking a Clerk form stall after the application has started.
+  if [[ "$(agent-browser eval \
+    "Boolean(
+      document.getElementById('app-bootstrap-skeleton')
+      && typeof window.Clerk === 'undefined'
+    )")" != "true" ]]; then
+    return 1
+  fi
+
+  echo "# App bootstrap did not complete; reloading once" >&3
+  agent-browser reload
+  if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+    report_auth_page_failure
+    return 1
+  fi
+  echo "# App bootstrap recovered after reload" >&3
 }
 
 # ===========================================================================
@@ -112,7 +178,7 @@ open_auth_form() {
   local sign_up_url
   sign_up_url="$(auth_url "/sign-up")"
   echo "# Navigating to $sign_up_url" >&3
-  open_auth_form "$sign_up_url" "sign-up" --fn \
+  open_auth_form "$sign_up_url" \
     "Boolean(
       document.querySelector('input[name=\"emailAddress\"]')
       && document.querySelector('input[name=\"password\"]')
@@ -148,14 +214,14 @@ open_auth_form() {
 
   # Start a fresh isolated session so auth state cannot leak across cases.
   agent-browser close 2>/dev/null || true
-  export AGENT_BROWSER_SESSION="${JOB_REF:-local}-sign-in"
+  export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-in"
   browser_setup
 
   # Re-open sign-in page
   local sign_in_url
   sign_in_url="$(auth_url "/sign-in")"
   echo "# Navigating to $sign_in_url" >&3
-  open_auth_form "$sign_in_url" "sign-in" --fn \
+  open_auth_form "$sign_in_url" \
     "!window.location.pathname.includes('/sign-in')
       || Boolean(document.querySelector('input[name=\"identifier\"]'))"
 
