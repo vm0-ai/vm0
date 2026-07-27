@@ -54,7 +54,6 @@ import {
 const L = logger("CanonicalFeishuIngressProcessor");
 const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
 const SWEEP_LIMIT = 20;
-const FEISHU_DIRECT_MESSAGE_THREAD_ID = "direct-message";
 
 const feishuPromptFileSchema = z.object({
   fileId: z.string(),
@@ -80,13 +79,18 @@ const feishuInboundMessageSchema = z.object({
   file: feishuPromptFileSchema.nullable(),
 });
 
-function canonicalThreadId(message: FeishuInboundMessage): string {
+function canonicalThreadId(args: {
+  readonly message: FeishuInboundMessage;
+  readonly agentId: string;
+  readonly selectedModel: string | null;
+}): string {
+  const { message } = args;
   const replyThreadId =
     message.rootId ?? message.threadId ?? message.parentId ?? null;
   if (message.chatType === "p2p") {
     return message.threadId
-      ? `thread:${replyThreadId ?? message.threadId}`
-      : FEISHU_DIRECT_MESSAGE_THREAD_ID;
+      ? `thread:${message.threadId}`
+      : `direct-message:${args.agentId}:${args.selectedModel ?? "default"}`;
   }
   return replyThreadId ?? message.messageId;
 }
@@ -242,7 +246,11 @@ async function persistCanonicalFeishuIngress(args: {
   readonly appendSystemPrompt: string;
   readonly signal: AbortSignal;
 }): Promise<PersistedCanonicalFeishuIngress> {
-  const threadId = canonicalThreadId(args.message);
+  const threadId = canonicalThreadId({
+    message: args.message,
+    agentId: args.agentId,
+    selectedModel: args.selectedModel,
+  });
   const route = await ensureFeishuChatThreadRoute(args.db, {
     connectionId: args.connection.id,
     chatId: args.message.chatId,

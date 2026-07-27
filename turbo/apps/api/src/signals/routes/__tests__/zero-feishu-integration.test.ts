@@ -1709,8 +1709,14 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture({
       useAlternateInstallationDefault: true,
     });
-    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
-      fixture;
+    const {
+      actor,
+      runnerGroup,
+      appId,
+      callbackUrl,
+      defaultAgentId,
+      alternateAgentId,
+    } = fixture;
     await connectFixtureUser(fixture);
     await postEvent(callbackUrl, directMessage(appId, "/model"), {
       encrypted: true,
@@ -1990,6 +1996,40 @@ describe("Feishu integration", () => {
       });
     expect(completedQuotedReply?.replyInThread).toBeFalsy();
 
+    await postEvent(callbackUrl, directMessage(appId, "/switch default"), {
+      encrypted: true,
+    });
+    await flushWaitUntilForTest();
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "use the switched Feishu agent"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const switchedAgentRun = await findRun(
+      actor,
+      "use the switched Feishu agent",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const switchedAgentClaim = await runsApi.claimRunnerJob(
+      switchedAgentRun.id,
+    );
+    expect(switchedAgentClaim.environment?.ZERO_AGENT_ID).toBe(defaultAgentId);
+    expect(switchedAgentClaim.resumeSession).toBeNull();
+    await completeRunSession({
+      runId: switchedAgentRun.id,
+      sandboxToken: switchedAgentClaim.sandboxToken,
+      sessionId: randomUUID(),
+      history: `bdd switched feishu history ${switchedAgentRun.id}`,
+      assistantText: "Switched canonical Feishu answer",
+    });
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, `/switch ${alternateAgentId}`),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+
     const feishuThreadId = `omt_${randomUUID()}`;
     const threadMessageId = `om_${randomUUID()}`;
     await postEvent(
@@ -2025,6 +2065,26 @@ describe("Feishu integration", () => {
       });
     expect(completedThreadReply?.replyInThread).toBeTruthy();
 
+    const threadHelpMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "/help", "ou_feishu_user", {
+        messageId: threadHelpMessageId,
+        rootId: quotedReplyMessageId,
+        threadId: feishuThreadId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadHelpReply = [...outboundMessages].reverse().find((message) => {
+      return (
+        message.kind === "reply" &&
+        message.target === threadHelpMessageId &&
+        messageContent(message).includes("Zero commands")
+      );
+    });
+    expect(threadHelpReply?.replyInThread).toBeTruthy();
+
     await postEvent(
       callbackUrl,
       directMessage(
@@ -2032,7 +2092,6 @@ describe("Feishu integration", () => {
         "continue in the original Feishu thread",
         "ou_feishu_user",
         {
-          rootId: quotedReplyMessageId,
           threadId: feishuThreadId,
         },
       ),
@@ -2085,11 +2144,19 @@ describe("Feishu integration", () => {
       "second concurrent Feishu task",
       "queued Feishu task",
     ] as const;
+    const queuedMessageId = `om_${randomUUID()}`;
     for (const [index, prompt] of prompts.entries()) {
       await postEvent(
         callbackUrl,
         directMessage(appId, prompt, "ou_feishu_user", {
           chatId: `oc_feishu_concurrent_${index}`,
+          ...(index === 2
+            ? {
+                messageId: queuedMessageId,
+                rootId: `om_${randomUUID()}`,
+                threadId: `omt_${randomUUID()}`,
+              }
+            : {}),
         }),
         {
           encrypted: true,
@@ -2100,6 +2167,11 @@ describe("Feishu integration", () => {
 
     const queueNotice = outboundMessages.find((message) => {
       return messageContent(message).includes("Run queued");
+    });
+    expect(queueNotice).toMatchObject({
+      kind: "reply",
+      target: queuedMessageId,
+      replyInThread: true,
     });
     expect(queueNotice?.msgType).toBe("interactive");
     const queueNoticeContent = queueNotice ? messageContent(queueNotice) : "";
