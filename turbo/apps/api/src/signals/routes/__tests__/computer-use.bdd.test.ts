@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   TestComputerUseStateGetResponse,
   TestComputerUseStatePostResponse,

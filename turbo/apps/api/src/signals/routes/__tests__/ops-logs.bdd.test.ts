@@ -10,7 +10,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

@@ -12,10 +12,6 @@
       "import": "./src/connector-config.ts",
       "types": "./src/connector-config.ts"
     },
-    "./feature-switch-key": {
-      "import": "./src/feature-switch-key.ts",
-      "types": "./src/feature-switch-key.ts"
-    },
     "./app-oauth-callback": {
       "import": "./src/app-oauth-callback.ts",
       "types": "./src/app-oauth-callback.ts"

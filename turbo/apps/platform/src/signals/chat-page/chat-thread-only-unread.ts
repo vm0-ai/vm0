@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 
 const internalChatThreadOnlyUnread$ = state(false);
