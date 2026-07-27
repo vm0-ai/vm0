@@ -593,6 +593,18 @@ export function isDrizzleSqlTag(
     });
 }
 
+export function isStableDrizzleSqlTag(
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+  node: TSESTree.Expression,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return (
+    isDrizzleSqlTag(checker, services, node) &&
+    hasStableDrizzleRuntimeOrigin(checker, tsNode, new Set())
+  );
+}
+
 export function isDrizzleWrapperType(
   checker: TypeChecker,
   type: Type,
@@ -1166,6 +1178,7 @@ export function isDrizzleArrayParameter(
   if (
     signature === undefined ||
     !isNamedDrizzleSignature(signature, "param") ||
+    !hasStableDrizzleRuntimeOrigin(checker, tsCall.expression, new Set()) ||
     argument === undefined ||
     argument.type === AST_NODE_TYPES.SpreadElement
   ) {

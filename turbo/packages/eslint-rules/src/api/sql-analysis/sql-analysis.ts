@@ -78,7 +78,10 @@ export type SqlAnalysisFinding =
 
 export interface SqlCapabilityChecks {
   acceptsOptionalSql(node: TSESTree.Expression): boolean;
-  allowsWriteQueryBuilder(node: TSESTree.Expression): boolean;
+  allowsWriteQueryBuilder(
+    node: TSESTree.Expression,
+    expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>,
+  ): boolean;
   hasDirectResultMapping(node: TSESTree.Expression): boolean;
   hasParameterListOrigin(node: TSESTree.Expression): boolean;
   isInlineParameterList(node: TSESTree.Expression): boolean;
@@ -4458,7 +4461,7 @@ export function analyzeSql(
     const allowsWriteQueryBuilder =
       context === "statement" &&
       source.variants.some(variantMightContainWriteCapability) &&
-      capabilities.allowsWriteQueryBuilder(node);
+      capabilities.allowsWriteQueryBuilder(node, source.expandedTemplates);
     if (emptyFindings !== undefined) {
       analysis = {
         expandedTemplates: source.expandedTemplates,

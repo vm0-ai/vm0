@@ -51,6 +51,7 @@ import {
   isDrizzleSqlTag,
   isDrizzleSymbol,
   isNamedDrizzleSignature,
+  isStableDrizzleSqlTag,
   resolvedSymbol,
 } from "../drizzle.ts";
 import { createExecuteRawRowsMatcher } from "../execute-raw-rows.ts";
@@ -216,10 +217,16 @@ export const preferDrizzleApis = createRule({
       isInlineParameterList: isInlineParameterListSqlJoin,
     };
 
-    function allowsWriteQueryBuilder(node: TSESTree.Expression): boolean {
+    function allowsWriteQueryBuilder(
+      node: TSESTree.Expression,
+      expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>,
+    ): boolean {
       const use = outerTransparentNode(node);
       const parent = use.parent;
       return (
+        [...expandedTemplates].every((template) => {
+          return isStableDrizzleSqlTag(checker, services, template.tag);
+        }) &&
         parent?.type === AST_NODE_TYPES.CallExpression &&
         parent.arguments.length === 1 &&
         parent.arguments[0] === use &&

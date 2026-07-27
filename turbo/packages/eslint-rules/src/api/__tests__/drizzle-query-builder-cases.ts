@@ -982,6 +982,42 @@ const queryBuilderCases = {
       `,
     },
     {
+      descendantErrors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        declare const fakeParam: typeof sql.param;
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${fakeParam(windowIds)}::uuid[]
+          ) AS consumption(window_id)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        declare const fakeSql: typeof sql;
+        await db.execute(fakeSql\`
+          DELETE FROM \${cleanupRows}
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        declare const fakeSql: typeof sql;
+        const predicate = fakeSql\`true\`;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${predicate}
+        \`);
+      `,
+    },
+    {
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
         type MySqlDatabase = import("drizzle-orm/mysql-core").MySqlDatabase<
@@ -3322,6 +3358,22 @@ const queryBuilderCases = {
             \${query.param(unitDeltas)}::bigint[]
           ) AS consumption(window_id, units_applied)
           WHERE \${allowanceWindows.id} = consumption.window_id;
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql;
+        const parameter = sql.param;
+        await db.execute(query\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${parameter(windowIds)}::uuid[]
+          ) AS consumption(window_id)
+          WHERE \${allowanceWindows.id} = consumption.window_id
         \`);
       `,
       errors: [{ messageId: "unnestUpdateQueryBuilder" }],
