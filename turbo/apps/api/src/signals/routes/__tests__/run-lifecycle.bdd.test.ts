@@ -13,7 +13,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import {
   UNKNOWN_PERMISSION_GRANT,

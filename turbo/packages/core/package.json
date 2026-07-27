@@ -35,7 +35,6 @@
   },
   "dependencies": {
     "@vm0/api-contracts": "workspace:*",
-    "@vm0/connectors": "workspace:*",
     "yaml": "^2.8.1"
   }
 }

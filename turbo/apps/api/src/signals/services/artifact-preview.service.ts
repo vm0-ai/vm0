@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { eq } from "drizzle-orm";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";

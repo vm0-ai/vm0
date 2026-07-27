@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { ArtifactCatalogPage } from "../../views/artifacts-page/artifact-catalog-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";

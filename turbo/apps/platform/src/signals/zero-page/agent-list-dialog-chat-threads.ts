@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import {

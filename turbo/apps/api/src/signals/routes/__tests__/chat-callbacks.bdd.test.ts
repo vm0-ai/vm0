@@ -9,7 +9,7 @@ import type {
   PagedChatMessage,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -3265,6 +3265,82 @@ describe("CHAT-02: thread deletion while a run is active", () => {
 });
 
 describe("CHAT-02: push notification gating", () => {
+  it("suppresses completed run pushes while the thread has an active goal", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    chatCallbacks.enableVapid();
+    await chatCallbacks.registerPushSubscription(actor);
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "complete while goal remains active",
+    });
+    await createGoalForRun(actor, run.runId, "keep working after this run");
+    chatCallbacks.mockChatOutputEvents([]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await completeChatRunOk(run.runId, sandboxHeaders);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (threadMessages) => {
+        return userMessages(threadMessages).some((message) => {
+          return isGoalContinuationUserMessage(
+            message,
+            "keep working after this run",
+          );
+        });
+      },
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+
+    const continuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(
+        message,
+        "keep working after this run",
+      );
+    });
+    if (!continuation?.runId) {
+      throw new Error("Expected an active goal continuation run");
+    }
+    await api.requestCancelRun(actor, continuation.runId, [200]);
+    await waitForRunStatus(actor, continuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+  }, 60_000);
+
+  it("suppresses failed run pushes while the thread has an active goal", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    chatCallbacks.enableVapid();
+    await chatCallbacks.registerPushSubscription(actor);
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "fail while goal remains active",
+    });
+    await createGoalForRun(actor, run.runId, "pause after this failure");
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await failChatRun(run.runId, sandboxHeaders, "goal iteration failed");
+
+    await expect
+      .poll(async () => {
+        const goal = await accept(
+          goalsClient().get({
+            headers: zeroGoalHeaders(actor, run.runId),
+          }),
+          [200],
+        );
+        return goal.body.status;
+      })
+      .toBe("paused");
+    await flushWaitUntilForTest();
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+  }, 60_000);
+
   it("withholds pushes without VAPID keys and deletes stale subscriptions after gone responses", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
