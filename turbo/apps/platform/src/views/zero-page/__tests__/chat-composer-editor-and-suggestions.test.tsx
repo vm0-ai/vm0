@@ -231,6 +231,9 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
+      },
     });
 
     const editor = await findComposerEditor();
@@ -281,6 +284,38 @@ describe("chat composer models", () => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
+  it("keeps slash skill substring matching behind the feature switch", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: false,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/research");
+
+    await expect(
+      screen.findByText("No matching workflows"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("does not highlight workflow names inside URLs", async () => {

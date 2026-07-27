@@ -68,6 +68,7 @@ export enum FeatureSwitchKey {
   AgentUnreadIndicators = "agentUnreadIndicators",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
   ComposerChatThreadSuggestions = "composerChatThreadSuggestions",
+  ComposerSkillSubstringSearch = "composerSkillSubstringSearch",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",
   FeishuIntegration = "feishuIntegration",
