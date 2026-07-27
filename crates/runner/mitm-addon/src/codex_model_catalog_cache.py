@@ -31,6 +31,7 @@ _RESPONSES_PATH = "/backend-api/codex/responses"
 _MAX_CLIENT_VERSION_BYTES = 128
 _MAX_ETAG_BYTES = 512
 _MAX_CONTENT_TYPE_BYTES = 256
+_MAX_JSON_NESTING = 128
 _MAX_TELEMETRY_MILLISECONDS = 2_147_483_647
 _MIN_QUOTED_ETAG_BYTES = 2
 _ASCII_CONTROL_BOUNDARY = 0x20
@@ -322,6 +323,30 @@ def _parse_finite_json_float(value: str) -> float:
     if not math.isfinite(parsed):
         raise ValueError("non-finite JSON number")
     return parsed
+
+
+def _json_nesting_is_bounded(document: str) -> bool:
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in document:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > _MAX_JSON_NESTING:
+                return False
+        elif character in "]}":
+            depth -= 1
+    return True
 
 
 def _content_length(headers: http.Headers) -> int | None:
@@ -646,12 +671,18 @@ def _validated_response_body(
     if content_length is not None and content_length != len(body):
         return "response_body"
     try:
+        document = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return "response_json"
+    if not _json_nesting_is_bounded(document):
+        return "response_json"
+    try:
         payload = json.loads(
-            body.decode("utf-8"),
+            document,
             parse_constant=_reject_non_json_constant,
             parse_float=_parse_finite_json_float,
         )
-    except (UnicodeDecodeError, ValueError, RecursionError):
+    except (ValueError, RecursionError):
         return "response_json"
     if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
         return "response_shape"

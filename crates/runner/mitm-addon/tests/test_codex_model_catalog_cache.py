@@ -356,19 +356,40 @@ def test_invalid_identity_responses_pass_through_without_installing(
     original_body = response.raw_content
 
     telemetry = _finish_response(flow)
+    validation_latency = telemetry.pop("model_catalog_cache_validation_latency_ms")
 
     assert flow.response.status_code == original_status
     assert flow.response.raw_content == original_body
+    assert isinstance(validation_latency, int)
+    assert validation_latency >= 0
     assert telemetry == {
         "model_catalog_cache_status": "model_catalog_cold_not_stored",
         "model_catalog_cache_bypass_reason": reason,
-        "model_catalog_cache_validation_latency_ms": 0,
         "model_catalog_cache_upstream_encoding": "identity",
     }
 
     retry = _catalog_flow(real_flow)
     _prepare_miss(retry)
     catalog_cache.handle_error(retry)
+
+
+def test_json_nesting_bound_ignores_structural_characters_inside_strings(real_flow):
+    body = json.dumps(
+        {
+            "models": [],
+            "instructions": '[{"escaped":"value"}]' * 256,
+        },
+        separators=(",", ":"),
+    ).encode()
+    flow = _catalog_flow(real_flow, version="string-syntax")
+
+    telemetry = _install_catalog(flow, body=body)
+
+    assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
+    hit = _catalog_flow(real_flow, version="string-syntax")
+    catalog_cache.prepare_request(hit, request_end_stream=True)
+    assert hit.response is not None
+    assert hit.response.content == body
 
 
 @pytest.mark.parametrize(
@@ -441,10 +462,12 @@ def test_invalid_buffered_brotli_becomes_502_before_client_delivery(
     assert "Content-Encoding" not in flow.response.headers
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(flow, telemetry)
+    validation_latency = telemetry.pop("model_catalog_cache_validation_latency_ms")
+    assert isinstance(validation_latency, int)
+    assert validation_latency >= 0
     assert telemetry == {
         "model_catalog_cache_status": "model_catalog_cold_not_stored",
         "model_catalog_cache_bypass_reason": reason,
-        "model_catalog_cache_validation_latency_ms": 0,
         "model_catalog_cache_upstream_encoding": "br",
     }
 
@@ -595,10 +618,12 @@ def test_unsafe_encoded_headers_use_bounded_502_drain(
     assert response_stream(flow)(b"x" * (catalog_cache.MAX_ENTRY_BYTES + 1)) == b""
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(flow, telemetry)
+    validation_latency = telemetry.pop("model_catalog_cache_validation_latency_ms")
+    assert isinstance(validation_latency, int)
+    assert validation_latency >= 0
     expected = {
         "model_catalog_cache_status": "model_catalog_cold_not_stored",
         "model_catalog_cache_bypass_reason": reason,
-        "model_catalog_cache_validation_latency_ms": 0,
     }
     if expected_encoding is not None:
         expected["model_catalog_cache_upstream_encoding"] = expected_encoding
