@@ -6,6 +6,7 @@ import {
   chatThreadEventsContract,
   chatThreadMessagesContract,
   chatThreadsContract,
+  legacyChatMessageResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -198,7 +199,7 @@ const listLegacyChatThreadMessagesInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      messages: [...page.events],
+      messages: page.events.map(legacyChatMessageResponse),
       hasHistoryBefore: page.hasHistoryBefore,
     },
   };
@@ -237,7 +238,7 @@ const getLegacyChatThreadMessageInner$ = computed(async (get) => {
     return chatThreadNotFound();
   }
 
-  return { status: 200 as const, body: event };
+  return { status: 200 as const, body: legacyChatMessageResponse(event) };
 });
 
 const listChatThreadDraftsInner$ = computed(async (get) => {

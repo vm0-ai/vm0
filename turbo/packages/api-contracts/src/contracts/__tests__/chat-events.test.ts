@@ -18,6 +18,7 @@ import {
   chatEventSchema,
   chatEventsContract,
   chatMessagesContract,
+  legacyChatMessageResponse,
   legacyChatMessageSendBody,
   legacyPagedChatMessageSchema,
   chatThreadEventsContract,
@@ -224,25 +225,13 @@ describe("ChatEvent catalog", () => {
     ).toBe(false);
   });
 
-  it("upgrades every preceding message response leaf into a ChatEvent", () => {
+  it("projects every event onto the exact preceding message response", () => {
     for (const event of chatEvents) {
-      const response = chatEventResponse(event);
-      const {
-        eventType,
-        threadId,
-        revokesEventId,
-        ...legacyCompatibilityResponse
-      } = response;
-      void eventType;
-      void threadId;
-      void revokesEventId;
-      const legacy = legacyPagedChatMessageSchema.parse(
-        event.eventType === "run.queued"
-          ? { ...legacyCompatibilityResponse, runEventId: "queue:queued" }
-          : event.eventType === "run.dequeued"
-            ? { ...legacyCompatibilityResponse, runEventId: "queue:dequeued" }
-            : legacyCompatibilityResponse,
-      );
+      const legacy = legacyChatMessageResponse(chatEventResponse(event));
+      expect(legacyPagedChatMessageSchema.parse(legacy)).toStrictEqual(legacy);
+      expect(legacy).not.toHaveProperty("eventType");
+      expect(legacy).not.toHaveProperty("threadId");
+      expect(legacy).not.toHaveProperty("revokesEventId");
       expect(
         canonicalChatEventFromCompatibilityResponse(THREAD_ID, legacy),
       ).toStrictEqual(

@@ -9,18 +9,18 @@ export interface ComposerChatThreadSuggestion {
   readonly title: string;
 }
 
-export interface ChatThreadMentionTextSegment {
+interface ChatThreadMentionTextSegment {
   readonly type: "text";
   readonly text: string;
 }
 
-export interface ChatThreadMentionSegment {
+interface ChatThreadMentionSegment {
   readonly type: "mention";
   readonly threadId: string;
   readonly title: string;
 }
 
-export type ChatThreadLineSegment =
+type ChatThreadLineSegment =
   | ChatThreadMentionTextSegment
   | ChatThreadMentionSegment;
 

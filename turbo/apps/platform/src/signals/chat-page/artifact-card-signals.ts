@@ -92,7 +92,7 @@ function needsTextPreview(kind: ArtifactKind): boolean {
   return kind === "text" || kind === "json";
 }
 
-export function createArtifactSignals(
+function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ): ArtifactSignals {

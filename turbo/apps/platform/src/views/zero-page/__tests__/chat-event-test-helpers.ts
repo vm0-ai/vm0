@@ -1,7 +1,7 @@
 import {
   chatEventResponseSchema,
+  type ChatMessageCompatibilityResponse,
   type ChatEventResponse,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatEventCompatibilityRole,
@@ -19,12 +19,13 @@ type OptionalUnionFields<T> = {
   [K in UnionKeys<T>]?: UnionValue<T, K>;
 };
 
-export type MockChatEventInput = OptionalUnionFields<PagedChatMessage> & {
-  id?: string;
-  role?: "user" | "assistant";
-  content: string | null;
-  createdAt: string;
-};
+export type MockChatEventInput =
+  OptionalUnionFields<ChatMessageCompatibilityResponse> & {
+    id?: string;
+    role?: "user" | "assistant";
+    content: string | null;
+    createdAt: string;
+  };
 
 function inferredEventType(message: MockChatEventInput): ChatEventType {
   if (message.eventType !== undefined) {

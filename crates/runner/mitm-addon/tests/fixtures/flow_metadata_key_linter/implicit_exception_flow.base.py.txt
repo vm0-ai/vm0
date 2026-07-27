@@ -1,0 +1,542 @@
+def division_under_with(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        1 / 0
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def call_under_with(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        operation()
+        metadata = {}
+    return metadata["firewall_name"]
+
+
+def attribute_under_with(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        value.attribute
+        metadata = {}
+    return metadata["original_url"]
+
+
+def augmented_assignment_under_with(flow, manager, counter):
+    metadata = flow.metadata
+    with manager:
+        counter += 1
+        metadata = {}
+    return metadata["capture_body"]
+
+
+def assertion_under_with(flow, manager, condition):
+    metadata = flow.metadata
+    with manager:
+        assert condition
+        metadata = {}
+    return metadata["vm_proxy_log_path"]
+
+
+async def await_under_async_with(flow, manager):
+    metadata = flow.metadata
+    async with manager:
+        await operation()
+        metadata = {}
+    return metadata["network_log_target"]
+
+
+def try_handler_uses_failure_alias(flow):
+    metadata = {}
+    try:
+        metadata = flow.metadata
+        operation()
+        metadata = {}
+    except Exception:
+        pass
+    return metadata["firewall_permission"]
+
+
+def rebind_before_failure_is_external(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        metadata = {}
+        operation()
+    return metadata["vm_run_id"]
+
+
+def deterministic_rebind_is_external(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        metadata = {}
+    return metadata["firewall_name"]
+
+
+def safe_truth_test_is_external(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        if True:
+            pass
+        metadata = {}
+    return metadata["original_url"]
+
+
+def failure_before_return(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        return operation()
+    return metadata["firewall_base"]
+
+
+def failure_before_break(flow, manager, rows):
+    metadata = flow.metadata
+    for _row in rows:
+        with manager:
+            operation()
+            break
+        metadata["firewall_api_id"]
+
+
+def failure_before_continue(flow, manager, rows):
+    metadata = flow.metadata
+    for _row in rows:
+        with manager:
+            operation()
+            continue
+        metadata["firewall_action"]
+
+
+def call_failure_before_argument_rebind(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        factory()((metadata := {}))
+        metadata = {}
+    return metadata["firewall_error"]
+
+
+def call_failure_after_argument_rebind_is_external(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        operation((metadata := {}))
+    return metadata["vm_run_id"]
+
+
+def argument_alias_before_call_failure(flow, manager):
+    metadata = {}
+    with manager:
+        operation((metadata := flow.metadata))
+        metadata = {}
+    return metadata["auth_cache_hit"]
+
+
+def short_circuit_failure_before_rebind(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        operation() and (metadata := {})
+        metadata = {}
+    return metadata["auth_url_rewrite"]
+
+
+def chained_comparison_failure_before_rebind(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        left() < middle() < (metadata := {})
+        metadata = {}
+    return metadata["auth_resolved_secrets"]
+
+
+def first_for_iteration_failure(flow, manager, rows):
+    metadata = flow.metadata
+    with manager:
+        for _row in rows:
+            metadata = {}
+        metadata = {}
+    return metadata["request_stream_complete"]
+
+
+def later_for_iteration_failure(flow, manager, rows):
+    metadata = {}
+    with manager:
+        for _row in rows:
+            metadata = flow.metadata
+        metadata = {}
+    return metadata["request_stream_buffer"]
+
+
+def later_while_test_failure(flow, manager, condition):
+    metadata = {}
+    with manager:
+        while condition:
+            metadata = flow.metadata
+        metadata = {}
+    return metadata["response_stream_state"]
+
+
+async def later_async_iteration_failure(flow, manager, rows):
+    metadata = {}
+    async with manager:
+        async for _row in rows:
+            metadata = flow.metadata
+        metadata = {}
+    return metadata["stream_buffer_state"]
+
+
+def later_with_item_failure_is_suppressible(flow, outer_manager):
+    metadata = flow.metadata
+    with outer_manager, manager_factory():
+        metadata = {}
+    return metadata["connector_diagnostic_type"]
+
+
+def truth_test_failure_under_with(flow, manager, condition):
+    metadata = flow.metadata
+    with manager:
+        if condition:
+            pass
+        metadata = {}
+    return metadata["connector_diagnostic_reason"]
+
+
+def deferred_scopes_do_not_leak(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        def inner():
+            operation()
+
+        callback = lambda: operation()
+        values = (operation() for _item in ())
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def finally_preserves_implicit_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        try:
+            operation()
+            metadata = {}
+        finally:
+            cleanup()
+        metadata = {}
+    return metadata["connector_diagnostic_base"]
+
+
+def repeated_operation_points_emit_one_diagnostic(flow):
+    metadata = flow.metadata
+    try:
+        service.client.operation()
+    except Exception:
+        pass
+    return metadata["trusted_authority_host"]
+
+
+def assertion_truth_failure_precedes_message_rebind(flow, manager, condition):
+    metadata = flow.metadata
+    with manager:
+        assert condition, (metadata := {})
+        metadata = {}
+    return metadata["firewall_rule_match"]
+
+
+def assertion_message_rebinds_before_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        assert False, (metadata := {})
+    return metadata["vm_run_id"]
+
+
+def static_short_circuit_skips_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        False and operation()
+        metadata = {}
+    return metadata["firewall_name"]
+
+
+def subscript_under_with(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        value["external"]
+        metadata = {}
+    return metadata["connector_route_reason"]
+
+
+def eager_comprehension_projects_outer_alias(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        [operation() for metadata in (None,)]
+        metadata = {}
+    return metadata["connector_route_candidates"]
+
+
+def yield_from_under_with(flow, manager, values):
+    metadata = flow.metadata
+    with manager:
+        yield from values
+        metadata = {}
+    return metadata["auth_refreshed_secrets"]
+
+
+def short_circuit_exit_alias_reaches_parent_call(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        operation(f"{value}" and (metadata := {}))
+        metadata = {}
+    return metadata["auth_base_forward_admission"]
+
+
+def conditional_exit_alias_reaches_parent_call(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        operation((metadata := {}) if f"{value}" else None)
+        metadata = {}
+    return metadata["model_usage_provider"]
+
+
+def static_if_skips_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        if False:
+            operation()
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def static_while_skips_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        while False:
+            operation()
+        metadata = {}
+    return metadata["firewall_name"]
+
+
+def empty_for_skips_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        for _item in ():
+            operation()
+        metadata = {}
+    return metadata["original_url"]
+
+
+def empty_comprehension_skips_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        [operation() for _item in ()]
+        metadata = {}
+    return metadata["capture_body"]
+
+
+def true_assert_skips_message(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        assert True, operation()
+        metadata = {}
+    return metadata["vm_proxy_log_path"]
+
+
+def identity_comparison_is_not_fallible(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        metadata is None
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def false_comprehension_guard_skips_body(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        [operation() for _item in (None,) if False]
+        metadata = {}
+    return metadata["firewall_name"]
+
+
+def continue_reaches_later_iteration(flow, manager, rows):
+    metadata = {}
+    with manager:
+        for _item in rows:
+            metadata = flow.metadata
+            continue
+        metadata = {}
+    return metadata["vm_network_log_path"]
+
+
+def continue_reaches_later_while_test(flow, manager, condition):
+    metadata = {}
+    with manager:
+        while condition:
+            metadata = flow.metadata
+            continue
+        metadata = {}
+    return metadata["firewall_billable"]
+
+
+def eager_comprehension_reaches_later_iteration(flow, manager, rows):
+    metadata = {}
+    with manager:
+        [(metadata := flow.metadata) for _item in rows]
+        metadata = {}
+    return metadata["request_stream_complete"]
+
+
+def assignment_binds_before_later_target_failure(flow, manager, target):
+    metadata = {}
+    with manager:
+        metadata = target.attribute = flow.metadata
+        metadata = {}
+    return metadata["network_log_target"]
+
+
+def assignment_does_not_bind_before_earlier_target_failure(flow, manager, target):
+    metadata = {}
+    with manager:
+        target.attribute = metadata = flow.metadata
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def with_target_rebinds_before_later_target_failure(flow, manager, target):
+    metadata = flow.metadata
+    with manager as (metadata, target.attribute):
+        pass
+    return metadata["firewall_name"]
+
+
+def continue_finally_rebinds_before_later_test(flow, manager, condition):
+    metadata = {}
+    with manager:
+        while condition:
+            metadata = flow.metadata
+            try:
+                continue
+            finally:
+                metadata = {}
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def continue_finally_aliases_before_later_test(flow, manager, condition):
+    metadata = {}
+    with manager:
+        while condition:
+            try:
+                continue
+            finally:
+                metadata = flow.metadata
+        metadata = {}
+    return metadata["firewall_permission"]
+
+
+def static_not_is_not_fallible(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        not True
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def safe_tuple_iteration_after_continue_is_not_fallible(flow, manager):
+    metadata = {}
+    with manager:
+        for _item in (None,):
+            metadata = flow.metadata
+            continue
+        metadata = {}
+    return metadata["firewall_name"]
+
+
+def unreachable_handler_continue_skips_later_test(flow, manager, condition):
+    metadata = {}
+    with manager:
+        while condition:
+            try:
+                pass
+            except Exception:
+                metadata = flow.metadata
+                continue
+        metadata = {}
+    return metadata["auth_cache_hit"]
+
+
+def local_annotation_is_deferred(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        value: operation() = None
+        metadata = {}
+    return metadata["connector_diagnostic_type"]
+
+
+def nested_definition_annotation_is_deferred(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        def inner(value: operation()) -> operation():
+            pass
+
+        metadata = {}
+    return metadata["connector_diagnostic_reason"]
+
+
+def class_annotation_is_deferred(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        class Inner:
+            value: operation()
+
+        metadata = {}
+    return metadata["connector_diagnostic_base"]
+
+
+def default_expression_is_eager(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        def inner(value=operation()):
+            pass
+
+        metadata = {}
+    return metadata["connector_route_reason"]
+
+
+def annotation_target_expression_is_eager(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        target().attribute: object
+        metadata = {}
+    return metadata["connector_route_candidates"]
+
+
+def unreachable_handler_type_is_not_evaluated(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        try:
+            pass
+        except operation():
+            pass
+        metadata = {}
+    return metadata["connector_diagnostic_reason"]
+
+
+def false_match_guard_skips_case_body(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        match value:
+            case _ if False:
+                operation()
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def true_exhaustive_match_guard_skips_later_cases(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        match value:
+            case _ if True:
+                pass
+            case _:
+                operation()
+        metadata = {}
+    return metadata["firewall_name"]

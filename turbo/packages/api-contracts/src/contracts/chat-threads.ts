@@ -731,8 +731,8 @@ if (
   throw new Error("ChatEvent schema must cover the complete event catalog");
 }
 
-/** @deprecated Use chatEventResponseSchema. */
-const pagedChatMessageSchema = chatEventResponseSchema;
+/** @deprecated Use chatEventResponseSchema on canonical `/events` routes. */
+const pagedChatMessageSchema = legacyPagedChatMessageSchema;
 
 const chatThreadDetailSchema = z.object({
   /**
@@ -1990,6 +1990,27 @@ export function chatEventResponse(event: ChatEvent): ChatEventResponse {
     ...(revokesMessageId === undefined ? {} : { revokesMessageId }),
   });
 }
+
+/**
+ * Projects a canonical response onto the exact payload accepted by the
+ * preceding App release. Keep this at the `/messages` HTTP boundary.
+ */
+export function legacyChatMessageResponse(
+  response: ChatEventResponse,
+): LegacyPagedChatMessage {
+  const { eventType, threadId, revokesEventId, ...legacyResponse } = response;
+  void threadId;
+  void revokesEventId;
+  return legacyPagedChatMessageSchema.parse({
+    ...legacyResponse,
+    ...(eventType === "run.queued"
+      ? { runEventId: "queue:queued" }
+      : eventType === "run.dequeued"
+        ? { runEventId: "queue:dequeued" }
+        : {}),
+  });
+}
+
 export type ChatInputEvent = Extract<
   ChatEvent,
   { eventType: "input.prompt" | "input.rejected" }
@@ -2003,24 +2024,8 @@ export type ChatUsageEvent = Extract<
   ChatEvent,
   { eventType: "usage.recorded" }
 >;
-/**
- * @deprecated Use the eventType-discriminated ChatEvent union.
- *
- * This one-release compatibility view keeps the former optional-field access
- * pattern available to legacy `/messages` consumers while canonical event
- * consumers narrow on `eventType`.
- */
-export type PagedChatMessage = ChatEventResponse & {
-  readonly structuredPrompt?: UserMessageDocument;
-  readonly attachFiles?: ResolvedAttachFile[];
-  readonly generationTemplate?: GenerationTemplateRequest;
-  readonly error?: string;
-  readonly thinking?: string;
-  readonly recommendedFollowups?: ChatFollowupsEvent["recommendedFollowups"];
-  readonly runLifecycleEvent?: "completed" | "failed" | "cancelled";
-  readonly interruptsRunId?: string;
-  readonly usage?: ChatMessageUsagePayload;
-};
+/** @deprecated Use LegacyPagedChatMessage for `/messages` compatibility. */
+export type PagedChatMessage = LegacyPagedChatMessage;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema
 >;

@@ -637,6 +637,7 @@ export {
   canonicalChatEvent,
   canonicalChatEventFromCompatibilityResponse,
   chatEventResponse,
+  legacyChatMessageResponse,
   legacyChatMessageSendBody,
   chatEventResponseSchema,
   legacyPagedChatMessageSchema,
@@ -789,27 +790,6 @@ export {
   type LogsFilters,
 } from "./logs";
 
-export {
-  connectorTypeSchema,
-  CONNECTOR_TYPES,
-  CONNECTOR_DISPLAY_CATEGORY_GROUPS,
-  CONNECTOR_DISPLAY_CATEGORY_META,
-  CONNECTOR_DISPLAY_CATEGORY_ORDER,
-  type ConnectorType,
-  type AuthGrantConnectorType,
-  type ConnectorConfig,
-  type ConnectorDisplayCategory,
-  type ConnectorDisplayCategoryGroup,
-  type ConnectorAuthMethodConfig,
-  type ConnectorRegistryAuthMethodId,
-  type ConnectorEnvBindings,
-  type ConnectorEnvBindingValue,
-} from "@vm0/connectors/connectors";
-export {
-  getConnectorOwnedSecretNames,
-  getConnectorEnvBindingEntries,
-  type ScopeDiff,
-} from "@vm0/connectors/connector-utils";
 export {
   connectorResponseConnectionStatusSchema,
   connectorResponseSchema,

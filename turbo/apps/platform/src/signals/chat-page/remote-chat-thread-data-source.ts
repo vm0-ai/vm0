@@ -258,7 +258,7 @@ export const listEventsAfter$ = command(
   },
 );
 
-export const listEventsBefore$ = command(
+const listEventsBefore$ = command(
   async (
     { get },
     { threadId, beforeSeqId }: ListEventsBeforeArgs,

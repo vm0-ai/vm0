@@ -15,54 +15,8 @@ const DEV_ARTIFACT_FETCH_PROXY_HEADERS = [
   "content-type",
   "etag",
 ] as const;
-const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_PREFIX =
-  "vm0-firewall-permission-detail-metadata-";
-const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_PROTOCOL_VERSION = "v1";
-const FIREWALL_PERMISSION_DETAIL_METADATA_MODULE_ID_RE =
-  /\/packages\/connectors\/src\/firewall-metadata\/permission-details\/([a-z0-9][a-z0-9-]*)\.generated\.ts$/;
-const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_RE =
-  /^vm0-firewall-permission-detail-metadata-([a-z0-9][a-z0-9-]*)\.generated$/;
 
 process.env.VITE_APP_VERSION = platformPackage.version;
-
-function normalizedModuleId(id: string): string {
-  const queryIndex = id.indexOf("?");
-  const pathname = queryIndex === -1 ? id : id.slice(0, queryIndex);
-  return pathname.replaceAll("\\", "/");
-}
-
-function firewallPermissionDetailMetadataChunkName(
-  moduleId: string,
-): string | null {
-  const match = FIREWALL_PERMISSION_DETAIL_METADATA_MODULE_ID_RE.exec(
-    normalizedModuleId(moduleId),
-  );
-  if (!match) {
-    return null;
-  }
-  return `${FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_PREFIX}${match[1]}.generated`;
-}
-
-function firewallPermissionDetailMetadataChunkFileName(
-  chunkName: string,
-): string | null {
-  const match =
-    FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_RE.exec(chunkName);
-  if (!match) {
-    return null;
-  }
-  return `firewall-metadata/permission-details/${FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
-}
-
-function stableGeneratedFirewallChunkName(moduleId: string): string | null {
-  return firewallPermissionDetailMetadataChunkName(moduleId);
-}
-
-function stableGeneratedFirewallChunkFileName(
-  chunkName: string,
-): string | null {
-  return firewallPermissionDetailMetadataChunkFileName(chunkName);
-}
 
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {
   if (url.protocol !== "https:") {
@@ -174,33 +128,12 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        // Stable generated firewall chunk URLs must also keep stable import contracts.
-        minifyInternalExports: false,
         // Open-source project: compress and strip whitespace, but keep
         // original identifiers readable (no name mangling).
         minify: {
           compress: true,
           mangle: false,
           codegen: true,
-        },
-        chunkFileNames(chunkInfo) {
-          return (
-            stableGeneratedFirewallChunkFileName(chunkInfo.name) ??
-            "assets/[name]-[hash].js"
-          );
-        },
-        codeSplitting: {
-          groups: [
-            {
-              name(moduleId) {
-                return stableGeneratedFirewallChunkName(moduleId);
-              },
-              test(moduleId) {
-                return stableGeneratedFirewallChunkName(moduleId) !== null;
-              },
-              priority: 10,
-            },
-          ],
         },
       },
     },

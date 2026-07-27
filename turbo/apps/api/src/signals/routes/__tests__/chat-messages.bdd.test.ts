@@ -927,6 +927,23 @@ describe("CHAT-02: web chat send and client ids", () => {
       content: prompt,
     });
     expect(original?.runId).toBeUndefined();
+    expect(original).not.toHaveProperty("eventType");
+    expect(original).not.toHaveProperty("threadId");
+    expect(original).not.toHaveProperty("revokesEventId");
+
+    const legacyMessage = await chat.getThreadMessage(
+      actor,
+      clientThreadId,
+      clientEventId,
+    );
+    expect(legacyMessage).toMatchObject({
+      id: clientEventId,
+      role: "user",
+      content: prompt,
+    });
+    expect(legacyMessage).not.toHaveProperty("eventType");
+    expect(legacyMessage).not.toHaveProperty("threadId");
+    expect(legacyMessage).not.toHaveProperty("revokesEventId");
 
     const eventPage = await accept(
       chatThreadEventsClient().list({

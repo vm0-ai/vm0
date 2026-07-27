@@ -69,16 +69,18 @@ def _public_destination_flow(
     )
 
 
-def _track_public_destination_validations(monkeypatch: pytest.MonkeyPatch) -> list[object]:
-    validated_hosts: list[object] = []
-    validate_runtime_destination_host = public_destination.validate_runtime_destination_host
+def _track_public_destination_classifications(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    classified_hosts: list[object] = []
+    classify_runtime_destination_host = public_destination.classify_runtime_destination_host
 
-    def track(runtime_host: object) -> public_destination.RuntimeDestinationCheck:
-        validated_hosts.append(runtime_host)
-        return validate_runtime_destination_host(runtime_host)
+    def track(
+        runtime_host: object,
+    ) -> public_destination.RuntimeDestinationHostClassification:
+        classified_hosts.append(runtime_host)
+        return classify_runtime_destination_host(runtime_host)
 
-    monkeypatch.setattr(public_destination, "validate_runtime_destination_host", track)
-    return validated_hosts
+    monkeypatch.setattr(public_destination, "classify_runtime_destination_host", track)
+    return classified_hosts
 
 
 def _assert_public_destination_denied(flow, *, destination_host: str, reason: str) -> None:
@@ -174,7 +176,7 @@ async def test_public_destination_allows_public_runtime_destination(
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
-    validated_hosts = _track_public_destination_validations(monkeypatch)
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -183,7 +185,7 @@ async def test_public_destination_allows_public_runtime_destination(
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
-    assert validated_hosts == [destination_host]
+    assert classified_hosts == [destination_host]
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://service.example.com"
@@ -192,7 +194,7 @@ async def test_public_destination_allows_public_runtime_destination(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
-async def test_public_destination_policy_allow_validates_public_runtime_destination_once(
+async def test_public_destination_policy_allow_classifies_public_runtime_destination_once(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -211,7 +213,7 @@ async def test_public_destination_policy_allow_validates_public_runtime_destinat
         method="OPTIONS",
         path="*",
     )
-    validated_hosts = _track_public_destination_validations(monkeypatch)
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -220,7 +222,7 @@ async def test_public_destination_policy_allow_validates_public_runtime_destinat
         await mitm_addon.request(flow)
 
     auth_fetch.assert_not_awaited()
-    assert validated_hosts == ["93.184.216.34"]
+    assert classified_hosts == ["93.184.216.34"]
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert "Authorization" not in flow.request.headers
@@ -549,6 +551,41 @@ async def test_public_destination_allows_connected_prebound_public_original_dest
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_public_destination_classifies_connected_host_values_once(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="service.example.com",
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 443),
+    )
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert classified_hosts == ["service.example.com", "93.184.216.35"]
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.request.headers["Authorization"] == "Bearer x"
@@ -1191,14 +1228,14 @@ async def test_public_destination_revalidates_cached_policy_allow_classification
         path="*",
         extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
     )
-    validated_hosts = _track_public_destination_validations(monkeypatch)
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
-        assert validated_hosts == ["93.184.216.34"]
+        assert classified_hosts == ["93.184.216.34"]
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
 
         mark_connected_tls_upstream(
@@ -1211,8 +1248,8 @@ async def test_public_destination_revalidates_cached_policy_allow_classification
         await mitm_addon.request(flow)
 
     auth_fetch.assert_not_awaited()
-    request_phase_validated_hosts = validated_hosts[1:]
-    assert "10.0.0.1" in request_phase_validated_hosts
+    request_phase_classified_hosts = classified_hosts[1:]
+    assert "10.0.0.1" in request_phase_classified_hosts
     _assert_public_destination_denied(
         flow,
         destination_host="10.0.0.1",

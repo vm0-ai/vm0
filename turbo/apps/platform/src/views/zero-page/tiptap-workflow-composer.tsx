@@ -155,7 +155,7 @@ function WorkflowComposerPlaceholder({
   );
 }
 
-export interface TiptapWorkflowComposerProps {
+interface TiptapWorkflowComposerProps {
   readonly composer: WorkflowComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;

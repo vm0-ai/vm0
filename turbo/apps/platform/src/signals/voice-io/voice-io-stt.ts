@@ -59,11 +59,6 @@ export const sttStarting$ = computed((get) => {
 export const sttTranscribing$ = computed((get) => {
   return get(internalTranscribing$);
 });
-
-export const sttSpeechDetected$ = computed((get) => {
-  return get(internalSpeechDetected$);
-});
-
 export const sttVoiceLevel$ = computed((get) => {
   return get(internalVoiceLevel$);
 });

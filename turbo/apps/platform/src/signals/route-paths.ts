@@ -65,7 +65,7 @@ export const ROUTES = {
 export type RouteKey = keyof typeof ROUTES;
 export type RoutePath = (typeof ROUTES)[RouteKey] | `/projects/${string}`;
 
-export type WorkflowDetailRouteKey =
+type WorkflowDetailRouteKey =
   | "workflowDetail"
   | "workflowDetailAutomations"
   | "workflowDetailInstructions"

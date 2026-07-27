@@ -43,7 +43,7 @@ type MessageImageSource = {
   readonly blocks?: readonly BodyRenderBlock[];
 };
 
-export type MessageImageGroup = {
+type MessageImageGroup = {
   readonly messages: readonly MessageImageSource[];
 };
 

@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -32,8 +32,8 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const THREAD_TITLE = "GEO pricing research";
 const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
-const IDB_USER_ID = "test-user-123";
-const IDB_ORG_ID = "org_default";
+const IDB_USER_ID = "zero-chat-thread-idb-user";
+const IDB_ORG_ID = "zero-chat-thread-idb-org";
 
 async function primeRuntimeChatDb(): Promise<
   Awaited<ReturnType<typeof openChatIdb>>
@@ -96,7 +96,7 @@ function prepareDefaultAgent(): void {
   context.mocks.data.team([
     {
       id: AGENT_ID,
-      ownerId: "test-user-123",
+      ownerId: IDB_USER_ID,
       displayName: "Zero",
       description: null,
       sound: null,
@@ -151,6 +151,10 @@ function mockSidebarThread(): void {
 }
 
 describe("zero chat thread IndexedDB fallback", () => {
+  beforeEach(async () => {
+    await clearCachedChatData();
+  });
+
   afterEach(async () => {
     await clearCachedChatData();
   });

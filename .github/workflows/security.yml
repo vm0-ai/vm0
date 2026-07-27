@@ -274,11 +274,9 @@ jobs:
           )
           bash -n "${script_files[@]}"
           shellcheck \
-            .github/scripts/check-connector-source-freeze.sh \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/runner-behavior-*.sh \
-            .github/scripts/tests/check-connector-source-freeze-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh
           # actionlint assumes Bash when shell is omitted and does not model the
