@@ -338,6 +338,7 @@ async function applyChatAuthorizationScope(args: {
       .update(chatThreads)
       .set({
         computerUseHostId: args.computerUseHostId,
+        cloudBrowserEnabled: false,
         updatedAt: args.now,
       })
       .where(
@@ -360,6 +361,7 @@ async function applyChatAuthorizationScope(args: {
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
       computerUseHostId: args.computerUseHostId,
+      cloudBrowserEnabled: false,
       createdAt: args.now,
     });
     return true;

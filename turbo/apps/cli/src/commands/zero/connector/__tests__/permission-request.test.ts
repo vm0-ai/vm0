@@ -562,6 +562,69 @@ describe("zero connector permission-request command", () => {
     expect(mockConsoleError).not.toHaveBeenCalled();
   });
 
+  it("explains thread access for cloud browser permission changes", async () => {
+    vi.stubEnv("ZERO_TOKEN", "");
+
+    await permissionRequestCommand.parseAsync([
+      "node",
+      "cli",
+      "browser",
+      "--permission",
+      "browser:write",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain(
+      "Cloud browser access is controlled by the current chat thread",
+    );
+    expect(logCalls).toContain("under Your computer in the chat composer");
+    expect(logCalls).toContain("Existing run tokens cannot be upgraded");
+    expect(logCalls).not.toContain("[Manage");
+    expect(mockConsoleError).not.toHaveBeenCalled();
+  });
+
+  it("outputs a delegated authorization link for cloud browser enable", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_TOKEN", "zero-run-token");
+
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/browser/authorization-requests",
+        ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer zero-run-token",
+          );
+          return HttpResponse.json({
+            authorizationUrl:
+              "https://app.vm0.ai/browser/authorize/vm0_browser_authorization_request_test",
+            expiresAt: "2026-07-27T13:00:00.000Z",
+          });
+        },
+      ),
+    );
+
+    await permissionRequestCommand.parseAsync([
+      "node",
+      "cli",
+      "browser",
+      "--permission",
+      "browser:write",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain(
+      "Cloud browser needs to be enabled for this chat thread",
+    );
+    expect(logCalls).toContain(
+      "https://app.vm0.ai/browser/authorize/vm0_browser_authorization_request_test",
+    );
+    expect(logCalls).toContain("This link expires at 2026-07-27T13:00:00.000Z");
+    expect(logCalls).not.toContain(
+      "Cloud browser authorization link unavailable",
+    );
+    expect(mockConsoleError).not.toHaveBeenCalled();
+  });
+
   it("exits with an error for an invalid permission name", async () => {
     await expect(async () => {
       await permissionRequestCommand.parseAsync([

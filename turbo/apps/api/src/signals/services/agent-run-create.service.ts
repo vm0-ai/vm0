@@ -688,6 +688,7 @@ export interface CreateAgentRunArgs {
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
+  readonly zeroTokenCloudBrowserEnabled?: boolean;
   readonly extraEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
@@ -5213,6 +5214,7 @@ interface BuildRunnerJobPayloadInput {
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly includeZeroTokenSecret: boolean | undefined;
   readonly zeroTokenComputerUseHostId: string | undefined;
+  readonly zeroTokenCloudBrowserEnabled: boolean | undefined;
   readonly chatThreadId: string | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
@@ -5245,8 +5247,17 @@ function buildRunnerJobPayload(
             args.run.id,
             args.orgId,
             featureSwitchOverrides,
-            args.zeroTokenComputerUseHostId
-              ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+            args.zeroTokenComputerUseHostId ||
+              args.zeroTokenCloudBrowserEnabled === true
+              ? {
+                  ...(args.zeroTokenComputerUseHostId
+                    ? {
+                        computerUseHostId: args.zeroTokenComputerUseHostId,
+                      }
+                    : {}),
+                  cloudBrowserEnabled:
+                    args.zeroTokenCloudBrowserEnabled === true,
+                }
               : undefined,
           ),
         )
@@ -5888,6 +5899,7 @@ function buildAtomicLaunchPayload(
     additionalVolumeSources: args.context.additionalVolumeSources,
     includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
     zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
+    zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
     chatThreadId: args.createArgs.chatThreadId,
     extraEnvironment: args.createArgs.extraEnvironment,
     userTimezone: args.context.userTimezone,

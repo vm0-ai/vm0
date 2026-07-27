@@ -1,8 +1,23 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
-import type { GoogleOAuthConnectorType } from "./google-connectors";
 import { throwOAuthError } from "./error";
+
+type GoogleOAuthConnectorType =
+  | "gmail"
+  | "google-ads"
+  | "google-analytics"
+  | "google-calendar"
+  | "google-cloud"
+  | "google-contacts"
+  | "google-docs"
+  | "google-drive"
+  | "google-forms"
+  | "google-maps"
+  | "google-meet"
+  | "google-search-console"
+  | "google-sheets"
+  | "youtube";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 

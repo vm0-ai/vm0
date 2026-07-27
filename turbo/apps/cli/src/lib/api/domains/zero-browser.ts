@@ -1,5 +1,7 @@
 import {
+  zeroBrowserAuthorizationRequestsContract,
   zeroBrowserContract,
+  type BrowserAuthorizationRequestCreateResponse,
   type ZeroBrowserCreateRequest,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -9,6 +11,23 @@ import { getClientConfig, handleError } from "../core/client-factory";
 
 async function client() {
   return initClient(zeroBrowserContract, await getClientConfig());
+}
+
+async function authorizationClient() {
+  return initClient(
+    zeroBrowserAuthorizationRequestsContract,
+    await getClientConfig(),
+  );
+}
+
+export async function createBrowserAuthorizationRequest(): Promise<BrowserAuthorizationRequestCreateResponse> {
+  const result = await (
+    await authorizationClient()
+  ).create({ headers: {}, body: {} });
+  if (result.status === 200) {
+    return result.body;
+  }
+  handleError(result, "Failed to create cloud browser authorization request");
 }
 
 export async function createZeroBrowser(

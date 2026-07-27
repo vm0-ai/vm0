@@ -300,6 +300,7 @@ async function clearComputerUseHostThreadBindings(params: {
     .returning({
       id: chatThreads.id,
       agentComposeId: chatThreads.agentComposeId,
+      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     });
   for (const thread of threads) {
     await appendChatThreadEvent(params.tx, {
@@ -308,6 +309,7 @@ async function clearComputerUseHostThreadBindings(params: {
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
       computerUseHostId: null,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
       createdAt: now,
     });
   }

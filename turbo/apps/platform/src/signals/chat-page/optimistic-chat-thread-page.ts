@@ -74,6 +74,7 @@ interface SendNewThreadMessageRequest {
   generationTemplateTitleSnapshot?: string;
   editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
+  cloudBrowserEnabled?: boolean;
   routeSearchParams?: URLSearchParams;
 }
 
@@ -165,6 +166,7 @@ function newThreadSendBody({
   generationTemplate,
   structuredPrompt,
   computerUseHostId,
+  cloudBrowserEnabled,
 }: {
   agentId: string;
   threadId: string;
@@ -176,6 +178,7 @@ function newThreadSendBody({
   generationTemplate: GenerationTemplateRequest | undefined;
   structuredPrompt: UserMessageDocument | undefined;
   computerUseHostId?: string | null;
+  cloudBrowserEnabled?: boolean;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
     modelSelection,
@@ -192,6 +195,7 @@ function newThreadSendBody({
     generationTemplate,
     ...(structuredPrompt ? { structuredPrompt } : {}),
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+    ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
     attachFiles: prepared.attachFiles,
   };
 }
@@ -330,6 +334,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly selectedModel: string | null;
       readonly serviceTier: "priority" | null;
       readonly computerUseHostId: string | null;
+      readonly cloudBrowserEnabled: boolean;
     },
     signal: AbortSignal,
   ): void => {
@@ -348,6 +353,7 @@ const mintOptimisticThreadWithEvent$ = command(
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
       computerUseHostId: args.computerUseHostId,
+      cloudBrowserEnabled: args.cloudBrowserEnabled,
       createdAt,
     } satisfies ChatThreadEvent);
   },
@@ -434,6 +440,7 @@ const startNewChatThreadCreate$ = command(
         serviceTier:
           modelSelection.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
       },
       signal,
     );
@@ -489,7 +496,7 @@ const sendNewThreadMessage$ = command(
   } | null> => {
     const { agentId, prompt } = request;
     const generationTemplate = request.generationTemplate;
-    const { computerUseHostId } = request;
+    const { computerUseHostId, cloudBrowserEnabled } = request;
     const draft = get(talkDraft$);
     const resolvedModelSelection = await set(
       resolveCurrentNewThreadModelSelection$,
@@ -547,6 +554,7 @@ const sendNewThreadMessage$ = command(
             ? "priority"
             : null,
         computerUseHostId: computerUseHostId ?? null,
+        cloudBrowserEnabled: cloudBrowserEnabled ?? false,
       },
       signal,
     );
@@ -579,6 +587,7 @@ const sendNewThreadMessage$ = command(
       generationTemplate,
       structuredPrompt: structuredPrompt ?? undefined,
       computerUseHostId,
+      cloudBrowserEnabled,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
       await Promise.all([clearDraftResult, createResult]);

@@ -167,6 +167,7 @@ interface NormalSendBody {
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
   readonly computerUseHostId?: string | null;
+  readonly cloudBrowserEnabled?: boolean;
   readonly clientEventId?: string;
   readonly realAgentInPreview?: boolean;
   readonly revokesEventId?: string;
@@ -199,6 +200,7 @@ interface ResolvedThread {
   readonly threadId: string;
   readonly incompleteContext: string;
   readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
   readonly isNewThread: boolean;
   readonly isClientThreadRetry: boolean;
 }
@@ -1156,18 +1158,27 @@ function hasComputerUseHostSelection(body: NormalSendBody): boolean {
   return Object.prototype.hasOwnProperty.call(body, "computerUseHostId");
 }
 
-async function updateThreadComputerUseHost(params: {
+function hasCloudBrowserSelection(body: NormalSendBody): boolean {
+  return Object.prototype.hasOwnProperty.call(body, "cloudBrowserEnabled");
+}
+
+async function updateThreadComputerAccess(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly hostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     const updatedAt = nowDate();
     const [thread] = await tx
       .update(chatThreads)
-      .set({ computerUseHostId: params.hostId, updatedAt })
+      .set({
+        computerUseHostId: params.hostId,
+        cloudBrowserEnabled: params.cloudBrowserEnabled,
+        updatedAt,
+      })
       .where(
         and(
           eq(chatThreads.id, params.threadId),
@@ -1188,6 +1199,7 @@ async function updateThreadComputerUseHost(params: {
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
       computerUseHostId: params.hostId,
+      cloudBrowserEnabled: params.cloudBrowserEnabled,
       createdAt: updatedAt,
     });
   });
@@ -1223,29 +1235,48 @@ async function selectedComputerUseHostGrant(params: {
   };
 }
 
-async function resolveComputerUseHostGrant(params: {
+async function resolveComputerAccess(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly thread: ResolvedThread;
-}): Promise<ResolvedComputerUseHostGrant | null | NormalSendFailure> {
-  const explicitSelection = hasComputerUseHostSelection(params.body);
-  const requestedHostId = explicitSelection
+}): Promise<
+  | {
+      readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
+    }
+  | NormalSendFailure
+> {
+  const explicitHostSelection = hasComputerUseHostSelection(params.body);
+  const explicitCloudBrowserSelection = hasCloudBrowserSelection(params.body);
+  let requestedHostId = explicitHostSelection
     ? params.body.computerUseHostId
     : params.thread.computerUseHostId;
+  let cloudBrowserEnabled = explicitCloudBrowserSelection
+    ? (params.body.cloudBrowserEnabled ?? false)
+    : params.thread.cloudBrowserEnabled;
+
+  if (explicitCloudBrowserSelection && cloudBrowserEnabled) {
+    requestedHostId = null;
+  } else if (requestedHostId) {
+    cloudBrowserEnabled = false;
+  }
 
   if (!requestedHostId) {
-    if (explicitSelection && params.thread.computerUseHostId !== null) {
-      await updateThreadComputerUseHost({
+    if (
+      requestedHostId !== params.thread.computerUseHostId ||
+      cloudBrowserEnabled !== params.thread.cloudBrowserEnabled
+    ) {
+      await updateThreadComputerAccess({
         db: params.db,
         orgId: params.orgId,
         threadId: params.thread.threadId,
         userId: params.userId,
         hostId: null,
+        cloudBrowserEnabled,
       });
     }
-    return null;
+    return { computerUseHostGrant: null };
   }
 
   const hostGrant = await selectedComputerUseHostGrant({
@@ -1255,32 +1286,38 @@ async function resolveComputerUseHostGrant(params: {
     hostId: requestedHostId,
   });
   if (hostGrant === "missing") {
-    if (explicitSelection) {
+    if (explicitHostSelection) {
       return notFound("Computer-use host not found");
     }
-    await updateThreadComputerUseHost({
+    await updateThreadComputerAccess({
       db: params.db,
       orgId: params.orgId,
       threadId: params.thread.threadId,
       userId: params.userId,
       hostId: null,
+      cloudBrowserEnabled: false,
     });
-    return null;
+    return {
+      computerUseHostGrant: null,
+    };
   }
 
   if (
-    explicitSelection &&
-    requestedHostId !== params.thread.computerUseHostId
+    requestedHostId !== params.thread.computerUseHostId ||
+    cloudBrowserEnabled !== params.thread.cloudBrowserEnabled
   ) {
-    await updateThreadComputerUseHost({
+    await updateThreadComputerAccess({
       db: params.db,
       orgId: params.orgId,
       threadId: params.thread.threadId,
       userId: params.userId,
       hostId: requestedHostId,
+      cloudBrowserEnabled,
     });
   }
-  return hostGrant;
+  return {
+    computerUseHostGrant: hostGrant,
+  };
 }
 
 async function createChatThread(
@@ -1321,6 +1358,7 @@ async function createChatThread(
           selectedModel: args.pin.selectedModel,
           serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
           computerUseHostId: null,
+          cloudBrowserEnabled: false,
           createdAt: thread.createdAt,
         });
         return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -1367,6 +1405,7 @@ async function createChatThread(
       selectedModel: args.pin.selectedModel,
       serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
       computerUseHostId: null,
+      cloudBrowserEnabled: false,
       createdAt: thread.createdAt,
     });
     return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -1423,6 +1462,7 @@ async function resolveThread(params: {
         threadId: thread.id,
         incompleteContext: "",
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         isNewThread: !thread.clientThreadAlreadyExisted,
         isClientThreadRetry: thread.clientThreadAlreadyExisted,
       },
@@ -1434,6 +1474,7 @@ async function resolveThread(params: {
     .select({
       id: chatThreads.id,
       computerUseHostId: chatThreads.computerUseHostId,
+      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
     .from(chatThreads)
     .where(
@@ -1497,6 +1538,7 @@ async function resolveThread(params: {
       threadId: thread.id,
       incompleteContext: startNewSession ? "" : incompleteContext,
       computerUseHostId: thread.computerUseHostId,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
       isNewThread: false,
       isClientThreadRetry: false,
     },
@@ -2271,17 +2313,17 @@ function maybePersistTimedExplicitCodexServiceTier(
   );
 }
 
-function resolveTimedComputerUseHostGrant(
+function resolveTimedComputerAccess(
   args: NormalSendArgs,
   db: Db,
   thread: ResolvedThread,
-): ReturnType<typeof resolveComputerUseHostGrant> {
+): ReturnType<typeof resolveComputerAccess> {
   return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
     "nested",
     () => {
-      return resolveComputerUseHostGrant({
+      return resolveComputerAccess({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2395,14 +2437,10 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
     signal.throwIfAborted();
-    const computerUseHostGrant = await resolveTimedComputerUseHostGrant(
-      args,
-      db,
-      thread,
-    );
+    const computerAccess = await resolveTimedComputerAccess(args, db, thread);
     signal.throwIfAborted();
-    if (computerUseHostGrant !== null && "status" in computerUseHostGrant) {
-      return computerUseHostGrant;
+    if ("status" in computerAccess) {
+      return computerAccess;
     }
 
     return {
@@ -2412,7 +2450,7 @@ const prepareNormalSend$ = command(
       body: runtimeBody,
       priorContext,
       generationTemplatePrompt,
-      computerUseHostGrant,
+      computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       structuredPromptEnabled: featureSwitches.structuredPromptEnabled,

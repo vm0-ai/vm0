@@ -18,6 +18,7 @@ export const ROUTES = {
   works: "/works",
   artifacts: "/artifacts",
   browser: "/browsers/:browserId",
+  browserAuthorize: "/browser/authorize/:requestToken",
   ideas: "/ideas",
   connectors: "/connectors",
   customConnectorProposal: "/connectors/custom/proposal",

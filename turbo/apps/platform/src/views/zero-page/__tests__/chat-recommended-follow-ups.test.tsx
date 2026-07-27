@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { click } from "../../../__tests__/page-helper.ts";
+import { click, fill } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -11,6 +11,7 @@ import {
   FOLLOWUP_THREAD_ID,
   HISTORY_THREAD_ID,
   buttonByText,
+  findWorkflowComposerEditor,
   queryButtonByText,
 } from "./chat-lifecycle-test-helpers.ts";
 
@@ -44,9 +45,10 @@ describe("chat lifecycle", () => {
       ).toBeInTheDocument();
     });
   });
-  it("sends a recommended follow-up from the latest assistant reply", async () => {
+  it("selects or appends a recommended follow-up without sending it", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
+    const existingDraft = "Keep the current launch context";
     const completedAt = "2026-06-09T10:01:01Z";
     const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
       month: "short",
@@ -54,7 +56,6 @@ describe("chat lifecycle", () => {
       hour: "numeric",
       minute: "2-digit",
     });
-    const sendGate = context.mocks.deferred<void>();
     const sentMessages: {
       prompt?: string;
       revokesMessageId?: string;
@@ -64,7 +65,6 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
-      sendGate: sendGate.promise,
       chatMessages: [
         {
           id: "msg-followup-user",
@@ -133,6 +133,8 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
+    const composer = await findWorkflowComposerEditor();
+    await fill(composer, existingDraft);
     await waitFor(() => {
       expect(screen.getByText(assistantReply)).toBeInTheDocument();
       expect(
@@ -149,24 +151,20 @@ describe("chat lifecycle", () => {
     click(buttonByText(followupPrompt));
 
     await waitFor(() => {
-      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
-      expect(screen.getByText(followupPrompt)).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(composer.textContent).toBe(`${existingDraft}\n${followupPrompt}`);
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
     expect(sentMessages).toHaveLength(0);
 
-    sendGate.resolve();
+    click(buttonByText(followupPrompt));
 
     await waitFor(() => {
-      expect(sentMessages).toHaveLength(1);
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(composer).toHaveFocus();
+      expect(window.getSelection()?.toString()).toBe(followupPrompt);
     });
-    expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
-    expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
-    expect(sentMessages[0]?.structuredPrompt).toStrictEqual({
-      version: 1,
-      parts: [{ type: "text", text: followupPrompt }],
-    });
+    expect(composer.textContent).toBe(`${existingDraft}\n${followupPrompt}`);
+    expect(sentMessages).toHaveLength(0);
   });
 
   it("shows recommended follow-ups after an appended follow-up event", async () => {

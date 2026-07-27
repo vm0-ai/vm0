@@ -10,6 +10,7 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   browserProfiles,
+  browserThreadProfiles,
   browserSessionInstances,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
@@ -78,11 +79,17 @@ const TERMINAL_RUN_STATUSES = [
 type BrowserSessionRow = typeof browserSessions.$inferSelect;
 type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
 type BrowserProfileRow = typeof browserProfiles.$inferSelect;
+type BrowserThreadProfileRow = typeof browserThreadProfiles.$inferSelect;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface BrowserProfilePair {
+  readonly compatibilityProfile: BrowserProfileRow;
+  readonly threadProfile: BrowserThreadProfileRow;
+}
 
 export interface BrowserServiceError {
   readonly kind: "error";
-  readonly status: 400 | 402 | 404 | 409 | 502 | 503;
+  readonly status: 400 | 402 | 403 | 404 | 409 | 502 | 503;
   readonly code: string;
   readonly message: string;
 }
@@ -710,9 +717,9 @@ async function lockBrowserThread(
 
 async function lockBrowserProfileCreation(
   tx: DbTransaction,
-  owner: Pick<BrowserRunContext, "orgId" | "userId">,
+  chatThreadId: string,
 ): Promise<void> {
-  const lockKey = `zero_browser_profile:${owner.orgId}:${owner.userId}`;
+  const lockKey = `zero_browser_profile:${chatThreadId}`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
@@ -761,9 +768,11 @@ async function resolveRunContext(
     .select({
       chatThreadId: zeroRuns.chatThreadId,
       status: agentRuns.status,
+      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
     .where(
       and(
         eq(zeroRuns.id, actor.runId),
@@ -782,6 +791,13 @@ async function resolveRunContext(
   if (isTerminalRunStatus(run.status)) {
     return conflict("The chat run already ended", "BROWSER_RUN_ENDED");
   }
+  if (!run.cloudBrowserEnabled) {
+    return serviceError(
+      403,
+      "BROWSER_AUTHORIZATION_REQUIRED",
+      "Cloud browser is not enabled for this chat thread",
+    );
+  }
   return {
     kind: "ok",
     value: {
@@ -798,6 +814,23 @@ async function resolveViewerContext(
   db: Db,
   browser: BrowserSessionRow,
 ): Promise<BrowserServiceResult<BrowserRunContext>> {
+  const [thread] = await db
+    .select({ cloudBrowserEnabled: chatThreads.cloudBrowserEnabled })
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, browser.chatThreadId),
+        eq(chatThreads.userId, browser.userId),
+      ),
+    )
+    .limit(1);
+  if (!thread?.cloudBrowserEnabled) {
+    return serviceError(
+      403,
+      "BROWSER_AUTHORIZATION_REQUIRED",
+      "Cloud browser is not enabled for this chat thread",
+    );
+  }
   const attributionRunId =
     (await latestThreadRunId(db, browser.chatThreadId)) ?? browser.runId;
   if (!attributionRunId) {
@@ -895,7 +928,25 @@ async function loadActiveInstance(
   return row ?? null;
 }
 
-async function loadOwnedBrowserProfile(
+async function loadOwnedThreadBrowserProfile(
+  db: Db,
+  owner: Pick<BrowserRunContext, "orgId" | "userId" | "chatThreadId">,
+): Promise<BrowserThreadProfileRow | null> {
+  const [row] = await db
+    .select()
+    .from(browserThreadProfiles)
+    .where(
+      and(
+        eq(browserThreadProfiles.chatThreadId, owner.chatThreadId),
+        eq(browserThreadProfiles.orgId, owner.orgId),
+        eq(browserThreadProfiles.userId, owner.userId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function loadOwnedCompatibilityBrowserProfile(
   db: Db,
   owner: Pick<BrowserRunContext, "orgId" | "userId">,
 ): Promise<BrowserProfileRow | null> {
@@ -915,22 +966,42 @@ async function loadOwnedBrowserProfile(
 async function loadBrowserProfileForBrowser(
   db: Db,
   browser: BrowserSessionRow,
-): Promise<BrowserProfileRow> {
-  const [row] = await db
-    .select()
-    .from(browserProfiles)
-    .where(
-      and(
-        eq(browserProfiles.id, browser.browserProfileId),
-        eq(browserProfiles.orgId, browser.orgId),
-        eq(browserProfiles.userId, browser.userId),
-      ),
-    )
-    .limit(1);
-  if (!row) {
-    throw new Error("Managed browser profile ownership is invalid");
+): Promise<Pick<BrowserProfileRow, "id" | "providerProfileId">> {
+  if (browser.browserThreadProfileId) {
+    const [row] = await db
+      .select()
+      .from(browserThreadProfiles)
+      .where(
+        and(
+          eq(browserThreadProfiles.id, browser.browserThreadProfileId),
+          eq(browserThreadProfiles.chatThreadId, browser.chatThreadId),
+          eq(browserThreadProfiles.orgId, browser.orgId),
+          eq(browserThreadProfiles.userId, browser.userId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      throw new Error("Managed browser thread profile ownership is invalid");
+    }
+    return row;
   }
-  return row;
+  if (browser.browserProfileId) {
+    const [row] = await db
+      .select()
+      .from(browserProfiles)
+      .where(
+        and(
+          eq(browserProfiles.id, browser.browserProfileId),
+          eq(browserProfiles.orgId, browser.orgId),
+          eq(browserProfiles.userId, browser.userId),
+        ),
+      )
+      .limit(1);
+    if (row) {
+      return row;
+    }
+  }
+  throw new Error("Managed browser profile ownership is invalid");
 }
 
 async function deleteUnusedProfile(profileId: string): Promise<void> {
@@ -948,46 +1019,96 @@ async function claimBrowserProfile(
     readonly id: string;
     readonly orgId: string;
     readonly userId: string;
+    readonly chatThreadId: string;
     readonly providerProfileId: string;
   },
 ): Promise<{
-  readonly profile: BrowserProfileRow;
+  readonly profile: BrowserThreadProfileRow;
   readonly created: boolean;
 }> {
   const [created] = await db
-    .insert(browserProfiles)
+    .insert(browserThreadProfiles)
     .values(args)
     .onConflictDoNothing({
-      target: [browserProfiles.orgId, browserProfiles.userId],
+      target: browserThreadProfiles.chatThreadId,
     })
     .returning();
   if (created) {
     return { profile: created, created: true };
   }
-  const existing = await loadOwnedBrowserProfile(db, args);
+  const existing = await loadOwnedThreadBrowserProfile(db, args);
   if (!existing) {
     throw new Error("Managed browser profile claim did not resolve an owner");
   }
   return { profile: existing, created: false };
 }
 
+async function getOrCreateCompatibilityBrowserProfile(
+  db: Db,
+  args: Pick<BrowserRunContext, "orgId" | "userId"> & {
+    readonly providerProfileId: string;
+  },
+): Promise<BrowserProfileRow> {
+  const [created] = await db
+    .insert(browserProfiles)
+    .values({
+      id: randomUUID(),
+      orgId: args.orgId,
+      userId: args.userId,
+      providerProfileId: args.providerProfileId,
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (created) {
+    return created;
+  }
+  const existing = await loadOwnedCompatibilityBrowserProfile(db, args);
+  if (!existing) {
+    throw new Error(
+      "Managed browser compatibility profile claim did not resolve an owner",
+    );
+  }
+  return existing;
+}
+
 async function getOrCreateBrowserProfile(
   db: Db,
   context: BrowserRunContext,
-): Promise<BrowserServiceResult<BrowserProfileRow>> {
-  const existing = await loadOwnedBrowserProfile(db, context);
+): Promise<BrowserServiceResult<BrowserProfilePair>> {
+  const existing = await loadOwnedThreadBrowserProfile(db, context);
   if (existing) {
-    return { kind: "ok", value: existing };
+    return {
+      kind: "ok",
+      value: {
+        compatibilityProfile: await getOrCreateCompatibilityBrowserProfile(db, {
+          ...context,
+          providerProfileId: existing.providerProfileId,
+        }),
+        threadProfile: existing,
+      },
+    };
   }
 
   let createdProviderProfileId: string | null = null;
   let retainedCreatedProfile = false;
   const transaction = await settle(
     db.transaction(async (tx) => {
-      await lockBrowserProfileCreation(tx, context);
-      const lockedExisting = await loadOwnedBrowserProfile(tx, context);
+      await lockBrowserProfileCreation(tx, context.chatThreadId);
+      const lockedExisting = await loadOwnedThreadBrowserProfile(tx, context);
       if (lockedExisting) {
-        return { kind: "ok" as const, value: lockedExisting };
+        return {
+          kind: "ok" as const,
+          value: {
+            compatibilityProfile: await getOrCreateCompatibilityBrowserProfile(
+              tx,
+              {
+                ...context,
+                providerProfileId: lockedExisting.providerProfileId,
+              },
+            ),
+            threadProfile: lockedExisting,
+          },
+        };
       }
 
       const browserProfileId = randomUUID();
@@ -1006,10 +1127,23 @@ async function getOrCreateBrowserProfile(
         id: browserProfileId,
         orgId: context.orgId,
         userId: context.userId,
+        chatThreadId: context.chatThreadId,
         providerProfileId: provider.value,
       });
       retainedCreatedProfile = claimed.created;
-      return { kind: "ok" as const, value: claimed.profile };
+      return {
+        kind: "ok" as const,
+        value: {
+          compatibilityProfile: await getOrCreateCompatibilityBrowserProfile(
+            tx,
+            {
+              ...context,
+              providerProfileId: claimed.profile.providerProfileId,
+            },
+          ),
+          threadProfile: claimed.profile,
+        },
+      };
     }),
   );
   if (
@@ -1094,7 +1228,7 @@ async function createAndClaimProviderInstance(
   db: Db,
   args: {
     readonly browser: BrowserSessionRow;
-    readonly profile: BrowserProfileRow;
+    readonly profile: Pick<BrowserProfileRow, "id" | "providerProfileId">;
     readonly context: BrowserRunContext;
     readonly pricing: BrowserPricing;
   },
@@ -1236,6 +1370,7 @@ async function claimFreshBrowser(
   args: BrowserCreateInput & {
     readonly browserId: string;
     readonly browserProfileId: string;
+    readonly browserThreadProfileId: string;
   },
   signal: AbortSignal,
 ): Promise<BrowserServiceResult<BrowserSessionRow>> {
@@ -1312,6 +1447,7 @@ async function claimFreshBrowser(
         userId: context.userId,
         name: args.name,
         browserProfileId: args.browserProfileId,
+        browserThreadProfileId: args.browserThreadProfileId,
         status: "creating",
         proxyCountryCode: args.proxyCountryCode,
         // Records the provider's hard lifetime cap; Zero's own idle lease is
@@ -1364,7 +1500,8 @@ const createBrowserForContext$ = command(
       {
         ...args.input,
         browserId: randomUUID(),
-        browserProfileId: profile.value.id,
+        browserProfileId: profile.value.compatibilityProfile.id,
+        browserThreadProfileId: profile.value.threadProfile.id,
       },
       signal,
     );
@@ -1539,7 +1676,8 @@ async function claimBrowserForResume(
   context: BrowserRunContext,
   args: {
     readonly expectedBrowserId: string;
-    readonly browserProfileId: string;
+    readonly browserProfileId: string | null;
+    readonly browserThreadProfileId: string | null;
     readonly requiredCredits: number;
   },
   signal: AbortSignal,
@@ -1590,7 +1728,8 @@ async function claimBrowserForResume(
     if (
       !current ||
       current.id !== args.expectedBrowserId ||
-      current.browserProfileId !== args.browserProfileId
+      current.browserProfileId !== args.browserProfileId ||
+      current.browserThreadProfileId !== args.browserThreadProfileId
     ) {
       return { kind: "missing" };
     }
@@ -1731,6 +1870,7 @@ const resumeSuspendedBrowser$ = command(
       {
         expectedBrowserId: current.id,
         browserProfileId: current.browserProfileId,
+        browserThreadProfileId: current.browserThreadProfileId,
         requiredCredits: remainingCredits,
       },
       signal,
@@ -1948,6 +2088,11 @@ export const leaseZeroBrowserById$ = command(
     if (!browser) {
       return notFound();
     }
+    const context = await resolveViewerContext(db, browser);
+    signal.throwIfAborted();
+    if (context.kind === "error") {
+      return context;
+    }
     return await set(leaseInstanceForBrowser$, browser, signal);
   },
 );
@@ -1963,6 +2108,11 @@ export const getZeroBrowser$ = command(
     signal.throwIfAborted();
     if (!row) {
       return notFound();
+    }
+    const context = await resolveViewerContext(db, row);
+    signal.throwIfAborted();
+    if (context.kind === "error") {
+      return context;
     }
     let liveUrl: string | null = null;
     let idleExpiresAt: Date | null = null;

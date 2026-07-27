@@ -35,12 +35,12 @@ import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 
 // ---------------------------------------------------------------------------
-// Thread-owned utility sidebar shell (NewChatThreadSidebar feature switch).
+// Thread-owned utility sidebar content (NewChatThreadSidebar feature switch).
 //
-// One shell hosts the five mutually exclusive targets. The page wrapper in
-// ZeroChatThreadPage still owns width, resize, and the responsive split; this
-// module owns which body renders and routes Close/Back/fullscreen into the
-// owning thread's `sidebar` signals instead of legacy search params.
+// The outer ChatThreadSidebarShell owns width, resize, and the responsive
+// split. This module chooses among the five mutually exclusive bodies and
+// routes Close/Back/fullscreen into the owning thread's `sidebar` signals
+// instead of legacy search params.
 // ---------------------------------------------------------------------------
 
 const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
