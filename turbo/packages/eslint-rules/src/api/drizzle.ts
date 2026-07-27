@@ -4,6 +4,18 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
+  isAsExpression,
+  isBinaryExpression,
+  isBindingElement,
+  isCallExpression,
+  isConditionalExpression,
+  isNonNullExpression,
+  isParenthesizedExpression,
+  isPropertyAssignment,
+  isShorthandPropertyAssignment,
+  isSatisfiesExpression,
+  isTypeAssertionExpression,
+  isVariableDeclaration,
   SymbolFlags,
   TypeFlags,
   type Declaration,
@@ -53,6 +65,85 @@ export function isNamedDrizzleSignature(
     declaration.name?.getText() === name &&
     isDrizzleDeclaration(declaration)
   );
+}
+
+function stableDrizzleTableSymbol(
+  checker: TypeChecker,
+  symbol: TypeScriptSymbol,
+  visited: Set<TypeScriptSymbol>,
+): boolean {
+  const resolved = resolvedSymbol(checker, symbol);
+  if (
+    resolved === undefined ||
+    visited.has(resolved) ||
+    resolved.declarations === undefined ||
+    resolved.declarations.length === 0
+  ) {
+    return false;
+  }
+  visited.add(resolved);
+  return resolved.declarations.every((declaration) => {
+    if (isShorthandPropertyAssignment(declaration)) {
+      const valueSymbol =
+        checker.getShorthandAssignmentValueSymbol(declaration);
+      return (
+        valueSymbol !== undefined &&
+        stableDrizzleTableSymbol(checker, valueSymbol, visited)
+      );
+    }
+    const initializer =
+      isBindingElement(declaration) ||
+      isPropertyAssignment(declaration) ||
+      isVariableDeclaration(declaration)
+        ? declaration.initializer
+        : undefined;
+    return (
+      initializer !== undefined &&
+      stableDrizzleTableOrigin(checker, initializer, visited)
+    );
+  });
+}
+
+function stableDrizzleTableOrigin(
+  checker: TypeChecker,
+  node: Node,
+  visited: Set<TypeScriptSymbol>,
+): boolean {
+  if (isCallExpression(node)) {
+    const signature = checker.getResolvedSignature(node);
+    return (
+      signature !== undefined &&
+      !isNamedDrizzleSignature(signature, "alias") &&
+      !isNamedDrizzleSignature(signature, "aliasedTable") &&
+      signature.declaration !== undefined &&
+      isDrizzleDeclaration(signature.declaration) &&
+      isDrizzleTableType(checker, checker.getTypeAtLocation(node), node)
+    );
+  }
+  if (
+    isAsExpression(node) ||
+    isNonNullExpression(node) ||
+    isParenthesizedExpression(node) ||
+    isSatisfiesExpression(node) ||
+    isTypeAssertionExpression(node)
+  ) {
+    return stableDrizzleTableOrigin(checker, node.expression, visited);
+  }
+  if (isConditionalExpression(node) || isBinaryExpression(node)) {
+    return false;
+  }
+
+  const symbol = checker.getSymbolAtLocation(node);
+  return (
+    symbol !== undefined && stableDrizzleTableSymbol(checker, symbol, visited)
+  );
+}
+
+export function hasStableDrizzleTableOrigin(
+  checker: TypeChecker,
+  node: Node,
+): boolean {
+  return stableDrizzleTableOrigin(checker, node, new Set());
 }
 
 export function isDrizzleSqlTag(
@@ -428,10 +519,17 @@ function sameTableMetadata(
   ) {
     return false;
   }
+  const rightColumns = [...right.columns];
+  let index = 0;
   for (const [databaseName, column] of left.columns) {
-    const other = right.columns.get(databaseName);
+    const otherEntry = rightColumns[index];
+    index += 1;
+    if (otherEntry === undefined) {
+      return false;
+    }
+    const [otherDatabaseName, other] = otherEntry;
     if (
-      other === undefined ||
+      databaseName !== otherDatabaseName ||
       column.hasDefault !== other.hasDefault ||
       column.isEmittedOnInsert !== other.isEmittedOnInsert ||
       column.isWritable !== other.isWritable ||

@@ -15,6 +15,7 @@ import {
 import {
   getDrizzleColumnMetadata,
   getDrizzleTableMetadata,
+  hasStableDrizzleTableOrigin,
   isDrizzleArrayParameter,
   isDrizzleColumnType,
   isDrizzleArrayOperandType,
@@ -165,6 +166,7 @@ interface SqlMarker {
       >
     | undefined;
   readonly expressionSymbol: TypeScriptSymbol | undefined;
+  readonly hasStableTableOrigin: boolean;
   readonly isArrayParameter: boolean;
   readonly isArrayOperand: boolean;
   readonly isBoundScalar: boolean;
@@ -660,6 +662,7 @@ function parseSqlVariant(
     let cachedColumn: boolean | undefined;
     let cachedColumnMetadata: SqlMarker["columnMetadata"] | null | undefined;
     let cachedExpressionSymbol: TypeScriptSymbol | null | undefined;
+    let cachedStableTableOrigin: boolean | undefined;
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
@@ -678,6 +681,13 @@ function parseSqlVariant(
         cachedExpressionSymbol ??=
           markerExpressionSymbol(expression, checker, services) ?? null;
         return cachedExpressionSymbol ?? undefined;
+      },
+      get hasStableTableOrigin(): boolean {
+        cachedStableTableOrigin ??= hasStableDrizzleTableOrigin(
+          checker,
+          services.esTreeNodeToTSNodeMap.get(expression),
+        );
+        return cachedStableTableOrigin;
       },
       get isArrayParameter(): boolean {
         cachedArrayParameter ??= isDrizzleArrayParameter(
@@ -2992,9 +3002,11 @@ function writeTargetMarker(
     return undefined;
   }
   const marker = markers.get(value.relname);
-  // Drizzle aliases carry a mapped table config. Raw table interpolation and
-  // the update builder render those aliases as different write targets.
-  return marker?.tableMetadata?.hasDirectTableConfig === true
+  // Write builders can reorder columns when a runtime-selected table has
+  // type-erased column order. Drizzle aliases can also preserve the original
+  // table type while raw interpolation and builders render different targets.
+  return marker?.tableMetadata?.hasDirectTableConfig === true &&
+    marker.hasStableTableOrigin
     ? marker
     : undefined;
 }
@@ -3113,17 +3125,14 @@ function hasExactInsertColumnOrder(
   );
 }
 
-function coversDefaultedWritableColumns(
-  names: readonly string[],
-  table: DrizzleTableMetadata,
-): boolean {
-  const included = new Set(names);
+function hasNoPotentialOnUpdateColumns(table: DrizzleTableMetadata): boolean {
+  // Drizzle folds `$onUpdate` into `hasDefault` and erases its origin from the
+  // built column type. Its update builder eagerly invokes that callback even
+  // when an explicit assignment overrides the result, and it can implicitly
+  // assign generated or identity columns. No typed builder equivalence can be
+  // proven while any column may carry the callback.
   return [...table.columns.values()].every((column) => {
-    return (
-      !column.isWritable ||
-      !column.hasDefault ||
-      included.has(column.databaseName)
-    );
+    return !column.hasDefault;
   });
 }
 
@@ -3262,7 +3271,7 @@ function isUnnestUpdate(
     target?.tableMetadata !== undefined &&
     assignmentNames !== undefined &&
     hasTableColumnOrder(assignmentNames, target.tableMetadata) &&
-    coversDefaultedWritableColumns(assignmentNames, target.tableMetadata) &&
+    hasNoPotentialOnUpdateColumns(target.tableMetadata) &&
     supportedUnnestRelation(update.fromClause[0], markers)
   );
 }
@@ -3417,7 +3426,7 @@ function isLockingCteUpdate(
     cte !== undefined &&
     body !== undefined &&
     hasTableColumnOrder(assignmentNames, table) &&
-    coversDefaultedWritableColumns(assignmentNames, table) &&
+    hasNoPotentialOnUpdateColumns(table) &&
     exactCteRelation(update.fromClause[0], cte.ctename) &&
     sameMarkerSymbol(targetTable, body.sourceTable, body.lockTable) &&
     sameMarkerSymbol(body.selectedColumn, body.orderColumn) &&
@@ -3532,7 +3541,7 @@ function isSingleRowUpsert(
     updateColumns !== undefined &&
     hasExactInsertColumnOrder(insertColumns, table) &&
     hasTableColumnOrder(updateColumns, table) &&
-    coversDefaultedWritableColumns(updateColumns, table)
+    hasNoPotentialOnUpdateColumns(table)
   );
 }
 
