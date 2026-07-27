@@ -387,7 +387,6 @@ export async function setLoop(
     // eslint-disable-next-line no-restricted-syntax
     try {
       const done = await loopBody(signal);
-      signal.throwIfAborted();
       if (done) {
         return;
       }
@@ -418,7 +417,6 @@ export async function setLoop(
         : delay(backoff, { signal }));
     }
   }
-  signal.throwIfAborted();
 }
 
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
