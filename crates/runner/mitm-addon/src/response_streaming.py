@@ -481,12 +481,15 @@ def finalize_model_sse_usage(flow: http.HTTPFlow) -> None:
         finish()
 
 
-def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> None:
+def feed_model_websocket_usage(
+    flow: http.HTTPFlow,
+    event: usage.OpenAIResponsesEvent,
+) -> None:
     """Merge model-provider usage from one server WebSocket frame.
 
-    Called from ``websocket_message()`` only for server-originated frames. Reads
-    ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via ``is_model_websocket_usage_enabled()``
-    and temporarily writes per-response sources to
+    Called from ``websocket_message()`` only for server-originated frames after
+    provider event inspection. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via
+    ``is_model_websocket_usage_enabled()`` and temporarily writes per-response sources to
     ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` while attempting a
     source-preserving report, then releases them from flow metadata. Frames
     without a response id fall back to ``metadata_keys.MODEL_PROVIDER_USAGE``.
@@ -495,8 +498,7 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
     """
     if not is_model_websocket_usage_enabled(flow):
         return
-    body = content.encode() if isinstance(content, str) else content
-    usage_result = usage.extract_openai_responses_usage_from_event_json(body)
+    usage_result = usage.extract_openai_responses_usage_from_event(event)
     if not usage_result:
         return
     message_id = usage_result.get("message_id")

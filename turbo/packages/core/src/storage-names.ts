@@ -4,10 +4,10 @@
  */
 
 /**
- * Sentinel userId for org-level storages (volumes).
- * Volumes are shared resources within an org — they use this constant
- * instead of a real userId so the (orgId, userId, name, type)
- * constraint keeps them unique per org, not per user.
+ * Sentinel userId for organization-owned storages.
+ * Organization-owned storages are shared resources within an organization.
+ * They use this constant instead of a real userId so the
+ * (orgId, userId, name) constraint keeps them unique per organization.
  */
 export const VOLUME_ORG_USER_ID = "__org__";
 
@@ -51,8 +51,8 @@ export function getCustomSkillStorageName(skillName: string): string {
 }
 
 /**
- * Reserved name of the per-user "memory" artifact that Zero auto-injects into
- * every agent run. Stored as an artifact (type='artifact') scoped per user,
- * and mounted into the sandbox at a framework-specific path.
+ * Reserved name of the per-user memory storage that Zero auto-injects into
+ * every agent run. It is owned by the user and mounted into the sandbox at a
+ * framework-specific path.
  */
 export const MEMORY_ARTIFACT_NAME = "memory";
