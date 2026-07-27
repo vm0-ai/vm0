@@ -447,13 +447,15 @@ const invoiceSchema = z.object({
   amount: z.number(),
   status: z.string().nullable(),
   hostedInvoiceUrl: z.string().nullable(),
-  // Optional while the frontend can overlap with API deployments using the previous response shape.
-  invoicePdfUrl: z.string().nullable().optional(),
 });
 
 const billingInvoicesResponseSchema = z.object({
   invoices: z.array(invoiceSchema),
+  // Optional while the frontend can overlap with API deployments that do not expose ZIP downloads yet.
+  receiptDownloadsSupported: z.literal(true).optional(),
 });
+
+const billingReceiptsMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u);
 
 export const zeroBillingInvoicesContract = c.router({
   get: {
@@ -467,6 +469,31 @@ export const zeroBillingInvoicesContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Get invoices for current org",
+  },
+  downloadReceipts: {
+    method: "GET",
+    path: "/api/zero/billing/invoices/receipts",
+    headers: authHeadersSchema,
+    query: z
+      .object({
+        startMonth: billingReceiptsMonthSchema,
+        endMonth: billingReceiptsMonthSchema,
+      })
+      .refine((query) => {
+        return query.startMonth <= query.endMonth;
+      }, "startMonth must not be after endMonth"),
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/zip",
+        body: c.type<Blob>(),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Download monthly receipts for current org",
   },
 });
 

@@ -209,9 +209,9 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
         amount: 2500,
         status: "paid",
         hostedInvoiceUrl: "https://billing.stripe.test/invoices/in_bdd",
-        invoicePdfUrl: "https://billing.stripe.test/invoices/in_bdd.pdf",
       },
     ]);
+    expect(invoices.receiptDownloadsSupported).toBeTruthy();
 
     const memberInvoices = await api.requestInvoices(member, [403]);
     expectApiError(memberInvoices.body);

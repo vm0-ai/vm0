@@ -214,11 +214,12 @@ function stripeInvoices(value: unknown): readonly StripeInvoice[] {
 export function createBillingMediaApi(context: TestContext) {
   const routeMocks = createZeroRouteMocks(context);
   mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-  mockListStripeInvoices(async (customerId) => {
+  mockListStripeInvoices(async (customerId, created) => {
     return stripeInvoices(
       await context.mocks.stripe.invoices.list({
         customer: customerId,
-        limit: 24,
+        limit: created ? 100 : 24,
+        ...(created ? { created } : {}),
       }),
     );
   });

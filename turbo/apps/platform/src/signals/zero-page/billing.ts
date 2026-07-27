@@ -16,6 +16,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { tapError } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution,
@@ -697,6 +698,55 @@ export const invoicesAsync$ = computed(async (get) => {
   const result = await accept(client.get(), [200]);
   return result.body;
 });
+
+export const downloadMonthlyReceipts$ = command(
+  async (
+    { get },
+    range: { readonly startMonth: string; readonly endMonth: string },
+    signal: AbortSignal,
+  ) => {
+    const toastId = toast.loading("Preparing receipt download...");
+    signal.addEventListener(
+      "abort",
+      () => {
+        toast.dismiss(toastId);
+      },
+      { once: true },
+    );
+    const downloaded = await tapError(
+      (async () => {
+        const createClient = get(zeroClient$);
+        const client = createClient(zeroBillingInvoicesContract);
+        const response = await accept(
+          client.downloadReceipts({
+            query: range,
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+
+        const url = URL.createObjectURL(response.body);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download =
+          range.startMonth === range.endMonth
+            ? `receipts-${range.startMonth}.zip`
+            : `receipts-${range.startMonth}-to-${range.endMonth}.zip`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        return true;
+      })(),
+      () => {
+        toast.error("Failed to download receipts", { id: toastId });
+      },
+    );
+    signal.throwIfAborted();
+    if (downloaded) {
+      toast.success("Receipts downloaded", { id: toastId });
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Buy credits form state (Billing page > Buy credits section)

@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
+import AdmZip from "adm-zip";
 import { createStore } from "ccstate";
+import { http, HttpResponse } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
 import { mockListStripeInvoices } from "../../external/stripe-client";
 import {
   deleteInvoicesOrg$,
@@ -133,6 +136,7 @@ describe("GET /api/zero/billing/invoices", () => {
 
     expect(receivedCustomerId).toBe(customerId);
     expect(response.body).toStrictEqual({
+      receiptDownloadsSupported: true,
       invoices: [
         {
           id: "inv_001",
@@ -141,7 +145,6 @@ describe("GET /api/zero/billing/invoices", () => {
           amount: 4000,
           status: "paid",
           hostedInvoiceUrl: "https://stripe.com/invoice/inv_001",
-          invoicePdfUrl: "https://stripe.com/invoice/inv_001.pdf",
         },
         {
           id: "inv_002",
@@ -150,10 +153,93 @@ describe("GET /api/zero/billing/invoices", () => {
           amount: 4000,
           status: "paid",
           hostedInvoiceUrl: "https://stripe.com/invoice/inv_002",
-          invoicePdfUrl: "https://stripe.com/invoice/inv_002.pdf",
         },
       ],
     });
+  });
+
+  it("downloads all receipts for a selected month as a ZIP", async () => {
+    const customerId = `cus-receipts-${randomUUID().slice(0, 8)}`;
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: `sub-receipts-${randomUUID().slice(0, 8)}`,
+          subscriptionStatus: "active",
+          tier: "pro",
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    let receivedCustomerId: string | null = null;
+    let receivedRange: { readonly gte: number; readonly lt: number } | null =
+      null;
+    mockListStripeInvoices((stripeCustomerId, created) => {
+      receivedCustomerId = stripeCustomerId;
+      receivedRange = created ?? null;
+      return Promise.resolve([
+        {
+          id: "inv_july_001",
+          number: "INV-JULY-001",
+          created: Date.UTC(2026, 6, 10) / 1000,
+          amount_paid: 2000,
+          status: "paid",
+          hosted_invoice_url: "https://stripe.test/invoice/inv_july_001",
+          invoice_pdf: "https://stripe.test/invoice/inv_july_001.pdf",
+        },
+        {
+          id: "inv_july_002",
+          number: "INV-JULY-002",
+          created: Date.UTC(2026, 6, 20) / 1000,
+          amount_paid: 3000,
+          status: "paid",
+          hosted_invoice_url: "https://stripe.test/invoice/inv_july_002",
+          invoice_pdf: "https://stripe.test/invoice/inv_july_002.pdf",
+        },
+      ]);
+    });
+    server.use(
+      http.get("https://stripe.test/invoice/inv_july_001.pdf", () => {
+        return new HttpResponse("first receipt", {
+          headers: { "Content-Type": "application/pdf" },
+        });
+      }),
+      http.get("https://stripe.test/invoice/inv_july_002.pdf", () => {
+        return new HttpResponse("second receipt", {
+          headers: { "Content-Type": "application/pdf" },
+        });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const response = await accept(
+      client.downloadReceipts({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { startMonth: "2026-06", endMonth: "2026-07" },
+      }),
+      [200],
+    );
+
+    expect(receivedCustomerId).toBe(customerId);
+    expect(receivedRange).toStrictEqual({
+      gte: Date.UTC(2026, 5, 1) / 1000,
+      lt: Date.UTC(2026, 7, 1) / 1000,
+    });
+    const archive = new AdmZip(Buffer.from(await response.body.arrayBuffer()));
+    expect(
+      archive.getEntries().map((entry) => {
+        return entry.entryName;
+      }),
+    ).toStrictEqual(["receipt-INV-JULY-001.pdf", "receipt-INV-JULY-002.pdf"]);
+    expect(archive.readAsText("receipt-INV-JULY-001.pdf")).toBe(
+      "first receipt",
+    );
+    expect(archive.readAsText("receipt-INV-JULY-002.pdf")).toBe(
+      "second receipt",
+    );
   });
 
   it("returns an empty list when the org has no Stripe customer", async () => {
@@ -174,7 +260,10 @@ describe("GET /api/zero/billing/invoices", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ invoices: [] });
+    expect(response.body).toStrictEqual({
+      invoices: [],
+      receiptDownloadsSupported: true,
+    });
   });
 
   it("returns an empty list when Stripe returns no invoices", async () => {
@@ -205,6 +294,9 @@ describe("GET /api/zero/billing/invoices", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ invoices: [] });
+    expect(response.body).toStrictEqual({
+      invoices: [],
+      receiptDownloadsSupported: true,
+    });
   });
 });

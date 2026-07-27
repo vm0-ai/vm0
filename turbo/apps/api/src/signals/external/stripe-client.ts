@@ -12,28 +12,39 @@ interface StripeInvoice {
   readonly invoice_pdf: string | null;
 }
 
+interface StripeInvoiceCreatedRange {
+  readonly gte: number;
+  readonly lt: number;
+}
+
 const {
   get: getMockedListInvoices,
   set: setMockedListInvoices,
   clear: clearMockedListInvoices,
 } = testOverride<
-  ((customerId: string) => Promise<readonly StripeInvoice[]>) | undefined
+  | ((
+      customerId: string,
+      created?: StripeInvoiceCreatedRange,
+    ) => Promise<readonly StripeInvoice[]>)
+  | undefined
 >(() => {
   return undefined;
 });
 
 export async function listStripeInvoices(
   customerId: string,
+  created?: StripeInvoiceCreatedRange,
 ): Promise<readonly StripeInvoice[]> {
   const mocked = getMockedListInvoices();
   if (mocked) {
-    return await mocked(customerId);
+    return await mocked(customerId, created);
   }
 
   const stripe = new StripeSDK(env("STRIPE_SECRET_KEY"));
   const result = await stripe.invoices.list({
     customer: customerId,
-    limit: 24,
+    limit: created ? 100 : 24,
+    ...(created ? { created } : {}),
   });
 
   return result.data.map((inv) => {
@@ -50,7 +61,10 @@ export async function listStripeInvoices(
 }
 
 export function mockListStripeInvoices(
-  fn: (customerId: string) => Promise<readonly StripeInvoice[]>,
+  fn: (
+    customerId: string,
+    created?: StripeInvoiceCreatedRange,
+  ) => Promise<readonly StripeInvoice[]>,
 ): void {
   setMockedListInvoices(fn);
 }
