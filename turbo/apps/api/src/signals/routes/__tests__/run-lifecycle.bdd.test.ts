@@ -10390,6 +10390,9 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             latency_ms: 12,
             request_size: 100,
             response_size: 256,
+            model_catalog_cache_status: "model_catalog_cold_stored",
+            model_catalog_cache_upstream_encoding: "br",
+            model_catalog_cache_entry_age_ms: 4000,
           },
           {
             timestamp: nowDate().toISOString(),
@@ -10443,6 +10446,9 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         runId: created.runId,
         host: "api.example.test",
         status: 200,
+        model_catalog_cache_status: "model_catalog_cold_stored",
+        model_catalog_cache_upstream_encoding: "br",
+        model_catalog_cache_entry_age_ms: 4000,
       }),
       expect.objectContaining({
         runId: created.runId,
