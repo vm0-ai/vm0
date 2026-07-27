@@ -86,6 +86,24 @@ wait_for_auth_completion() {
     "!window.location.pathname.includes('/${auth_path}')"
 }
 
+open_auth_form() {
+  local url="$1"
+  local auth_path="$2"
+  shift 2
+
+  agent-browser open "$url"
+  if wait_for_browser_target --timeout-seconds 30 "$@" 2>/dev/null; then
+    return
+  fi
+
+  echo "# Clerk ${auth_path} form did not mount in 30s; retrying in a fresh session" >&3
+  agent-browser close 2>/dev/null || true
+  export AGENT_BROWSER_SESSION="${JOB_REF:-local}-${auth_path}-retry"
+  browser_setup
+  agent-browser open "$url"
+  wait_for_browser_target --timeout-seconds 30 "$@"
+}
+
 # ===========================================================================
 # Phase 1: Sign up
 # ===========================================================================
@@ -94,8 +112,7 @@ wait_for_auth_completion() {
   local sign_up_url
   sign_up_url="$(auth_url "/sign-up")"
   echo "# Navigating to $sign_up_url" >&3
-  agent-browser open "$sign_up_url"
-  wait_for_browser_target --fn \
+  open_auth_form "$sign_up_url" "sign-up" --fn \
     "Boolean(
       document.querySelector('input[name=\"emailAddress\"]')
       && document.querySelector('input[name=\"password\"]')
@@ -138,7 +155,9 @@ wait_for_auth_completion() {
   local sign_in_url
   sign_in_url="$(auth_url "/sign-in")"
   echo "# Navigating to $sign_in_url" >&3
-  agent-browser open "$sign_in_url"
+  open_auth_form "$sign_in_url" "sign-in" --fn \
+    "!window.location.pathname.includes('/sign-in')
+      || Boolean(document.querySelector('input[name=\"identifier\"]'))"
 
   # Check if already signed in (redirected away from /sign-in)
   local current_url
@@ -148,7 +167,6 @@ wait_for_auth_completion() {
     return 0
   fi
 
-  wait_for_browser_target 'input[name="identifier"]'
   dismiss_cookie_banner
 
   # Enter email and click Continue

@@ -42,9 +42,6 @@ browser_setup() {
   fi
 
   export NODE_TLS_REJECT_UNAUTHORIZED=0
-  # The daemon reads this once when the first command starts it. Per-command
-  # environment overrides do not change an already-running daemon.
-  export AGENT_BROWSER_DEFAULT_TIMEOUT=60000
   export AGENT_BROWSER_SESSION="${AGENT_BROWSER_SESSION:-${JOB_REF:-local}-sign-up}"
 
   export OTP="424242"
@@ -70,25 +67,56 @@ generate_test_email() {
 
 # ---------------------------------------------------------------------------
 # wait_for_browser_target — Wait for a browser target across navigation
-# agent-browser may surface a transient CDP context error when Clerk replaces
-# the document while a selector wait is active. Retry that transition without
-# adding a fixed delay; preserve real selector timeouts as failures.
-# Usage: wait_for_browser_target <agent-browser wait arguments...>
+# Poll the target so no individual agent-browser command reaches its
+# 30-second IPC read timeout. Supports the wait forms used by browser E2E:
+# selectors, --fn expressions, and --text values.
+# Usage: wait_for_browser_target [--timeout-seconds <seconds>]
+#          <selector>|--fn <expression>|--text <text>
 # ---------------------------------------------------------------------------
 wait_for_browser_target() {
-  local navigation_attempt wait_output
+  local wait_timeout_seconds=60
+  if [[ "${1:-}" == "--timeout-seconds" ]]; then
+    wait_timeout_seconds="${2:?wait timeout is required}"
+    shift 2
+  fi
 
-  for navigation_attempt in 1 2 3; do
-    if wait_output=$(agent-browser wait "$@" 2>&1); then
-      return 0
-    fi
-    if [[ "$wait_output" != *"Inspected target navigated or closed"* ]]; then
+  local condition description value_json
+  case "${1:-}" in
+    --fn)
+      condition="Boolean(${2:?wait expression is required})"
+      description="JavaScript condition"
+      ;;
+    --text)
+      value_json=$(node -e \
+        'process.stdout.write(JSON.stringify(process.argv[1]))' \
+        "${2:?wait text is required}")
+      condition="(document.body?.innerText ?? '').toLowerCase().includes(${value_json}.toLowerCase())"
+      description="text ${2}"
+      ;;
+    *)
+      value_json=$(node -e \
+        'process.stdout.write(JSON.stringify(process.argv[1]))' \
+        "${1:?wait selector is required}")
+      condition="Boolean(document.querySelector(${value_json}))"
+      description="selector ${1}"
+      ;;
+  esac
+
+  local wait_started="$SECONDS"
+  local wait_output
+  while (( SECONDS - wait_started < wait_timeout_seconds )); do
+    if wait_output=$(agent-browser eval "$condition" 2>&1); then
+      if [[ "$wait_output" == "true" ]]; then
+        return 0
+      fi
+    elif [[ "$wait_output" != *"Inspected target navigated or closed"* ]]; then
       echo "$wait_output" >&2
       return 1
     fi
+    sleep 0.25
   done
 
-  echo "$wait_output" >&2
+  echo "Wait timed out after $((wait_timeout_seconds * 1000))ms: ${description}" >&2
   return 1
 }
 
