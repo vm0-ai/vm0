@@ -1,14 +1,118 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
 describe("structured user messages", () => {
+  it("renders templates inline in message and feedback-note order", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000748";
+    const templateItem = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const template = {
+      type: "illustration" as const,
+      selection: {
+        illustrationStyleId: templateItem.illustrationStyleId,
+      },
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Inline template rendering",
+      chatMessages: [
+        {
+          id: "00000000-0000-4000-8000-000000000748",
+          role: "user",
+          content: "Legacy body stays hidden",
+          runId: "d0000000-0000-4000-a000-000000000748",
+          structuredPrompt: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Before " },
+              {
+                type: "template",
+                titleSnapshot: templateItem.title,
+                template,
+              },
+              { type: "text", text: " after" },
+              {
+                type: "feedback",
+                quote: "Earlier answer",
+                note: [
+                  { type: "text", text: "Restyle with " },
+                  {
+                    type: "template",
+                    titleSnapshot: templateItem.title,
+                    template,
+                  },
+                ],
+              },
+            ],
+          },
+          createdAt: "2026-07-27T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    });
+
+    const structuredMessage = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    const references = screen.getAllByLabelText(
+      `Message template ${templateItem.title}`,
+    );
+    expect(references).toHaveLength(2);
+    for (const reference of references) {
+      expect(reference.tagName).toBe("BUTTON");
+      expect(reference).toHaveAttribute("aria-haspopup", "dialog");
+      expect(reference).toHaveAttribute(
+        "data-structured-template-reference",
+        "",
+      );
+      expect(reference.textContent).toBe(templateItem.title);
+    }
+    const feedback = document.querySelector("[data-structured-feedback-group]");
+    expect(feedback).toBeInstanceOf(HTMLElement);
+    expect(feedback).toContainElement(references[1]);
+    expect(structuredMessage.textContent).toContain(
+      `Before ${templateItem.title} after`,
+    );
+    expect(feedback).toHaveTextContent(`Restyle with ${templateItem.title}`);
+
+    await user.click(references[0]!);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    const illustrationTab = queryAllByRoleFast("tab").find((tab) => {
+      return tab.textContent === "Illustration";
+    });
+    expect(illustrationTab).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByLabelText(`Select template ${templateItem.title}`),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      document.querySelector("[data-composer-inline-template]"),
+    ).toBeNull();
+  });
+
   it("renders ordered snapshots and keeps the legacy Markdown fallback", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000741";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000742";

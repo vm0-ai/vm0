@@ -1932,6 +1932,7 @@ function truncatePrior(value: string): string {
 function formatPriorRunMessage(
   message: PriorRunMessage,
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
   if (
@@ -1939,9 +1940,9 @@ function formatPriorRunMessage(
     message.role === "user" &&
     message.structuredPrompt
   ) {
-    const prompt = projectStructuredUserMessage(
-      message.structuredPrompt,
-    ).agentPrompt;
+    const prompt = projectStructuredUserMessage(message.structuredPrompt, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
@@ -1953,13 +1954,18 @@ function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
   triggerSource: "web" | "slack" | "feishu" | "teams",
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
     return "";
   }
   const sections = runs.map((run, index) => {
     const renderedMessages = run.messages.map((message) => {
-      return formatPriorRunMessage(message, structuredPromptEnabled);
+      return formatPriorRunMessage(
+        message,
+        structuredPromptEnabled,
+        inlineTemplatesEnabled,
+      );
     });
     const transcript =
       renderedMessages.length > 0
@@ -2160,6 +2166,7 @@ async function buildQueuedPriorContext(args: {
   readonly incompleteContext: string;
   readonly triggerSource: "web" | "slack" | "feishu" | "teams";
   readonly structuredPromptEnabled: boolean;
+  readonly inlineTemplatesEnabled: boolean;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
     return "";
@@ -2173,6 +2180,7 @@ async function buildQueuedPriorContext(args: {
     ),
     args.triggerSource,
     args.structuredPromptEnabled,
+    args.inlineTemplatesEnabled,
   );
 }
 
@@ -2441,12 +2449,19 @@ function loadQueuedMessageSessionState(
         FeatureSwitchKey.StructuredPrompt,
         featureSwitchContext,
       );
+      const inlineTemplatesEnabled =
+        structuredPromptEnabled &&
+        isFeatureEnabled(
+          FeatureSwitchKey.StructuredPromptInlineTemplates,
+          featureSwitchContext,
+        );
       const incompleteContext =
         args.queuedMessage.triggerSource === "web"
           ? await loadWebChatIncompleteContext(
               args.db,
               args.threadId,
               structuredPromptEnabled,
+              inlineTemplatesEnabled,
             )
           : "";
       return [
@@ -2522,6 +2537,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     | undefined;
   readonly websiteTemplateV2Enabled: boolean;
   readonly imageStyleR2Enabled: boolean;
+  readonly inlineTemplatesEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -2532,6 +2548,9 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit: args.structuredProjection
           ? args.structuredProjection.generationTemplate
           : args.input.queuedMessage.generationTemplate,
+        explicitTemplates: args.inlineTemplatesEnabled
+          ? args.structuredProjection?.generationTemplates
+          : undefined,
         websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
         imageStyleR2Enabled: args.imageStyleR2Enabled,
       });
@@ -2572,9 +2591,17 @@ async function buildCreateQueuedChatRunInput(
     FeatureSwitchKey.StructuredPrompt,
     featureSwitchContext,
   );
+  const inlineTemplatesEnabled =
+    structuredPromptEnabled &&
+    isFeatureEnabled(
+      FeatureSwitchKey.StructuredPromptInlineTemplates,
+      featureSwitchContext,
+    );
   const structuredProjection =
     structuredPromptEnabled && args.queuedMessage.structuredPrompt
-      ? projectStructuredUserMessage(args.queuedMessage.structuredPrompt)
+      ? projectStructuredUserMessage(args.queuedMessage.structuredPrompt, {
+          inlineTemplates: inlineTemplatesEnabled,
+        })
       : undefined;
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
@@ -2589,6 +2616,7 @@ async function buildCreateQueuedChatRunInput(
         incompleteContext,
         triggerSource: args.queuedMessage.triggerSource,
         structuredPromptEnabled,
+        inlineTemplatesEnabled,
       });
     },
   );
@@ -2604,6 +2632,7 @@ async function buildCreateQueuedChatRunInput(
         FeatureSwitchKey.ImageStyleR2,
         featureSwitchContext,
       ),
+      inlineTemplatesEnabled,
     });
   const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
     args.timing,

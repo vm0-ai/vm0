@@ -79,16 +79,26 @@ function structuredAgentDraftAttachments(
   });
 }
 
-function structuredAgentDraftState(args: {
-  readonly draftContent: string | null;
-  readonly draftStructuredPrompt?: UserMessageDocument | null;
-  readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState | null {
+function structuredAgentDraftState(
+  args: {
+    readonly draftContent: string | null;
+    readonly draftStructuredPrompt?: UserMessageDocument | null;
+    readonly draftAttachments: PersistedAttachment[] | null;
+  },
+  inlineTemplatesEnabled: boolean,
+): RestoredAgentDraftState | null {
   const document = args.draftStructuredPrompt;
-  if (!document || messageDocumentToEditorDoc(document) === null) {
+  if (
+    !document ||
+    messageDocumentToEditorDoc(document, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }) === null
+  ) {
     return null;
   }
-  const content = messageDocumentToPrompt(document);
+  const content = messageDocumentToPrompt(document, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
   if (content === null) {
     return null;
   }
@@ -99,7 +109,7 @@ function structuredAgentDraftState(args: {
     content,
     structuredPrompt: document,
     generationTemplate:
-      generationTemplate?.type === "template"
+      !inlineTemplatesEnabled && generationTemplate?.type === "template"
         ? generationTemplate.template
         : undefined,
     attachments: structuredAgentDraftAttachments(
@@ -238,8 +248,11 @@ export const loadAgentDraft$ = command(
     const features = get(featureSwitch$);
     const structuredPromptEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
+    const inlineTemplatesEnabled =
+      structuredPromptEnabled &&
+      (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
     const restoredDraft = structuredPromptEnabled
-      ? (structuredAgentDraftState(result.body) ??
+      ? (structuredAgentDraftState(result.body, inlineTemplatesEnabled) ??
         legacyAgentDraftState(result.body))
       : legacyAgentDraftState(result.body);
     const hasServerDraft =

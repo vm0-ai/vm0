@@ -176,6 +176,162 @@ describe("user message document codec", () => {
     ).toStrictEqual(structured);
   });
 
+  it("preserves multiple inline templates and templates inside feedback notes", () => {
+    const presentation = presentationTemplate();
+    const illustration = {
+      type: "illustration",
+      selection: { illustrationStyleId: "paper-cut" },
+    } satisfies GenerationTemplateRequest;
+    const editorDocument = workflowComposerDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Use " },
+            {
+              type: "inlineTemplate",
+              attrs: {
+                templateType: "presentation",
+                template: presentation,
+                title: "Pitch deck",
+                category: "slides",
+                previewImageUrl: "https://example.com/pitch-deck.png",
+              },
+            },
+            { type: "text", text: " for dogs and " },
+            {
+              type: "inlineTemplate",
+              attrs: {
+                templateType: "illustration",
+                template: illustration,
+                title: "Paper cut",
+                category: "illustration",
+                previewImageUrl: null,
+              },
+            },
+            { type: "text", text: " for cats" },
+          ],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 1,
+            quote: "Original reply",
+            showDivider: false,
+            fill: true,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Restyle with " },
+                {
+                  type: "inlineTemplate",
+                  attrs: {
+                    templateType: "illustration",
+                    template: illustration,
+                    title: "Paper cut",
+                    category: "illustration",
+                    previewImageUrl: null,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const structured = editorDocToMessageDocument(editorDocument);
+    expect(structured).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: "Use " },
+        {
+          type: "template",
+          titleSnapshot: "Pitch deck",
+          template: presentation,
+        },
+        { type: "text", text: " for dogs and " },
+        {
+          type: "template",
+          titleSnapshot: "Paper cut",
+          template: illustration,
+        },
+        { type: "text", text: " for cats" },
+        {
+          type: "feedback",
+          quote: "Original reply",
+          note: [
+            { type: "text", text: "Restyle with " },
+            {
+              type: "template",
+              titleSnapshot: "Paper cut",
+              template: illustration,
+            },
+          ],
+        },
+      ],
+    });
+
+    const restored = messageDocumentToEditorDoc(structured, {
+      inlineTemplates: true,
+    });
+    expect(restored).not.toBeNull();
+    if (!restored) {
+      throw new Error("Expected inline templates to restore");
+    }
+    expect(
+      editorDocToMessageDocument(workflowComposerDocument(restored)),
+    ).toStrictEqual(structured);
+    expect(
+      messageDocumentToDisplayText(structured, { inlineTemplates: true }),
+    ).toContain(
+      "Use [Template: Pitch deck] for dogs and [Template: Paper cut] for cats",
+    );
+    expect(
+      messageDocumentToPrompt(structured, { inlineTemplates: true }),
+    ).toContain("Restyle with Select Paper cut illustration template");
+  });
+
+  it("serializes an inline template-only message without ambient template state", () => {
+    const template = presentationTemplate();
+    const structured = editorDocToMessageDocument(
+      workflowComposerDocument({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "inlineTemplate",
+                attrs: {
+                  templateType: "presentation",
+                  template,
+                  title: "Pitch deck",
+                  category: "slides",
+                  previewImageUrl: null,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(structured).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: "Pitch deck",
+          template,
+        },
+      ],
+    });
+  });
+
   it("normalizes paragraph boundaries and hard breaks without trimming", () => {
     const editorDocument = workflowComposerDocument({
       type: "doc",

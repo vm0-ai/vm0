@@ -41,6 +41,7 @@ import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
+  type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -98,6 +99,7 @@ const connectors = createConnectorBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
@@ -223,8 +225,10 @@ const openRouterBodySchema = z.object({
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
 });
 
-async function entitledChatActor(): Promise<EntitledChatActor> {
-  const actor = bdd.user();
+async function entitledChatActor(
+  options: ApiTestUserOptions = {},
+): Promise<EntitledChatActor> {
+  const actor = bdd.user(options);
   chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -4140,6 +4144,113 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
+  it("projects multiple inline templates into one ordered prompt and one shared context", async () => {
+    const { actor, agentId } = await entitledChatActor({
+      orgId: STAFF_ORG_ID,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    const workflow = WORKFLOW_TEMPLATE_ITEMS[0];
+    if (!style || !workflow) {
+      throw new Error("Expected registered inline templates");
+    }
+    const illustrationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const workflowTemplate: GenerationTemplateRequest = {
+      type: "workflow",
+      selection: { workflowTemplateId: workflow.id },
+    };
+    const structuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        { type: "text", text: "Use " },
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: illustrationTemplate,
+        },
+        { type: "text", text: " for the dog, then " },
+        {
+          type: "template",
+          titleSnapshot: workflow.title,
+          template: workflowTemplate,
+        },
+        { type: "text", text: " for the follow-up" },
+        {
+          type: "feedback",
+          quote: "Earlier answer",
+          note: [
+            { type: "text", text: "Restyle with " },
+            {
+              type: "template",
+              titleSnapshot: style.title,
+              template: illustrationTemplate,
+            },
+          ],
+        },
+      ],
+    };
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "legacy fallback",
+      structuredPrompt,
+    });
+    const run = await api.readRun(actor, sent.runId);
+    const firstMarker = `[Template #1: ${style.title} (illustration)]`;
+    const secondMarker = `[Template #2: ${workflow.title} (workflow)]`;
+    const feedbackMarker = `[Template #3: ${style.title} (illustration)]`;
+    expect(run.prompt).toContain(
+      `Use ${firstMarker} for the dog, then ${secondMarker} for the follow-up`,
+    );
+    expect(run.prompt).toContain(`Restyle with ${feedbackMarker}`);
+    expect(run.prompt.indexOf(firstMarker)).toBeLessThan(
+      run.prompt.indexOf(secondMarker),
+    );
+
+    const systemPrompt = run.appendSystemPrompt ?? "";
+    expect(systemPrompt.match(/^# Inline Templates$/gm)).toHaveLength(1);
+    expect(systemPrompt).not.toContain("# Artifact Template Context");
+    expect(systemPrompt).not.toContain("# Workflow Template Context");
+    expect(systemPrompt).toContain("## Template #1 (illustration)");
+    expect(systemPrompt).toContain("## Template #2 (workflow)");
+    expect(systemPrompt).toContain("## Template #3 (illustration)");
+    expect(systemPrompt).toContain(style.illustrationStyleId);
+    expect(systemPrompt).toContain(workflow.id);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.runId === sent.runId;
+        });
+      },
+    );
+    const message = userMessages(messages.messages).find((item) => {
+      return item.runId === sent.runId;
+    });
+    expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
+    expect(message?.content).toContain(
+      `Use [Template: ${style.title}] for the dog, then [Template: ${workflow.title}] for the follow-up`,
+    );
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
   it("falls back to the legacy runtime path for enabled old clients", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4176,6 +4287,46 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
+  it("keeps legacy single-template context when inline templates are enabled", async () => {
+    const { actor, agentId } = await entitledChatActor({
+      orgId: STAFF_ORG_ID,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a dog",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.prompt).toBe("draw a dog");
+    const systemPrompt = run.appendSystemPrompt ?? "";
+    expect(systemPrompt).toContain("# Artifact Template Context");
+    expect(systemPrompt).toContain(style.illustrationStyleId);
+    expect(systemPrompt).not.toContain("# Inline Templates");
+    expect(systemPrompt).not.toContain("[Template #1:");
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4209,8 +4360,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
     expect(presentationPrompt).not.toContain("Selected design system");
-    // Runbook flow: pull the selected self-contained runbook package; the
-    // retired multi-resource generation command is not surfaced.
     expect(presentationPrompt).toContain(
       `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
@@ -4448,9 +4597,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     // The illustration style is gone entirely for this turn: it's not attached
     // to this message, and prior/incomplete context no longer repeats template
     // selections.
-    expect(thirdPrompt).not.toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
-    );
     expect(thirdPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
 
@@ -4459,8 +4605,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
     expect(freshPrompt).not.toContain("# Artifact Template Context");
-    // The base agent prompt always carries generic `zero generate` guidance, so
-    // assert the absence of the template-specific command, not the bare verb.
     expect(freshPrompt).not.toContain(
       "zero generate image --provider built-in --style",
     );

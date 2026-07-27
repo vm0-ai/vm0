@@ -104,6 +104,9 @@ export const reloadFeatureSwitch$ = command(
       // handshake succeeds.
       combined[FeatureSwitchKey.StructuredPrompt] = false;
     }
+    if (result.body.supportsStructuredInlineTemplates !== true) {
+      combined[FeatureSwitchKey.StructuredPromptInlineTemplates] = false;
+    }
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },

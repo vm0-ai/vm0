@@ -9,6 +9,7 @@ interface StructuredUserMessageProjection {
   readonly agentPrompt: string;
   readonly displayText: string;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly generationTemplates: readonly GenerationTemplateRequest[];
   readonly hasTextContent: boolean;
 }
 
@@ -17,12 +18,21 @@ function serializeChatThreadMention(threadId: string, title: string): string {
   return `[${escapedTitle}](/chats/${threadId})`;
 }
 
-function serializeFeedbackNote(parts: readonly FeedbackNotePart[]): string {
+function serializeFeedbackNote(
+  parts: readonly FeedbackNotePart[],
+  serializeTemplate: (
+    part: Extract<FeedbackNotePart, { type: "template" }>,
+  ) => string = generationTemplatePrompt,
+): string {
   return parts
     .map((part) => {
-      return part.type === "text"
-        ? part.text
-        : serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      if (part.type === "text") {
+        return part.text;
+      }
+      if (part.type === "chat_thread") {
+        return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      return serializeTemplate(part);
     })
     .join("");
 }
@@ -42,8 +52,21 @@ function generationTemplatePrompt(part: {
   return `Select ${part.titleSnapshot} ${part.template.type} template`;
 }
 
+function inlineGenerationTemplatePrompt(
+  part: {
+    readonly titleSnapshot: string;
+    readonly template: GenerationTemplateRequest;
+  },
+  referenceNumber: number,
+): string {
+  return `[Template #${referenceNumber}: ${part.titleSnapshot} (${part.template.type})]`;
+}
+
 function formatFeedbackParts(
   parts: readonly Extract<UserMessagePart, { type: "feedback" }>[],
+  serializeTemplate?: (
+    part: Extract<FeedbackNotePart, { type: "template" }>,
+  ) => string,
 ): string {
   const firstMailSource = parts[0]?.source;
   const commonMailSource =
@@ -81,7 +104,10 @@ function formatFeedbackParts(
       commonMailSource === null && part.source?.type === "mail"
         ? `Source: ${mailSourceLabel(part.source)}\n\n`
         : "";
-    return `${source}${quoted}\n\n${serializeFeedbackNote(part.note).trim()}`;
+    return `${source}${quoted}\n\n${serializeFeedbackNote(
+      part.note,
+      serializeTemplate,
+    ).trim()}`;
   });
   const intro = commonMailSource
     ? parts.length === 1
@@ -97,11 +123,13 @@ function formatFeedbackParts(
 
 /**
  * Projects one validated business document into the server-owned runtime
- * representations. File blocks remain in authoritative `parts` order while
- * templates are carried separately into the system prompt.
+ * representations. Inline template markers stay in authoritative `parts`
+ * order, while their selections are also returned for this run's shared
+ * template context.
  */
 export function projectStructuredUserMessage(
   document: UserMessageDocument,
+  options: { readonly inlineTemplates?: boolean } = {},
 ): StructuredUserMessageProjection {
   const promptBlocks: string[] = [];
   const displayBlocks: string[] = [];
@@ -109,8 +137,17 @@ export function projectStructuredUserMessage(
   let inlineDisplayText = "";
   let feedbackParts: Extract<UserMessagePart, { type: "feedback" }>[] = [];
   let generationTemplate: GenerationTemplateRequest | undefined;
+  const generationTemplates: GenerationTemplateRequest[] = [];
   let hasTextContent = false;
 
+  const registerInlineTemplate = (part: {
+    readonly titleSnapshot: string;
+    readonly template: GenerationTemplateRequest;
+  }): string => {
+    generationTemplates.push(part.template);
+    generationTemplate ??= part.template;
+    return inlineGenerationTemplatePrompt(part, generationTemplates.length);
+  };
   const flushInlinePrompt = () => {
     if (inlinePrompt.length > 0) {
       promptBlocks.push(inlinePrompt);
@@ -125,7 +162,10 @@ export function projectStructuredUserMessage(
     if (feedbackParts.length === 0) {
       return;
     }
-    const formatted = formatFeedbackParts(feedbackParts);
+    const formatted = formatFeedbackParts(
+      feedbackParts,
+      options.inlineTemplates === true ? registerInlineTemplate : undefined,
+    );
     promptBlocks.push(formatted);
     displayBlocks.push(formatted);
     feedbackParts = [];
@@ -161,10 +201,16 @@ export function projectStructuredUserMessage(
       displayBlocks.push(`[File: ${part.filenameSnapshot}]`);
       continue;
     }
+    if (options.inlineTemplates === true) {
+      inlinePrompt += registerInlineTemplate(part);
+      inlineDisplayText += `[Template: ${part.titleSnapshot}]`;
+      continue;
+    }
     flushInlinePrompt();
     promptBlocks.push(generationTemplatePrompt(part));
     displayBlocks.push(`[Template: ${part.titleSnapshot}]`);
     generationTemplate ??= part.template;
+    generationTemplates.push(part.template);
   }
   flushFeedback();
   flushInlinePrompt();
@@ -173,6 +219,7 @@ export function projectStructuredUserMessage(
     agentPrompt: promptBlocks.join("\n\n"),
     displayText: displayBlocks.join("\n\n"),
     generationTemplate,
+    generationTemplates,
     hasTextContent,
   };
 }

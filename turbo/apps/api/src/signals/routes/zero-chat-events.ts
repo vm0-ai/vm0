@@ -281,12 +281,14 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly structuredPromptEnabled: boolean;
+  readonly structuredPromptInlineTemplatesEnabled: boolean;
   readonly websiteTemplateV2Enabled: boolean;
   readonly imageStyleR2Enabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends NormalSendBody {
   readonly agentPrompt: string;
+  readonly generationTemplates: readonly GenerationTemplateRequest[];
   readonly hasTextContent: boolean;
 }
 
@@ -658,21 +660,28 @@ function buildFullPrompt(
 function resolveRuntimeNormalSendBody(
   body: NormalSendBody,
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): RuntimeNormalSendBody {
   if (!structuredPromptEnabled || !body.structuredPrompt) {
     return {
       ...body,
       structuredPrompt: body.structuredPrompt,
       agentPrompt: buildFullPrompt(body.prompt, body.attachFiles),
+      generationTemplates: body.generationTemplate
+        ? [body.generationTemplate]
+        : [],
       hasTextContent: body.hasTextContent !== false,
     };
   }
-  const projection = projectStructuredUserMessage(body.structuredPrompt);
+  const projection = projectStructuredUserMessage(body.structuredPrompt, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
   return {
     ...body,
     prompt: projection.displayText,
     structuredPrompt: body.structuredPrompt,
     generationTemplate: projection.generationTemplate,
+    generationTemplates: projection.generationTemplates,
     agentPrompt: projection.agentPrompt,
     hasTextContent: projection.hasTextContent,
   };
@@ -727,6 +736,7 @@ function formatAttachFileIds(
 function formatPriorRunMessage(
   message: WebChatPriorRunMessage,
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
   if (
@@ -734,9 +744,9 @@ function formatPriorRunMessage(
     message.role === "user" &&
     message.structuredPrompt
   ) {
-    const prompt = projectStructuredUserMessage(
-      message.structuredPrompt,
-    ).agentPrompt;
+    const prompt = projectStructuredUserMessage(message.structuredPrompt, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const attach = formatAttachFileIds(message.attachFiles);
@@ -747,6 +757,7 @@ function formatPriorRunMessage(
 function buildWebChatPriorRunsContext(
   runs: readonly WebChatPriorRun[],
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
     return "";
@@ -755,7 +766,11 @@ function buildWebChatPriorRunsContext(
   const blocks = runs.map((run, index) => {
     const relativeIndex = index - total + 1;
     const renderedMessages = run.messages.map((message) => {
-      return formatPriorRunMessage(message, structuredPromptEnabled);
+      return formatPriorRunMessage(
+        message,
+        structuredPromptEnabled,
+        inlineTemplatesEnabled,
+      );
     });
     const hasUserMessage = run.messages.some((message) => {
       return message.role === "user";
@@ -1041,6 +1056,12 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.StructuredPrompt,
       context,
     ),
+    structuredPromptInlineTemplatesEnabled:
+      isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, context) &&
+      isFeatureEnabled(
+        FeatureSwitchKey.StructuredPromptInlineTemplates,
+        context,
+      ),
     websiteTemplateV2Enabled: isFeatureEnabled(
       FeatureSwitchKey.WebsiteTemplateV2,
       context,
@@ -1054,13 +1075,22 @@ async function resolveNormalSendFeatureSwitches(
 
 function validateGenerationTemplatePrompt(
   generationTemplate: IncomingGenerationTemplate,
+  generationTemplates: readonly GenerationTemplateRequest[] = [],
 ): NormalSendFailure | undefined {
-  if (!generationTemplate) {
+  const templates =
+    generationTemplates.length > 0
+      ? generationTemplates
+      : generationTemplate
+        ? [generationTemplate]
+        : [];
+  if (templates.length === 0) {
     return undefined;
   }
-  const validation = buildGenerationTemplatePrompt(generationTemplate);
-  if (validation.status === "invalid") {
-    return badRequestMessage(validation.message);
+  for (const template of templates) {
+    const validation = buildGenerationTemplatePrompt(template);
+    if (validation.status === "invalid") {
+      return badRequestMessage(validation.message);
+    }
   }
   return undefined;
 }
@@ -1439,6 +1469,7 @@ async function resolveThread(params: {
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly structuredPromptEnabled: boolean;
+  readonly structuredPromptInlineTemplatesEnabled: boolean;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
     if (!params.explicitRunConfiguration) {
@@ -1530,6 +1561,7 @@ async function resolveThread(params: {
       params.db,
       thread.id,
       params.structuredPromptEnabled,
+      params.structuredPromptInlineTemplatesEnabled,
     ),
   ]);
   const startNewSession = sessionResolution.action === "rotated";
@@ -1551,7 +1583,10 @@ async function prepareRecentChatContext(
   threadId: string,
   isNewThread: boolean,
   incompleteContext: string,
-  structuredPromptEnabled: boolean,
+  options: {
+    readonly structuredPromptEnabled: boolean;
+    readonly inlineTemplatesEnabled: boolean;
+  },
 ): Promise<string> {
   if (isNewThread) {
     return "";
@@ -1561,7 +1596,8 @@ async function prepareRecentChatContext(
   }
   return buildWebChatPriorRunsContext(
     await getLatestRunsByThreadId(db, threadId, RECENT_CHAT_RUN_LIMIT),
-    structuredPromptEnabled,
+    options.structuredPromptEnabled,
+    options.inlineTemplatesEnabled,
   );
 }
 
@@ -2246,6 +2282,8 @@ function resolveTimedThread(
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
         structuredPromptEnabled: featureSwitches.structuredPromptEnabled,
+        structuredPromptInlineTemplatesEnabled:
+          featureSwitches.structuredPromptInlineTemplatesEnabled,
       });
     },
   );
@@ -2256,6 +2294,7 @@ function prepareTimedRecentChatContext(
   db: Db,
   thread: ResolvedThread,
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): ReturnType<typeof prepareRecentChatContext> {
   return measureApiDispatchTiming(
     args.timing,
@@ -2267,7 +2306,7 @@ function prepareTimedRecentChatContext(
         thread.threadId,
         thread.isNewThread,
         thread.incompleteContext,
-        structuredPromptEnabled,
+        { structuredPromptEnabled, inlineTemplatesEnabled },
       );
     },
   );
@@ -2380,9 +2419,11 @@ const prepareNormalSend$ = command(
     const runtimeBody = resolveRuntimeNormalSendBody(
       args.body,
       featureSwitches.structuredPromptEnabled,
+      featureSwitches.structuredPromptInlineTemplatesEnabled,
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
       runtimeBody.generationTemplate,
+      runtimeBody.generationTemplates,
     );
     if (generationTemplateError) {
       return generationTemplateError;
@@ -2425,10 +2466,16 @@ const prepareNormalSend$ = command(
       db,
       thread,
       featureSwitches.structuredPromptEnabled,
+      featureSwitches.structuredPromptInlineTemplatesEnabled,
     );
     signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.generationTemplate,
+      explicitTemplates:
+        featureSwitches.structuredPromptInlineTemplatesEnabled &&
+        runtimeBody.structuredPrompt !== undefined
+          ? runtimeBody.generationTemplates
+          : undefined,
       websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,
       imageStyleR2Enabled: featureSwitches.imageStyleR2Enabled,
     });
