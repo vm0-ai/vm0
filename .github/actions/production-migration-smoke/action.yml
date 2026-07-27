@@ -63,7 +63,6 @@ runs:
         echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 
     - name: Run Production Migration Smoke Test
-      if: steps.create-migration-smoke-branch.outputs.database-url != ''
       shell: bash
       working-directory: turbo
       env:
