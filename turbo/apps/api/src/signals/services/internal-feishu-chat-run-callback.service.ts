@@ -25,6 +25,7 @@ import {
 } from "./feishu-chat-callback-payload";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveIntegrationAgentResponsePresentation } from "./integration-agent-response-presentation.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const L = logger("InternalCallbacksFeishuChat");
 
@@ -125,7 +126,12 @@ async function loadFeishuChatDeliveryContext(args: {
         eq(chatMessages.id, payload.chatMessageId),
         eq(chatMessages.runId, args.callback.runId),
         eq(chatMessages.chatThreadId, run.chatThreadId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn([
+          "output.message",
+          "output.error",
+          "run.failed",
+          "run.cancelled",
+        ]),
         isNotNull(chatMessages.content),
       ),
     )

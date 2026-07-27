@@ -82,16 +82,20 @@ const ARTIFACT_FULLSCREEN_DEFAULT_LAYER_CLASSNAME = "z-[100]";
 
 export function ArtifactSidebar({
   artifactRef,
+  fullscreenState,
   onBack,
   onClose,
+  onNavigateImage,
   thread,
 }: ArtifactSidebarProps) {
   if (thread) {
     return (
       <ArtifactSidebarWithThreadContext
         artifactRef={artifactRef}
+        fullscreenState={fullscreenState}
         onBack={onBack}
         onClose={onClose}
+        onNavigateImage={onNavigateImage}
         thread={thread}
       />
     );
@@ -100,16 +104,26 @@ export function ArtifactSidebar({
   return (
     <ArtifactSidebarContent
       artifactRef={artifactRef}
+      fullscreenState={fullscreenState}
       onBack={onBack}
       onClose={onClose}
     />
   );
 }
 
+// Fullscreen normally lives in the `?artifact-fullscreen` search param; the
+// thread-owned sidebar passes its own session-scoped state instead.
+type ArtifactSidebarFullscreenState = {
+  readonly active: boolean;
+  readonly toggle: () => void;
+};
+
 type ArtifactSidebarProps = {
   artifactRef: ArtifactRef;
+  fullscreenState?: ArtifactSidebarFullscreenState;
   onBack?: () => void;
   onClose?: () => void;
+  onNavigateImage?: (url: string) => void;
   thread?: ChatThreadSignals;
 };
 
@@ -126,6 +140,7 @@ type ArtifactImageNavigationActions = {
 type ArtifactSidebarContentProps = {
   agentId?: string | null;
   artifactRef: ArtifactRef;
+  fullscreenState?: ArtifactSidebarFullscreenState;
   imageNavigation?: ArtifactImageNavigationActions;
   item?: ArtifactSidebarItem;
   onBack?: () => void;
@@ -137,8 +152,10 @@ type ArtifactSidebarContentProps = {
 
 function ArtifactSidebarWithThreadContext({
   artifactRef,
+  fullscreenState,
   onBack,
   onClose,
+  onNavigateImage,
   thread,
 }: ArtifactSidebarProps & { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
@@ -146,7 +163,11 @@ function ArtifactSidebarWithThreadContext({
   const messageGroups = useLastResolved(thread.messageImageGroups$, {
     equalityFn: equalMessageImageGroups,
   });
-  const navigateArtifactSidebarImage = useSet(navigateArtifactSidebarImage$);
+  const navigateLegacyArtifactSidebarImage = useSet(
+    navigateArtifactSidebarImage$,
+  );
+  const navigateArtifactSidebarImage =
+    onNavigateImage ?? navigateLegacyArtifactSidebarImage;
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const text$ =
     artifactRef.source === "url"
@@ -179,6 +200,7 @@ function ArtifactSidebarWithThreadContext({
     <ArtifactSidebarContent
       agentId={agentId}
       artifactRef={artifactRef}
+      fullscreenState={fullscreenState}
       imageNavigation={{
         onNext: imageNavigationAction(imageNavigation.next),
         onPrevious: imageNavigationAction(imageNavigation.previous),
@@ -223,6 +245,7 @@ function artifactSidebarSyncTargetForItem({
 function ArtifactSidebarContent({
   agentId,
   artifactRef,
+  fullscreenState,
   imageNavigation,
   item,
   onBack,
@@ -231,9 +254,11 @@ function ArtifactSidebarContent({
   text$,
   threadId,
 }: ArtifactSidebarContentProps) {
-  const fullscreen = useGet(artifactFullscreen$);
+  const legacyFullscreen = useGet(artifactFullscreen$);
   const close = useSet(closeArtifact$);
-  const toggleFullscreen = useSet(toggleArtifactFullscreen$);
+  const legacyToggleFullscreen = useSet(toggleArtifactFullscreen$);
+  const fullscreen = fullscreenState?.active ?? legacyFullscreen;
+  const toggleFullscreen = fullscreenState?.toggle ?? legacyToggleFullscreen;
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const closePreview = onClose ?? close;
   const display = resolveArtifactDisplay(artifactRef, item);

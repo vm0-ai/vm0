@@ -8,6 +8,10 @@
  * failed source is annotated in the input JSON instead of blocking the brief.
  */
 import { z } from "zod";
+import {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+} from "@vm0/api-contracts/contracts/chat-events";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -38,6 +42,10 @@ import {
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -610,7 +618,7 @@ async function collectUnreadChatThreads(args: {
   for (const row of rows) {
     const messages = await args.db
       .select({
-        role: chatMessages.role,
+        eventType: chatEventTypeSql().as("event_type"),
         content: chatMessages.content,
         structuredPrompt: effectiveChatMessageStructuredPrompt(),
         createdAt: chatMessages.createdAt,
@@ -623,7 +631,7 @@ async function collectUnreadChatThreads(args: {
             ? (or(
                 isNotNull(chatMessages.content),
                 and(
-                  eq(chatMessages.role, "user"),
+                  chatEventTypeIn(["input.prompt", "input.rejected"]),
                   or(
                     isNotNull(chatMessages.structuredPrompt),
                     isNotNull(chatMessages.structuredPromptWithFeedback),
@@ -631,6 +639,7 @@ async function collectUnreadChatThreads(args: {
                 ),
               ) as SQL)
             : isNotNull(chatMessages.content),
+          chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
       .orderBy(desc(chatMessages.createdAt))
@@ -641,9 +650,10 @@ async function collectUnreadChatThreads(args: {
       url: `${appUrl}/chats/${row.id}`,
       lastMessageAt: row.lastMessageAt.toISOString(),
       recentMessages: messages.reverse().flatMap((message) => {
+        const role = chatEventCompatibilityRole(message.eventType);
         const content =
           args.structuredPromptEnabled &&
-          message.role === "user" &&
+          role === "user" &&
           message.structuredPrompt
             ? projectStructuredUserMessage(message.structuredPrompt).displayText
             : message.content;
@@ -651,7 +661,7 @@ async function collectUnreadChatThreads(args: {
           ? []
           : [
               {
-                role: message.role,
+                role,
                 content,
                 at: message.createdAt.toISOString(),
               },

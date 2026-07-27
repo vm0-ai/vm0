@@ -139,7 +139,11 @@ async function uploadFile(args: {
   readonly contentType: string;
   readonly sizeBytes?: number;
   readonly fileId?: string;
-}): Promise<{ readonly fileId: string; readonly url: string }> {
+}): Promise<{
+  readonly fileId: string;
+  readonly url: string;
+  readonly threadId: string;
+}> {
   const run = await sendChatRun(args.owner.actor, {
     agentId: args.owner.agentId,
     prompt: args.prompt,
@@ -163,7 +167,7 @@ async function uploadFile(args: {
     throw new Error("Expected run upload completion to succeed");
   }
   await completeChatRunOk(run.runId, sandboxHeaders);
-  return { fileId, url: completed.body.url };
+  return { fileId, url: completed.body.url, threadId: run.threadId };
 }
 
 async function insertLegacyCatalogFile(args: {
@@ -676,18 +680,48 @@ describe("GET /api/zero/artifacts/catalog", () => {
     expect(denied.body.error.code).toBe("NOT_FOUND");
   }, 180_000);
 
-  it("refuses the catalog when the feature switch is off", async () => {
+  it("serves the catalog regardless of the Artifacts feature switch", async () => {
     const owner = await catalogActor(
-      "Artifact catalog disabled owner",
+      "Artifact catalog switch-off owner",
       bdd.user(),
       { [FeatureSwitchKey.Artifacts]: false },
     );
+    await uploadFile({
+      owner,
+      prompt: "upload despite the switch",
+      filename: "ungated.txt",
+      contentType: "text/plain",
+    });
 
-    const denied = await chat.requestListArtifactCatalog(owner.actor, [403]);
+    const catalog = await chat.listArtifactCatalog(owner.actor);
 
-    if (denied.status !== 403) {
-      throw new Error("Expected the disabled catalog to be forbidden");
-    }
-    expect(denied.body.error.code).toBe("FORBIDDEN");
+    expect(catalog.artifacts).toStrictEqual([
+      expect.objectContaining({ kind: "file", title: "ungated.txt" }),
+    ]);
+  }, 180_000);
+
+  it("scopes the catalog to one chat thread when chatThreadId is set", async () => {
+    const owner = await catalogActor("Artifact catalog thread owner");
+    const first = await uploadFile({
+      owner,
+      prompt: "upload into the first thread",
+      filename: "first-thread.txt",
+      contentType: "text/plain",
+    });
+    await uploadFile({
+      owner,
+      prompt: "upload into the second thread",
+      filename: "second-thread.txt",
+      contentType: "text/plain",
+    });
+
+    const filtered = await chat.listArtifactCatalog(owner.actor, {
+      chatThreadId: first.threadId,
+    });
+
+    expect(filtered.nextCursor).toBeNull();
+    expect(filtered.artifacts).toStrictEqual([
+      expect.objectContaining({ kind: "file", title: "first-thread.txt" }),
+    ]);
   }, 180_000);
 });

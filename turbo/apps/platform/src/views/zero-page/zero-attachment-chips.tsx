@@ -52,7 +52,7 @@ import {
   type AttachmentArtifactMetadata,
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { openArtifactSidebarPreview$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { openThreadArtifactSplitView$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   artifactPreviewUrlsMatch,
@@ -1008,7 +1008,7 @@ function ArtifactPreviewDialogActions({
   preview: AttachmentLightboxState;
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
-  const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
+  const openArtifactSidebarPreview = useSet(openThreadArtifactSplitView$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const toggleLightboxDialogFullscreen = useSet(
     toggleLightboxDialogFullscreen$,

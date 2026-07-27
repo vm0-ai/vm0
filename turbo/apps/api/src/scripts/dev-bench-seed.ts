@@ -35,7 +35,6 @@ type SeedChatMessageRow = Omit<ChatMessageInsert, "seqId"> & {
   id: string;
   createdAt: Date;
   sequenceNumber?: number | null;
-  revokesMessageId?: string | null;
   seqId?: number;
 };
 
@@ -634,7 +633,11 @@ function appendRunMessages(
 ): void {
   const runId = randomUUID();
   const hasUsage = args.runIndex < args.profile.usageCount;
-  const eventCount = Math.max(1, args.runRowCount - 2 - (hasUsage ? 1 : 0));
+  const hasFollowups = args.runIndex < args.profile.followupCount;
+  const eventCount = Math.max(
+    1,
+    args.runRowCount - 2 - (hasUsage ? 1 : 0) - (hasFollowups ? 1 : 0),
+  );
   const baseCreatedAt = interpolateDate(
     args.startAt,
     args.endAt,
@@ -646,6 +649,7 @@ function appendRunMessages(
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId,
+    eventType: "input.prompt",
     role: "user",
     content: userPromptLorem(args.profile, args.runIndex),
     createdAt: baseCreatedAt,
@@ -710,6 +714,16 @@ function appendRunMessages(
     failed,
     messageRows: args.rows.messageRows,
   });
+  appendFollowupsMessage({
+    profile: args.profile,
+    threadId: args.threadId,
+    runId,
+    runIndex: args.runIndex,
+    eventCount,
+    baseCreatedAt,
+    hasFollowups,
+    messageRows: args.rows.messageRows,
+  });
 }
 
 function appendAssistantEventMessages(args: {
@@ -732,6 +746,7 @@ function appendAssistantEventMessages(args: {
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: args.runId,
+      eventType: "output.message",
       role: "assistant",
       content: markdownLorem(args.profile, args.runIndex, eventIndex),
       sequenceNumber,
@@ -759,6 +774,7 @@ function appendUsageMessage(args: {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
+    eventType: "usage.recorded",
     role: "assistant",
     content: null,
     usagePayload: usagePayload(args.profile, args.runIndex, createdAt),
@@ -780,15 +796,37 @@ function appendLifecycleMessage(args: {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
+    eventType: args.failed ? "run.failed" : "run.completed",
     role: "assistant",
     content: null,
     error: args.failed ? "Synthetic benchmark failure" : null,
     runLifecycleEvent: args.failed ? "failed" : "completed",
-    recommendedFollowups:
-      args.runIndex < args.profile.followupCount
-        ? recommendedFollowups(args.profile, args.runIndex)
-        : null,
     createdAt: addMs(args.baseCreatedAt, 45_000 + args.eventCount * 100),
+  });
+}
+
+function appendFollowupsMessage(args: {
+  readonly profile: ThreadProfile;
+  readonly threadId: string;
+  readonly runId: string;
+  readonly runIndex: number;
+  readonly eventCount: number;
+  readonly baseCreatedAt: Date;
+  readonly hasFollowups: boolean;
+  readonly messageRows: SeedChatMessageRow[];
+}): void {
+  if (!args.hasFollowups) {
+    return;
+  }
+  args.messageRows.push({
+    id: randomUUID(),
+    chatThreadId: args.threadId,
+    runId: args.runId,
+    eventType: "output.followups",
+    role: "assistant",
+    content: null,
+    recommendedFollowups: recommendedFollowups(args.profile, args.runIndex),
+    createdAt: addMs(args.baseCreatedAt, 45_001 + args.eventCount * 100),
   });
 }
 
@@ -817,11 +855,16 @@ function appendNullRunControlRows(args: {
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: null,
+      eventType: controlIndex % 2 === 0 ? "input.prompt" : "output.thinking",
       role: controlIndex % 2 === 0 ? "user" : "assistant",
       content:
         controlIndex % 2 === 0
           ? userPromptLorem(args.profile, controlIndex)
           : null,
+      thinking:
+        controlIndex % 2 === 0
+          ? null
+          : `Synthetic background state ${String(controlIndex)}`,
       createdAt,
     });
   }
@@ -845,7 +888,7 @@ function applyRevokeMarkers(
     );
     const revoker = runUserMessageRows[revokerIndex];
     if (targetId && revoker) {
-      revoker.revokesMessageId = targetId;
+      revoker.revokesEventId = targetId;
     }
   }
 }

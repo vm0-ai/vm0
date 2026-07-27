@@ -14,7 +14,8 @@ import {
 } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
-import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
+import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ORPHANED_CHAT_MESSAGE_ERROR_CODE = "ORPHANED_QUEUED_CHAT_MESSAGES";
 
@@ -35,11 +36,11 @@ export const monitorChatMessageQueue$ = command(
       .from(chatMessages)
       .where(
         and(
-          eq(chatMessages.role, "user"),
+          chatEventTypeIn(["input.prompt"]),
           isNull(chatMessages.runId),
           isNotNull(chatMessages.content),
           isNull(chatMessages.error),
-          visibleChatMessageCondition(db),
+          visibleChatEventCondition(db),
           notExists(
             db
               .select({ id: chatMessageQueue.id })

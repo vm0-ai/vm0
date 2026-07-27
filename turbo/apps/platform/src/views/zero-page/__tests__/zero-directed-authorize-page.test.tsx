@@ -4,7 +4,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -171,7 +171,7 @@ describe("directed connector authorize page", () => {
     const threadId = "00000000-0000-4000-a000-000000000101";
     const callbackPrompt = "Re-check Gmail, then continue";
     let continuationPrompt: string | null = null;
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       if ("prompt" in body) {
         continuationPrompt = body.prompt ?? null;
       }

@@ -42,6 +42,9 @@ import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
 interface MailDraftSidebarProps {
   readonly signals: MailDraftSignals;
+  // Overrides the legacy search-param close when the thread-owned sidebar
+  // hosts the draft.
+  readonly onClose?: () => void;
 }
 
 function SidebarCloseButton({ close }: { readonly close: () => void }) {
@@ -1044,9 +1047,10 @@ function MailDraftDetail({
   );
 }
 
-export function MailDraftSidebar({ signals }: MailDraftSidebarProps) {
+export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
   const draftLoadable = useLastLoadable(signals.sidebarDraft$);
-  const close = useSet(closeMailDraftSidebar$);
+  const legacyClose = useSet(closeMailDraftSidebar$);
+  const close = onClose ?? legacyClose;
   if (draftLoadable.state === "loading") {
     return <MailDraftSidebarSkeleton close={close} />;
   }
