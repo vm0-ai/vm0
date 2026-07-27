@@ -8,7 +8,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-function mockInvoicesStory(): void {
+function mockInvoicesStory(invoicePdfUrl?: string): void {
   context.mocks.data.org({
     id: "org_1",
     slug: "test-org",
@@ -25,6 +25,7 @@ function mockInvoicesStory(): void {
           amount: 2000,
           status: "paid",
           hostedInvoiceUrl: "https://billing.stripe.com/invoice/test",
+          invoicePdfUrl,
         },
       ],
     });
@@ -76,8 +77,8 @@ describe("organization invoices settings", () => {
     }
   });
 
-  it("shows invoice history with a download link", async () => {
-    mockInvoicesStory();
+  it("downloads the PDF for an invoice month", async () => {
+    mockInvoicesStory("https://billing.stripe.com/invoice.pdf");
     await openInvoicesTab();
 
     await waitFor(() => {
@@ -86,9 +87,25 @@ describe("organization invoices settings", () => {
       expect(screen.getByText("3/15/2026")).toBeInTheDocument();
       expect(screen.getByText("$20.00")).toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Download invoice")).toHaveAttribute(
+    const downloadLink = screen.getByLabelText("Download March 2026 invoice");
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      "https://billing.stripe.com/invoice.pdf",
+    );
+    expect(downloadLink).toHaveAttribute("download", "invoice-2026-03.pdf");
+  });
+
+  it("keeps the hosted invoice link when the API omits the PDF URL", async () => {
+    mockInvoicesStory();
+    await openInvoicesTab();
+
+    const downloadLink = await screen.findByLabelText(
+      "Download March 2026 invoice",
+    );
+    expect(downloadLink).toHaveAttribute(
       "href",
       "https://billing.stripe.com/invoice/test",
     );
+    expect(downloadLink).not.toHaveAttribute("download");
   });
 });

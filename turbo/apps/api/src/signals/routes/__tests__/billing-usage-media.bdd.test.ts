@@ -196,6 +196,7 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
           amount_paid: 2500,
           status: "paid",
           hosted_invoice_url: "https://billing.stripe.test/invoices/in_bdd",
+          invoice_pdf: "https://billing.stripe.test/invoices/in_bdd.pdf",
         },
       ],
     });
@@ -208,6 +209,7 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
         amount: 2500,
         status: "paid",
         hostedInvoiceUrl: "https://billing.stripe.test/invoices/in_bdd",
+        invoicePdfUrl: "https://billing.stripe.test/invoices/in_bdd.pdf",
       },
     ]);
 

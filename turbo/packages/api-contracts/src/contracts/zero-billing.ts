@@ -447,6 +447,8 @@ const invoiceSchema = z.object({
   amount: z.number(),
   status: z.string().nullable(),
   hostedInvoiceUrl: z.string().nullable(),
+  // Optional while the frontend can overlap with API deployments using the previous response shape.
+  invoicePdfUrl: z.string().nullable().optional(),
 });
 
 const billingInvoicesResponseSchema = z.object({

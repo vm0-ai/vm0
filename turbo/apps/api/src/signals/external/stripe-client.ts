@@ -9,6 +9,7 @@ interface StripeInvoice {
   readonly amount_paid: number;
   readonly status: string | null;
   readonly hosted_invoice_url: string | null;
+  readonly invoice_pdf: string | null;
 }
 
 const {
@@ -43,6 +44,7 @@ export async function listStripeInvoices(
       amount_paid: inv.amount_paid,
       status: inv.status ?? null,
       hosted_invoice_url: inv.hosted_invoice_url ?? null,
+      invoice_pdf: inv.invoice_pdf ?? null,
     };
   });
 }

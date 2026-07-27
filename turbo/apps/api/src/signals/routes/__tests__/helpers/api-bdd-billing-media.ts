@@ -94,6 +94,7 @@ interface StripeInvoice {
   readonly amount_paid: number;
   readonly status: string | null;
   readonly hosted_invoice_url: string | null;
+  readonly invoice_pdf: string | null;
 }
 
 interface CheckoutBody {

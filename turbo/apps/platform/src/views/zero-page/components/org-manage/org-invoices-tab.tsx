@@ -88,6 +88,18 @@ export function OrgInvoicesTab() {
         {loading && <InvoiceRowsSkeleton />}
 
         {invoices.map((inv, i) => {
+          const invoiceDate = new Date(inv.date * 1000);
+          const invoiceMonth = new Intl.DateTimeFormat("en-US", {
+            month: "long",
+            year: "numeric",
+          }).format(invoiceDate);
+          const downloadUrl = inv.invoicePdfUrl ?? inv.hostedInvoiceUrl;
+          const downloadName = inv.invoicePdfUrl
+            ? `invoice-${invoiceDate.getFullYear()}-${String(
+                invoiceDate.getMonth() + 1,
+              ).padStart(2, "0")}.pdf`
+            : undefined;
+
           return (
             <div key={inv.id}>
               {i > 0 && <div className="h-0 zero-border-t mx-4" />}
@@ -110,22 +122,25 @@ export function OrgInvoicesTab() {
                   {formatAmount(inv.amount)}
                 </div>
                 <div className="flex justify-end">
-                  {inv.hostedInvoiceUrl ? (
+                  {downloadUrl ? (
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <a
-                            href={inv.hostedInvoiceUrl}
+                            href={downloadUrl}
+                            download={downloadName}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                            aria-label="Download invoice"
+                            aria-label={`Download ${invoiceMonth} invoice`}
                           >
                             <IconDownload size={14} stroke={1.5} />
                           </a>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p className="text-xs">Download invoice</p>
+                          <p className="text-xs">
+                            Download {invoiceMonth} invoice
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

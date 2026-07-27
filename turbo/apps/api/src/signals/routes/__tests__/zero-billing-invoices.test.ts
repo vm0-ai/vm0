@@ -108,6 +108,7 @@ describe("GET /api/zero/billing/invoices", () => {
           amount_paid: 4000,
           status: "paid",
           hosted_invoice_url: "https://stripe.com/invoice/inv_001",
+          invoice_pdf: "https://stripe.com/invoice/inv_001.pdf",
         },
         {
           id: "inv_002",
@@ -116,6 +117,7 @@ describe("GET /api/zero/billing/invoices", () => {
           amount_paid: 4000,
           status: "paid",
           hosted_invoice_url: "https://stripe.com/invoice/inv_002",
+          invoice_pdf: "https://stripe.com/invoice/inv_002.pdf",
         },
       ]);
     });
@@ -139,6 +141,7 @@ describe("GET /api/zero/billing/invoices", () => {
           amount: 4000,
           status: "paid",
           hostedInvoiceUrl: "https://stripe.com/invoice/inv_001",
+          invoicePdfUrl: "https://stripe.com/invoice/inv_001.pdf",
         },
         {
           id: "inv_002",
@@ -147,6 +150,7 @@ describe("GET /api/zero/billing/invoices", () => {
           amount: 4000,
           status: "paid",
           hostedInvoiceUrl: "https://stripe.com/invoice/inv_002",
+          invoicePdfUrl: "https://stripe.com/invoice/inv_002.pdf",
         },
       ],
     });

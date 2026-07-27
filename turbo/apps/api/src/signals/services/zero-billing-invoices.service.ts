@@ -33,6 +33,7 @@ export function zeroOrgInvoices(
           amount: inv.amount_paid,
           status: inv.status,
           hostedInvoiceUrl: inv.hosted_invoice_url,
+          invoicePdfUrl: inv.invoice_pdf,
         };
       }),
     };
