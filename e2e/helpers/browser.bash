@@ -9,8 +9,6 @@
 #
 # Optional env vars:
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
-#   CLERK_PUBLISHABLE_KEY / CLERK_SECRET_KEY — Enable Clerk testing-token
-#     request decoration while still exercising the hosted Clerk UI
 #   VERCEL_AUTOMATION_BYPASS_SECRET — Seed preview bypass cookies
 
 # ---------------------------------------------------------------------------
@@ -57,72 +55,7 @@ browser_setup() {
   AGENT_BROWSER_IGNORE_HTTPS_ERRORS=true \
     agent-browser set viewport 1920 1080 || return
 
-  if [[ -n "${CLERK_PUBLISHABLE_KEY:-}" || -n "${CLERK_SECRET_KEY:-}" ]]; then
-    setup_clerk_testing_interceptor || return
-  fi
-
   seed_preview_bypass_cookies || return
-}
-
-# ---------------------------------------------------------------------------
-# setup_clerk_testing_interceptor — Stabilize Clerk Frontend API handshakes
-# Fetches one testing token per Bats file, then decorates Clerk /v1 requests
-# through CDP. This only bypasses bot protection; tests still fill the real UI.
-# ---------------------------------------------------------------------------
-setup_clerk_testing_interceptor() {
-  if [[ -z "${CLERK_PUBLISHABLE_KEY:-}" || -z "${CLERK_SECRET_KEY:-}" ]]; then
-    echo "CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY must be set together" >&2
-    return 1
-  fi
-
-  local helper_dir script_path
-  if [[ -n "${BATS_TEST_DIRNAME:-}" ]]; then
-    script_path="${BATS_TEST_DIRNAME}/../../scripts/agent-browser-clerk-testing.mjs"
-  else
-    helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    script_path="${helper_dir}/../scripts/agent-browser-clerk-testing.mjs"
-  fi
-
-  if [[ -z "${CLERK_TESTING_CONFIG_FILE:-}" ]]; then
-    CLERK_TESTING_CONFIG_FILE="${BATS_FILE_TMPDIR:-${TMPDIR:-/tmp}}/clerk-testing.json"
-    export CLERK_TESTING_CONFIG_FILE
-  fi
-
-  if [[ ! -f "$CLERK_TESTING_CONFIG_FILE" ]]; then
-    NODE_TLS_REJECT_UNAUTHORIZED=1 \
-      node "$script_path" prepare "$CLERK_TESTING_CONFIG_FILE" || return
-  fi
-
-  local cdp_url interceptor_dir interceptor_log interceptor_pid
-  if ! cdp_url=$(agent-browser get cdp-url); then
-    return 1
-  fi
-  interceptor_dir="${BATS_FILE_TMPDIR:-${TMPDIR:-/tmp}}/clerk-interceptors"
-  mkdir -p "$interceptor_dir"
-  interceptor_log="${interceptor_dir}/${AGENT_BROWSER_SESSION}.log"
-
-  AGENT_BROWSER_CDP_URL="$cdp_url" NODE_TLS_REJECT_UNAUTHORIZED=1 \
-    node "$script_path" intercept "$CLERK_TESTING_CONFIG_FILE" \
-    >"$interceptor_log" 2>&1 &
-  interceptor_pid=$!
-  echo "$interceptor_pid" >"${interceptor_log}.pid"
-
-  local attempt
-  for attempt in {1..50}; do
-    if grep -qx "ready" "$interceptor_log" 2>/dev/null; then
-      return 0
-    fi
-    if ! kill -0 "$interceptor_pid" 2>/dev/null; then
-      sed -E 's/__clerk_testing_token=[^&[:space:]]+/__clerk_testing_token=[REDACTED]/g' \
-        "$interceptor_log" >&2
-      return 1
-    fi
-    sleep 0.1
-  done
-
-  kill "$interceptor_pid" 2>/dev/null || true
-  echo "Timed out configuring Clerk request interception" >&2
-  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -164,19 +97,6 @@ seed_preview_bypass_cookies() {
 # Keeps normal runs quiet and avoids screenshots/snapshots.
 # ---------------------------------------------------------------------------
 report_clerk_bootstrap_failure() {
-  local interceptor_log
-  interceptor_log="${BATS_FILE_TMPDIR:-${TMPDIR:-/tmp}}/clerk-interceptors/${AGENT_BROWSER_SESSION}.log"
-
-  sleep 0.25
-  echo "# Clerk interceptor log:" >&3
-  if [[ -f "$interceptor_log" ]]; then
-    sed -E \
-      's/(__clerk_testing_token=)[^&[:space:]]+/\1[REDACTED]/g; s/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
-      "$interceptor_log" >&3
-  else
-    echo "#   unavailable" >&3
-  fi
-
   echo "# Clerk page state:" >&3
   agent-browser eval \
     '({
@@ -203,14 +123,12 @@ report_clerk_bootstrap_failure() {
 
   echo "# Browser errors:" >&3
   agent-browser errors 2>&1 \
-    | sed -E \
-      's/(__clerk_testing_token=)[^&[:space:]]+/\1[REDACTED]/g; s/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | sed -E 's/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
     | tail -80 >&3 || true
 
   echo "# Browser console:" >&3
   agent-browser console 2>&1 \
-    | sed -E \
-      's/(__clerk_testing_token=)[^&[:space:]]+/\1[REDACTED]/g; s/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | sed -E 's/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
     | tail -80 >&3 || true
 }
 
@@ -553,16 +471,6 @@ wait_for_text_gone() {
 # Call this in teardown_file() to prevent bats from hanging.
 # ---------------------------------------------------------------------------
 browser_teardown() {
-  local pid_file pid
-  for pid_file in \
-    "${BATS_FILE_TMPDIR:-${TMPDIR:-/tmp}}"/clerk-interceptors/*.pid; do
-    if [[ ! -f "$pid_file" ]]; then
-      continue
-    fi
-    pid=$(<"$pid_file")
-    kill "$pid" 2>/dev/null || true
-  done
-
   # Close browser gracefully first
   agent-browser close 2>/dev/null || true
 
