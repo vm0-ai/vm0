@@ -5,6 +5,7 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$ } from "../signals/external/db";
+import { storageDml } from "../signals/services/storage-dml.service";
 
 interface PrivateRegistryResourceVersionFixture {
   readonly cleanup: () => Promise<void>;
@@ -30,7 +31,7 @@ export async function seedPrivateRegistryResourceVersionFixture(args: {
   const db = createStore().set(writeDb$);
   const fixtureId = randomUUID();
   const [storage] = await db
-    .insert(storages)
+    .insert(storageDml)
     .values({
       orgId: `org_registry_fixture_${fixtureId}`,
       userId: `user_registry_fixture_${fixtureId}`,
@@ -39,7 +40,7 @@ export async function seedPrivateRegistryResourceVersionFixture(args: {
       size: args.size,
       fileCount: args.fileCount,
     })
-    .returning({ id: storages.id });
+    .returning({ id: storageDml.id });
   if (!storage) {
     throw new Error("Failed to seed private registry resource storage");
   }

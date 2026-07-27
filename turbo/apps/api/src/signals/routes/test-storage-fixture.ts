@@ -15,6 +15,7 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { storageDml } from "../services/storage-dml.service";
 import { newStorageS3Location } from "../services/storage-s3-prefix.utils";
 import {
   commitStorageUploadForStorage$,
@@ -65,7 +66,7 @@ async function findOrCreateFixtureStorageId(args: {
 
   const location = newStorageS3Location(args.orgId);
   const [storage] = await args.db
-    .insert(storages)
+    .insert(storageDml)
     .values({
       id: location.storageId,
       orgId: args.orgId,
@@ -76,10 +77,10 @@ async function findOrCreateFixtureStorageId(args: {
       fileCount: 0,
     })
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name],
+      target: [storageDml.orgId, storageDml.userId, storageDml.name],
       set: { updatedAt: nowDate() },
     })
-    .returning({ id: storages.id });
+    .returning({ id: storageDml.id });
   if (!storage?.id) {
     throw new Error("Failed to create Storage fixture");
   }
