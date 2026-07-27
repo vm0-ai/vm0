@@ -44,7 +44,7 @@ runs:
         echo "Waiting for smoke branch $BRANCH_NAME ($BRANCH_ID) to become ready"
         CURRENT_STATE=""
         for attempt in {1..30}; do
-          CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r --arg id "$BRANCH_ID" '.[] | select(.id == $id) | .current_state')
+          CURRENT_STATE=$(neonctl branches get "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --output json | jq -r '.current_state')
           if [ "$CURRENT_STATE" = "ready" ]; then
             echo "Smoke branch ready"
             break
@@ -79,11 +79,5 @@ runs:
         NEON_PROJECT_ID: ${{ inputs.neon-project-id }}
       run: |
         echo "Cleaning up smoke branch $BRANCH_ID"
-        BRANCHES_JSON=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json)
-
-        if jq -e --arg id "$BRANCH_ID" '.[] | select(.id == $id)' <<< "$BRANCHES_JSON" > /dev/null; then
-          neonctl branches delete "$BRANCH_ID" --project-id "$NEON_PROJECT_ID"
-          echo "Smoke branch $BRANCH_ID deleted"
-        else
-          echo "Smoke branch $BRANCH_ID does not exist; cleanup skipped"
-        fi
+        neonctl branches delete "$BRANCH_ID" --project-id "$NEON_PROJECT_ID"
+        echo "Smoke branch $BRANCH_ID deleted"
