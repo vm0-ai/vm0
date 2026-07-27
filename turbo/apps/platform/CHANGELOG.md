@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.638.3](https://github.com/vm0-ai/vm0/compare/app-v0.638.2...app-v0.638.3) (2026-07-27)
+
+
+### Bug Fixes
+
+* **platform:** suppress browser network failure toasts ([#23142](https://github.com/vm0-ai/vm0/issues/23142)) ([abb6e4d](https://github.com/vm0-ai/vm0/commit/abb6e4de149cd4d0285dbf9256b4c29565bcff6a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.3
+    * @vm0/connectors bumped to 1.195.1
+    * @vm0/core bumped to 8.471.1
+
 ## [0.638.2](https://github.com/vm0-ai/vm0/compare/app-v0.638.1...app-v0.638.2) (2026-07-26)
 
 
