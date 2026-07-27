@@ -9,7 +9,9 @@
 function fakeIndex() {
   return {
     get: () => Promise.resolve(undefined),
+    getAll: () => Promise.resolve([]),
     openCursor: () => Promise.resolve(null),
+    openKeyCursor: () => Promise.resolve(null),
   };
 }
 
