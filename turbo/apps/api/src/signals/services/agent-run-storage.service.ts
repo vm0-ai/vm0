@@ -43,6 +43,7 @@ import {
   type ApiDispatchTimingDimensionsInput,
 } from "./api-dispatch-timing.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
+import { storageDml } from "./storage-dml.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 type ManifestStorage = LegacyStorageManifest["storages"][number];
@@ -1169,7 +1170,7 @@ async function findOrCreateArtifactStorage(
     async () => {
       const location = newStorageS3Location(args.orgId);
       return await args.db
-        .insert(storages)
+        .insert(storageDml)
         .values({
           id: location.storageId,
           orgId: args.orgId,
@@ -1179,9 +1180,9 @@ async function findOrCreateArtifactStorage(
         })
         .onConflictDoNothing()
         .returning({
-          id: storages.id,
-          headVersionId: storages.headVersionId,
-          s3Prefix: storages.s3Prefix,
+          id: storageDml.id,
+          headVersionId: storageDml.headVersionId,
+          s3Prefix: storageDml.s3Prefix,
         });
     },
   );
