@@ -95,7 +95,7 @@ wait_for_auth_completion() {
   sign_up_url="$(auth_url "/sign-up")"
   echo "# Navigating to $sign_up_url" >&3
   agent-browser open "$sign_up_url"
-  wait_for_browser_target --fn \
+  wait_for_browser_target 60000 --fn \
     "Boolean(
       document.querySelector('input[name=\"emailAddress\"]')
       && document.querySelector('input[name=\"password\"]')
@@ -148,7 +148,7 @@ wait_for_auth_completion() {
     return 0
   fi
 
-  wait_for_browser_target 'input[name="identifier"]'
+  wait_for_browser_target 60000 'input[name="identifier"]'
   dismiss_cookie_banner
 
   # Enter email and click Continue
