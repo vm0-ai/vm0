@@ -91,7 +91,10 @@ open_auth_form() {
   shift
 
   agent-browser open "$url"
-  wait_for_browser_target --timeout-seconds 30 "$@"
+  if ! wait_for_browser_target --timeout-seconds 30 "$@"; then
+    report_clerk_bootstrap_failure
+    return 1
+  fi
 }
 
 # ===========================================================================

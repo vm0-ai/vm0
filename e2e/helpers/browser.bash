@@ -127,37 +127,91 @@ setup_clerk_testing_interceptor() {
 
 # ---------------------------------------------------------------------------
 # seed_preview_bypass_cookies — Seed Vercel bypass on API and app hosts
-# Both hosts must be visited in the same browser context before auth begins.
+# Setting both cookies directly avoids booting Clerk on an intermediate app
+# navigation before the auth page opens.
 # ---------------------------------------------------------------------------
 seed_preview_bypass_cookies() {
   if [[ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
     return
   fi
 
-  local encoded_bypass
-  encoded_bypass=$(node -e \
-    'process.stdout.write(encodeURIComponent(process.argv[1]))' \
-    "$VERCEL_AUTOMATION_BYPASS_SECRET")
-
-  local base_url bypass_url blocked
+  local base_url
   for base_url in "$VM0_API_BACKEND_URL" "${VM0_AUTH_URL:-}"; do
     if [[ -z "$base_url" ]]; then
       continue
     fi
-    bypass_url="${base_url%/}/?x-vercel-protection-bypass=${encoded_bypass}&x-vercel-set-bypass-cookie=true"
-    if ! agent-browser open "$bypass_url" >/dev/null 2>&1; then
+
+    local cookie_args=(
+      --url "${base_url%/}/"
+      --sameSite Lax
+    )
+    if [[ "$base_url" == https://* ]]; then
+      cookie_args+=(--secure)
+    fi
+
+    if ! agent-browser cookies set \
+      "x-vercel-protection-bypass" \
+      "$VERCEL_AUTOMATION_BYPASS_SECRET" \
+      "${cookie_args[@]}" >/dev/null 2>&1; then
       echo "Failed to seed preview automation bypass" >&2
       return 1
     fi
-    if ! blocked=$(agent-browser eval \
-      "(document.body?.innerText ?? '').includes('Preview automation bypass required')"); then
-      return 1
-    fi
-    if [[ "$blocked" == "true" ]]; then
-      echo "Preview automation bypass was rejected" >&2
-      return 1
-    fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# report_clerk_bootstrap_failure — Emit fast, redacted failure diagnostics
+# Keeps normal runs quiet and avoids screenshots/snapshots.
+# ---------------------------------------------------------------------------
+report_clerk_bootstrap_failure() {
+  local interceptor_log
+  interceptor_log="${BATS_FILE_TMPDIR:-${TMPDIR:-/tmp}}/clerk-interceptors/${AGENT_BROWSER_SESSION}.log"
+
+  sleep 0.25
+  echo "# Clerk interceptor log:" >&3
+  if [[ -f "$interceptor_log" ]]; then
+    sed -E \
+      's/(__clerk_testing_token=)[^&[:space:]]+/\1[REDACTED]/g; s/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+      "$interceptor_log" >&3
+  else
+    echo "#   unavailable" >&3
+  fi
+
+  echo "# Clerk page state:" >&3
+  agent-browser eval \
+    '({
+      url: location.origin + location.pathname,
+      readyState: document.readyState,
+      text: (document.body?.innerText ?? "").slice(0, 500),
+      clerkDefined: typeof window.Clerk !== "undefined",
+      clerkLoaded: window.Clerk?.loaded ?? null,
+      serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
+      resources: performance.getEntriesByType("resource")
+        .map((entry) => {
+          const url = new URL(entry.name);
+          return {
+            host: url.host,
+            path: url.pathname,
+            status: entry.responseStatus ?? null,
+            duration: Math.round(entry.duration),
+          };
+        })
+        .filter((entry) =>
+          entry.host.includes("clerk") || entry.host.includes("accounts")
+        ),
+    })' >&3 2>&1 || true
+
+  echo "# Browser errors:" >&3
+  agent-browser errors 2>&1 \
+    | sed -E \
+      's/(__clerk_testing_token=)[^&[:space:]]+/\1[REDACTED]/g; s/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | tail -80 >&3 || true
+
+  echo "# Browser console:" >&3
+  agent-browser console 2>&1 \
+    | sed -E \
+      's/(__clerk_testing_token=)[^&[:space:]]+/\1[REDACTED]/g; s/(x-vercel-protection-bypass=)[^&[:space:]]+/\1[REDACTED]/g' \
+    | tail -80 >&3 || true
 }
 
 # ---------------------------------------------------------------------------
