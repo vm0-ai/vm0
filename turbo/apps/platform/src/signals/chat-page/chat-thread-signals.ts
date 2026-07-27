@@ -55,12 +55,14 @@ export interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
   readonly computerUseHostId?: string | null;
+  readonly cloudBrowserEnabled?: boolean;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly editorDocument?: EditorDocumentSnapshot;
 }
 
 export interface QueueMessageOptions {
   readonly computerUseHostId: string | null | undefined;
+  readonly cloudBrowserEnabled: boolean | undefined;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly editorDocument: EditorDocumentSnapshot;
 }
@@ -86,8 +88,10 @@ export interface ChatThreadSignals {
     [ModelProviderSelection | null, AbortSignal]
   >;
   computerUseHostId$: Computed<string | null>;
+  cloudBrowserEnabled$: Computed<boolean>;
   computerUseHostIdExplicit$: Computed<boolean>;
   setComputerUseHostId$: Command<Promise<void>, [string | null, AbortSignal]>;
+  setCloudBrowserEnabled$: Command<Promise<void>, [boolean, AbortSignal]>;
   clearComputerUseHostIdOverride$: Command<void, []>;
   sendMessage$: Command<
     Promise<boolean>,

@@ -56,6 +56,7 @@ export interface ThreadMeta {
   readonly selectedModel: string | null;
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
@@ -351,6 +352,7 @@ export const chatThreadMetaMap$ = computed((get) => {
           selectedModel: thread.selectedModel,
           serviceTier: thread.serviceTier,
           computerUseHostId: thread.computerUseHostId,
+          cloudBrowserEnabled: thread.cloudBrowserEnabled,
         },
       ];
     }),
@@ -415,6 +417,7 @@ export const touchOptimisticChatThreadSort$ = command(
       selectedModel: null,
       serviceTier: null,
       computerUseHostId: null,
+      cloudBrowserEnabled: false,
       createdAt: args.createdAt,
     } satisfies ChatThreadEvent);
   },

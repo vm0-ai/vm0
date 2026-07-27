@@ -5,6 +5,7 @@ import type {
 
 export interface EventDrivenChatThread extends ChatThreadSnapshotProjection {
   readonly sortAt: string;
+  readonly cloudBrowserEnabled: boolean;
 }
 
 function compareThreadOrder(
@@ -41,6 +42,7 @@ function applyEvent(
       selectedModel: event.selectedModel,
       serviceTier: event.serviceTier,
       computerUseHostId: event.computerUseHostId,
+      cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,
     });
     const pendingUpdates = pendingThreadUpdates.get(event.chatThreadId) ?? [];
     pendingThreadUpdates.delete(event.chatThreadId);
@@ -120,6 +122,7 @@ function applyEvent(
     threads.set(event.chatThreadId, {
       ...thread,
       computerUseHostId: event.computerUseHostId,
+      cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,
       updatedAt: event.createdAt,
     });
     return;
@@ -142,6 +145,7 @@ export function replayChatThreadEvents(
       selectedModel: thread.selectedModel ?? null,
       serviceTier: thread.serviceTier ?? null,
       computerUseHostId: thread.computerUseHostId ?? null,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
     });
   }
   const pendingThreadUpdates = new Map<string, ChatThreadEvent[]>();

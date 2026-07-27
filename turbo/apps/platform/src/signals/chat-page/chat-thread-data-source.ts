@@ -33,6 +33,7 @@ export interface PatchModelSelectionArgs {
 export interface PatchComputerUseHostArgs {
   threadId: string;
   computerUseHostId: string | null;
+  cloudBrowserEnabled: boolean;
 }
 
 export interface AppendQueuedMessageArgs {
@@ -48,6 +49,7 @@ export interface AppendQueuedMessageArgs {
   generationTemplate: GenerationTemplateRequest | undefined;
   structuredPrompt?: UserMessageDocument;
   computerUseHostId?: string | null;
+  cloudBrowserEnabled?: boolean;
 }
 
 export interface RecallMessageArgs {

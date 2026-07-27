@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
 import {
+  zeroBrowserAuthorizationRequestsContract,
   zeroBrowserContract,
   type ZeroBrowserCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-browser";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { HttpResponse, http } from "msw";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
@@ -15,7 +17,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { createDeferredPromise } from "../../utils";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -39,6 +40,14 @@ function client() {
   return setupApp({ context })(zeroBrowserContract);
 }
 
+function authorizationClient() {
+  return setupApp({ context })(zeroBrowserAuthorizationRequestsContract);
+}
+
+function chatThreadsClient() {
+  return setupApp({ context })(chatThreadsContract);
+}
+
 function cronClient() {
   return setupApp({ context })(cronBrowserReconcileContract);
 }
@@ -60,6 +69,22 @@ async function requestBrowserCreate(
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
+    },
+  );
+}
+
+async function requestBrowserUse(
+  headers: Readonly<Record<string, string>>,
+): Promise<Response> {
+  return await createApp({ signal: context.signal }).request(
+    "/api/zero/browsers/use",
+    {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
     },
   );
 }
@@ -189,6 +214,7 @@ async function createClaimedChatRun(
     {
       agentId,
       prompt,
+      cloudBrowserEnabled: true,
     },
     [201],
   );
@@ -217,7 +243,112 @@ describe("zero browser route", () => {
     clearMockNow();
   });
 
-  it("shares one profile across concurrent thread browser sessions", async () => {
+  it("keeps managed browser access off for a default chat thread", async () => {
+    const { runs, chat, actor, agent } = await setupBrowserScenario();
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "Try to open a managed browser without enabling it",
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected a chat run");
+    }
+    const browserToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      sent.body.runId,
+      ["browser:read", "browser:write"],
+    );
+
+    const rejected = await requestBrowserUse({
+      authorization: `Bearer ${browserToken}`,
+    });
+    expect(rejected.status).toBe(403);
+    await expect(rejected.json()).resolves.toMatchObject({
+      error: {
+        code: "BROWSER_AUTHORIZATION_REQUIRED",
+        message: "Cloud browser is not enabled for this chat thread",
+      },
+    });
+  });
+
+  it("lets an agent request cloud browser access for its chat thread", async () => {
+    const { routeMocks, runs, chat, actor, agent } =
+      await setupBrowserScenario();
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "Ask the user to enable a cloud browser",
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected a chat run");
+    }
+    const runToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      sent.body.runId,
+      [],
+    );
+    const created = await accept(
+      authorizationClient().create({
+        headers: { authorization: `Bearer ${runToken}` },
+        body: {},
+      }),
+      [200],
+    );
+    const requestToken = decodeURIComponent(
+      new URL(created.body.authorizationUrl).pathname.split("/").at(-1) ?? "",
+    );
+    expect(requestToken).toMatch(/^vm0_browser_authorization_request_/u);
+
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const pending = await accept(
+      authorizationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { requestToken },
+      }),
+      [200],
+    );
+    expect(pending.body).toMatchObject({
+      completedAt: null,
+      cloudBrowserEnabled: false,
+    });
+
+    const applied = await accept(
+      authorizationClient().apply({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { requestToken },
+        body: {},
+      }),
+      [200],
+    );
+    expect(applied.body).toStrictEqual({
+      ok: true,
+      cloudBrowserEnabled: true,
+    });
+
+    const events = await accept(
+      chatThreadsClient().events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    expect(events.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "computer_use_host_updated",
+        chatThreadId: sent.body.threadId,
+        computerUseHostId: null,
+        cloudBrowserEnabled: true,
+      }),
+    );
+  });
+
+  it("isolates profiles across concurrent thread browser sessions", async () => {
     const { runs, chat, webhooks, actor, agent } = await setupBrowserScenario();
     const first = await createClaimedChatRun(
       chat,
@@ -231,20 +362,13 @@ describe("zero browser route", () => {
       runs,
       actor,
       agent.agentId,
-      "Use the shared profile from another thread",
+      "Use a separate profile from another thread",
     );
 
-    const profileId = randomUUID();
+    const profileIds = [randomUUID(), randomUUID()] as const;
     const providerIds = [randomUUID(), randomUUID()] as const;
     const providerCreateBodies: unknown[] = [];
     const deletedProfiles: string[] = [];
-    const profileCreateStarted = createDeferredPromise<void>(context.signal);
-    const releaseProfileCreate = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!releaseProfileCreate.settled()) {
-        releaseProfileCreate.resolve(undefined);
-      }
-    });
     let profileCreates = 0;
     let providerCreates = 0;
     let providerStops = 0;
@@ -257,15 +381,14 @@ describe("zero browser route", () => {
           .strictObject({ name: z.string() })
           .parse(await request.json());
         expect(body.name).toMatch(/^vm0-browser-profile-[0-9a-f-]{36}$/u);
+        const profileId = profileIds[profileCreates];
         profileCreates += 1;
-        if (profileCreates > 1) {
+        if (!profileId) {
           return HttpResponse.json(
             { error: "unexpected profile create" },
             { status: 500 },
           );
         }
-        profileCreateStarted.resolve(undefined);
-        await releaseProfileCreate.promise;
         return HttpResponse.json(providerProfile(profileId, body.name), {
           status: 201,
         });
@@ -319,8 +442,6 @@ describe("zero browser route", () => {
         maxCredits: 150,
       },
     });
-    await profileCreateStarted.promise;
-    releaseProfileCreate.resolve(undefined);
     const [created, createdInOtherThread] = await Promise.all([
       accept(firstCreateRequest, [201]),
       accept(otherCreateRequest, [201]),
@@ -345,21 +466,23 @@ describe("zero browser route", () => {
     expect(createdInOtherThread.body.browser.id).not.toBe(
       created.body.browser.id,
     );
-    expect(profileCreates).toBe(1);
+    expect(profileCreates).toBe(2);
     expect(providerCreates).toBe(2);
-    expect(providerCreateBodies).toStrictEqual(
-      Array.from({ length: 2 }, () => {
-        return {
-          profileId,
-          proxyCountryCode: null,
-          timeout: 240,
-          browserScreenWidth: 1440,
-          browserScreenHeight: 900,
-          allowResizing: false,
-          enableRecording: false,
-        };
+    expect(
+      providerCreateBodies.map((body) => {
+        return z
+          .strictObject({
+            profileId: z.uuid(),
+            proxyCountryCode: z.null(),
+            timeout: z.literal(240),
+            browserScreenWidth: z.literal(1440),
+            browserScreenHeight: z.literal(900),
+            allowResizing: z.literal(false),
+            enableRecording: z.literal(false),
+          })
+          .parse(body).profileId;
       }),
-    );
+    ).toStrictEqual(expect.arrayContaining([...profileIds]));
     expect(deletedProfiles).toStrictEqual([]);
 
     const copiedToAnotherThread = await createApp({
@@ -383,7 +506,7 @@ describe("zero browser route", () => {
       error: { code: "BROWSER_THREAD_ACTIVE" },
     });
     expect(providerCreates).toBe(2);
-    expect(profileCreates).toBe(1);
+    expect(profileCreates).toBe(2);
     expect(deletedProfiles).toStrictEqual([]);
 
     // A terminal run leaves its browser live so the user can keep using it, and
@@ -462,6 +585,7 @@ describe("zero browser route", () => {
         {
           agentId: agent.agentId,
           prompt,
+          cloudBrowserEnabled: true,
         },
         [201],
       );

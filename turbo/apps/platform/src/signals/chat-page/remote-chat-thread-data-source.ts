@@ -96,6 +96,7 @@ const patchModelSelection$ = command(
         selectedModel: modelSelection?.selectedModel ?? null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt,
       } satisfies ChatThreadEvent);
       set(registerOptimisticChatThreadEvent$, {
@@ -108,6 +109,7 @@ const patchModelSelection$ = command(
         serviceTier:
           modelSelection?.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt,
       } satisfies ChatThreadEvent);
     }
@@ -132,7 +134,11 @@ const patchModelSelection$ = command(
 const patchComputerUseHost$ = command(
   async (
     { get, set },
-    { threadId, computerUseHostId }: PatchComputerUseHostArgs,
+    {
+      threadId,
+      computerUseHostId,
+      cloudBrowserEnabled,
+    }: PatchComputerUseHostArgs,
     signal: AbortSignal,
   ) => {
     const eventId = crypto.randomUUID();
@@ -147,6 +153,7 @@ const patchComputerUseHost$ = command(
         selectedModel: null,
         serviceTier: null,
         computerUseHostId,
+        cloudBrowserEnabled,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
@@ -154,7 +161,7 @@ const patchComputerUseHost$ = command(
     await accept(
       client.update({
         params: { id: threadId },
-        body: { computerUseHostId, eventId },
+        body: { computerUseHostId, cloudBrowserEnabled, eventId },
         fetchOptions: { signal },
       }),
       [204],
@@ -176,6 +183,7 @@ const appendQueuedMessage$ = command(
       generationTemplate,
       structuredPrompt,
       computerUseHostId,
+      cloudBrowserEnabled,
       runOptions,
       realAgentInPreview,
     }: AppendQueuedMessageArgs,
@@ -196,6 +204,7 @@ const appendQueuedMessage$ = command(
           ...(runOptions ? { runOptions } : {}),
           ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
           ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+          ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
           attachFiles: attachments ?? undefined,
         },
         fetchOptions: { signal },

@@ -219,6 +219,7 @@ interface ThreadListItem {
   selectedModel?: string | null;
   serviceTier?: "priority" | null;
   computerUseHostId?: string | null;
+  cloudBrowserEnabled?: boolean;
 }
 
 const UUID_PATTERN =
@@ -238,6 +239,7 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       selectedModel: thread.selectedModel ?? null,
       serviceTier: thread.serviceTier ?? null,
       computerUseHostId: thread.computerUseHostId ?? null,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
     };
   });
 }
@@ -395,6 +397,7 @@ export function mockChatLifecycle(
     selectedModel?: string | null;
     codexServiceTier?: CodexServiceTier | null;
     computerUseHostId?: string | null;
+    cloudBrowserEnabled?: boolean;
     activeRunIds?: string[];
     onQueuedMessageAppend?: (body: {
       content?: string;
@@ -416,6 +419,7 @@ export function mockChatLifecycle(
     }) => void;
     onComputerUseHostUpdate?: (body: {
       computerUseHostId: string | null;
+      cloudBrowserEnabled?: boolean;
     }) => void;
     /**
      * Promise the append handler awaits before responding. Lets a test observe
@@ -455,6 +459,7 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
       computerUseHostId?: string | null;
+      cloudBrowserEnabled?: boolean;
       revokesMessageId?: string;
     }) => void;
     onSendRequest?: (body: {
@@ -464,6 +469,8 @@ export function mockChatLifecycle(
       structuredPrompt?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
+      computerUseHostId?: string | null;
+      cloudBrowserEnabled?: boolean;
     }) => void;
     onThreadCreate?: (body: {
       clientThreadId?: string;
@@ -496,6 +503,7 @@ export function mockChatLifecycle(
   let codexServiceTier: CodexServiceTier | null =
     options?.codexServiceTier ?? null;
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
+  let cloudBrowserEnabled = options?.cloudBrowserEnabled ?? false;
   let latestThreadEventId: string | null = null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
@@ -595,6 +603,7 @@ export function mockChatLifecycle(
         selectedModel,
         serviceTier: codexServiceTier === "fast" ? ("priority" as const) : null,
         computerUseHostId,
+        cloudBrowserEnabled,
       },
     ];
   };
@@ -740,6 +749,7 @@ export function mockChatLifecycle(
     model?: string;
     runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
+    cloudBrowserEnabled?: boolean;
     revokesMessageId?: string;
   }) => {
     if (options?.sendGate) {
@@ -749,6 +759,13 @@ export function mockChatLifecycle(
       runPrompt = body.prompt;
     }
     runStructuredPrompt = body.structuredPrompt;
+    if (body.cloudBrowserEnabled === true) {
+      computerUseHostId = null;
+      cloudBrowserEnabled = true;
+    } else if (body.computerUseHostId) {
+      computerUseHostId = body.computerUseHostId;
+      cloudBrowserEnabled = false;
+    }
     rememberRunUserMessageId(body.clientMessageId);
     const modelSelection = modelSelectionFromBody(body);
     options?.onRunCreate?.({ ...body, modelSelection });
@@ -855,9 +872,13 @@ export function mockChatLifecycle(
     chatThreadComputerUseHostContract.update,
     ({ body, respond }) => {
       computerUseHostId = body.computerUseHostId;
+      cloudBrowserEnabled =
+        body.cloudBrowserEnabled ??
+        (body.computerUseHostId ? false : cloudBrowserEnabled);
       latestThreadEventId = body.eventId ?? crypto.randomUUID();
       options?.onComputerUseHostUpdate?.({
         computerUseHostId: body.computerUseHostId,
+        cloudBrowserEnabled: body.cloudBrowserEnabled,
       });
       return respond(204);
     },
@@ -920,6 +941,8 @@ export function mockChatLifecycle(
       structuredPrompt: body.structuredPrompt,
       model: body.model,
       modelSelection: modelSelectionFromBody(body),
+      computerUseHostId: body.computerUseHostId,
+      cloudBrowserEnabled: body.cloudBrowserEnabled,
     });
     threadId = body.clientThreadId ?? threadId;
     const responseBody = hasActiveRun()

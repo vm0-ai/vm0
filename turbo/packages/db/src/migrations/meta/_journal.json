@@ -4880,6 +4880,13 @@
       "when": 1785126000681,
       "tag": "0696_abnormal_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 697,
+      "version": "7",
+      "when": 1785130943141,
+      "tag": "0697_military_deadpool",
+      "breakpoints": true
     }
   ]
 }

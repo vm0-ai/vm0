@@ -7,6 +7,7 @@ import {
   artifactsListResponseSchema,
   chatMessagesContract,
   chatThreadMessagesContract,
+  chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
   chatThreadsContract,
   generationTemplateRequestSchema,
@@ -225,6 +226,36 @@ describe("chat thread model request compatibility", () => {
     });
     expect(parsed.data).not.toHaveProperty("modelProvider");
     expect(parsed.data).not.toHaveProperty("modelSelection");
+  });
+});
+
+describe("chat thread computer access contract", () => {
+  const hostId = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts Cloud browser as an explicit thread selection", () => {
+    expect(
+      chatThreadComputerUseHostContract.update.body.safeParse({
+        computerUseHostId: null,
+        cloudBrowserEnabled: true,
+      }),
+    ).toMatchObject({ success: true });
+  });
+
+  it("rejects selecting Cloud browser and Computer Use together", () => {
+    expect(
+      chatMessagesContract.send.body.safeParse({
+        agentId: "agent-1",
+        prompt: "Browse from both places",
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: true,
+      }),
+    ).toMatchObject({ success: false });
+    expect(
+      chatThreadComputerUseHostContract.update.body.safeParse({
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: true,
+      }),
+    ).toMatchObject({ success: false });
   });
 });
 

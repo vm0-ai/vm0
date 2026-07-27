@@ -4065,11 +4065,13 @@ function useChatComposerModel(
 function useChatThreadComposerSendState({
   thread,
   computerUseHostIdForSend,
-  clearComputerUseHostOverride,
+  cloudBrowserEnabledForSend,
+  clearComputerAccessOverride,
 }: {
   thread: ChatThreadSignals;
   computerUseHostIdForSend: string | null | undefined;
-  clearComputerUseHostOverride: () => void;
+  cloudBrowserEnabledForSend: boolean | undefined;
+  clearComputerAccessOverride: () => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
@@ -4088,13 +4090,22 @@ function useChatThreadComposerSendState({
           computerUseHostIdForSend === undefined
             ? {}
             : { computerUseHostId: computerUseHostIdForSend };
+        const cloudBrowserPatch =
+          cloudBrowserEnabledForSend === undefined
+            ? {}
+            : { cloudBrowserEnabled: cloudBrowserEnabledForSend };
         const sent = await send(
           text,
-          { ...computerUsePatch, generationTemplate, editorDocument },
+          {
+            ...computerUsePatch,
+            ...cloudBrowserPatch,
+            generationTemplate,
+            editorDocument,
+          },
           rootSignal,
         );
         if (sent) {
-          clearComputerUseHostOverride();
+          clearComputerAccessOverride();
         }
       })(),
       Reason.DomCallback,
@@ -4109,13 +4120,19 @@ function useChatThreadComposerSendState({
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
+        const cloudBrowserEnabled = cloudBrowserEnabledForSend;
         const queued = await queueMessage(
           text,
-          { computerUseHostId, generationTemplate, editorDocument },
+          {
+            computerUseHostId,
+            cloudBrowserEnabled,
+            generationTemplate,
+            editorDocument,
+          },
           rootSignal,
         );
         if (queued) {
-          clearComputerUseHostOverride();
+          clearComputerAccessOverride();
         }
       })(),
       Reason.DomCallback,
@@ -4146,7 +4163,11 @@ function useChatThreadComputerUse(
       ? computerUseHostsLoadable.data
       : [];
   const storedComputerUseHostId = useGet(thread.computerUseHostId$);
+  const cloudBrowserEnabled = useGet(thread.cloudBrowserEnabled$);
   const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
+  const featureSwitches = useGet(featureSwitch$);
+  const cloudBrowserAvailable =
+    featureSwitches[FeatureSwitchKey.ZeroBrowser] ?? false;
   const selectedComputerUseHostId =
     computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0
       ? resolveSelectedComputerUseHostId(
@@ -4159,20 +4180,28 @@ function useChatThreadComputerUse(
     selectedComputerUseHostId,
   );
   const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
-  const clearComputerUseHostOverride = useSet(
+  const setCloudBrowserEnabled = useSet(thread.setCloudBrowserEnabled$);
+  const clearComputerAccessOverride = useSet(
     thread.clearComputerUseHostIdOverride$,
   );
   const computerUseHostIdForSend = computerUseHostIdExplicit
     ? selectedComputerUseHostId
     : undefined;
+  const cloudBrowserEnabledForSend = computerUseHostIdExplicit
+    ? cloudBrowserEnabled
+    : undefined;
   const handleComputerUseHostChange = (hostId: string | null) => {
     detach(setComputerUseHostId(hostId, pageSignal), Reason.DomCallback);
+  };
+  const handleCloudBrowserChange = (enabled: boolean) => {
+    detach(setCloudBrowserEnabled(enabled, pageSignal), Reason.DomCallback);
   };
 
   return {
     selectedComputerUseHostId,
     computerUseHostIdForSend,
-    clearComputerUseHostOverride,
+    cloudBrowserEnabledForSend,
+    clearComputerAccessOverride,
     computerUse: {
       hosts: visibleHosts,
       loading:
@@ -4180,6 +4209,9 @@ function useChatThreadComputerUse(
         computerUseHosts.length === 0,
       selectedHostId: selectedComputerUseHostId,
       onChange: handleComputerUseHostChange,
+      cloudBrowserAvailable,
+      cloudBrowserEnabled: cloudBrowserAvailable && cloudBrowserEnabled,
+      onCloudBrowserChange: handleCloudBrowserChange,
       downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
     },
   };
@@ -4276,7 +4308,8 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const pageSignal = useGet(pageSignal$);
   const {
     computerUseHostIdForSend,
-    clearComputerUseHostOverride,
+    cloudBrowserEnabledForSend,
+    clearComputerAccessOverride,
     computerUse,
   } = useChatThreadComputerUse(thread, pageSignal);
 
@@ -4295,7 +4328,8 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     useChatThreadComposerSendState({
       thread,
       computerUseHostIdForSend,
-      clearComputerUseHostOverride,
+      cloudBrowserEnabledForSend,
+      clearComputerAccessOverride,
     });
   const skeletonVisible = hasMessagesResolved === undefined;
   const composerSending = sendButtonStatus === "sending";

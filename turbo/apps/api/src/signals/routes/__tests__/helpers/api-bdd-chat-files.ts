@@ -114,6 +114,7 @@ type BddSendMessageBody =
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
       readonly computerUseHostId?: string | null;
+      readonly cloudBrowserEnabled?: boolean;
       readonly clientMessageId?: string;
       readonly chatThreadSortEventId?: string;
       readonly realAgentInPreview?: boolean;
