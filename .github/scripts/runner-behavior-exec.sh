@@ -131,7 +131,6 @@ start_netfilter_trace() {
   NETFILTER_TRACE_FILE=$(mktemp "/tmp/vm0-${SVC}-netfilter-trace.XXXXXX")
   sudo xtables-monitor --trace --ipv4 >"$NETFILTER_TRACE_FILE" 2>&1 &
   NETFILTER_TRACE_PID=$!
-  sleep 0.1
   sudo kill -0 "$NETFILTER_TRACE_PID" 2>/dev/null \
     || fail "xtables-monitor exited before DNS trace probes"
 }
@@ -572,28 +571,45 @@ if printf '%s\n' "$ATTACKER_TCP_TRACE_RULE" \
 fi
 
 start_netfilter_trace
-send_dns_trace_probes "$ATTACKER_NS" "8.8.8.8" \
-  || fail "DNS trace probes failed"
-sleep 0.1
-stop_netfilter_trace || fail "xtables-monitor failed while capturing DNS probes"
-
-UDP_TRACE_EVENT=$(grep -F -- "raw:PREROUTING:" "$NETFILTER_TRACE_FILE" \
-  | grep -F -- "-p udp" \
-  | grep -F -- "--dport 53" \
-  | grep -E -- "--length 67(:67)?([[:space:]]|$)" \
-  | grep -F -- "--comment ${ATTACKER_NS}" \
-  | grep -F -- "-j TRACE" \
-  | tail -n 1 || true)
-TCP_TRACE_EVENT=$(grep -F -- "nat:PREROUTING:" "$NETFILTER_TRACE_FILE" \
-  | grep -F -- "-p tcp" \
-  | grep -F -- "--dport 53" \
-  | grep -F -- "--comment ${ATTACKER_NS}" \
-  | grep -F -- "-j REDIRECT" \
-  | head -n 1 || true)
+UDP_TRACE_EVENT=""
+TCP_TRACE_EVENT=""
+for _ in $(seq 1 3); do
+  send_dns_trace_probes "$ATTACKER_NS" "8.8.8.8" \
+    || fail "DNS trace probes failed"
+  for _ in $(seq 1 20); do
+    UDP_TRACE_EVENT=$(grep -F -- "raw:PREROUTING:" "$NETFILTER_TRACE_FILE" \
+      | grep -F -- "-p udp" \
+      | grep -F -- "--dport 53" \
+      | grep -E -- "--length 67(:67)?([[:space:]]|$)" \
+      | grep -F -- "--comment ${ATTACKER_NS}" \
+      | grep -F -- "-j TRACE" \
+      | tail -n 1 || true)
+    TCP_TRACE_EVENT=$(grep -F -- "nat:PREROUTING:" "$NETFILTER_TRACE_FILE" \
+      | grep -F -- "-p tcp" \
+      | grep -F -- "--dport 53" \
+      | grep -F -- "--comment ${ATTACKER_NS}" \
+      | grep -F -- "-j REDIRECT" \
+      | head -n 1 || true)
+    if [ -n "$UDP_TRACE_EVENT" ] && [ -n "$TCP_TRACE_EVENT" ]; then
+      UDP_TRACE_ID=$(printf '%s\n' "$UDP_TRACE_EVENT" | awk '{print $3}')
+      TCP_TRACE_ID=$(printf '%s\n' "$TCP_TRACE_EVENT" | awk '{print $3}')
+      if grep -E "TRACE: 2 ${UDP_TRACE_ID} filter:INPUT:policy:ACCEPT" \
+        "$NETFILTER_TRACE_FILE" >/dev/null \
+        && grep -E "TRACE: 2 ${TCP_TRACE_ID} filter:INPUT:policy:ACCEPT" \
+          "$NETFILTER_TRACE_FILE" >/dev/null; then
+        break 2
+      fi
+    fi
+    sudo kill -0 "$NETFILTER_TRACE_PID" 2>/dev/null \
+      || fail "xtables-monitor exited while capturing DNS probes"
+    sleep 0.05
+  done
+done
 [ -n "$UDP_TRACE_EVENT" ] \
   || fail "xtables-monitor did not capture the UDP readiness TRACE rule"
 [ -n "$TCP_TRACE_EVENT" ] \
   || fail "xtables-monitor did not capture the TCP DNS redirect TRACE rule"
+stop_netfilter_trace || fail "xtables-monitor failed while capturing DNS probes"
 UDP_TRACE_ID=$(printf '%s\n' "$UDP_TRACE_EVENT" | awk '{print $3}')
 TCP_TRACE_ID=$(printf '%s\n' "$TCP_TRACE_EVENT" | awk '{print $3}')
 UDP_TRACE_PACKET=$(grep -E \

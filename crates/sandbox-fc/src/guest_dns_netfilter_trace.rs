@@ -1229,15 +1229,22 @@ mod tests {
             .await
             .unwrap();
 
-        for _ in 0..50 {
-            if matches!(
-                lock_state(&monitor.reader.state).status,
-                TraceMonitorStatus::Unavailable(_)
-            ) {
-                break;
+        timeout(Duration::from_secs(2), async {
+            loop {
+                let notified = monitor.reader.changed.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                if matches!(
+                    lock_state(&monitor.reader.state).status,
+                    TraceMonitorStatus::Unavailable(_)
+                ) {
+                    break;
+                }
+                notified.await;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+        })
+        .await
+        .expect("monitor process should report its exit");
         {
             let state = lock_state(&monitor.reader.state);
             assert!(matches!(state.status, TraceMonitorStatus::Unavailable(_)));
