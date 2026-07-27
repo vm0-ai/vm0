@@ -2187,12 +2187,10 @@ describe("connectors page", () => {
 
     click(buttonByText("Connect Stripe", dialog));
     click(await within(dialog).findByTestId("connector-oauth-device-open"));
-    await expect(
-      screen.findByText("Failed to fetch"),
-    ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
     });
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   });
 
   it("connects a manual token connector", async () => {
@@ -2842,7 +2840,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("toasts external-code transport errors and restores a retryable state", async () => {
+  it("suppresses external-code transport error toasts and restores a retryable state", async () => {
     context.mocks.http.post(
       "*/api/zero/connectors/aws/external-code/sessions/:sessionId/complete",
       () => {
@@ -2852,12 +2850,10 @@ describe("connectors page", () => {
 
     const { complete } = await setupAwsExternalCodeConnection();
     click(complete);
-    await expect(
-      screen.findByText("Failed to fetch"),
-    ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(complete).toBeEnabled();
     });
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   });
 
   it("uses auth method help text for PlayStation external-code connection", async () => {

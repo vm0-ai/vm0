@@ -39,9 +39,20 @@ function requestErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
 }
 
+function isNetworkRequestError(error: unknown): boolean {
+  return (
+    error instanceof TypeError &&
+    (error.message === "Failed to fetch" ||
+      error.message === "Load failed" ||
+      error.message.startsWith("NetworkError"))
+  );
+}
+
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
  * Otherwise shows a toast and throws an `ApiError`.
+ *
+ * Browser network failures propagate without showing their raw error message.
  *
  * When `signal` is provided, a rejection after that signal aborts propagates
  * as cancellation without showing a toast.
@@ -57,7 +68,9 @@ async function accept<
   const result = await onRejection(promise, (error) => {
     if (!isAbortError(error)) {
       signal?.throwIfAborted();
-      toast.error(requestErrorMessage(error));
+      if (!isNetworkRequestError(error)) {
+        toast.error(requestErrorMessage(error));
+      }
     }
   });
   if ((codes as number[]).includes(result.status)) {
