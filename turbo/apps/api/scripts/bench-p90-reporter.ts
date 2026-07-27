@@ -38,7 +38,7 @@ function fullName(task: { name?: string; suite?: unknown }): string {
 }
 
 // Vitest custom reporters are loaded from the default export.
-// oxlint-disable-next-line eslint-plugin-import(no-default-export)
+// oxlint-disable-next-line import/no-default-export
 export default class BenchP90Reporter implements Reporter {
   onTestRunEnd(
     testModules: readonly TestModule[],

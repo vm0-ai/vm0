@@ -22,7 +22,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Cancel and await older runs for the queued PR
         env:
@@ -70,7 +70,7 @@ jobs:
       runner-binary-hit-targets: ${{ steps.binary-plan.outputs.hit-targets }}
       runner-binary-miss-count: ${{ steps.binary-plan.outputs.miss-count }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -309,7 +309,7 @@ jobs:
       TARGET_TRIPLE: ${{ matrix.target }}
       RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE: ghcr.io/vm0-ai/vm0-toolchain-rust@sha256:45b223a0b80494cc0d6517807c37d7a244799a19b476325a5d6dde82865e845c
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Configure git safe directory
         shell: bash
@@ -398,7 +398,7 @@ jobs:
       TARGET_TRIPLE: ${{ matrix.target }}
       PROFILE: vm0/default
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Resolve runner binary input
         id: binary-input
@@ -526,7 +526,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.runner-binary-compile-matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Resolve runner binary input
         id: binary-input
