@@ -11,6 +11,7 @@ import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { storageDml } from "../services/storage-dml.service";
 import { systemStoragePresignedUrlCacheKey } from "../services/system-storage-presigned-url-cache.service";
 import {
   isTestEndpointAllowed,
@@ -132,7 +133,7 @@ async function seedStorageVersionForAction(
   signal: AbortSignal,
 ) {
   const [storage] = await db
-    .insert(storages)
+    .insert(storageDml)
     .values({
       orgId: body.org_id,
       userId: body.user_id,
@@ -142,14 +143,14 @@ async function seedStorageVersionForAction(
       fileCount: 1,
     })
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name],
+      target: [storageDml.orgId, storageDml.userId, storageDml.name],
       set: {
         s3Prefix: sql`excluded.s3_prefix`,
         size: sql`excluded.size`,
         fileCount: sql`excluded.file_count`,
       },
     })
-    .returning({ id: storages.id });
+    .returning({ id: storageDml.id });
   signal.throwIfAborted();
   if (!storage) {
     throw new Error("Failed to seed storage");

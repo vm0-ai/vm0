@@ -13,6 +13,7 @@ import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { storageDml } from "../services/storage-dml.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -90,7 +91,7 @@ async function seedStorageRows(
   versions: readonly TestCronSyncSkillsStateSkillVersionSeed[],
 ) {
   const storageRows = await db
-    .insert(storages)
+    .insert(storageDml)
     .values(
       versions.map((version) => {
         return {
@@ -104,14 +105,14 @@ async function seedStorageRows(
       }),
     )
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name],
+      target: [storageDml.orgId, storageDml.userId, storageDml.name],
       set: {
         s3Prefix: sql`excluded.s3_prefix`,
         size: sql`excluded.size`,
         fileCount: sql`excluded.file_count`,
       },
     })
-    .returning({ id: storages.id, name: storages.name });
+    .returning({ id: storageDml.id, name: storageDml.name });
 
   return new Map(
     storageRows.map((row) => {
