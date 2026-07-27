@@ -31,7 +31,7 @@ function chatThreadSidebarLayout(
   };
 }
 
-export function ChatThreadSidebarResizeHandle() {
+function ChatThreadSidebarResizeHandle() {
   const startResize = useSet(startChatThreadSidebarResize$);
   const pageSignal = useGet(pageSignal$);
 
