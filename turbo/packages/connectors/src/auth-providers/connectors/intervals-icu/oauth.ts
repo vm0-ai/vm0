@@ -101,10 +101,3 @@ export async function exchangeIntervalsIcuCode(
     },
   };
 }
-
-/**
- * Get the primary secret name for Intervals.icu connector (the access token).
- */
-export function getIntervalsIcuSecretName(): string {
-  return "INTERVALS_ICU_ACCESS_TOKEN";
-}

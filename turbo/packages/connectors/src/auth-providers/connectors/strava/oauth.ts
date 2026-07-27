@@ -216,10 +216,3 @@ async function fetchStravaAthleteInfo(
     email: null,
   };
 }
-
-/**
- * Get the primary secret name for Strava connector (the access token).
- */
-export function getStravaSecretName(): string {
-  return "STRAVA_ACCESS_TOKEN";
-}

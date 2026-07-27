@@ -13,8 +13,6 @@ const BASE44_DEVICE_AUTH_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
-export const BASE44_ACCESS_SECRET_NAME = "BASE44_ACCESS_TOKEN";
-export const BASE44_REFRESH_SECRET_NAME = "BASE44_REFRESH_TOKEN";
 
 const deviceAuthResponseSchema = z.object({
   device_code: z.string(),

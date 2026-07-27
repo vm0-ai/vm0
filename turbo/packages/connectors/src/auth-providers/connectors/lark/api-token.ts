@@ -16,7 +16,7 @@ type LarkTenantAccessTokenResponse = z.infer<
   typeof larkTenantAccessTokenResponseSchema
 >;
 
-export interface LarkTenantAccessTokenResult {
+interface LarkTenantAccessTokenResult {
   readonly accessToken: string;
   readonly expiresIn: number;
 }

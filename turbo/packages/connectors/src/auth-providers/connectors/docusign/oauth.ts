@@ -240,10 +240,3 @@ async function fetchDocuSignUserInfo(
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for DocuSign connector (the access token).
- */
-export function getDocuSignSecretName(): string {
-  return "DOCUSIGN_ACCESS_TOKEN";
-}

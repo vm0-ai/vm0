@@ -131,10 +131,3 @@ async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
     name: data.emailAddress ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Gmail connector (the access token).
- */
-export function getGmailSecretName(): string {
-  return "GMAIL_ACCESS_TOKEN";
-}

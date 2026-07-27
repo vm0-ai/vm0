@@ -15,10 +15,8 @@ import { z } from "zod";
 import { OAuthProviderHttpError } from "../../oauth/error";
 import { ProviderResponseError } from "../../provider-error";
 
-export const AWS_SIGNIN_CROSS_DEVICE_CLIENT_ID =
-  "arn:aws:signin:::devtools/cross-device";
-export const AWS_DEFAULT_SIGNIN_REGION = "us-east-1";
-export const AWS_DEFAULT_RUNTIME_REGION = "us-east-1";
+const AWS_DEFAULT_SIGNIN_REGION = "us-east-1";
+const AWS_DEFAULT_RUNTIME_REGION = "us-east-1";
 
 const AWS_CODE_CHALLENGE_METHOD = "SHA-256";
 const AWS_OPENID_SCOPE = "openid";
@@ -73,13 +71,13 @@ export interface AwsSigV4Credentials {
   readonly sessionToken: string;
 }
 
-export interface AwsSigninTokenResult {
+interface AwsSigninTokenResult {
   readonly credentials: AwsSigV4Credentials;
   readonly expiresIn: number;
   readonly refreshToken: string;
 }
 
-export interface AwsExternalCodeProviderState {
+interface AwsExternalCodeProviderState {
   readonly version: 1;
   readonly state: string;
   readonly codeVerifier: string;
@@ -119,15 +117,15 @@ interface AwsDpopJwtPayload {
   readonly jti: string;
 }
 
-export function awsSigninRedirectUri(signinRegion: string): string {
+function awsSigninRedirectUri(signinRegion: string): string {
   return `https://${validatedAwsRegion(signinRegion)}.signin.aws.amazon.com/v1/sessions/confirmation`;
 }
 
-export function awsSigninAuthorizeUrl(signinRegion: string): string {
+function awsSigninAuthorizeUrl(signinRegion: string): string {
   return `https://${validatedAwsRegion(signinRegion)}.signin.aws.amazon.com/v1/authorize`;
 }
 
-export function awsSigninTokenUrl(signinRegion: string): string {
+function awsSigninTokenUrl(signinRegion: string): string {
   return `https://${validatedAwsRegion(signinRegion)}.signin.aws.amazon.com/v1/token`;
 }
 

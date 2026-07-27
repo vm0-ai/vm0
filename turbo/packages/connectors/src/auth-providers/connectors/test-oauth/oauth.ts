@@ -13,14 +13,6 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
-export {
-  TEST_OAUTH_CLIENT_ID,
-  TEST_OAUTH_CLIENT_SECRET,
-  TEST_OAUTH_ACCESS_SECRET_NAME,
-  TEST_OAUTH_REFRESH_SECRET_NAME,
-  TEST_OAUTH_API_ACCESS_SECRET_NAME,
-  TEST_OAUTH_API_REFRESH_SECRET_NAME,
-} from "./constants";
 
 const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
 const TEST_OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";

@@ -115,7 +115,7 @@ export interface ExternalCodeGrantProvider<
   >;
 }
 
-export interface NoneAccessProvider {
+interface NoneAccessProvider {
   readonly kind: "none";
 }
 
@@ -272,7 +272,7 @@ export type ExternalCodeConnectorAuthProvider<
 
 export type ModelProviderGrantProvider = NoneGrantProvider;
 
-export type ModelProviderAuthClient = StaticConnectorAuthClient;
+type ModelProviderAuthClient = StaticConnectorAuthClient;
 
 type ModelProviderAuthProviderRefreshInputs = Readonly<Record<string, string>>;
 
@@ -312,27 +312,7 @@ export interface ModelProviderRefreshTokenAccessProvider<
   ): Promise<ModelProviderAuthProviderRefreshResult<Outputs>>;
 }
 
-export type ModelProviderAccessProvider<
-  Inputs extends ModelProviderAuthProviderRefreshInputs =
-    ModelProviderAuthProviderRefreshInputs,
-  Outputs extends ModelProviderAuthProviderRefreshOutputs =
-    ModelProviderAuthProviderRefreshOutputs,
-> =
-  | NoneAccessProvider
-  | ModelProviderRefreshTokenAccessProvider<Inputs, Outputs>;
-
 export type ModelProviderRevokeProvider = NoneRevokeProvider;
-
-export type ModelProviderAuthProvider<
-  Inputs extends ModelProviderAuthProviderRefreshInputs =
-    ModelProviderAuthProviderRefreshInputs,
-  Outputs extends ModelProviderAuthProviderRefreshOutputs =
-    ModelProviderAuthProviderRefreshOutputs,
-> = AuthProvider<
-  ModelProviderGrantProvider,
-  ModelProviderAccessProvider<Inputs, Outputs>,
-  ModelProviderRevokeProvider
->;
 
 export type ModelProviderRefreshTokenAuthProvider<
   Inputs extends ModelProviderAuthProviderRefreshInputs =

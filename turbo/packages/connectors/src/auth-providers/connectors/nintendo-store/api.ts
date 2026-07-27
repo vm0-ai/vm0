@@ -28,14 +28,14 @@ export const NINTENDO_STORE_SESSION_TOKEN_URL =
   NINTENDO_ACCOUNT_SESSION_TOKEN_URL;
 export const NINTENDO_STORE_TOKEN_URL = NINTENDO_ACCOUNT_TOKEN_URL;
 export const NINTENDO_STORE_PROFILE_URL = NINTENDO_ACCOUNT_PROFILE_URL;
-export const NINTENDO_STORE_REDIRECT_URI = "npf5c38e31cd085304b://auth";
+const NINTENDO_STORE_REDIRECT_URI = "npf5c38e31cd085304b://auth";
 export const NINTENDO_STORE_USER_AGENT =
   "com.nintendo.znej/1.13.0 (Android/7.1.2)";
 
-export type NintendoStoreProviderState = NintendoAccountProviderState;
-export type NintendoStoreSessionToken = NintendoAccountSessionToken;
-export type NintendoStoreToken = NintendoAccountToken;
-export type NintendoStoreLocale = NintendoAccountProfile;
+type NintendoStoreProviderState = NintendoAccountProviderState;
+type NintendoStoreSessionToken = NintendoAccountSessionToken;
+type NintendoStoreToken = NintendoAccountToken;
+type NintendoStoreLocale = NintendoAccountProfile;
 
 export function createNintendoStoreProviderState(): NintendoStoreProviderState {
   return createNintendoAccountProviderState();

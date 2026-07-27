@@ -264,10 +264,3 @@ async function fetchCanvaUserInfo(accessToken: string): Promise<CanvaUserInfo> {
     email: null,
   };
 }
-
-/**
- * Get the primary secret name for Canva connector (the access token).
- */
-export function getCanvaSecretName(): string {
-  return "CANVA_ACCESS_TOKEN";
-}

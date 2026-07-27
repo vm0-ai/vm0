@@ -127,10 +127,3 @@ async function fetchTodoistUserInfo(accessToken: string): Promise<{
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Todoist connector (the access token).
- */
-export function getTodoistSecretName(): string {
-  return "TODOIST_ACCESS_TOKEN";
-}

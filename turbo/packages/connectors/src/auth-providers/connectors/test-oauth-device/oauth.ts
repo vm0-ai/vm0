@@ -11,15 +11,6 @@ import {
   testOAuthPreviewBypassHeaders,
 } from "../test-oauth/oauth";
 
-export const TEST_OAUTH_DEVICE_CLIENT_ID = "test-oauth-device-client";
-export const TEST_OAUTH_DEVICE_USER_CODE = "TEST-DEVICE";
-export const TEST_OAUTH_DEVICE_VERIFICATION_URI =
-  "https://oauth-device.test/device";
-export const TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME =
-  "TEST_OAUTH_DEVICE_ACCESS_TOKEN";
-export const TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME =
-  "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN";
-
 const TEST_OAUTH_DEVICE_AUTH_URL = "/api/test/oauth-provider/device/code";
 const TEST_OAUTH_DEVICE_TOKEN_URL = "/api/test/oauth-provider/token";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";

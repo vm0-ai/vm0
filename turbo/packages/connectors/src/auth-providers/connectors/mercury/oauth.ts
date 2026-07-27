@@ -261,10 +261,3 @@ async function fetchMercuryUserInfo(
     email: null,
   };
 }
-
-/**
- * Get the primary secret name for Mercury connector (the access token).
- */
-export function getMercurySecretName(): string {
-  return "MERCURY_ACCESS_TOKEN";
-}

@@ -246,10 +246,3 @@ async function fetchSupabaseUserInfo(
     email: null,
   };
 }
-
-/**
- * Get the primary secret name for Supabase connector (the access token).
- */
-export function getSupabaseSecretName(): string {
-  return "SUPABASE_ACCESS_TOKEN";
-}

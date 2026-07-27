@@ -241,10 +241,3 @@ async function fetchXUserInfo(accessToken: string): Promise<XUserInfo> {
     email: null, // X API v2 does not expose email via /2/users/me
   };
 }
-
-/**
- * Get the primary secret name for X connector (the access token).
- */
-export function getXSecretName(): string {
-  return "X_ACCESS_TOKEN";
-}

@@ -40,12 +40,10 @@ export const NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL = `${NINTENDO_SWIT
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_OWNED_DEVICES_URL = `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.actionBaseUrl}/v3/actions/user/fetchOwnedDevices`;
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL = `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.actionBaseUrl}/v2/actions/logout`;
 
-export type NintendoSwitchParentalControlsProviderState =
-  NintendoAccountProviderState;
-export type NintendoSwitchParentalControlsSessionToken =
-  NintendoAccountSessionToken;
-export type NintendoSwitchParentalControlsToken = NintendoAccountToken;
-export type NintendoSwitchParentalControlsProfile = NintendoAccountProfile;
+type NintendoSwitchParentalControlsProviderState = NintendoAccountProviderState;
+type NintendoSwitchParentalControlsSessionToken = NintendoAccountSessionToken;
+type NintendoSwitchParentalControlsToken = NintendoAccountToken;
+type NintendoSwitchParentalControlsProfile = NintendoAccountProfile;
 
 interface NintendoSwitchParentalControlsDeviceCatalogEntry {
   readonly deviceId: string;

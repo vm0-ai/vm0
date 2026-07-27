@@ -204,10 +204,3 @@ export async function refreshAsanaToken(
     expiresIn: data.expires_in,
   };
 }
-
-/**
- * Get the primary secret name for Asana connector (the access token).
- */
-export function getAsanaSecretName(): string {
-  return "ASANA_ACCESS_TOKEN";
-}
