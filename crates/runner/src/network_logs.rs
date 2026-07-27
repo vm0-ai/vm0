@@ -152,7 +152,7 @@ pub async fn upload_network_logs(
     {
         info!(
             run_id = %run_id,
-            batches = uploader.batch_count(),
+            batches = uploader.successful_batch_count(),
             count = uploader.total_uploaded(),
             "uploaded network logs"
         );
@@ -360,8 +360,8 @@ impl<'a> NetworkLogBatchUploader<'a> {
         self.progress.uploaded_entries
     }
 
-    fn batch_count(&self) -> usize {
-        self.progress.attempted_batches
+    fn successful_batch_count(&self) -> usize {
+        self.progress.successful_batches
     }
 
     fn can_attempt_more_batches(&self) -> bool {
@@ -910,13 +910,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
         let run_id = RunId::nil();
-        let uploaded_count = NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * NETWORK_LOG_UPLOAD_MAX_BATCHES;
-        let logs: Vec<_> = (0..=uploaded_count)
-            .map(|sequence| json!({ "sequence": sequence }))
+        let uploaded_count = NETWORK_LOG_UPLOAD_MAX_BATCHES;
+        let large_value = "x".repeat(NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES / 2);
+        let logs: Vec<_> = (0..(uploaded_count + 2))
+            .map(|sequence| {
+                json!({
+                    "sequence": sequence,
+                    "body": &large_value,
+                })
+            })
             .collect();
         let content = network_log_content(&logs);
-        let remaining_source_bytes =
-            serde_json::to_string(&logs[uploaded_count]).unwrap().len() + 1;
+        let dropped_entry_bytes =
+            estimated_entry_bytes(&serde_json::to_string(&logs[uploaded_count]).unwrap());
+        let remaining_source_bytes = serde_json::to_string(&logs[uploaded_count + 1])
+            .unwrap()
+            .len()
+            + 1;
         tokio::fs::write(&path, &content).await.unwrap();
 
         let server = MockServer::start_async().await;
@@ -961,7 +971,12 @@ mod tests {
         assert_event_field(event, "attempted_entries", &uploaded_count.to_string());
         assert_event_field(event, "uploaded_entries", &uploaded_count.to_string());
         assert_event_field(event, "unconfirmed_entries", "0");
-        assert_event_field(event, "observed_dropped_entries", "0");
+        assert_event_field(event, "observed_dropped_entries", "1");
+        assert_event_field(
+            event,
+            "observed_dropped_estimated_bytes",
+            &dropped_entry_bytes.to_string(),
+        );
     }
 
     #[tokio::test]
@@ -1409,22 +1424,29 @@ mod tests {
         server_task.abort();
         let _ = server_task.await;
 
-        let event = captured_event(&events, "network log upload truncated");
-        assert_event_field(event, "reason", "deadline");
-        assert_event_field(event, "attempted_batches", "2");
-        assert_event_field(event, "successful_batches", "1");
+        let truncation = captured_event(&events, "network log upload truncated");
+        assert_event_field(truncation, "reason", "deadline");
+        assert_event_field(truncation, "attempted_batches", "2");
+        assert_event_field(truncation, "successful_batches", "1");
         assert_event_field(
-            event,
+            truncation,
             "attempted_entries",
             &(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES + 1).to_string(),
         );
         assert_event_field(
-            event,
+            truncation,
             "uploaded_entries",
             &NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES.to_string(),
         );
-        assert_event_field(event, "unconfirmed_entries", "1");
-        assert_event_field(event, "remaining_source_bytes", "0");
+        assert_event_field(truncation, "unconfirmed_entries", "1");
+        assert_event_field(truncation, "remaining_source_bytes", "0");
+        let uploaded = captured_event(&events, "uploaded network logs");
+        assert_event_field(uploaded, "batches", "1");
+        assert_event_field(
+            uploaded,
+            "count",
+            &NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES.to_string(),
+        );
         assert!(!has_captured_event(&events, "network logs upload failed"));
     }
 
