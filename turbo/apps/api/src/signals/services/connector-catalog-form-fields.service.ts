@@ -27,7 +27,7 @@ type ManualGrantSubmittedValuesNormalizationResult =
 type DeviceAuthStartOptionsNormalizationResult =
   | {
       readonly ok: true;
-      readonly options: ConnectorDeviceAuthStartOptions | undefined;
+      readonly options: ConnectorDeviceAuthStartOptions;
     }
   | { readonly ok: false; readonly message: string };
 
@@ -157,9 +157,6 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
   readonly descriptors: readonly PublicDeviceAuthStartOptionDescriptor[] | null;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
 }): DeviceAuthStartOptionsNormalizationResult {
-  if (!args.options) {
-    return { ok: true, options: undefined };
-  }
   const descriptors = args.descriptors;
   if (!descriptors) {
     return {
@@ -174,7 +171,7 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
         return [descriptor.publicId, descriptor.config];
       }),
     );
-  const hasUnknownName = Object.keys(args.options).some((name) => {
+  const hasUnknownName = Object.keys(args.options ?? {}).some((name) => {
     return !Object.hasOwn(startOptionsByPublicId, name);
   });
   if (hasUnknownName && descriptors.length > 0) {
