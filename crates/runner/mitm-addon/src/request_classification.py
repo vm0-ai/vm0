@@ -29,7 +29,7 @@ import registry
 import registry_firewalls
 import upstream_admission
 import upstream_destination_binding
-from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
+from url_utils import AuthorityValidationError, get_trusted_authority
 
 REQUEST_CLASSIFICATION_METADATA_KEY = "_request_classification"
 # Metadata that the requestheaders probe path may write while using this
@@ -67,6 +67,10 @@ type StaleTlsAdmissionReason = Literal[
     "client_ip_mismatch",
     "registry_entry_missing",
     "run_id_mismatch",
+]
+type _PublicDestinationClassifications = dict[
+    str,
+    public_destination.RuntimeDestinationHostClassification,
 ]
 
 
@@ -595,12 +599,13 @@ def _public_destination_runtime_denial(
     *,
     defer_unresolved_hostnames: bool = False,
 ) -> public_destination.RuntimeDestinationCheck | None:
-    for runtime_host in _public_destination_runtime_hosts(flow):
-        validation = public_destination.validate_runtime_destination_host(runtime_host)
+    classifications: _PublicDestinationClassifications = {}
+    for classification in _public_destination_runtime_hosts(flow, classifications):
+        validation = classification.validation
         if (
             not validation.allowed
             and defer_unresolved_hostnames
-            and _public_destination_runtime_host_is_deferable(runtime_host)
+            and classification.deferable_hostname
         ):
             continue
         if not validation.allowed:
@@ -608,24 +613,61 @@ def _public_destination_runtime_denial(
     return None
 
 
-def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
+def _public_destination_runtime_host_classification(
+    runtime_host: object,
+    classifications: _PublicDestinationClassifications,
+) -> public_destination.RuntimeDestinationHostClassification:
+    if not isinstance(runtime_host, str):
+        return public_destination.classify_runtime_destination_host(runtime_host)
+
+    classification = classifications.get(runtime_host)
+    if classification is None:
+        classification = public_destination.classify_runtime_destination_host(runtime_host)
+        classifications[runtime_host] = classification
+    return classification
+
+
+def _public_destination_runtime_hosts(
+    flow: http.HTTPFlow,
+    classifications: _PublicDestinationClassifications,
+) -> tuple[public_destination.RuntimeDestinationHostClassification, ...]:
     original_address = upstream_destination_binding.server_binding_original_address(
         flow.server_conn
     )
 
     if flow.server_conn.connected:
-        hosts = _public_destination_original_and_request_hosts(flow, original_address)
-        hosts.extend(_public_destination_connected_runtime_hosts(flow))
+        hosts = _public_destination_original_and_request_hosts(
+            flow,
+            original_address,
+            classifications,
+        )
+        hosts.extend(_public_destination_connected_runtime_hosts(flow, classifications))
         return tuple(hosts)
 
     if original_address is not None:
-        return tuple(_public_destination_original_and_request_hosts(flow, original_address))
+        return tuple(
+            _public_destination_original_and_request_hosts(
+                flow,
+                original_address,
+                classifications,
+            )
+        )
 
     server_address = connection_endpoints.server_address(flow.server_conn)
     if server_address is not None:
-        return (_public_destination_endpoint_host_for_request(flow, server_address),)
+        return (
+            _public_destination_runtime_host_classification(
+                _public_destination_endpoint_host_for_request(flow, server_address),
+                classifications,
+            ),
+        )
 
-    return (flow.request.host,)
+    return (
+        _public_destination_runtime_host_classification(
+            flow.request.host,
+            classifications,
+        ),
+    )
 
 
 def _public_destination_endpoint_host_for_request(
@@ -641,23 +683,35 @@ def _public_destination_endpoint_host_for_request(
 def _public_destination_original_and_request_hosts(
     flow: http.HTTPFlow,
     original_address: tuple[str, int] | None,
-) -> list[object]:
-    hosts: list[object] = []
+    classifications: _PublicDestinationClassifications,
+) -> list[public_destination.RuntimeDestinationHostClassification]:
+    hosts: list[public_destination.RuntimeDestinationHostClassification] = []
     if original_address is not None:
         endpoint_host = _public_destination_endpoint_host_for_request(flow, original_address)
+        endpoint_classification = _public_destination_runtime_host_classification(
+            endpoint_host,
+            classifications,
+        )
         if (
             endpoint_host is None
-            or public_destination.public_ip_literal_is_public(endpoint_host) is not None
+            or not endpoint_classification.is_hostname
             or not flow.server_conn.connected
         ):
-            hosts.append(endpoint_host)
-    if public_destination.public_ip_literal_is_public(flow.request.host) is not None:
-        hosts.append(flow.request.host)
+            hosts.append(endpoint_classification)
+    request_classification = _public_destination_runtime_host_classification(
+        flow.request.host,
+        classifications,
+    )
+    if not request_classification.is_hostname:
+        hosts.append(request_classification)
     return hosts
 
 
-def _public_destination_connected_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
-    hosts: list[object] = []
+def _public_destination_connected_runtime_hosts(
+    flow: http.HTTPFlow,
+    classifications: _PublicDestinationClassifications,
+) -> tuple[public_destination.RuntimeDestinationHostClassification, ...]:
+    hosts: list[public_destination.RuntimeDestinationHostClassification] = []
     for endpoint in (
         connection_endpoints.server_peername(flow.server_conn),
         connection_endpoints.server_address(flow.server_conn),
@@ -666,14 +720,23 @@ def _public_destination_connected_runtime_hosts(flow: http.HTTPFlow) -> tuple[ob
             continue
 
         endpoint_host, endpoint_port = endpoint
-        if public_destination.public_ip_literal_is_public(endpoint_host) is None:
+        classification = _public_destination_runtime_host_classification(
+            endpoint_host,
+            classifications,
+        )
+        if classification.is_hostname:
             continue
 
         if endpoint_port != flow.request.port:
-            hosts.append(None)
+            hosts.append(
+                _public_destination_runtime_host_classification(
+                    None,
+                    classifications,
+                )
+            )
             continue
 
-        hosts.append(endpoint_host)
+        hosts.append(classification)
 
     if hosts:
         return tuple(hosts)
@@ -683,16 +746,9 @@ def _public_destination_connected_runtime_hosts(flow: http.HTTPFlow) -> tuple[ob
         port=flow.request.port,
         extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
     )
-    return (connected_endpoint[0] if connected_endpoint is not None else None,)
-
-
-def _public_destination_runtime_host_is_deferable(runtime_host: object) -> bool:
-    if not isinstance(runtime_host, str):
-        return False
-    if public_destination.public_ip_literal_is_public(runtime_host) is not None:
-        return False
-    try:
-        normalize_trusted_hostname(runtime_host)
-    except (UnicodeError, ValueError):
-        return False
-    return True
+    return (
+        _public_destination_runtime_host_classification(
+            connected_endpoint[0] if connected_endpoint is not None else None,
+            classifications,
+        ),
+    )
