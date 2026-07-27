@@ -1,4 +1,4 @@
-import { createDeferredPromise, throwIfAbort, withCleanup } from "../utils.ts";
+import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatIdbCache");
@@ -29,45 +29,31 @@ export function logChatIdbDisabled(dbName: string, reason: unknown): void {
 
 export async function withChatIdbTimeout<T>(
   label: string,
-  operation: (operationSignal: AbortSignal) => Promise<T>,
+  operation: () => Promise<T>,
   signal?: AbortSignal,
   timeoutMs = CHAT_IDB_OPERATION_TIMEOUT_MS,
 ): Promise<T> {
   signal?.throwIfAborted();
-  const operationTimeoutSignal = AbortSignal.timeout(timeoutMs);
-  const operationSignal = signal
-    ? AbortSignal.any([signal, operationTimeoutSignal])
-    : operationTimeoutSignal;
-  const timeoutResult = Symbol("chat-idb-timeout");
-
-  const timeoutDeferred = createDeferredPromise<typeof timeoutResult>(
-    AbortSignal.any([]),
-  );
-  const onOperationAbort = () => {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const deadlineSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
+  const deadline = Promise.withResolvers<never>();
+  const rejectDeadline = () => {
     if (signal?.aborted) {
-      timeoutDeferred.reject(signal.reason);
-    } else if (operationTimeoutSignal.aborted) {
-      timeoutDeferred.resolve(timeoutResult);
+      deadline.reject(signal.reason);
+    } else {
+      deadline.reject(new ChatIdbTimeoutError(label));
     }
   };
-  operationSignal.addEventListener("abort", onOperationAbort, { once: true });
-  const operationPromise = (async (): Promise<T> => {
-    return await operation(operationSignal);
-  })();
 
-  const result = await withCleanup(
-    Promise.race([operationPromise, timeoutDeferred.promise]),
-    () => {
-      operationSignal.removeEventListener("abort", onOperationAbort);
-      if (!timeoutDeferred.settled()) {
-        timeoutDeferred.resolve(timeoutResult);
-      }
-    },
-  );
-  if (result === timeoutResult) {
-    throw new ChatIdbTimeoutError(label);
+  if (deadlineSignal.aborted) {
+    rejectDeadline();
+  } else {
+    deadlineSignal.addEventListener("abort", rejectDeadline, { once: true });
   }
-  return result;
+
+  return await Promise.race([operation(), deadline.promise]);
 }
 
 export async function chatIdbReadOr<T>(

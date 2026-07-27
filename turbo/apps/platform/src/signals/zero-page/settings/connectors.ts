@@ -2038,8 +2038,7 @@ async function waitForOAuthAuthCodePopupClosed(
   return "popupClosed";
 }
 
-const resetOAuthAuthCodeConnectorLoopSignal$ = resetSignal();
-const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
+const resetOAuthAuthCodeWaitSignal$ = resetSignal();
 
 // ---------------------------------------------------------------------------
 // Connect command
@@ -2273,56 +2272,39 @@ export const connectConnectorOAuthAuthCode$ = command(
         // Wait for the browser authorization flow to complete. The callback
         // publishes `connector:changed`, and the subscription rechecks server
         // state.
-        const loopSignal = set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
-        const popupSignal = set(
-          resetOAuthAuthCodeConnectorPopupSignal$,
-          signal,
-        );
-
-        const completed = await withCleanup(
-          (async () => {
-            const waitForConnectorChanged = async () => {
-              await set(
-                setAblyLoop$,
-                {
-                  topic: "connector:changed",
-                  loopCommand$: onConnectorChanged$,
-                  options: { runOnSubscribe: true },
-                },
-                loopSignal,
-              );
-              return "connectorChanged" as const;
-            };
-            const changedPromise = waitForConnectorChanged();
-            const waitResult =
-              authWindow === null
-                ? await changedPromise
-                : await Promise.race([
-                    changedPromise,
-                    waitForOAuthAuthCodePopupClosed(authWindow, popupSignal),
-                  ]);
-            signal.throwIfAborted();
-
-            if (waitResult === "popupClosed") {
-              set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
-              const connectedAfterClose = await set(
-                onConnectorChanged$,
-                signal,
-              );
-              signal.throwIfAborted();
-              if (!connectedAfterClose) {
-                return false;
-              }
-            }
-            return true;
-          })(),
+        const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
+        const waitForConnectorChanged = async () => {
+          await set(
+            setAblyLoop$,
+            {
+              topic: "connector:changed",
+              loopCommand$: onConnectorChanged$,
+              options: { runOnSubscribe: true },
+            },
+            waitSignal,
+          );
+          return "connectorChanged" as const;
+        };
+        const changedPromise = waitForConnectorChanged();
+        const waitResult = await withCleanup(
+          authWindow === null
+            ? changedPromise
+            : Promise.race([
+                changedPromise,
+                waitForOAuthAuthCodePopupClosed(authWindow, waitSignal),
+              ]),
           () => {
-            set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
-            set(resetOAuthAuthCodeConnectorPopupSignal$, signal);
+            set(resetOAuthAuthCodeWaitSignal$, signal);
           },
         );
-        if (!completed) {
-          return false;
+        signal.throwIfAborted();
+
+        if (waitResult === "popupClosed") {
+          const connectedAfterClose = await set(onConnectorChanged$, signal);
+          signal.throwIfAborted();
+          if (!connectedAfterClose) {
+            return false;
+          }
         }
 
         // Refresh the connectors$ cache so UI picks up the latest state.
