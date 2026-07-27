@@ -2244,7 +2244,7 @@ function hexLuminance(hexColor: string): number {
   const normalized = hexColor.replace("#", "");
   const channels = [0, 2, 4].map((index) => {
     const value = Number.parseInt(normalized.slice(index, index + 2), 16) / 255;
-    return value <= 0.039_28
+    return value <= 0.03928
       ? value / 12.92
       : Math.pow((value + 0.055) / 1.055, 2.4);
   });
