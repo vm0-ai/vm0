@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.148.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.11...runner-rs-v0.148.12) (2026-07-27)
+
+
+### Bug Fixes
+
+* **mitm-addon:** track implicit exception aliases ([#23191](https://github.com/vm0-ai/vm0/issues/23191)) ([f1c562b](https://github.com/vm0-ai/vm0/commit/f1c562be79547cdfb4391c001e67a1d94865efbe))
+* **runner:** reject ambiguous host authorities ([#23194](https://github.com/vm0-ai/vm0/issues/23194)) ([2810583](https://github.com/vm0-ai/vm0/commit/28105839cb41b02d45d4a78a9fa71b62551b8f12))
+
+
+### Documentation
+
+* **runner:** document fresh archive delivery lifecycle ([#23205](https://github.com/vm0-ai/vm0/issues/23205)) ([86ed1c8](https://github.com/vm0-ai/vm0/commit/86ed1c8238449e34b855ee51028c4d782cbdfb94))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+
+
+### Performance Improvements
+
+* **mitm-addon:** share websocket event type probing ([#23230](https://github.com/vm0-ai/vm0/issues/23230)) ([d71de68](https://github.com/vm0-ai/vm0/commit/d71de68e04f2d90ef3269a420ba9cd39797f62cd))
+* **python:** reuse public destination host classifications ([#23203](https://github.com/vm0-ai/vm0/issues/23203)) ([2a31839](https://github.com/vm0-ai/vm0/commit/2a318395e1009b1bef8f340d5db8985f74ac4f3a))
+* **runner:** bound network log upload lifecycle ([#23219](https://github.com/vm0-ai/vm0/issues/23219)) ([f9a6f20](https://github.com/vm0-ai/vm0/commit/f9a6f2095b24a4bbab46866be5ff5b126eb2bf9d))
+
 ## [0.148.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.10...runner-rs-v0.148.11) (2026-07-27)
 
 
