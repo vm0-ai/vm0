@@ -150,12 +150,18 @@ import {
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorCatalogItems$,
+  connectConnectorNoAuth$,
+  connectConnectorOAuthAuthCode$,
+  connectFlowConnectorRef$,
   matchesConnectorSearch,
   justConnectedRefs$,
   pollingOAuthAuthCodeConnectorRef$,
+  pollingOAuthDeviceAuthConnectorRef$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -5245,15 +5251,17 @@ function ConnectorTriggerIcons({
 function AddConnectorsDialog({
   signals,
   unconnected,
-  pollingConnectorRef,
+  busyConnectorRef,
+  connectHandlers,
   onClose,
-  onSelect,
 }: {
   signals: ComposerConnectorSignals;
   unconnected: PublicConnectorCatalogStatusItem[];
-  pollingConnectorRef: ConnectorRef | null;
+  busyConnectorRef: ConnectorRef | null;
+  connectHandlers: (
+    connector: PublicConnectorCatalogStatusItem,
+  ) => ConnectorConnectHandlers;
   onClose: () => void;
-  onSelect: (connectorRef: ConnectorRef) => void;
 }) {
   const search = useGet(signals.addDialogSearch$);
   const setSearch = useSet(signals.setAddDialogSearch$);
@@ -5269,7 +5277,7 @@ function AddConnectorsDialog({
       }}
     >
       <DialogContent
-        className="max-w-2xl flex flex-col max-h-[80vh]"
+        className="zero-app max-w-2xl flex max-h-[80vh] flex-col"
         aria-describedby={undefined}
       >
         <DialogHeader className="shrink-0">
@@ -5292,42 +5300,13 @@ function AddConnectorsDialog({
           <div className="grid grid-cols-2 gap-3">
             {filtered.map((item) => {
               return (
-                <button
-                  type="button"
+                <ConnectorCard
                   key={item.connectorRef}
-                  onClick={() => {
-                    return onSelect(item.connectorRef);
-                  }}
-                  disabled={pollingConnectorRef === item.connectorRef}
-                  aria-label={`Connect ${item.label}`}
-                  className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
-                  style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-                >
-                  <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                      <ConnectorIcon icon={item.icon} size={20} />
-                    </span>
-                    <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
-                      {item.label}
-                    </span>
-                    {pollingConnectorRef === item.connectorRef ? (
-                      <IconLoader2
-                        size={16}
-                        stroke={1.5}
-                        className="shrink-0 text-muted-foreground animate-spin"
-                      />
-                    ) : (
-                      <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-                        <IconPlus size={14} stroke={1.5} />
-                      </span>
-                    )}
-                  </div>
-                  <div className="px-4 pb-4 pt-1">
-                    <div className="text-xs text-muted-foreground line-clamp-2">
-                      {item.description}
-                    </div>
-                  </div>
-                </button>
+                  variant="catalog"
+                  connector={item}
+                  busy={busyConnectorRef === item.connectorRef}
+                  connect={connectHandlers(item)}
+                />
               );
             })}
           </div>
@@ -6690,7 +6669,13 @@ export function useZeroChatComposer({
   const setSelectedConnectorRef = useSet(
     composerConnectors.setSelectedConnectorRef$,
   );
-  const pollingConnectorRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
+  const connectFlowRef = useGet(connectFlowConnectorRef$);
+  const busyConnectorRef =
+    connectFlowRef ?? pollingAuthCodeRef ?? pollingDeviceAuthRef;
+  const connectBrowserAuth = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorizeFn = useSet(composerConnectors.authorizeConnector$);
   const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
   const optimisticConnected = useGet(justConnectedRefs$);
@@ -6764,6 +6749,71 @@ export function useZeroChatComposer({
       id: `connector-connected-${connectorRef}`,
     });
     return true;
+  };
+
+  const completeConnectorAddition = async (
+    connectorRef: ConnectorRef,
+  ): Promise<void> => {
+    if (!authorizedSet.has(connectorRef)) {
+      const authorized = await handleConnectSuccess(connectorRef);
+      if (!authorized) {
+        setPendingConnectorRef(null);
+        return;
+      }
+    }
+    setPendingConnectorRef(null);
+    setShowAddDialog(false);
+  };
+
+  const connectorConnectHandlers = (
+    connector: PublicConnectorCatalogStatusItem,
+  ): ConnectorConnectHandlers => {
+    const connectorRef = connector.connectorRef;
+    return {
+      openModal: () => {
+        setPendingConnectorRef(connectorRef);
+        setSelectedConnectorRef(connectorRef);
+      },
+      connectBrowserAuth: async (authMethod) => {
+        setPendingConnectorRef(connectorRef);
+        const connected = await connectBrowserAuth(
+          connectorRef,
+          authMethod,
+          {
+            connectorLabel: connector.label,
+            connectorIcon: connector.icon,
+            agentId: nullToUndefined(agentRecordId),
+          },
+          pageSignal,
+        );
+        if (connected) {
+          await completeConnectorAddition(connectorRef);
+        } else {
+          setPendingConnectorRef(null);
+        }
+        return connected;
+      },
+      connectNoAuth: async (authMethod) => {
+        setPendingConnectorRef(connectorRef);
+        const connected = await connectNoAuth(
+          {
+            connectorRef,
+            authMethod,
+            options: {
+              connectorLabel: connector.label,
+              agentId: nullToUndefined(agentRecordId),
+            },
+          },
+          pageSignal,
+        );
+        if (connected) {
+          await completeConnectorAddition(connectorRef);
+        } else {
+          setPendingConnectorRef(null);
+        }
+        return connected;
+      },
+    };
   };
 
   const handleToggle = async (connectorRef: ConnectorRef, checked: boolean) => {
@@ -7032,15 +7082,9 @@ export function useZeroChatComposer({
           }}
           onSuccess={async () => {
             const connectorRef = pendingConnectorRef ?? selectedConnectorRef;
-            if (connectorRef && !authorizedSet.has(connectorRef)) {
-              const authorized = await handleConnectSuccess(connectorRef);
-              if (!authorized) {
-                setPendingConnectorRef(null);
-                return;
-              }
+            if (connectorRef) {
+              await completeConnectorAddition(connectorRef);
             }
-            setPendingConnectorRef(null);
-            setShowAddDialog(false);
           }}
         />
       )}
@@ -7048,14 +7092,11 @@ export function useZeroChatComposer({
         <AddConnectorsDialog
           signals={composerConnectors}
           unconnected={unconnectedConnectors}
-          pollingConnectorRef={pollingConnectorRef}
+          busyConnectorRef={busyConnectorRef}
+          connectHandlers={connectorConnectHandlers}
           onClose={() => {
             setPendingConnectorRef(null);
             return setShowAddDialog(false);
-          }}
-          onSelect={(connectorRef) => {
-            setPendingConnectorRef(connectorRef);
-            setSelectedConnectorRef(connectorRef);
           }}
         />
       )}

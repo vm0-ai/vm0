@@ -196,6 +196,7 @@ function createWriteStore(getDb: GetDb) {
   return {
     async replaceFromSnapshot(
       snapshot: ChatThreadSnapshotRecord,
+      events: readonly ChatThreadEvent[],
       signal?: AbortSignal,
     ) {
       await chatIdbWriteBestEffort(
@@ -208,12 +209,20 @@ function createWriteStore(getDb: GetDb) {
             "readwrite",
           );
           await tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear();
-          await tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
-            id: SINGLETON_ID,
-            chatThreads: [...snapshot.chatThreads],
-            latestEventId: snapshot.latestEventId,
-          } satisfies StoredChatThreadSnapshot);
-          await tx.done;
+          const eventStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
+          const requests = events.map((event) => {
+            signal?.throwIfAborted();
+            return eventStore.put(event);
+          });
+          await Promise.all([
+            tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
+              id: SINGLETON_ID,
+              chatThreads: [...snapshot.chatThreads],
+              latestEventId: snapshot.latestEventId,
+            } satisfies StoredChatThreadSnapshot),
+            ...requests,
+            tx.done,
+          ]);
         },
         signal,
       );
