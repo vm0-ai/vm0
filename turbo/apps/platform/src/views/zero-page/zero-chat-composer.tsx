@@ -120,11 +120,9 @@ import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
-  parsePresentationPreviewDraft,
   previewPresentationHtml,
   type PresentationPreviewDraft,
 } from "./presentation-html-preview.ts";
-import { readableAttachmentResourceUrl } from "./zero-attachment-url.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -209,11 +207,12 @@ import {
   setTemplateCardHtmlPreview$,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
-  setTemplateDetailHtmlPreview$,
   templateDetailThemeIdBySlug$,
-  setTemplateDetailThemeId$,
   templateDetailSlideIndexBySlug$,
-  setTemplateDetailSlideIndex$,
+  closePresentationTemplateDetailPreview$,
+  loadPresentationTemplateHtmlPreview,
+  openPresentationTemplateDetailPreview$,
+  selectPresentationTemplateDetailPreview$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -238,13 +237,6 @@ const COMPOSER_CONTROL_FOCUS_CLASS =
 function isHappyDomTestEnvironment(): boolean {
   return (
     typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
-  );
-}
-
-function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
-  return (
-    Reflect.get(globalThis, "vm0LoadTemplateDetailHtmlPreviewInHappyDom") ===
-    true
   );
 }
 
@@ -2362,24 +2354,6 @@ function themedPreviewPresentationHtml(params: {
   });
 }
 
-async function loadPresentationTemplateHtmlPreview(params: {
-  readonly item: PresentationTemplateItem;
-}): Promise<PresentationPreviewDraft | null> {
-  const response = await fetch(
-    readableAttachmentResourceUrl(params.item.embedUrl),
-    {
-      credentials: "omit",
-      mode: "cors",
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to load template HTML (${response.status})`);
-  }
-
-  const draft = parsePresentationPreviewDraft(await response.text());
-  return draft.slides.length > 0 ? draft : null;
-}
-
 function schedulePresentationTemplateCardSlideIndex(params: {
   readonly apply: (index: number) => void;
   readonly embedUrl: string;
@@ -2422,37 +2396,6 @@ function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
   if (url !== null) {
     URL.revokeObjectURL(url);
   }
-}
-
-function createThemedPresentationPreviewUrl(params: {
-  readonly activeSlideId: string;
-  readonly draft: PresentationPreviewDraft;
-  readonly theme: PresentationTemplateThemeOption;
-}): string {
-  return URL.createObjectURL(
-    new Blob(
-      [
-        createThemedPresentationPreviewHtml({
-          activeSlideId: params.activeSlideId,
-          draft: params.draft,
-          theme: params.theme,
-        }),
-      ],
-      { type: "text/html;charset=utf-8" },
-    ),
-  );
-}
-
-function createThemedPresentationPreviewHtml(params: {
-  readonly activeSlideId: string;
-  readonly draft: PresentationPreviewDraft;
-  readonly theme: PresentationTemplateThemeOption;
-}): string {
-  return themedPreviewPresentationHtml({
-    activeSlideId: params.activeSlideId,
-    draft: params.draft,
-    theme: params.theme,
-  });
 }
 
 type PresentationTemplateThemeVariables = CSSProperties &
@@ -2854,6 +2797,7 @@ function TemplatePreview({
   runtime: TemplatePreviewRuntime;
   theme?: PresentationTemplateThemeOption;
 }) {
+  const pageSignal = useGet(pageSignal$);
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const htmlPreview = useGet(templateCardHtmlPreview$);
@@ -2949,7 +2893,10 @@ function TemplatePreview({
 
     let pendingLoad = cache.pendingLoads.get(item.embedUrl);
     if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      pendingLoad = loadPresentationTemplateHtmlPreview({
+        item,
+        signal: pageSignal,
+      });
       cache.pendingLoads.set(item.embedUrl, pendingLoad);
     }
 
@@ -2966,10 +2913,13 @@ function TemplatePreview({
     });
     detach(
       (async () => {
-        const result = await tapError(pendingLoad);
-        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(item.embedUrl);
-        }
+        const result = await tapError(
+          pendingLoad.finally(() => {
+            if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+              cache.pendingLoads.delete(item.embedUrl);
+            }
+          }),
+        );
 
         if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
@@ -3146,97 +3096,6 @@ function handleTemplateDetailTabKeyDown(
   candidates[nextIndex]?.focus();
 }
 
-interface PresentationTemplateDetailPreviewState {
-  readonly embedUrl: string;
-  readonly failed: boolean;
-  readonly frameUrl: string | null;
-  readonly index: number;
-  readonly loading: boolean;
-  readonly slideCount: number;
-  readonly slug: string;
-  readonly themeId: string;
-}
-
-type SetPresentationTemplateDetailPreview = (
-  value: PresentationTemplateDetailPreviewState | null,
-) => void;
-
-type SetPresentationTemplateDetailSlideIndex = (
-  slug: string,
-  index: number,
-) => void;
-
-function setLoadedPresentationTemplateDetailPreview({
-  draft,
-  index,
-  item,
-  previousFrameUrl,
-  selectedTheme,
-  setDetailPreview,
-}: {
-  readonly draft: PresentationPreviewDraft;
-  readonly index: number;
-  readonly item: PresentationTemplateItem;
-  readonly previousFrameUrl: string | null;
-  readonly selectedTheme: PresentationTemplateThemeOption;
-  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
-}) {
-  const slide = draft.slides[Math.min(index, draft.slides.length - 1)];
-  if (slide === undefined) {
-    return;
-  }
-  revokePresentationTemplateHtmlPreviewUrl(previousFrameUrl);
-  const frameUrl = createThemedPresentationPreviewUrl({
-    activeSlideId: slide.id,
-    draft,
-    theme: selectedTheme,
-  });
-  setDetailPreview({
-    slug: item.slug,
-    embedUrl: item.embedUrl,
-    themeId: selectedTheme.id,
-    index,
-    loading: false,
-    failed: false,
-    frameUrl,
-    slideCount: draft.slides.length,
-  });
-}
-
-function selectPresentationTemplateDetailSlide({
-  detailPreview,
-  detailSlideCount,
-  index,
-  item,
-  selectedTheme,
-  setDetailPreview,
-  setSlideIndex,
-  runtime,
-}: {
-  readonly detailPreview: PresentationTemplateDetailPreviewState | null;
-  readonly detailSlideCount: number;
-  readonly index: number;
-  readonly item: PresentationTemplateItem;
-  readonly selectedTheme: PresentationTemplateThemeOption;
-  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
-  readonly setSlideIndex: SetPresentationTemplateDetailSlideIndex;
-  readonly runtime: TemplatePreviewRuntime;
-}) {
-  const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
-  setSlideIndex(item.slug, nextIndex);
-  const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
-  if (cachedDraft !== undefined) {
-    setLoadedPresentationTemplateDetailPreview({
-      draft: cachedDraft,
-      index: nextIndex,
-      item,
-      previousFrameUrl: detailPreview?.frameUrl ?? null,
-      selectedTheme,
-      setDetailPreview,
-    });
-  }
-}
-
 function TemplatePreviewPage({
   item,
   onBack,
@@ -3249,12 +3108,10 @@ function TemplatePreviewPage({
   runtime: TemplatePreviewRuntime;
 }) {
   const detailPreview = useGet(templateDetailHtmlPreview$);
-  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const setThemeId = useSet(setTemplateDetailThemeId$);
   const setCardThemeId = useSet(setTemplateCardThemeId$);
   const slideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
-  const setSlideIndex = useSet(setTemplateDetailSlideIndex$);
+  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
   const selectedThemeId =
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item);
   const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
@@ -3277,152 +3134,24 @@ function TemplatePreviewPage({
     activeSlideIndex,
   );
 
-  const setLoadedDetailPreview = (params: {
-    readonly draft: PresentationPreviewDraft;
-    readonly index: number;
-    readonly previousFrameUrl: string | null;
-    readonly theme: PresentationTemplateThemeOption;
-  }) => {
-    setLoadedPresentationTemplateDetailPreview({
-      draft: params.draft,
-      index: params.index,
-      item,
-      previousFrameUrl: params.previousFrameUrl,
-      selectedTheme: params.theme,
-      setDetailPreview,
-    });
-  };
-
-  const loadDetailHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
-    const hasVisibleDetailPreviewResult =
-      visibleDetailPreview !== null &&
-      (visibleDetailPreview.frameUrl !== null || visibleDetailPreview.failed);
-    if (
-      node === null ||
-      hasVisibleDetailPreviewResult ||
-      (isHappyDomTestEnvironment() &&
-        !shouldLoadTemplateDetailHtmlPreviewInHappyDom())
-    ) {
-      return;
-    }
-
-    const cache = runtime.presentation;
-    const detailTokenKey = `detail:${item.embedUrl}`;
-    const detailToken = Symbol(detailTokenKey);
-    cache.detailTokens.set(detailTokenKey, detailToken);
-    const isActive = () => {
-      return (
-        node.isConnected &&
-        cache.detailTokens.get(detailTokenKey) === detailToken
-      );
-    };
-    const cachedDraft = cache.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      if (isActive()) {
-        setLoadedDetailPreview({
-          draft: cachedDraft,
-          index: activeSlideIndex,
-          previousFrameUrl: detailPreview?.frameUrl ?? null,
-          theme: selectedTheme,
-        });
-      }
-      return;
-    }
-
-    if (cache.failed.has(item.embedUrl)) {
-      if (isActive()) {
-        setDetailPreview({
-          slug: item.slug,
-          embedUrl: item.embedUrl,
-          themeId: selectedTheme.id,
-          index: activeSlideIndex,
-          loading: false,
-          failed: true,
-          frameUrl: null,
-          slideCount: fallbackSlideCount,
-        });
-      }
-      return;
-    }
-
-    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
-    if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
-      cache.pendingLoads.set(item.embedUrl, pendingLoad);
-    }
-    if (visibleDetailPreview?.loading !== true) {
-      setDetailPreview({
-        slug: item.slug,
-        embedUrl: item.embedUrl,
-        themeId: selectedTheme.id,
-        index: activeSlideIndex,
-        loading: true,
-        failed: false,
-        frameUrl: null,
-        slideCount: fallbackSlideCount,
-      });
-    }
-    detach(
-      (async () => {
-        const result = await tapError(pendingLoad);
-        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(item.embedUrl);
-        }
-        if (result === undefined || result === null) {
-          cache.failed.add(item.embedUrl);
-          if (!isActive()) {
-            return;
-          }
-          setDetailPreview({
-            slug: item.slug,
-            embedUrl: item.embedUrl,
-            themeId: selectedTheme.id,
-            index: activeSlideIndex,
-            loading: false,
-            failed: true,
-            frameUrl: null,
-            slideCount: fallbackSlideCount,
-          });
-          return;
-        }
-        cache.drafts.set(item.embedUrl, result);
-        if (isActive()) {
-          setLoadedDetailPreview({
-            draft: result,
-            index: activeSlideIndex,
-            previousFrameUrl: detailPreview?.frameUrl ?? null,
-            theme: selectedTheme,
-          });
-        }
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
   const selectDetailSlide = (index: number) => {
-    selectPresentationTemplateDetailSlide({
-      detailPreview,
-      detailSlideCount,
-      index,
+    selectDetailPreview({
       item,
-      selectedTheme,
-      setDetailPreview,
-      setSlideIndex,
       runtime,
+      index: Math.max(0, Math.min(detailSlideCount - 1, index)),
+      themeCss: presentationTemplateThemeCss(selectedTheme),
+      themeId: selectedTheme.id,
     });
   };
 
   const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
-    setThemeId(item.slug, theme.id);
-    const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      setLoadedDetailPreview({
-        draft: cachedDraft,
-        index: activeSlideIndex,
-        previousFrameUrl: detailPreview?.frameUrl ?? null,
-        theme,
-      });
-    }
+    selectDetailPreview({
+      item,
+      runtime,
+      index: activeSlideIndex,
+      themeCss: presentationTemplateThemeCss(theme),
+      themeId: theme.id,
+    });
   };
   const handleDetailSlideKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented) {
@@ -3468,10 +3197,7 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div
-        ref={loadDetailHtmlPreviewAfterMount}
-        className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
-      >
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
@@ -4663,12 +4389,12 @@ function TemplatePickerDialog({
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const pageSignal = useGet(pageSignal$);
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const search = useGet(templatePickerSearch$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
-  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
     restoreTemplatePickerPresentationScroll$,
   );
@@ -4676,13 +4402,13 @@ function TemplatePickerDialog({
     setTemplatePickerPresentationScrollTop$,
   );
   const detailPreview = useGet(templateDetailHtmlPreview$);
-  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const openDetailPreview = useSet(openPresentationTemplateDetailPreview$);
+  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
+  const closeDetailPreview = useSet(closePresentationTemplateDetailPreview$);
   const openWebsiteTemplatePreview = useSet(openWebsiteTemplatePreview$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
-  const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -4749,6 +4475,7 @@ function TemplatePickerDialog({
   };
 
   const closeTemplatePicker = () => {
+    closeDetailPreview(runtime);
     setPresentationGridScrollTop(0);
     onClose();
   };
@@ -4790,20 +4517,19 @@ function TemplatePickerDialog({
       cardThemeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
     );
     const selectedSlideIndex = Math.max(0, Math.floor(slideIndex));
-    setDetailThemeId(item.slug, selectedTheme.id);
-    setDetailSlideIndex(item.slug, selectedSlideIndex);
-    const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      setLoadedPresentationTemplateDetailPreview({
-        draft: cachedDraft,
-        index: selectedSlideIndex,
-        item,
-        previousFrameUrl: detailPreview?.frameUrl ?? null,
-        selectedTheme,
-        setDetailPreview,
-      });
-    }
-    setPreviewSlug(item.slug);
+    detach(
+      openDetailPreview(
+        {
+          index: selectedSlideIndex,
+          item,
+          runtime,
+          themeCss: presentationTemplateThemeCss(selectedTheme),
+          themeId: selectedTheme.id,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const previewDetailNavigationState = () => {
@@ -4827,7 +4553,6 @@ function TemplatePickerDialog({
       activeSlideIndex: detailSlideIndexBySlug[previewItem.slug] ?? 0,
       detailSlideCount,
       selectedTheme,
-      visibleDetailPreview,
     };
   };
 
@@ -4839,15 +4564,12 @@ function TemplatePickerDialog({
     if (navigationState === null) {
       return;
     }
-    selectPresentationTemplateDetailSlide({
-      detailPreview: navigationState.visibleDetailPreview,
-      detailSlideCount: navigationState.detailSlideCount,
-      index,
+    selectDetailPreview({
       item: previewItem,
-      selectedTheme: navigationState.selectedTheme,
-      setDetailPreview,
-      setSlideIndex: setDetailSlideIndex,
       runtime,
+      index: Math.max(0, Math.min(navigationState.detailSlideCount - 1, index)),
+      themeCss: presentationTemplateThemeCss(navigationState.selectedTheme),
+      themeId: navigationState.selectedTheme.id,
     });
   };
 
@@ -4903,7 +4625,7 @@ function TemplatePickerDialog({
       onOpenChange={(open) => {
         if (!open) {
           if (isPreviewing) {
-            setPreviewSlug(null);
+            closeDetailPreview(runtime);
             return;
           }
           closeTemplatePicker();
@@ -4928,7 +4650,7 @@ function TemplatePickerDialog({
           <TemplatePreviewPage
             item={previewItem}
             onBack={() => {
-              setPreviewSlug(null);
+              closeDetailPreview(runtime);
             }}
             onSelect={handleSelectPresentation}
             runtime={runtime}
