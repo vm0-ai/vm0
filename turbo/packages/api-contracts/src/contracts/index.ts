@@ -618,7 +618,6 @@ export {
   attachFileSchema,
   resolvedAttachFileSchema,
   artifactItemSchema,
-  artifactFavoriteBodySchema,
   artifactsListResponseSchema,
   imageArtifactEditSnapshotSchema,
   imageArtifactEditSnapshotStateSchema,
