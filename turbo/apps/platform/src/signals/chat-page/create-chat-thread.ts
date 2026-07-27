@@ -151,6 +151,7 @@ import {
   type BrowserSessionCardSignalsRegistry,
   type BrowserSessionSignals,
 } from "./browser-session-block.ts";
+import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
 import { searchParams$ } from "../route.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
@@ -2695,22 +2696,6 @@ export const ensureDraft$ = command(
   },
 );
 
-function createContainerRef() {
-  const internalContainerEl$ = state<HTMLElement | null>(null);
-  const containerEl$ = computed((get) => {
-    return get(internalContainerEl$);
-  });
-  const setContainerRef$ = onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internalContainerEl$, null);
-      });
-      set(internalContainerEl$, el);
-    }),
-  );
-  return { containerEl$, setContainerRef$ };
-}
-
 function createMessageRunIndicatorState(
   rawMessages$: Computed<ChatMessageProjectionEntry[]>,
 ) {
@@ -4359,7 +4344,7 @@ export function createChatThreadSignals(
     awayFromBottom$,
     ...scrollSignals
   } = createChatThreadScrollSignals(threadId);
-  const { containerEl$, setContainerRef$ } = createContainerRef();
+  const container = createChatThreadContainerSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
@@ -4419,8 +4404,7 @@ export function createChatThreadSignals(
     ...messageActions,
     composerSendButtonStatus$: composerSendButton.composerSendButtonStatus$,
     ...scrollSignals,
-    containerEl$,
-    setContainerRef$,
+    ...container,
     awayFromBottom$,
     draft,
     ...composer,

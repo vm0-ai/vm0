@@ -2747,6 +2747,99 @@ async function validateStorageArchiveSizeFinalization(): Promise<void> {
   }
 }
 
+async function validateStorageLegacyTypeContraction(): Promise<void> {
+  console.log("=== Phase 1.55: Validate Storage legacy type contraction ===\n");
+  const testDb = "migration_storage_legacy_type_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const storageId = "52000000-0000-4000-8000-000000000001";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 695);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "storages" (
+            "id",
+            "user_id",
+            "name",
+            "type",
+            "org_id",
+            "s3_prefix"
+          )
+          VALUES ($1, 'storage-contraction-user', 'storage-contraction', 'volume', 'storage-contraction-org', 'legacy-prefix')
+        `,
+        [storageId],
+      );
+
+      await applyMigrationsUpTo(client, 696);
+
+      const legacyColumns = await client.query<{ column_name: string }>(`
+        SELECT "column_name"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND (
+            ("table_name" = 'storages' AND "column_name" = 'type')
+            OR (
+              "table_name" = 'storage_version_lineage'
+              AND "column_name" = 'storage_type'
+            )
+          )
+      `);
+      assert.deepEqual(legacyColumns.rows, []);
+
+      const identityIndexes = await client.query<{ indexname: string }>(`
+        SELECT "indexname"
+        FROM "pg_indexes"
+        WHERE "schemaname" = 'public'
+          AND "tablename" = 'storages'
+          AND "indexname" IN (
+            'idx_storages_org_user_name',
+            'idx_storages_org_user_name_type'
+          )
+        ORDER BY "indexname"
+      `);
+      assert.deepEqual(identityIndexes.rows, [
+        { indexname: "idx_storages_org_user_name" },
+      ]);
+
+      const upserted = await client.query<{
+        id: string;
+        s3_prefix: string;
+      }>(`
+        INSERT INTO "storages" (
+          "user_id",
+          "name",
+          "org_id",
+          "s3_prefix"
+        )
+        VALUES (
+          'storage-contraction-user',
+          'storage-contraction',
+          'storage-contraction-org',
+          'canonical-prefix'
+        )
+        ON CONFLICT ("org_id", "user_id", "name")
+        DO UPDATE SET "s3_prefix" = EXCLUDED."s3_prefix"
+        RETURNING "id", "s3_prefix"
+      `);
+      assert.deepEqual(upserted.rows, [
+        { id: storageId, s3_prefix: "canonical-prefix" },
+      ]);
+
+      console.log(
+        "   ✅ Legacy type columns and index are removed while canonical writes and existing Storage rows remain valid\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -3699,6 +3792,7 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipContraction();
 
     await validateStorageArchiveSizeFinalization();
+    await validateStorageLegacyTypeContraction();
     await validateLegacyMemoryCleanup();
     await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
