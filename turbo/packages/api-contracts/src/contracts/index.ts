@@ -760,6 +760,8 @@ export {
 
 export {
   ablyTokenRequestSchema,
+  connectorChangedPayloadSchema,
+  type ConnectorChangedPayload,
   runnerRealtimeTokenContract,
   type RunnerRealtimeTokenContract,
   platformRealtimeTokenContract,

@@ -119,9 +119,9 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
     ? activeSidebarMailDraftId
     : legacySelectedMailDraftId;
   const openSidebar = useSet(openThreadMailDraft$);
-  const reloadSidebar = useSet(signals.reloadSidebar$);
+  const reloadDraft = useSet(signals.reloadDraft$);
   const { connectorIcon, reconnect, reconnectDisabled, reconnecting } =
-    useGmailReconnect();
+    useGmailReconnect(reloadDraft);
 
   if (draftLoadable.state === "loading") {
     return <MailDraftCardSkeleton />;
@@ -179,7 +179,6 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
       data-mail-draft-card
       data-mail-draft-status={draft.status}
       onClick={() => {
-        reloadSidebar();
         openSidebar(signals.mailDraftId);
       }}
       className={cn(

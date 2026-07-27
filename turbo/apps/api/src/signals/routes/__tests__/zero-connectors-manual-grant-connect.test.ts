@@ -772,7 +772,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "connector:changed",
-      null,
+      { connectorRef: "openai" },
     );
   });
 

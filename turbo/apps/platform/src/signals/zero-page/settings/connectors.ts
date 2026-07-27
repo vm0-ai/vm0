@@ -60,13 +60,14 @@ import {
   tapError,
   withCleanup,
 } from "../../utils.ts";
-import { setAblyLoop$ } from "../../realtime.ts";
+import { setAblyPayloadLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { subagents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
+import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 
@@ -2246,12 +2247,25 @@ export const connectConnectorOAuthAuthCode$ = command(
         // publishes `connector:changed`, and the subscription rechecks server
         // state.
         const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
+        const onMatchingConnectorChanged$ = command(
+          async (
+            { set },
+            payload: unknown,
+            sig: AbortSignal,
+          ): Promise<boolean> => {
+            if (!isConnectorChangedPayloadFor(payload, connectorRef)) {
+              return false;
+            }
+            return await set(onConnectorChanged$, sig);
+          },
+        );
         const waitForConnectorChanged = async () => {
           await set(
-            setAblyLoop$,
+            setAblyPayloadLoop$,
             {
               topic: "connector:changed",
-              loopCommand$: onConnectorChanged$,
+              loopCommand$: onMatchingConnectorChanged$,
+              catchUpCommand$: onConnectorChanged$,
               options: { runOnSubscribe: true },
             },
             waitSignal,

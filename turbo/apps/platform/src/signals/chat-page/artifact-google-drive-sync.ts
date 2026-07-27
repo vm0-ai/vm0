@@ -4,8 +4,9 @@ import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-t
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { isConnectorChangedPayloadFor } from "../connector-change.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { setAblyPayloadLoop$ } from "../realtime.ts";
 import {
   isAgentConnectorAuthorized,
   reloadAgentConnectorAuthorizations$,
@@ -214,9 +215,22 @@ export const waitForGoogleDriveAuthorization$ = command(
       return;
     }
     signal.throwIfAborted();
+    const matchingConnectorChanged$ = command(
+      async ({ set }, payload: unknown, sig: AbortSignal): Promise<boolean> => {
+        if (!isConnectorChangedPayloadFor(payload, "google-drive")) {
+          return false;
+        }
+        return await set(authorizationReady$, sig);
+      },
+    );
     await set(
-      setAblyLoop$,
-      { topic: "connector:changed", loopCommand$: authorizationReady$ },
+      setAblyPayloadLoop$,
+      {
+        topic: "connector:changed",
+        loopCommand$: matchingConnectorChanged$,
+        catchUpCommand$: authorizationReady$,
+        options: { runOnSubscribe: true },
+      },
       signal,
     );
   },
