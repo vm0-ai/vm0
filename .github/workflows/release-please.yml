@@ -619,9 +619,6 @@ jobs:
 
       - uses: ./.github/actions/toolchain-init
 
-      - name: Install neonctl
-        run: npm install -g neonctl@2.15.0
-
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
@@ -642,72 +639,13 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Create Production Migration Smoke Branch
-        id: create-migration-smoke-branch
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          BRANCH_NAME: release-smoke/production-migration
-        run: |
-          if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e --arg name "$BRANCH_NAME" '.[] | select(.name == $name)' > /dev/null; then
-            echo "Smoke branch $BRANCH_NAME already exists, resetting..."
-            neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
-          else
-            echo "Creating smoke branch $BRANCH_NAME from production"
-            neonctl branches create --name "$BRANCH_NAME" --parent production --project-id "$NEON_PROJECT_ID"
-          fi
-
-          echo "Waiting for smoke branch $BRANCH_NAME to become ready"
-          CURRENT_STATE=""
-          for i in $(seq 1 30); do
-            CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r --arg name "$BRANCH_NAME" '.[] | select(.name == $name) | .current_state')
-            if [ "$CURRENT_STATE" = "ready" ]; then
-              echo "Smoke branch ready"
-              break
-            fi
-            echo "Smoke branch state: ${CURRENT_STATE:-missing} (attempt $i/30)"
-            sleep 2
-          done
-
-          if [ "$CURRENT_STATE" != "ready" ]; then
-            echo "::error::Smoke branch $BRANCH_NAME not ready after 60 seconds (state: ${CURRENT_STATE:-missing})"
-            exit 1
-          fi
-
       - name: Run Production Migration Smoke Test
         id: run-migration-smoke-test
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          BRANCH_NAME: release-smoke/production-migration
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-        run: |
-          echo "Getting pooled database URL for smoke branch $BRANCH_NAME"
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
-
-          echo "Running production migration smoke test on $BRANCH_NAME"
-          cd turbo
-          DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
-          echo "Production migration smoke test completed"
-
-      - name: Delete Production Migration Smoke Branch
-        id: delete-migration-smoke-branch
-        if: ${{ always() && steps.create-migration-smoke-branch.outcome != 'skipped' }}
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          BRANCH_NAME: release-smoke/production-migration
-        run: |
-          echo "Cleaning up smoke branch $BRANCH_NAME"
-          BRANCHES_JSON=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json)
-
-          if echo "$BRANCHES_JSON" | jq -e --arg name "$BRANCH_NAME" '.[] | select(.name == $name)' > /dev/null; then
-            neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
-            echo "Smoke branch $BRANCH_NAME deleted"
-          else
-            echo "Smoke branch $BRANCH_NAME does not exist; cleanup skipped"
-          fi
+        uses: ./.github/actions/production-migration-smoke
+        with:
+          neon-api-key: ${{ secrets.NEON_API_KEY }}
+          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
+          branch-name: release-smoke/migrate-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Get Production Database URL
         id: get-db-url
@@ -759,11 +697,7 @@ jobs:
           ${{
             failure() &&
             steps.slack-start.outputs.ts &&
-            (
-              steps.create-migration-smoke-branch.outcome == 'failure' ||
-              steps.run-migration-smoke-test.outcome == 'failure' ||
-              steps.delete-migration-smoke-branch.outcome == 'failure'
-            )
+            steps.run-migration-smoke-test.outcome == 'failure'
           }}
         uses: slackapi/slack-github-action@v4.0.0
         with:
@@ -777,16 +711,14 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Database Migration Smoke* ❌ Smoke check failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n⚠️ Production database migration was not run. The failure happened before the real production DB migration, on the Neon smoke branch `release-smoke/production-migration` or its cleanup.\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Database Migration Smoke* ❌ Smoke check failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n⚠️ Production database migration was not run. The failure happened before the real production DB migration, on its temporary Neon production clone or during cleanup.\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
       - name: Notify Slack - Failure
         if: >-
           ${{
             failure() &&
             steps.slack-start.outputs.ts &&
-            steps.create-migration-smoke-branch.outcome != 'failure' &&
-            steps.run-migration-smoke-test.outcome != 'failure' &&
-            steps.delete-migration-smoke-branch.outcome != 'failure'
+            steps.run-migration-smoke-test.outcome != 'failure'
           }}
         uses: slackapi/slack-github-action@v4.0.0
         with:

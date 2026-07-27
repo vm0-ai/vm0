@@ -168,6 +168,7 @@ jobs:
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect.outputs.migration-changed }}
+      migration-added: ${{ steps.detect.outputs.migration-added }}
       crates-changed: ${{ steps.detect.outputs.crates-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect.outputs.e2e-changed }}
@@ -235,6 +236,16 @@ jobs:
           else
             echo "No migration, schema, or JSONB contract changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if git diff --diff-filter=A --name-only "$BASE_REF" HEAD -- \
+            'turbo/packages/db/src/migrations/*.sql' |
+            grep -q .; then
+            echo "New migration SQL detected"
+            echo "migration-added=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new migration SQL"
+            echo "migration-added=false" >> "$GITHUB_OUTPUT"
           fi
 
           if printf '%s\n' "$CHANGED_FILES" | grep -q "^crates/"; then
@@ -661,7 +672,7 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       (
-        needs.prepare.outputs.migration-changed == 'true' ||
+        needs.prepare.outputs.migration-added == 'true' ||
         github.head_ref == 'ci/pr-production-migration-smoke'
       )
     runs-on: ubuntu-latest
@@ -674,7 +685,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    environment: production
+    environment:
+      name: production
+      deployment: false
     defaults:
       run:
         shell: bash
@@ -704,79 +717,13 @@ jobs:
       - if: steps.current-pr.outputs.run == 'true'
         uses: ./.github/actions/toolchain-init
 
-      - name: Install neonctl
-        if: steps.current-pr.outputs.run == 'true'
-        run: npm install -g neonctl@2.15.0
-
-      - name: Create Production Migration Smoke Branch
-        if: steps.current-pr.outputs.run == 'true'
-        id: create-migration-smoke-branch
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          BRANCH_NAME="pr-smoke/migrate-${PR_NUMBER}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          EXPIRES_AT=$(date -u -d "+6 hours" +"%Y-%m-%dT%H:%M:%SZ")
-          echo "branch-name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
-
-          echo "Creating smoke branch $BRANCH_NAME from production"
-          neonctl branches create \
-            --name "$BRANCH_NAME" \
-            --parent production \
-            --expires-at "$EXPIRES_AT" \
-            --project-id "$NEON_PROJECT_ID"
-
-          echo "Waiting for smoke branch $BRANCH_NAME to become ready"
-          CURRENT_STATE=""
-          for attempt in {1..30}; do
-            CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r --arg name "$BRANCH_NAME" '.[] | select(.name == $name) | .current_state')
-            if [ "$CURRENT_STATE" = "ready" ]; then
-              echo "Smoke branch ready"
-              break
-            fi
-            echo "Smoke branch state: ${CURRENT_STATE:-missing} (attempt $attempt/30)"
-            sleep 2
-          done
-
-          if [ "$CURRENT_STATE" != "ready" ]; then
-            echo "::error::Smoke branch $BRANCH_NAME not ready after 60 seconds (state: ${CURRENT_STATE:-missing})"
-            exit 1
-          fi
-
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
-          echo "::add-mask::$DATABASE_URL"
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
-
       - name: Run Production Migration Smoke Test
         if: steps.current-pr.outputs.run == 'true'
-        env:
-          BRANCH_NAME: ${{ steps.create-migration-smoke-branch.outputs.branch-name }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-          DATABASE_URL: ${{ steps.create-migration-smoke-branch.outputs.database-url }}
-        run: |
-          echo "Running production migration smoke test on $BRANCH_NAME"
-          cd turbo
-          pnpm -F @vm0/db db:migrate
-          echo "Production migration smoke test completed"
-
-      - name: Delete Production Migration Smoke Branch
-        if: ${{ always() && steps.create-migration-smoke-branch.outputs.branch-name != '' }}
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          BRANCH_NAME: ${{ steps.create-migration-smoke-branch.outputs.branch-name }}
-        run: |
-          echo "Cleaning up smoke branch $BRANCH_NAME"
-          BRANCHES_JSON=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json)
-
-          if echo "$BRANCHES_JSON" | jq -e --arg name "$BRANCH_NAME" '.[] | select(.name == $name)' > /dev/null; then
-            neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
-            echo "Smoke branch $BRANCH_NAME deleted"
-          else
-            echo "Smoke branch $BRANCH_NAME does not exist; cleanup skipped"
-          fi
+        uses: ./.github/actions/production-migration-smoke
+        with:
+          neon-api-key: ${{ secrets.NEON_API_KEY }}
+          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
+          branch-name: pr-smoke/migrate-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   test-cli:
     needs: [detect-turbo-ts-checks]
