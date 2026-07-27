@@ -313,6 +313,8 @@ mod tests {
 
     use super::*;
 
+    // Turn early admission of the queued third part into a synchronous failure,
+    // so the absence assertion does not depend on executor timing.
     struct WindowGuardReader {
         inner: Cursor<Vec<u8>>,
         blocked_at: u64,
