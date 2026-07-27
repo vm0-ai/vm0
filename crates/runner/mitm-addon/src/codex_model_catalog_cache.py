@@ -291,9 +291,15 @@ def _response_cache_control_is_unsafe(headers: http.Headers) -> bool:
         raw_value = raw_value.strip()
         if name in _REVALIDATION_CACHE_CONTROL:
             return True
-        if separator and name in ("max-age", "s-maxage") and raw_value.strip('"') == "0":
-            return True
-    return any(value.strip().lower() == "no-cache" for value in headers.get_all("Pragma"))
+        if separator and name in ("max-age", "s-maxage"):
+            delta_seconds = raw_value.strip('"')
+            if delta_seconds and not delta_seconds.strip("0"):
+                return True
+    return any(
+        token.strip().lower() == "no-cache"
+        for value in headers.get_all("Pragma")
+        for token in value.split(",")
+    )
 
 
 def _content_type_is_json(content_type: str) -> bool:
@@ -762,9 +768,10 @@ def observe_authenticated_models_etag(flow: http.HTTPFlow) -> None:
     if not keys:
         return
     matching_keys = [key for key in keys if _entries[key].etag == signal_etag]
+    mismatching_keys = [key for key in keys if _entries[key].etag != signal_etag]
+    for key in mismatching_keys:
+        _remove_entry(key)
     if not matching_keys:
-        for key in keys:
-            _remove_entry(key)
         _set_telemetry(flow, "model_catalog_etag_invalidated")
         return
 

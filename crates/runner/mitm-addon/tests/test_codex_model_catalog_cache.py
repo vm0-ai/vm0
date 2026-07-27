@@ -299,6 +299,18 @@ def test_equal_and_changed_200_revalidations_stream_to_completion(real_flow):
             id="no-store",
         ),
         pytest.param(
+            _catalog_response(headers={"Cache-Control": "max-age=00"}),
+            _CATALOG_BODY,
+            "response_cache_control",
+            id="zero-max-age",
+        ),
+        pytest.param(
+            _catalog_response(headers={"Pragma": "extension, no-cache"}),
+            _CATALOG_BODY,
+            "response_cache_control",
+            id="pragma-no-cache",
+        ),
+        pytest.param(
             _catalog_response(headers={"Vary": "Accept-Encoding"}),
             _CATALOG_BODY,
             "response_vary",
@@ -414,6 +426,10 @@ def test_authenticated_models_etag_confirmation_and_partitioned_invalidation(rea
     with patch.object(catalog_cache.time, "monotonic", return_value=100.0) as monotonic:
         _install_catalog(_catalog_flow(real_flow))
         _install_catalog(_catalog_flow(real_flow, auth_value="auth-b"))
+        _install_catalog(
+            _catalog_flow(real_flow, version="0.144.0"),
+            etag='"catalog-legacy"',
+        )
 
         monotonic.return_value = 161.0
         confirmation = _responses_flow(real_flow)
@@ -429,6 +445,11 @@ def test_authenticated_models_etag_confirmation_and_partitioned_invalidation(rea
         confirmed_hit = _catalog_flow(real_flow)
         catalog_cache.prepare_request(confirmed_hit, request_end_stream=True)
         assert confirmed_hit.response is not None
+
+        invalidated_version = _catalog_flow(real_flow, version="0.144.0")
+        catalog_cache.prepare_request(invalidated_version, request_end_stream=True)
+        assert invalidated_version.response is None
+        assert "If-None-Match" not in invalidated_version.request.headers
 
         invalidation = _responses_flow(real_flow, etag='"catalog-v2"')
         mitm_addon.responseheaders(invalidation)
