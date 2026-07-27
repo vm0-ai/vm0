@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.639.0](https://github.com/vm0-ai/vm0/compare/app-v0.638.3...app-v0.639.0) (2026-07-27)
+
+
+### Features
+
+* **feishu:** improve setup and oauth callback flow ([#23202](https://github.com/vm0-ai/vm0/issues/23202)) ([d0a75ae](https://github.com/vm0-ai/vm0/commit/d0a75ae68f23fcf28898b20afefc183ca9167da8))
+
+
+### Bug Fixes
+
+* **platform:** cancel billing credits scroll on detach ([#23212](https://github.com/vm0-ai/vm0/issues/23212)) ([561fae0](https://github.com/vm0-ai/vm0/commit/561fae06e0e9794cda258ba45309170cffcad214))
+* **platform:** keep clerk profile inside settings dialog ([#23207](https://github.com/vm0-ai/vm0/issues/23207)) ([eaa6f86](https://github.com/vm0-ai/vm0/commit/eaa6f8615bc4f61d8cb1ddd6dd81cbade99cb5eb))
+* **platform:** move presentation detail loading to preview command ([#23213](https://github.com/vm0-ai/vm0/issues/23213)) ([f22da5b](https://github.com/vm0-ai/vm0/commit/f22da5b38ebed50cee190f43cd995fc5d2b90b85))
+* **platform:** preserve focus while resizing artifact previews ([#23208](https://github.com/vm0-ai/vm0/issues/23208)) ([1f7c068](https://github.com/vm0-ai/vm0/commit/1f7c0687bf679c0462af35c0fa6c132831f6c64d))
+* **platform:** resume thread events from latest cached cursor ([#23169](https://github.com/vm0-ai/vm0/issues/23169)) ([7036bc0](https://github.com/vm0-ai/vm0/commit/7036bc0d9b13f1bd15899c8b15c4ebf8a257c9b3))
+* **platform:** show skeleton while invoices load ([#23174](https://github.com/vm0-ai/vm0/issues/23174)) ([143c8d8](https://github.com/vm0-ai/vm0/commit/143c8d87712e51d19551d3abee1ed975a89f5324))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.0
+    * @vm0/connectors bumped to 1.195.2
+    * @vm0/core bumped to 8.472.0
+
 ## [0.638.3](https://github.com/vm0-ai/vm0/compare/app-v0.638.2...app-v0.638.3) (2026-07-27)
 
 
