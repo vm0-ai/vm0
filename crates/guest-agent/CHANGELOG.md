@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.1...guest-agent-v0.58.2) (2026-07-27)
+
+
+### Refactoring
+
+* **guest-agent:** retire checkpoint gzip downgrade ([#23314](https://github.com/vm0-ai/vm0/issues/23314)) ([7fe12c2](https://github.com/vm0-ai/vm0/commit/7fe12c206e8e0504da52a646527221359e7b94b7))
+
 ## [0.58.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.0...guest-agent-v0.58.1) (2026-07-27)
 
 
