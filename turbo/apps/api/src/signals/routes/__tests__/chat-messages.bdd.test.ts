@@ -53,7 +53,6 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   clearThreadSessionBinding,
-  clearThreadSessionConversation,
   deleteVm0ManagedDefaultModelKey,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
@@ -69,6 +68,7 @@ import {
   holdChatMessageFixture,
   holdChatMessageQueueItemFixture,
   holdOrgAdmissionLockFixture,
+  holdThreadSessionConversationClearFixture,
   replaceBddVm0ApiKeys,
 } from "../../../test-fixtures/chat-messages";
 
@@ -3018,9 +3018,6 @@ describe("CHAT-02: run-level model overrides", () => {
 
   it("retries preparation when the canonical conversation snapshot changes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for snapshot retry");
-    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
@@ -3039,24 +3036,27 @@ describe("CHAT-02: run-level model overrides", () => {
       throw new Error("Expected the first run to establish a session");
     }
 
-    const admissionLock = await holdOrgAdmissionLockFixture({
-      orgId: actor.orgId,
+    const conversationClear = await holdThreadSessionConversationClearFixture({
+      threadId: first.threadId,
       signal: context.signal,
     });
     onTestFinished(async () => {
-      admissionLock.release();
-      await admissionLock.done;
+      conversationClear.release();
+      await conversationClear.done;
     });
     const secondPromise = sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "retry after the checkpoint changes",
     });
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    // The staged clear is still uncommitted, so the run resolves the pre-clear
+    // snapshot and only blocks once its commit re-reads the session row.
+    await expect
+      .poll(conversationClear.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
 
-    await clearThreadSessionConversation(context, first.threadId);
-    admissionLock.release();
-    await admissionLock.done;
+    conversationClear.release();
+    await conversationClear.done;
     const second = await secondPromise;
 
     const retryEvents = sandboxOperationEvents().filter((event) => {
