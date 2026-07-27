@@ -4,7 +4,8 @@ import { refreshClerkSessionToken, signInThroughHostedAuth } from "../lib/auth";
 import { completeExploreOnboarding } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
-test("complete app onboarding to chat page", async ({ browser, page }) => {
+// TODO: Re-enable after the recurring Clerk auth initialization failures are resolved.
+test.skip("complete app onboarding to chat page", async ({ browser, page }) => {
   test.setTimeout(240_000);
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
