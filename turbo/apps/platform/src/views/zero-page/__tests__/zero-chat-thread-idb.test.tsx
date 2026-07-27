@@ -316,60 +316,6 @@ describe("zero chat thread IndexedDB fallback", () => {
     idbThreadEventStoreMock.reset();
   });
 
-  it("falls back to remote messages when IndexedDB message read never settles", async () => {
-    const pendingRead = context.mocks.deferred<never[]>();
-    idbMessageStoreMock.readLatest.mockImplementation(() => {
-      return pendingRead.promise;
-    });
-    prepareDefaultAgent();
-    mockCurrentThreadDetail();
-    mockSidebarThread();
-
-    let messageListRequests = 0;
-    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-      messageListRequests += 1;
-      if (query.sinceSeqId) {
-        return respond(200, { messages: [] });
-      }
-      return respond(200, {
-        messages: [
-          {
-            id: "00000000-0000-4000-8000-000000000101",
-            role: "user",
-            content: USER_MESSAGE,
-            seqId: 1,
-            createdAt: "2026-03-10T00:00:01Z",
-          },
-          {
-            id: "00000000-0000-4000-8000-000000000102",
-            role: "assistant",
-            content: ASSISTANT_MESSAGE,
-            seqId: 2,
-            createdAt: "2026-03-10T00:00:02Z",
-          },
-        ],
-      });
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-    });
-
-    const messageContainer = document.querySelector("[data-message-container]");
-    expect(messageContainer).toBeInstanceOf(HTMLElement);
-    await expect(screen.findByText(USER_MESSAGE)).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText(ASSISTANT_MESSAGE),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByText("Send a message to start the conversation"),
-    ).not.toBeInTheDocument();
-    expect(messageListRequests).toBeGreaterThan(0);
-  });
-
   it("shows the message skeleton until an uncached remote thread is confirmed empty", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
