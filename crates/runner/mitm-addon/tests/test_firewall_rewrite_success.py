@@ -6,8 +6,13 @@ from unittest.mock import AsyncMock, patch
 import auth
 import flow_metadata_keys as metadata_keys
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
 from tests.firewall_rewrite_helpers import make_allow, make_success_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
+
+
+def _fail_if_ordinary_upstream_credentials_are_revalidated() -> bool:
+    raise AssertionError("ordinary upstream credential guard must not run")
 
 
 class TestAuthBaseUrlRewriteSuccess:
@@ -46,7 +51,7 @@ class TestAuthBaseUrlRewriteSuccess:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
         # URL should not be modified
         assert flow.request.url == original_url
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -72,7 +77,14 @@ class TestAuthBaseUrlRewriteSuccess:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(
+                flow,
+                allow,
+                vm_info,
+                revalidate_ordinary_upstream_credentials=(
+                    _fail_if_ordinary_upstream_credentials_are_revalidated
+                ),
+            )
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
         assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
@@ -98,7 +110,7 @@ class TestAuthBaseUrlRewriteSuccess:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert flow.response is not None
@@ -135,7 +147,7 @@ class TestAuthBaseUrlRewriteSuccess:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
         assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"

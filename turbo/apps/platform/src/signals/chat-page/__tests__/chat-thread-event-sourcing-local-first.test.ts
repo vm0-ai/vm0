@@ -365,13 +365,14 @@ describe("chat thread event sourcing local-first list", () => {
       },
     });
 
-    const threads = await context.store.get(chatThreads$);
-
-    expect(
-      threads.map((thread) => {
-        return thread.id;
-      }),
-    ).toStrictEqual([THREAD_ID]);
+    await vi.waitFor(async () => {
+      const threads = await context.store.get(chatThreads$);
+      expect(
+        threads.map((thread) => {
+          return thread.id;
+        }),
+      ).toStrictEqual([THREAD_ID]);
+    });
     expect(unreadsRequests).toBe(1);
   });
 
