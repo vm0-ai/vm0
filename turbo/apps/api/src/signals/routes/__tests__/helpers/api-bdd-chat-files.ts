@@ -1257,6 +1257,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.computerUseHostId === undefined
                   ? {}
                   : { computerUseHostId: body.computerUseHostId }),
+                ...(body.cloudBrowserEnabled === undefined
+                  ? {}
+                  : { cloudBrowserEnabled: body.cloudBrowserEnabled }),
                 ...(body.clientMessageId === undefined
                   ? {}
                   : { clientMessageId: body.clientMessageId }),

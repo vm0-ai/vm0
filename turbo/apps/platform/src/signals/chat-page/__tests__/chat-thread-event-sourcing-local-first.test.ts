@@ -254,6 +254,7 @@ describe("chat thread event sourcing local-first list", () => {
         selectedModel: null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
       },
     ]);
     expect(eventsRequests).toBe(1);
@@ -691,6 +692,7 @@ describe("chat thread event sourcing local-first list", () => {
         selectedModel: "claude-sonnet-4-6",
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
       },
     ]);
     expect(context.store.get(threadMeta(OPTIMISTIC_THREAD_ID))).toStrictEqual({
@@ -701,6 +703,7 @@ describe("chat thread event sourcing local-first list", () => {
       selectedModel: "claude-sonnet-4-6",
       serviceTier: null,
       computerUseHostId: null,
+      cloudBrowserEnabled: false,
     });
 
     let threadDraftRequests = 0;
