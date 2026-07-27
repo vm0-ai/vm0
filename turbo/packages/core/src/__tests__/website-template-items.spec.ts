@@ -125,7 +125,7 @@ describe("website template items", () => {
         /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+\.html$/u,
       );
       expect(item.previewImageUrl).toMatch(
-        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+-preview-(?:480x270|960x540)\.webp$/u,
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+-preview-960x540\.webp$/u,
       );
       expect(item.previewUrl).not.toContain("drive.google.com");
       expect(item.previewUrl).not.toContain("docs.google.com");
