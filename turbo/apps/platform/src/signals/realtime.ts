@@ -6,7 +6,13 @@ import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
-import { createDeferredPromise, setLoop, throwIfAbort } from "./utils.ts";
+import {
+  createDeferredPromise,
+  onRejection,
+  setLoop,
+  throwIfAbort,
+  withCleanup,
+} from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Realtime");
@@ -27,7 +33,8 @@ const notifyRealtimeDegraded$ = command(({ get, set }) => {
 
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
-const subscriberPokeRegistry$ = state<ReadonlySet<() => void>>(new Set());
+const subscriberPokeTarget$ = state(new EventTarget());
+const SUBSCRIBER_POKE_EVENT = "poke";
 
 interface PendingAblySubscription {
   topic: string;
@@ -100,26 +107,6 @@ interface RealtimePayloadLoopIterationArgs {
   >;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly pokeLoop: () => void;
-  readonly cleanup: () => void;
-}
-
-function errorMessage(error: unknown): string | undefined {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string"
-  ) {
-    return error.message;
-  }
-  return undefined;
-}
-
-function isAblyConnectionClosedError(error: unknown): boolean {
-  return errorMessage(error) === "Connection closed";
 }
 
 async function waitForTransientRetry(
@@ -135,43 +122,61 @@ async function waitForTransientRetry(
   signal.throwIfAborted();
 }
 
-const addPokeSubscriber$ = command(({ set }, pokeLoop: () => void) => {
-  set(subscriberPokeRegistry$, (prev) => {
-    const next = new Set(prev);
-    next.add(pokeLoop);
-    return next;
-  });
-});
+type ChannelCallback = (message: InboundMessage) => void;
 
-const removePokeSubscriber$ = command(({ set }, pokeLoop: () => void) => {
-  set(subscriberPokeRegistry$, (prev) => {
-    const next = new Set(prev);
-    next.delete(pokeLoop);
-    return next;
-  });
-});
+interface SubscribeChannelArgs {
+  readonly channel: RealtimeChannel;
+  readonly topic: string | null;
+  readonly callback: ChannelCallback;
+  readonly poke: () => void;
+  readonly subscriberPokeTarget: EventTarget;
+  readonly signal: AbortSignal;
+  readonly run: () => Promise<void>;
+}
 
-function registerVisibilityPoke(
-  label: string,
-  signal: AbortSignal,
-  pokeLoop: () => void,
-): () => void {
-  const onVisibilityChange = () => {
-    if (document.visibilityState !== "visible") {
-      return;
+async function subscribeChannel({
+  channel,
+  topic,
+  callback,
+  poke,
+  subscriberPokeTarget,
+  signal,
+  run,
+}: SubscribeChannelArgs): Promise<void> {
+  signal.throwIfAborted();
+
+  const unsubscribeChannel = () => {
+    signal.removeEventListener("abort", unsubscribeChannel);
+    if (topic === null) {
+      channel.unsubscribe(callback);
+    } else {
+      channel.unsubscribe(topic, callback);
     }
-    L.debug("tab visible, poking loop", label);
-    pokeLoop();
   };
-  document.addEventListener("visibilitychange", onVisibilityChange, { signal });
-  return () => {
-    document.removeEventListener("visibilitychange", onVisibilityChange);
+  const release = () => {
+    subscriberPokeTarget.removeEventListener(SUBSCRIBER_POKE_EVENT, poke);
+    unsubscribeChannel();
   };
+
+  subscriberPokeTarget.addEventListener(SUBSCRIBER_POKE_EVENT, poke, {
+    signal,
+  });
+  signal.addEventListener("abort", unsubscribeChannel, { once: true });
+
+  await onRejection(
+    topic === null
+      ? channel.subscribe(callback)
+      : channel.subscribe(topic, callback),
+    release,
+  );
+  signal.throwIfAborted();
+  await withCleanup(run(), release);
+  signal.throwIfAborted();
 }
 
 const runWithChannel$ = command(
   async (
-    { set },
+    { get, set },
     { channel, topic, loopCommand$, options }: RealtimeLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -199,84 +204,60 @@ const runWithChannel$ = command(
       L.debug("got message from topic", topic, message);
       pokeLoop();
     };
-    const unregisterVisibilityPoke = registerVisibilityPoke(
+    await subscribeChannel({
+      channel,
       topic,
+      callback,
+      poke: pokeLoop,
+      subscriberPokeTarget: get(subscriberPokeTarget$),
       signal,
-      pokeLoop,
-    );
-    set(addPokeSubscriber$, pokeLoop);
+      run: async () => {
+        options?.onSubscribed?.();
+        if (options?.runOnSubscribe) {
+          pokeLoop();
+        }
+        L.debug("subscribed to topic: " + topic);
 
-    const cleanup = () => {
-      set(removePokeSubscriber$, pokeLoop);
-      unregisterVisibilityPoke();
-      channel.unsubscribe(topic, callback);
-    };
-
-    signal.addEventListener("abort", cleanup, { once: true });
-
-    // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
-    try {
-      await channel.subscribe(topic, callback);
-      signal.throwIfAborted();
-      options?.onSubscribed?.();
-      if (options?.runOnSubscribe) {
-        pokeLoop();
-      }
-      L.debug("subscribed to topic: " + topic);
-
-      await setLoop(
-        async (loopSignal) => {
-          await deferred.promise;
-          loopSignal.throwIfAborted();
-          deferred = createDeferredPromise(loopSignal);
-          poked = false;
-
-          // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-          try {
-            const done = await set(loopCommand$, loopSignal);
+        await setLoop(
+          async (loopSignal) => {
+            await deferred.promise;
             loopSignal.throwIfAborted();
-            transientRetryCount = 0;
-            if (done) {
-              cleanup();
-              return true;
-            }
-          } catch (error) {
-            loopSignal.throwIfAborted();
-            throwIfAbort(error);
-            if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
-              L.warn(
-                `giving up on ably notification after repeated handler failures`,
-                error,
-              );
+            deferred = createDeferredPromise(loopSignal);
+            poked = false;
+
+            // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+            try {
+              const done = await set(loopCommand$, loopSignal);
+              loopSignal.throwIfAborted();
               transientRetryCount = 0;
-              set(notifyRealtimeDegraded$);
-              return false;
+              if (done) {
+                return true;
+              }
+            } catch (error) {
+              loopSignal.throwIfAborted();
+              throwIfAbort(error);
+              if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+                L.warn(
+                  `giving up on ably notification after repeated handler failures`,
+                  error,
+                );
+                transientRetryCount = 0;
+                set(notifyRealtimeDegraded$);
+                return false;
+              }
+              L.warn(`transient error in ably notification`, error);
+              await waitForTransientRetry(loopSignal, transientRetryCount);
+              loopSignal.throwIfAborted();
+              transientRetryCount++;
+              pokeLoop();
             }
-            L.warn(`transient error in ably notification`, error);
-            await waitForTransientRetry(loopSignal, transientRetryCount);
-            loopSignal.throwIfAborted();
-            transientRetryCount++;
-            pokeLoop();
-          }
-          return false;
-        },
-        0,
-        signal,
-      );
-    } catch (error) {
-      signal.throwIfAborted();
-      throwIfAbort(error);
-      if (isAblyConnectionClosedError(error)) {
-        L.debug("Ably connection closed before subscription completed", {
-          topic,
-        });
-        return;
-      }
-      throw error;
-    } finally {
-      signal.removeEventListener("abort", cleanup);
-      cleanup();
-    }
+            return false;
+          },
+          0,
+          signal,
+        );
+      },
+    });
   },
 );
 
@@ -288,7 +269,6 @@ const runPayloadLoopIteration$ = command(
       loopCommand$,
       catchUpCommand$,
       pokeLoop,
-      cleanup,
     }: RealtimePayloadLoopIterationArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -358,7 +338,6 @@ const runPayloadLoopIteration$ = command(
     }
     state.transientRetryCount = 0;
     if (done) {
-      cleanup();
       return true;
     }
     if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
@@ -370,7 +349,7 @@ const runPayloadLoopIteration$ = command(
 
 const runWithChannelPayload$ = command(
   async (
-    { set },
+    { get, set },
     args: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -415,70 +394,35 @@ const runWithChannelPayload$ = command(
       state.pendingPayloads.push(passMessage ? message : message.data);
       pokeLoop();
     };
-    const unregisterVisibilityPoke = registerVisibilityPoke(
-      subscriptionLabel,
+    await subscribeChannel({
+      channel,
+      topic,
+      callback,
+      poke: requestCatchUp,
+      subscriberPokeTarget: get(subscriberPokeTarget$),
       signal,
-      requestCatchUp,
-    );
-    set(addPokeSubscriber$, requestCatchUp);
+      run: async () => {
+        options?.onSubscribed?.();
+        L.debug("subscribed to payload topic: " + subscriptionLabel);
 
-    const cleanup = () => {
-      set(removePokeSubscriber$, requestCatchUp);
-      unregisterVisibilityPoke();
-      if (topic === null) {
-        channel.unsubscribe(callback);
-      } else {
-        channel.unsubscribe(topic, callback);
-      }
-    };
-
-    signal.addEventListener("abort", cleanup, { once: true });
-
-    // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
-    try {
-      if (topic === null) {
-        await channel.subscribe(callback);
-      } else {
-        await channel.subscribe(topic, callback);
-      }
-      signal.throwIfAborted();
-      options?.onSubscribed?.();
-      L.debug("subscribed to payload topic: " + subscriptionLabel);
-
-      await setLoop(
-        async (loopSignal) => {
-          return await set(
-            runPayloadLoopIteration$,
-            {
-              state,
-              loopCommand$,
-              catchUpCommand$,
-              pokeLoop,
-              cleanup,
-            },
-            loopSignal,
-          );
-        },
-        0,
-        signal,
-      );
-    } catch (error) {
-      signal.throwIfAborted();
-      throwIfAbort(error);
-      if (isAblyConnectionClosedError(error)) {
-        L.debug(
-          "Ably connection closed before payload subscription completed",
-          {
-            topic: subscriptionLabel,
+        await setLoop(
+          async (loopSignal) => {
+            return await set(
+              runPayloadLoopIteration$,
+              {
+                state,
+                loopCommand$,
+                catchUpCommand$,
+                pokeLoop,
+              },
+              loopSignal,
+            );
           },
+          0,
+          signal,
         );
-        return;
-      }
-      throw error;
-    } finally {
-      signal.removeEventListener("abort", cleanup);
-      cleanup();
-    }
+      },
+    });
   },
 );
 
@@ -499,6 +443,7 @@ export const setupRealtime$ = command(
       disconnectedRetryTimeout: 5000,
       suspendedRetryTimeout: 15_000,
     });
+    const subscriberPokeTarget = get(subscriberPokeTarget$);
 
     const rejectPendingSubscriptions = (reason?: unknown) => {
       const pendingSubscriptions = get(pendingAblySubscriptions$);
@@ -538,15 +483,21 @@ export const setupRealtime$ = command(
     });
 
     ably.connection.on("connected", () => {
-      const registry = get(subscriberPokeRegistry$);
-      if (registry.size === 0) {
-        return;
-      }
-      L.debug(`reconnected, poking ${registry.size} subscriber(s)`);
-      for (const poke of registry) {
-        poke();
-      }
+      L.debug("reconnected, poking subscribers");
+      subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
     });
+
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.visibilityState !== "visible") {
+          return;
+        }
+        L.debug("tab visible, poking subscribers");
+        subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+      },
+      { signal },
+    );
 
     await deferred.promise;
     signal.throwIfAborted();
@@ -599,24 +550,11 @@ const userChannel$ = command(
       signal,
       channelDeferred,
     };
-    const removePendingSubscription = () => {
-      set(pendingAblySubscriptions$, (prev) => {
-        return prev.filter((item) => {
-          return item !== pendingSubscription;
-        });
-      });
-    };
-
-    signal.addEventListener("abort", removePendingSubscription, {
-      once: true,
-    });
     set(pendingAblySubscriptions$, (prev) => {
       return [...prev, pendingSubscription];
     });
 
-    const connectedChannel = await channelDeferred.promise.finally(() => {
-      signal.removeEventListener("abort", removePendingSubscription);
-    });
+    const connectedChannel = await channelDeferred.promise;
     signal.throwIfAborted();
     return connectedChannel;
   },

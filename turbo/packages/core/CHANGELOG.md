@@ -1,5 +1,49 @@
 # Changelog
 
+## [8.473.0](https://github.com/vm0-ai/vm0/compare/core-v8.472.0...core-v8.473.0) (2026-07-27)
+
+
+### Features
+
+* **chat:** enable unread indicators for all organizations ([#23242](https://github.com/vm0-ai/vm0/issues/23242)) ([d4c22a5](https://github.com/vm0-ai/vm0/commit/d4c22a554689768a43dec1ae65afdfb4d7c16ae6))
+
+
+### Refactoring
+
+* **storage:** remove legacy type residue ([#23232](https://github.com/vm0-ai/vm0/issues/23232)) ([eeb8daa](https://github.com/vm0-ai/vm0/commit/eeb8daadad7c5c81c3cfd5cd7e08bb8b0e130f01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.1
+
+## [8.472.0](https://github.com/vm0-ai/vm0/compare/core-v8.471.1...core-v8.472.0) (2026-07-27)
+
+
+### Features
+
+* enable image style r2 globally ([#23176](https://github.com/vm0-ai/vm0/issues/23176)) ([441d729](https://github.com/vm0-ai/vm0/commit/441d729f24d98b34f570cf732d99e2f49079e2ce))
+
+
+### Bug Fixes
+
+* **website:** restore open design templates and route by intent ([#23188](https://github.com/vm0-ai/vm0/issues/23188)) ([bb40296](https://github.com/vm0-ai/vm0/commit/bb402968391ad7dc781d0702914a860c7467138b))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.0
+    * @vm0/connectors bumped to 1.195.2
+
 ## [8.471.1](https://github.com/vm0-ai/vm0/compare/core-v8.471.0...core-v8.471.1) (2026-07-27)
 
 

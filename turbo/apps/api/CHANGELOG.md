@@ -1,5 +1,58 @@
 # Changelog
 
+## [1.329.1](https://github.com/vm0-ai/vm0/compare/api-v1.329.0...api-v1.329.1) (2026-07-27)
+
+
+### Refactoring
+
+* **storage:** remove legacy type residue ([#23232](https://github.com/vm0-ai/vm0/issues/23232)) ([eeb8daa](https://github.com/vm0-ai/vm0/commit/eeb8daadad7c5c81c3cfd5cd7e08bb8b0e130f01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.1
+    * @vm0/core bumped to 8.473.0
+    * @vm0/db bumped to 1.143.5
+
+## [1.329.0](https://github.com/vm0-ai/vm0/compare/api-v1.328.1...api-v1.329.0) (2026-07-27)
+
+
+### Features
+
+* enable image style r2 globally ([#23176](https://github.com/vm0-ai/vm0/issues/23176)) ([441d729](https://github.com/vm0-ai/vm0/commit/441d729f24d98b34f570cf732d99e2f49079e2ce))
+* **feishu:** improve setup and oauth callback flow ([#23202](https://github.com/vm0-ai/vm0/issues/23202)) ([d0a75ae](https://github.com/vm0-ai/vm0/commit/d0a75ae68f23fcf28898b20afefc183ca9167da8))
+
+
+### Bug Fixes
+
+* **api:** give the morning brief run its own delivery facts ([#23171](https://github.com/vm0-ai/vm0/issues/23171)) ([4a934f6](https://github.com/vm0-ai/vm0/commit/4a934f63474d40aab8d57893db4f39f4c8168bfb))
+* **api:** retire legacy feishu org run dispatch ([#23187](https://github.com/vm0-ai/vm0/issues/23187)) ([8d70530](https://github.com/vm0-ai/vm0/commit/8d70530e8989532e5aa6c5d58a19d787f4e550e9))
+* **api:** validate and recover canonical chat session bindings ([#23192](https://github.com/vm0-ai/vm0/issues/23192)) ([3145dae](https://github.com/vm0-ai/vm0/commit/3145daed930da540447229386defcfa33f30d32a))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+* **storage:** detach legacy type columns from writes ([#23189](https://github.com/vm0-ai/vm0/issues/23189)) ([abc29ca](https://github.com/vm0-ai/vm0/commit/abc29caa49306c0ee3daaee1915495ec45c7c3d9))
+* **storage:** remove legacy type columns ([#23210](https://github.com/vm0-ai/vm0/issues/23210)) ([3c60bc7](https://github.com/vm0-ai/vm0/commit/3c60bc70a9fa63ece9bd8249881f6e01a5ed382e))
+
+
+### Performance Improvements
+
+* **api:** batch exact storage version resolution ([#23186](https://github.com/vm0-ai/vm0/issues/23186)) ([580ca10](https://github.com/vm0-ai/vm0/commit/580ca10df0898a4ef0123844319ffe6eeced1c7b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.0
+    * @vm0/connectors bumped to 1.195.2
+    * @vm0/core bumped to 8.472.0
+    * @vm0/db bumped to 1.143.4
+
 ## [1.328.1](https://github.com/vm0-ai/vm0/compare/api-v1.328.0...api-v1.328.1) (2026-07-27)
 
 

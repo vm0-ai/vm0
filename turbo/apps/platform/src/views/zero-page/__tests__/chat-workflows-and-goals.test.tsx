@@ -1589,6 +1589,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         "The release plan needs dates",
       );
       expect(feedbackItems[1]).toHaveTextContent("Add the milestones");
+      expect(feedbackItems[0]).toBeVisible();
+      expect(feedbackItems[1]).toBeVisible();
     });
   });
 

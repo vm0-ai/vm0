@@ -2,15 +2,11 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import {
   connectorAuthClientIdentity,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodAuthCodeGrantConfig,
-  getConnectorAuthMethodRevokeMetadata,
-  getConnectorRefreshOutputTarget,
-  resolveConnectorAuthClientForMethod,
   type StaticConfidentialConnectorAuthClient,
-} from "../../../connector-utils";
+} from "../../../connector-auth-method";
 import { youtubeProvider } from "../youtube/provider";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
@@ -28,6 +24,7 @@ const testAuthClient = {
   clientId: "test-client",
   clientSecret: "test-client-secret",
 } satisfies StaticConfidentialConnectorAuthClient;
+const AUTH_CODE_GRANT = authCodeGrantFixture(YOUTUBE_OAUTH_SCOPES);
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
@@ -37,10 +34,7 @@ describe("connector/providers/youtube", () => {
   describe("youtubeProvider", () => {
     it("buildAuthUrl builds Google OAuth URL with YouTube scopes", () => {
       const url = youtubeProvider.grant.buildAuthUrl({
-        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
-          "youtube",
-          "oauth",
-        ),
+        authCodeGrant: AUTH_CODE_GRANT,
         authClient: connectorAuthClientIdentity(testAuthClient),
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -64,58 +58,6 @@ describe("connector/providers/youtube", () => {
       ]);
     });
 
-    it("resolves the OAuth client from Google env names", () => {
-      const env: Record<string, string> = {
-        GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
-        GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
-      };
-
-      expect(
-        resolveConnectorAuthClientForMethod("youtube", "oauth", (name) => {
-          return env[name];
-        }),
-      ).toMatchObject({
-        clientId: "test-client-id",
-        clientSecret: "test-client-secret",
-      });
-    });
-
-    it("declares YouTube refresh and revoke token storage", () => {
-      const accessMetadata = getConnectorAuthMethodAccessMetadata(
-        "youtube",
-        "oauth",
-      );
-
-      expect(
-        getConnectorRefreshOutputTarget(accessMetadata, "accessToken"),
-      ).toStrictEqual({
-        kind: "connector-secret",
-        name: "YOUTUBE_ACCESS_TOKEN",
-      });
-      expect(accessMetadata.inputs.refreshToken).toStrictEqual({
-        valueRef: "$secrets.YOUTUBE_REFRESH_TOKEN",
-        source: {
-          kind: "connector-secret",
-          name: "YOUTUBE_REFRESH_TOKEN",
-        },
-      });
-      expect(
-        getConnectorRefreshOutputTarget(accessMetadata, "refreshToken"),
-      ).toStrictEqual({
-        kind: "connector-secret",
-        name: "YOUTUBE_REFRESH_TOKEN",
-      });
-      expect(getConnectorAuthMethodRevokeMetadata("youtube", "oauth")).toEqual({
-        kind: "token-revoke",
-        inputs: {
-          refreshToken: {
-            valueRef: "$secrets.YOUTUBE_REFRESH_TOKEN",
-            secretName: "YOUTUBE_REFRESH_TOKEN",
-          },
-        },
-      });
-    });
-
     it("exchangeCode maps Google token and user info response", async () => {
       const tokenHandler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({
@@ -135,10 +77,7 @@ describe("connector/providers/youtube", () => {
       server.use(tokenHandler, userInfoHandler);
 
       const result = await youtubeProvider.grant.exchangeCode({
-        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
-          "youtube",
-          "oauth",
-        ),
+        authCodeGrant: AUTH_CODE_GRANT,
         authClient: {
           ...testAuthClient,
           clientId: "client-id",

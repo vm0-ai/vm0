@@ -383,6 +383,22 @@ def _builtin_host_policy_error_for_firewall_allow(
     return None
 
 
+def _has_current_direct_connector_auth_binding(
+    flow: http.HTTPFlow,
+    *,
+    admitted_server: connection.Server,
+    require_connected: bool,
+) -> bool:
+    if flow.server_conn is not admitted_server:
+        return False
+    if require_connected and not flow.server_conn.connected:
+        return False
+    return upstream_destination_binding.flow_matches_direct_bound_destination(
+        flow,
+        allowed_kinds=frozenset(("connector_auth",)),
+    )
+
+
 def _auth_base_body_header_check(
     flow: http.HTTPFlow,
     *,
@@ -785,8 +801,22 @@ async def _try_firewall_request_stream_capture_from_headers(
 
     _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
     _start_request_timing(flow)
+    admitted_server = flow.server_conn
+    require_connected = flow.server_conn.connected
     try:
-        result = await try_apply_stream_safe_firewall_auth_for_requestheaders(flow, allow, vm_info)
+        result = await try_apply_stream_safe_firewall_auth_for_requestheaders(
+            flow,
+            allow,
+            vm_info,
+            revalidate_ordinary_upstream_credentials=lambda: (
+                _has_current_direct_connector_auth_binding(
+                    flow,
+                    admitted_server=admitted_server,
+                    require_connected=require_connected,
+                )
+                and _builtin_host_policy_error_for_firewall_allow(flow, allow) is None
+            ),
+        )
     except (asyncio.CancelledError, Exception):
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         upstream_admission.forget_server_binding(flow.server_conn)
@@ -831,6 +861,41 @@ def _block_public_destination_denied(
         reason=denial.reason,
         send_response=send_response,
     )
+
+
+def _revalidate_ordinary_upstream_credentials_for_request(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    *,
+    admitted_server: connection.Server,
+    require_connected: bool,
+) -> bool:
+    if not _has_current_direct_connector_auth_binding(
+        flow,
+        admitted_server=admitted_server,
+        require_connected=require_connected,
+    ):
+        _block_upstream_destination_unbound(flow, reason="connector_auth")
+        return False
+
+    public_destination_denial = request_classification.current_public_destination_denial(
+        flow,
+        allow,
+    )
+    if public_destination_denial is not None:
+        _block_public_destination_denied(flow, public_destination_denial)
+        return False
+
+    host_policy_error = _builtin_host_policy_error_for_firewall_allow(flow, allow)
+    if host_policy_error is not None:
+        _block_builtin_host_policy_denied(
+            flow,
+            allow=allow,
+            error=host_policy_error,
+        )
+        return False
+
+    return True
 
 
 def _unhandled_request_classification(classification: NoReturn) -> NoReturn:
@@ -962,7 +1027,21 @@ async def request(flow: http.HTTPFlow) -> None:
                 is_billable_firewall(allow.name, vm_info),
                 _is_model_provider_usage_observable(allow.name, vm_info),
             )
-            auth_result = await handle_firewall_request(flow, allow, vm_info)
+            admitted_server = flow.server_conn
+            require_connected = flow.server_conn.connected
+            auth_result = await handle_firewall_request(
+                flow,
+                allow,
+                vm_info,
+                revalidate_ordinary_upstream_credentials=lambda: (
+                    _revalidate_ordinary_upstream_credentials_for_request(
+                        flow,
+                        allow,
+                        admitted_server=admitted_server,
+                        require_connected=require_connected,
+                    )
+                ),
+            )
             if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
                 # Local firewall/auth errors never reach a provider. They only
                 # need pre-tracking to keep shutdown from racing while auth is
@@ -1103,9 +1182,11 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         return
     if getattr(message, "from_client", False):
         return
+    body = message.content.encode() if isinstance(message.content, str) else message.content
+    event = usage.inspect_openai_responses_event_json(body)
     if response_streaming.uses_openai_responses_usage_protocol(flow):
-        codex_output_timing.observe_server_event(flow, message.content)
-    response_streaming.feed_model_websocket_usage(flow, message.content)
+        codex_output_timing.observe_server_event(flow, event.event_type)
+    response_streaming.feed_model_websocket_usage(flow, event)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:

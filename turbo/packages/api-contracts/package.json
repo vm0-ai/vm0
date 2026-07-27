@@ -1,6 +1,6 @@
 {
   "name": "@vm0/api-contracts",
-  "version": "1.233.3",
+  "version": "1.234.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -15,16 +15,7 @@
     "./contracts/*": {
       "import": "./src/contracts/*.ts",
       "types": "./src/contracts/*.ts"
-    },
-    "./contracts/connectors": null,
-    "./contracts/connectors/*": null,
-    "./contracts/connector-utils": null,
-    "./contracts/firewall-expander": null,
-    "./contracts/firewall-rule-matcher": null,
-    "./contracts/firewalls": null,
-    "./feature-switch-key": null,
-    "./firewalls": null,
-    "./firewalls/*": null
+    }
   },
   "scripts": {
     "build:runtime-api-schema": "tsx src/runtime-api-schema/cli.ts build",

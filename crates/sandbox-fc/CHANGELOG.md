@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.152](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.151...sandbox-fc-v0.37.152) (2026-07-27)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize dns probe deadline ([#23185](https://github.com/vm0-ai/vm0/issues/23185)) ([8c8d8f6](https://github.com/vm0-ai/vm0/commit/8c8d8f6c349fae3f27bec4b6012eeedc78881778))
+
 ## [0.37.151](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.150...sandbox-fc-v0.37.151) (2026-07-25)
 
 ## [0.37.150](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.149...sandbox-fc-v0.37.150) (2026-07-25)

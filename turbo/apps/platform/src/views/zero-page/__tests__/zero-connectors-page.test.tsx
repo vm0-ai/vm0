@@ -24,11 +24,10 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  ConnectorRegistryAuthMethodId,
-  ConnectorType,
-} from "@vm0/connectors/connectors";
+  ConnectorAuthMethodId,
+  ConnectorRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
@@ -45,12 +44,12 @@ import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
-import { resetSignalScope } from "../../../signals/utils.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
 
 const context = testContext();
-const abortAfterManualGrantConnectSignalScope$ = resetSignalScope();
+const resetAfterManualGrantConnectSignal$ = resetSignal();
 
 function createMockAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
@@ -176,8 +175,8 @@ function teamAgent(
 
 function mockConnectors(
   connectors: {
-    type: ConnectorType;
-    authMethod?: ConnectorRegistryAuthMethodId;
+    type: ConnectorRef;
+    authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     connectionStatus?: ConnectorResponse["connectionStatus"];
     reconnectReason?: ConnectorResponse["reconnectReason"];
@@ -2370,18 +2369,14 @@ describe("connectors page", () => {
       within(connectorCardByLabel("Public Axiom")).getByRole("img"),
     ).toHaveAccessibleName("Connector icon unavailable");
 
-    const abortScope = context.store.set(
-      abortAfterManualGrantConnectSignalScope$,
+    const abortSignal = context.store.set(
+      resetAfterManualGrantConnectSignal$,
       context.signal,
     );
-    const originalThrowIfAborted = abortScope.signal.throwIfAborted.bind(
-      abortScope.signal,
-    );
-    Object.defineProperty(abortScope.signal, "throwIfAborted", {
+    const originalThrowIfAborted = abortSignal.throwIfAborted.bind(abortSignal);
+    Object.defineProperty(abortSignal, "throwIfAborted", {
       value: () => {
-        abortScope.abort(
-          new DOMException("Aborted after connector connect", "AbortError"),
-        );
+        context.store.set(resetAfterManualGrantConnectSignal$, context.signal);
         originalThrowIfAborted();
       },
     });
@@ -2395,7 +2390,7 @@ describe("connectors page", () => {
           inputValues: { apiToken: "xaat-test" },
           options: { connectorLabel: "Public Axiom" },
         },
-        abortScope.signal,
+        abortSignal,
       ),
     ).rejects.toMatchObject({ name: "AbortError" });
 

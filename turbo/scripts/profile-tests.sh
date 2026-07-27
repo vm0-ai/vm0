@@ -4,7 +4,7 @@
 # Usage:
 #   ./scripts/profile-tests.sh [workspace] [--top N]
 #
-# workspace: cli | platform | core | firewalls-generator | all  (default: all)
+# workspace: cli | platform | core | all  (default: all)
 # --top N  : show only N slowest files in the final summary (default: 30)
 #
 # Output:
@@ -48,7 +48,6 @@ get_filter() {
   if   [[ "$file" == */apps/cli/* ]];               then echo "@vm0/cli"
   elif [[ "$file" == */apps/platform/* ]];          then echo "@vm0/app"
   elif [[ "$file" == */packages/core/* ]];          then echo "@vm0/core"
-  elif [[ "$file" == */packages/firewalls-generator/* ]]; then echo "@vm0/firewalls-generator"
   else echo ""
   fi
 }
@@ -58,16 +57,14 @@ list_files() {
     cli)      find "$TURBO_DIR/apps/cli/src"           -name "*.test.ts" | sort ;;
     platform) find "$TURBO_DIR/apps/platform/src"     -name "*.test.ts" -o -name "*.test.tsx" | sort ;;
     core)     find "$TURBO_DIR/packages/core"          -name "*.test.ts" | sort ;;
-    firewalls-generator) find "$TURBO_DIR/packages/firewalls-generator" -name "*.test.ts" | sort ;;
     all)
       list_files cli
       list_files platform
       list_files core
-      list_files firewalls-generator
       ;;
     *)
       echo "Unknown workspace: $1" >&2
-      echo "Valid: cli | platform | core | firewalls-generator | all" >&2
+      echo "Valid: cli | platform | core | all" >&2
       exit 1
       ;;
   esac

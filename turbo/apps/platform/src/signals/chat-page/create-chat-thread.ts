@@ -12,7 +12,6 @@ import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
   onRejection,
-  resetSignalScope,
   resetSignal,
   setLoop,
   withCleanup,
@@ -168,14 +167,7 @@ import {
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
-export type {
-  DraftInputSyncTarget,
-  DraftSignals,
-} from "../zero-page/chat-draft.ts";
-export type {
-  ChatThreadSignals,
-  SendMessageOptions,
-} from "./chat-thread-signals.ts";
+export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
@@ -3044,7 +3036,6 @@ function createRunTracking({
   dataSource,
 }: RunTrackingDeps) {
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
-  const resetChatSubscriptionSignal$ = resetSignalScope();
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
@@ -3093,34 +3084,25 @@ function createRunTracking({
       },
     );
 
-    const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
-    const subscriptionSignal = subscriptionScope.signal;
-
-    await withCleanup(
-      Promise.all([
-        set(markThreadReadIfNeeded$, subscriptionSignal),
-        set(subscribeComputerUseHostsChanged$, subscriptionSignal),
-        set(
-          dataSource.subscribeRealtime$,
-          {
-            threadId,
-            handlers: {
-              onAutomationsChanged$,
-              onArtifactsChanged$,
-              onWorkflowsChanged$,
-              onWorkflowQueueChanged$:
-                automationSignals.workflowQueue.handleChanged$,
-              onSubscribed$,
-            },
+    await Promise.all([
+      set(markThreadReadIfNeeded$, signal),
+      set(subscribeComputerUseHostsChanged$, signal),
+      set(
+        dataSource.subscribeRealtime$,
+        {
+          threadId,
+          handlers: {
+            onAutomationsChanged$,
+            onArtifactsChanged$,
+            onWorkflowsChanged$,
+            onWorkflowQueueChanged$:
+              automationSignals.workflowQueue.handleChanged$,
+            onSubscribed$,
           },
-          subscriptionSignal,
-        ),
-      ]),
-      () => {
-        subscriptionScope.abort(signal.reason);
-      },
-    );
-    signal.throwIfAborted();
+        },
+        signal,
+      ),
+    ]);
   });
 
   return { receiveSyncedMessages$, subscribeChatThread$ };

@@ -1,17 +1,19 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 
 pub(crate) const MOCK_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_MOCK_REQUEST_HEADER_BYTES: usize = 16 * 1024;
 const MAX_MOCK_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct MockRequest {
     pub(crate) raw: String,
     pub(crate) method: String,
@@ -118,6 +120,25 @@ impl MockFirecrackerApi {
         )
     }
 
+    pub(crate) fn with_handler<H, F>(handler: H) -> Self
+    where
+        H: Fn(MockRequest) -> F + Send + Sync + 'static,
+        F: Future<Output = MockResponse> + Send + 'static,
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let (tx, requests) = mpsc::unbounded_channel();
+        let server = tokio::spawn(serve_mock_api_with_handler(listener, tx, handler));
+
+        Self {
+            _dir: dir,
+            sock_path,
+            requests,
+            server,
+        }
+    }
+
     pub(crate) fn deferred_repeating(response: MockResponse) -> (Self, oneshot::Sender<()>) {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("deferred.sock");
@@ -205,23 +226,13 @@ async fn serve_mock_api(
             break;
         };
 
-        let request =
-            match tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, read_mock_request(&mut stream))
-                .await
-            {
-                Ok(Ok(request)) => request,
-                Ok(Err(error)) => {
-                    let response =
-                        MockResponse::internal_error_raw(format!("read request: {error}"));
-                    let _ = stream.write_all(response.to_http().as_bytes()).await;
-                    continue;
-                }
-                Err(_) => {
-                    let response = MockResponse::internal_error_raw("read request timed out");
-                    let _ = stream.write_all(response.to_http().as_bytes()).await;
-                    continue;
-                }
-            };
+        let request = match read_mock_request_with_timeout(&mut stream).await {
+            Ok(request) => request,
+            Err(response) => {
+                let _ = stream.write_all(response.to_http().as_bytes()).await;
+                continue;
+            }
+        };
 
         if tx.send(request).is_err() {
             break;
@@ -229,6 +240,72 @@ async fn serve_mock_api(
 
         let response = responses.next_response();
         let _ = stream.write_all(response.to_http().as_bytes()).await;
+    }
+}
+
+async fn serve_mock_api_with_handler<H, F>(
+    listener: UnixListener,
+    tx: mpsc::UnboundedSender<MockRequest>,
+    handler: H,
+) where
+    H: Fn(MockRequest) -> F + Send + Sync + 'static,
+    F: Future<Output = MockResponse> + Send + 'static,
+{
+    let handler = Arc::new(handler);
+    let mut connections = JoinSet::new();
+
+    loop {
+        tokio::select! {
+            accepted = listener.accept() => {
+                let Ok((stream, _)) = accepted else {
+                    break;
+                };
+                let tx = tx.clone();
+                let handler = Arc::clone(&handler);
+                connections.spawn(async move {
+                    serve_mock_handler_connection(stream, tx, handler).await;
+                });
+            }
+            completed = connections.join_next(), if !connections.is_empty() => {
+                drop(completed);
+            }
+        }
+    }
+}
+
+async fn serve_mock_handler_connection<H, F>(
+    mut stream: UnixStream,
+    tx: mpsc::UnboundedSender<MockRequest>,
+    handler: Arc<H>,
+) where
+    H: Fn(MockRequest) -> F + Send + Sync + 'static,
+    F: Future<Output = MockResponse> + Send + 'static,
+{
+    let request = match read_mock_request_with_timeout(&mut stream).await {
+        Ok(request) => request,
+        Err(response) => {
+            let _ = stream.write_all(response.to_http().as_bytes()).await;
+            return;
+        }
+    };
+
+    if tx.send(request.clone()).is_err() {
+        return;
+    }
+
+    let response = handler(request).await;
+    let _ = stream.write_all(response.to_http().as_bytes()).await;
+}
+
+async fn read_mock_request_with_timeout(
+    stream: &mut UnixStream,
+) -> Result<MockRequest, MockResponse> {
+    match tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, read_mock_request(stream)).await {
+        Ok(Ok(request)) => Ok(request),
+        Ok(Err(error)) => Err(MockResponse::internal_error_raw(format!(
+            "read request: {error}"
+        ))),
+        Err(_) => Err(MockResponse::internal_error_raw("read request timed out")),
     }
 }
 

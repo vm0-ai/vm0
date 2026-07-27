@@ -216,10 +216,7 @@ function titleCaseSiteSlug(slug: string): string {
     .join(" ");
 }
 
-export function fallbackHtmlPreviewTitle(
-  filename: string,
-  url: string,
-): string {
+function fallbackHtmlPreviewTitle(filename: string, url: string): string {
   if (filename !== url) {
     return filename;
   }

@@ -1,5 +1,4 @@
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import { setupServer } from "msw/node";
 import {
   afterAll,
@@ -16,11 +15,12 @@ import {
   buildTestOAuthAuthorizationUrl,
   refreshTestOAuthToken,
 } from "../test-oauth/oauth";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 const server = setupServer();
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("test-oauth", "oauth");
+  return authCodeGrantFixture(["read"], "api");
 }
 
 function testRefreshSignal(): AbortSignal {

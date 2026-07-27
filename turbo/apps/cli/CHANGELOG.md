@@ -1,5 +1,36 @@
 # Changelog
 
+## [9.258.5](https://github.com/vm0-ai/vm0/compare/cli-v9.258.4...cli-v9.258.5) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.234.1
+    * @vm0/core bumped to 8.473.0
+
+## [9.258.4](https://github.com/vm0-ai/vm0/compare/cli-v9.258.3...cli-v9.258.4) (2026-07-27)
+
+
+### Bug Fixes
+
+* **website:** restore open design templates and route by intent ([#23188](https://github.com/vm0-ai/vm0/issues/23188)) ([bb40296](https://github.com/vm0-ai/vm0/commit/bb402968391ad7dc781d0702914a860c7467138b))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.234.0
+    * @vm0/connectors bumped to 1.195.2
+    * @vm0/core bumped to 8.472.0
+
 ## [9.258.3](https://github.com/vm0-ai/vm0/compare/cli-v9.258.2...cli-v9.258.3) (2026-07-27)
 
 

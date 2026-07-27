@@ -9,6 +9,7 @@ interface DispatchOptions {
   readonly all?: boolean;
   readonly listOnMissingPrompt?: boolean;
   readonly missingPromptError?: string;
+  readonly requireExecutionFor?: string;
 }
 
 /**
@@ -27,6 +28,11 @@ export async function dispatchGenerate(
   const provider = options.provider?.trim();
 
   if (provider && provider !== "built-in") {
+    if (options.requireExecutionFor) {
+      throw new Error(
+        `${options.requireExecutionFor} is only available for direct built-in generation`,
+      );
+    }
     await printConnectorGuidance(options.generationType, provider);
     return { outcome: "handled" };
   }
@@ -34,6 +40,11 @@ export async function dispatchGenerate(
   const resolvedPrompt = resolvePrompt(options.prompt);
 
   if (resolvedPrompt === null) {
+    if (options.requireExecutionFor) {
+      throw new Error(
+        `${options.requireExecutionFor} is only available for direct built-in generation`,
+      );
+    }
     if (options.listOnMissingPrompt === false) {
       throw new Error(options.missingPromptError ?? "Prompt is required");
     }

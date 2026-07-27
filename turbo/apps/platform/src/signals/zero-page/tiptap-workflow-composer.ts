@@ -450,8 +450,8 @@ function createFeedbackItemNodeView(
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
     const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
-    dom.className = `flex flex-col gap-1.5 pb-1.5${
-      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
+    dom.className = `flex flex-col gap-1.5 pb-1.5 pt-1.5${
+      showDivider ? " border-t border-dashed border-border/60" : ""
     }`;
     noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
     placeholderDom.hidden = nextNode.textContent.length > 0;

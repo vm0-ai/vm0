@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { authenticatedIdentity$, clerk$ } from "../auth";
+import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
@@ -70,8 +70,11 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
 
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const identity = await get(authenticatedIdentity$);
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      return;
+    }
 
     const client = get(apiFeatureSwitchClient$);
     const result = await accept(
@@ -81,9 +84,9 @@ export const reloadFeatureSwitch$ = command(
     signal.throwIfAborted();
 
     const combined = getAllFeatureStates({
-      userId: identity.userId,
-      email: identity.email,
-      orgId: identity.orgId,
+      userId: clerk.user.id,
+      email: clerk.user.primaryEmailAddress?.emailAddress,
+      orgId: clerk.organization.id,
     });
     applySwitches(
       combined,
