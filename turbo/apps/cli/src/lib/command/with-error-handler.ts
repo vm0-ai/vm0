@@ -4,18 +4,7 @@ import {
   PLAN_UPGRADE_RUN_GUIDANCE,
   RUN_ERROR_GUIDANCE,
 } from "@vm0/api-contracts/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { ApiRequestError } from "../api/core/client-factory";
-import { decodeZeroTokenPayload } from "../api/zero-token";
-
-function isPlanUpgradeGuidanceEnabled(): boolean {
-  const payload = decodeZeroTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.PlanUpgradeGuidance, {
-    userId: payload?.userId,
-    orgId: payload?.orgId,
-  });
-}
 
 /**
  * Wraps a Commander.js action handler with centralized error handling.
@@ -43,12 +32,11 @@ export function withErrorHandler<T extends unknown[]>(
         } else {
           const guidance = RUN_ERROR_GUIDANCE[error.code];
           if (guidance) {
-            const showPlanUpgradeGuidance =
-              error.code === "PRO_REQUIRED" && isPlanUpgradeGuidanceEnabled();
-            const guidanceText = showPlanUpgradeGuidance
+            const planUpgradeRequired = error.code === "PRO_REQUIRED";
+            const guidanceText = planUpgradeRequired
               ? `${guidance.guidance} ${PLAN_UPGRADE_RUN_GUIDANCE}`
               : guidance.guidance;
-            const cliHint = showPlanUpgradeGuidance
+            const cliHint = planUpgradeRequired
               ? PLAN_UPGRADE_CLI_HINT
               : guidance.cliHint;
             console.error(chalk.red(`✗ ${guidance.title}`));

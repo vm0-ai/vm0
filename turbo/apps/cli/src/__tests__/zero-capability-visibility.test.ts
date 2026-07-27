@@ -667,19 +667,13 @@ describe("registerZeroCommands", () => {
     expect(registeredCommandNames(prog)).toContain("upgrade");
   });
 
-  it("should show upgrade guidance when its feature switch is enabled", () => {
+  it("should show upgrade guidance", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
-    const prog = buildProgram({
-      [FeatureSwitchKey.PlanUpgradeGuidance]: true,
-    });
+    const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("upgrade");
-    expect(
-      buildZeroHelpText(undefined, {
-        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
-      }),
-    ).toContain("Upgrade plan?");
+    expect(buildZeroHelpText()).toContain("Upgrade plan?");
   });
 
   it("should register browser only when its feature switch and capability are enabled", () => {
@@ -726,22 +720,12 @@ describe("registerZeroCommands", () => {
       scope: "zero",
       capabilities: ["billing:read"],
     });
-    const help = buildZeroHelpText(decodeZeroTokenPayload(token), {
-      [FeatureSwitchKey.PlanUpgradeGuidance]: true,
-    });
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
     expect(help).toContain("zero credit");
     expect(help).not.toContain("Buy credits?");
     expect(help).toContain("Upgrade plan?");
-  });
-
-  it("should hide upgrade help when its feature switch is disabled", () => {
-    const help = buildZeroHelpText(undefined, {
-      [FeatureSwitchKey.PlanUpgradeGuidance]: false,
-    });
-
-    expect(help).not.toContain("Upgrade plan?");
   });
 
   it("should show only credit purchase help for billing write capability", () => {

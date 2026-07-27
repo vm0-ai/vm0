@@ -2,7 +2,6 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -157,7 +156,7 @@ describe("agents page (redesign)", () => {
     });
   });
 
-  it("shows agent unread indicators behind the feature switch", async () => {
+  it("shows agent unread indicators", async () => {
     const user = userEvent.setup();
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({ members: [] });
@@ -171,9 +170,6 @@ describe("agents page (redesign)", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: {
-        [FeatureSwitchKey.AgentUnreadIndicators]: true,
-      },
     });
 
     await waitFor(() => {
@@ -195,45 +191,5 @@ describe("agents page (redesign)", () => {
     expect(
       within(agentCard("Research Agent")).getByLabelText("Unread"),
     ).toHaveClass("border-card");
-  });
-
-  it("hides agent unread indicators when the feature switch is off", async () => {
-    const user = userEvent.setup();
-    context.mocks.data.team(agents);
-    context.mocks.data.orgMembers({ members: [] });
-
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
-      return respond(200, {
-        agentIds: [agents[0].id, agents[1].id],
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/agents",
-      featureSwitches: {
-        [FeatureSwitchKey.AgentUnreadIndicators]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(tab("Private")).toBeInTheDocument();
-    });
-
-    await user.click(tab("Private"));
-    await waitFor(() => {
-      expect(agentCard("Private Ops")).toBeInTheDocument();
-    });
-    expect(
-      within(agentCard("Private Ops")).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
-
-    await user.click(tab("Public"));
-    await waitFor(() => {
-      expect(agentCard("Research Agent")).toBeInTheDocument();
-    });
-    expect(
-      within(agentCard("Research Agent")).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
   });
 });

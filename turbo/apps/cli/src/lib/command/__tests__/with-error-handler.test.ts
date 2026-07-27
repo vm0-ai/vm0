@@ -10,26 +10,6 @@ import {
 import { withErrorHandler } from "../with-error-handler";
 import { ApiRequestError } from "../../api/core/client-factory";
 
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-
-function buildZeroToken(orgId: string): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
-    "base64url",
-  );
-  const body = Buffer.from(
-    JSON.stringify({
-      userId: "user-1",
-      runId: "run-1",
-      orgId,
-      scope: "zero",
-      capabilities: [],
-      iat: 1000,
-      exp: 2000,
-    }),
-  ).toString("base64url");
-  return `vm0_sandbox_${header}.${body}.test-signature`;
-}
-
 describe("withErrorHandler", () => {
   let mockExit: MockInstance;
   let mockConsoleError: MockInstance;
@@ -99,7 +79,7 @@ describe("withErrorHandler", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should show globally enabled plan upgrade guidance for PRO_REQUIRED", async () => {
+  it("should show plan upgrade guidance for PRO_REQUIRED", async () => {
     const handler = withErrorHandler(async () => {
       throw new ApiRequestError(
         "Built-in video generation requires a paid plan",
@@ -116,28 +96,6 @@ describe("withErrorHandler", () => {
       })
       .join("\n");
     expect(output).toContain("Paid plan required");
-    expect(output).toContain("Return the plan upgrade link");
-    expect(output).toContain("zero upgrade pro");
-    expect(mockExit).toHaveBeenCalledWith(1);
-  });
-
-  it("should show enabled plan upgrade guidance for PRO_REQUIRED", async () => {
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(STAFF_ORG_ID));
-    const handler = withErrorHandler(async () => {
-      throw new ApiRequestError(
-        "Built-in video generation requires a paid plan",
-        "PRO_REQUIRED",
-        402,
-      );
-    });
-
-    await handler();
-
-    const output = mockConsoleError.mock.calls
-      .map((c) => {
-        return c[0];
-      })
-      .join("\n");
     expect(output).toContain("Return the plan upgrade link");
     expect(output).toContain("zero upgrade pro");
     expect(mockExit).toHaveBeenCalledWith(1);

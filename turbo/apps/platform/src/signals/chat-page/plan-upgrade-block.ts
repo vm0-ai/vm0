@@ -5,9 +5,7 @@ import {
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
 export interface PlanUpgradeDescriptor {
-  originalUrl: string;
-  href: string;
-  fallbackMarkdown: string;
+  readonly href: string;
 }
 
 export type PlanUpgradeSignals = PlanUpgradeDescriptor;
@@ -19,7 +17,6 @@ export interface PlanUpgradeCardSignalsRegistry {
 
 export function parsePlanUpgradeUrl(
   value: string,
-  fallbackMarkdown: string = value,
 ): PlanUpgradeDescriptor | null {
   const url = parseTrustedPlatformActionUrl(value);
   if (
@@ -32,9 +29,7 @@ export function parsePlanUpgradeUrl(
   }
 
   return {
-    originalUrl: value,
     href: "/?settings=billing&billingView=plans",
-    fallbackMarkdown,
   };
 }
 
@@ -44,7 +39,7 @@ export function createPlanUpgradeCardSignalsRegistry(): PlanUpgradeCardSignalsRe
     register(descriptor) {
       return getOrCreateCardSignals(
         signalsByResourceKey,
-        descriptor.fallbackMarkdown,
+        descriptor.href,
         () => {
           return descriptor;
         },
