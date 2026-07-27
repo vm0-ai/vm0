@@ -30,16 +30,13 @@ import {
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
   resetZoomableImageCanvasZoom$,
   setImageLoadStatus$,
-  textPreviewLoaderRef$,
-  textPreviewLoadStateByKey$,
-  type TextPreviewLoadState,
 } from "../../signals/view-component-state.ts";
+import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
   lightboxUrl$,
@@ -55,7 +52,7 @@ import {
   type AttachmentArtifactMetadata,
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { openArtifactSidebarPreview$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { openThreadArtifactSplitView$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   artifactPreviewUrlsMatch,
@@ -91,6 +88,11 @@ export {
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
 
+type TextPreviewLoadState = {
+  readonly status: "loading" | "loaded" | "error";
+  readonly text: string;
+};
+
 type DocumentAttachmentPreviewKind =
   | "markdown"
   | "text"
@@ -125,33 +127,20 @@ function contentTypeForDocumentAttachmentPreviewKind(
 // ---------------------------------------------------------------------------
 
 export function TextPreviewLoader({
-  url,
+  text$,
   children,
 }: {
-  url: string;
-  signal: AbortSignal;
+  text$: TextPreviewComputed;
   children: (state: TextPreviewLoadState) => ReactNode;
 }) {
-  const textPreviewLoadStates = useGet(textPreviewLoadStateByKey$);
-  const textPreviewLoaderRef = useSet(textPreviewLoaderRef$);
-  const textPreviewKey = `attachment-lightbox:${url}`;
-  const loadState = textPreviewLoadStates[textPreviewKey] ?? {
-    status: "loading",
-    text: "",
-  };
-
-  return (
-    <>
-      <span
-        key={textPreviewKey}
-        ref={textPreviewLoaderRef}
-        data-text-preview-key={textPreviewKey}
-        data-text-preview-url={url}
-        hidden
-      />
-      {children(loadState)}
-    </>
-  );
+  const loadable = useLoadable(text$);
+  if (loadable.state === "hasData") {
+    return children({ status: "loaded", text: loadable.data });
+  }
+  if (loadable.state === "hasError") {
+    return children({ status: "error", text: "" });
+  }
+  return children({ status: "loading", text: "" });
 }
 
 function formatPlainPreviewText(
@@ -607,15 +596,13 @@ function ArtifactDialogImageNavigationKeydown({
 
 function ArtifactDialogTextBody({
   kind,
-  signal,
-  url,
+  text$,
 }: {
   kind: "markdown" | "text" | "json" | "csv";
-  signal: AbortSignal;
-  url: string;
+  text$: TextPreviewComputed;
 }) {
   return (
-    <TextPreviewLoader url={url} signal={signal}>
+    <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
         if (status === "loading") {
           return (
@@ -700,11 +687,9 @@ function ArtifactDialogTextBody({
 
 function ArtifactDialogBody({
   imageNavigation,
-  pageSignal,
   preview,
 }: {
   imageNavigation?: ArtifactImageNavigationActions;
-  pageSignal: AbortSignal;
   preview: AttachmentLightboxState;
 }) {
   const filename = artifactDialogFilename(preview);
@@ -788,13 +773,7 @@ function ArtifactDialogBody({
     preview.kind === "json" ||
     preview.kind === "csv"
   ) {
-    return (
-      <ArtifactDialogTextBody
-        kind={preview.kind}
-        signal={pageSignal}
-        url={preview.url}
-      />
-    );
+    return <ArtifactDialogTextBody kind={preview.kind} text$={preview.text$} />;
   }
 
   if (preview.kind === "html") {
@@ -1029,7 +1008,7 @@ function ArtifactPreviewDialogActions({
   preview: AttachmentLightboxState;
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
-  const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
+  const openArtifactSidebarPreview = useSet(openThreadArtifactSplitView$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const toggleLightboxDialogFullscreen = useSet(
     toggleLightboxDialogFullscreen$,
@@ -1106,7 +1085,6 @@ function ArtifactPreviewDialogContent({
 }) {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
-  const pageSignal = useGet(pageSignal$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
   const visible = useGet(lightboxDialogVisible$);
@@ -1167,7 +1145,6 @@ function ArtifactPreviewDialogContent({
         <div className="min-h-0 flex-1 bg-background">
           <ArtifactDialogBody
             imageNavigation={imageNavigation}
-            pageSignal={pageSignal}
             preview={preview}
           />
         </div>
@@ -1257,12 +1234,14 @@ export function PreviewableFileAttachmentChip({
   kind,
   shareAvailable,
   splitViewAvailable,
+  text$,
   url,
 }: {
   filename: string;
   kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
   shareAvailable?: boolean;
   splitViewAvailable?: boolean;
+  text$?: TextPreviewComputed;
   url: string;
 }) {
   const openDocumentLightbox = useSet(openDocumentLightbox$);
@@ -1277,6 +1256,7 @@ export function PreviewableFileAttachmentChip({
           filename,
           ...(shareAvailable === undefined ? {} : { shareAvailable }),
           ...(splitViewAvailable === undefined ? {} : { splitViewAvailable }),
+          ...(text$ ? { text$ } : {}),
         });
       }}
       title={filename}

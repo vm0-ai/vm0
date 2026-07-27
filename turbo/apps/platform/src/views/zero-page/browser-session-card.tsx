@@ -8,10 +8,12 @@ import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
+import { currentBrowserSessionId$ } from "../../signals/zero-page/browser-session-sidebar.ts";
 import {
-  currentBrowserSessionId$,
-  openBrowserSessionSidebar$,
-} from "../../signals/zero-page/browser-session-sidebar.ts";
+  activeSidebarBrowserSessionId$,
+  openThreadBrowserSession$,
+} from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
@@ -78,8 +80,13 @@ function BrowserSessionUnavailable() {
 // so it lives in the right sidebar instead of inside the message stream.
 export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
   const sessionLoadable = useLastLoadable(signals.session$);
-  const selectedBrowserId = useGet(currentBrowserSessionId$);
-  const openSidebar = useSet(openBrowserSessionSidebar$);
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
+  const legacySelectedBrowserId = useGet(currentBrowserSessionId$);
+  const activeSidebarBrowserId = useGet(activeSidebarBrowserSessionId$);
+  const selectedBrowserId = newSidebarEnabled
+    ? activeSidebarBrowserId
+    : legacySelectedBrowserId;
+  const openSidebar = useSet(openThreadBrowserSession$);
 
   if (sessionLoadable.state === "loading") {
     return <BrowserSessionCardSkeleton />;

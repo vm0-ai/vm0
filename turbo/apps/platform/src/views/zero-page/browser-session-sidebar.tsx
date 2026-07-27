@@ -7,10 +7,17 @@ import { BrowserSessionPanel } from "./browser-session-panel.tsx";
 
 interface BrowserSessionSidebarProps {
   readonly signals: BrowserSessionSignals;
+  // Overrides the legacy search-param close when the thread-owned sidebar
+  // hosts the session.
+  readonly onClose?: () => void;
 }
 
-export function BrowserSessionSidebar({ signals }: BrowserSessionSidebarProps) {
-  const close = useSet(closeBrowserSessionSidebar$);
+export function BrowserSessionSidebar({
+  signals,
+  onClose,
+}: BrowserSessionSidebarProps) {
+  const legacyClose = useSet(closeBrowserSessionSidebar$);
+  const close = onClose ?? legacyClose;
   return (
     <aside
       aria-label="Live browser"

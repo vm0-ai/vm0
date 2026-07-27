@@ -139,6 +139,7 @@ class _Frame:
     kind: Literal["object", "array"]
     path: Path
     state: str
+    collect_keys: bool | None = None
     pending_key: str | None = None
     count_path: Path | None = None
     wildcard_counts: list[tuple[WildcardPath, str]] = field(default_factory=list)
@@ -236,11 +237,17 @@ class JsonSelectiveExtractor:
             max_number_bytes=self.max_number_bytes,
             max_wildcard_keys=self.max_wildcard_keys,
         )
-        self.key_collection_paths = _build_key_collection_paths(
+        key_collection_paths = _build_key_collection_paths(
             set(self.scalar_fields)
             | self.array_count_paths
             | self.wildcard_array_count_paths
             | self.object_presence_paths
+        )
+        self._exact_key_collection_paths = {
+            path for path in key_collection_paths if "*" not in path
+        }
+        self._wildcard_key_collection_paths = key_collection_paths - (
+            self._exact_key_collection_paths
         )
         self._clearable_exact_observation_paths = _build_observation_clear_paths(
             set(self.scalar_fields) | self.array_count_paths | self.object_presence_paths
@@ -351,12 +358,18 @@ class JsonSelectiveExtractor:
                     else "expected object key"
                 )
                 return i + 1
-            collect_key = _matches_any_path_pattern(self.key_collection_paths, frame.path)
+            if frame.collect_keys is None:
+                collect_keys = frame.path in self._exact_key_collection_paths
+                if not collect_keys and self._wildcard_key_collection_paths:
+                    collect_keys = _matches_any_path_pattern(
+                        self._wildcard_key_collection_paths, frame.path
+                    )
+                frame.collect_keys = collect_keys
             self._string = _StringState(
                 role="key",
                 path=None,
                 max_bytes=self.max_key_bytes,
-                raw=bytearray() if collect_key else None,
+                raw=bytearray() if frame.collect_keys else None,
             )
             return i + 1
 

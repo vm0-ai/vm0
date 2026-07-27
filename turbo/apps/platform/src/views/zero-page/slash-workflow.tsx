@@ -100,6 +100,10 @@ export function SlashWorkflowMenu({
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
           {workflows.map((workflow, index) => {
             const selected = index === selectedIndex;
+            const matchStart = workflow.name
+              .toLowerCase()
+              .indexOf(query.toLowerCase());
+            const matchEnd = matchStart + query.length;
             return (
               <button
                 id={slashWorkflowOptionId(workflow.name)}
@@ -116,12 +120,13 @@ export function SlashWorkflowMenu({
               >
                 <span className="w-full truncate font-mono text-sm text-foreground">
                   <span className="text-primary">/</span>
-                  {query && (
+                  {workflow.name.slice(0, matchStart)}
+                  {query && matchStart !== -1 && (
                     <span className="text-primary/60">
-                      {workflow.name.slice(0, query.length)}
+                      {workflow.name.slice(matchStart, matchEnd)}
                     </span>
                   )}
-                  {workflow.name.slice(query.length)}
+                  {workflow.name.slice(query ? matchEnd : 0)}
                 </span>
                 {workflow.description && (
                   <span className="w-full truncate text-xs text-muted-foreground/70">

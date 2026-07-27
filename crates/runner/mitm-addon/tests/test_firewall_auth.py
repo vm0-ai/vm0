@@ -39,11 +39,19 @@ from tests.aws_sigv4_helpers import (
     aws_sigv4_authorization,
     resolved_aws_sigv4_credentials,
 )
+from tests.firewall_auth_helpers import (
+    apply_requestheaders_auth_without_upstream_admission,
+    handle_firewall_request_without_upstream_admission,
+)
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from url_utils import get_original_url
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
+
+
+def _fail_if_ordinary_upstream_credentials_are_revalidated() -> bool:
+    raise AssertionError("ordinary upstream credential guard must not run")
 
 
 def _upstream_headers(*pairs: tuple[str, str]) -> Message:
@@ -806,7 +814,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
 
@@ -863,7 +871,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         mock_get_firewall_headers.assert_not_called()
@@ -903,7 +911,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
             mitm_ctx(),
         ):
-            result = await auth.try_apply_stream_safe_firewall_auth_for_requestheaders(
+            result = await apply_requestheaders_auth_without_upstream_admission(
                 flow,
                 allow,
                 vm_info,
@@ -916,6 +924,31 @@ class TestHandleFirewallRequest:
         assert flow.metadata[metadata_keys.FIREWALL_NAME] == "cloudflare"
         assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "page.write"
         assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
+
+    async def test_billable_only_auth_does_not_require_upstream_admission(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry(auth_config={})
+        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
+        allow = _allow(api_entry)
+        token_meta = _token_meta(headers={})
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(
+                flow,
+                allow,
+                vm_info,
+                revalidate_ordinary_upstream_credentials=(
+                    _fail_if_ordinary_upstream_credentials_are_revalidated
+                ),
+            )
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        assert flow.response is None
 
     async def test_auth_cache_identity_tracks_request_auth_inputs(
         self, real_flow, mitm_ctx, tmp_path
@@ -938,8 +971,12 @@ class TestHandleFirewallRequest:
         )
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch), mitm_ctx():
-            first_result = await auth.handle_firewall_request(first_flow, allow, first_vm_info)
-            second_result = await auth.handle_firewall_request(second_flow, allow, second_vm_info)
+            first_result = await handle_firewall_request_without_upstream_admission(
+                first_flow, allow, first_vm_info
+            )
+            second_result = await handle_firewall_request_without_upstream_admission(
+                second_flow, allow, second_vm_info
+            )
 
         assert first_result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert second_result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -1041,12 +1078,12 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(
+            await handle_firewall_request_without_upstream_admission(
                 first_flow,
                 _allow(first_api_entry, name=first_name),
                 first_vm_info,
             )
-            await auth.handle_firewall_request(
+            await handle_firewall_request_without_upstream_admission(
                 second_flow,
                 _allow(second_api_entry, name=second_name),
                 second_vm_info,
@@ -1114,7 +1151,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         header_names = {name.lower() for name, _value in flow.request.headers.items(multi=True)}
@@ -1180,7 +1217,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert flow.request.headers["host"] == STS_HOST
@@ -1229,7 +1266,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1259,7 +1296,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
 
@@ -1278,7 +1315,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1327,7 +1364,7 @@ class TestHandleFirewallRequest:
             patch("firewall_auth_client._opener.open", side_effect=network_error),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1365,7 +1402,7 @@ class TestHandleFirewallRequest:
             patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1409,7 +1446,7 @@ class TestHandleFirewallRequest:
             patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1448,7 +1485,7 @@ class TestHandleFirewallRequest:
             patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1487,7 +1524,7 @@ class TestHandleFirewallRequest:
             patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1527,7 +1564,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1567,7 +1604,7 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1607,7 +1644,7 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1650,7 +1687,7 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is None
 
@@ -1676,7 +1713,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1706,7 +1743,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1742,7 +1779,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 424
@@ -1775,7 +1812,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 424
@@ -1796,7 +1833,7 @@ class TestHandleFirewallRequest:
         auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
 
         with mitm_ctx():
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1836,7 +1873,9 @@ class TestHandleFirewallRequest:
                 AsyncMock(side_effect=wait_for_auth_resolution),
             ),
         ):
-            task = asyncio.create_task(auth.handle_firewall_request(flow, allow, vm_info))
+            task = asyncio.create_task(
+                handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            )
             try:
                 await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
                 task.cancel()

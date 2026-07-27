@@ -15,7 +15,8 @@ import {
 } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
@@ -34,7 +35,7 @@ async function getFirstRunSelectedModel(
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
-        eq(chatMessages.role, "user"),
+        chatEventTypeIn(["input.prompt"]),
         isNotNull(chatMessages.runId),
         isNotNull(zeroRuns.selectedModel),
       ),
@@ -101,9 +102,9 @@ export async function postRunUserMessage(params: {
       }
     : undefined;
   await params.db.transaction(async (tx): Promise<void> => {
-    const inserted = await insertChatMessage(tx, {
+    const inserted = await insertChatEvent(tx, {
       chatThreadId: params.threadId,
-      role: "user",
+      eventType: "input.prompt",
       content: params.prompt,
       runId: params.runId,
       runGroupId: params.runGroupId,

@@ -6,9 +6,9 @@ import type {
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorFeatureStates } from "@vm0/connectors/connector-auth-method";
 
 import type { ReadonlyDb } from "../external/db";
+import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import {
   ExternalConnectorCatalogUnavailableError,
   getExternalPublicConnectorCatalogDetail,

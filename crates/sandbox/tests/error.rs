@@ -147,9 +147,17 @@ fn display_includes_file_operation_labels() {
 #[test]
 fn guest_dns_readiness_preserves_start_error_display_contract() {
     let err = SandboxError::GuestDnsReadiness {
+        reason: sandbox::SandboxGuestDnsReadinessReason::ProcessTimeout,
         message: "guest resolver unavailable".into(),
     };
 
+    assert!(matches!(
+        &err,
+        SandboxError::GuestDnsReadiness {
+            reason: sandbox::SandboxGuestDnsReadinessReason::ProcessTimeout,
+            ..
+        }
+    ));
     assert_eq!(
         err.to_string(),
         "sandbox start failed: guest resolver unavailable"

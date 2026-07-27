@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
@@ -630,6 +630,7 @@ interface ListArtifactCatalogArgs {
   readonly limit?: number;
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
+  readonly chatThreadId?: string;
 }
 
 interface ListArtifactCatalogResult {
@@ -689,6 +690,33 @@ function toArtifactSummary(row: {
   };
 }
 
+/**
+ * The registry has no thread column, so a thread filter resolves through the
+ * projection file: a file belongs to a thread either directly or via its run.
+ * Files that predate `run_uploaded_files.chat_thread_id` fall back to the run
+ * association, matching `resolveChatThreadId`'s first two steps.
+ */
+function chatThreadFilter(db: Db, chatThreadId: string) {
+  return inArray(
+    artifacts.projectionFileId,
+    db
+      .select({ id: runUploadedFiles.id })
+      .from(runUploadedFiles)
+      .where(
+        or(
+          eq(runUploadedFiles.chatThreadId, chatThreadId),
+          inArray(
+            runUploadedFiles.runId,
+            db
+              .select({ id: zeroRuns.id })
+              .from(zeroRuns)
+              .where(eq(zeroRuns.chatThreadId, chatThreadId)),
+          ),
+        ),
+      ),
+  );
+}
+
 export const listArtifactCatalog$ = command(
   async (
     { set },
@@ -715,6 +743,9 @@ export const listArtifactCatalog$ = command(
           eq(artifacts.orgId, args.orgId),
           eq(artifacts.authorUserId, args.userId),
           args.kind ? eq(artifacts.kind, args.kind) : undefined,
+          args.chatThreadId
+            ? chatThreadFilter(db, args.chatThreadId)
+            : undefined,
           cursor
             ? sql`(${artifacts.createdAt}, ${artifacts.id}) < (${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.id}::uuid)`
             : undefined,

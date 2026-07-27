@@ -16,12 +16,13 @@ import {
 } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 import {
-  deleteChatMessage,
-  insertChatMessage,
-  updateChatMessage,
-} from "./zero-chat-message.service";
+  insertChatEvent,
+  revokeChatEvent,
+  replaceChatEvent,
+} from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   decryptPersistentSecretsMap,
@@ -347,7 +348,7 @@ async function appendClaimedUserMessage(
         eq(chatMessageQueue.chatMessageId, args.messageId),
         eq(chatMessageQueue.chatThreadId, args.threadId),
         eq(chatMessages.chatThreadId, args.threadId),
-        eq(chatMessages.role, "user"),
+        chatEventTypeIn(["input.prompt"]),
       ),
     )
     .for("update")
@@ -356,9 +357,9 @@ async function appendClaimedUserMessage(
     return null;
   }
 
-  const claimed = await updateChatMessage(db, args.messageId, {
+  const claimed = await replaceChatEvent(db, args.messageId, {
     chatThreadId: args.threadId,
-    role: "user",
+    eventType: "input.prompt",
     content: queued.content,
     structuredPrompt: queued.structuredPrompt,
     structuredPromptWithFeedback: queued.structuredPromptWithFeedback,
@@ -453,9 +454,9 @@ export async function claimQueueFirstRunAssociation(
           return { kind: "lost" };
         }
 
-        const claimed = await insertChatMessage(db, {
+        const claimed = await insertChatEvent(db, {
           chatThreadId: args.threadId,
-          role: "user",
+          eventType: "input.prompt",
           content: args.prompt,
           runId: args.runId,
           runGroupId: args.runGroupId,
@@ -529,9 +530,9 @@ export async function discardUnclaimedUserMessage(
     if (!queueItemDeleted) {
       return;
     }
-    const tombstone = await deleteChatMessage(tx, args.messageId, {
+    const tombstone = await revokeChatEvent(tx, args.messageId, {
       chatThreadId: args.threadId,
-      role: "user",
+      eventType: "control.revoke",
       runId: null,
     });
     if (!tombstone) {
@@ -586,7 +587,7 @@ export async function failQueuedUserMessage(
           eq(chatMessageQueue.chatThreadId, args.threadId),
           eq(chatMessageQueue.chatMessageId, args.messageId),
           eq(chatMessages.chatThreadId, args.threadId),
-          eq(chatMessages.role, "user"),
+          chatEventTypeIn(["input.prompt"]),
         ),
       )
       .for("update")
@@ -595,9 +596,9 @@ export async function failQueuedUserMessage(
       return null;
     }
 
-    const replacement = await updateChatMessage(tx, args.messageId, {
+    const replacement = await replaceChatEvent(tx, args.messageId, {
       chatThreadId: args.threadId,
-      role: "user",
+      eventType: "input.rejected",
       content: queued.content,
       structuredPrompt: queued.structuredPrompt,
       structuredPromptWithFeedback: queued.structuredPromptWithFeedback,
@@ -622,9 +623,9 @@ export async function failQueuedUserMessage(
       throw new Error("Failed integration queue item disappeared");
     }
 
-    const assistant = await insertChatMessage(tx, {
+    const assistant = await insertChatEvent(tx, {
       chatThreadId: args.threadId,
-      role: "assistant",
+      eventType: "output.error",
       content: args.assistantContent,
       runId: null,
       error: args.errorMarker,

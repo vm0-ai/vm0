@@ -1,5 +1,41 @@
 // Mock for @clerk/react
-import { createElement, type ReactNode } from "react";
+import {
+  createElement,
+  Fragment,
+  type ReactNode,
+  useSyncExternalStore,
+} from "react";
+import { vi } from "vitest";
+
+const CLERK_AUTH_COMPONENT_MOUNT_EVENT = "vm0:test-clerk-auth-component-mount";
+const getClerkAuthComponentMounted = vi.fn<() => boolean>(() => {
+  return true;
+});
+
+export function setMockClerkAuthComponentMounted(mounted: boolean): void {
+  if (getClerkAuthComponentMounted() === mounted) {
+    return;
+  }
+  getClerkAuthComponentMounted.mockReturnValue(mounted);
+  window.dispatchEvent(new Event(CLERK_AUTH_COMPONENT_MOUNT_EVENT));
+}
+
+export function resetMockClerkAuthComponentMounted(): void {
+  getClerkAuthComponentMounted.mockReturnValue(true);
+}
+
+function subscribeToClerkAuthComponent(listener: () => void): () => void {
+  const handleMountChange = () => {
+    listener();
+  };
+  window.addEventListener(CLERK_AUTH_COMPONENT_MOUNT_EVENT, handleMountChange);
+  return () => {
+    window.removeEventListener(
+      CLERK_AUTH_COMPONENT_MOUNT_EVENT,
+      handleMountChange,
+    );
+  };
+}
 
 interface ClerkProviderProps {
   children: ReactNode;
@@ -16,46 +52,62 @@ export function ClerkProvider({ children }: ClerkProviderProps) {
 }
 
 interface ClerkAuthComponentProps {
+  fallback?: ReactNode;
   fallbackRedirectUrl?: string;
   forceRedirectUrl?: string;
   path?: string;
   routing?: string;
 }
 
-export function SignIn({
+function ClerkAuthComponent({
+  componentName,
+  fallback,
   fallbackRedirectUrl,
   forceRedirectUrl,
   path,
   routing,
-}: ClerkAuthComponentProps) {
+  testId,
+}: ClerkAuthComponentProps & {
+  componentName: string;
+  testId: string;
+}) {
+  const mounted = useSyncExternalStore(
+    subscribeToClerkAuthComponent,
+    getClerkAuthComponentMounted,
+  );
+
   return createElement(
-    "div",
-    {
-      "data-clerk-fallback-redirect-url": fallbackRedirectUrl,
-      "data-clerk-force-redirect-url": forceRedirectUrl,
-      "data-clerk-routing": routing,
-      "data-testid": "clerk-sign-in",
-    },
-    path,
+    Fragment,
+    null,
+    mounted ? null : fallback,
+    createElement(
+      "div",
+      {
+        "data-clerk-component": componentName,
+        "data-clerk-fallback-redirect-url": fallbackRedirectUrl,
+        "data-clerk-force-redirect-url": forceRedirectUrl,
+        "data-clerk-routing": routing,
+        "data-testid": testId,
+      },
+      mounted ? createElement("span", null, path) : null,
+    ),
   );
 }
 
-export function SignUp({
-  fallbackRedirectUrl,
-  forceRedirectUrl,
-  path,
-  routing,
-}: ClerkAuthComponentProps) {
-  return createElement(
-    "div",
-    {
-      "data-clerk-fallback-redirect-url": fallbackRedirectUrl,
-      "data-clerk-force-redirect-url": forceRedirectUrl,
-      "data-clerk-routing": routing,
-      "data-testid": "clerk-sign-up",
-    },
-    path,
-  );
+export function SignIn(props: ClerkAuthComponentProps) {
+  return createElement(ClerkAuthComponent, {
+    ...props,
+    componentName: "SignIn",
+    testId: "clerk-sign-in",
+  });
+}
+
+export function SignUp(props: ClerkAuthComponentProps) {
+  return createElement(ClerkAuthComponent, {
+    ...props,
+    componentName: "SignUp",
+    testId: "clerk-sign-up",
+  });
 }
 
 interface GoogleOneTapProps {

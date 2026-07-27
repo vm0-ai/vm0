@@ -1,11 +1,10 @@
 import { command, computed } from "ccstate";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { searchParams$ } from "../route.ts";
 import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
+import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
 
 export interface ChatActionCallback {
   readonly callbackPrompt: string | null;
@@ -37,7 +36,6 @@ export const runChatActionCallback$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const client = get(zeroClient$)(chatMessagesContract);
     const features = get(featureSwitch$);
     const structuredPromptEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
@@ -47,20 +45,18 @@ export const runChatActionCallback$ = command(
     if (structuredPromptEnabled && !structuredPrompt) {
       throw new Error("Failed to serialize structured callback prompt");
     }
-    await accept(
-      client.send({
-        body: {
-          agentId: args.agentId,
-          threadId: args.threadId,
-          prompt: args.callbackPrompt,
-          hasTextContent: true,
-          ...(structuredPrompt ? { structuredPrompt } : {}),
-          clientMessageId: crypto.randomUUID(),
-          chatThreadSortEventId: crypto.randomUUID(),
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
+    await sendChatEventWithCompatibility(
+      get(zeroClient$),
+      {
+        agentId: args.agentId,
+        threadId: args.threadId,
+        prompt: args.callbackPrompt,
+        hasTextContent: true,
+        ...(structuredPrompt ? { structuredPrompt } : {}),
+        clientEventId: crypto.randomUUID(),
+        chatThreadSortEventId: crypto.randomUUID(),
+      },
+      signal,
     );
   },
 );

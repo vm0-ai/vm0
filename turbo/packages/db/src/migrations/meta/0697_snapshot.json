@@ -1,5 +1,5 @@
 {
-  "id": "266bbb9e-e95f-4ca6-b148-3d0fdc308140",
+  "id": "c549e291-0ffc-48ec-a49e-3a22129fd045",
   "prevId": "cc4245d3-cb34-4771-88e4-5ab8f2061d8e",
   "version": "7",
   "dialect": "postgresql",
@@ -2959,134 +2959,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.browser_authorization_requests": {
-      "name": "browser_authorization_requests",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "request_token_hash": {
-          "name": "request_token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "chat_thread_id": {
-          "name": "chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "uq_browser_authorization_requests_token_hash": {
-          "name": "uq_browser_authorization_requests_token_hash",
-          "columns": [
-            {
-              "expression": "request_token_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_browser_authorization_requests_owner": {
-          "name": "idx_browser_authorization_requests_owner",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_browser_authorization_requests_expires": {
-          "name": "idx_browser_authorization_requests_expires",
-          "columns": [
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.browser_profiles": {
       "name": "browser_profiles",
       "schema": "",
@@ -3495,12 +3367,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "browser_thread_profile_id": {
-          "name": "browser_thread_profile_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
@@ -3679,131 +3545,8 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk": {
-          "name": "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk",
-          "tableFrom": "browser_sessions",
-          "tableTo": "browser_thread_profiles",
-          "columnsFrom": [
-            "browser_thread_profile_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.browser_thread_profiles": {
-      "name": "browser_thread_profiles",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "chat_thread_id": {
-          "name": "chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_profile_id": {
-          "name": "provider_profile_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "uq_browser_thread_profiles_thread": {
-          "name": "uq_browser_thread_profiles_thread",
-          "columns": [
-            {
-              "expression": "chat_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "uq_browser_thread_profiles_provider_profile": {
-          "name": "uq_browser_thread_profiles_provider_profile",
-          "columns": [
-            {
-              "expression": "provider_profile_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_browser_thread_profiles_owner": {
-          "name": "idx_browser_thread_profiles_owner",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -4184,6 +3927,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "role": {
           "name": "role",
           "type": "text",
@@ -4527,7 +4276,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chat_messages_event_type_check": {
+          "name": "chat_messages_event_type_check",
+          "value": "\"chat_messages\".\"event_type\" IS NULL OR \"chat_messages\".\"event_type\" IN (\n          'input.prompt',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'goal.changed',\n          'usage.recorded'\n        )"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.chat_output_materializations": {
@@ -4649,13 +4403,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "cloud_browser_enabled": {
-          "name": "cloud_browser_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -4730,12 +4477,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chat_thread_events_computer_access_check": {
-          "name": "chat_thread_events_computer_access_check",
-          "value": "NOT (\"chat_thread_events\".\"cloud_browser_enabled\" AND \"chat_thread_events\".\"computer_use_host_id\" IS NOT NULL)"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.chat_thread_snapshots": {
@@ -4916,13 +4658,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
-        },
-        "cloud_browser_enabled": {
-          "name": "cloud_browser_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "pinned_at": {
           "name": "pinned_at",
@@ -5133,12 +4868,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chat_threads_computer_access_check": {
-          "name": "chat_threads_computer_access_check",
-          "value": "NOT (\"chat_threads\".\"cloud_browser_enabled\" AND \"chat_threads\".\"computer_use_host_id\" IS NOT NULL)"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.checkpoints": {
