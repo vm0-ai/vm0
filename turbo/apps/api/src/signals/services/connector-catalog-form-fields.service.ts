@@ -104,19 +104,19 @@ function normalizeManualGrantSubmittedValuesFromDescriptors(args: {
     }),
   );
   const normalizedValues = new Map<string, string>();
-  const unknownNames: string[] = [];
+  let hasUnknownName = false;
 
   for (const [submittedName, value] of Object.entries(args.values)) {
     const descriptor = descriptorByPublicId.get(submittedName);
     if (!descriptor) {
-      unknownNames.push(submittedName);
+      hasUnknownName = true;
       continue;
     }
 
     normalizedValues.set(descriptor.privateName, value);
   }
 
-  if (unknownNames.length > 0) {
+  if (hasUnknownName) {
     return {
       ok: false,
       message: `Unknown manual grant field(s). Expected: ${formatFieldList(
