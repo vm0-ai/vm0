@@ -18,7 +18,6 @@
     "@clerk/ui": "^1.26.0",
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
-    "@solana/web3.js": "^1.98.4",
     "@tabler/icons-react": "3.44.0",
     "@tiptap/core": "3.21.0",
     "@tiptap/markdown": "3.23.1",
