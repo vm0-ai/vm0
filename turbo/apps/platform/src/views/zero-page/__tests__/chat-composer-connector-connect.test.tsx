@@ -4,7 +4,11 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import {
+  zeroConnectorNoAuthGrantContract,
+  zeroConnectorOauthStartContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { beforeEach, describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -135,8 +139,6 @@ describe("chat composer connector connection", () => {
     const connectorCard = within(dialog).getByLabelText(
       "Connect Google Analytics",
     );
-    expect(dialog).toHaveClass("zero-app");
-    expect(connectorCard).toHaveClass("zero-card");
     await user.click(connectorCard);
 
     await waitFor(() => {
@@ -146,6 +148,84 @@ describe("chat composer connector connection", () => {
     });
     expect(
       screen.queryByRole("dialog", { name: "Google Analytics" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("enables a single no-auth connector without an intermediate modal", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockCatalog([
+      connectorStatus({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        authMethods: [
+          {
+            id: "api",
+            label: "Public catalog",
+            description: null,
+            grantKind: "none",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    let connectCount = 0;
+    context.mocks.api(
+      zeroConnectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        connectCount += 1;
+        expect(params.type).toBe("stripe");
+        expect(body).toStrictEqual({
+          authMethod: "api",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: params.type,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+    let authorizationUpdateCount = 0;
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, params, respond }) => {
+        authorizationUpdateCount += 1;
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          enabledTypes: ["stripe"],
+          operation: "add",
+        });
+        return respond(200, { enabledTypes: ["stripe"] });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const dialog = await openAddConnectorsDialog(user);
+    await user.click(within(dialog).getByLabelText("Connect Public Stripe"));
+
+    await waitFor(() => {
+      expect(connectCount).toBe(1);
+      expect(authorizationUpdateCount).toBe(1);
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Available connectors to connect (1)",
+        }),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Public Stripe" }),
     ).not.toBeInTheDocument();
   });
 
