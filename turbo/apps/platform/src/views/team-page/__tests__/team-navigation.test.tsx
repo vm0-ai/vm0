@@ -9,7 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -796,17 +796,24 @@ describe("team page navigation", () => {
       });
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId) {
-          return respond(200, { messages: [] });
+        if (
+          query.sinceSeqId !== undefined ||
+          query.beforeSeqId !== undefined ||
+          query.sinceId !== undefined ||
+          query.beforeId !== undefined
+        ) {
+          return respond(200, { events: [] });
         }
         return respond(200, {
-          messages:
+          events:
             params.threadId === firstThreadId
               ? [
                   {
                     id: firstMessageId,
+                    threadId: firstThreadId,
+                    eventType: "input.prompt" as const,
                     role: "user",
                     content: "First shortcut thread message",
                     seqId: 1,

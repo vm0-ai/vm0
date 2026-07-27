@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -20,6 +20,7 @@ import {
   linkByText,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
+import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
 
 describe("chat lifecycle", () => {
   it("links Slack-origin user messages back to the original message", async () => {
@@ -322,9 +323,9 @@ describe("chat lifecycle", () => {
     const prompt = "Show this while the initial list is blocked";
     const initialMessageList = context.mocks.deferred<void>();
     mockChatLifecycle(context);
-    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       await initialMessageList.promise;
-      return respond(200, { messages: [], hasHistoryBefore: false });
+      return respond(200, { events: [], hasHistoryBefore: false });
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
@@ -384,17 +385,18 @@ describe("chat lifecycle", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       async ({ params, query, respond }) => {
         if (query.sinceSeqId || query.beforeSeqId) {
-          return respond(200, { messages: [] });
+          return respond(200, { events: [] });
         }
         if (params.threadId === otherThreadId) {
           await otherThreadMessagesGate.promise;
           return respond(200, {
-            messages: [
+            events: normalizeMockChatEvents([
               {
                 id: "msg-other-user",
+                threadId: params.threadId,
                 seqId: 1,
                 role: "user",
                 runId: "run-other",
@@ -403,20 +405,22 @@ describe("chat lifecycle", () => {
               },
               {
                 id: "msg-other-assistant",
+                threadId: params.threadId,
                 seqId: 2,
                 role: "assistant",
                 runId: "run-other",
                 content: "Other thread answer",
                 createdAt: "2026-03-10T00:00:01Z",
               },
-            ],
+            ]),
             hasHistoryBefore: false,
           });
         }
         return respond(200, {
-          messages: [
+          events: normalizeMockChatEvents([
             {
               id: "msg-existing-user",
+              threadId: params.threadId,
               seqId: 1,
               role: "user",
               runId: "run-existing",
@@ -425,13 +429,14 @@ describe("chat lifecycle", () => {
             },
             {
               id: "msg-existing-assistant",
+              threadId: params.threadId,
               seqId: 2,
               role: "assistant",
               runId: "run-existing",
               content: "Existing assistant answer",
               createdAt: "2026-03-10T00:00:01Z",
             },
-          ],
+          ]),
           hasHistoryBefore: false,
         });
       },

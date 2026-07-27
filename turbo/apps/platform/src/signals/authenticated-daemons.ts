@@ -6,7 +6,7 @@ import {
   subscribeThreadListChanged$,
 } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
-import { setupChatMessageBackgroundSync$ } from "./chat-page/chat-message-background-sync.ts";
+import { setupChatEventBackgroundSync$ } from "./chat-page/chat-event-background-sync.ts";
 import { subscribeConnectorChanged$ } from "./connector-reload.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
 import { setupRealtime$ } from "./realtime.ts";
@@ -30,7 +30,7 @@ export const setupAuthenticatedDaemons$ = command(
       set(subscribeConnectorChanged$, signal),
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
-      set(setupChatMessageBackgroundSync$, signal),
+      set(setupChatEventBackgroundSync$, signal),
     ]);
   },
 );

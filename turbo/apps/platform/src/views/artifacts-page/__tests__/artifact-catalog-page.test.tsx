@@ -367,6 +367,7 @@ describe("artifact catalog page", () => {
         "a0000000-0000-4000-a000-000000000001",
       ]);
     });
+    await expect(screen.findByText("launch plan")).resolves.toBeInTheDocument();
   });
 
   it("downloads a generic binary when its card is opened", async () => {

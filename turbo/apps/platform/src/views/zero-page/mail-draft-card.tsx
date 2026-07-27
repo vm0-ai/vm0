@@ -8,12 +8,16 @@ import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/ze
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import {
-  currentMailDraftId$,
-  openMailDraftSidebar$,
-} from "../../signals/zero-page/mail-draft-sidebar.ts";
+  featureSwitch$,
+  newChatThreadSidebarEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
+import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
+import {
+  activeSidebarMailDraftId$,
+  openThreadMailDraft$,
+} from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
@@ -112,8 +116,13 @@ function MailDraftCardContent({
 
 function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   const draftLoadable = useLastLoadable(signals.draft$);
-  const selectedMailDraftId = useGet(currentMailDraftId$);
-  const openSidebar = useSet(openMailDraftSidebar$);
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
+  const legacySelectedMailDraftId = useGet(currentMailDraftId$);
+  const activeSidebarMailDraftId = useGet(activeSidebarMailDraftId$);
+  const selectedMailDraftId = newSidebarEnabled
+    ? activeSidebarMailDraftId
+    : legacySelectedMailDraftId;
+  const openSidebar = useSet(openThreadMailDraft$);
   const reloadSidebar = useSet(signals.reloadSidebar$);
   const { connectorIcon, reconnect, reconnectDisabled, reconnecting } =
     useGmailReconnect();

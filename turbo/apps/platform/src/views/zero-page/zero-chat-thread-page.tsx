@@ -89,11 +89,17 @@ import type {
   ChatThreadArtifactFile,
   ChatMessageUsagePayload,
   FeedbackNotePart,
+  ChatFollowupsEvent,
   GenerationTemplateRequest,
   ResolvedAttachFile,
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatEventCompatibilityRole,
+  foldLatestChatUsageByRunId,
+  terminatedChatRunIds,
+} from "@vm0/api-contracts/contracts/chat-events";
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
@@ -122,7 +128,10 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  newChatThreadSidebarEnabled$,
+} from "../../signals/external/feature-switch.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -148,6 +157,10 @@ import {
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
 import {
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../../signals/text-preview.ts";
+import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
   type ConnectorSignals,
@@ -158,7 +171,7 @@ import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
-import { isCancelledAssistantMessage } from "../../signals/chat-page/chat-run-lifecycle.ts";
+import { isCancelledRunEvent } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
   runGroupExpansionOverrides$,
@@ -208,7 +221,6 @@ import {
   currentArtifactInboxThreadId$,
   currentArtifactRef$,
   openArtifactFromInbox$,
-  openArtifactInbox$,
   setArtifactInboxQuery$,
   setArtifactInboxSection$,
   setArtifactPanelResizing$,
@@ -229,9 +241,16 @@ import {
   closeHeaderAutomationSidebar$,
   currentEditingHeaderWorkflowAutomationId$,
   currentHeaderAutomationThreadId$,
-  openHeaderAutomationSidebar$,
   setEditingHeaderWorkflowAutomationId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
+import {
+  activeThreadSidebar$,
+  openThreadAutomations$,
+} from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import {
+  ThreadSidebarSlot,
+  useOpenThreadArtifacts,
+} from "./thread-sidebar.tsx";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { currentBrowserSessionId$ } from "../../signals/zero-page/browser-session-sidebar.ts";
@@ -269,8 +288,11 @@ import {
   renameChatThread$,
   type EnrichedChatMessage,
   type GroupedChatMessageGroup,
-  type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
+import type {
+  ChatInputMessage,
+  ChatMessage,
+} from "../../signals/chat-page/chat-message-types.ts";
 import type {
   ChatThreadSignals,
   QueuedChatMessageItem,
@@ -338,18 +360,64 @@ import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
 type RecommendedFollowup = NonNullable<
-  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+  ChatFollowupsEvent["recommendedFollowups"]
 >[number];
+
+function isInputChatEvent(message: ChatMessage): message is ChatInputMessage {
+  return (
+    message.eventType === "input.prompt" ||
+    message.eventType === "input.rejected"
+  );
+}
+
+function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
+  return isInputChatEvent(message) ? message : undefined;
+}
+
+function visibleStructuredPrompt(
+  inputMessage: ChatInputMessage | undefined,
+  structuredPromptEnabled: boolean,
+): UserMessageDocument | undefined {
+  return inputMessage &&
+    shouldUseStructuredPrompt(
+      structuredPromptEnabled,
+      inputMessage.structuredPrompt,
+    )
+    ? inputMessage.structuredPrompt
+    : undefined;
+}
+
+function chatEventAttachments(message: ChatMessage) {
+  return isInputChatEvent(message) || message.eventType === "run.completed"
+    ? message.attachFiles
+    : undefined;
+}
+
+function chatEventError(message: ChatMessage): string | undefined {
+  if (
+    message.eventType === "input.rejected" ||
+    message.eventType === "output.error" ||
+    message.eventType === "run.failed" ||
+    message.eventType === "run.cancelled"
+  ) {
+    return message.error;
+  }
+  return undefined;
+}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
 }
 
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const openInbox = useSet(openArtifactInbox$);
-  const open = inboxThreadId === thread.threadId;
+  const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  const open = newSidebarEnabled
+    ? sidebarTarget?.type === "artifacts"
+    : inboxThreadId === thread.threadId;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -359,7 +427,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
             type="button"
             onClick={() => {
               reloadArtifacts();
-              openInbox(thread.threadId);
+              openThreadArtifacts();
             }}
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
@@ -388,8 +456,10 @@ export function AutomationMenuButton({
   ariaLabel?: string;
 }) {
   const reloadAutomations = useSet(thread.headerAutomations.reload$);
-  const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
+  const openAutomationSidebar = useSet(openThreadAutomations$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
@@ -397,7 +467,9 @@ export function AutomationMenuButton({
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
       : (lastResolvedAutomations ?? []);
-  const open = openThreadId === thread.threadId;
+  const open = newSidebarEnabled
+    ? sidebarTarget?.type === "automations"
+    : openThreadId === thread.threadId;
 
   // Show the opener when the thread has a workflow automation.
   // Goals live in the composer, so a goal-only thread has nothing here.
@@ -421,7 +493,7 @@ export function AutomationMenuButton({
             aria-pressed={open}
             onClick={() => {
               reloadAutomations();
-              openAutomationSidebar(thread.threadId);
+              openAutomationSidebar(thread);
             }}
           >
             <IconClock size={18} />
@@ -2346,11 +2418,20 @@ function HeaderGmailLabelAutomationEditForm({
     </form>
   );
 }
-function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
+function HeaderAutomationSidebar({
+  thread,
+  onClose,
+}: {
+  thread: ChatThreadSignals;
+  // Overrides the legacy search-param close when the thread-owned sidebar
+  // hosts the automations list.
+  onClose?: () => void;
+}) {
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
-  const close = useSet(closeHeaderAutomationSidebar$);
+  const legacyClose = useSet(closeHeaderAutomationSidebar$);
+  const close = onClose ?? legacyClose;
   const workflowAutomations =
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
@@ -2585,7 +2666,18 @@ function useSelectedMailDraftSignals(
   );
 }
 
+function ThreadAutomationsSidebarSlot({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const close = useSet(thread.sidebar.close$);
+  return <HeaderAutomationSidebar thread={thread} onClose={close} />;
+}
+
 export function ZeroChatThreadPage() {
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
+  const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
@@ -2608,11 +2700,12 @@ export function ZeroChatThreadPage() {
   const automationPanelOpen = automationPanelThread !== undefined;
   const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
   const browserPanelOpen = selectedBrowserSessionSignals !== undefined;
-  const rightPanelOpen =
-    artifactPanelOpen ||
-    automationPanelOpen ||
-    mailDraftPanelOpen ||
-    browserPanelOpen;
+  const rightPanelOpen = newSidebarEnabled
+    ? activeThreadSidebar !== null
+    : artifactPanelOpen ||
+      automationPanelOpen ||
+      mailDraftPanelOpen ||
+      browserPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
       useGet(artifactPanelWidth$),
@@ -2651,7 +2744,21 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {selectedBrowserSessionSignals ? (
+          {newSidebarEnabled ? (
+            activeThreadSidebar ? (
+              activeThreadSidebar.target.type === "automations" ? (
+                <ThreadAutomationsSidebarSlot
+                  key={activeThreadSidebar.thread.threadId}
+                  thread={activeThreadSidebar.thread}
+                />
+              ) : (
+                <ThreadSidebarSlot
+                  thread={activeThreadSidebar.thread}
+                  target={activeThreadSidebar.target}
+                />
+              )
+            ) : null
+          ) : selectedBrowserSessionSignals ? (
             <BrowserSessionSidebar signals={selectedBrowserSessionSignals} />
           ) : selectedMailDraftSignals ? (
             <MailDraftSidebar signals={selectedMailDraftSignals} />
@@ -3006,14 +3113,15 @@ function groupMessagesByRole(
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const message of messages) {
+    const role = chatEventCompatibilityRole(message.eventType);
     const last = groups[groups.length - 1];
-    if (last && last.role === message.role) {
+    if (last && last.role === role) {
       last.messages.push(message);
       continue;
     }
     groups.push({
       beginMessageId: message.id,
-      role: message.role,
+      role,
       messages: [message],
     });
   }
@@ -3038,18 +3146,25 @@ function groupMessagesForCompletedWorkDisplay(
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const message of messages) {
+    const role = chatEventCompatibilityRole(message.eventType);
     const forceStandalone = foldFinalMessageIds.has(message.id);
     const last = groups[groups.length - 1];
     const lastHasFoldFinal =
       last?.messages.some((candidate) => {
         return foldFinalMessageIds.has(candidate.id);
       }) ?? false;
+    const lastFoldFinal = last?.messages.find((candidate) => {
+      return foldFinalMessageIds.has(candidate.id);
+    });
+    const continuesFoldFinalRun =
+      lastFoldFinal?.runId !== undefined &&
+      lastFoldFinal.runId === message.runId;
 
     if (
       !forceStandalone &&
       last &&
-      last.role === message.role &&
-      !lastHasFoldFinal
+      last.role === role &&
+      (!lastHasFoldFinal || continuesFoldFinalRun)
     ) {
       last.messages.push(message);
       continue;
@@ -3057,7 +3172,7 @@ function groupMessagesForCompletedWorkDisplay(
 
     groups.push({
       beginMessageId: message.id,
-      role: message.role,
+      role,
       messages: [message],
     });
   }
@@ -3075,36 +3190,22 @@ function firstRunIdForMessages(
 function usageByRunIdFromGroups(
   groups: readonly GroupedChatMessageGroup[],
 ): Map<string, ChatMessageUsagePayload> {
-  const usageByRunId = new Map<string, ChatMessageUsagePayload>();
-  for (const group of groups) {
-    if (group.role !== "assistant" || group.usage === undefined) {
-      continue;
-    }
-    const runId = firstRunIdForMessages(group.messages);
-    if (runId !== undefined) {
-      setLatestUsageForRun(usageByRunId, runId, group.usage);
-    }
-  }
-  return usageByRunId;
-}
-
-function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
-  const timestamp = Date.parse(usage.settledAt);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
-function setLatestUsageForRun(
-  usageByRunId: Map<string, ChatMessageUsagePayload>,
-  runId: string,
-  usage: ChatMessageUsagePayload,
-): void {
-  const existing = usageByRunId.get(runId);
-  if (
-    existing === undefined ||
-    usageSettledAtMs(usage) >= usageSettledAtMs(existing)
-  ) {
-    usageByRunId.set(runId, usage);
-  }
+  return foldLatestChatUsageByRunId(
+    groups.flatMap((group) => {
+      const runId = firstRunIdForMessages(group.messages);
+      return group.role === "assistant" &&
+        group.usage !== undefined &&
+        runId !== undefined
+        ? [
+            {
+              eventType: "usage.recorded" as const,
+              runId,
+              usage: group.usage,
+            },
+          ]
+        : [];
+    }),
+  );
 }
 
 function attachUsageToCompletedWorkGroups(
@@ -3123,21 +3224,24 @@ function attachUsageToCompletedWorkGroups(
 
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
-    message.role === "assistant" &&
+    chatEventCompatibilityRole(message.eventType) === "assistant" &&
     (Boolean(message.content) ||
-      Boolean(message.error) ||
+      Boolean(chatEventError(message)) ||
       message.blocks.length > 0 ||
-      (message.runLifecycleEvent === undefined &&
-        Boolean(message.attachFiles?.length)))
+      Boolean(chatEventAttachments(message)?.length))
+  );
+}
+
+function isPrimaryAssistantResult(message: EnrichedChatMessage): boolean {
+  return (
+    (message.eventType !== "run.completed" || Boolean(message.content)) &&
+    isRenderableAssistantMessage(message)
   );
 }
 
 function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
-    message.role === "assistant" &&
-    message.content === null &&
-    message.error === undefined &&
-    typeof message.thinking === "string" &&
+    message.eventType === "output.thinking" &&
     message.thinking.trim().length > 0
   );
 }
@@ -3145,20 +3249,7 @@ function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
 function terminatedRunIdsForCompletedWork(
   messages: readonly EnrichedChatMessage[],
 ): Set<string> {
-  const terminatedRunIds = new Set<string>();
-  for (const message of messages) {
-    if (message.interruptsRunId !== undefined) {
-      terminatedRunIds.add(message.interruptsRunId);
-    }
-    if (
-      message.role === "assistant" &&
-      message.runId !== undefined &&
-      message.runLifecycleEvent !== undefined
-    ) {
-      terminatedRunIds.add(message.runId);
-    }
-  }
-  return terminatedRunIds;
+  return terminatedChatRunIds(messages);
 }
 
 function buildCompletedWorkFolding(
@@ -3186,10 +3277,7 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
-    if (
-      !terminatedRunIds.has(runId) ||
-      runMessages.some(isCancelledAssistantMessage)
-    ) {
+    if (!terminatedRunIds.has(runId) || runMessages.some(isCancelledRunEvent)) {
       visibleMessages.push(...runMessages);
       index = endIndex;
       continue;
@@ -3197,9 +3285,17 @@ function buildCompletedWorkFolding(
 
     let finalMessageIndex = -1;
     for (let offset = runMessages.length - 1; offset >= 0; offset--) {
-      if (isRenderableAssistantMessage(runMessages[offset]!)) {
+      if (isPrimaryAssistantResult(runMessages[offset]!)) {
         finalMessageIndex = offset;
         break;
+      }
+    }
+    if (finalMessageIndex < 0) {
+      for (let offset = runMessages.length - 1; offset >= 0; offset--) {
+        if (isRenderableAssistantMessage(runMessages[offset]!)) {
+          finalMessageIndex = offset;
+          break;
+        }
       }
     }
     const finalMessage =
@@ -3208,15 +3304,21 @@ function buildCompletedWorkFolding(
       finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
     const hiddenMessages = precedingMessages.filter((message) => {
       return (
-        message.role !== "user" && !isThinkingOnlyAssistantMessage(message)
+        chatEventCompatibilityRole(message.eventType) !== "user" &&
+        !isThinkingOnlyAssistantMessage(message)
       );
     });
     const trailingMessages =
       finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
     const trailingMessagesAreMarkers = trailingMessages.every((message) => {
       return (
-        message.role === "assistant" && !isRenderableAssistantMessage(message)
+        chatEventCompatibilityRole(message.eventType) === "assistant" &&
+        (!isRenderableAssistantMessage(message) ||
+          message.eventType === "run.completed")
       );
+    });
+    const visibleTrailingMessages = trailingMessages.filter((message) => {
+      return isRenderableAssistantMessage(message);
     });
     if (
       finalMessage !== undefined &&
@@ -3225,9 +3327,10 @@ function buildCompletedWorkFolding(
     ) {
       visibleMessages.push(
         ...precedingMessages.filter((message) => {
-          return message.role === "user";
+          return chatEventCompatibilityRole(message.eventType) === "user";
         }),
         finalMessage,
+        ...visibleTrailingMessages,
       );
       folds.push({
         key: `${runId}:${finalMessage.id}`,
@@ -3371,7 +3474,7 @@ function runGroupFoldSourceLabel(
     return workflowLabel;
   }
   for (const message of messages) {
-    if (message.role !== "user") {
+    if (!isInputChatEvent(message)) {
       continue;
     }
     const content = shouldUseStructuredPrompt(
@@ -3421,9 +3524,9 @@ function goalUserMessageBrief(message: EnrichedChatMessage): string | null {
 
 function isGoalUserMessage(
   message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
+): message is EnrichedChatMessage & ChatInputMessage {
   return (
-    message.role === "user" &&
+    isInputChatEvent(message) &&
     message.isGoalRun === true &&
     !hasWorkflowMessageMetadata(message) &&
     goalUserMessageBrief(message) !== null
@@ -6141,8 +6244,8 @@ function PagedUserGroup({
 
 function isWorkflowUserMessage(
   message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
-  return message.role === "user" && hasWorkflowMessageMetadata(message);
+): message is EnrichedChatMessage & ChatInputMessage {
+  return isInputChatEvent(message) && hasWorkflowMessageMetadata(message);
 }
 
 function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
@@ -6170,7 +6273,7 @@ function workflowMessageBrief(
 }
 
 function workflowMessageBody(
-  message: EnrichedChatMessage & { role: "user" },
+  message: EnrichedChatMessage & ChatInputMessage,
 ): string {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
@@ -6190,16 +6293,17 @@ interface ResolvedMessageAttachment {
   readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
+  readonly text$?: TextPreviewComputed;
 }
 
 function resolveAttachments(
   message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
+  artifactSignalsForUrl: ChatThreadSignals["artifactSignalsForUrl"],
 ): ResolvedMessageAttachment[] {
+  const eventAttachments = chatEventAttachments(message);
   const source =
-    message.attachFiles && message.attachFiles.length > 0
-      ? message.attachFiles
-      : parsed;
+    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
     const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
@@ -6211,6 +6315,9 @@ function resolveAttachments(
       url: f.url,
       contentType,
     });
+    const text$ = isTextPreviewKind(kind)
+      ? artifactSignalsForUrl(f.url)?.text$
+      : undefined;
     return {
       id: "id" in f && typeof f.id === "string" ? f.id : null,
       filename: f.filename,
@@ -6219,6 +6326,7 @@ function resolveAttachments(
       ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
+      ...(text$ ? { text$ } : {}),
     };
   });
 }
@@ -6233,13 +6341,12 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function clipboardAttachmentsFromMessage(
-  message: EnrichedChatMessage,
+  message: ChatMessage,
   parsed: { filename: string; url: string }[],
 ): ChatClipboardAttachment[] {
+  const eventAttachments = chatEventAttachments(message);
   const source =
-    message.attachFiles && message.attachFiles.length > 0
-      ? message.attachFiles
-      : parsed;
+    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
@@ -6402,6 +6509,7 @@ function UserMessageAttachments({
               filename={a.filename}
               url={a.url}
               kind={a.kind}
+              text$={a.text$}
             />
           );
         }
@@ -6997,7 +7105,7 @@ function StructuredUserMessageContent({
 function WorkflowUserMessage({
   message,
 }: {
-  message: EnrichedChatMessage & { role: "user" };
+  message: EnrichedChatMessage & ChatInputMessage;
 }) {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
@@ -7057,7 +7165,7 @@ function GoalUserMessage({
   bodyBlocks,
   openLightbox,
 }: {
-  message: EnrichedChatMessage & { role: "user" };
+  message: EnrichedChatMessage & ChatInputMessage;
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
 }) {
@@ -7109,20 +7217,21 @@ function PagedUserMessage({
   const featureSwitches = useGet(featureSwitch$);
   const structuredPromptEnabled =
     featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
-  const structuredPrompt =
-    message.role === "user" &&
-    shouldUseStructuredPrompt(structuredPromptEnabled, message.structuredPrompt)
-      ? message.structuredPrompt
-      : undefined;
+  const inputMessage = asInputChatEvent(message);
+  const structuredPrompt = visibleStructuredPrompt(
+    inputMessage,
+    structuredPromptEnabled,
+  );
   const content = message.content ?? "";
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
+  const attachFiles = inputMessage?.attachFiles;
   const legacyCopyText =
-    message.attachFiles &&
-    message.attachFiles.length > 0 &&
+    attachFiles &&
+    attachFiles.length > 0 &&
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
@@ -7132,13 +7241,12 @@ function PagedUserMessage({
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox(url);
-  };
+  const openLightbox = openImageLightbox;
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
-  const allAttachments = resolveAttachments(message, parsed);
+  const findArtifact = thread.artifactSignalsForUrl;
+  const allAttachments = resolveAttachments(message, parsed, findArtifact);
   const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
     message,
     parsed,
@@ -7197,13 +7305,13 @@ function PagedUserMessage({
             <StructuredUserMessageContent
               document={structuredPrompt}
               attachments={allAttachments}
-              referenceAttachments={message.attachFiles ?? []}
+              referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
             />
           ) : (
             <>
               <UserMessageGenerationTemplate
-                generationTemplate={message.generationTemplate}
+                generationTemplate={inputMessage?.generationTemplate}
               />
               <UserMessageAttachments
                 attachments={allAttachments}
@@ -7279,6 +7387,7 @@ function PagedAssistantGroup({
         key={message.id}
         message={message}
         compactTop={compactTop}
+        thread={thread}
       />
     );
   };
@@ -7328,17 +7437,24 @@ function PagedAssistantGroup({
 function PagedAssistantMessageItem({
   message,
   compactTop = false,
+  thread,
 }: {
   message: EnrichedChatMessage;
   compactTop?: boolean;
+  thread: ChatThreadSignals;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
-  const attachments = resolveAttachments(message, []);
+  const attachments = resolveAttachments(
+    message,
+    [],
+    thread.artifactSignalsForUrl,
+  );
 
-  if (message.error) {
+  const error = chatEventError(message);
+  if (error) {
     return (
       <div
         className={cn(
@@ -7346,7 +7462,7 @@ function PagedAssistantMessageItem({
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        <AssistantErrorContent error={message.error} />
+        <AssistantErrorContent error={error} />
       </div>
     );
   }

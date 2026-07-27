@@ -166,7 +166,7 @@ function ArtifactCatalogCard({
   );
 }
 
-function ArtifactCatalogGrid({
+export function ArtifactCatalogGrid({
   artifacts,
   onOpen,
 }: {
@@ -194,7 +194,7 @@ function ArtifactCatalogGrid({
   );
 }
 
-function ArtifactCatalogSkeleton() {
+export function ArtifactCatalogSkeleton() {
   return (
     <div
       className="grid gap-3"
@@ -220,7 +220,7 @@ function ArtifactCatalogSkeleton() {
   );
 }
 
-function ArtifactCatalogError() {
+export function ArtifactCatalogError() {
   return (
     <div
       role="alert"
@@ -232,7 +232,7 @@ function ArtifactCatalogError() {
   );
 }
 
-function ArtifactCatalogEmpty() {
+export function ArtifactCatalogEmpty() {
   return (
     <div className="rounded-lg border border-dashed border-border bg-card px-6 py-12 text-center">
       <img

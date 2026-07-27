@@ -16,6 +16,7 @@ import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   createSlackClient,
@@ -127,7 +128,12 @@ async function loadSlackChatDeliveryContext(args: {
         eq(chatMessages.id, payload.chatMessageId),
         eq(chatMessages.runId, args.callback.runId),
         eq(chatMessages.chatThreadId, run.chatThreadId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn([
+          "output.message",
+          "output.error",
+          "run.failed",
+          "run.cancelled",
+        ]),
         isNotNull(chatMessages.content),
       ),
     )
@@ -325,7 +331,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
         and(
           eq(chatMessages.id, args.chatMessageId),
           eq(chatMessages.chatThreadId, args.chatThreadId),
-          eq(chatMessages.role, "assistant"),
+          chatEventTypeIn(["output.error"]),
           isNotNull(chatMessages.content),
         ),
       )

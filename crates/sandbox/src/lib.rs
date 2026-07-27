@@ -33,8 +33,9 @@ pub use config::{
 };
 pub use control::{RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError};
 pub use error::{
-    Result, SandboxError, SandboxIdleTransition, SandboxInitializationPhase,
-    SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
+    Result, SandboxError, SandboxGuestDnsReadinessReason, SandboxIdleTransition,
+    SandboxInitializationPhase, SandboxInvalidStateContext, SandboxOperation,
+    SandboxOperationReason,
 };
 pub use factory::{
     SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,

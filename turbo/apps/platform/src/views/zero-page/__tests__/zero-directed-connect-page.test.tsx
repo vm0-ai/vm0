@@ -4,7 +4,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
@@ -422,7 +422,7 @@ describe("directed connector connect page", () => {
         });
       },
     );
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       if ("prompt" in body) {
         continuationPrompt = body.prompt ?? null;
       }
@@ -474,7 +474,7 @@ describe("directed connector connect page", () => {
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: ["steam"] });
     });
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       continuationPrompt = body.prompt ?? null;
       return respond(201, {
         runId: "00000000-0000-4000-a000-000000000202",
@@ -575,7 +575,7 @@ describe("directed connector connect page", () => {
         });
       },
     );
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       continuationPrompt = body.prompt ?? null;
       return respond(201, {
         runId: "00000000-0000-4000-a000-000000000203",

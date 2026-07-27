@@ -582,6 +582,7 @@ async function seedTargetThreadRuns(
   const messageRows: {
     chatThreadId: string;
     runId: string;
+    eventType: "input.prompt" | "output.message";
     role: string;
     content: string;
     sequenceNumber: number;
@@ -611,6 +612,7 @@ async function seedTargetThreadRuns(
       messageRows.push({
         chatThreadId: fixture.threadId,
         runId,
+        eventType: m === 0 ? "input.prompt" : "output.message",
         role: m === 0 ? "user" : "assistant",
         content: markdownLorem(i, m),
         sequenceNumber: m,

@@ -1,6 +1,6 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  chatMessagesContract,
+  chatEventsContract,
   chatThreadMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -395,6 +395,9 @@ describe("chat message action cards", () => {
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
     const imageBytes = new TextEncoder().encode("mail draft image");
     const pdfBytes = new TextEncoder().encode("mail draft pdf");
+    const textBytes = new TextEncoder().encode(
+      "Mail attachment decision: ship",
+    );
     const mailDraftHtml =
       '<div>Mail body <strong>before</strong></div><p><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><br>After image</p><hr><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a><div><img src="https://images.example.test/signature.png" alt="Sender signature logo" width="96" height="32"><img src="data:image/png;base64,dW5zYWZl" alt="Unsafe signature image"></div>';
 
@@ -457,6 +460,12 @@ describe("chat message action cards", () => {
               size: 248_192,
               partId: "1",
             },
+            {
+              filename: "decision.txt",
+              contentType: "text/plain",
+              size: textBytes.byteLength,
+              partId: "3",
+            },
           ],
           createdAt,
           updatedAt: sent ? "2026-07-14T10:01:00.000Z" : createdAt,
@@ -505,6 +514,12 @@ describe("chat message action cards", () => {
               size: 248_192,
               partId: "1",
             },
+            {
+              filename: "decision.txt",
+              contentType: "text/plain",
+              size: textBytes.byteLength,
+              partId: "3",
+            },
           ],
           createdAt,
           updatedAt: "2026-07-14T10:01:00.000Z",
@@ -520,6 +535,12 @@ describe("chat message action cards", () => {
           return new HttpResponse(pdfBytes, {
             status: 200,
             headers: { "Content-Type": "application/pdf" },
+          });
+        }
+        if (params.partId === "3") {
+          return new HttpResponse(textBytes, {
+            status: 200,
+            headers: { "Content-Type": "application/octet-stream" },
           });
         }
         expect(params.partId).toBe("2");
@@ -648,6 +669,18 @@ describe("chat message action cards", () => {
     expect(within(lightbox).queryByLabelText("Share")).toBeNull();
     expect(within(lightbox).queryByLabelText("Open in split view")).toBeNull();
     await user.click(within(lightbox).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
+    });
+    const textPreview = await within(sidebar).findByLabelText(
+      "Open text preview for decision.txt",
+    );
+    await user.click(textPreview);
+    const textLightbox = await screen.findByTestId("attachment-lightbox");
+    await expect(
+      within(textLightbox).findByText(/Mail attachment decision: ship/u),
+    ).resolves.toBeInTheDocument();
+    await user.click(within(textLightbox).getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
     });
@@ -936,7 +969,7 @@ describe("chat message action cards", () => {
       prompt: string | undefined;
       threadId: string | undefined;
     }[] = [];
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       rejectedPrompts.push({ prompt: body.prompt, threadId: body.threadId });
       return respond(402, {
         error: {

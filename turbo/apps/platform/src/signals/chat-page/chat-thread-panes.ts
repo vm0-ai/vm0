@@ -57,10 +57,21 @@ const setRightThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
 const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
 
+// Thread-owned sidebars (NewChatThreadSidebar switch) are anchored to the
+// previous thread's messages just like the legacy panels above.
+const closeThreadSidebars$ = command(({ get, set }) => {
+  for (const thread of [get(internalLeftThread$), get(internalRightThread$)]) {
+    if (thread) {
+      set(thread.sidebar.close$);
+    }
+  }
+});
+
 export const unloadRightThread$ = command(({ get, set }) => {
   const currentRightThread = get(internalRightThread$);
   if (currentRightThread) {
     set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
+    set(currentRightThread.sidebar.close$);
   }
   set(resetRightSetupSignal$);
   set(internalRightThread$, null);
@@ -286,6 +297,7 @@ export const loadLeftThread$ = command(
     set(clearArtifactPreview$);
     set(closeHeaderAutomationSidebar$);
     set(closeMailDraftSidebar$);
+    set(closeThreadSidebars$);
 
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) === threadId) {
@@ -317,6 +329,7 @@ export const loadRightThread$ = command(
     set(clearArtifactPreview$);
     set(closeHeaderAutomationSidebar$);
     set(closeMailDraftSidebar$);
+    set(closeThreadSidebars$);
 
     const next = new URLSearchParams(get(searchParams$));
     next.set(SIDEBAR_PARAM, threadId);

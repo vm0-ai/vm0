@@ -125,6 +125,19 @@ const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const getAttachmentParams$ = pathParamsOf(zeroMailContract.getAttachment);
+
+function attachmentResponseContentType(contentType: string): string {
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  if (
+    mediaType?.startsWith("text/") ||
+    mediaType === "application/json" ||
+    mediaType?.endsWith("+json")
+  ) {
+    return "application/octet-stream";
+  }
+  return contentType;
+}
+
 const getAttachmentInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -149,7 +162,10 @@ const getAttachmentInner$ = command(
       }
       case "ok": {
         const headers = new Headers();
-        headers.set("Content-Type", result.contentType);
+        headers.set(
+          "Content-Type",
+          attachmentResponseContentType(result.contentType),
+        );
         headers.set("Content-Length", String(result.content.byteLength));
         headers.set("Cache-Control", "private, max-age=300");
         headers.set("X-Content-Type-Options", "nosniff");

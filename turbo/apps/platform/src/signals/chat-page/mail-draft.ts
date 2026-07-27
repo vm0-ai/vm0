@@ -21,6 +21,10 @@ import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,
 } from "./action-callback.ts";
+import {
+  createTextPreviewComputedFromBlob,
+  type TextPreviewComputed,
+} from "../text-preview.ts";
 
 interface MailDraftSendCallback {
   readonly threadId: string;
@@ -35,6 +39,11 @@ export interface MailDraftDescriptor {
   readonly sendCallback: MailDraftSendCallback | null;
 }
 
+export interface MailAttachmentPreviews {
+  readonly text: ReadonlyMap<string, TextPreviewComputed>;
+  readonly urls: ReadonlyMap<string, string | null>;
+}
+
 export interface MailDraftSignals extends Omit<
   MailDraftDescriptor,
   "sendCallback"
@@ -42,9 +51,7 @@ export interface MailDraftSignals extends Omit<
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
-  readonly attachmentUrls$: Computed<
-    Promise<ReadonlyMap<string, string | null>>
-  >;
+  readonly attachmentPreviews$: Computed<Promise<MailAttachmentPreviews>>;
   readonly setAttachmentScopeRef$: Command<
     (() => void) | undefined,
     [HTMLDivElement | null]
@@ -153,10 +160,10 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   };
 }
 
-function createAttachmentUrls(
+function createAttachmentPreviews(
   descriptor: MailDraftDescriptor,
   sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>,
-): Pick<MailDraftSignals, "attachmentUrls$" | "setAttachmentScopeRef$"> {
+): Pick<MailDraftSignals, "attachmentPreviews$" | "setAttachmentScopeRef$"> {
   const attachmentObjectUrls = new Map<string, string>();
   const attachmentScopeActive$ = state(false);
   let cleanupSignal: AbortSignal | null = null;
@@ -171,10 +178,10 @@ function createAttachmentUrls(
     loadVersion += 1;
     revokeAttachmentObjectUrls();
   };
-  const attachmentUrls$ = computed(
-    async (get): Promise<ReadonlyMap<string, string | null>> => {
+  const attachmentPreviews$ = computed(
+    async (get): Promise<MailAttachmentPreviews> => {
       if (!get(attachmentScopeActive$)) {
-        return new Map();
+        return { text: new Map(), urls: new Map() };
       }
       const currentLoadVersion = ++loadVersion;
       const draftPromise = get(sidebarDraft$);
@@ -194,18 +201,20 @@ function createAttachmentUrls(
       const draft = await draftPromise;
       signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
-        return new Map();
+        return { text: new Map(), urls: new Map() };
       }
+      const attachments = draft?.version === 3 ? draft.attachments : [];
+      const attachmentPartIds = new Set(
+        attachments.flatMap((attachment) => {
+          return attachment.partId ? [attachment.partId] : [];
+        }),
+      );
       const partIds = Array.from(
         new Set([
           ...(draft?.inlineImages ?? []).map((image) => {
             return image.partId;
           }),
-          ...(draft?.version === 3 ? draft.attachments : []).flatMap(
-            (attachment) => {
-              return attachment.partId ? [attachment.partId] : [];
-            },
-          ),
+          ...attachmentPartIds,
         ]),
       );
       const responses = await Promise.all(
@@ -225,20 +234,27 @@ function createAttachmentUrls(
       );
       signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
-        return new Map();
+        return { text: new Map(), urls: new Map() };
       }
       revokeAttachmentObjectUrls();
-      const imageUrls = new Map<string, string | null>();
+      const textPreviews = new Map<string, TextPreviewComputed>();
+      const urls = new Map<string, string | null>();
       for (const { partId, response } of responses) {
         if (response.status === 404) {
-          imageUrls.set(partId, null);
+          urls.set(partId, null);
           continue;
         }
         const url = URL.createObjectURL(response.body);
         attachmentObjectUrls.set(partId, url);
-        imageUrls.set(partId, url);
+        urls.set(partId, url);
+        if (attachmentPartIds.has(partId)) {
+          textPreviews.set(
+            partId,
+            createTextPreviewComputedFromBlob(response.body),
+          );
+        }
       }
-      return imageUrls;
+      return { text: textPreviews, urls };
     },
   );
   const setAttachmentScopeRef$ = onRef(
@@ -254,7 +270,10 @@ function createAttachmentUrls(
       );
     }),
   );
-  return { attachmentUrls$, setAttachmentScopeRef$ };
+  return {
+    attachmentPreviews$,
+    setAttachmentScopeRef$,
+  };
 }
 
 function createMailDraftSignals(
@@ -298,7 +317,10 @@ function createMailDraftSignals(
     );
     return response.status === 200 ? response.body.mailDraft : null;
   });
-  const attachmentUrls = createAttachmentUrls(descriptor, sidebarDraft$);
+  const attachmentPreviews = createAttachmentPreviews(
+    descriptor,
+    sidebarDraft$,
+  );
   const reloadSidebar$ = command(({ set }) => {
     set(sidebarDraftOverride$, undefined);
     set(sidebarReloadVersion$, (version) => {
@@ -349,7 +371,7 @@ function createMailDraftSignals(
     threadId,
     draft$,
     sidebarDraft$,
-    ...attachmentUrls,
+    ...attachmentPreviews,
     reloadSidebar$,
     delete$,
     send$,
