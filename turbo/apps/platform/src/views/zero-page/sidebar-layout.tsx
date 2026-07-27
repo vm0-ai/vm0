@@ -42,8 +42,9 @@ import {
 import {
   artifactFullscreen$,
   currentArtifactInboxThreadId$,
-  openArtifactInbox$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
+import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
 
 function AgentAvatarInTopBar() {
@@ -86,17 +87,21 @@ function InviteButtonLeaf() {
 }
 
 function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const openInbox = useSet(openArtifactInbox$);
-  const open = inboxThreadId === thread.threadId;
+  const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  const open = newSidebarEnabled
+    ? sidebarTarget?.type === "artifacts"
+    : inboxThreadId === thread.threadId;
 
   return (
     <button
       type="button"
       onClick={() => {
         reloadArtifacts();
-        openInbox(thread.threadId);
+        openThreadArtifacts();
       }}
       className={cn(
         "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",

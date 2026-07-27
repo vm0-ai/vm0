@@ -17,6 +17,7 @@ import {
   withCleanup,
 } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
+import { createThreadSidebarSignals } from "./thread-sidebar.ts";
 import { createWorkflowQueueSignals } from "./workflow-queue.ts";
 import {
   createScrollSignals,
@@ -882,6 +883,7 @@ function createThreadOwnedSignals(
     ...createAgentInfoSignals(threadMeta$),
     headerAutomations: createHeaderAutomationSignals(threadId),
     workflowQueue: createWorkflowQueueSignals(threadId),
+    sidebar: createThreadSidebarSignals(threadId),
     ...createThreadUIState(),
   };
 }

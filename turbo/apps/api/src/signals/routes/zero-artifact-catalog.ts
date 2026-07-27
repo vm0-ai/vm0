@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -11,50 +9,11 @@ import {
   getArtifactCatalogEntry$,
   listArtifactCatalog$,
 } from "../services/artifact-catalog.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
-
-function catalogDisabled() {
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: "Artifact catalog is not available",
-        code: "FORBIDDEN" as const,
-      },
-    },
-  };
-}
-
-/**
- * The catalog is only reachable from the Artifacts page, which the `Artifacts`
- * switch already gates per org. Reusing that switch keeps the page and its API
- * from drifting apart during rollout.
- */
-const artifactCatalogEnabled$ = command(
-  async (
-    { get },
-    auth: { readonly orgId: string; readonly userId: string },
-  ): Promise<boolean> => {
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    return isFeatureEnabled(FeatureSwitchKey.Artifacts, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    });
-  },
-);
 
 const listArtifactCatalogInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(artifactCatalogEnabled$, auth))) {
-      return catalogDisabled();
-    }
-    signal.throwIfAborted();
-
     const query = get(queryOf(artifactCatalogContract.list));
     const result = await set(
       listArtifactCatalog$,
@@ -64,6 +23,7 @@ const listArtifactCatalogInner$ = command(
         limit: query.limit,
         cursor: query.cursor,
         kind: query.kind,
+        chatThreadId: query.chatThreadId,
       },
       signal,
     );
@@ -82,11 +42,6 @@ const listArtifactCatalogInner$ = command(
 const getArtifactCatalogEntryInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(artifactCatalogEnabled$, auth))) {
-      return catalogDisabled();
-    }
-    signal.throwIfAborted();
-
     const params = get(pathParamsOf(artifactCatalogContract.get));
     const artifact = await set(
       getArtifactCatalogEntry$,
