@@ -391,6 +391,58 @@ export async function replaceThreadSessionBindingFixture(args: {
 }
 
 /**
+ * Stages a canonical binding clear after the queue-first message row is
+ * visible. Starting this transaction earlier would block that row's parent FK
+ * check; once the row exists, the uncommitted clear remains invisible to
+ * resolution and blocks only final snapshot validation on the thread row.
+ */
+export async function holdThreadSessionBindingClearFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({ agentSessionId: null, agentSessionRunId: null })
+      .where(eq(chatThreads.id, args.threadId))
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Expected a bound chat thread session");
+    }
+    const rows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the binding clear holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
  * Deletes one completed run to reproduce retention cleanup of binding
  * provenance. No product endpoint exposes historical run deletion.
  */

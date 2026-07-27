@@ -69,6 +69,7 @@ import {
   holdChatMessageFixture,
   holdChatMessageQueueItemFixture,
   holdOrgAdmissionLockFixture,
+  holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
   replaceBddVm0ApiKeys,
@@ -3125,16 +3126,41 @@ describe("CHAT-02: run-level model overrides", () => {
       admissionLock.release();
       await admissionLock.done;
     });
+    const messageId = randomUUID();
     const secondPromise = sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "retry after the binding changes",
+      clientMessageId: messageId,
     });
-    await expect.poll(admissionLock.waiterCount).toBe(1);
+    // The queue-first insert must complete before a fixture owns the parent
+    // thread row; otherwise its FK check would block before session resolution.
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, first.threadId);
+        return messages.messages.some((message) => {
+          return message.id === messageId;
+        });
+      })
+      .toBe(true);
 
-    await clearThreadSessionBinding(context, first.threadId);
+    const bindingClear = await holdThreadSessionBindingClearFixture({
+      threadId: first.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      bindingClear.release();
+      await bindingClear.done;
+    });
     admissionLock.release();
     await admissionLock.done;
+    // Unlike the shared org advisory key, this row lock can only be reached
+    // after the target preparation has captured its binding snapshot.
+    await expect
+      .poll(bindingClear.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+    bindingClear.release();
+    await bindingClear.done;
     const second = await secondPromise;
 
     const retryEvents = sandboxOperationEvents().filter((event) => {
