@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { IconCircleCheck, IconLoader2 } from "@tabler/icons-react";
-import { Button, cn } from "@vm0/ui";
+import { cn } from "@vm0/ui";
 import {
   connectorRefSchema,
   type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
@@ -19,9 +17,8 @@ import {
   setSelectedConnectorRef$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { ConnectModal } from "../zero-page/components/settings/add-connection-dialog.tsx";
-import { launchConnectorConnect } from "../zero-page/components/settings/launch-connector-connect.ts";
+import { ConnectorCard } from "../zero-page/components/settings/connector-card.tsx";
 
 type ConnectorSetupVariant = "workflow" | "prompt";
 
@@ -30,83 +27,6 @@ function connectorRefs(values: readonly string[]): ConnectorRef[] {
     const parsed = connectorRefSchema.safeParse(value);
     return parsed.success ? [parsed.data] : [];
   });
-}
-function promptHelpText(helpText: string | undefined): string {
-  return (helpText ?? "Connect this account to continue")
-    .replace(/^Connect your \w+ account to /u, "")
-    .replace(/^Connect your Google account to /u, "")
-    .replace(/^Connect /u, "");
-}
-
-function OnboardingConnectorRow({
-  connectorRef,
-  item,
-  connected,
-  connecting,
-  loading,
-  variant,
-  required,
-  onConnect,
-}: {
-  readonly connectorRef: ConnectorRef;
-  readonly item: PublicConnectorCatalogStatusItem | undefined;
-  readonly connected: boolean;
-  readonly connecting: boolean;
-  readonly loading: boolean;
-  readonly variant: ConnectorSetupVariant;
-  readonly required: boolean;
-  readonly onConnect: (item: PublicConnectorCatalogStatusItem) => void;
-}) {
-  const label = item?.label ?? connectorRef;
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-3",
-        variant === "workflow"
-          ? "border-b border-border/40 py-[18px] last:border-b-0"
-          : "rounded-xl border border-border px-4 py-3.5 sm:px-5 sm:py-4",
-      )}
-    >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
-        <ConnectorIcon icon={item?.icon} size={22} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{label}</p>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {variant === "workflow" ? (
-            <span className="text-muted-foreground/70">
-              {required ? "Required" : "Optional"} ·{" "}
-            </span>
-          ) : null}
-          {promptHelpText(item?.description)}
-        </p>
-      </div>
-      {connected ? (
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary">
-          <IconCircleCheck size={16} aria-hidden="true" />
-          Connected
-        </span>
-      ) : (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 shrink-0 rounded-[10px] px-4 text-sm"
-          disabled={loading || !item || connecting}
-          onClick={() => {
-            if (item) {
-              onConnect(item);
-            }
-          }}
-        >
-          {connecting ? (
-            <IconLoader2 className="animate-spin" aria-hidden="true" />
-          ) : null}
-          Connect
-        </Button>
-      )}
-    </div>
-  );
 }
 
 export function OnboardingConnectorSetup({
@@ -166,44 +86,46 @@ export function OnboardingConnectorSetup({
             pollingDeviceAuthRef === connectorRef;
 
           return (
-            <OnboardingConnectorRow
+            <ConnectorCard
               key={connectorRef}
+              variant="onboarding"
               connectorRef={connectorRef}
-              item={item}
+              connector={item}
               connected={connected}
-              connecting={connecting}
+              busy={connecting}
               loading={loading}
-              variant={variant}
+              layout={variant}
               required={requiredSet.has(connectorRef)}
-              onConnect={(connector) => {
-                launchConnectorConnect({
-                  connector,
-                  openModal: () => {
-                    setConnectRef(connectorRef);
-                  },
-                  connectBrowserAuth: (authMethod) => {
-                    return connect(
-                      connectorRef,
-                      authMethod,
-                      {
-                        connectorLabel: connector.label,
-                        connectorIcon: connector.icon,
+              connect={
+                item
+                  ? {
+                      openModal: () => {
+                        setConnectRef(connectorRef);
                       },
-                      pageSignal,
-                    );
-                  },
-                  connectNoAuth: (authMethod) => {
-                    return connectNoAuth(
-                      {
-                        connectorRef,
-                        authMethod,
-                        options: { connectorLabel: connector.label },
+                      connectBrowserAuth: (authMethod) => {
+                        return connect(
+                          connectorRef,
+                          authMethod,
+                          {
+                            connectorLabel: item.label,
+                            connectorIcon: item.icon,
+                          },
+                          pageSignal,
+                        );
                       },
-                      pageSignal,
-                    );
-                  },
-                });
-              }}
+                      connectNoAuth: (authMethod) => {
+                        return connectNoAuth(
+                          {
+                            connectorRef,
+                            authMethod,
+                            options: { connectorLabel: item.label },
+                          },
+                          pageSignal,
+                        );
+                      },
+                    }
+                  : undefined
+              }
             />
           );
         })}

@@ -1,3 +1,4 @@
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   chatThreadsContract,
   type ChatThreadEvent,
@@ -20,13 +21,13 @@ vi.mock("idb", async () => {
 
 const context = testContext();
 
-const USER_ID = "thread-event-persistence-user";
-const ORG_ID = "thread-event-persistence-org";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000901";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
 const SNAPSHOT_EVENT_ID = "d0000000-0000-4000-a000-000000000900";
-const EVENT_COUNT = 1200;
-const LATEST_TITLE = "Title restored from the latest cached event";
+const REBASED_SNAPSHOT_EVENT_ID = "d2000000-0000-4000-a000-000000000001";
+const POST_SNAPSHOT_EVENT_ID = "d3000000-0000-4000-a000-000000000001";
+const LATEST_CACHED_TITLE = "Title restored from the latest cached event";
+const POST_SNAPSHOT_TITLE = "Title from the post-snapshot event";
 
 const snapshotThread = {
   id: THREAD_ID,
@@ -42,28 +43,48 @@ const snapshotThread = {
   computerUseHostId: null,
 } satisfies ChatThreadSnapshotProjection;
 
-const cachedEvents = Array.from({ length: EVENT_COUNT }, (_, index) => {
-  const eventNumber = index + 1;
+function createRenamedEvent(
+  eventNumber: number,
+  title: string,
+): ChatThreadEvent {
   return {
     id: `d1000000-0000-4000-a000-${String(eventNumber).padStart(12, "0")}`,
     kind: "renamed",
     chatThreadId: THREAD_ID,
     agentId: AGENT_ID,
-    title:
-      eventNumber === EVENT_COUNT
-        ? LATEST_TITLE
-        : `Cached title ${eventNumber}`,
+    title,
     selectedModel: null,
     serviceTier: null,
     computerUseHostId: null,
     createdAt: new Date(
       Date.parse("2026-07-24T10:00:00.000Z") + eventNumber * 1000,
     ).toISOString(),
-  } satisfies ChatThreadEvent;
-});
+  };
+}
 
-async function seedCachedThreadEventLog(): Promise<void> {
-  const db = await openChatIdb(USER_ID, ORG_ID);
+function createCachedEvents(
+  count: number,
+  latestTitle = `Cached title ${count}`,
+): readonly ChatThreadEvent[] {
+  return Array.from({ length: count }, (_, index) => {
+    const eventNumber = index + 1;
+    return createRenamedEvent(
+      eventNumber,
+      eventNumber === count ? latestTitle : `Cached title ${eventNumber}`,
+    );
+  });
+}
+
+async function writeCachedThreadEventLog(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly snapshot: {
+    readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+    readonly latestEventId: string | null;
+  } | null;
+  readonly events: readonly ChatThreadEvent[];
+}): Promise<void> {
+  const db = await openChatIdb(args.userId, args.orgId);
   try {
     const tx = db.transaction(
       [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
@@ -72,12 +93,16 @@ async function seedCachedThreadEventLog(): Promise<void> {
     const snapshotStore = tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE);
     const eventStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
     const requests = [
-      snapshotStore.put({
-        id: "current",
-        chatThreads: [snapshotThread],
-        latestEventId: SNAPSHOT_EVENT_ID,
-      }),
-      ...cachedEvents.map((event) => {
+      ...(args.snapshot
+        ? [
+            snapshotStore.put({
+              id: "current",
+              chatThreads: [...args.snapshot.chatThreads],
+              latestEventId: args.snapshot.latestEventId,
+            }),
+          ]
+        : []),
+      ...args.events.map((event) => {
         return eventStore.put(event);
       }),
     ];
@@ -87,11 +112,116 @@ async function seedCachedThreadEventLog(): Promise<void> {
   }
 }
 
-describe("chat thread event persistence", () => {
-  it("hydrates a cached event log across read pages and resumes from its latest event", async () => {
-    await seedCachedThreadEventLog();
+async function setupAuthenticatedPage(userId: string, orgId: string) {
+  await setupPage({
+    context,
+    path: "/error",
+    withoutRender: true,
+    user: { id: userId, fullName: "Thread Event Persistence User" },
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: orgId, name: "Thread Event Persistence Org" },
+      memberships: [{ id: orgId }],
+    },
+  });
+}
 
+describe("chat thread event persistence", () => {
+  it("hydrates a paged event log, then rebases it to the remote snapshot", async () => {
+    const userId = "thread-event-rebase-user";
+    const orgId = "thread-event-rebase-org";
+    const cachedEvents = createCachedEvents(1200, LATEST_CACHED_TITLE);
+    await writeCachedThreadEventLog({
+      userId,
+      orgId,
+      snapshot: {
+        chatThreads: [snapshotThread],
+        latestEventId: SNAPSHOT_EVENT_ID,
+      },
+      events: cachedEvents,
+    });
+
+    const postSnapshotEvent = {
+      ...createRenamedEvent(1201, POST_SNAPSHOT_TITLE),
+      id: POST_SNAPSHOT_EVENT_ID,
+    } satisfies ChatThreadEvent;
     const requestedEventIds: (string | undefined)[] = [];
+    const snapshotGate = context.mocks.deferred<void>();
+    let snapshotRequests = 0;
+    context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+      snapshotRequests += 1;
+      await snapshotGate.promise;
+      return respond(200, {
+        chatThreads: [{ ...snapshotThread, title: "Rebased snapshot title" }],
+        latestEventId: REBASED_SNAPSHOT_EVENT_ID,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      requestedEventIds.push(query.sinceEventId);
+      if (query.sinceEventId === REBASED_SNAPSHOT_EVENT_ID) {
+        return respond(200, {
+          events: [postSnapshotEvent],
+          hasMore: false,
+        });
+      }
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    await setupAuthenticatedPage(userId, orgId);
+
+    await vi.waitFor(() => {
+      expect(snapshotRequests).toBe(1);
+    });
+    expect((await context.store.get(eventDrivenChatThreads$))[0]?.title).toBe(
+      LATEST_CACHED_TITLE,
+    );
+
+    snapshotGate.resolve(undefined);
+    const appDb = await context.store.get(chatIdb$);
+    try {
+      await vi.waitFor(async () => {
+        expect(requestedEventIds).toStrictEqual([
+          cachedEvents.at(-1)?.id,
+          REBASED_SNAPSHOT_EVENT_ID,
+        ]);
+        expect(
+          (await context.store.get(eventDrivenChatThreads$))[0]?.title,
+        ).toBe(POST_SNAPSHOT_TITLE);
+
+        const tx = appDb.transaction(
+          [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
+          "readonly",
+        );
+        const [storedSnapshot, storedEvents] = await Promise.all([
+          tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).get("current"),
+          tx.objectStore(CHAT_THREAD_EVENTS_STORE).getAll(),
+          tx.done,
+        ]);
+        expect(storedSnapshot).toMatchObject({
+          latestEventId: REBASED_SNAPSHOT_EVENT_ID,
+        });
+        expect(storedEvents).toStrictEqual([postSnapshotEvent]);
+      });
+    } finally {
+      appDb.close();
+    }
+  });
+
+  it("does not rebase when the first sync leaves exactly 100 events", async () => {
+    const userId = "thread-event-threshold-user";
+    const orgId = "thread-event-threshold-org";
+    const cachedEvents = createCachedEvents(99);
+    const hundredthEvent = createRenamedEvent(100, "Hundredth event title");
+    await writeCachedThreadEventLog({
+      userId,
+      orgId,
+      snapshot: {
+        chatThreads: [snapshotThread],
+        latestEventId: SNAPSHOT_EVENT_ID,
+      },
+      events: cachedEvents,
+    });
+
     let snapshotRequests = 0;
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       snapshotRequests += 1;
@@ -100,34 +230,112 @@ describe("chat thread event persistence", () => {
         latestEventId: SNAPSHOT_EVENT_ID,
       });
     });
-    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
-      requestedEventIds.push(query.sinceEventId);
-      return respond(200, { events: [], hasMore: false });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [hundredthEvent], hasMore: false });
     });
 
-    await setupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-      user: { id: USER_ID, fullName: "Thread Event Persistence User" },
-      session: { token: "test-token" },
-      org: {
-        activeOrg: { id: ORG_ID, name: "Thread Event Persistence Org" },
-        memberships: [{ id: ORG_ID }],
-      },
-    });
+    await setupAuthenticatedPage(userId, orgId);
 
     const appDb = await context.store.get(chatIdb$);
     try {
       await vi.waitFor(async () => {
-        expect(requestedEventIds[0]).toBe(cachedEvents.at(-1)?.id);
         expect(
           (await context.store.get(eventDrivenChatThreads$))[0]?.title,
-        ).toBe(LATEST_TITLE);
+        ).toBe("Hundredth event title");
+        await expect(
+          appDb.transaction(CHAT_THREAD_EVENTS_STORE, "readonly").store.count(),
+        ).resolves.toBe(100);
       });
       expect(snapshotRequests).toBe(0);
     } finally {
       appDb.close();
     }
+  });
+
+  it("does not pull a second snapshot when the first sync replaced it", async () => {
+    const userId = "thread-event-initial-snapshot-user";
+    const orgId = "thread-event-initial-snapshot-org";
+    const remoteEvents = createCachedEvents(101, "Latest remote title");
+    await writeCachedThreadEventLog({
+      userId,
+      orgId,
+      snapshot: null,
+      events: [],
+    });
+
+    let snapshotRequests = 0;
+    let eventRequests = 0;
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      snapshotRequests += 1;
+      return respond(200, {
+        chatThreads: [snapshotThread],
+        latestEventId: SNAPSHOT_EVENT_ID,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      eventRequests += 1;
+      return respond(200, {
+        events:
+          query.sinceEventId === SNAPSHOT_EVENT_ID ? [...remoteEvents] : [],
+        hasMore: false,
+      });
+    });
+
+    await setupAuthenticatedPage(userId, orgId);
+
+    await vi.waitFor(async () => {
+      expect((await context.store.get(eventDrivenChatThreads$))[0]?.title).toBe(
+        "Latest remote title",
+      );
+    });
+    context.mocks.ably.trigger("threadListChanged");
+    await vi.waitFor(() => {
+      expect(eventRequests).toBe(2);
+    });
+    expect(snapshotRequests).toBe(1);
+  });
+
+  it("silently skips a failed rebase for the rest of the session", async () => {
+    const userId = "thread-event-failed-rebase-user";
+    const orgId = "thread-event-failed-rebase-org";
+    const cachedEvents = createCachedEvents(101);
+    await writeCachedThreadEventLog({
+      userId,
+      orgId,
+      snapshot: {
+        chatThreads: [snapshotThread],
+        latestEventId: SNAPSHOT_EVENT_ID,
+      },
+      events: cachedEvents,
+    });
+
+    const errorToast = vi.spyOn(toast, "error");
+    context.signal.addEventListener("abort", () => {
+      errorToast.mockRestore();
+    });
+    let snapshotRequests = 0;
+    let eventRequests = 0;
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      snapshotRequests += 1;
+      return respond(403, {
+        error: { message: "Snapshot unavailable", code: "FORBIDDEN" },
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      eventRequests += 1;
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    await setupAuthenticatedPage(userId, orgId);
+
+    await vi.waitFor(() => {
+      expect(snapshotRequests).toBe(1);
+    });
+    context.mocks.ably.trigger("threadListChanged");
+    await vi.waitFor(() => {
+      expect(eventRequests).toBe(2);
+    });
+    expect(snapshotRequests).toBe(1);
+    expect(errorToast).not.toHaveBeenCalled();
   });
 });

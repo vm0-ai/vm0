@@ -630,8 +630,11 @@ export function buildFeishuSystemPrompt(args: {
   readonly message: FeishuInboundMessage;
   readonly history: string;
 }): string {
-  const typeLabel =
-    args.message.chatType === "p2p" ? "Direct message" : "Group mention";
+  const isDirectMessage = args.message.chatType === "p2p";
+  const typeLabel = isDirectMessage ? "Direct message" : "Group mention";
+  const groupIdLine = isDirectMessage
+    ? ""
+    : `Group ID: ${args.message.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`zero feishu message send\`)`;
   return [
     "# Current Integration",
     "You are currently running inside: Feishu",
@@ -639,6 +642,7 @@ export function buildFeishuSystemPrompt(args: {
     `Installation ID: ${args.message.installationId}`,
     `Tenant key: ${args.message.tenantKey}`,
     `Chat ID: ${args.message.chatId}`,
+    groupIdLine,
     `Thread ID: ${
       args.message.threadId ??
       args.message.rootId ??
