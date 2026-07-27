@@ -12,6 +12,7 @@ interface VoiceOptions {
   voice: string;
   instructions?: string;
   all?: boolean;
+  json?: boolean;
 }
 
 interface VoiceGenerateCommandConfig {
@@ -37,6 +38,7 @@ export function createVoiceGenerateCommand(
       "--all",
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
+    .option("--json", "Print the complete generation result as JSON")
     .option("--voice <voice>", "OpenAI voice to use", "marin")
     .option("--instructions <text>", "Voice style instructions")
     .addHelpText(
@@ -46,8 +48,9 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ audio file URL and metadata. With no --prompt
-  and no piped input, prints the provider menu instead.
+  Prints the generated /f/ audio file URL and metadata. Use --json for the
+  complete result object. With no --prompt and no piped input, prints the
+  provider menu instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -61,6 +64,7 @@ Notes:
           provider: options.provider,
           prompt: options.prompt ?? options.text,
           all: options.all,
+          requireExecutionFor: options.json ? "--json" : undefined,
         });
         if (dispatch.outcome === "handled") return;
         const text = dispatch.prompt;
@@ -70,6 +74,11 @@ Notes:
           voice: options.voice,
           instructions: options.instructions,
         });
+
+        if (options.json) {
+          console.log(JSON.stringify(result));
+          return;
+        }
 
         console.log(chalk.green(`✓ Voice generated: ${result.url}`));
         console.log(chalk.dim(`  File: ${result.filename}`));

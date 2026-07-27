@@ -1,6 +1,5 @@
 import {
   ClerkProvider as BaseClerkProvider,
-  GoogleOneTap,
   type ClerkProviderProps as BaseClerkProviderProps,
 } from "@clerk/react";
 import { useLoadable } from "ccstate-react";
@@ -49,21 +48,11 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     ui: clerkUiLoadable.data,
   };
-  const providerChildren = (
-    <>
-      <GoogleOneTap
-        signInForceRedirectUrl={appUrl}
-        signUpForceRedirectUrl={appUrl}
-      />
-      {children}
-    </>
-  );
-
   return satelliteConfig ? (
     <BaseClerkProvider {...providerProps} {...satelliteConfig}>
-      {providerChildren}
+      {children}
     </BaseClerkProvider>
   ) : (
-    <BaseClerkProvider {...providerProps}>{providerChildren}</BaseClerkProvider>
+    <BaseClerkProvider {...providerProps}>{children}</BaseClerkProvider>
   );
 }

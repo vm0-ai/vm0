@@ -11,6 +11,7 @@ import auth
 import auth_base_forwarder as forwarder
 import flow_metadata_keys as metadata_keys
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
 from tests.firewall_rewrite_helpers import make_safety_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
@@ -37,7 +38,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.response is not None
         assert b"super-secret-token" not in flow.response.content
@@ -79,7 +80,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert mock_forward.call_count == 1
         assert flow.response is not None
@@ -128,7 +129,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
@@ -193,7 +194,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -225,7 +226,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -253,7 +254,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -289,7 +290,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -337,7 +338,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -367,7 +368,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
         updated_url = urlparse(flow.request.url)
         assert updated_url.scheme == original_url.scheme
         assert updated_url.netloc == original_url.netloc
