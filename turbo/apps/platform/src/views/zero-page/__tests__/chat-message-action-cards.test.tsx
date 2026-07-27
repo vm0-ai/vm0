@@ -582,7 +582,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     let cards: HTMLElement[] = [];
@@ -895,7 +894,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
@@ -920,7 +918,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${scenario.threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -944,7 +941,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${scenario.threadId}?mail-draft=${scenario.mailDraftId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
@@ -982,7 +978,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${scenario.threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -1022,7 +1017,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${scenario.threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -1049,7 +1043,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${scenario.threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -1136,7 +1129,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${leftThreadId}?sidebar=${rightThreadId}&mail-draft=${mailDraftId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
@@ -1228,7 +1220,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     await user.click(
@@ -1668,7 +1659,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const card = await screen.findByLabelText("Open draft email: Delete me");
@@ -1808,7 +1798,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const card = await screen.findByLabelText(
@@ -1924,7 +1913,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const deletedCard = await screen.findByLabelText(

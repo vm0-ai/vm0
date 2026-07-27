@@ -1,15 +1,11 @@
 import { command } from "ccstate";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   deleteZeroMailDraft$,
   getZeroMailDraftAttachment$,
@@ -19,26 +15,6 @@ import {
   type ZeroMailDraftLinkMutationResult,
   type ZeroMailDraftMutationResult,
 } from "../services/zero-mail.service";
-
-const zeroMailDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Zero Mail is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const zeroMailEnabled$ = command(async ({ get }) => {
-  const auth = get(organizationAuthContext$);
-  const context = await loadUserFeatureSwitchContext(
-    get(db$),
-    auth.orgId,
-    auth.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ZeroMail, context);
-});
 
 function mutationResponse(result: ZeroMailDraftMutationResult) {
   switch (result.kind) {
@@ -84,10 +60,6 @@ function linkMutationResponse(result: ZeroMailDraftLinkMutationResult) {
 const linkDraftBody$ = bodyResultOf(zeroMailContract.linkDraft);
 const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
-  signal.throwIfAborted();
   const bodyResult = await get(linkDraftBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -108,9 +80,6 @@ const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const getDraftParams$ = pathParamsOf(zeroMailContract.getDraft);
 const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
   return mutationResponse(
     await set(
       getZeroMailDraft$,
@@ -141,9 +110,6 @@ function attachmentResponseContentType(contentType: string): string {
 const getAttachmentInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(zeroMailEnabled$))) {
-      return zeroMailDisabled;
-    }
     const result = await set(
       getZeroMailDraftAttachment$,
       {
@@ -184,9 +150,6 @@ const getAttachmentInner$ = command(
 const deleteDraftParams$ = pathParamsOf(zeroMailContract.deleteDraft);
 const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
   const result = await set(
     deleteZeroMailDraft$,
     {
@@ -205,9 +168,6 @@ const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const sendDraftParams$ = pathParamsOf(zeroMailContract.sendDraft);
 const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
   return mutationResponse(
     await set(
       sendZeroMailDraft$,

@@ -63,6 +63,7 @@ export const dispatchProgressCallbacks$ = command(
             notInArray(agentRunCallbacks.internalKind, [
               "slack:chat",
               "feishu:chat",
+              "teams:chat",
               "slack:org",
             ]),
           ),
@@ -91,7 +92,11 @@ export const dispatchProgressCallbacks$ = command(
           );
           return;
         }
-        if (internalKind === "slack:chat" || internalKind === "feishu:chat") {
+        if (
+          internalKind === "slack:chat" ||
+          internalKind === "feishu:chat" ||
+          internalKind === "teams:chat"
+        ) {
           return;
         }
         if (internalKind === "agentphone") {

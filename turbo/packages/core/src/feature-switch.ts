@@ -375,12 +375,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerChatThreadSuggestions]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
-    enabled: true,
-  },
   [FeatureSwitchKey.NewChatThreadSidebar]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -455,8 +449,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ImageStyleR2]: {
     maintainer: "bingjie@vm0.ai",
@@ -478,12 +471,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
-  },
-  [FeatureSwitchKey.ZeroMail]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
-    enabled: true,
   },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",

@@ -100,6 +100,7 @@ export const testSlackStateResponseSchema = z.object({
         "user_message",
         "slack_user_message",
         "feishu_user_message",
+        "teams_user_message",
         "workflow_event",
       ]),
       triggerSource: z.string().nullable(),

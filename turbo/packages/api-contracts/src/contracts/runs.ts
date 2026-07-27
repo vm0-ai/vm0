@@ -713,6 +713,56 @@ const agentEventsResponseSchema = z.object({
  */
 const networkLogActionSchema = z.enum(["ALLOW", "DENY", "BLOCK"]);
 
+const modelCatalogCacheStatusSchema = z.enum([
+  "model_catalog_bypass",
+  "model_catalog_fresh_hit",
+  "model_catalog_cold_stored",
+  "model_catalog_cold_not_stored",
+  "model_catalog_revalidated_304",
+  "model_catalog_revalidated_200_same",
+  "model_catalog_revalidated_200_changed",
+  "model_catalog_revalidation_not_stored",
+  "model_catalog_etag_confirmed",
+  "model_catalog_etag_invalidated",
+]);
+
+const modelCatalogCacheBypassReasonSchema = z.enum([
+  "request_url",
+  "request_method",
+  "request_framing",
+  "request_body",
+  "request_streaming",
+  "request_conditions",
+  "request_cache_control",
+  "request_encoding",
+  "request_identity",
+  "request_capacity",
+  "response_status",
+  "response_encoding",
+  "response_content_type",
+  "response_cache_control",
+  "response_vary",
+  "response_etag",
+  "response_size",
+  "response_stream",
+  "response_body",
+  "response_json",
+  "response_shape",
+  "response_missing",
+  "concurrent_change",
+  "transport_error",
+]);
+
+const modelCatalogCacheUpstreamEncodingSchema = z.enum(["identity", "br"]);
+
+const modelCatalogCacheMillisecondsSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(2_147_483_647);
+
+const modelCatalogCacheEvictionCountSchema = z.number().int().min(0).max(32);
+
 /**
  * Network log entry schema.
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
@@ -730,6 +780,17 @@ const networkLogEntrySchema = z.object({
   request_size: z.number().optional(),
   response_size: z.number().optional(),
   browser_user_agent: z.boolean().optional(),
+  model_catalog_cache_status: modelCatalogCacheStatusSchema.optional(),
+  model_catalog_cache_upstream_encoding:
+    modelCatalogCacheUpstreamEncodingSchema.optional(),
+  model_catalog_cache_bypass_reason:
+    modelCatalogCacheBypassReasonSchema.optional(),
+  model_catalog_cache_entry_age_ms:
+    modelCatalogCacheMillisecondsSchema.optional(),
+  model_catalog_cache_validation_latency_ms:
+    modelCatalogCacheMillisecondsSchema.optional(),
+  model_catalog_cache_eviction_count:
+    modelCatalogCacheEvictionCountSchema.optional(),
   dns_event: z.string().optional(),
   dns_query_type: z.string().optional(),
   dns_result: z.string().optional(),
@@ -949,6 +1010,11 @@ export {
   metricsResponseSchema,
   agentEventsResponseSchema,
   networkLogActionSchema,
+  modelCatalogCacheStatusSchema,
+  modelCatalogCacheBypassReasonSchema,
+  modelCatalogCacheUpstreamEncodingSchema,
+  modelCatalogCacheMillisecondsSchema,
+  modelCatalogCacheEvictionCountSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
   searchResultSchema,

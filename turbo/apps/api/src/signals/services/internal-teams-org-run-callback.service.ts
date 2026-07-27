@@ -8,14 +8,16 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -411,6 +413,7 @@ async function connectionStillExists(args: {
 
 async function saveOrgThreadSession(args: {
   readonly db: Db;
+  readonly runId: string;
   readonly payload: TeamsOrgCallbackPayload;
   readonly run: RunContext | undefined;
   readonly status: TerminalStatus;
@@ -421,7 +424,7 @@ async function saveOrgThreadSession(args: {
   }
 
   const agentSessionId = args.payload.existingSessionId ?? args.run.sessionId;
-  if (args.payload.existingSessionId || !agentSessionId) {
+  if (!agentSessionId) {
     return;
   }
 
@@ -435,27 +438,66 @@ async function saveOrgThreadSession(args: {
   }
   args.signal.throwIfAborted();
 
-  await args.db
-    .insert(teamsOrgThreadSessions)
-    .values({
-      connectionId: args.payload.connectionId,
-      teamsConversationId: args.payload.conversationId,
-      teamsChannelId: args.payload.channelId,
-      teamsThreadId: args.payload.threadId,
-      agentSessionId,
-    })
-    .onConflictDoUpdate({
-      target: [
-        teamsOrgThreadSessions.connectionId,
-        teamsOrgThreadSessions.teamsConversationId,
-        teamsOrgThreadSessions.teamsThreadId,
-      ],
-      set: {
-        agentSessionId,
+  const [route] = await args.db
+    .select({ chatThreadId: teamsChatThreadRoutes.chatThreadId })
+    .from(teamsChatThreadRoutes)
+    .where(
+      and(
+        eq(teamsChatThreadRoutes.connectionId, args.payload.connectionId),
+        eq(teamsChatThreadRoutes.conversationId, args.payload.conversationId),
+        eq(teamsChatThreadRoutes.threadId, args.payload.threadId),
+        eq(teamsChatThreadRoutes.userId, args.run.userId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  const routeStillOwnsRunThread =
+    args.run.chatThreadId === null ||
+    route?.chatThreadId === args.run.chatThreadId;
+  if (!args.payload.existingSessionId && routeStillOwnsRunThread) {
+    await args.db
+      .insert(teamsOrgThreadSessions)
+      .values({
+        connectionId: args.payload.connectionId,
+        teamsConversationId: args.payload.conversationId,
         teamsChannelId: args.payload.channelId,
-        updatedAt: nowDate(),
-      },
-    });
+        teamsThreadId: args.payload.threadId,
+        agentSessionId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          teamsOrgThreadSessions.connectionId,
+          teamsOrgThreadSessions.teamsConversationId,
+          teamsOrgThreadSessions.teamsThreadId,
+        ],
+        set: {
+          agentSessionId,
+          teamsChannelId: args.payload.channelId,
+          updatedAt: nowDate(),
+        },
+      });
+    args.signal.throwIfAborted();
+  }
+
+  if (!args.run.chatThreadId) {
+    return;
+  }
+
+  await args.db
+    .update(chatThreads)
+    .set({
+      agentSessionId,
+      agentSessionRunId: args.runId,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(chatThreads.id, args.run.chatThreadId),
+        eq(chatThreads.userId, args.run.userId),
+        isNull(chatThreads.agentSessionId),
+      ),
+    );
   args.signal.throwIfAborted();
 }
 
@@ -505,6 +547,52 @@ async function clearTeamsThinkingReaction(args: {
     }),
     args.signal,
   );
+}
+
+async function handleCanonicalChatCompletion(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly status: TerminalStatus;
+  readonly payload: TeamsOrgCallbackPayload;
+  readonly signal: AbortSignal;
+}): Promise<TeamsOrgCallbackResult> {
+  const installation = await loadInstallation({
+    db: args.db,
+    tenantId: args.payload.tenantId,
+    signal: args.signal,
+  });
+  if (!installation) {
+    return errorResponse(404, "Microsoft Teams installation not found");
+  }
+  const serviceUrl = resolveServiceUrl({
+    payload: args.payload,
+    installation,
+  });
+  if (!serviceUrl) {
+    return errorResponse(400, "Microsoft Teams serviceUrl is missing");
+  }
+  const run = await loadRunContext({
+    db: args.db,
+    runId: args.runId,
+    signal: args.signal,
+  });
+  if (run && installation.orgId !== run.orgId) {
+    return errorResponse(404, "Microsoft Teams installation not found");
+  }
+  await clearTeamsThinkingReaction({
+    payload: args.payload,
+    serviceUrl,
+    signal: args.signal,
+  });
+  await saveOrgThreadSession({
+    db: args.db,
+    runId: args.runId,
+    payload: args.payload,
+    run,
+    status: args.status,
+    signal: args.signal,
+  });
+  return successResponse();
 }
 
 async function handleCompletion(args: {
@@ -626,6 +714,7 @@ async function handleCompletion(args: {
 
   await saveOrgThreadSession({
     db: args.db,
+    runId: args.runId,
     payload: args.payload,
     run,
     status: args.status,
@@ -679,6 +768,15 @@ async function handleTeamsOrgInternalCallback(
 
   if (callback.status === "progress") {
     return await handleProgress({
+      payload,
+      signal,
+    });
+  }
+  if (payload.canonicalChatDelivery) {
+    return await handleCanonicalChatCompletion({
+      db: input.db,
+      runId: callback.runId,
+      status: callback.status,
       payload,
       signal,
     });

@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.331.0](https://github.com/vm0-ai/vm0/compare/api-v1.330.0...api-v1.331.0) (2026-07-27)
+
+
+### Features
+
+* add thread-scoped cloud browser access ([#23253](https://github.com/vm0-ai/vm0/issues/23253)) ([0699a79](https://github.com/vm0-ai/vm0/commit/0699a7935ad6994b00ad97c00a7aeae307dbd4d2))
+* enable mail drafts and chat thread mentions for all users ([#23257](https://github.com/vm0-ai/vm0/issues/23257)) ([4a5de22](https://github.com/vm0-ai/vm0/commit/4a5de22f8c7636de66e2feeffba99767bec5e383))
+
+
+### Bug Fixes
+
+* **feishu:** expose group id in agent system prompt ([#23281](https://github.com/vm0-ai/vm0/issues/23281)) ([6a8b518](https://github.com/vm0-ai/vm0/commit/6a8b5180e36df2df74faa0bed27d704e41993648))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.236.0
+    * @vm0/connectors bumped to 1.197.0
+    * @vm0/core bumped to 8.475.0
+    * @vm0/db bumped to 1.144.0
+
 ## [1.330.0](https://github.com/vm0-ai/vm0/compare/api-v1.329.1...api-v1.330.0) (2026-07-27)
 
 

@@ -30,7 +30,7 @@ from tests.aws_sigv4_helpers import (
     resolved_aws_sigv4_credentials,
 )
 from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
-from url_utils import get_original_url
+from url_utils import get_trusted_authority
 
 DEFAULT_SANDBOX_TOKEN = "sandbox-token"
 FAR_FUTURE_EXPIRES_AT = 9_999_999_999
@@ -221,7 +221,7 @@ def prepare_firewall_request(
 ) -> None:
     flow.metadata[metadata_keys.VM_RUN_ID] = run_id
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
-        get_original_url(flow) if original_url is None else original_url
+        get_trusted_authority(flow).url if original_url is None else original_url
     )
 
 

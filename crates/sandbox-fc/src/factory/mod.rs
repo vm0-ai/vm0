@@ -290,11 +290,14 @@ impl FirecrackerFactory {
                         }
                     }),
                 )?;
-            let network_evidence_target = self.config.dns_port.map(|_| {
+            let network_evidence_target = self.config.dns_port.map(|dns_port| {
                 (
                     GuestDnsNetworkEvidenceTarget::new(
                         network.info().name(),
                         network.info().host_device(),
+                        network.info().peer_ip(),
+                        dns_port,
+                        network.info().guest_dns_netfilter_trace(),
                     ),
                     network.take_dns_network_baseline(),
                 )
