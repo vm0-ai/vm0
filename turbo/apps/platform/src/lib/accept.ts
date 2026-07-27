@@ -48,14 +48,21 @@ function isNetworkRequestError(error: unknown): boolean {
   );
 }
 
+interface AcceptOptions {
+  readonly showErrorToast?: boolean;
+}
+
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
- * Otherwise shows a toast and throws an `ApiError`.
+ * Otherwise throws an `ApiError` and, by default, shows a toast.
  *
  * Browser network failures propagate without showing their raw error message.
  *
  * When `signal` is provided, a rejection after that signal aborts propagates
  * as cancellation without showing a toast.
+ *
+ * Best-effort background work may disable the error toast while preserving the
+ * same typed response handling and thrown error.
  */
 async function accept<
   T extends { status: number; body: unknown },
@@ -64,11 +71,13 @@ async function accept<
   promise: Promise<T>,
   codes: S[],
   signal?: AbortSignal,
+  options: AcceptOptions = {},
 ): Promise<Extract<T, { status: S }>> {
+  const showErrorToast = options.showErrorToast ?? true;
   const result = await onRejection(promise, (error) => {
     if (!isAbortError(error)) {
       signal?.throwIfAborted();
-      if (!isNetworkRequestError(error)) {
+      if (showErrorToast && !isNetworkRequestError(error)) {
         toast.error(requestErrorMessage(error));
       }
     }
@@ -77,7 +86,9 @@ async function accept<
     return result as Extract<T, { status: S }>;
   }
   const { message, code } = extractError(result.body, result.status);
-  toast.error(message);
+  if (showErrorToast) {
+    toast.error(message);
+  }
   throw new ApiError(message, code, result.status);
 }
 

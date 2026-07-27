@@ -166,7 +166,6 @@ import {
   type ConnectorSignals,
   type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
-import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
 import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
@@ -195,6 +194,7 @@ import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -5011,46 +5011,18 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   if (!available || !catalogItem) {
     return null;
   }
-  const reconnectRequired =
-    connectorCurrentConnectionStatus(catalogItem) === "reconnect-required";
-  const actionLabel = complete
-    ? "Authorized"
-    : reconnectRequired
-      ? "Reconnect"
-      : connected
-        ? "Authorize"
-        : "Connect";
 
   return (
-    <div
-      data-testid="connector-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon icon={catalogItem.icon} size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {catalogItem.label}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {catalogItem.description}
-          </div>
-        </div>
-      </div>
-      <button
-        type="button"
-        disabled={complete || loading}
-        onClick={() => {
-          detach(activate(pageSignal), Reason.DomCallback);
-        }}
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-      >
-        {loading && <IconLoader2 size={15} className="animate-spin" />}
-        {actionLabel}
-      </button>
-    </div>
+    <ConnectorCard
+      variant="action"
+      connector={catalogItem}
+      connected={connected}
+      complete={complete}
+      busy={loading}
+      onActivate={() => {
+        detach(activate(pageSignal), Reason.DomCallback);
+      }}
+    />
   );
 }
 

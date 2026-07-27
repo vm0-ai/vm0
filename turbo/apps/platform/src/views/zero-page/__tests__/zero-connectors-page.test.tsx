@@ -808,6 +808,30 @@ describe("connectors page", () => {
     });
   });
 
+  it("disconnects a connected catalog connector from the options menu", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+    });
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+      ).toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+    );
+    click(menuItemByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
+    });
+  });
+
   it("moves scope review into the connector options menu", async () => {
     const storedScopes = ["https://www.googleapis.com/auth/adwords"];
     const addedScopes = [
@@ -1527,6 +1551,49 @@ describe("connectors page", () => {
     expect(
       screen.queryByRole("dialog", { name: "Meta Ads" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("starts Mercury OAuth with the app callback", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "mercury",
+        label: "Mercury",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("mercury");
+        expect(body.callbackTarget).toBe("app");
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/mercury/authorize",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    click(await screen.findByLabelText("Connect Mercury"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/mercury/authorize",
+      );
+    });
   });
 
   it("routes a server-authored connector from its catalog grant metadata", async () => {
