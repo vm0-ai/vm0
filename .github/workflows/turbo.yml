@@ -1462,6 +1462,55 @@ jobs:
             "$PAGES_CUSTOM_DOMAIN" \
             "$PAGES_BRANCH"
 
+      - name: Wait for Cloudflare Pages preview assets
+        env:
+          PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
+          PAGES_URL: ${{ steps.pages-custom-domain.outputs.url || steps.pages-preview.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t probe_files < <(
+            find "$PAGES_DIST/assets" \
+              -maxdepth 1 \
+              -type f \
+              \( -name 'index-*.js' -o -name 'Route-*.js' \) \
+              -print
+          )
+          if (( ${#probe_files[@]} < 2 )); then
+            echo "::error::Could not identify app entry and Clerk route assets"
+            exit 1
+          fi
+
+          for attempt in {1..60}; do
+            all_ready=true
+            for probe_file in "${probe_files[@]}"; do
+              relative_path="${probe_file#"$PAGES_DIST"/}"
+              content_type="$(curl \
+                --fail \
+                --silent \
+                --show-error \
+                --max-time 10 \
+                --header "Cache-Control: no-cache" \
+                --output /dev/null \
+                --write-out "%{content_type}" \
+                "${PAGES_URL%/}/${relative_path}" || true)"
+              if [[ "$content_type" != *javascript* ]]; then
+                all_ready=false
+                echo "::warning::Preview asset is not ready (attempt ${attempt}/60): ${relative_path}"
+                break
+              fi
+            done
+
+            if [[ "$all_ready" == "true" ]]; then
+              echo "Cloudflare Pages preview assets are ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::Cloudflare Pages preview assets did not become ready"
+          exit 1
+
       - name: Record Cloudflare Pages preview
         env:
           PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}

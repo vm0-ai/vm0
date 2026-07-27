@@ -22,6 +22,9 @@ load '../../helpers/setup'
 load '../../helpers/browser'
 
 setup_file() {
+  BROWSER_SESSION_PREFIX="${JOB_REF:-local}-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
+  export BROWSER_SESSION_PREFIX
+  export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-up"
   browser_setup
 
   # Generate a password for sign-up
@@ -89,9 +92,46 @@ wait_for_auth_completion() {
 open_auth_form() {
   local url="$1"
   local target_expression="$2"
+  local failed_script_expression
+  failed_script_expression="performance.getEntriesByType('resource').some(
+    (entry) => {
+      const resourceUrl = new URL(entry.name);
+      return resourceUrl.origin === location.origin
+        && entry.initiatorType === 'script'
+        && entry.responseStatus >= 400;
+    }
+  )"
 
   agent-browser open "$url"
-  if wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+  if wait_for_browser_target --timeout-seconds 30 --fn \
+    "Boolean(${target_expression}) || Boolean(${failed_script_expression})"; then
+    if [[ "$(agent-browser eval "Boolean(${target_expression})")" == "true" ]]; then
+      return
+    fi
+
+    report_auth_page_failure
+    local failed_script_url
+    failed_script_url="$(agent-browser eval \
+      "performance.getEntriesByType('resource').find(
+        (entry) => {
+          const resourceUrl = new URL(entry.name);
+          return resourceUrl.origin === location.origin
+            && entry.initiatorType === 'script'
+            && entry.responseStatus >= 400;
+        }
+      )?.name ?? ''" | jq -r '.')"
+    if [[ -z "$failed_script_url" ]] \
+      || ! wait_for_javascript_target --timeout-seconds 60 "$failed_script_url"; then
+      return 1
+    fi
+
+    echo "# Failed app script is available; reloading once" >&3
+    agent-browser reload
+    if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+      report_auth_page_failure
+      return 1
+    fi
+    echo "# Auth form recovered after app script propagation" >&3
     return
   fi
 
@@ -161,7 +201,7 @@ open_auth_form() {
 
   # Start a fresh isolated session so auth state cannot leak across cases.
   agent-browser close 2>/dev/null || true
-  export AGENT_BROWSER_SESSION="${JOB_REF:-local}-sign-in"
+  export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-in"
   browser_setup
 
   # Re-open sign-in page

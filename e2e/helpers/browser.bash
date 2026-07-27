@@ -225,6 +225,40 @@ wait_for_browser_target() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_javascript_target — Poll a fixed URL until it returns JavaScript
+# Usage: wait_for_javascript_target [--timeout-seconds <seconds>] <url>
+# ---------------------------------------------------------------------------
+wait_for_javascript_target() {
+  local wait_timeout_seconds=60
+  if [[ "${1:-}" == "--timeout-seconds" ]]; then
+    wait_timeout_seconds="${2:?wait timeout is required}"
+    shift 2
+  fi
+
+  local url="${1:?wait URL is required}"
+  local wait_started="$SECONDS"
+  while (( SECONDS - wait_started < wait_timeout_seconds )); do
+    local content_type
+    content_type="$(curl \
+      --fail \
+      --silent \
+      --show-error \
+      --max-time 5 \
+      --header "Cache-Control: no-cache" \
+      --output /dev/null \
+      --write-out "%{content_type}" \
+      "$url" 2>/dev/null || true)"
+    if [[ "$content_type" == *javascript* ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Wait timed out after $((wait_timeout_seconds * 1000))ms: JavaScript URL ${url}" >&2
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # wait_for_auth_next_step — Wait for Clerk to redirect or render its next form
 # Emits one of: complete, otp, password.
 # ---------------------------------------------------------------------------
