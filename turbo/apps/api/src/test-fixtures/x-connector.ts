@@ -7,13 +7,27 @@
  * that consume an already-connected X account.
  */
 import { createStore } from "ccstate";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 
 import { now } from "../lib/time";
 import { writeDb$ } from "../signals/external/db";
 import { encryptStoredSecretValue } from "../signals/services/crypto.utils";
+import { API_TEST_CONNECTOR_CATALOG } from "./connector-catalog";
+
+const xOAuthStorageVersion = (() => {
+  const version = API_TEST_CONNECTOR_CATALOG.connectors
+    .find((connector) => {
+      return connector.connectorRef === "x";
+    })
+    ?.authMethods.find((method) => {
+      return method.id === "oauth";
+    })?.storage.version;
+  if (version === undefined) {
+    throw new Error("API test connector catalog is missing X OAuth storage");
+  }
+  return version;
+})();
 
 export async function seedConnectedXConnector(values: {
   readonly accessToken: string;
@@ -26,7 +40,7 @@ export async function seedConnectedXConnector(values: {
     .values({
       type: "x",
       authMethod: "oauth",
-      storageVersion: CONNECTOR_TYPES.x.authMethods.oauth.storage.version,
+      storageVersion: xOAuthStorageVersion,
       orgId: values.orgId,
       userId: values.userId,
       externalId: "x-user-id",

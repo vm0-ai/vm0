@@ -1,5 +1,4 @@
 import type {
-  ConnectorRegistryAuthMethodId,
   ConnectorAuthMethodRuntimeConfig,
   ConnectorDeviceAuthStartOptionConfig,
   ConnectorDeviceAuthStartOptions,
@@ -7,8 +6,6 @@ import type {
   ConnectorManualGrantFieldConfig,
 } from "@vm0/connectors/connector-config";
 import { parseConnectorDeviceAuthStartOptionsConfig } from "@vm0/connectors/connector-auth-method";
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 
 interface PublicManualGrantFieldDescriptor {
   readonly publicId: string;
@@ -41,17 +38,6 @@ function formatPublicFieldList(names: readonly string[]): string {
   return [...names].sort().join(", ");
 }
 
-export function getPublicManualGrantFieldDescriptors(
-  type: ConnectorType,
-  authMethod: ConnectorRegistryAuthMethodId,
-): readonly PublicManualGrantFieldDescriptor[] | null {
-  const method = getConnectorAuthMethod(type, authMethod);
-  if (method?.grant.kind !== "manual") {
-    return null;
-  }
-  return publicManualGrantFieldDescriptors(method.grant);
-}
-
 function publicManualGrantFieldDescriptors(
   grant: Extract<
     ConnectorAuthMethodRuntimeConfig["grant"],
@@ -65,17 +51,6 @@ function publicManualGrantFieldDescriptors(
       config,
     };
   });
-}
-
-export function getPublicDeviceAuthStartOptionDescriptors(
-  type: ConnectorType,
-  authMethod: ConnectorRegistryAuthMethodId,
-): readonly PublicDeviceAuthStartOptionDescriptor[] | null {
-  const method = getConnectorAuthMethod(type, authMethod);
-  if (method?.grant.kind !== "device-auth") {
-    return null;
-  }
-  return publicDeviceAuthStartOptionDescriptors(method.grant);
 }
 
 function publicDeviceAuthStartOptionDescriptors(

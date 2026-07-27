@@ -3030,6 +3030,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const firstBinding = await readThreadSessionBinding(
       context,
       first.threadId,

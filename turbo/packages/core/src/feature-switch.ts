@@ -46,13 +46,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Test-only feature switch for flag system validation",
     enabled: true,
   },
-  [FeatureSwitchKey.ExternalConnectorCatalog]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Use the accepted external catalog as the global source for official connectors",
-    enabled: true,
-    userOverridable: false,
-  },
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Ahrefs SEO connector",

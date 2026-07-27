@@ -8,7 +8,7 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -42,7 +42,7 @@ type StaffFixture =
   | {
       readonly kind: "connector";
       readonly actor: ApiTestUser;
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorRef;
     }
   | {
       readonly kind: "workflow";
@@ -169,7 +169,7 @@ async function createWorkflow(
 
 async function connectManualGrant(
   actor: ApiTestUser,
-  connectorType: ConnectorType,
+  connectorType: ConnectorRef,
   authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
   values: Parameters<typeof connectorApi.connectManualGrant>[3],
 ) {
@@ -325,7 +325,7 @@ describe("zero workflows", () => {
         connectorRef: "gmail",
         label: "Gmail",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+          url: "https://static.vm0.io/test-fixtures/connectors/gmail.svg",
           invertInDarkMode: false,
         },
         reason: "The workflow reads Gmail messages.",
@@ -335,8 +335,8 @@ describe("zero workflows", () => {
         connectorRef: "runtime",
         label: "Runtime",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/runtime-529df4ae1f3f.svg",
-          invertInDarkMode: true,
+          url: "https://static.vm0.io/test-fixtures/connectors/runtime.svg",
+          invertInDarkMode: false,
         },
         reason: "The workflow reads Runtime jobs.",
         status: "not-enabled-for-agent",
@@ -345,7 +345,7 @@ describe("zero workflows", () => {
         connectorRef: "gitlab",
         label: "GitLab",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gitlab-3f258ed8cb9a.svg",
+          url: "https://static.vm0.io/test-fixtures/connectors/gitlab.svg",
           invertInDarkMode: false,
         },
         reason: "The workflow reads GitLab projects.",

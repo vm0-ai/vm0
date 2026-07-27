@@ -19,6 +19,7 @@ import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { ROUTES } from "../../route";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
@@ -2085,6 +2086,10 @@ describe("POST /api/zero/teams/bot", () => {
     expect(switchResponse.status).toBe(200);
     const switchBody = await readTeamsBotResponseAndFlush(switchResponse);
     expect(switchBody).not.toHaveProperty("dispatch");
+    await upsertOrgPlanEntitlementFixture({
+      orgId: fixture.orgId,
+      status: "suspended",
+    });
 
     outboundRequests.splice(0, outboundRequests.length);
     teamsGraphHistoryHandlers({
