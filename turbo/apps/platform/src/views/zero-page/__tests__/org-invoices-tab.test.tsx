@@ -42,6 +42,40 @@ async function openInvoicesTab(): Promise<void> {
 }
 
 describe("organization invoices settings", () => {
+  it("shows invoice row skeletons while history loads", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    const invoicesReady = context.mocks.deferred<void>();
+    context.mocks.api(zeroBillingInvoicesContract.get, async ({ respond }) => {
+      await invoicesReady.promise;
+      return respond(200, { invoices: [] });
+    });
+
+    try {
+      await openInvoicesTab();
+
+      await expect(
+        screen.findByTestId("invoice-list-skeleton"),
+      ).resolves.toBeInTheDocument();
+
+      invoicesReady.resolve();
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId("invoice-list-skeleton"),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
+      });
+    } finally {
+      if (!invoicesReady.settled()) {
+        invoicesReady.resolve();
+      }
+    }
+  });
+
   it("shows invoice history with a download link", async () => {
     mockInvoicesStory();
     await openInvoicesTab();

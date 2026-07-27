@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { invoicesAsync$ } from "../../../../signals/zero-page/billing.ts";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
@@ -21,21 +22,43 @@ function formatAmount(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function InvoiceRowsSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading invoices"
+      data-testid="invoice-list-skeleton"
+    >
+      {[0, 1, 2].map((row) => {
+        return (
+          <div key={row}>
+            {row > 0 && <div className="h-0 zero-border-t mx-4" />}
+            <div className={cn(ROW_GRID, "px-4 py-3")}>
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-5 w-14 rounded-lg" />
+              </div>
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-14" />
+              <div className="flex justify-end">
+                <Skeleton className="h-7 w-7 rounded-lg" />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function OrgInvoicesTab() {
   const invoicesLoadable = useLastLoadable(invoicesAsync$);
+  const loading = invoicesLoadable.state === "loading";
 
   const invoices =
     invoicesLoadable.state === "hasData" ? invoicesLoadable.data.invoices : [];
 
-  if (invoicesLoadable.state === "loading") {
-    return (
-      <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">Loading invoices...</p>
-      </div>
-    );
-  }
-
-  if (invoices.length === 0) {
+  if (!loading && invoices.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">No invoices yet.</p>
@@ -61,6 +84,8 @@ export function OrgInvoicesTab() {
           <div />
         </div>
         <div className="h-0 zero-border-t mx-4" />
+
+        {loading && <InvoiceRowsSkeleton />}
 
         {invoices.map((inv, i) => {
           return (
