@@ -287,17 +287,14 @@ def _cache_control_tokens(headers: http.Headers) -> set[str]:
 
 
 def _response_cache_control_is_unsafe(headers: http.Headers) -> bool:
+    if headers.get_all("Expires") or headers.get_all("Set-Cookie"):
+        return True
     tokens = _cache_control_tokens(headers)
     for token in tokens:
-        name, separator, raw_value = token.partition("=")
+        name = token.partition("=")[0]
         name = name.strip()
-        raw_value = raw_value.strip()
-        if name in _REVALIDATION_CACHE_CONTROL:
+        if name in _REVALIDATION_CACHE_CONTROL or name in ("max-age", "s-maxage"):
             return True
-        if separator and name in ("max-age", "s-maxage"):
-            delta_seconds = raw_value.strip('"')
-            if delta_seconds and not delta_seconds.strip("0"):
-                return True
     return any(
         token.strip().lower() == "no-cache"
         for value in headers.get_all("Pragma")
@@ -618,6 +615,8 @@ def _validated_response_body(
     bypass_reason = _response_headers_bypass_reason(response)
     if bypass_reason is not None:
         return bypass_reason
+    if response.trailers:
+        return "response_body"
     if state.capture is None or state.capture_overflow:
         return "response_size"
 

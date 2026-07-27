@@ -269,6 +269,21 @@ def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
             id="zero-max-age",
         ),
         pytest.param(
+            _catalog_response(headers={"Cache-Control": "max-age=300"}),
+            "response_cache_control",
+            id="positive-max-age",
+        ),
+        pytest.param(
+            _catalog_response(headers={"Expires": "Wed, 21 Oct 2037 07:28:00 GMT"}),
+            "response_cache_control",
+            id="expires",
+        ),
+        pytest.param(
+            _catalog_response(headers={"Set-Cookie": "catalog_session=opaque; Secure"}),
+            "response_cache_control",
+            id="set-cookie",
+        ),
+        pytest.param(
             _catalog_response(headers={"Pragma": "extension, no-cache"}),
             "response_cache_control",
             id="pragma-no-cache",
@@ -386,6 +401,33 @@ def test_invalid_buffered_brotli_becomes_502_before_client_delivery(
         "model_catalog_cache_validation_latency_ms": 0,
         "model_catalog_cache_upstream_encoding": "br",
     }
+
+
+@pytest.mark.parametrize("encoding", ["identity", "br"])
+def test_catalog_responses_with_trailers_are_never_cached(
+    real_flow,
+    encoding: str,
+):
+    flow = _catalog_flow(real_flow, version=f"trailers-{encoding}")
+    _prepare_miss(flow)
+    flow.response = _catalog_response(encoding=encoding)
+    flow.response.trailers = header_map({"Digest": "sha-256=:opaque:"})
+
+    telemetry = _finish_response(flow)
+
+    assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_not_stored"
+    assert telemetry["model_catalog_cache_bypass_reason"] == "response_body"
+    if encoding == "br":
+        assert flow.response.status_code == 502
+        assert flow.response.raw_content == b""
+    else:
+        assert flow.response.status_code == 200
+        assert flow.response.raw_content == _CATALOG_BODY
+        assert flow.response.trailers is not None
+
+    retry = _catalog_flow(real_flow, version=f"trailers-{encoding}")
+    _prepare_miss(retry)
+    catalog_cache.handle_error(retry)
 
 
 @pytest.mark.parametrize(
