@@ -34,6 +34,7 @@ mod duration;
 mod exec_operation_result;
 mod factory;
 mod guest_dns_failure_diagnostics;
+mod guest_dns_netfilter_trace;
 mod guest_dns_network_evidence;
 mod guest_dns_readiness;
 mod guest_operations;

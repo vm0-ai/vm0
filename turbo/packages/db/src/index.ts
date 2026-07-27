@@ -51,6 +51,7 @@ import * as slackChatIngressSchema from "./schema/slack-chat-ingress";
 import * as slackUserAgentPreferenceSchema from "./schema/slack-user-agent-preference";
 import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
+import * as teamsChatThreadRouteSchema from "./schema/teams-chat-thread-route";
 import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
 import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
@@ -142,6 +143,7 @@ export const schema = {
   ...slackUserAgentPreferenceSchema,
   ...teamsOrgInstallationSchema,
   ...teamsOrgConnectionSchema,
+  ...teamsChatThreadRouteSchema,
   ...teamsOrgThreadSessionSchema,
   ...teamsUserAgentPreferenceSchema,
   ...feishuOrgInstallationSchema,

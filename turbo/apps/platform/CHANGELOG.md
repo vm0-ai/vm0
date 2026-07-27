@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.641.0](https://github.com/vm0-ai/vm0/compare/app-v0.640.0...app-v0.641.0) (2026-07-27)
+
+
+### Features
+
+* add thread-scoped cloud browser access ([#23253](https://github.com/vm0-ai/vm0/issues/23253)) ([0699a79](https://github.com/vm0-ai/vm0/commit/0699a7935ad6994b00ad97c00a7aeae307dbd4d2))
+* **connectors:** enable Mercury app OAuth callback ([#23295](https://github.com/vm0-ai/vm0/issues/23295)) ([1bbce37](https://github.com/vm0-ai/vm0/commit/1bbce3766dafd13ccdeb54e1eb64c25a143c7a3f))
+
+
+### Bug Fixes
+
+* **platform:** keep chat sidebar resize events above iframes ([#23317](https://github.com/vm0-ai/vm0/issues/23317)) ([299f0a7](https://github.com/vm0-ai/vm0/commit/299f0a72792f383e7e7192fe42ba29c9ebffd9f3))
+* **platform:** select or append recommended follow-ups in composer ([#23301](https://github.com/vm0-ai/vm0/issues/23301)) ([57ef7ab](https://github.com/vm0-ai/vm0/commit/57ef7ab352d8e4056a6b5100d3624bbecdcd69e6))
+* **platform:** unify connector card behavior ([#22939](https://github.com/vm0-ai/vm0/issues/22939)) ([83bbaa1](https://github.com/vm0-ai/vm0/commit/83bbaa195c43a13c526a9b0f3c163ddeb8471ba4))
+
+
+### Performance Improvements
+
+* **platform:** rebase oversized chat thread event caches ([#23288](https://github.com/vm0-ai/vm0/issues/23288)) ([492089a](https://github.com/vm0-ai/vm0/commit/492089ab4ec1fdbf0d33b5d0a6430f12815b5545))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.236.0
+    * @vm0/connectors bumped to 1.197.0
+    * @vm0/core bumped to 8.475.0
+
 ## [0.640.0](https://github.com/vm0-ai/vm0/compare/app-v0.639.1...app-v0.640.0) (2026-07-27)
 
 

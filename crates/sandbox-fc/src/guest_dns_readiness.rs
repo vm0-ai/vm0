@@ -19,10 +19,14 @@ const STDOUT_LIMIT_BYTES: u32 = 1_024;
 const STDERR_LIMIT_BYTES: u32 = 512;
 const EXPECTED_TRANSIENT_EXIT_CODES: &[i32] = &[2];
 
+pub(crate) const GUEST_DNS_READINESS_MAX_ATTEMPTS: u16 = 3;
+/// IPv4 packet size of the fixed `vm0-readiness.invalid` UDP A query.
+pub(crate) const GUEST_DNS_READINESS_PACKET_BYTES: u64 = 67;
+
 const PRODUCTION_POLICY: ReadinessPolicy = ReadinessPolicy {
     total_timeout: Duration::from_secs(7),
     attempt_timeout: OPERATION_WAIT_TIMEOUT,
-    max_attempts: 3,
+    max_attempts: GUEST_DNS_READINESS_MAX_ATTEMPTS,
 };
 
 #[derive(Clone, Copy)]

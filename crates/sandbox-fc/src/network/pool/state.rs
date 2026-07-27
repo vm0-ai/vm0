@@ -9,6 +9,7 @@ use futures_util::future::join_all;
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 
+use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceReader;
 use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
@@ -134,6 +135,8 @@ struct NetnsPoolState {
     pool_index: u32,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
+    guest_dns_netfilter_trace_requested: bool,
+    guest_dns_netfilter_trace_reader: Option<GuestDnsNetfilterTraceReader>,
     dns_readiness_state: DnsReadinessState,
     dns_readiness_probe: DnsReadinessProbe,
     dns_readiness_timeout: Duration,
@@ -174,6 +177,8 @@ impl NetnsPoolState {
             pool_index: 0,
             proxy_port: None,
             dns_port: None,
+            guest_dns_netfilter_trace_requested: false,
+            guest_dns_netfilter_trace_reader: None,
             dns_readiness_state: DnsReadinessState::NotRequired,
             dns_readiness_probe: production_dns_readiness_probe(),
             dns_readiness_timeout: DNS_READINESS_OPERATION_TIMEOUT,
@@ -200,7 +205,11 @@ impl NetnsPoolState {
     }
 
     async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
-        let config = config.inner;
+        let CheckedNetnsPoolConfig {
+            inner: config,
+            guest_dns_netfilter_trace_requested,
+            guest_dns_netfilter_trace_reader,
+        } = config;
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;
 
@@ -239,6 +248,8 @@ impl NetnsPoolState {
             pool_index: index,
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
+            guest_dns_netfilter_trace_requested,
+            guest_dns_netfilter_trace_reader,
             dns_readiness_state: if config.dns_port.is_some() && config.proxy_port.is_some() {
                 DnsReadinessState::Pending
             } else {
@@ -414,6 +425,8 @@ impl NetnsPoolState {
         let ns_index = self.reserve_ns_index()?;
         let pool_index = self.pool_index;
         let default_iface = self.default_iface.clone();
+        let guest_dns_netfilter_trace_requested = self.guest_dns_netfilter_trace_requested;
+        let guest_dns_netfilter_trace_reader = self.guest_dns_netfilter_trace_reader.clone();
         let (proxy_port, dns_port) = match kind {
             NetnsKind::Plain => (None, None),
             NetnsKind::Proxy => {
@@ -443,7 +456,15 @@ impl NetnsPoolState {
             kind,
             self.creation_notifier(),
             create_namespace_with_readiness(
-                create_single_namespace(pool_index, ns_index, default_iface, proxy_port, dns_port),
+                create_single_namespace(
+                    pool_index,
+                    ns_index,
+                    default_iface,
+                    proxy_port,
+                    dns_port,
+                    guest_dns_netfilter_trace_requested,
+                    guest_dns_netfilter_trace_reader,
+                ),
                 readiness,
                 ops,
             ),

@@ -6,40 +6,75 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::command::{CommandError, exec_with_timeout};
+use crate::guest_dns_netfilter_trace::{
+    GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceCursor, GuestDnsNetfilterTraceReport,
+};
+use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 
 const BASELINE_COMMAND_TIMEOUT: Duration = Duration::from_millis(250);
 const PEER_DEVICE: &str = "veth0";
 const EXPECTED_NAMESPACE_MASQUERADE_RULE: &str =
     "-A POSTROUTING -s 192.168.241.0/29 -o veth0 -j MASQUERADE";
-const EXPECTED_READINESS_PACKET_BYTES: u64 = 67;
 const FAILURE_DETAIL_LIMIT_BYTES: usize = 256;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub(crate) struct GuestDnsNetworkEvidenceTarget {
     namespace: String,
     host_device: String,
+    peer_ip: String,
+    dns_port: u16,
+    #[serde(skip)]
+    root_netfilter_trace: GuestDnsNetfilterTraceAttachment,
 }
 
 impl GuestDnsNetworkEvidenceTarget {
-    pub(crate) fn new(namespace: &str, host_device: &str) -> Self {
+    pub(crate) fn new(
+        namespace: &str,
+        host_device: &str,
+        peer_ip: &str,
+        dns_port: u16,
+        root_netfilter_trace: &GuestDnsNetfilterTraceAttachment,
+    ) -> Self {
         Self {
             namespace: namespace.to_string(),
             host_device: host_device.to_string(),
+            peer_ip: peer_ip.to_string(),
+            dns_port,
+            root_netfilter_trace: root_netfilter_trace.clone(),
         }
     }
 }
+
+// The trace reader is runtime-wide diagnostic capability, not attachment
+// identity. Baseline reuse is keyed by the namespace-facing fields only.
+impl PartialEq for GuestDnsNetworkEvidenceTarget {
+    fn eq(&self, other: &Self) -> bool {
+        self.namespace == other.namespace
+            && self.host_device == other.host_device
+            && self.peer_ip == other.peer_ip
+            && self.dns_port == other.dns_port
+    }
+}
+
+impl Eq for GuestDnsNetworkEvidenceTarget {}
 
 #[derive(Debug)]
 pub(crate) struct GuestDnsNetworkEvidenceBaseline {
     target: GuestDnsNetworkEvidenceTarget,
     capture: NetworkCapture,
+    root_netfilter_trace_cursor: Option<GuestDnsNetfilterTraceCursor>,
 }
 
 pub(crate) async fn capture_guest_dns_network_evidence_baseline(
     target: GuestDnsNetworkEvidenceTarget,
 ) -> Arc<GuestDnsNetworkEvidenceBaseline> {
     let capture = capture_network_evidence(&target, BASELINE_COMMAND_TIMEOUT).await;
-    Arc::new(GuestDnsNetworkEvidenceBaseline { target, capture })
+    let root_netfilter_trace_cursor = target.root_netfilter_trace.cursor();
+    Arc::new(GuestDnsNetworkEvidenceBaseline {
+        target,
+        capture,
+        root_netfilter_trace_cursor,
+    })
 }
 
 pub(crate) async fn capture_guest_dns_network_evidence_report(
@@ -48,8 +83,33 @@ pub(crate) async fn capture_guest_dns_network_evidence_report(
     readiness_attempts: u16,
     command_timeout: Duration,
 ) -> String {
-    let terminal = capture_network_evidence(&target, command_timeout).await;
-    render_report(&target, baseline, &terminal, readiness_attempts)
+    let trace_cursor = baseline
+        .filter(|baseline| baseline.target == target)
+        .and_then(|baseline| baseline.root_netfilter_trace_cursor);
+    let capture_trace = async {
+        target
+            .root_netfilter_trace
+            .capture(
+                trace_cursor,
+                &target.namespace,
+                &target.host_device,
+                &target.peer_ip,
+                target.dns_port,
+                readiness_attempts,
+            )
+            .await
+    };
+    let (terminal, root_netfilter_trace) = tokio::join!(
+        capture_network_evidence(&target, command_timeout),
+        capture_trace,
+    );
+    render_report(
+        &target,
+        baseline,
+        &terminal,
+        readiness_attempts,
+        root_netfilter_trace.as_ref(),
+    )
 }
 
 async fn capture_network_evidence(
@@ -313,6 +373,34 @@ struct EvidenceCorrelation {
     deltas: Option<EvidenceDeltas>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum CounterObservationStatus {
+    Observed,
+    NotObserved,
+    ZeroAttempts,
+    BaselineUnavailable,
+    TerminalUnavailable,
+    IdentityMismatch,
+    CounterReset,
+    ErrorOrDrop,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+struct CounterObservations {
+    exact_namespace_masquerade: CounterObservationStatus,
+    aggregate_veth_handoff: CounterObservationStatus,
+}
+
+impl CounterObservations {
+    fn uniform(status: CounterObservationStatus) -> Self {
+        Self {
+            exact_namespace_masquerade: status,
+            aggregate_veth_handoff: status,
+        }
+    }
+}
+
 impl EvidenceCorrelation {
     fn inconclusive(reason: EvidenceReason, deltas: Option<EvidenceDeltas>) -> Self {
         Self {
@@ -405,7 +493,7 @@ fn correlate(
             Some(deltas),
         );
     }
-    if deltas.namespace_masquerade.bytes != expected_packets * EXPECTED_READINESS_PACKET_BYTES {
+    if deltas.namespace_masquerade.bytes != expected_packets * GUEST_DNS_READINESS_PACKET_BYTES {
         return EvidenceCorrelation::inconclusive(
             EvidenceReason::MasqueradeByteMismatch,
             Some(deltas),
@@ -439,6 +527,59 @@ fn correlate(
     EvidenceCorrelation::root_veth_rx(deltas)
 }
 
+fn observe_counters(
+    correlation: &EvidenceCorrelation,
+    readiness_attempts: u16,
+) -> CounterObservations {
+    let Some(deltas) = correlation.deltas else {
+        let status = match correlation.reason {
+            EvidenceReason::ZeroAttempts => CounterObservationStatus::ZeroAttempts,
+            EvidenceReason::BaselineUnavailable => CounterObservationStatus::BaselineUnavailable,
+            EvidenceReason::TerminalUnavailable => CounterObservationStatus::TerminalUnavailable,
+            EvidenceReason::IdentityMismatch => CounterObservationStatus::IdentityMismatch,
+            EvidenceReason::CounterReset => CounterObservationStatus::CounterReset,
+            // These reasons normally retain deltas. Missing deltas cannot
+            // support a positive independent observation.
+            EvidenceReason::ExactCorrelation
+            | EvidenceReason::MasqueradePacketMismatch
+            | EvidenceReason::MasqueradeByteMismatch
+            | EvidenceReason::NamespaceTxPacketMismatch
+            | EvidenceReason::RootRxPacketMismatch
+            | EvidenceReason::VethByteMismatch
+            | EvidenceReason::VethErrorOrDrop => CounterObservationStatus::NotObserved,
+        };
+        return CounterObservations::uniform(status);
+    };
+
+    let expected_packets = u64::from(readiness_attempts);
+    let exact_namespace_masquerade = if deltas.namespace_masquerade.packets == expected_packets
+        && deltas.namespace_masquerade.bytes == expected_packets * GUEST_DNS_READINESS_PACKET_BYTES
+    {
+        CounterObservationStatus::Observed
+    } else {
+        CounterObservationStatus::NotObserved
+    };
+    let veth_error_or_drop = deltas.namespace_link.tx.errors != 0
+        || deltas.namespace_link.tx.dropped != 0
+        || deltas.root_link.rx.errors != 0
+        || deltas.root_link.rx.dropped != 0;
+    let aggregate_veth_handoff = if veth_error_or_drop {
+        CounterObservationStatus::ErrorOrDrop
+    } else if deltas.namespace_link.tx.packets > 0
+        && deltas.namespace_link.tx.packets == deltas.root_link.rx.packets
+        && deltas.namespace_link.tx.bytes == deltas.root_link.rx.bytes
+    {
+        CounterObservationStatus::Observed
+    } else {
+        CounterObservationStatus::NotObserved
+    };
+
+    CounterObservations {
+        exact_namespace_masquerade,
+        aggregate_veth_handoff,
+    }
+}
+
 fn reciprocal_identity(namespace_link: &LinkSnapshot, root_link: &LinkSnapshot) -> bool {
     namespace_link.ifindex == root_link.link_index && namespace_link.link_index == root_link.ifindex
 }
@@ -456,9 +597,12 @@ struct EvidenceReport<'a> {
     classification: EvidenceClassification,
     reason: EvidenceReason,
     farthest_observed_boundary: Option<EvidenceBoundary>,
+    counter_observations: CounterObservations,
     baseline: Option<&'a NetworkCapture>,
     terminal: &'a NetworkCapture,
     deltas: Option<&'a EvidenceDeltas>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_netfilter_trace: Option<&'a GuestDnsNetfilterTraceReport>,
 }
 
 fn render_report(
@@ -466,17 +610,21 @@ fn render_report(
     baseline: Option<&GuestDnsNetworkEvidenceBaseline>,
     terminal: &NetworkCapture,
     readiness_attempts: u16,
+    root_netfilter_trace: Option<&GuestDnsNetfilterTraceReport>,
 ) -> String {
     let correlation = correlate(target, baseline, terminal, readiness_attempts);
+    let counter_observations = observe_counters(&correlation, readiness_attempts);
     let report = EvidenceReport {
         target,
         readiness_attempts,
         classification: correlation.classification,
         reason: correlation.reason,
         farthest_observed_boundary: correlation.farthest_observed_boundary,
+        counter_observations,
         baseline: baseline.map(|baseline| &baseline.capture),
         terminal,
         deltas: correlation.deltas.as_ref(),
+        root_netfilter_trace,
     };
     match serde_json::to_string(&report) {
         Ok(output) => output,
@@ -563,13 +711,20 @@ mod tests {
     }
 
     fn target() -> GuestDnsNetworkEvidenceTarget {
-        GuestDnsNetworkEvidenceTarget::new("vm0-ns-00-01", "vm0-ve-00-01")
+        GuestDnsNetworkEvidenceTarget::new(
+            "vm0-ns-00-01",
+            "vm0-ve-00-01",
+            "10.200.0.2",
+            5300,
+            &GuestDnsNetfilterTraceAttachment::Disabled,
+        )
     }
 
     fn baseline(capture: NetworkCapture) -> GuestDnsNetworkEvidenceBaseline {
         GuestDnsNetworkEvidenceBaseline {
             target: target(),
             capture,
+            root_netfilter_trace_cursor: None,
         }
     }
 
@@ -711,6 +866,38 @@ mod tests {
     }
 
     #[test]
+    fn noisy_veth_window_preserves_independent_positive_observations() {
+        let baseline = baseline(exact_capture());
+        let mut terminal = terminal_exact_capture();
+        if let CaptureValue::Captured(namespace_link) = &mut terminal.namespace_link {
+            namespace_link.stats64.tx = counters(14, 1_134);
+        }
+        if let CaptureValue::Captured(root_link) = &mut terminal.root_link {
+            root_link.stats64.rx = counters(14, 1_134);
+        }
+
+        let correlation = correlate(&target(), Some(&baseline), &terminal, 3);
+        let observations = observe_counters(&correlation, 3);
+
+        assert_eq!(
+            correlation.classification,
+            EvidenceClassification::Inconclusive
+        );
+        assert_eq!(
+            correlation.reason,
+            EvidenceReason::NamespaceTxPacketMismatch
+        );
+        assert_eq!(
+            observations.exact_namespace_masquerade,
+            CounterObservationStatus::Observed
+        );
+        assert_eq!(
+            observations.aggregate_veth_handoff,
+            CounterObservationStatus::Observed
+        );
+    }
+
+    #[test]
     fn error_or_drop_progress_is_inconclusive() {
         let baseline = baseline(exact_capture());
         let mut terminal = terminal_exact_capture();
@@ -818,13 +1005,31 @@ mod tests {
     #[test]
     fn report_is_bounded_and_contains_attempt_correlation() {
         let baseline = baseline(exact_capture());
-        let report = render_report(&target(), Some(&baseline), &terminal_exact_capture(), 3);
+        let report = render_report(
+            &target(),
+            Some(&baseline),
+            &terminal_exact_capture(),
+            3,
+            None,
+        );
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
 
-        assert!(report.len() < 4 * 1024);
+        assert!(
+            report.len() < 2 * 1024,
+            "counter report was {} bytes",
+            report.len()
+        );
         assert_eq!(value["readiness_attempts"], 3);
         assert_eq!(value["classification"], "readiness_correlated_root_veth_rx");
         assert_eq!(value["farthest_observed_boundary"], "root_veth_rx");
         assert_eq!(value["deltas"]["namespace_masquerade"]["packets"], 3);
+        assert_eq!(
+            value["counter_observations"]["exact_namespace_masquerade"],
+            "observed"
+        );
+        assert_eq!(
+            value["counter_observations"]["aggregate_veth_handoff"],
+            "observed"
+        );
     }
 }

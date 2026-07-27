@@ -16,6 +16,10 @@ use crate::command::{
     CommandError, IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
     exec_with_timeout,
 };
+use crate::guest_dns_netfilter_trace::{
+    GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceReader,
+};
+use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
@@ -28,6 +32,7 @@ use super::naming::{
 use super::types::NetnsInfo;
 
 const NETNS_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+const GUEST_DNS_READINESS_IPV4: &str = "8.8.8.8/32";
 
 // Each namespace starts two `ip` children concurrently. A 16-wide window caps
 // that fanout at 32 processes. At the 256-namespace hard limit, sixteen
@@ -418,6 +423,46 @@ fn namespace_firewall_restore_tables(
     ]
 }
 
+fn namespace_guest_dns_trace_restore_tables(
+    name: &str,
+    host_device: &str,
+    peer_ip: &str,
+) -> Vec<FirewallRestoreTable> {
+    let peer = format!("{peer_ip}/32");
+    vec![FirewallRestoreTable {
+        table: "raw",
+        rules: vec![
+            format!(
+                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p udp --dport 53 -m length --length {GUEST_DNS_READINESS_PACKET_BYTES} -m comment --comment {name} -j TRACE"
+            ),
+            format!(
+                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p tcp --dport 53 -m comment --comment {name} -j TRACE"
+            ),
+        ],
+    }]
+}
+
+async fn apply_namespace_guest_dns_trace_rules(
+    command: &str,
+    name: &str,
+    host_device: &str,
+    peer_ip: &str,
+) -> bool {
+    let firewall = namespace_guest_dns_trace_restore_tables(name, host_device, peer_ip);
+    match apply_firewall_rules_with_restore(command, &firewall).await {
+        Ok(()) => true,
+        Err(error) => {
+            warn!(
+                name,
+                host_device,
+                %error,
+                "root netfilter trace rules unavailable; namespace remains usable"
+            );
+            false
+        }
+    }
+}
+
 pub(super) async fn get_default_interface() -> Result<String> {
     let result =
         exec_with_timeout("ip", &["route", "get", "8.8.8.8"], NETNS_COMMAND_TIMEOUT).await?;
@@ -781,6 +826,8 @@ pub(super) async fn create_single_namespace(
     default_iface: String,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
+    guest_dns_netfilter_trace_requested: bool,
+    guest_dns_netfilter_trace_reader: Option<GuestDnsNetfilterTraceReader>,
 ) -> Result<NetnsInfo> {
     if ns_index >= MAX_NAMESPACES {
         return Err(NetworkError::NamespaceLimitReached {
@@ -813,8 +860,35 @@ pub(super) async fn create_single_namespace(
 
     match result {
         Ok(()) => {
+            let trace = match (
+                guest_dns_netfilter_trace_requested,
+                guest_dns_netfilter_trace_reader,
+                dns_port,
+            ) {
+                (false, _, _) => GuestDnsNetfilterTraceAttachment::Disabled,
+                (true, None, _) => {
+                    GuestDnsNetfilterTraceAttachment::unavailable("monitor_unavailable")
+                }
+                (true, Some(_), None) => {
+                    GuestDnsNetfilterTraceAttachment::unavailable("dns_proxy_disabled")
+                }
+                (true, Some(reader), Some(_))
+                    if apply_namespace_guest_dns_trace_rules(
+                        "iptables-restore",
+                        &ns_name,
+                        &host_device,
+                        &peer_ip,
+                    )
+                    .await =>
+                {
+                    GuestDnsNetfilterTraceAttachment::enabled(reader)
+                }
+                (true, Some(_), Some(_)) => {
+                    GuestDnsNetfilterTraceAttachment::unavailable("rule_install_failed")
+                }
+            };
             info!(name = %ns_name, "namespace created");
-            Ok(NetnsInfo::new(ns_name, host_device, peer_ip))
+            Ok(NetnsInfo::new(ns_name, host_device, peer_ip).with_guest_dns_netfilter_trace(trace))
         }
         Err(e) => {
             error!(name = %ns_name, error = %e, "failed to create namespace, cleaning up");
@@ -1623,6 +1697,35 @@ COMMIT'
         )
         .await
         .unwrap();
+    }
+
+    #[test]
+    fn guest_dns_trace_rules_match_only_readiness_udp_and_dns_tcp() {
+        let tables =
+            namespace_guest_dns_trace_restore_tables("vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2");
+
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].table, "raw");
+        assert_eq!(
+            tables[0].rules,
+            vec![
+                "-I PREROUTING 1 -i vm0-ve-00-01 -s 10.200.0.2/32 -d 8.8.8.8/32 -p udp --dport 53 -m length --length 67 -m comment --comment vm0-ns-00-01 -j TRACE",
+                "-I PREROUTING 1 -i vm0-ve-00-01 -s 10.200.0.2/32 -d 8.8.8.8/32 -p tcp --dport 53 -m comment --comment vm0-ns-00-01 -j TRACE",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn guest_dns_trace_rule_failure_is_best_effort() {
+        let applied = apply_namespace_guest_dns_trace_rules(
+            "false",
+            "vm0-ns-00-01",
+            "vm0-ve-00-01",
+            "10.200.0.2",
+        )
+        .await;
+
+        assert!(!applied);
     }
 
     #[tokio::test]

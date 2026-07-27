@@ -595,6 +595,7 @@ def record_unbound_diagnostics(
 
 
 def upstream_binding_log_fields(flow: http.HTTPFlow) -> dict[str, str | int | bool]:
+    # [NETWORK_LOG_FIELDS] — shared schema and UI boundary is api-contracts.
     diagnostics = flow.metadata.get(_UPSTREAM_BINDING_DIAGNOSTICS)
     if not isinstance(diagnostics, dict):
         return {}
