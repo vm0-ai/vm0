@@ -1851,14 +1851,6 @@ describe("CHAT-02: admission without spendable credits", () => {
 describe("CHAT-02: Zero Mail link delivery", () => {
   it("delivers a linked Gmail draft exactly once through the agent reply", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ZeroMail]: true },
-    );
     mockGmailConnectorOAuth({
       accessToken: "gmail-agent-reply-token",
       email: "sender@example.com",
@@ -1967,17 +1959,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
 describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ZeroMail]: true,
-      },
-    );
 
     await misc.upsertPersonalModelProvider(
       actor,

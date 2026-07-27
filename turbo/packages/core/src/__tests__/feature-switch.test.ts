@@ -111,15 +111,11 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       true,
     );
@@ -144,16 +140,12 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
-      true,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       false,
