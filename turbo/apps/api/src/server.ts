@@ -1,5 +1,5 @@
-// Long-lived Node server entry point. Used by `pnpm dev` (tsx watch) and
-// `pnpm start`. Distinct from `./index.ts`, which is the Vercel-function
+// Long-lived Node server entry point for `pnpm dev` (tsx watch) and
+// `pnpm start`. It stays separate from `./index.ts`, the Vercel function
 // entry built by `@hono/vite-build/vercel`.
 
 import "./instrument";
