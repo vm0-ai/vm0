@@ -3,6 +3,9 @@ use std::sync::Arc;
 use sandbox::SandboxError;
 use tracing::warn;
 
+use crate::guest_dns_netfilter_trace::{
+    GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceReader,
+};
 use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceBaseline;
 
 /// Cloneable metadata for a network namespace.
@@ -21,6 +24,8 @@ pub struct NetnsInfo {
     pub(super) peer_ip: String,
     /// Process-local count of successful checkouts for this namespace.
     pub(super) attachment_generation: u64,
+    /// Local/CI-only root netfilter trace availability for this attachment.
+    pub(super) guest_dns_netfilter_trace: GuestDnsNetfilterTraceAttachment,
     /// Last quiescent DNS evidence snapshot retained only in this process.
     dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
 }
@@ -32,8 +37,17 @@ impl NetnsInfo {
             host_device,
             peer_ip,
             attachment_generation: 0,
+            guest_dns_netfilter_trace: GuestDnsNetfilterTraceAttachment::Disabled,
             dns_network_baseline: None,
         }
+    }
+
+    pub(super) fn with_guest_dns_netfilter_trace(
+        mut self,
+        trace: GuestDnsNetfilterTraceAttachment,
+    ) -> Self {
+        self.guest_dns_netfilter_trace = trace;
+        self
     }
 
     /// Returns the host network namespace name.
@@ -54,6 +68,10 @@ impl NetnsInfo {
     /// Returns the process-local checkout generation for this attachment.
     pub(crate) fn attachment_generation(&self) -> u64 {
         self.attachment_generation
+    }
+
+    pub(crate) fn guest_dns_netfilter_trace(&self) -> &GuestDnsNetfilterTraceAttachment {
+        &self.guest_dns_netfilter_trace
     }
 }
 
@@ -177,6 +195,8 @@ pub struct NetnsPoolConfig {
 /// Network pool config after host network prerequisites have been validated.
 pub(crate) struct CheckedNetnsPoolConfig {
     pub(super) inner: NetnsPoolConfig,
+    pub(super) guest_dns_netfilter_trace_requested: bool,
+    pub(super) guest_dns_netfilter_trace_reader: Option<GuestDnsNetfilterTraceReader>,
 }
 
 impl NetnsPoolConfig {
@@ -185,7 +205,23 @@ impl NetnsPoolConfig {
         self,
     ) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
         crate::prerequisites::check_network_prerequisites(self.dns_port.is_some()).await?;
-        Ok(CheckedNetnsPoolConfig { inner: self })
+        Ok(CheckedNetnsPoolConfig {
+            inner: self,
+            guest_dns_netfilter_trace_requested: false,
+            guest_dns_netfilter_trace_reader: None,
+        })
+    }
+}
+
+impl CheckedNetnsPoolConfig {
+    pub(crate) fn with_guest_dns_netfilter_trace(
+        mut self,
+        requested: bool,
+        reader: Option<GuestDnsNetfilterTraceReader>,
+    ) -> Self {
+        self.guest_dns_netfilter_trace_requested = requested;
+        self.guest_dns_netfilter_trace_reader = reader;
+        self
     }
 }
 

@@ -45,6 +45,7 @@ mod naming;
 mod state;
 mod types;
 
+pub(crate) use naming::make_pool_dns_filter_comment;
 pub use naming::{ParsedNetnsName, parse_netns_name};
 pub use state::NetnsPool;
 pub(crate) use state::NetnsPoolHandle;

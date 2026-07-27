@@ -178,6 +178,11 @@ pub struct RuntimeConfig {
     pub proxy_port: Option<u16>,
     /// DNS proxy port for DNS query interception. Shared across all factories.
     pub dns_port: Option<u16>,
+    /// Capture root netfilter traversal for guest DNS readiness diagnostics.
+    ///
+    /// This is intended for local and CI runners only. Production runners keep
+    /// it disabled so healthy sandbox traffic has no trace overhead.
+    pub guest_dns_netfilter_trace: bool,
 }
 
 #[cfg(test)]
