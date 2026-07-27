@@ -1918,6 +1918,137 @@ describe("POST /api/zero/teams/bot", () => {
     );
   });
 
+  it("applies agent and model switches to existing Teams chat threads", async () => {
+    const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
+    const supportAgent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams switched agent",
+      visibility: "public",
+    });
+    const anthropic = await runsApi.createOrgModelProvider(actor, {
+      type: "anthropic-api-key",
+      secret: "teams-switch-anthropic-key",
+    });
+    const openai = await runsApi.createOrgModelProvider(actor, {
+      type: "openai-api-key",
+      secret: "teams-switch-openai-key",
+    });
+    await runsApi.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: anthropic.providerId,
+      },
+      {
+        model: "gpt-5.6-sol",
+        isDefault: false,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: openai.providerId,
+      },
+    ]);
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      chatMessages: [],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
+    const threadId = "activity-existing-switch-root";
+
+    const initialResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-existing-switch-initial",
+        threadId,
+        text: "run before switching",
+      }),
+      token: teamsToken(),
+    });
+    expect(initialResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(initialResponse);
+    const initialRunId = await runIdForPrompt(actor, "run before switching");
+    await runsApi.heartbeatRunner(runnerGroup);
+    await runsApi.claimRunnerJob(initialRunId);
+    await runsApi.requestCancelRun(actor, initialRunId, [200]);
+
+    const switchAgentResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-existing-switch-agent",
+        text: "",
+        value: {
+          zeroTeamsAction: "switch_agent",
+          selectedComposeId: supportAgent.agentId,
+        },
+      }),
+      token: teamsToken(),
+    });
+    expect(switchAgentResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchAgentResponse);
+
+    const switchedAgentResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-existing-switch-agent-run",
+        threadId,
+        text: "run after agent switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(switchedAgentResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchedAgentResponse);
+    const switchedAgentRunId = await runIdForPrompt(
+      actor,
+      "run after agent switch",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const switchedAgentClaim = await runsApi.claimRunnerJob(switchedAgentRunId);
+    expect(switchedAgentClaim.appendSystemPrompt).toContain(
+      "Your name is Teams switched agent.",
+    );
+    await runsApi.requestCancelRun(actor, switchedAgentRunId, [200]);
+
+    const switchModelResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-existing-switch-model",
+        text: "",
+        value: {
+          zeroTeamsAction: "switch_model",
+          selectedModel: "gpt-5.6-sol",
+        },
+      }),
+      token: teamsToken(),
+    });
+    expect(switchModelResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchModelResponse);
+
+    const switchedModelResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-existing-switch-model-run",
+        threadId,
+        text: "run after model switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(switchedModelResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchedModelResponse);
+    const switchedModelRunId = await runIdForPrompt(
+      actor,
+      "run after model switch",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const switchedModelClaim = await runsApi.claimRunnerJob(switchedModelRunId);
+    expect(switchedModelClaim.appendSystemPrompt).toContain(
+      "Your name is Teams switched agent.",
+    );
+    expect(switchedModelClaim.modelUsageProvider).toBe("gpt-5.6-sol");
+    await runsApi.requestCancelRun(actor, switchedModelRunId, [200]);
+  });
+
   it("replies when a connected Teams run is queued", async () => {
     const { fixture, actor, outboundRequests } =
       await setupConnectedTeamsBotActor();

@@ -157,7 +157,6 @@ async function loadTeamsChatDeliveryContext(args: {
     )
     .where(
       and(
-        eq(teamsChatThreadRoutes.chatThreadId, run.chatThreadId),
         eq(teamsChatThreadRoutes.conversationId, payload.conversationId),
         eq(teamsChatThreadRoutes.threadId, payload.threadId),
         eq(teamsChatThreadRoutes.userId, run.userId),
@@ -378,7 +377,6 @@ async function loadTeamsAdmissionFailureContext(
       )
       .where(
         and(
-          eq(teamsChatThreadRoutes.chatThreadId, args.chatThreadId),
           eq(teamsChatThreadRoutes.connectionId, args.target.connectionId),
           eq(teamsChatThreadRoutes.conversationId, args.target.conversationId),
           eq(teamsChatThreadRoutes.threadId, args.target.threadId),

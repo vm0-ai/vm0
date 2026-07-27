@@ -438,7 +438,24 @@ async function saveOrgThreadSession(args: {
   }
   args.signal.throwIfAborted();
 
-  if (!args.payload.existingSessionId) {
+  const [route] = await args.db
+    .select({ chatThreadId: teamsChatThreadRoutes.chatThreadId })
+    .from(teamsChatThreadRoutes)
+    .where(
+      and(
+        eq(teamsChatThreadRoutes.connectionId, args.payload.connectionId),
+        eq(teamsChatThreadRoutes.conversationId, args.payload.conversationId),
+        eq(teamsChatThreadRoutes.threadId, args.payload.threadId),
+        eq(teamsChatThreadRoutes.userId, args.run.userId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  const routeStillOwnsRunThread =
+    args.run.chatThreadId === null ||
+    route?.chatThreadId === args.run.chatThreadId;
+  if (!args.payload.existingSessionId && routeStillOwnsRunThread) {
     await args.db
       .insert(teamsOrgThreadSessions)
       .values({
@@ -463,20 +480,7 @@ async function saveOrgThreadSession(args: {
     args.signal.throwIfAborted();
   }
 
-  const [route] = await args.db
-    .select({ chatThreadId: teamsChatThreadRoutes.chatThreadId })
-    .from(teamsChatThreadRoutes)
-    .where(
-      and(
-        eq(teamsChatThreadRoutes.connectionId, args.payload.connectionId),
-        eq(teamsChatThreadRoutes.conversationId, args.payload.conversationId),
-        eq(teamsChatThreadRoutes.threadId, args.payload.threadId),
-        eq(teamsChatThreadRoutes.userId, args.run.userId),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-  if (!route) {
+  if (!args.run.chatThreadId) {
     return;
   }
 
@@ -489,7 +493,8 @@ async function saveOrgThreadSession(args: {
     })
     .where(
       and(
-        eq(chatThreads.id, route.chatThreadId),
+        eq(chatThreads.id, args.run.chatThreadId),
+        eq(chatThreads.userId, args.run.userId),
         isNull(chatThreads.agentSessionId),
       ),
     );
