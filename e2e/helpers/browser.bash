@@ -42,18 +42,17 @@ browser_setup() {
   fi
 
   export NODE_TLS_REJECT_UNAUTHORIZED=0
-  export SCREENSHOT_DIR="/tmp/e2e-auth-screenshots"
-  mkdir -p "$SCREENSHOT_DIR"
+  export AGENT_BROWSER_DEFAULT_TIMEOUT=30000
+  export AGENT_BROWSER_SESSION="${AGENT_BROWSER_SESSION:-${JOB_REF:-local}-sign-up}"
 
   export OTP="424242"
-  export STEP_NUM=0
 
   if [[ -z "${E2E_ACCOUNT:-}" ]]; then
     E2E_ACCOUNT="$(generate_test_email)"
     export E2E_ACCOUNT
   fi
 
-  agent-browser set viewport 1920 1080
+  AGENT_BROWSER_IGNORE_HTTPS_ERRORS=true agent-browser set viewport 1920 1080
 }
 
 # ---------------------------------------------------------------------------
@@ -68,35 +67,62 @@ generate_test_email() {
 }
 
 # ---------------------------------------------------------------------------
-# step_screenshot — Take a numbered screenshot + snapshot for debugging
+# wait_for_browser_target — Wait for a browser target across navigation
+# agent-browser may surface a transient CDP context error when Clerk replaces
+# the document while a selector wait is active. Retry that transition without
+# adding a fixed delay; preserve real selector timeouts as failures.
+# Usage: wait_for_browser_target [timeout-ms] <agent-browser wait arguments...>
 # ---------------------------------------------------------------------------
-step_screenshot() {
-  STEP_NUM=$((STEP_NUM + 1))
-  export STEP_NUM
-  local label="$1"
-  local filename
-  filename=$(printf "%02d-%s" "$STEP_NUM" "$label")
-  echo "# [$filename] Taking screenshot..." >&3 2>/dev/null || true
-  agent-browser set media light 2>/dev/null || true
-  agent-browser screenshot "$SCREENSHOT_DIR/${filename}-light.png" 2>/dev/null || true
-  agent-browser set media dark 2>/dev/null || true
-  agent-browser screenshot "$SCREENSHOT_DIR/${filename}-dark.png" 2>/dev/null || true
-  agent-browser set media light 2>/dev/null || true
-  agent-browser snapshot > "$SCREENSHOT_DIR/${filename}.txt" 2>/dev/null || true
+wait_for_browser_target() {
+  local timeout_ms=30000
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    timeout_ms="$1"
+    shift
+  fi
+
+  local navigation_attempt wait_output
+
+  for navigation_attempt in 1 2 3; do
+    if wait_output=$(AGENT_BROWSER_DEFAULT_TIMEOUT="$timeout_ms" agent-browser wait "$@" 2>&1); then
+      return 0
+    fi
+    if [[ "$wait_output" != *"Inspected target navigated or closed"* ]]; then
+      echo "$wait_output" >&2
+      return 1
+    fi
+  done
+
+  echo "$wait_output" >&2
+  return 1
 }
 
 # ---------------------------------------------------------------------------
-# contains — Check if string contains pattern (case-insensitive)
+# wait_for_auth_next_step — Wait for Clerk to redirect or render its next form
+# Emits one of: complete, otp, password.
 # ---------------------------------------------------------------------------
-contains() {
-  [[ "$(echo "$1" | grep -ci "$2" 2>/dev/null)" -gt 0 ]]
-}
+wait_for_auth_next_step() {
+  local auth_path="$1"
+  local timeout_ms="${2:-45000}"
+  local otp_selector='input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]'
 
-# ---------------------------------------------------------------------------
-# full_snapshot — Get full page snapshot text
-# ---------------------------------------------------------------------------
-full_snapshot() {
-  agent-browser snapshot 2>/dev/null || true
+  wait_for_browser_target "$timeout_ms" --fn \
+    "(() => {
+      if (!window.location.pathname.includes('/${auth_path}')) return true;
+      if (document.querySelector('${otp_selector}')) return true;
+      if ('${auth_path}' !== 'sign-in') return false;
+      const text = document.body.innerText.toLowerCase();
+      return Boolean(document.querySelector('input[type=\"password\"]'))
+        || text.includes('use another method')
+        || text.includes('forgot password');
+    })()"
+
+  if [[ "$(agent-browser eval "window.location.pathname.includes('/${auth_path}')")" != "true" ]]; then
+    echo "complete"
+  elif [[ "$(agent-browser get count "$otp_selector")" -gt 0 ]]; then
+    echo "otp"
+  else
+    echo "password"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -104,13 +130,8 @@ full_snapshot() {
 # Clerk renders this when legal_consent_enabled is on. Safe to call always.
 # ---------------------------------------------------------------------------
 accept_legal_consent() {
-  local snap_i
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  local ref
-  ref=$(echo "$snap_i" | grep -iE 'checkbox.*(terms|legal|agree|privacy|consent)' | grep -oE 'ref=e[0-9]+' | head -1 | sed 's/ref=/@/')
-  if [[ -n "$ref" ]]; then
-    agent-browser click "$ref" 2>/dev/null || true
-    agent-browser wait 300
+  if [[ "$(agent-browser get count 'input[name="legalAccepted"]')" -gt 0 ]]; then
+    agent-browser check 'input[name="legalAccepted"]'
   fi
 }
 
@@ -118,84 +139,19 @@ accept_legal_consent() {
 # click_continue — Click form "Continue" button (not "Continue with Google")
 # ---------------------------------------------------------------------------
 click_continue() {
-  local snap_i ref
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  ref=$(echo "$snap_i" | grep -E 'button "Continue".*ref=e[0-9]+' | grep -oE 'ref=e[0-9]+' | head -1 | sed 's/ref=/@/')
-  if [[ -n "$ref" ]]; then
-    agent-browser scrollintoview "$ref" 2>/dev/null || true
-    agent-browser wait 300
-    agent-browser click "$ref"
-  else
-    agent-browser find text "Continue" click
-  fi
+  agent-browser find role button click --name "Continue" --exact
 }
 
 # ---------------------------------------------------------------------------
 # dismiss_cookie_banner — Dismiss cookie consent banner if present
 # ---------------------------------------------------------------------------
 dismiss_cookie_banner() {
-  if agent-browser find text "Accept" click 2>/dev/null; then
-    agent-browser wait 500
+  if [[ "$(agent-browser eval \
+    "Array.from(document.querySelectorAll('button')).some(
+      (button) => button.textContent?.trim() === 'Accept'
+    )")" == "true" ]]; then
+    agent-browser find role button click --name "Accept" --exact
   fi
-}
-
-# ---------------------------------------------------------------------------
-# wait_for_otp_screen — Wait for verification/OTP screen to appear
-# ---------------------------------------------------------------------------
-wait_for_otp_screen() {
-  local timeout_secs="${1:-10}"
-  for _i in $(seq 1 "$timeout_secs"); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "verify\|verification code\|enter.*code"; then
-      return 0
-    fi
-    sleep 1
-  done
-  return 1
-}
-
-# ---------------------------------------------------------------------------
-# wait_for_auth_next_step — Wait for Clerk auth to choose a stable branch
-# Usage: wait_for_auth_next_step <auth-path> [timeout-seconds]
-#   auth-path — "sign-up" or "sign-in"
-# Emits one of:
-#   complete — auth redirected away from the auth route
-#   otp      — email verification code challenge is visible
-#   password — sign-in password challenge is visible
-# ---------------------------------------------------------------------------
-wait_for_auth_next_step() {
-  local auth_path="$1"
-  local timeout_secs="${2:-30}"
-  for _i in $(seq 1 "$timeout_secs"); do
-    local current_url snap
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" \
-      && "$current_url" == "${VM0_AUTH_REDIRECT_URL}"* ]]; then
-      echo "complete"
-      return 0
-    fi
-    if [[ -z "${VM0_AUTH_REDIRECT_URL:-}" \
-      && -n "$current_url" \
-      && ! "$current_url" =~ $auth_path ]]; then
-      echo "complete"
-      return 0
-    fi
-
-    snap=$(full_snapshot)
-    if contains "$snap" "verify\|verification code\|enter.*code"; then
-      echo "otp"
-      return 0
-    fi
-    if [[ "$auth_path" == "sign-in" ]] \
-      && contains "$snap" "enter your password\|forgot password\|password"; then
-      echo "password"
-      return 0
-    fi
-
-    sleep 1
-  done
-  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -203,28 +159,34 @@ wait_for_auth_next_step() {
 # ---------------------------------------------------------------------------
 enter_otp() {
   local code="$1"
+  local auth_path="$2"
+  local otp_selector='input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]'
 
-  if agent-browser find label "Enter verification code" fill "$code" 2>/dev/null; then
-    : # filled via label
-  elif agent-browser find placeholder "Enter verification code" fill "$code" 2>/dev/null; then
-    : # filled via placeholder
+  wait_for_browser_target "$otp_selector"
+  if [[ "$(agent-browser get count "$otp_selector")" -eq 1 ]]; then
+    agent-browser fill "$otp_selector" "$code"
   else
-    # Fallback: find first input and press digits one by one
-    agent-browser find first "input" click
-    agent-browser wait 300
+    agent-browser find first "$otp_selector" click
+    local digit
     for digit in $(echo "$code" | grep -o .); do
       agent-browser press "$digit"
     done
   fi
-  agent-browser wait 2000
 
-  # Click Continue/Verify button if present (needed when OTP is a single text input)
-  if agent-browser find text "Continue" click 2>/dev/null; then
-    : # clicked Continue
-  elif agent-browser find text "Verify" click 2>/dev/null; then
-    : # clicked Verify
+  wait_for_browser_target --fn \
+    "(() => {
+      if (!window.location.pathname.includes('/${auth_path}')) return true;
+      return Array.from(document.querySelectorAll('button')).some((button) => {
+        const label = button.textContent?.trim() ?? '';
+        return !button.disabled && /^(Continue|Verify)$/i.test(label);
+      });
+    })()"
+
+  if [[ "$(agent-browser eval "window.location.pathname.includes('/${auth_path}')")" == "true" ]]; then
+    if ! agent-browser find role button click --name "Continue" --exact 2>/dev/null; then
+      agent-browser find role button click --name "Verify" --exact
+    fi
   fi
-  agent-browser wait 5000
 }
 
 # ---------------------------------------------------------------------------
@@ -344,23 +306,14 @@ derive_app_url() {
 # ---------------------------------------------------------------------------
 sign_in_via_token() {
   local base_url="${1:-$(derive_app_url)}"
-  agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
-  agent-browser wait 5000
+  agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}"
 
-  # Wait for token auth to complete and redirect away from /sign-in-token
-  local auth_complete=false
-  for _i in $(seq 1 30); do
-    local current_url
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if url_is_on_app "$current_url" "$base_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
-      auth_complete=true
-      break
-    fi
-    sleep 1
-  done
-  step_screenshot "after-auth-redirect"
+  wait_for_browser_target --fn \
+    "!window.location.pathname.includes('/sign-in-token')"
 
-  if [[ "$auth_complete" != "true" ]]; then
+  local current_url
+  current_url=$(agent-browser get url 2>/dev/null || true)
+  if ! url_is_on_app "$current_url" "$base_url"; then
     echo "Failed to redirect after sign-in-token" >&2
     return 1
   fi
@@ -388,8 +341,7 @@ navigate_to_app_page() {
   local path="$1"
   local app_url
   app_url="$(derive_app_url)"
-  agent-browser open "${app_url}${path}" --ignore-https-errors
-  agent-browser wait 3000
+  agent-browser open "${app_url}${path}"
 }
 
 # ---------------------------------------------------------------------------
@@ -399,15 +351,7 @@ navigate_to_app_page() {
 wait_for_text() {
   local text="$1"
   local timeout_secs="${2:-15}"
-  for _i in $(seq 1 "$timeout_secs"); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "$text"; then
-      return 0
-    fi
-    sleep 1
-  done
-  return 1
+  wait_for_browser_target "$((timeout_secs * 1000))" --text "$text"
 }
 
 # ---------------------------------------------------------------------------
@@ -417,15 +361,10 @@ wait_for_text() {
 wait_for_text_gone() {
   local text="$1"
   local timeout_secs="${2:-15}"
-  for _i in $(seq 1 "$timeout_secs"); do
-    local snap
-    snap=$(full_snapshot)
-    if ! contains "$snap" "$text"; then
-      return 0
-    fi
-    sleep 1
-  done
-  return 1
+  local text_json
+  text_json=$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$text")
+  wait_for_browser_target "$((timeout_secs * 1000))" --fn \
+    "!document.body.innerText.toLowerCase().includes(${text_json}.toLowerCase())"
 }
 
 # ---------------------------------------------------------------------------

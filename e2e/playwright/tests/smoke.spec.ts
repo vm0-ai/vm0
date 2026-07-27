@@ -1,6 +1,9 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "../fixtures";
-import { refreshClerkSessionToken, signInThroughHostedAuth } from "../lib/auth";
+import {
+  refreshClerkSessionToken,
+  signInWithClerkTestingHelper,
+} from "../lib/auth";
 import { completeExploreOnboarding } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
@@ -12,8 +15,7 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
   const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
 
-  await signInThroughHostedAuth(page, email, appUrl, {
-    followRedirect: false,
+  await signInWithClerkTestingHelper(page, email, appUrl, {
     activeOrganizationId: orgId,
   });
 
