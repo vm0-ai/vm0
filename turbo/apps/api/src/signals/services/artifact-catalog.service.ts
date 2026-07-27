@@ -35,9 +35,6 @@ const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
  */
 const OFFICIAL_IMAGE_MARKER = "zero-official-image";
 const OFFICIAL_VIDEO_MARKER = "zero-official-video";
-const IMAGE_FILE_EXTENSION_RE =
-  /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|tiff?|webp)$/i;
-const VIDEO_FILE_EXTENSION_RE = /\.(m4v|mov|mp4|ogv|webm)$/i;
 
 const artifactCursorSchema = z.object({
   createdAt: z.string(),
@@ -78,19 +75,9 @@ function metadataString(
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function fileContentType(row: CatalogFileRow): string {
-  const filename = row.filename ?? row.externalId;
-  const contentType = row.contentType?.split(";")[0]?.trim().toLowerCase();
-  if (!contentType || contentType.endsWith("/octet-stream")) {
-    return inferMimetype(filename);
-  }
-  return contentType;
-}
-
 /**
- * The catalog kind a stored file maps to. Hosted HTML artifacts are handled by
- * `hostedArtifactKind`; this function covers file-backed image and video
- * artifacts, whether they came from a built-in generator or an upload.
+ * The catalog kind a stored file maps to. Ordinary uploads of every media type
+ * stay `file`; only the official generation pipelines produce `image`/`video`.
  */
 function fileArtifactKind(row: CatalogFileRow): "file" | "image" | "video" {
   const generatedBy = metadataString(row.metadata, "generatedBy");
@@ -98,20 +85,6 @@ function fileArtifactKind(row: CatalogFileRow): "file" | "image" | "video" {
     return "image";
   }
   if (generatedBy === OFFICIAL_VIDEO_MARKER) {
-    return "video";
-  }
-  const filename = row.filename ?? row.externalId;
-  const contentType = fileContentType(row);
-  if (
-    contentType.startsWith("image/") ||
-    IMAGE_FILE_EXTENSION_RE.test(filename)
-  ) {
-    return "image";
-  }
-  if (
-    contentType.startsWith("video/") ||
-    VIDEO_FILE_EXTENSION_RE.test(filename)
-  ) {
     return "video";
   }
   return "file";
@@ -135,11 +108,8 @@ function fileThumbnail(row: CatalogFileRow): ArtifactThumbnail | null {
     return { url: row.previewImageUrl };
   }
   const filename = row.filename ?? row.externalId;
-  const contentType = fileContentType(row);
-  if (
-    row.url &&
-    (contentType.startsWith("image/") || IMAGE_FILE_EXTENSION_RE.test(filename))
-  ) {
+  const contentType = row.contentType ?? inferMimetype(filename);
+  if (row.url && contentType.startsWith("image/")) {
     return { url: row.url };
   }
   return null;
