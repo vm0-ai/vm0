@@ -28,6 +28,7 @@ import {
   artifactFullscreen$,
   type ArtifactRef,
   closeArtifact$,
+  currentArtifactText$,
   navigateArtifactSidebarImage$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
@@ -40,8 +41,8 @@ import {
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import { jsonParseOr } from "../../signals/utils.ts";
+import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
 import {
   ZoomableArtifactImageCanvas,
@@ -145,6 +146,7 @@ type ArtifactSidebarContentProps = {
   onBack?: () => void;
   onClose?: () => void;
   onSyncSuccess?: () => void;
+  text$?: TextPreviewComputed;
   threadId?: string;
 };
 
@@ -167,6 +169,10 @@ function ArtifactSidebarWithThreadContext({
   const navigateArtifactSidebarImage =
     onNavigateImage ?? navigateLegacyArtifactSidebarImage;
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const text$ =
+    artifactRef.source === "url"
+      ? thread.artifactSignalsForUrl(artifactRef.url)?.text$
+      : undefined;
   const item =
     artifactRef.source === "url" && loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
@@ -205,6 +211,7 @@ function ArtifactSidebarWithThreadContext({
       onSyncSuccess={() => {
         reloadArtifacts();
       }}
+      text$={text$}
       threadId={thread.threadId}
     />
   );
@@ -244,6 +251,7 @@ function ArtifactSidebarContent({
   onBack,
   onClose,
   onSyncSuccess,
+  text$,
   threadId,
 }: ArtifactSidebarContentProps) {
   const legacyFullscreen = useGet(artifactFullscreen$);
@@ -252,7 +260,6 @@ function ArtifactSidebarContent({
   const fullscreen = fullscreenState?.active ?? legacyFullscreen;
   const toggleFullscreen = fullscreenState?.toggle ?? legacyToggleFullscreen;
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
-  const pageSignal = useGet(pageSignal$);
   const closePreview = onClose ?? close;
   const display = resolveArtifactDisplay(artifactRef, item);
   const syncTarget = artifactSidebarSyncTargetForItem({
@@ -273,9 +280,9 @@ function ArtifactSidebarContent({
       fullscreen={fullscreen}
       imageNavigation={imageNavigation}
       onBack={onBack}
-      pageSignal={pageSignal}
       resetZoomableImageCanvasZoom={resetZoomableImageCanvasZoom}
       syncTarget={syncTarget}
+      text$={text$}
       toggleFullscreen={toggleFullscreen}
     />
   );
@@ -287,9 +294,9 @@ type ArtifactSidebarResolvedContentProps = {
   readonly fullscreen: boolean;
   readonly imageNavigation?: ArtifactImageNavigationActions;
   readonly onBack?: () => void;
-  readonly pageSignal: AbortSignal;
   readonly resetZoomableImageCanvasZoom: (key: string) => void;
   readonly syncTarget?: ArtifactDownloadSyncTarget;
+  readonly text$?: TextPreviewComputed;
   readonly toggleFullscreen: () => void;
 };
 
@@ -299,9 +306,9 @@ function ArtifactSidebarResolvedContent({
   fullscreen,
   imageNavigation,
   onBack,
-  pageSignal,
   resetZoomableImageCanvasZoom,
   syncTarget,
+  text$,
   toggleFullscreen,
 }: ArtifactSidebarResolvedContentProps) {
   return (
@@ -330,7 +337,7 @@ function ArtifactSidebarResolvedContent({
           filename={display.filename}
           artifactKind={display.artifactKind}
           imageNavigation={imageNavigation}
-          pageSignal={pageSignal}
+          text$={text$}
         />
       </div>
     </ArtifactSidebarSurface>
@@ -771,23 +778,24 @@ function ArtifactBody({
   filename,
   artifactKind,
   imageNavigation,
-  pageSignal,
+  text$,
 }: {
   url: string;
   kind: ArtifactKindForBody;
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   imageNavigation?: ArtifactImageNavigationActions;
-  pageSignal: AbortSignal;
+  text$?: TextPreviewComputed;
 }) {
+  const previewText$ = text$ ?? currentArtifactText$;
   if (kind === "markdown") {
-    return <ArtifactMarkdownBody url={url} signal={pageSignal} />;
+    return <ArtifactMarkdownBody text$={previewText$} />;
   }
   if (kind === "text" || kind === "json") {
-    return <ArtifactPlainTextBody url={url} kind={kind} signal={pageSignal} />;
+    return <ArtifactPlainTextBody kind={kind} text$={previewText$} />;
   }
   if (kind === "csv") {
-    return <ArtifactCsvBody url={url} signal={pageSignal} />;
+    return <ArtifactCsvBody text$={previewText$} />;
   }
   if (kind === "image") {
     return (
@@ -891,15 +899,9 @@ function ArtifactStageCard({
   );
 }
 
-function ArtifactMarkdownBody({
-  url,
-  signal,
-}: {
-  url: string;
-  signal: AbortSignal;
-}) {
+function ArtifactMarkdownBody({ text$ }: { text$: TextPreviewComputed }) {
   return (
-    <TextPreviewLoader url={url} signal={signal}>
+    <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
         if (status === "loading") {
           return (
@@ -935,15 +937,13 @@ function ArtifactMarkdownBody({
 
 function ArtifactPlainTextBody({
   kind,
-  signal,
-  url,
+  text$,
 }: {
   kind: "text" | "json";
-  signal: AbortSignal;
-  url: string;
+  text$: TextPreviewComputed;
 }) {
   return (
-    <TextPreviewLoader url={url} signal={signal}>
+    <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
         if (status === "loading") {
           return (
@@ -995,15 +995,9 @@ function formatBodyText(kind: "text" | "json", text: string): string {
   return text;
 }
 
-function ArtifactCsvBody({
-  url,
-  signal,
-}: {
-  url: string;
-  signal: AbortSignal;
-}) {
+function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
   return (
-    <TextPreviewLoader url={url} signal={signal}>
+    <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
         if (status === "loading") {
           return (
