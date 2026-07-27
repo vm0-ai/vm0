@@ -514,7 +514,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",
-    description: "Show the Zero Browser command in the Zero CLI.",
+    description:
+      "Enable thread-scoped Cloud browser access in chat and the Zero CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

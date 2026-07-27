@@ -266,3 +266,46 @@ export async function insertLegacyArtifactCatalogFile(
   }
   return response.file_id;
 }
+
+export async function setComputerUseHostAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly threadId: string;
+    readonly computerUseHostId: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-computer-use-host-as-previous-api",
+    thread_id: args.threadId,
+    computer_use_host_id: args.computerUseHostId,
+  });
+}
+
+export async function readBrowserProfileAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly browserId: string;
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): Promise<{
+  readonly browserProfileId: string;
+  readonly providerProfileId: string;
+}> {
+  const response = await postAction(context, {
+    action: "read-browser-profile-as-previous-api",
+    browser_id: args.browserId,
+    user_id: args.userId,
+    org_id: args.orgId,
+  });
+  if (!response.previous_api_browser_profile) {
+    throw new Error(
+      "readBrowserProfileAsPreviousApi missing previous_api_browser_profile",
+    );
+  }
+  return {
+    browserProfileId: response.previous_api_browser_profile.browser_profile_id,
+    providerProfileId:
+      response.previous_api_browser_profile.provider_profile_id,
+  };
+}

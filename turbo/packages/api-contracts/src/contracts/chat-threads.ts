@@ -214,6 +214,7 @@ const chatThreadSnapshotProjectionSchema = z.object({
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
+  cloudBrowserEnabled: z.boolean().optional(),
 });
 
 const chatThreadEventSchema = z.object({
@@ -235,6 +236,7 @@ const chatThreadEventSchema = z.object({
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
+  cloudBrowserEnabled: z.boolean().optional(),
   createdAt: z.string(),
 });
 
@@ -835,6 +837,7 @@ const chatNormalSendBodyShape = {
   structuredPrompt: userMessageDocumentSchema.optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
+  cloudBrowserEnabled: z.boolean().optional(),
   // Optional for backward compatibility: older clients that omit this field
   // still trigger title generation (server guards with !== false, not === true).
   hasTextContent: z.boolean().optional(),
@@ -848,26 +851,48 @@ const chatMessageNormalSendBodySchema = z.preprocess(
   (value) => {
     return normalizeLegacyModelSelectionInput(value, { allowNull: false });
   },
-  z.object({
-    ...chatNormalSendBodyShape,
-    // Client-generated UUID used as the user message's primary key.
-    clientMessageId: z.string().uuid().optional(),
-    revokesMessageId: z.string().min(1).optional(),
-    interruptsRunId: z.undefined().optional(),
-  }),
+  z
+    .object({
+      ...chatNormalSendBodyShape,
+      // Client-generated UUID used as the user message's primary key.
+      // Lets the client render an optimistic row and reconcile with the
+      // server row by id — no temp-id swap, no React remount.
+      clientMessageId: z.string().uuid().optional(),
+      revokesMessageId: z.string().min(1).optional(),
+      interruptsRunId: z.undefined().optional(),
+    })
+    .refine(
+      (body) => {
+        return !(body.cloudBrowserEnabled && body.computerUseHostId);
+      },
+      {
+        message: "Cloud browser and Computer Use cannot both be enabled",
+        path: ["cloudBrowserEnabled"],
+      },
+    ),
 );
 
 const chatEventNormalSendBodySchema = z.preprocess(
   (value) => {
     return normalizeLegacyModelSelectionInput(value, { allowNull: false });
   },
-  z.object({
-    ...chatNormalSendBodyShape,
-    // Client-generated UUID used as the user event's primary key.
-    clientEventId: z.string().uuid().optional(),
-    revokesEventId: z.string().min(1).optional(),
-    interruptsRunId: z.undefined().optional(),
-  }),
+  z
+    .object({
+      ...chatNormalSendBodyShape,
+      // Client-generated UUID used as the user event's primary key.
+      clientEventId: z.string().uuid().optional(),
+      revokesEventId: z.string().min(1).optional(),
+      interruptsRunId: z.undefined().optional(),
+    })
+    .refine(
+      (body) => {
+        return !(body.cloudBrowserEnabled && body.computerUseHostId);
+      },
+      {
+        message: "Cloud browser and Computer Use cannot both be enabled",
+        path: ["cloudBrowserEnabled"],
+      },
+    ),
 );
 
 /**
@@ -1257,10 +1282,21 @@ export const chatThreadComputerUseHostContract = c.router({
     path: "/api/zero/chat-threads/:id/computer-use-host",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      computerUseHostId: z.string().uuid().nullable(),
-      eventId: chatThreadEventIdSchema.optional(),
-    }),
+    body: z
+      .object({
+        computerUseHostId: z.string().uuid().nullable(),
+        cloudBrowserEnabled: z.boolean().optional(),
+        eventId: chatThreadEventIdSchema.optional(),
+      })
+      .refine(
+        (body) => {
+          return !(body.cloudBrowserEnabled && body.computerUseHostId);
+        },
+        {
+          message: "Cloud browser and Computer Use cannot both be enabled",
+          path: ["cloudBrowserEnabled"],
+        },
+      ),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -1297,6 +1333,7 @@ export const chatMessagesContract = c.router({
         structuredPrompt: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
+        cloudBrowserEnabled: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         realAgentInPreview: z.undefined().optional(),
@@ -1316,6 +1353,7 @@ export const chatMessagesContract = c.router({
         structuredPrompt: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
+        cloudBrowserEnabled: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         realAgentInPreview: z.undefined().optional(),

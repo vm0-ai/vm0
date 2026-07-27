@@ -128,7 +128,8 @@ function rebuiltCte(): SQL {
               WHEN thread.codex_service_tier = 'fast' THEN 'priority'
               ELSE NULL
             END,
-            'computerUseHostId', thread.computer_use_host_id
+            'computerUseHostId', thread.computer_use_host_id,
+            'cloudBrowserEnabled', thread.cloud_browser_enabled
           )
           ORDER BY
             (thread.pinned_at IS NULL) ASC,

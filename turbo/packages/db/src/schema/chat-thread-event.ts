@@ -1,4 +1,6 @@
 import {
+  boolean,
+  check,
   index,
   pgEnum,
   pgTable,
@@ -8,6 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import { sql } from "drizzle-orm";
 
 export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
   "created",
@@ -39,10 +42,17 @@ export const chatThreadEvents = pgTable(
       length: 20,
     }).$type<ChatThreadServiceTier>(),
     computerUseHostId: uuid("computer_use_host_id"),
+    cloudBrowserEnabled: boolean("cloud_browser_enabled")
+      .default(false)
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
     return [
+      check(
+        "chat_thread_events_computer_access_check",
+        sql`NOT (${table.cloudBrowserEnabled} AND ${table.computerUseHostId} IS NOT NULL)`,
+      ),
       index("idx_chat_thread_events_user_org_created").on(
         table.userId,
         table.orgId,

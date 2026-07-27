@@ -221,6 +221,7 @@ export {
 
 // Domain modules - Zero Browser
 export {
+  createBrowserAuthorizationRequest,
   createZeroBrowser,
   getCurrentZeroBrowser,
   leaseZeroBrowser,
