@@ -1,4 +1,4 @@
-import { useGet, useLastLoadable } from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { IconCircleCheck, IconDownload } from "@tabler/icons-react";
 import {
@@ -22,7 +22,12 @@ import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import type { FormEvent } from "react";
 import {
   downloadMonthlyReceipts$,
+  initializeReceiptDownloadRange$,
   invoicesAsync$,
+  receiptDownloadRange$,
+  receiptDownloadRangeExceedsLimit$,
+  setReceiptDownloadEndMonth$,
+  setReceiptDownloadStartMonth$,
 } from "../../../../signals/zero-page/billing.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -91,6 +96,46 @@ function InvoiceRowsSkeleton() {
   );
 }
 
+function ReceiptMonthSelect({
+  id,
+  label,
+  name,
+  value,
+  months,
+  onValueChange,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly name: string;
+  readonly value: string;
+  readonly months: readonly InvoiceMonth[];
+  readonly onValueChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-1.5 text-sm" htmlFor={id}>
+      <span className="font-medium text-foreground">{label}</span>
+      <Select name={name} value={value} onValueChange={onValueChange}>
+        <SelectTrigger
+          id={id}
+          aria-label={`${label} month`}
+          className="h-9 w-full"
+        >
+          <SelectValue placeholder="Select month" />
+        </SelectTrigger>
+        <SelectContent>
+          {months.map((month) => {
+            return (
+              <SelectItem key={month.value} value={month.value}>
+                {month.label}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
 function DownloadReceiptsDialog({
   months,
 }: {
@@ -100,21 +145,28 @@ function DownloadReceiptsDialog({
   const [downloadLoadable, downloadReceipts] = useLoadableSet(
     downloadMonthlyReceipts$,
   );
+  const range = useGet(receiptDownloadRange$);
+  const rangeExceedsLimit = useGet(receiptDownloadRangeExceedsLimit$);
+  const initializeRange = useSet(initializeReceiptDownloadRange$);
+  const setStartMonth = useSet(setReceiptDownloadStartMonth$);
+  const setEndMonth = useSet(setReceiptDownloadEndMonth$);
   const downloading = downloadLoadable.state === "loading";
   const defaultMonth = months[0]?.value;
+  const canSubmit =
+    !downloading &&
+    !rangeExceedsLimit &&
+    range.startMonth !== "" &&
+    range.endMonth !== "";
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const firstMonth = formData.get("startMonth");
-    const secondMonth = formData.get("endMonth");
-    if (typeof firstMonth !== "string" || typeof secondMonth !== "string") {
+    if (!canSubmit) {
       return;
     }
     const [startMonth, endMonth] =
-      firstMonth <= secondMonth
-        ? [firstMonth, secondMonth]
-        : [secondMonth, firstMonth];
+      range.startMonth <= range.endMonth
+        ? [range.startMonth, range.endMonth]
+        : [range.endMonth, range.startMonth];
     detach(
       downloadReceipts({ startMonth, endMonth }, pageSignal),
       Reason.DomCallback,
@@ -122,7 +174,13 @@ function DownloadReceiptsDialog({
   };
 
   return (
-    <Dialog>
+    <Dialog
+      onOpenChange={(open) => {
+        if (open && defaultMonth) {
+          initializeRange(defaultMonth);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           variant="outline"
@@ -139,57 +197,33 @@ function DownloadReceiptsDialog({
           <DialogHeader>
             <DialogTitle>Download receipts</DialogTitle>
             <DialogDescription>
-              Choose a month range. Receipt PDFs in that range will be bundled
-              into one ZIP file.
+              Choose up to 3 consecutive months. Receipt PDFs in that range will
+              be bundled into one ZIP file.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-5">
-            <label
-              className="grid gap-1.5 text-sm"
-              htmlFor="receipt-start-month"
-            >
-              <span className="font-medium text-foreground">From</span>
-              <Select name="startMonth" defaultValue={defaultMonth}>
-                <SelectTrigger
-                  id="receipt-start-month"
-                  aria-label="From month"
-                  className="h-9 w-full"
-                >
-                  <SelectValue placeholder="Select month" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((month) => {
-                    return (
-                      <SelectItem key={month.value} value={month.value}>
-                        {month.label}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </label>
-            <label className="grid gap-1.5 text-sm" htmlFor="receipt-end-month">
-              <span className="font-medium text-foreground">To</span>
-              <Select name="endMonth" defaultValue={defaultMonth}>
-                <SelectTrigger
-                  id="receipt-end-month"
-                  aria-label="To month"
-                  className="h-9 w-full"
-                >
-                  <SelectValue placeholder="Select month" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((month) => {
-                    return (
-                      <SelectItem key={month.value} value={month.value}>
-                        {month.label}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </label>
+            <ReceiptMonthSelect
+              id="receipt-start-month"
+              label="From"
+              name="startMonth"
+              value={range.startMonth}
+              months={months}
+              onValueChange={setStartMonth}
+            />
+            <ReceiptMonthSelect
+              id="receipt-end-month"
+              label="To"
+              name="endMonth"
+              value={range.endMonth}
+              months={months}
+              onValueChange={setEndMonth}
+            />
           </div>
+          {rangeExceedsLimit && (
+            <p role="alert" className="-mt-2 pb-5 text-sm text-destructive">
+              Select a range of no more than 3 consecutive months.
+            </p>
+          )}
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
@@ -197,7 +231,9 @@ function DownloadReceiptsDialog({
               </Button>
             </DialogClose>
             <DialogClose asChild>
-              <Button type="submit">Download ZIP</Button>
+              <Button type="submit" disabled={!canSubmit}>
+                Download ZIP
+              </Button>
             </DialogClose>
           </DialogFooter>
         </form>

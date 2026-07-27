@@ -457,6 +457,10 @@ const billingInvoicesResponseSchema = z.object({
 
 const billingReceiptsMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u);
 
+function billingMonthIndex(month: string): number {
+  return Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
+}
+
 export const zeroBillingInvoicesContract = c.router({
   get: {
     method: "GET",
@@ -481,7 +485,14 @@ export const zeroBillingInvoicesContract = c.router({
       })
       .refine((query) => {
         return query.startMonth <= query.endMonth;
-      }, "startMonth must not be after endMonth"),
+      }, "startMonth must not be after endMonth")
+      .refine((query) => {
+        return (
+          billingMonthIndex(query.endMonth) -
+            billingMonthIndex(query.startMonth) <
+          3
+        );
+      }, "Receipt downloads are limited to three consecutive months"),
     responses: {
       200: c.otherResponse({
         contentType: "application/zip",

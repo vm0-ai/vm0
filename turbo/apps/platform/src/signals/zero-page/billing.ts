@@ -699,12 +699,58 @@ export const invoicesAsync$ = computed(async (get) => {
   return result.body;
 });
 
+interface ReceiptDownloadRange {
+  readonly startMonth: string;
+  readonly endMonth: string;
+}
+
+const internalReceiptDownloadRange$ = state<ReceiptDownloadRange>({
+  startMonth: "",
+  endMonth: "",
+});
+
+export const receiptDownloadRange$ = computed((get) => {
+  return get(internalReceiptDownloadRange$);
+});
+
+export const receiptDownloadRangeExceedsLimit$ = computed((get) => {
+  const range = get(internalReceiptDownloadRange$);
+  if (range.startMonth === "" || range.endMonth === "") {
+    return false;
+  }
+  const monthIndex = (month: string) => {
+    return Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
+  };
+  return (
+    Math.abs(monthIndex(range.endMonth) - monthIndex(range.startMonth)) >= 3
+  );
+});
+
+export const initializeReceiptDownloadRange$ = command(
+  ({ set }, month: string) => {
+    set(internalReceiptDownloadRange$, {
+      startMonth: month,
+      endMonth: month,
+    });
+  },
+);
+
+export const setReceiptDownloadStartMonth$ = command(
+  ({ get, set }, startMonth: string) => {
+    const range = get(internalReceiptDownloadRange$);
+    set(internalReceiptDownloadRange$, { ...range, startMonth });
+  },
+);
+
+export const setReceiptDownloadEndMonth$ = command(
+  ({ get, set }, endMonth: string) => {
+    const range = get(internalReceiptDownloadRange$);
+    set(internalReceiptDownloadRange$, { ...range, endMonth });
+  },
+);
+
 export const downloadMonthlyReceipts$ = command(
-  async (
-    { get },
-    range: { readonly startMonth: string; readonly endMonth: string },
-    signal: AbortSignal,
-  ) => {
+  async ({ get }, range: ReceiptDownloadRange, signal: AbortSignal) => {
     const toastId = toast.loading("Preparing receipt download...");
     signal.addEventListener(
       "abort",

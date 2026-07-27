@@ -67,6 +67,14 @@ function mockInvoicesStory(): void {
           status: "paid",
           hostedInvoiceUrl: "https://billing.stripe.com/invoice/test-3",
         },
+        {
+          id: "in_2025_0004",
+          number: "INV-2025-0004",
+          date: unixSecondsFromIso("2025-12-15T00:00:00.000Z"),
+          amount: 4000,
+          status: "paid",
+          hostedInvoiceUrl: "https://billing.stripe.com/invoice/test-4",
+        },
       ],
     });
   });
@@ -173,7 +181,7 @@ describe("organization invoices settings", () => {
 
       await waitFor(() => {
         expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
-        expect(screen.getAllByText("Paid")).toHaveLength(3);
+        expect(screen.getAllByText("Paid")).toHaveLength(4);
         expect(screen.getByText("3/15/2026")).toBeInTheDocument();
         expect(screen.getByText("$20.00")).toBeInTheDocument();
       });
@@ -186,7 +194,17 @@ describe("organization invoices settings", () => {
         screen.getByRole("heading", { name: "Download receipts" }),
       ).toBeInTheDocument();
       await user.click(screen.getByLabelText("From month"));
+      await user.click(selectOptionByText("December 2025"));
+      expect(
+        screen.getByText(
+          "Select a range of no more than 3 consecutive months.",
+        ),
+      ).toBeInTheDocument();
+      expect(buttonByText("Download ZIP")).toBeDisabled();
+
+      await user.click(screen.getByLabelText("From month"));
       await user.click(selectOptionByText("February 2026"));
+      expect(buttonByText("Download ZIP")).not.toBeDisabled();
       await user.click(buttonByText("Download ZIP"));
 
       await expect(
