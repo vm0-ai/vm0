@@ -449,8 +449,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: false,
-    enabledUserHashes: ["032a75d8"],
+    enabled: true,
   },
   [FeatureSwitchKey.WebsiteTemplateV2]: {
     maintainer: "bingjie@vm0.ai",
