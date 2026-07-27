@@ -806,11 +806,11 @@ function createActionBlockFromLine(line: string): Extract<
     };
   }
 
-  const planUpgrade = parsePlanUpgradeUrl(url, line);
+  const planUpgrade = parsePlanUpgradeUrl(url);
   if (planUpgrade) {
     return {
       type: "plan-upgrade",
-      resourceKey: planUpgrade.fallbackMarkdown,
+      resourceKey: planUpgrade.href,
       descriptor: planUpgrade,
     };
   }

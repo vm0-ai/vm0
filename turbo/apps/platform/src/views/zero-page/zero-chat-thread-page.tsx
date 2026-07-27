@@ -5109,16 +5109,6 @@ function ComputerUseAuthorizationCard({
 }
 
 function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
-  const featureSwitches = useGet(featureSwitch$);
-  if (!featureSwitches[FeatureSwitchKey.PlanUpgradeGuidance]) {
-    return (
-      <Markdown
-        source={signals.fallbackMarkdown}
-        style={{ fontSize: "inherit", lineHeight: "inherit" }}
-      />
-    );
-  }
-
   return (
     <div
       data-testid="plan-upgrade-card"

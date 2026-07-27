@@ -1,7 +1,6 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IconLoader2, IconPlus, IconWand } from "@tabler/icons-react";
 import {
   Card,
@@ -36,7 +35,6 @@ import {
   orgMembers$,
   type OrgMember,
 } from "../../signals/external/org-members.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
@@ -160,9 +158,6 @@ function AgentTabsView({
 }) {
   const agentsLoadable = useLoadable(sortedAgents$);
   const membersLoadable = useLoadable(orgMembers$);
-  const features = useGet(featureSwitch$);
-  const agentUnreadIndicatorsEnabled =
-    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
   const unreadAgentIds = useLastResolved(unreadAgentIds$);
   const loading = agentsLoadable.state === "loading";
   const agents =
@@ -232,7 +227,6 @@ function AgentTabsView({
           agents={visibleAgents}
           membersById={membersById}
           unreadAgentIds={unreadAgentIds}
-          unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
           showCreator={activeTab !== "private"}
         />
       ) : activeTab === "private" ? (
@@ -265,13 +259,11 @@ function AgentGrid({
   agents,
   membersById,
   unreadAgentIds,
-  unreadIndicatorsEnabled,
   showCreator,
 }: {
   agents: AgentProps["agent"][];
   membersById: ReadonlyMap<string, OrgMember>;
   unreadAgentIds: ReadonlySet<string> | undefined;
-  unreadIndicatorsEnabled: boolean;
   showCreator: boolean;
 }) {
   return (
@@ -287,10 +279,7 @@ function AgentGrid({
             <AgentCard
               agent={agent}
               creator={agentCreator(agent, membersById)}
-              hasUnread={
-                unreadIndicatorsEnabled &&
-                (unreadAgentIds?.has(agent.id) ?? false)
-              }
+              hasUnread={unreadAgentIds?.has(agent.id) ?? false}
               showCreator={showCreator}
             />
           </Link>

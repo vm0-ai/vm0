@@ -7,7 +7,6 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -361,9 +360,6 @@ describe("chat thread event sourcing local-first list", () => {
       org: {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
-      },
-      featureSwitches: {
-        [FeatureSwitchKey.AgentUnreadIndicators]: true,
       },
     });
 

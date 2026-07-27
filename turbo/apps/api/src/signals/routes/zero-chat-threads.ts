@@ -8,8 +8,6 @@ import {
   chatThreadsContract,
   legacyChatMessageResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
@@ -36,7 +34,6 @@ import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
 } from "../services/zero-chat-thread-event.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
@@ -56,13 +53,6 @@ const chatThreadIdSchema = z.string().uuid();
 
 function chatThreadNotFound() {
   return notFound("Chat thread not found");
-}
-
-function forbidden(message: string) {
-  return {
-    status: 403 as const,
-    body: { error: { message, code: "FORBIDDEN" } },
-  };
 }
 
 function isValidChatThreadId(id: string): boolean {
@@ -272,20 +262,6 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
 
 const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.AgentUnreadIndicators, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return forbidden("Agent unread indicators are not enabled");
-  }
-
   const agentIds = await get(
     zeroChatThreadUnreadAgentIds({
       userId: auth.userId,

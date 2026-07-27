@@ -687,8 +687,6 @@ function AutomationCreateAction() {
     capabilities?.workflowWebhookAutomationAllowed ?? true;
   const notionWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
-  const githubWorkflowRunAutomationsEnabled =
-    features[FeatureSwitchKey.GithubWorkflowRunAutomations] ?? false;
   const githubWebhookAutomationsEnabled =
     features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
 
@@ -703,7 +701,6 @@ function AutomationCreateAction() {
       }}
       githubLabelAutomationsEnabled
       githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
-      githubWorkflowRunAutomationsEnabled={githubWorkflowRunAutomationsEnabled}
       googleCalendarAutomationsEnabled
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
@@ -3241,12 +3238,10 @@ type AutomationCreateCategory = {
 function buildIntegrationAutomationOptions({
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
-  githubWorkflowRunAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
-  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
   const integrationOptions: AutomationCreateOption[] = [];
@@ -3258,14 +3253,12 @@ function buildIntegrationAutomationOptions({
       icon: IconBrandGithub,
     });
   }
-  if (githubWorkflowRunAutomationsEnabled) {
-    integrationOptions.push({
-      kind: "github-workflow-run",
-      title: "GitHub workflow completed",
-      description: "Run when a matching Actions workflow run completes.",
-      icon: IconBrandGithub,
-    });
-  }
+  integrationOptions.push({
+    kind: "github-workflow-run",
+    title: "GitHub workflow completed",
+    description: "Run when a matching Actions workflow run completes.",
+    icon: IconBrandGithub,
+  });
   if (githubWebhookAutomationsEnabled) {
     integrationOptions.push(
       {
@@ -3347,7 +3340,6 @@ const AUTOMATION_CATEGORY_CHIP: Readonly<
 function buildAutomationCreateCategories({
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
-  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
@@ -3355,7 +3347,6 @@ function buildAutomationCreateCategories({
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
-  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
@@ -3396,7 +3387,6 @@ function buildAutomationCreateCategories({
   const integrationOptions = buildIntegrationAutomationOptions({
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
-    githubWorkflowRunAutomationsEnabled,
     webhookTierEligible,
   });
   const notionOptions = buildNotionAutomationOptions(
@@ -3546,7 +3536,6 @@ function AutomationCreateMenu({
   onSelect,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
-  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
@@ -3555,7 +3544,6 @@ function AutomationCreateMenu({
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
-  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
@@ -3568,7 +3556,6 @@ function AutomationCreateMenu({
   const categories = buildAutomationCreateCategories({
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
-    githubWorkflowRunAutomationsEnabled,
     googleCalendarAutomationsEnabled,
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,

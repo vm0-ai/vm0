@@ -691,7 +691,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     await waitFor(() => {
@@ -717,29 +716,6 @@ describe("zero sidebar", () => {
         within(sidebar()).queryByText("Archived context"),
       ).not.toBeInTheDocument();
     });
-  });
-
-  it("hides the unread chat filter when unread indicators are disabled", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, { unreads: [] });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: false },
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    openChatListMenu();
-
-    expect(queryMenuItemByText("Unread only")).toBeNull();
-    expect(queryMenuItemByText("All chats")).toBeNull();
   });
 
   it("keeps an event-sourced pinned current chat at the front of the pinned section", async () => {
@@ -1720,7 +1696,6 @@ describe("zero sidebar", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.AgentUnreadIndicators]: true,
         [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
       },
     });
@@ -1836,7 +1811,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${RESEARCH_AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {
@@ -1911,7 +1885,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${RESEARCH_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     await waitFor(() => {
@@ -2097,7 +2070,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows agent unread indicators and dropdown actions behind the feature switch", async () => {
+  it("shows agent unread indicators and dropdown actions", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
@@ -2113,7 +2086,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2243,7 +2215,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2292,7 +2263,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {

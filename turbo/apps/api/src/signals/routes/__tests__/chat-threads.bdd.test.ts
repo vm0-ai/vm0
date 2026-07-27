@@ -8,7 +8,6 @@ import {
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
@@ -1150,7 +1149,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 });
 
 describe("CHAT-01 chat thread read state", () => {
-  it("lists unread agent ids behind the agent unread feature switch", async () => {
+  it("lists unread agent ids", async () => {
     const {
       actor: owner,
       agentId: agentA,
@@ -1163,16 +1162,6 @@ describe("CHAT-01 chat thread read state", () => {
       })
     ).agentId;
 
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: false,
-    });
-    const disabled = await chat.requestListUnreadAgents(owner, [403]);
-    expectApiError(disabled.body);
-    expect(disabled.body.error.code).toBe("FORBIDDEN");
-
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: true,
-    });
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
     // An active (claimed) run keeps its thread out of the unread aggregate
@@ -1371,7 +1360,7 @@ describe("CHAT-01 chat thread read state", () => {
     );
   }, 120_000);
 
-  it("marks all unread chat threads for one agent behind the agent unread feature switch", async () => {
+  it("marks all unread chat threads for one agent", async () => {
     const {
       actor: owner,
       agentId: agentA,
@@ -1383,21 +1372,6 @@ describe("CHAT-01 chat thread read state", () => {
         visibility: "private",
       })
     ).agentId;
-
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: false,
-    });
-    const disabled = await chat.requestMarkAgentThreadsRead(
-      owner,
-      agentA,
-      [403],
-    );
-    expectApiError(disabled.body);
-    expect(disabled.body.error.code).toBe("FORBIDDEN");
-
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: true,
-    });
 
     const firstRunA = await completeChatRunInThread(owner, runnerGroup, {
       agentId: agentA,

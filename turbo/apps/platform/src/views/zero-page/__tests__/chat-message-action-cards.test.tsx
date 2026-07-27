@@ -3057,9 +3057,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}-plan-upgrade`,
-      featureSwitches: {
-        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
-      },
     });
 
     const cards = await screen.findAllByTestId("plan-upgrade-card");
@@ -3084,52 +3081,6 @@ describe("chat message action cards", () => {
       "href",
       creditUrl,
     );
-  });
-
-  it("keeps plan links ordinary when upgrade guidance is disabled", async () => {
-    const absoluteUrl =
-      "https://app.vm0.ai/?settings=billing&billingView=plans";
-    const relativeUrl = "/?settings=billing&billingView=plans";
-
-    mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-plan-upgrade-disabled`,
-      threadTitle: "Plan upgrade link",
-      chatMessages: [
-        {
-          id: "msg-user-plan-upgrade-disabled",
-          role: "user",
-          content: "Help me unlock video generation",
-          runId: "run-plan-upgrade-disabled",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-assistant-plan-upgrade-link",
-          role: "assistant",
-          content: [absoluteUrl, `[Compare plans](${relativeUrl})`].join(
-            "\n\n",
-          ),
-          runId: "run-plan-upgrade-disabled",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}-plan-upgrade-disabled`,
-      featureSwitches: {
-        [FeatureSwitchKey.PlanUpgradeGuidance]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(linkByText(absoluteUrl, document)).toBeInTheDocument();
-    });
-    expect(linkByText("Compare plans", document)).toHaveAttribute(
-      "href",
-      relativeUrl,
-    );
-    expect(screen.queryByTestId("plan-upgrade-card")).not.toBeInTheDocument();
   });
 
   it("automatically retries permission action loading before showing an error", async () => {

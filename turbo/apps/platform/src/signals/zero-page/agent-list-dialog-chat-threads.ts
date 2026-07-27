@@ -25,10 +25,6 @@ export interface AgentListDialogChatThreadResult {
   readonly chatThreads: readonly AgentListDialogChatThread[];
 }
 
-export const agentUnreadIndicatorsEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
-});
-
 export const chatThreadUnifiedSearchEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ChatThreadUnifiedSearch] ?? false;
 });
@@ -59,19 +55,16 @@ export const agentListDialogChatThreads$ = computed(
       return { query, chatThreads: [] };
     }
 
-    const unreadIndicatorsEnabled = get(agentUnreadIndicatorsEnabled$);
     const [activeThreadIds, unreadThreadIds] = await Promise.all([
       get(sidebarActiveThreadIds$),
-      unreadIndicatorsEnabled
-        ? get(sidebarUnreadThreadIds$)
-        : Promise.resolve(undefined),
+      get(sidebarUnreadThreadIds$),
     ]);
 
     const chatThreads: AgentListDialogChatThread[] = matchingThreads.map(
       ({ thread, title }) => {
         const indicator = activeThreadIds.has(thread.id)
           ? "running"
-          : unreadThreadIds?.has(thread.id)
+          : unreadThreadIds.has(thread.id)
             ? "unread"
             : null;
         return {

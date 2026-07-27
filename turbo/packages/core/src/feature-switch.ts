@@ -228,12 +228,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.ZeroWeather]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the managed Google-backed Zero Weather and Air Quality APIs and weather:read ZERO_TOKEN capability.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZeroFinance]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -283,12 +277,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.GithubWorkflowRunAutomations]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable GitHub Actions workflow run completed event automations.",
-    enabled: true,
   },
   [FeatureSwitchKey.GithubWebhookAutomations]: {
     maintainer: "ethan@vm0.ai",
@@ -379,12 +367,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AgentUnreadIndicators]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
@@ -482,13 +464,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
     enabled: true,
-  },
-  [FeatureSwitchKey.PlanUpgradeGuidance]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show plan-upgrade guidance in Zero CLI help and render billing plan links as rich chat cards.",
-    enabled: true,
-    userOverridable: false,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",

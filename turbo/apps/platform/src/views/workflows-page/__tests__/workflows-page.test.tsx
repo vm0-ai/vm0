@@ -2373,9 +2373,7 @@ describe("workflow detail page", () => {
     });
     setMockGithubIntegration(createDefaultMockGithubIntegration());
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();

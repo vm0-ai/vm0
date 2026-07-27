@@ -14,7 +14,6 @@ import {
   IconPinnedOff,
   IconChecks,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Tooltip,
   TooltipContent,
@@ -49,7 +48,6 @@ import {
   markAgentThreadsRead$,
   unreadAgentIds$,
 } from "../../signals/chat-page/sidebar-unread-threads.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
@@ -208,9 +206,6 @@ export function PinnedAgentListSection({
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
   const displayedPinnedAgentsResolved = useLastResolved(displayedPinnedAgents$);
-  const features = useGet(featureSwitch$);
-  const agentUnreadIndicatorsEnabled =
-    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
   const unreadAgentIds = useLastResolved(unreadAgentIds$, {
     equalityFn: equalSets,
   });
@@ -244,8 +239,6 @@ export function PinnedAgentListSection({
               const isPrimarySelected =
                 isChatRoute(activeRoute) && selectedAgentId === agent.id;
               const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
-              const hasUnreadIndicator =
-                agentUnreadIndicatorsEnabled && hasUnread;
               return (
                 <Link
                   key={agent.id}
@@ -264,7 +257,7 @@ export function PinnedAgentListSection({
                       alt={agent.displayName ?? agent.id}
                       className="h-9 w-9 rounded-full object-cover object-top"
                     />
-                    {hasUnreadIndicator && (
+                    {hasUnread && (
                       <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
                     )}
                   </span>
@@ -355,10 +348,7 @@ export function PinnedAgentListSection({
               const isPinned = pinnedAgentIds.has(agent.id);
               const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
               const isDefaultAgent = agent.id === defaultAgentId;
-              const hasUnreadIndicator =
-                agentUnreadIndicatorsEnabled && hasUnread;
-              const hasSideActions =
-                hasUnreadIndicator || (!isDefaultAgent && isPinned);
+              const hasSideActions = hasUnread || (!isDefaultAgent && isPinned);
               return (
                 <div
                   key={agent.id}
@@ -399,7 +389,7 @@ export function PinnedAgentListSection({
                       isDefaultAgent={isDefaultAgent}
                       isPinned={isPinned}
                       isPrimarySelected={isPrimarySelected}
-                      hasUnread={hasUnreadIndicator}
+                      hasUnread={hasUnread}
                     />
                   ) : null}
                 </div>
