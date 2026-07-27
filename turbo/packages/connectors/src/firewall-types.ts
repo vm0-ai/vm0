@@ -7,6 +7,8 @@ import {
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
+export { normalizeFirewallFixedHost } from "./firewall-url-utils";
+
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
 const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[%*[\]/?#@\\:{}<>^|]/u;
 const DNS_HOST_FORBIDDEN_ASCII_CHARS = new Set(["<", ">", "[", "]", "^", "|"]);

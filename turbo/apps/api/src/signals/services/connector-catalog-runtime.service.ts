@@ -29,16 +29,9 @@ import {
 import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodRuntimeMetadata,
-  type ConnectorEnvReader,
   type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-auth-method";
-import { CONNECTOR_TYPE_KEYS } from "@vm0/connectors/connectors";
-import {
-  getConnectorAuthMethod,
-  getRuntimeAvailableConnectorTypes,
-} from "@vm0/connectors/connector-utils";
 
-import { isExternalConnectorCatalogEnabled } from "../../lib/connector-catalog-source-selection";
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
 import type {
@@ -47,7 +40,6 @@ import type {
 } from "./connector-catalog-artifacts/artifacts";
 import {
   acceptedConnectorCatalogMethodIsCompatible,
-  getAcceptedConnectorCatalogAvailableDetail,
   getAcceptedConnectorCatalogResolutionDetail,
   listAcceptedConnectorCatalogAvailableRefs,
   loadAcceptedConnectorCatalogSnapshot,
@@ -55,18 +47,9 @@ import {
   type ExternalCatalogIdentity,
 } from "./connector-catalog-external-reader.service";
 import {
-  getStaticConnectorCatalogResolutionDetail,
-  getStaticPublicConnectorCatalogDetail,
-} from "./connector-catalog-reader.service";
-import {
-  createExternalConnectorServerFirewallCatalog,
-  createStaticConnectorServerFirewallCatalog,
+  createAcceptedConnectorServerFirewallCatalog,
   type ConnectorServerFirewallCatalog,
 } from "./connector-server-firewall-catalog.service";
-
-export type ConnectorRuntimeSnapshotIdentity =
-  | { readonly source: "static" }
-  | ({ readonly source: "external" } & ExternalCatalogIdentity);
 
 export interface ConnectorRuntimeMethod {
   readonly connectorRef: ConnectorRef;
@@ -82,29 +65,14 @@ export interface ConnectorRuntimeConnector {
   readonly catalogConnector: PublicConnectorCatalogDetail;
   readonly methods: ReadonlyMap<ConnectorAuthMethodId, ConnectorRuntimeMethod>;
   readonly authoredVisibleMethodIds: ReadonlySet<ConnectorAuthMethodId>;
-  readonly skill: ConnectorCatalogSkill | null;
+  readonly skill: ConnectorCatalogSkill;
 }
 
-interface ConnectorRuntimeSnapshotBase {
+export interface ConnectorRuntimeSnapshot {
+  readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
   readonly connectors: ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector>;
   readonly serverFirewalls: ConnectorServerFirewallCatalog;
 }
-
-export type ConnectorRuntimeSnapshot =
-  | (ConnectorRuntimeSnapshotBase & {
-      readonly identity: Extract<
-        ConnectorRuntimeSnapshotIdentity,
-        { readonly source: "static" }
-      >;
-      readonly acceptedSnapshot: null;
-    })
-  | (ConnectorRuntimeSnapshotBase & {
-      readonly identity: Extract<
-        ConnectorRuntimeSnapshotIdentity,
-        { readonly source: "external" }
-      >;
-      readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
-    });
 
 function methodKey(connectorRef: string, authMethodId: string): string {
   return `${connectorRef}\0${authMethodId}`;
@@ -475,55 +443,7 @@ function runtimeMethodEntry(args: {
   };
 }
 
-const staticRuntimeSnapshot = singleton(() => {
-  return (async (): Promise<ConnectorRuntimeSnapshot> => {
-    const connectors = new Map<ConnectorRef, ConnectorRuntimeConnector>();
-    for (const connectorRef of CONNECTOR_TYPE_KEYS) {
-      const catalogConnector =
-        await getStaticConnectorCatalogResolutionDetail(connectorRef);
-      if (catalogConnector === null) {
-        throw new Error(`Static connector catalog is missing ${connectorRef}`);
-      }
-      const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
-      const authoredVisibleMethodIds = new Set<ConnectorAuthMethodId>();
-      for (const catalogMethod of catalogConnector.authMethods) {
-        const method = getConnectorAuthMethod(connectorRef, catalogMethod.id);
-        if (method === undefined) {
-          throw new Error(
-            `Static connector auth method is missing ${connectorRef}:${catalogMethod.id}`,
-          );
-        }
-        methods.set(
-          catalogMethod.id,
-          runtimeMethodEntry({
-            connectorRef,
-            catalogMethod,
-            method,
-          }),
-        );
-        if (method.visible !== false) {
-          authoredVisibleMethodIds.add(catalogMethod.id);
-        }
-      }
-      connectors.set(connectorRef, {
-        connectorRef,
-        catalogConnector,
-        methods,
-        authoredVisibleMethodIds,
-        skill: null,
-      });
-    }
-    return {
-      identity: { source: "static" },
-      acceptedSnapshot: null,
-      connectors,
-      serverFirewalls:
-        createStaticConnectorServerFirewallCatalog(CONNECTOR_TYPE_KEYS),
-    };
-  })();
-});
-
-function externalRuntimeSnapshot(
+function runtimeSnapshot(
   acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
 ): ConnectorRuntimeSnapshot {
   const connectors = new Map<ConnectorRef, ConnectorRuntimeConnector>();
@@ -589,19 +509,18 @@ function externalRuntimeSnapshot(
       ];
     }),
   );
-  const serverFirewalls = createExternalConnectorServerFirewallCatalog({
+  const serverFirewalls = createAcceptedConnectorServerFirewallCatalog({
     artifact: acceptedSnapshot.artifact,
     runtimeMethodsByRef,
   });
   return {
-    identity: { source: "external", ...acceptedSnapshot.identity },
     acceptedSnapshot,
     connectors,
     serverFirewalls,
   };
 }
 
-function externalSnapshotKey(identity: ExternalCatalogIdentity): string {
+function runtimeSnapshotKey(identity: ExternalCatalogIdentity): string {
   return [
     identity.sourceId,
     identity.schemaVersion,
@@ -611,39 +530,28 @@ function externalSnapshotKey(identity: ExternalCatalogIdentity): string {
   ].join("\0");
 }
 
-interface ExternalRuntimeSnapshotCache {
+interface RuntimeSnapshotCache {
   key: string | undefined;
   snapshot: ConnectorRuntimeSnapshot | undefined;
 }
 
-const externalRuntimeSnapshotCache = singleton(
-  (): ExternalRuntimeSnapshotCache => {
-    return { key: undefined, snapshot: undefined };
-  },
-);
-
-async function loadExternalRuntimeSnapshot(
-  db: ReadonlyDb,
-): Promise<ConnectorRuntimeSnapshot> {
-  const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(db);
-  const key = externalSnapshotKey(acceptedSnapshot.identity);
-  const cache = externalRuntimeSnapshotCache();
-  if (cache.key === key && cache.snapshot !== undefined) {
-    return cache.snapshot;
-  }
-  const snapshot = externalRuntimeSnapshot(acceptedSnapshot);
-  cache.key = key;
-  cache.snapshot = snapshot;
-  return snapshot;
-}
+const runtimeSnapshotCache = singleton((): RuntimeSnapshotCache => {
+  return { key: undefined, snapshot: undefined };
+});
 
 export async function loadConnectorRuntimeSnapshot(
   db: ReadonlyDb,
 ): Promise<ConnectorRuntimeSnapshot> {
-  if (isExternalConnectorCatalogEnabled()) {
-    return await loadExternalRuntimeSnapshot(db);
+  const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(db);
+  const key = runtimeSnapshotKey(acceptedSnapshot.identity);
+  const cache = runtimeSnapshotCache();
+  if (cache.key === key && cache.snapshot !== undefined) {
+    return cache.snapshot;
   }
-  return await staticRuntimeSnapshot();
+  const snapshot = runtimeSnapshot(acceptedSnapshot);
+  cache.key = key;
+  cache.snapshot = snapshot;
+  return snapshot;
 }
 
 export function getConnectorRuntimeConnector(
@@ -712,69 +620,12 @@ export function getConnectorRuntimeStoredSecretDisplayInfo(
   return null;
 }
 
-async function getConnectorRuntimeAvailableCatalogDetail(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly connectorRef: string;
-  readonly featureStates: ConnectorFeatureStates;
-}): Promise<PublicConnectorCatalogDetail | null> {
-  if (args.snapshot.identity.source === "external") {
-    const acceptedSnapshot = args.snapshot.acceptedSnapshot;
-    if (acceptedSnapshot === null) {
-      throw new Error("External connector runtime snapshot is incomplete");
-    }
-    return getAcceptedConnectorCatalogAvailableDetail({
-      snapshot: acceptedSnapshot,
-      connectorRef: args.connectorRef,
-      featureStates: args.featureStates,
-    });
-  }
-  return await getStaticPublicConnectorCatalogDetail({
-    connectorRef: args.connectorRef,
-    featureStates: args.featureStates,
-    apiAuthMethodPolicy: "include",
-  });
-}
-
-export async function listConnectorRuntimeVisibleRefs(args: {
+export function listConnectorRuntimeVisibleRefs(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly featureStates: ConnectorFeatureStates;
-}): Promise<readonly ConnectorRef[]> {
-  if (args.snapshot.identity.source === "external") {
-    const acceptedSnapshot = args.snapshot.acceptedSnapshot;
-    if (acceptedSnapshot === null) {
-      throw new Error("External connector runtime snapshot is incomplete");
-    }
-    return listAcceptedConnectorCatalogAvailableRefs({
-      snapshot: acceptedSnapshot,
-      featureStates: args.featureStates,
-    });
-  }
-  const refs: ConnectorRef[] = [];
-  for (const connector of args.snapshot.connectors.values()) {
-    const available = await getConnectorRuntimeAvailableCatalogDetail({
-      snapshot: args.snapshot,
-      connectorRef: connector.connectorRef,
-      featureStates: args.featureStates,
-    });
-    if (available !== null) {
-      refs.push(connector.connectorRef);
-    }
-  }
-  return refs.sort();
-}
-
-export function filterConnectorRuntimeConfiguredRefs(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly visibleRefs: readonly ConnectorRef[];
-  readonly readEnv: ConnectorEnvReader;
 }): readonly ConnectorRef[] {
-  if (args.snapshot.identity.source === "external") {
-    return args.visibleRefs;
-  }
-  const configuredRefs = new Set<string>(
-    getRuntimeAvailableConnectorTypes(args.readEnv),
-  );
-  return args.visibleRefs.filter((connectorRef) => {
-    return configuredRefs.has(connectorRef);
+  return listAcceptedConnectorCatalogAvailableRefs({
+    snapshot: args.snapshot.acceptedSnapshot,
+    featureStates: args.featureStates,
   });
 }

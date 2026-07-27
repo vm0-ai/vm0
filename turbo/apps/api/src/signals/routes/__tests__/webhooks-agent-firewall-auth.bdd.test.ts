@@ -18,6 +18,7 @@ import {
   type SecretKmsClient,
 } from "../../../lib/secret-kms-client";
 import { now } from "../../../lib/time";
+import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -2106,6 +2107,7 @@ describe("FW-10: platform connector secrets", () => {
       refreshToken: "google-ads-refresh",
     });
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", undefined);
+    await installApiTestConnectorCatalog();
 
     const missing = await fw.requestFirewallAuth(
       headers,
@@ -2211,6 +2213,7 @@ describe("FW-10: platform connector secrets", () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", undefined);
+    await installApiTestConnectorCatalog();
 
     const resolved = await fw.requestFirewallAuth(
       headers,

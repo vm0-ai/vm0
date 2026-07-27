@@ -33,9 +33,6 @@ export const storageVersionLineage = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // Temporary nullable compatibility column. Canonical lineage identity is
-    // storageId; remove this after the detached writer is stable in production.
-    storageType: varchar("storage_type", { length: 16 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

@@ -203,8 +203,8 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       triggerSource: sql`CASE
-        WHEN ${chatMessageQueue.triggerSource} = 'slack' THEN 'slack'
-        WHEN ${chatMessageQueue.triggerSource} = 'feishu' THEN 'feishu'
+        WHEN ${eq(chatMessageQueue.triggerSource, sql`'slack'`)} THEN 'slack'
+        WHEN ${eq(chatMessageQueue.triggerSource, sql`'feishu'`)} THEN 'feishu'
         ELSE 'web'
       END`.mapWith(queuedUserMessageTriggerSourceDecoder),
       encryptedParams: chatMessageQueue.encryptedParams,

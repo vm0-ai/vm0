@@ -1036,15 +1036,15 @@ export function zeroChatThreadDraftIds(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          sql`(
-            COALESCE(${chatThreads.draftContent}, '') <> ''
-            OR ${isNotNull(chatThreads.draftStructuredPrompt)}
-            OR ${isNotNull(chatThreads.draftStructuredPromptWithFeedback)}
-            OR (
-              ${isNotNull(chatThreads.draftAttachments)}
-              AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
-            )
-          )`,
+          or(
+            sql`COALESCE(${chatThreads.draftContent}, '') <> ''`,
+            isNotNull(chatThreads.draftStructuredPrompt),
+            isNotNull(chatThreads.draftStructuredPromptWithFeedback),
+            and(
+              isNotNull(chatThreads.draftAttachments),
+              sql`jsonb_array_length(${chatThreads.draftAttachments}) > 0`,
+            ),
+          ),
         ),
       );
     return rows.map((row) => {

@@ -36,7 +36,6 @@ import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
 } from "@vm0/connectors/connector-auth-method";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import type {
   ConnectorServerFirewallExecutionMetadata,
   ConnectorServerFirewallPermissionIndex,
@@ -881,18 +880,15 @@ function buildLegacySystemSkillVolumes(
   });
 }
 
-function buildExternalConnectorSkillVolumes(
+function buildConnectorSkillVolumes(
   connectorTypes: readonly ConnectorRef[],
   snapshot: ConnectorRuntimeSnapshot,
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] {
-  if (snapshot.identity.source !== "external") {
-    throw new Error("External connector skill snapshot is unavailable");
-  }
   return connectorTypes.flatMap((connectorRef) => {
     const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
-    if (!connector?.skill) {
-      throw new Error("External connector skill metadata is unavailable");
+    if (connector === undefined) {
+      throw new Error("Accepted connector skill metadata is unavailable");
     }
     if (connector.skill.kind === "none") {
       return [];
@@ -940,32 +936,19 @@ function buildInjectedSkillVolumes(
   }
   const connectorTypes = args.allowedConnectorTypes ?? [];
   const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
-  const systemSkillVolumes =
-    args.connectorCatalogSnapshot.identity.source === "external"
-      ? [
-          ...(prepareAdditionalVolumesWithSource(
-            buildLegacySystemSkillVolumes(seedSkillNames, framework),
-            "system_skill",
-          ) ?? []),
-          ...buildExternalConnectorSkillVolumes(
-            connectorTypes,
-            args.connectorCatalogSnapshot,
-            framework,
-          ),
-        ]
-      : (prepareAdditionalVolumesWithSource(
-          buildLegacySystemSkillVolumes(
-            [
-              ...seedSkillNames,
-              ...connectorTypes.flatMap((connectorRef) => {
-                const parsed = connectorTypeSchema.safeParse(connectorRef);
-                return parsed.success ? [parsed.data] : [];
-              }),
-            ],
-            framework,
-          ),
-          "system_skill",
-        ) ?? []);
+  // Connector rollout switches govern discovery only. Once a connector ref is
+  // part of a run, its accepted catalog skill remains executable and mountable.
+  const systemSkillVolumes = [
+    ...(prepareAdditionalVolumesWithSource(
+      buildLegacySystemSkillVolumes(seedSkillNames, framework),
+      "system_skill",
+    ) ?? []),
+    ...buildConnectorSkillVolumes(
+      connectorTypes,
+      args.connectorCatalogSnapshot,
+      framework,
+    ),
+  ];
   return [
     ...systemSkillVolumes,
     ...(prepareAdditionalVolumesWithSource(

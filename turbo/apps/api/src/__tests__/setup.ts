@@ -7,7 +7,6 @@ import {
 } from "@aws-sdk/client-kms";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 
-import { mockExternalConnectorCatalogEnabled } from "../lib/connector-catalog-source-selection";
 import { clearMockedEnv, mockEnv } from "../lib/env";
 import {
   resetSecretKmsClientForTests,
@@ -17,6 +16,10 @@ import {
 import { clearMockNow } from "../lib/time";
 import { server } from "../mocks/server";
 import { clearAllDetached } from "../signals/utils";
+import {
+  installApiTestConnectorCatalog,
+  mockApiTestConnectorProviderConfiguration,
+} from "../test-fixtures/connector-catalog";
 
 type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
 type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
@@ -47,14 +50,14 @@ function createApiTestKmsClient(): SecretKmsClient {
   return { send };
 }
 
-beforeAll(() => {
+beforeAll(async () => {
+  mockApiTestConnectorProviderConfiguration();
+  await installApiTestConnectorCatalog();
   server.listen({ onUnhandledRequest: "error" });
 });
 
 beforeEach(() => {
-  // Static catalog fixtures remain the rollback baseline for general API tests.
-  // External catalog integration tests opt into the accepted snapshot explicitly.
-  mockExternalConnectorCatalogEnabled(false);
+  mockApiTestConnectorProviderConfiguration();
   mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
   setSecretKmsClientForTests(createApiTestKmsClient());
 });
@@ -64,7 +67,6 @@ afterEach(async () => {
   clearMockNow();
   resetSecretKmsClientForTests();
   clearMockedEnv();
-  mockExternalConnectorCatalogEnabled(false);
   resetApiTestMocks();
   server.resetHandlers();
 });

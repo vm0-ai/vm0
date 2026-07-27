@@ -76,6 +76,10 @@ export function feishuOAuthCallbackUrl(): string {
   ).toString();
 }
 
+export function feishuOAuthAppCallbackUrl(): string {
+  return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
+}
+
 export function feishuOAuthConnectUrl(state: string): string {
   const url = new URL(
     "/api/zero/feishu/oauth/connect",

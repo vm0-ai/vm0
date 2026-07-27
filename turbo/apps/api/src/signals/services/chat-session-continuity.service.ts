@@ -44,6 +44,11 @@ interface HistoricalThreadSession {
   readonly route: ChatThreadSessionRoute;
 }
 
+interface SessionRunRoute {
+  readonly selectedModel: string | null;
+  readonly modelProvider: string | null;
+}
+
 function isKnownModelProvider(
   value: string | null | undefined,
 ): value is ModelProviderType {
@@ -151,6 +156,23 @@ async function latestHistoricalThreadSession(args: {
   };
 }
 
+async function latestSessionRunRoute(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly sessionId: string;
+}): Promise<SessionRunRoute | null> {
+  const [row] = await args.db
+    .select({
+      selectedModel: zeroRuns.selectedModel,
+      modelProvider: zeroRuns.modelProvider,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(eq(agentRuns.sessionId, args.sessionId))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
 function shouldRotateCanonicalSession(args: {
   readonly previousRoute: ChatThreadSessionRoute;
   readonly nextRoute: ChatThreadSessionRoute;
@@ -181,10 +203,19 @@ export async function resolveChatThreadSession(args: {
       conversationId: agentSessions.conversationId,
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
+      routeRunId: zeroRuns.id,
       cliAgentType: conversations.cliAgentType,
     })
     .from(chatThreads)
-    .leftJoin(agentSessions, eq(agentSessions.id, chatThreads.agentSessionId))
+    .leftJoin(
+      agentSessions,
+      and(
+        eq(agentSessions.id, chatThreads.agentSessionId),
+        eq(agentSessions.userId, args.userId),
+        eq(agentSessions.orgId, args.orgId),
+        eq(agentSessions.agentComposeId, args.agentComposeId),
+      ),
+    )
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
     .leftJoin(zeroRuns, eq(zeroRuns.id, chatThreads.agentSessionRunId))
     .where(
@@ -199,20 +230,24 @@ export async function resolveChatThreadSession(args: {
     throw new Error("Chat thread not found while resolving session binding");
   }
 
-  if (thread.agentSessionId !== null) {
-    if (thread.sessionId === null) {
-      throw new Error("Canonical chat thread session is missing");
-    }
+  if (thread.agentSessionId !== null && thread.sessionId !== null) {
     const expected = {
       agentSessionId: thread.agentSessionId,
       agentSessionRunId: thread.agentSessionRunId,
       sessionId: thread.sessionId,
       conversationId: thread.conversationId,
     };
+    const latestRoute =
+      thread.routeRunId === null
+        ? await latestSessionRunRoute({
+            db: args.db,
+            sessionId: thread.sessionId,
+          })
+        : null;
     const rotate = shouldRotateCanonicalSession({
       previousRoute: {
-        selectedModel: thread.selectedModel,
-        modelProvider: thread.modelProvider,
+        selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
+        modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
         cliAgentType: thread.cliAgentType,
       },
       nextRoute: args.route,
@@ -230,7 +265,7 @@ export async function resolveChatThreadSession(args: {
       sessionId: undefined,
       action: "initialized",
       expected: {
-        agentSessionId: null,
+        agentSessionId: thread.agentSessionId,
         agentSessionRunId: thread.agentSessionRunId,
         sessionId: null,
         conversationId: null,
@@ -246,7 +281,7 @@ export async function resolveChatThreadSession(args: {
     sessionId: rotate ? undefined : historical.sessionId,
     action: rotate ? "rotated" : "adopted",
     expected: {
-      agentSessionId: null,
+      agentSessionId: thread.agentSessionId,
       agentSessionRunId: thread.agentSessionRunId,
       sessionId: historical.sessionId,
       conversationId: historical.conversationId,

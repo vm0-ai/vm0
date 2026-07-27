@@ -7,7 +7,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   FirewallPermissionGrant,
   FirewallPermissionGrantAction,
-} from "@vm0/connectors/firewall-metadata";
+} from "@vm0/connectors/firewall-metadata/policy";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";

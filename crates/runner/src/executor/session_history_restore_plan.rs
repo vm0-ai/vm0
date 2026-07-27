@@ -1,4 +1,30 @@
 //! Session-history restore planning after discovery resolves sandbox reuse.
+//!
+//! Discovery builds a [`SessionHistoryRestorePlan`] after it knows whether an
+//! idle sandbox was reused and which session-history identity, if any, was
+//! parked with it. For a valid hash-backed resume, reuse can either select a
+//! verified skip or start remote materialization early. A fresh sandbox instead
+//! defers remote work so workspace preparation can first probe a matching
+//! cached sidecar.
+//!
+//! Fresh-workspace preparation resolves
+//! [`SessionHistoryRestorePlan::DeferredHashBacked`] into
+//! [`SessionHistoryRestorePlan::LocalSidecar`] on a validated sidecar hit, or
+//! [`SessionHistoryRestorePlan::Prestarted`] otherwise. If sandbox preparation
+//! retries without the cached workspace image, it discards `LocalSidecar` and
+//! replaces it with `Prestarted`.
+//!
+//! The executor consumes the resulting plan immediately before restore.
+//! `Default` and any still-deferred safety path start normal materialization,
+//! `Prestarted` finishes its owned work, and `LocalSidecar` attempts local
+//! restore before falling back to remote materialization. `SkipVerified` still
+//! verifies final metadata inside the live sandbox; failed verification records
+//! the stale-identity fallback and starts remote materialization.
+//!
+//! Fallback metadata travels with deferred, prestarted, and local-sidecar plans
+//! across those transitions. The executor records it when consuming the plan.
+//! The stale-identity fallback is determined only during live verification, so
+//! it is recorded directly instead of being carried by the plan.
 
 use std::time::Instant;
 
@@ -15,16 +41,34 @@ use crate::restored_session_identity::{
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::WorkspaceSessionHistorySidecar;
 
+/// Stable telemetry classification for a restore that cannot use verified
+/// history already present in an idle sandbox.
+///
+/// Planning retains this value while the restore strategy changes. The
+/// executor records it when consuming a deferred, prestarted, or local-sidecar
+/// plan. [`SessionHistoryRestoreFallback::StaleIdleIdentity`] is the exception:
+/// it is discovered and recorded while consuming a verified-skip plan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SessionHistoryRestoreFallback {
+    /// No idle sandbox was reused for the run.
     NonReuse,
+    /// The reused idle sandbox had no parked session-history identity.
     MissingIdleIdentity,
+    /// The parked identity matched the request but lacked final-metadata
+    /// verification.
     UnverifiedIdleIdentity,
+    /// Live verification could no longer confirm a previously verified parked
+    /// identity.
     StaleIdleIdentity,
+    /// The resume request could not be matched to the reused sandbox's parked
+    /// session-history state.
+    ///
+    /// The payload retains the specific mismatch reason when one is available.
     IdentityMismatch(Option<RestoredSessionIdentityMismatchReason>),
 }
 
 impl SessionHistoryRestoreFallback {
+    /// Returns the fixed telemetry action type for this fallback class.
     pub(super) const fn action_type(self) -> &'static str {
         match self {
             Self::NonReuse => "session_history_restore_fallback_non_reuse",
@@ -37,6 +81,8 @@ impl SessionHistoryRestoreFallback {
         }
     }
 
+    /// Returns the detailed identity mismatch reason, when this classification
+    /// carries one.
     pub(super) const fn identity_mismatch_reason(
         self,
     ) -> Option<RestoredSessionIdentityMismatchReason> {
@@ -47,25 +93,73 @@ impl SessionHistoryRestoreFallback {
     }
 }
 
+/// Owned strategy for obtaining resume-session history before agent execution.
+///
+/// The plan moves from post-reuse discovery through optional fresh-workspace
+/// resolution and into executor consumption. Its payload owns any asynchronous
+/// materializer work, validated local sidecar, or verified identity needed by
+/// the next stage.
 #[derive(Default)]
 #[must_use = "restore plans decide whether resume history download can be skipped"]
 pub(crate) enum SessionHistoryRestorePlan {
+    /// Use the ordinary executor path.
+    ///
+    /// No hash-backed restore optimization was selected. The executor creates
+    /// the normal materializer when it consumes this plan.
     #[default]
     Default,
+    /// Delay remote materialization until fresh-workspace preparation can probe
+    /// for a matching cached sidecar.
+    ///
+    /// Workspace preparation replaces this with `LocalSidecar` after a
+    /// validated hit or `Prestarted` after a miss. The executor also accepts an
+    /// unresolved value as a safety path and starts normal materialization.
     DeferredHashBacked {
+        /// Classification retained until the executor consumes the resolved
+        /// strategy.
         fallback: Option<SessionHistoryRestoreFallback>,
     },
+    /// Use materialization work that has already started and may overlap
+    /// sandbox preparation.
+    ///
+    /// The plan owns the materializer until the executor consumes it. Dropping
+    /// an unfinished materializer cancels and aborts its task; finishing it
+    /// gives cancellation priority while awaiting the result.
     Prestarted {
+        /// Cancellable materializer work owned by this plan.
         materializer: SessionHistoryMaterializer,
+        /// Classification recorded when the executor consumes this plan.
         fallback: Option<SessionHistoryRestoreFallback>,
     },
+    /// Attempt restore from a sidecar validated against the cached workspace
+    /// and requested session history.
+    ///
+    /// Retrying sandbox preparation without that workspace image invalidates
+    /// the sidecar and replaces this plan with `Prestarted`. During executor
+    /// consumption, a non-cancellation materialization or restore failure also
+    /// falls back to remote materialization.
     LocalSidecar {
+        /// Validated descriptor owned until local materialization is attempted
+        /// or the cached workspace is discarded.
         sidecar: WorkspaceSessionHistorySidecar,
+        /// Classification retained until this strategy reaches the executor.
         fallback: Option<SessionHistoryRestoreFallback>,
     },
+    /// Skip restore only if the parked identity still verifies inside the live
+    /// reused sandbox.
+    ///
+    /// The executor consumes the owned identity during final-metadata
+    /// verification. Failed verification records the stale-identity fallback
+    /// at that point and starts remote materialization.
     SkipVerified(RestoredSessionIdentity),
 }
 
+/// Inputs available at the post-reuse restore-planning boundary.
+///
+/// The caller has already resolved resume validity, sandbox reuse, and any
+/// parked identity. The builder borrows the services and request context needed
+/// to start early materialization, but leaves fresh-workspace sidecar probing
+/// and live sandbox verification to later stages.
 pub(crate) struct SessionHistoryRestorePlanInput<'a> {
     pub(crate) resume_session_valid: bool,
     pub(crate) http: &'a HttpClient,
@@ -78,6 +172,12 @@ pub(crate) struct SessionHistoryRestorePlanInput<'a> {
     pub(crate) probe: Option<&'a SessionHistoryProbe>,
 }
 
+/// Builds the initial restore strategy after sandbox reuse is resolved.
+///
+/// Invalid or non-hash-backed resume state uses the ordinary `Default` path. A
+/// reused sandbox can select `SkipVerified` or start a `Prestarted`
+/// materializer. Non-reuse produces `DeferredHashBacked` so fresh-workspace
+/// preparation gets the first opportunity to use a matching local sidecar.
 pub(crate) fn build_session_history_restore_plan(
     input: SessionHistoryRestorePlanInput<'_>,
 ) -> SessionHistoryRestorePlan {

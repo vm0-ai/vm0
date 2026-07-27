@@ -1,9 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 
-import { normalizeConnectorFixedHost } from "@vm0/connectors/firewall-metadata/server";
-import type {
-  FirewallBaseHostPolicy,
-  FirewallConfig,
+import {
+  extractFirewallTemplateReferences,
+  normalizeFirewallFixedHost,
+  type FirewallBaseHostPolicy,
+  type FirewallConfig,
 } from "@vm0/connectors/firewall-types";
 
 import type {
@@ -324,7 +325,7 @@ export function deriveConnectorCatalogFirewallRouting(
         return compareStrings(left.base, right.base);
       }),
     apis: firewall.apis.map((api) => {
-      const references = firewallTemplateReferences(api);
+      const references = extractFirewallTemplateReferences([api]);
       return {
         base: api.base,
         environmentNames: sortedUniqueStrings([
@@ -362,7 +363,7 @@ function validateFirewallSemantics(artifact: ConnectorCatalogArtifact): void {
 
     const routing = deriveConnectorCatalogFirewallRouting(firewall);
     for (const rawHost of routing.fixedHosts) {
-      const host = normalizeConnectorFixedHost(rawHost);
+      const host = normalizeFirewallFixedHost(rawHost);
       if (!host) {
         throw new Error(
           `Firewall fixed host is invalid: ${connector.connectorRef}`,

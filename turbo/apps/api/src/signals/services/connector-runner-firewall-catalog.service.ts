@@ -1,19 +1,10 @@
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 import {
-  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
-  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
-  RUNNER_RUNTIME_FIREWALL_NAMES,
-  hasRunnerRuntimeFirewall,
-  loadAllRunnerRuntimeFirewalls,
-  loadRunnerRuntimeFirewalls,
-} from "@vm0/connectors/firewall-metadata/runner-runtime";
-import {
   createRunnerRuntimeFirewallCatalog,
   projectRunnerRuntimeFirewall,
 } from "@vm0/connectors/firewall-metadata/runner-runtime-catalog";
 import type { Firewall } from "@vm0/connectors/firewall-types";
 
-import { isExternalConnectorCatalogEnabled } from "../../lib/connector-catalog-source-selection";
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
 import {
@@ -33,12 +24,8 @@ interface ConnectorRunnerFirewallCatalog {
   load(names: readonly string[] | undefined): Promise<Record<string, Firewall>>;
 }
 
-interface ExternalConnectorRunnerFirewallCatalog extends ConnectorRunnerFirewallCatalog {
-  readonly acceptedIdentity: ExternalCatalogIdentity;
-}
-
-interface ExternalCatalogCache {
-  catalog: ExternalConnectorRunnerFirewallCatalog | undefined;
+interface CatalogCache {
+  catalog: ConnectorRunnerFirewallCatalog | undefined;
   key: string | undefined;
 }
 
@@ -54,20 +41,6 @@ function externalIdentityKey(identity: ExternalCatalogIdentity): string {
   ].join("\0");
 }
 
-const staticCatalog = singleton((): ConnectorRunnerFirewallCatalog => {
-  return {
-    catalogDigest: RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
-    catalogVersion: RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
-    names: RUNNER_RUNTIME_FIREWALL_NAMES,
-    has: hasRunnerRuntimeFirewall,
-    load: async (names) => {
-      return names === undefined
-        ? await loadAllRunnerRuntimeFirewalls()
-        : await loadRunnerRuntimeFirewalls(names);
-    },
-  };
-});
-
 const localModelProviderFirewalls = singleton((): readonly Firewall[] => {
   return Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS).map((firewall) => {
     if (!firewall.name.startsWith(MODEL_PROVIDER_FIREWALL_PREFIX)) {
@@ -79,9 +52,9 @@ const localModelProviderFirewalls = singleton((): readonly Firewall[] => {
   });
 });
 
-function createExternalCatalog(
+function createCatalog(
   snapshot: AcceptedConnectorCatalogSnapshot,
-): ExternalConnectorRunnerFirewallCatalog {
+): ConnectorRunnerFirewallCatalog {
   const connectorFirewalls = snapshot.artifact.connectors.flatMap(
     (connector) => {
       const firewall = connectorCatalogFirewallConfig(connector);
@@ -94,7 +67,6 @@ function createExternalCatalog(
   ]);
   const nameSet = new Set(materialized.names);
   return {
-    acceptedIdentity: snapshot.identity,
     catalogDigest: materialized.catalogDigest,
     catalogVersion: materialized.catalogVersion,
     names: materialized.names,
@@ -118,36 +90,27 @@ function createExternalCatalog(
   };
 }
 
-const externalCatalogCache = singleton((): ExternalCatalogCache => {
+const catalogCache = singleton((): CatalogCache => {
   return { catalog: undefined, key: undefined };
 });
 
-async function loadExternalCatalog(
+async function loadCatalog(
   db: ReadonlyDb,
-): Promise<ExternalConnectorRunnerFirewallCatalog> {
+): Promise<ConnectorRunnerFirewallCatalog> {
   const snapshot = await loadAcceptedConnectorCatalogSnapshot(db);
   const key = externalIdentityKey(snapshot.identity);
-  const cache = externalCatalogCache();
+  const cache = catalogCache();
   if (cache.key === key && cache.catalog !== undefined) {
     return cache.catalog;
   }
-  const catalog = createExternalCatalog(snapshot);
+  const catalog = createCatalog(snapshot);
   cache.key = key;
   cache.catalog = catalog;
   return catalog;
 }
 
-async function loadExternalCatalogFromDb(
-  loadDb: ReadonlyDbLoader,
-): Promise<ExternalConnectorRunnerFirewallCatalog> {
-  return await loadExternalCatalog(loadDb());
-}
-
 export async function loadConnectorRunnerFirewallCatalog(
   loadDb: ReadonlyDbLoader,
 ): Promise<ConnectorRunnerFirewallCatalog> {
-  if (isExternalConnectorCatalogEnabled()) {
-    return await loadExternalCatalogFromDb(loadDb);
-  }
-  return staticCatalog();
+  return await loadCatalog(loadDb());
 }

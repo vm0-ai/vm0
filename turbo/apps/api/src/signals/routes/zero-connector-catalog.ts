@@ -90,7 +90,6 @@ const listConnectorCatalogInner$ = command(
       listPublicConnectorCatalog({
         db: context.db,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );
@@ -108,21 +107,26 @@ const listConnectorCatalogStatusInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
 
-    const connectorState = await get(
-      zeroConnectorList({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        featureStates: context.featureStates,
-      }),
+    const connectorState = await settleConnectorCatalogRead(
+      get(
+        zeroConnectorList({
+          orgId: auth.orgId,
+          userId: auth.userId,
+          featureStates: context.featureStates,
+        }),
+      ),
+      signal,
     );
+    if (!connectorState.ok) {
+      return connectorCatalogUnavailable();
+    }
     signal.throwIfAborted();
 
     const catalog = await settleConnectorCatalogRead(
       listPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
-        connectors: connectorState.connectors,
+        connectors: connectorState.value.connectors,
       }),
       signal,
     );
@@ -158,7 +162,6 @@ const getConnectorCatalogInner$ = command(
         db: context.db,
         connectorRef: params.connectorRef,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );
@@ -184,7 +187,6 @@ const getConnectorCatalogPermissionsInner$ = command(
         db: context.db,
         connectorRef: params.connectorRef,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );

@@ -382,12 +382,15 @@ describe("DELETE /api/zero/agents/:id", () => {
     if (!actor.orgId) {
       throw new Error("Expected org-scoped actor");
     }
-    const baselineVolumes = await storages.listStorages(actor, "volume");
+    const baselineVolumes = await storages.listStorages(actor, "organization");
     const agent = await createAgent(actor, {
       displayName: "Sweep Agent",
     });
 
-    const volumesAfterCreate = await storages.listStorages(actor, "volume");
+    const volumesAfterCreate = await storages.listStorages(
+      actor,
+      "organization",
+    );
     const createdVolumes = volumesAfterCreate.filter((volume) => {
       return !baselineVolumes.some((baseline) => {
         return baseline.name === volume.name;
@@ -434,7 +437,7 @@ describe("DELETE /api/zero/agents/:id", () => {
       `${listedPrefix}v1/archive.tar.gz`,
       `${listedPrefix}v1/manifest.json`,
     ]);
-    const afterVolumes = await storages.listStorages(actor, "volume");
+    const afterVolumes = await storages.listStorages(actor, "organization");
     expect(
       afterVolumes.some((volume) => {
         return volume.name === instructionsVolume.name;

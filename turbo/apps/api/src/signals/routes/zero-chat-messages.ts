@@ -29,6 +29,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  or,
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -815,7 +816,10 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
-        sql`(${agentRuns.status} IS DISTINCT FROM ${"cancelled"} OR ${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR})`,
+        or(
+          sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
+          sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
+        ),
       ),
     )
     .orderBy(desc(agentRuns.createdAt))

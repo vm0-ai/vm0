@@ -24,6 +24,27 @@ const EXPECTED_WEBSITE_TEMPLATE_IDS = [
   "website-template:warm-cards",
 ] as const;
 
+const EXPECTED_OPEN_DESIGN_WEBSITE_TEMPLATE_IDS = [
+  "template:web-prototype-taste-editorial",
+  "template:blog-post",
+  "template:critique",
+  "template:dating-web",
+  "template:digital-eguide",
+  "template:email-marketing",
+  "template:gamified-app",
+  "template:kami-landing",
+  "template:live-artifact",
+  "template:open-design-landing",
+  "template:pricing-page",
+  "template:saas-landing",
+  "template:tweaks",
+  "template:waitlist-page",
+  "template:web-prototype",
+  "template:web-prototype-taste-brutalist",
+  "template:web-prototype-taste-soft",
+  "template:wireframe-sketch",
+] as const;
+
 const EXPECTED_WEBSITE_TEMPLATE_SHA256: Record<string, string> = {
   "black-slabs":
     "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
@@ -125,16 +146,58 @@ describe("website template items", () => {
     expect(findWebsiteTemplateItem("template:web-prototype")).toBeUndefined();
   });
 
-  it("does not expose Open Design website registry entries", () => {
+  it("exposes restored Open Design templates alongside built-in website templates", () => {
     expect(
       listTemplates("website").map((template) => {
         return template.id;
       }),
-    ).toEqual(
-      WEBSITE_TEMPLATE_ITEMS.map((item) => {
+    ).toEqual([
+      ...EXPECTED_OPEN_DESIGN_WEBSITE_TEMPLATE_IDS,
+      ...WEBSITE_TEMPLATE_ITEMS.map((item) => {
         return item.templateId;
       }),
+    ]);
+  });
+
+  it("restores website targets without dropping mixed-use targets", () => {
+    const websiteTemplates = new Map(
+      listTemplates("website").map((template) => {
+        return [template.id, template] as const;
+      }),
     );
+
+    expect(websiteTemplates.get("template:critique")).toMatchObject({
+      targets: [
+        "website",
+        "dashboard-design",
+        "report",
+        "docs-design",
+        "poster",
+        "mobile-app-design",
+      ],
+    });
+    expect(websiteTemplates.get("template:digital-eguide")).toMatchObject({
+      targets: ["website", "docs-design"],
+    });
+    expect(websiteTemplates.get("template:gamified-app")).toMatchObject({
+      targets: ["website", "mobile-app-design"],
+    });
+    expect(websiteTemplates.get("template:live-artifact")).toMatchObject({
+      targets: ["dashboard-design", "report", "website"],
+    });
+    expect(websiteTemplates.get("template:tweaks")).toMatchObject({
+      targets: [
+        "website",
+        "dashboard-design",
+        "report",
+        "docs-design",
+        "poster",
+        "mobile-app-design",
+      ],
+    });
+    expect(websiteTemplates.get("template:wireframe-sketch")).toMatchObject({
+      targets: ["website", "mobile-app-design", "dashboard-design"],
+    });
   });
 
   it("resolves built-in website templates as private R2 pull resources", () => {

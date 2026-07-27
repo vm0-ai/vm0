@@ -1,5 +1,6 @@
 """Request framing integration tests through mitmproxy's real hook pipeline."""
 
+import json
 from pathlib import Path
 from typing import Literal
 from unittest.mock import AsyncMock, patch
@@ -10,7 +11,7 @@ from h2.connection import H2Connection
 from mitmproxy import connection
 from mitmproxy.addons.proxyserver import Proxyserver
 from mitmproxy.flow import Error
-from mitmproxy.proxy import events
+from mitmproxy.proxy import commands, events
 from mitmproxy.proxy.context import Context
 from mitmproxy.proxy.layers.http import HttpLayer, HTTPMode
 from mitmproxy.proxy.layers.http._hooks import (
@@ -26,7 +27,11 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import (
+    _single_firewall_vm,
+    _write_github_firewall_registry,
+    _write_registry,
+)
 
 _CLIENT_IP = "10.200.0.5"
 _PLACEHOLDER_HOST = "placeholder.example.com"
@@ -79,6 +84,7 @@ def _start_http2_request(
     *,
     method: str,
     end_stream: bool,
+    regular_headers: tuple[tuple[bytes, bytes], ...] = (),
 ) -> tuple[HttpLayer, HttpRequestHeadersHook]:
     client, http_layer = _start_http_layer(addon_context, alpn=b"h2")
 
@@ -91,6 +97,7 @@ def _start_http2_request(
             (b":scheme", b"https"),
             (b":authority", _PLACEHOLDER_HOST.encode()),
             (b":path", b"/"),
+            *regular_headers,
         ],
         end_stream=end_stream,
     )
@@ -120,6 +127,75 @@ def _start_http1_request(
         command for command in commands if isinstance(command, HttpRequestHeadersHook)
     )
     return http_layer, request_headers_hook
+
+
+async def test_http2_duplicate_host_is_rejected_before_auth_or_http1_downgrade(
+    tmp_path: Path,
+    fake_firewall_headers,
+) -> None:
+    registry_path = _write_github_firewall_registry(
+        tmp_path,
+        base=f"https://{_PLACEHOLDER_HOST}",
+        vm_fields={"captureNetworkBodies": True},
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+        fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        http_layer, request_headers_hook = _start_http2_request(
+            addon_context,
+            method="GET",
+            end_stream=True,
+            regular_headers=(
+                (b"host", b"attacker.example.com"),
+                (b"host", _PLACEHOLDER_HOST.encode()),
+            ),
+        )
+        flow = request_headers_hook.flow
+        original_headers = tuple(flow.request.headers.fields)
+        original_path = flow.request.path
+
+        assert flow.request.host_header == _PLACEHOLDER_HOST
+        assert flow.request.headers.get_all("Host") == [
+            "attacker.example.com",
+            _PLACEHOLDER_HOST,
+        ]
+
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
+
+        get_headers.assert_not_awaited()
+        assert tuple(flow.request.headers.fields) == original_headers
+        assert flow.request.path == original_path
+
+        header_commands = list(
+            http_layer.handle_event(events.HookCompleted(request_headers_hook, None))
+        )
+        request_hook = next(
+            command for command in header_commands if isinstance(command, HttpRequestHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_hook)
+
+        request_commands = list(http_layer.handle_event(events.HookCompleted(request_hook, None)))
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.response.content is not None
+    assert json.loads(flow.response.content)["error"] == "invalid_authority"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert tuple(flow.request.headers.fields) == original_headers
+    assert flow.request.path == original_path
+    get_headers.assert_not_awaited()
+    assert not any(
+        isinstance(command, (commands.OpenConnection, commands.SendData))
+        and isinstance(command.connection, connection.Server)
+        for command in request_commands
+    )
 
 
 @pytest.mark.parametrize("method", ["GET", "HEAD"])

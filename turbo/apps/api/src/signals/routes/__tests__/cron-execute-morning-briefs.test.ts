@@ -452,6 +452,12 @@ async function completeMorningBriefRun(
   readonly prompt: string;
   readonly appendSystemPrompt: string;
 }> {
+  const stored = await api.readRun(scenario.actor, runId);
+  if (stored.status !== "pending") {
+    throw new Error(
+      `Expected queued morning brief run: ${JSON.stringify(stored)}`,
+    );
+  }
   await api.heartbeatRunner(scenario.runnerGroup);
   const claim = await api.claimRunnerJob(runId);
   if (expectedResumeSessionId !== undefined) {

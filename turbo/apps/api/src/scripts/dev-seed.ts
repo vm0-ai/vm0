@@ -11,11 +11,7 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
-import {
-  getSeedSkillNames,
-  GOAL_SKILL_NAME,
-  SEED_SKILLS,
-} from "@vm0/core/zero-seed-skills";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
@@ -156,11 +152,11 @@ function buildStorageSeedSql(
   // populating the final archive-size metadata for the same shared object.
   return `
   INSERT INTO storages (
-    id, org_id, user_id, name, type, s3_prefix, size, file_count, updated_at
+    id, org_id, user_id, name, s3_prefix, size, file_count, updated_at
   )
   SELECT
-    "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", 'volume',
-    "s3Prefix", "storageSize", "storageFileCount", seeded_at
+    "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", "s3Prefix",
+    "storageSize", "storageFileCount", seeded_at
   FROM dev_seed_skill_volumes
   ON CONFLICT (org_id, user_id, name) DO UPDATE SET
     s3_prefix = excluded.s3_prefix,
@@ -688,7 +684,7 @@ async function devSeed() {
   }
   writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
 
-  // --- skills (seed skills + common connectors, including system volumes) ---
+  // --- skills (published volumes + seed-skill metadata fallback) ---
   const seedSkillVolumes = getDevSeedSkillVolumes();
   writeLine("Seeding official skill volumes");
   const seededVolumeCount = await seedOfficialSkillVolumes(
@@ -703,7 +699,7 @@ async function devSeed() {
     }),
   );
   const fallbackSkillValues = buildSeedSkillValues(
-    getSeedSkillNames().filter((name) => {
+    SEED_SKILLS.filter((name) => {
       const fullPath = resolveSkillRef(name).replace("https://github.com/", "");
       return !seededVolumeStorageNames.has(getSkillStorageName(fullPath));
     }),

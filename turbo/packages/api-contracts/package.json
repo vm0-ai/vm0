@@ -1,6 +1,6 @@
 {
   "name": "@vm0/api-contracts",
-  "version": "1.233.2",
+  "version": "1.233.3",
   "private": true,
   "type": "module",
   "exports": {
@@ -45,8 +45,8 @@
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
-    "oxlint": "^1.57.0",
-    "oxlint-tsgolint": "0.23.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "7.0.2001",
     "tsx": "^4.21.0",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"

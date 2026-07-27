@@ -46,13 +46,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Test-only feature switch for flag system validation",
     enabled: true,
   },
-  [FeatureSwitchKey.ExternalConnectorCatalog]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Use the accepted external catalog as the global source for official connectors",
-    enabled: true,
-    userOverridable: false,
-  },
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Ahrefs SEO connector",
@@ -471,7 +464,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.PlanUpgradeGuidance]: {
     maintainer: "ethan@vm0.ai",
