@@ -6,7 +6,7 @@ import {
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { mockApi } from "../msw-contract.ts";
 
@@ -71,8 +71,8 @@ export const apiRunsHandlers = [
     respond(200, { networkLogs: [], hasMore: false }),
   ),
 
-  // POST /api/zero/chat/messages
-  mockApi(chatMessagesContract.send, ({ respond }) =>
+  // POST /api/zero/chat/events
+  mockApi(chatEventsContract.send, ({ respond }) =>
     respond(201, {
       runId: "a0000000-0000-4000-a000-000000000001",
       threadId: "b0000000-0000-4000-a000-000000000001",

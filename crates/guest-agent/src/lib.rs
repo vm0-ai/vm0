@@ -34,7 +34,7 @@ pub mod reuse_preparation;
 pub mod run_context;
 pub mod session_history;
 pub mod session_history_identity;
-pub mod session_metadata;
+mod session_metadata;
 pub mod telemetry;
 pub mod timing;
 mod urls;

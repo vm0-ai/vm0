@@ -443,7 +443,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     });
   });
 
-  it("binds one canonical output asset to the final reply, Slack, and Google Drive", async () => {
+  it("binds one canonical output asset to the completion event, Slack, and Google Drive", async () => {
     const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
     await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
@@ -668,17 +668,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         message.content === "The canonical report is ready."
       );
     });
-    expect(finalReply?.attachFiles).toHaveLength(1);
-    expect(finalReply?.attachFiles?.[0]).toMatchObject({
-      id: canonicalAssetId,
-      filename: "report.csv",
-      assetRef: {
-        id: canonicalAssetId,
-        classification: "published-output",
-        access: "published",
-        materialization: { status: "ready" },
-      },
-    });
+    expect(finalReply?.attachFiles).toBeUndefined();
 
     const lifecycleMarker = messages.messages.find((message) => {
       return (
@@ -689,10 +679,20 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     });
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
-    expect(lifecycleMarker?.attachFiles).toBeUndefined();
+    expect(lifecycleMarker?.attachFiles).toHaveLength(1);
+    expect(lifecycleMarker?.attachFiles?.[0]).toMatchObject({
+      id: canonicalAssetId,
+      filename: "report.csv",
+      assetRef: {
+        id: canonicalAssetId,
+        classification: "published-output",
+        access: "published",
+        materialization: { status: "ready" },
+      },
+    });
   }, 20_000);
 
-  it("creates a real assistant reply when a canonical output has no text", async () => {
+  it("binds a canonical output to the completion event when there is no text", async () => {
     const { orgId, userId, runId, threadId, runnerGroup } =
       await seedRunScoped();
     const operationId = randomUUID();
@@ -732,19 +732,16 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       actorFor({ orgId, userId }),
       threadId,
     );
-    const attachmentReply = messages.messages.find((message) => {
+    const lifecycleMarker = messages.messages.find((message) => {
       return (
         message.role === "assistant" &&
         message.runId === runId &&
-        message.runLifecycleEvent === undefined &&
-        message.attachFiles?.some((file) => {
-          return file.id === canonicalAssetId;
-        })
+        message.runLifecycleEvent === "completed"
       );
     });
-    expect(attachmentReply).toBeDefined();
-    expect(attachmentReply?.content).toBeNull();
-    expect(attachmentReply?.attachFiles?.[0]).toMatchObject({
+    expect(lifecycleMarker).toBeDefined();
+    expect(lifecycleMarker?.content).toBeNull();
+    expect(lifecycleMarker?.attachFiles?.[0]).toMatchObject({
       id: canonicalAssetId,
       filename: "attachment-only.pdf",
       assetRef: {
@@ -754,16 +751,17 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         materialization: { status: "pending" },
       },
     });
-
-    const lifecycleMarker = messages.messages.find((message) => {
+    const separateAttachmentReply = messages.messages.find((message) => {
       return (
         message.role === "assistant" &&
         message.runId === runId &&
-        message.runLifecycleEvent === "completed"
+        message.runLifecycleEvent === undefined &&
+        message.attachFiles?.some((file) => {
+          return file.id === canonicalAssetId;
+        })
       );
     });
-    expect(lifecycleMarker).toBeDefined();
-    expect(lifecycleMarker?.attachFiles).toBeUndefined();
+    expect(separateAttachmentReply).toBeUndefined();
   }, 20_000);
 
   it("keeps a canonical Slack delivery failed when file info has no permalink", async () => {

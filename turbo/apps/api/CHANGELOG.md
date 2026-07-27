@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.329.1](https://github.com/vm0-ai/vm0/compare/api-v1.329.0...api-v1.329.1) (2026-07-27)
+
+
+### Refactoring
+
+* **storage:** remove legacy type residue ([#23232](https://github.com/vm0-ai/vm0/issues/23232)) ([eeb8daa](https://github.com/vm0-ai/vm0/commit/eeb8daadad7c5c81c3cfd5cd7e08bb8b0e130f01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.1
+    * @vm0/core bumped to 8.473.0
+    * @vm0/db bumped to 1.143.5
+
 ## [1.329.0](https://github.com/vm0-ai/vm0/compare/api-v1.328.1...api-v1.329.0) (2026-07-27)
 
 

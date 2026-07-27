@@ -886,10 +886,11 @@ describe("zero attachment chips", () => {
       threadId: THREAD_ID,
       chatMessages: [
         {
-          id: "msg-canonical-agent-output",
+          id: "msg-canonical-agent-output-completed",
           role: "assistant",
           content: null,
           runId: "run-canonical-output",
+          runLifecycleEvent: "completed",
           attachFiles: [
             {
               id: assetId,
@@ -906,14 +907,6 @@ describe("zero attachment chips", () => {
               },
             },
           ],
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-        {
-          id: "msg-canonical-agent-output-completed",
-          role: "assistant",
-          content: null,
-          runId: "run-canonical-output",
-          runLifecycleEvent: "completed",
           createdAt: "2026-03-10T00:00:02Z",
         },
       ],

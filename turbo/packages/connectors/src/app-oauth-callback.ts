@@ -17,6 +17,7 @@ const ENABLED_CONNECTOR_REFS: ReadonlySet<string> = new Set([
   "google-meet",
   "google-search-console",
   "google-sheets",
+  "meta-ads",
   "stripe",
   "x",
   "youtube",

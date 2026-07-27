@@ -29,7 +29,6 @@ import {
 import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodRuntimeMetadata,
-  type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-auth-method";
 
 import { singleton } from "../../lib/singleton";
@@ -46,6 +45,7 @@ import {
   type AcceptedConnectorCatalogSnapshot,
   type ExternalCatalogIdentity,
 } from "./connector-catalog-external-reader.service";
+import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import {
   createAcceptedConnectorServerFirewallCatalog,
   type ConnectorServerFirewallCatalog,

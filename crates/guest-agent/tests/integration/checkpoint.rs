@@ -6,6 +6,15 @@ use guest_contracts::session_history_identity::{
 use httpmock::prelude::*;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+#[cfg(target_os = "linux")]
+use std::{
+    ffi::CString,
+    fs::OpenOptions,
+    os::unix::{ffi::OsStrExt, fs::OpenOptionsExt},
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
 use std::{
     ffi::OsString,
     io::{Read, Seek, SeekFrom, Write},
@@ -108,6 +117,18 @@ fn write_literal_session_history(
     )
     .map_err(|e| format!("write session history marker: {e}"))?;
     Ok(dir)
+}
+
+#[cfg(target_os = "linux")]
+fn create_fifo(path: &std::path::Path) -> std::io::Result<()> {
+    let path = CString::new(path.as_os_str().as_bytes())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let result = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 fn write_prunable_claude_history(session_id: &str) -> Result<(tempfile::TempDir, Vec<u8>), String> {
@@ -365,6 +386,104 @@ fn upload_gzip_validation_response(
 // =========================================================================
 // Success checkpoint
 // =========================================================================
+
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "current_thread")]
+async fn success_checkpoint_history_preparation_yields_to_runtime_siblings() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let runtime = runtime_from_process_env().unwrap();
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let history_dir = tempfile::tempdir().unwrap();
+    let history_path = history_dir.path().join("blocking-history.jsonl");
+    create_fifo(&history_path).unwrap();
+
+    let session_id = "blocking-history-session";
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, session_id).unwrap();
+    guest_agent::paths::write_private(
+        &session_history_path_file,
+        history_path.to_string_lossy().as_ref(),
+    )
+    .unwrap();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(r#"{"encoding":"identity"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"existing": true}));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-runtime-yield"}));
+    });
+
+    let history = b"{\"type\":\"system\"}\n".to_vec();
+    let (release_writer_tx, release_writer_rx) = mpsc::channel();
+    let writer = thread::spawn(move || {
+        let open_deadline = Instant::now() + Duration::from_secs(10);
+        let mut fifo = loop {
+            match OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&history_path)
+            {
+                Ok(fifo) => break fifo,
+                Err(error)
+                    if error.raw_os_error() == Some(libc::ENXIO)
+                        && Instant::now() < open_deadline =>
+                {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("open history FIFO for writing: {error}"),
+            }
+        };
+        release_writer_rx
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap();
+        fifo.write_all(&history).unwrap();
+    });
+
+    let (runtime_progress_tx, runtime_progress_rx) = mpsc::channel();
+    let watchdog_release_tx = release_writer_tx.clone();
+    let watchdog = thread::spawn(move || {
+        if runtime_progress_rx
+            .recv_timeout(Duration::from_secs(5))
+            .is_ok()
+        {
+            false
+        } else {
+            watchdog_release_tx.send(()).unwrap();
+            true
+        }
+    });
+
+    let (checkpoint_result, ()) = tokio::join!(
+        biased;
+        guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime),
+        async {
+            runtime_progress_tx.send(()).unwrap();
+            release_writer_tx.send(()).unwrap();
+        },
+    );
+
+    writer.join().unwrap();
+    let watchdog_released_writer = watchdog.join().unwrap();
+    checkpoint_result.unwrap();
+    assert!(
+        !watchdog_released_writer,
+        "checkpoint history preparation blocked the runtime thread"
+    );
+    prepare_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+}
 
 #[tokio::test]
 async fn success_checkpoint_preserves_oversized_claude_history_when_pruning_disabled() {

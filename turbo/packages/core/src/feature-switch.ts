@@ -394,6 +394,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
     enabled: true,
   },
+  [FeatureSwitchKey.NewChatThreadSidebar]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Thread-owned utility sidebar for chat threads: one shared shell for the artifacts list, artifact detail, email draft, browser, and automations panels. When off, the legacy search-param sidebars stay in place.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -448,8 +455,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: false,
-    enabledUserHashes: ["032a75d8"],
+    enabled: true,
   },
   [FeatureSwitchKey.WebsiteTemplateV2]: {
     maintainer: "bingjie@vm0.ai",

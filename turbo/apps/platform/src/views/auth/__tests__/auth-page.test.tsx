@@ -14,29 +14,41 @@ function setBrowserUrl(url: string): void {
 }
 
 describe("app auth pages", () => {
-  it("keeps the app skeleton visible while Clerk loads the sign-in route", async () => {
-    setBrowserUrl("https://app.vm0.ai/sign-in");
+  it("keeps the app skeleton visible until Clerk mounts the sign-up route", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-up");
 
     const clerkLoad = createDeferredPromise<void>(context.signal);
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
     mockedClerk.load.mockImplementation(() => {
       return clerkLoad.promise;
     });
 
-    detachedSetupPage({ context, path: "/sign-in" });
+    detachedSetupPage({ context, path: "/sign-up" });
 
-    await expect(
-      screen.findByTestId("app-skeleton"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+    const appSkeleton = await screen.findByTestId("app-skeleton");
+    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
     await act(async () => {
       clerkLoad.resolve();
       await clerkLoad.promise;
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
+    await expect(
+      screen.findByTestId("clerk-auth-loading"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("clerk-sign-up")).toBeEmptyDOMElement();
+    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+
+    act(() => {
+      authComponent.mount();
     });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toHaveTextContent("/sign-up");
+      expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+    });
+    expect(screen.queryByTestId("clerk-auth-loading")).not.toBeInTheDocument();
   });
 
   it("renders the app-hosted sign-in route", async () => {
@@ -53,6 +65,14 @@ describe("app auth pages", () => {
       "path",
     );
     expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-in-force-redirect-url",
+      "https://app.vm0.ai",
+    );
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-up-force-redirect-url",
+      "https://app.vm0.ai",
+    );
     expect(screen.getByAltText("VM0")).toHaveAttribute(
       "src",
       platformVm0LogoDarkImg,
@@ -72,6 +92,9 @@ describe("app auth pages", () => {
     });
 
     expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
+    expect(
+      screen.queryByTestId("clerk-google-one-tap"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the app-hosted sign-in route with an allowed redirect URL", async () => {
@@ -200,6 +223,9 @@ describe("app auth pages", () => {
       "data-clerk-force-redirect-url",
       redirectUrl,
     );
+    expect(
+      screen.queryByTestId("clerk-google-one-tap"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps app-hosted auth pages scrollable inside the root safe area", async () => {

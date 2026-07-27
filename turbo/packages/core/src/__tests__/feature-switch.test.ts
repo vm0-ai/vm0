@@ -13,6 +13,9 @@ describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {

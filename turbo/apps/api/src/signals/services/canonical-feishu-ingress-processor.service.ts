@@ -30,7 +30,7 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { insertChatEvent } from "./zero-chat-event.service";
 import {
   encryptQueuedUserMessageRunParams,
   enqueueUserMessageQueueItem,
@@ -287,12 +287,12 @@ async function persistCanonicalFeishuIngress(args: {
   args.signal.throwIfAborted();
 
   await args.db.transaction(async (tx) => {
-    const inserted = await insertChatMessage(
+    const inserted = await insertChatEvent(
       tx,
       {
         id: args.ingress.ingressId,
         chatThreadId: route.chatThreadId,
-        role: "user",
+        eventType: "input.prompt",
         content: args.message.text,
         runId: null,
         feishuChatOpenUrl: feishuChatOpenUrl(args.message.chatId),
@@ -352,7 +352,7 @@ async function notifyQueuedFeishuRun(args: {
     .where(
       or(
         eq(chatMessages.id, args.ingressId),
-        eq(chatMessages.revokesMessageId, args.ingressId),
+        eq(chatMessages.revokesEventId, args.ingressId),
       ),
     )
     .limit(1);
