@@ -27,6 +27,7 @@ function authCodeGrant() {
   return authCodeGrantFixture([
     "ads_management",
     "ads_read",
+    "business_management",
     "pages_manage_ads",
     "pages_read_engagement",
     "pages_show_list",
@@ -59,6 +60,7 @@ describe("connector/providers/meta-ads", () => {
         new Set([
           "ads_management",
           "ads_read",
+          "business_management",
           "pages_manage_ads",
           "pages_read_engagement",
           "pages_show_list",
