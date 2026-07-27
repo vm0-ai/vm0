@@ -1214,6 +1214,7 @@ class TestForwardRequestAsyncWrapper:
                     sent_body_bytes.append(bytes((byte,)))
                     time.sleep(0.01)
             except OSError:
+                # Deadline expiry intentionally closes the peer while this thread is sending.
                 pass
             finally:
                 server_socket.close()
