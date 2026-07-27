@@ -78,6 +78,12 @@ export interface FeishuInboundMessage {
   readonly file: FeishuPromptFile | null;
 }
 
+export function shouldReplyInFeishuThread(
+  message: FeishuInboundMessage,
+): boolean {
+  return message.chatType !== "p2p" || message.threadId !== null;
+}
+
 interface FeishuAgent {
   readonly id: string;
   readonly name: string;
@@ -145,7 +151,7 @@ async function reply(args: {
   readonly outbound: FeishuOutboundMessage;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  if (args.message.chatType === "p2p") {
+  if (!shouldReplyInFeishuThread(args.message)) {
     await sendFeishuMessage({
       db: args.db,
       installationId: args.message.installationId,

@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.330.0](https://github.com/vm0-ai/vm0/compare/api-v1.329.1...api-v1.330.0) (2026-07-27)
+
+
+### Features
+
+* thread-owned chat sidebar shell behind newChatThreadSidebar switch ([#23269](https://github.com/vm0-ai/vm0/issues/23269)) ([c67c965](https://github.com/vm0-ai/vm0/commit/c67c96547fb4646b7d424a42de7f790b28e3f3a1))
+
+
+### Refactoring
+
+* **api:** move connector feature states into api ([#23273](https://github.com/vm0-ai/vm0/issues/23273)) ([0a77e82](https://github.com/vm0-ai/vm0/commit/0a77e82f3f6f6dfa364187736af33eef8486184b))
+* **artifacts:** remove favorite api routes ([#22700](https://github.com/vm0-ai/vm0/issues/22700)) ([376c328](https://github.com/vm0-ai/vm0/commit/376c3288889fc663038db90a7297f608babf34dd))
+* **chat:** type the immutable event stream ([#23148](https://github.com/vm0-ai/vm0/issues/23148)) ([6cdd9c5](https://github.com/vm0-ai/vm0/commit/6cdd9c5155895556f1e9f78ced2e190dad080568))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.235.0
+    * @vm0/connectors bumped to 1.196.0
+    * @vm0/core bumped to 8.474.0
+    * @vm0/db bumped to 1.143.6
+
 ## [1.329.1](https://github.com/vm0-ai/vm0/compare/api-v1.329.0...api-v1.329.1) (2026-07-27)
 
 
