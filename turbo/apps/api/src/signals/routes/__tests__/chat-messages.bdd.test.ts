@@ -4296,7 +4296,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      `zero resource pull ${websiteTemplate.resourceId} --dir ./generated/resources`,
+      "zero resource pull template:black-slabs-v2 --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
@@ -4306,32 +4306,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
-
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.WebsiteTemplateV2]: true },
-    );
-    const websiteV2 = await sendChatRun(actor, {
-      agentId,
-      prompt: "make a v2 campaign landing page",
-      generationTemplate: {
-        type: "website",
-        selection: { websiteTemplateId: websiteTemplate.id },
-      },
-    });
-    const websiteV2Run = await api.readRun(actor, websiteV2.runId);
-    const websiteV2Prompt = websiteV2Run.appendSystemPrompt ?? "";
-    expect(websiteV2Prompt).toContain(
-      "zero resource pull template:black-slabs-v2 --dir ./generated/resources",
-    );
-    expect(websiteV2Prompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
-    );
-    await cancelChatRun(actor, websiteV2.runId);
   }, 90_000);
 
   it("uses R2 by default and preserves GitHub fallback through the user feature switch", async () => {
