@@ -1103,9 +1103,11 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         return
     if getattr(message, "from_client", False):
         return
+    body = message.content.encode() if isinstance(message.content, str) else message.content
+    event = usage.inspect_openai_responses_event_json(body)
     if response_streaming.uses_openai_responses_usage_protocol(flow):
-        codex_output_timing.observe_server_event(flow, message.content)
-    response_streaming.feed_model_websocket_usage(flow, message.content)
+        codex_output_timing.observe_server_event(flow, event.event_type)
+    response_streaming.feed_model_websocket_usage(flow, event)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:
