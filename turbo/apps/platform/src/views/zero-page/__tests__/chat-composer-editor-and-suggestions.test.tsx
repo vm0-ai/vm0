@@ -261,7 +261,7 @@ describe("chat composer models", () => {
     );
     expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
 
-    await user.keyboard("research");
+    await user.keyboard("ReSeArCh");
 
     await waitFor(() => {
       expect(screen.queryByText("support-escalation")).not.toBeInTheDocument();
@@ -298,6 +298,12 @@ describe("chat composer models", () => {
           description: "Find account context before outreach",
           agentId: AGENT_ID,
         }),
+        workflowSummary({
+          name: "research-assistant",
+          displayName: "Research Assistant",
+          description: "Research a topic from the beginning",
+          agentId: AGENT_ID,
+        }),
       ]);
     });
 
@@ -311,11 +317,11 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("/research");
+    await user.keyboard("/ReSeArCh");
 
-    await expect(
-      screen.findByText("No matching workflows"),
-    ).resolves.toBeInTheDocument();
+    const slashWorkflowMenu = await screen.findByTestId("slash-workflow-menu");
+    expect(slashWorkflowMenu).toHaveTextContent("/research-assistant");
+    expect(slashWorkflowMenu).not.toHaveTextContent("/sales-research");
   });
 
   it("does not highlight workflow names inside URLs", async () => {

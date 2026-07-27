@@ -1,5 +1,6 @@
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-export function matchesWorkflowNameQuery(
+
+function matchesWorkflowNameQuery(
   workflowName: string,
   query: string,
   substringSearchEnabled: boolean,
