@@ -4873,6 +4873,13 @@
       "when": 1785109797532,
       "tag": "0695_magenta_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 696,
+      "version": "7",
+      "when": 1785126000681,
+      "tag": "0696_abnormal_spectrum",
+      "breakpoints": true
     }
   ]
 }

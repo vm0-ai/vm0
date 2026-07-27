@@ -1,5 +1,6 @@
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -23,7 +24,6 @@ import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
-import { storageVersionLineageDml } from "./storage-dml.service";
 
 const L = logger("storage-write");
 
@@ -726,7 +726,7 @@ async function recordStorageLineage(args: {
   }
 
   await tapError(
-    args.db.insert(storageVersionLineageDml).values({
+    args.db.insert(storageVersionLineage).values({
       storageId: args.storageId,
       versionId: args.versionId,
       parentVersionId,

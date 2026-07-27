@@ -19,7 +19,6 @@ import {
  * Canonical identity: (orgId, userId, name)
  * - Org-owned storages use VOLUME_ORG_USER_ID ("__org__") as userId
  * - User-owned storages use the real userId
- * - type is a temporary legacy projection and is not part of identity
  */
 export const storages = pgTable(
   "storages",
@@ -27,9 +26,6 @@ export const storages = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Real userId for artifact/memory; VOLUME_ORG_USER_ID for volumes
     name: varchar("name", { length: 256 }).notNull(),
-    // Nullable during the Storage identity contraction. New writers leave this
-    // unset; the column is removed after rollback-eligible API versions drain.
-    type: varchar("type", { length: 16 }),
     orgId: text("org_id").notNull(),
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
@@ -49,14 +45,6 @@ export const storages = pgTable(
         table.orgId,
         table.userId,
         table.name,
-      ),
-      // Keep the legacy identity index during the expand/contract rollout so
-      // older API instances can still use their four-column ON CONFLICT target.
-      orgUserNameTypeIdx: uniqueIndex("idx_storages_org_user_name_type").on(
-        table.orgId,
-        table.userId,
-        table.name,
-        table.type,
       ),
     };
   },

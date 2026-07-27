@@ -38,7 +38,6 @@ import {
 } from "../external/s3";
 import { createDeferredPromise, safeSync, tapError } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
-import { storageDml } from "./storage-dml.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 interface SyncSkillsResult {
@@ -384,7 +383,7 @@ async function upsertSkillStorage(args: {
 }): Promise<{ readonly id: string; readonly s3Prefix: string }> {
   const location = newStorageS3Location(SYSTEM_ORG_ID);
   const [storage] = await args.db
-    .insert(storageDml)
+    .insert(storages)
     .values({
       id: location.storageId,
       orgId: SYSTEM_ORG_ID,
@@ -395,14 +394,14 @@ async function upsertSkillStorage(args: {
       fileCount: args.context.files.length,
     })
     .onConflictDoUpdate({
-      target: [storageDml.orgId, storageDml.userId, storageDml.name],
+      target: [storages.orgId, storages.userId, storages.name],
       set: {
         size: args.context.totalSize,
         fileCount: args.context.files.length,
         updatedAt: args.timestamp,
       },
     })
-    .returning({ id: storageDml.id, s3Prefix: storageDml.s3Prefix });
+    .returning({ id: storages.id, s3Prefix: storages.s3Prefix });
   args.signal.throwIfAborted();
 
   if (!storage) {

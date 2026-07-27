@@ -1251,12 +1251,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const prepared = await storages.prepareStorage(actor, {
       storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [storageFile],
     });
     await storages.commitStorage(actor, {
       storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: prepared.versionId,
       files: [storageFile],
     });
@@ -1320,12 +1320,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const prepared = await storages.prepareStorage(actor, {
       storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [storageFile],
     });
     await storages.commitStorage(actor, {
       storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: prepared.versionId,
       files: [storageFile],
     });
@@ -1628,12 +1628,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const prepared = await storages.prepareStorage(actor, {
       storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [storageFile],
     });
     await storages.commitStorage(actor, {
       storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: prepared.versionId,
       files: [storageFile],
     });
@@ -1773,12 +1773,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const preparedReadOnlyStorage = await storages.prepareStorage(actor, {
       storageName: readOnlyStorageName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [readOnlyFile],
     });
     await storages.commitStorage(actor, {
       storageName: readOnlyStorageName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: preparedReadOnlyStorage.versionId,
       files: [readOnlyFile],
     });
@@ -1789,12 +1789,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const preparedAdditionalStorage = await storages.prepareStorage(actor, {
       storageName: additionalStorageName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [additionalFile],
     });
     await storages.commitStorage(actor, {
       storageName: additionalStorageName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: preparedAdditionalStorage.versionId,
       files: [additionalFile],
     });
@@ -1876,12 +1876,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const preparedMemory = await storages.prepareStorage(actor, {
       storageName: "memory",
-      storageType: "artifact",
+      storageOwner: "user",
       files: [memoryFile],
     });
     await storages.commitStorage(actor, {
       storageName: "memory",
-      storageType: "artifact",
+      storageOwner: "user",
       versionId: preparedMemory.versionId,
       files: [memoryFile],
     });
@@ -1891,12 +1891,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const preparedCustomArtifact = await storages.prepareStorage(actor, {
       storageName: customArtifactName,
-      storageType: "artifact",
+      storageOwner: "user",
       files: [customArtifactFile],
     });
     await storages.commitStorage(actor, {
       storageName: customArtifactName,
-      storageType: "artifact",
+      storageOwner: "user",
       versionId: preparedCustomArtifact.versionId,
       files: [customArtifactFile],
     });
@@ -2085,7 +2085,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     context.mocks.s3.send.mockClear();
     const preparedInitialEmpty = await storages.prepareStorage(actor, {
       storageName: "memory",
-      storageType: "artifact",
+      storageOwner: "user",
       files: [],
     });
     expect(preparedInitialEmpty).toStrictEqual({
@@ -2094,7 +2094,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     const committedInitialEmpty = await storages.commitStorage(actor, {
       storageName: "memory",
-      storageType: "artifact",
+      storageOwner: "user",
       versionId: initialMemoryVersionId,
       files: [],
     });
@@ -2113,7 +2113,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     context.mocks.s3.send.mockClear();
     const prepared = await storages.prepareStorage(actor, {
       storageName: "memory",
-      storageType: "artifact",
+      storageOwner: "user",
       baseVersion: initialMemoryVersionId,
       changes: {
         added: [artifactFile.path],
@@ -2142,14 +2142,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(emptyBaseManifestReads).toHaveLength(0);
     await storages.commitStorage(actor, {
       storageName: "memory",
-      storageType: "artifact",
+      storageOwner: "user",
       versionId: prepared.versionId,
       files: [artifactFile],
     });
     await expect(
       storages.downloadStorage(actor, {
         name: "memory",
-        type: "artifact",
+        owner: "user",
       }),
     ).resolves.toStrictEqual(
       expect.objectContaining({
@@ -2179,7 +2179,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await expect(
       storages.downloadStorage(actor, {
         name: "memory",
-        type: "artifact",
+        owner: "user",
       }),
     ).resolves.toStrictEqual(
       expect.objectContaining({
@@ -10330,12 +10330,12 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     };
     const cachePrepared = await storages.prepareStorage(actor, {
       storageName: cacheVolume,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [cacheFile],
     });
     await storages.commitStorage(actor, {
       storageName: cacheVolume,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: cachePrepared.versionId,
       files: [cacheFile],
     });
