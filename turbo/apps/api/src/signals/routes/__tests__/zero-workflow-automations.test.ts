@@ -107,14 +107,6 @@ async function enableNotionWorkflowAutomations(
   });
 }
 
-async function enableGithubWorkflowRunAutomations(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
-  });
-}
-
 interface WatchCallRecorder {
   calls: number;
 }
@@ -1859,7 +1851,6 @@ describe("zero workflow automations", () => {
   it("creates and updates GitHub workflow run completed automations", async () => {
     const scenario = await setupFixture();
     await gh.installGithubApp(scenario.actor, scenario.agentId);
-    await enableGithubWorkflowRunAutomations(scenario.fixture);
     mocks.clerk.session(
       scenario.fixture.userId,
       scenario.fixture.orgId,

@@ -4428,7 +4428,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const granted = await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     await connectors.connectManualGrant(actor, "openai", "api-token", {
-      OPENAI_TOKEN: "org-teardown-connector-token",
+      apiKey: "org-teardown-connector-token",
     });
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD Org Teardown Agent",
@@ -4785,7 +4785,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await runs.grantProEntitlement(doomed);
     await runs.ensureOrgModelProvider(doomed);
     await connectors.connectManualGrant(doomed, "openai", "api-token", {
-      OPENAI_TOKEN: "user-teardown-connector-token",
+      apiKey: "user-teardown-connector-token",
     });
     const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
     const sharedAgent = await bdd.createAgent(peer, {

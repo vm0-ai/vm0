@@ -122,7 +122,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       actor,
       "openai",
       "api-token",
-      { OPENAI_TOKEN: "manual-agent-token" },
+      { apiKey: "manual-agent-token" },
       agent.agentId,
     );
 
@@ -140,33 +140,12 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     });
 
     await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
-      OPENAI_TOKEN: "default-agent-token",
+      apiKey: "default-agent-token",
     });
 
     await expect(
       authOrgApi.readEnabledConnectorTypes(actor, body.agentId),
     ).resolves.toContain("openai");
-  });
-
-  it("keeps the previous manual-grant request shape connection-only during rollout", async () => {
-    const bdd = createBddApi(context);
-    const actor = bdd.user();
-    authOrgApi.acceptAgentStorageWrites();
-    const { body } = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
-      displayName: "Legacy Connector Agent",
-    });
-
-    const response = await connectorsApi.requestManualGrant(
-      actor,
-      "openai",
-      "api-token",
-      { OPENAI_TOKEN: "legacy-client-token" },
-      { statuses: [200] },
-    );
-    expect(response.status).toBe(200);
-    await expect(
-      authOrgApi.readEnabledConnectorTypes(actor, body.agentId),
-    ).resolves.not.toContain("openai");
   });
 
   it("discovers, connects, reads, computes scope diff, and deletes a manual connector through APIs", async () => {
@@ -212,20 +191,21 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       "openai",
       "api-token",
       {
-        OPENAI_TOKEN: "sk-bdd-manual-secret",
-        EXTRA_TOKEN: "secret-value-should-not-echo",
+        apiKey: "sk-bdd-manual-secret",
+        unknownField: "secret-value-should-not-echo",
       },
       { statuses: [400] },
     );
     expectApiError(badGrant.body);
-    expect(badGrant.body.error.message).toContain("EXTRA_TOKEN");
+    expect(badGrant.body.error.message).toContain("apiKey");
+    expect(badGrant.body.error.message).not.toContain("unknownField");
     expectNoVisibleSecret(badGrant.body, "secret-value-should-not-echo");
 
     const connected = await connectorsApi.connectManualGrant(
       actor,
       "openai",
       "api-token",
-      { OPENAI_TOKEN: " sk-bdd-manual-secret\n" },
+      { apiKey: " sk-bdd-manual-secret\n" },
     );
     expect(typeof connected.id).toBe("string");
     expectNoVisibleSecret(connected, "sk-bdd-manual-secret");
@@ -783,24 +763,24 @@ describe("CONN-02: OAuth device authorization", () => {
       actor,
       "test-oauth-device",
       "api",
-      { mode: "production" },
+      { environment: "production" },
       [400],
     );
     expectApiError(invalidOptionValue.body);
     expect(invalidOptionValue.body.error.message).toBe(
-      "test-oauth-device api device-auth start option mode must be one of: test, live",
+      "test-oauth-device api device-auth start option environment must be one of: test, live",
     );
 
-    const unexpectedOptionKey = await connectorsApi.requestDeviceAuthStart(
+    const privateOptionKey = await connectorsApi.requestDeviceAuthStart(
       actor,
       "test-oauth-device",
       "api",
-      { region: "us" },
+      { mode: "live" },
       [400],
     );
-    expectApiError(unexpectedOptionKey.body);
-    expect(unexpectedOptionKey.body.error.message).toBe(
-      "test-oauth-device api device-auth start option region is not supported",
+    expectApiError(privateOptionKey.body);
+    expect(privateOptionKey.body.error.message).toBe(
+      "test-oauth-device api device-auth start option(s) must use public IDs: environment",
     );
 
     const prototypeOptionKey = await connectorsApi.requestDeviceAuthStart(
@@ -812,7 +792,7 @@ describe("CONN-02: OAuth device authorization", () => {
     );
     expectApiError(prototypeOptionKey.body);
     expect(prototypeOptionKey.body.error.message).toBe(
-      "test-oauth-device api device-auth start option toString is not supported",
+      "test-oauth-device api device-auth start option(s) must use public IDs: environment",
     );
 
     const stripeDeviceAuth = await connectorsApi.requestDeviceAuthStart(
@@ -867,7 +847,7 @@ describe("CONN-02: OAuth device authorization", () => {
     });
 
     await connectorsApi.startDeviceAuth(actor, "test-oauth-device", "api", {
-      mode: "live",
+      environment: "live",
     });
     expect(provider.deviceCodeBodies[0]?.get("client_id")).toBe(
       "test-oauth-device-api-client",
@@ -2609,9 +2589,9 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     const state = stateFromAuthorizationUrl(start.authorizationUrl);
 
     await connectorsApi.connectManualGrant(actor, "test-oauth", "api-token", {
-      TEST_OAUTH_TOKEN: "bdd-manual-test-oauth-token",
-      TEST_OAUTH_API_TOKEN_INPUT_VAR: "bdd-input-variable",
-      TEST_OAUTH_API_TENANT_ID: "bdd-manual-tenant",
+      apiToken: "bdd-manual-test-oauth-token",
+      inputVariable: "bdd-input-variable",
+      tenantId: "bdd-manual-tenant",
     });
     const manual = await connectorsApi.readConnectorByType(actor, "test-oauth");
     expect(manual.authMethod).toBe("api-token");

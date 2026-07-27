@@ -844,7 +844,7 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     expect(apiMethod?.startOptions).toStrictEqual([
       {
-        id: "mode",
+        id: "environment",
         kind: "select",
         label: "Mode",
         required: true,

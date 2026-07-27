@@ -26,7 +26,7 @@ setup_file() {
     # Set up serpapi connector — api-token auth, single secret.
     connect_e2e_connector \
         "serpapi" \
-        '{"SERPAPI_TOKEN":"fake-serpapi-token-for-e2e"}'
+        '{"apiKey":"fake-serpapi-token-for-e2e"}'
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"

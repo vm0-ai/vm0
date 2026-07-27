@@ -16,7 +16,6 @@ import {
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -81,7 +80,6 @@ import {
 } from "../../signals/agent-chat.ts";
 import { sidebarActiveThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
@@ -842,9 +840,6 @@ function ChatThreadsTitle() {
   };
   const setCollapsed = useSet(setSessionListCollapsed$);
   const collapsed = useGet(sessionListCollapsed$);
-  const features = useGet(featureSwitch$);
-  const unreadFilterEnabled =
-    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
   const unreadOnly = useGet(chatThreadOnlyUnread$);
   const setUnreadOnly = useSet(setChatThreadOnlyUnread$);
 
@@ -912,35 +907,31 @@ function ChatThreadsTitle() {
                 <IconPlus size={16} stroke={2} className="mr-2" />
                 New chat
               </DropdownMenuItem>
-              {unreadFilterEnabled && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      toggleUnreadOnly(false);
-                    }}
-                  >
-                    <IconCheck
-                      size={16}
-                      stroke={2}
-                      className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
-                    />
-                    All chats
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      toggleUnreadOnly(true);
-                    }}
-                  >
-                    <IconCheck
-                      size={16}
-                      stroke={2}
-                      className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
-                    />
-                    Unread only
-                  </DropdownMenuItem>
-                </>
-              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  toggleUnreadOnly(false);
+                }}
+              >
+                <IconCheck
+                  size={16}
+                  stroke={2}
+                  className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
+                />
+                All chats
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  toggleUnreadOnly(true);
+                }}
+              >
+                <IconCheck
+                  size={16}
+                  stroke={2}
+                  className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
+                />
+                Unread only
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>

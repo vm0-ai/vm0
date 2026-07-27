@@ -3036,7 +3036,7 @@ describe("connector catalog valid lifecycle", () => {
   }, 30_000);
 
   it("executes an external device grant with catalog-owned storage", async () => {
-    mockTestOAuthDeviceConnectorProvider();
+    const provider = mockTestOAuthDeviceConnectorProvider();
     configureSource();
     const release = buildRelease({
       version: "2026-07-15.external-device-grant",
@@ -3044,20 +3044,36 @@ describe("connector catalog valid lifecycle", () => {
       label: "Catalog Device OAuth",
       mutateCatalog: (artifact) => {
         const method = publicAuthMethod({
-          id: "oauth",
+          id: "api",
           grantKind: "device-auth",
         });
         method.featureSwitch = "testOauthConnector";
+        method.startOptions = [
+          {
+            id: "environment",
+            kind: "select",
+            label: "Environment",
+            required: true,
+            defaultValue: null,
+            options: [
+              { value: "test", label: "Test" },
+              { value: "live", label: "Live" },
+            ],
+          },
+        ];
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
-        setArtifactAuthMethods(artifact, [
-          devicePrivateAuthMethod({
-            accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
-            clientId: "test-oauth-device-client",
-            scopes: ["read"],
-          }),
-        ]);
+        const method = devicePrivateAuthMethod({
+          accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
+          clientId: "test-oauth-device-api-client",
+          scopes: ["read"],
+        });
+        method.id = "api";
+        recordValue(method.grant, "device grant").startOptionMappings = [
+          { privateName: "mode", publicId: "environment" },
+        ];
+        setArtifactAuthMethods(artifact, [method]);
       },
     });
     serveObjects(catalogObjects([release], release));
@@ -3073,11 +3089,25 @@ describe("connector catalog valid lifecycle", () => {
       await connectorsApi.deleteFeatureSwitches(actor);
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
+    const missingOption = await connectorsApi.requestDeviceAuthStart(
+      actor,
+      "test-oauth-device",
+      "api",
+      undefined,
+      [400],
+    );
+    expectApiError(missingOption.body);
+    expect(missingOption.body.error.message).toBe(
+      "test-oauth-device api device-auth start option environment is required",
+    );
+
     const session = await connectorsApi.startDeviceAuth(
       actor,
       "test-oauth-device",
-      "oauth",
+      "api",
+      { environment: "live" },
     );
+    expect(provider.deviceCodeBodies[0]?.get("mode")).toBe("live");
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: false,
     });
@@ -3095,7 +3125,7 @@ describe("connector catalog valid lifecycle", () => {
     }
     expect(completed.connector).toMatchObject({
       type: "test-oauth-device",
-      authMethod: "oauth",
+      authMethod: "api",
       oauthScopes: ["read"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);

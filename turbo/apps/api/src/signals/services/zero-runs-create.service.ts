@@ -338,7 +338,6 @@ function buildIntegrationToolsPrompt(
 
 function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
-  readonly planUpgradeGuidanceEnabled: boolean;
   readonly zeroBrowserAvailable: boolean;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly zeroFinanceEnabled: boolean;
@@ -386,11 +385,7 @@ function buildAgentToolsPrompt(args: {
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
     "- Credit diagnostics: use `zero doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins. If it says credit purchases are unavailable, do not run `zero credit`.",
     "- Buy credits: use `zero credit <credits>` only when diagnostics say the current plan can buy credits. It creates a Stripe checkout link for org admins and supports `--auto-recharge`, `--auto-recharge-threshold`, and `--auto-recharge-amount`; non-admins should run `zero doctor credit`.",
-    ...(args.planUpgradeGuidanceEnabled
-      ? [
-          `- Upgrade plan: use \`${PLAN_UPGRADE_CLI_HINT}\` when the current plan blocks a requested capability or cannot buy credits. Return the generated plan link to the user so chat can render the upgrade card.`,
-        ]
-      : []),
+    `- Upgrade plan: use \`${PLAN_UPGRADE_CLI_HINT}\` when the current plan blocks a requested capability or cannot buy credits. Return the generated plan link to the user so chat can render the upgrade card.`,
     "- If a connector appears unconnected, unauthenticated, missing auth/token environment names, blocked by firewall, or denied by permission policy, diagnose it with `zero connector check --help` before trying ad hoc fixes.",
     "- An attached generation template takes precedence. Follow its exact commands and resources directly; do not run `zero generate -h` or list providers unless the template explicitly names type-specific help as a fallback.",
     '- Without an attached generation template, when the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website), run `zero generate -h`. Use `zero generate <type>` (no --prompt) to list every provider available for that type; then run `zero generate <type> --provider built-in --prompt "..."` to execute via vm0, or `zero generate <type> --provider <connector>` to get connector skill-invocation guidance. Do not claim support for other generated content.',
@@ -470,10 +465,6 @@ function buildAppendSystemPrompt(args: {
     identity,
     buildAgentToolsPrompt({
       triggerSource: args.triggerSource,
-      planUpgradeGuidanceEnabled: isFeatureEnabled(
-        FeatureSwitchKey.PlanUpgradeGuidance,
-        args.featureSwitchContext,
-      ),
       zeroBrowserAvailable: isFeatureEnabled(
         FeatureSwitchKey.ZeroBrowser,
         args.featureSwitchContext,
