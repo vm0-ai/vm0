@@ -2052,6 +2052,148 @@ describe("Feishu integration", () => {
     );
   });
 
+  it("keeps Feishu group control cases out of runs and resumes queued tasks through the canonical session", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
+    const secondOpenId = "ou_feishu_canonical_group_user";
+    const secondActor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    await enableFeishuIntegration(secondActor, {
+      [FeatureSwitchKey.ZeroDebug]: true,
+    });
+
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "unconnected group task", {
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.some((message) => {
+        return (
+          message.kind === "reply" &&
+          messageContent(message).includes("Connect your account")
+        );
+      }),
+    ).toBeTruthy();
+    expect(
+      (await runsApi.listAgentRuns(secondActor, { limit: 20 })).runs.some(
+        (run) => {
+          return run.prompt === "unconnected group task";
+        },
+      ),
+    ).toBeFalsy();
+
+    await connectFixtureUser(fixture, secondActor, secondOpenId);
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "/help", { openId: secondOpenId }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.some((message) => {
+        return messageContent(message).includes("Zero commands");
+      }),
+    ).toBeTruthy();
+
+    await authOrgApi.updateAgentMetadata(actor, defaultAgentId, {
+      visibility: "private",
+    });
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "unavailable group task", {
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.some((message) => {
+        return messageContent(message).includes("Agent unavailable");
+      }),
+    ).toBeTruthy();
+    const controlRuns = await runsApi.listAgentRuns(secondActor, { limit: 20 });
+    expect(
+      controlRuns.runs.some((run) => {
+        return [
+          "unconnected group task",
+          "/help",
+          "unavailable group task",
+        ].includes(run.prompt);
+      }),
+    ).toBeFalsy();
+
+    await authOrgApi.updateAgentMetadata(actor, defaultAgentId, {
+      visibility: "public",
+    });
+    outboundMessages = [];
+    const firstMessageId = `om_${randomUUID()}`;
+    const firstPrompt = "first canonical group task";
+    const secondPrompt = "second queued canonical group task";
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, firstPrompt, {
+        messageId: firstMessageId,
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const firstRun = await findRun(secondActor, firstPrompt);
+
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, secondPrompt, {
+        rootId: firstMessageId,
+        threadId: `omt_${randomUUID()}`,
+        openId: secondOpenId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    expect(
+      (await runsApi.listAgentRuns(secondActor, { limit: 20 })).runs.some(
+        (run) => {
+          return run.prompt === secondPrompt;
+        },
+      ),
+    ).toBeFalsy();
+
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
+    const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
+    await completeRunSession({
+      runId: firstRun.id,
+      sandboxToken: firstClaim.sandboxToken,
+      sessionId: firstCliSessionId,
+      history: `bdd feishu canonical group history ${firstRun.id}`,
+      assistantText: "First canonical group answer",
+    });
+
+    const secondRun = await findRun(secondActor, secondPrompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
+    expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
+    await runsApi.requestCancelRun(secondActor, secondRun.id, [200]);
+    await flushWaitUntilForTest();
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
   it("runs mentioned group tasks with thread history, dedupe, and session resume", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
