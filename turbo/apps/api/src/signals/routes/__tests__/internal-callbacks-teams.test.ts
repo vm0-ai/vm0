@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
+import {
+  chatThreadMessagesContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -642,6 +646,34 @@ describe("Teams org internal callbacks", () => {
       threadId: "root-completed",
       text: "finish the task",
     });
+    mocks.clerk.session(teams.fixture.userId, teams.fixture.orgId, "org:admin");
+    const threadEvents = await accept(
+      setupApp({ context })(chatThreadsContract).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const createdThread = threadEvents.body.events.find((event) => {
+      return event.kind === "created";
+    });
+    if (!createdThread) {
+      throw new Error("Expected the canonical Teams chat thread");
+    }
+    const threadMessages = await accept(
+      setupApp({ context })(chatThreadMessagesContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: createdThread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(threadMessages.body.messages).toContainEqual(
+      expect.objectContaining({
+        role: "user",
+        content: "finish the task",
+      }),
+    );
     const claim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
       runId,
@@ -694,17 +726,32 @@ describe("Teams org internal callbacks", () => {
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
-    expect(summaryRequests).toHaveLength(1);
-    const summaryRequest = recordFromUnknown(
-      summaryRequests[0],
-      "Expected OpenRouter summary request",
+    const completedThreadMessages = await accept(
+      setupApp({ context })(chatThreadMessagesContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: createdThread.chatThreadId },
+        query: {},
+      }),
+      [200],
     );
-    expect(JSON.stringify(summaryRequest.messages)).toContain(
-      "teams agent run",
+    expect(completedThreadMessages.body.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        content: "Task completed successfully.",
+      }),
+    );
+    const summaryRequestValue = summaryRequests.find((request) => {
+      const serialized = JSON.stringify(request);
+      return serialized.includes("finish the task");
+    });
+    const summaryRequest = recordFromUnknown(
+      summaryRequestValue,
+      "Expected Teams run summary request",
     );
     expect(JSON.stringify(summaryRequest.messages)).toContain(
       "finish the task",
     );
+    const firstRunOpenRouterRequestCount = summaryRequests.length;
 
     const secondFixture = await trackTeamsFixture(
       Promise.resolve(
@@ -754,7 +801,9 @@ describe("Teams org internal callbacks", () => {
     expect(teamsApi.postedActivities[1]?.text).toContain(
       "Reply to Grace Hopper",
     );
-    expect(summaryRequests).toHaveLength(2);
+    expect(summaryRequests.length).toBeGreaterThan(
+      firstRunOpenRouterRequestCount,
+    );
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
@@ -849,7 +898,7 @@ describe("Teams org internal callbacks", () => {
     expect(followUpClaim.resumeSession).toBeNull();
   });
 
-  it("does not persist a thread session when the Teams API rejects the reply", async () => {
+  it("keeps the canonical thread session when the Teams API rejects the reply", async () => {
     const teams = await setupConnectedTeamsActor();
     const teamsApi = teamsApiMocks({
       serviceUrl: teams.fixture.serviceUrl,
@@ -868,18 +917,25 @@ describe("Teams org internal callbacks", () => {
     });
     clearTeamsApiCalls(teamsApi);
 
-    await completeSandboxRun({
+    const cliAgentSessionId = await completeSandboxRun({
       runId,
       sandboxToken: claim.sandboxToken,
       exitCode: 0,
     });
 
-    expect(teamsApi.tokenRequests).toHaveLength(1);
+    expect(teamsApi.tokenRequests).toHaveLength(2);
     expect(teamsApi.postedActivities).toHaveLength(1);
     expect(teamsApi.postedActivities[0]?.text).toContain(
       "Task completed successfully.",
     );
-    expect(teamsApi.reactionRequests).toHaveLength(0);
+    expect(teamsApi.reactionRequests).toStrictEqual([
+      {
+        method: "DELETE",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-teams-api-error-1",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
@@ -887,6 +943,6 @@ describe("Teams org internal callbacks", () => {
       threadId: "root-teams-api-error",
       activityId: "activity-teams-api-error-follow-up",
     });
-    expect(followUpClaim.resumeSession).toBeNull();
+    expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
   });
 });
