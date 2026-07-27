@@ -890,7 +890,10 @@ async function loadZeroRunPostAuthorizationContext(
   );
   signal.throwIfAborted();
 
-  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);
+  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db, {
+    timing: args.timing,
+    requestedConnectorCount: bootstrapContext.allowedConnectorTypes.length,
+  });
   signal.throwIfAborted();
   const runPermissionPolicies = await measureZeroPreCreate(
     args.timing,

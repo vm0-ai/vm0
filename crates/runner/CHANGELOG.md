@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.148.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.13...runner-rs-v0.148.14) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** enforce auth.base forwarding deadline ([#23304](https://github.com/vm0-ai/vm0/issues/23304)) ([e2281cc](https://github.com/vm0-ai/vm0/commit/e2281cce09b32062a5149d1c5f58ffcfe692f87d))
+
+
+### Refactoring
+
+* **mitm-addon:** retire silent usage wrappers ([#23305](https://github.com/vm0-ai/vm0/issues/23305)) ([d22f885](https://github.com/vm0-ai/vm0/commit/d22f885ee86f1090729498c4589084a7e8e3cd29))
+* **mitm-addon:** retire stream decoder feed wrapper ([#23302](https://github.com/vm0-ai/vm0/issues/23302)) ([5fcc5ba](https://github.com/vm0-ai/vm0/commit/5fcc5ba79576cdfcc91b1796787740fedb21a66e))
+
 ## [0.148.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.12...runner-rs-v0.148.13) (2026-07-27)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.260.0](https://github.com/vm0-ai/vm0/compare/cli-v9.259.0...cli-v9.260.0) (2026-07-27)
+
+
+### Features
+
+* add thread-scoped cloud browser access ([#23253](https://github.com/vm0-ai/vm0/issues/23253)) ([0699a79](https://github.com/vm0-ai/vm0/commit/0699a7935ad6994b00ad97c00a7aeae307dbd4d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.236.0
+    * @vm0/connectors bumped to 1.197.0
+    * @vm0/core bumped to 8.475.0
+
 ## [9.259.0](https://github.com/vm0-ai/vm0/compare/cli-v9.258.5...cli-v9.259.0) (2026-07-27)
 
 

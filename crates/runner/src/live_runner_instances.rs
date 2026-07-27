@@ -84,7 +84,6 @@ struct LiveRunnerInstanceRecord {
     base_dir: PathBuf,
     runner_name: String,
     runner_group: String,
-    #[serde(default = "default_subcommand")]
     subcommand: String,
     started_at: String,
 }
@@ -334,10 +333,6 @@ async fn read_record_with_liveness(
     } else {
         Ok(RecordRead::NotLive)
     }
-}
-
-fn default_subcommand() -> String {
-    "start".into()
 }
 
 async fn remove_stale_records(home: &HomePaths) {
@@ -731,6 +726,12 @@ mod tests {
             .unwrap();
     }
 
+    fn serialize_record_without_subcommand(record: &LiveRunnerInstanceRecord) -> Vec<u8> {
+        let mut value = serde_json::to_value(record).unwrap();
+        value.as_object_mut().unwrap().remove("subcommand").unwrap();
+        serde_json::to_vec_pretty(&value).unwrap()
+    }
+
     #[tokio::test]
     async fn publish_writes_private_record_without_secret_fields() {
         let registry = TestRegistry::new();
@@ -854,23 +855,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn try_list_defaults_legacy_records_to_start_subcommand() {
+    async fn try_list_fails_closed_for_missing_subcommand_with_live_file_identity() {
         let registry = TestRegistry::new();
         let handle = publish(&registry.home, registry.metadata()).await.unwrap();
-        let content = tokio::fs::read_to_string(&handle.path).await.unwrap();
-        let mut value: serde_json::Value = serde_json::from_str(&content).unwrap();
-        value.as_object_mut().unwrap().remove("subcommand").unwrap();
+        let record = read_valid_record(&handle.path).await.unwrap();
         crate::state_file::write_private_atomic(
             &handle.path,
-            &serde_json::to_vec_pretty(&value).unwrap(),
+            &serialize_record_without_subcommand(&record),
         )
         .await
         .unwrap();
 
+        let error = match try_list(&registry.home).await {
+            Ok(_) => panic!("expected missing subcommand for live record to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("live process identity"),
+            "{error}"
+        );
+        assert!(handle.path.exists());
+    }
+
+    #[tokio::test]
+    async fn try_list_preserves_unknown_explicit_subcommand() {
+        let registry = TestRegistry::new();
+        let mut metadata = registry.metadata();
+        metadata.subcommand = "future-subcommand".into();
+        let _handle = publish(&registry.home, metadata).await.unwrap();
+
         let instances = try_list(&registry.home).await.unwrap();
 
         assert_eq!(instances.len(), 1);
-        assert_eq!(instances[0].subcommand, "start");
+        assert_eq!(instances[0].subcommand, "future-subcommand");
     }
 
     #[tokio::test]
@@ -878,7 +896,13 @@ mod tests {
         let registry = TestRegistry::new();
         registry.ensure_dir();
         let stale_record = registry.stale_record().await;
-        registry.write_record_at_identity(&stale_record).await;
+        let stale_path = registry.record_path(&stale_record);
+        crate::state_file::write_private_atomic(
+            &stale_path,
+            &serialize_record_without_subcommand(&stale_record),
+        )
+        .await
+        .unwrap();
         crate::state_file::write_private_atomic(
             &registry.home.live_runner_instance_record_path(1, 1),
             b"{",
@@ -904,6 +928,7 @@ mod tests {
         let instances = try_list(&registry.home).await.unwrap();
 
         assert!(instances.is_empty());
+        assert!(!stale_path.exists());
     }
 
     #[tokio::test]
