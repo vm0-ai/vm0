@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.148.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.10...runner-rs-v0.148.11) (2026-07-27)
+
+
+### Documentation
+
+* **mitm-addon:** clarify authoritative endpoint tuple projection ([#23166](https://github.com/vm0-ai/vm0/issues/23166)) ([d24fa5b](https://github.com/vm0-ai/vm0/commit/d24fa5b7616ee20bddfe7f4daba455cbb4fd8aa6))
+* **runner:** document held-session snapshot concurrency ([#23168](https://github.com/vm0-ai/vm0/issues/23168)) ([e2a5f7c](https://github.com/vm0-ai/vm0/commit/e2a5f7cce6db3199777874753b1a45679bce81a6))
+
 ## [0.148.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.9...runner-rs-v0.148.10) (2026-07-26)
 
 ## [0.148.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.8...runner-rs-v0.148.9) (2026-07-26)
