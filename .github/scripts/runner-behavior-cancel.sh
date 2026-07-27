@@ -98,8 +98,8 @@ REAL_IP6TABLES_SAVE=$(command -v ip6tables-save)
 REAL_IP6TABLES_RESTORE=$(command -v ip6tables-restore)
 
 # Reserve five pool indexes before the runner starts. Four back the existing
-# reconciliation fixture, while the fifth guarantees admission capacity for
-# the runner. Incomplete attempts release every lock before retrying.
+# reconciliation fixture, while the fifth holds capacity for the runner
+# startup handoff. Incomplete attempts release every lock before retrying.
 sudo bash -s -- \
   "$RECONCILE_LOCK_INFO" \
   "$RECONCILE_CAPACITY_RELEASE" \
