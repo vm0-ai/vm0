@@ -17,7 +17,13 @@ import { usageEventHourly } from "./usage-event-hourly";
  *
  * Raw processed events and immutable hourly segments are projected into one
  * relation so readers observe exactly one representation across the atomic
- * compaction handoff.
+ * compaction handoff. `activityAt` keeps each branch's indexable time (exact
+ * for raw events and hour-aligned for segments); readers align range bounds
+ * before comparing it. `processedHour` is always hour-aligned and must drive
+ * presentation buckets so raw and compacted rows behave identically in
+ * fractional-offset timezones. `maxProcessedAt` retains the exact activity
+ * watermark, while `settledAt` also covers processed rows without a processed
+ * timestamp.
  */
 export const usageEventFinalized = pgView("usage_event_finalized", {
   orgId: text("org_id").notNull(),
