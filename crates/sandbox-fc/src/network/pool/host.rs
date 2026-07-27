@@ -19,6 +19,7 @@ use crate::command::{
 use crate::guest_dns_netfilter_trace::{
     GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceReader,
 };
+use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
@@ -32,7 +33,6 @@ use super::types::NetnsInfo;
 
 const NETNS_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const GUEST_DNS_READINESS_IPV4: &str = "8.8.8.8/32";
-const GUEST_DNS_READINESS_PACKET_BYTES: u64 = 67;
 
 // Each namespace starts two `ip` children concurrently. A 16-wide window caps
 // that fanout at 32 processes. At the 256-namespace hard limit, sixteen

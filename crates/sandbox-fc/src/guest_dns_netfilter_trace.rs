@@ -8,13 +8,16 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde::Serialize;
 use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::process::{Child, Command};
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, Instant, timeout, timeout_at};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
+use crate::guest_dns_readiness::{
+    GUEST_DNS_READINESS_MAX_ATTEMPTS, GUEST_DNS_READINESS_PACKET_BYTES,
+};
 use crate::network::{make_pool_dns_filter_comment, parse_netns_name};
 
 const MAX_PACKETS: usize = 256;
@@ -24,12 +27,11 @@ const MAX_STEPS_PER_PACKET: usize = 16;
 const MAX_TRACE_LINE_BYTES: usize = 1_024;
 const MAX_RULE_DETAIL_BYTES: usize = 192;
 const MAX_STDERR_BYTES: usize = 1_024;
-const MAX_REPORTED_PACKETS: usize = 3;
+const MAX_REPORTED_PACKETS: usize = GUEST_DNS_READINESS_MAX_ATTEMPTS as usize;
 const MONITOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const TRACE_CAPTURE_WAIT: Duration = Duration::from_millis(250);
 const READ_CHUNK_BYTES: usize = 4 * 1_024;
 const READINESS_DNS_IPV4: &str = "8.8.8.8";
-const READINESS_PACKET_BYTES: u64 = 67;
 
 static NEXT_MONITOR_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -121,8 +123,7 @@ impl GuestDnsNetfilterTraceMonitor {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         let mut child = command.spawn()?;
-        let stdout = take_pipe(&mut child, PipeKind::Stdout).await?;
-        let stderr = take_pipe(&mut child, PipeKind::Stderr).await?;
+        let (stdout, stderr) = take_pipes(&mut child).await?;
         let state = Arc::new(Mutex::new(TraceState::new(
             NEXT_MONITOR_ID.fetch_add(1, Ordering::Relaxed),
         )));
@@ -172,49 +173,13 @@ impl Drop for GuestDnsNetfilterTraceMonitor {
     }
 }
 
-enum PipeKind {
-    Stdout,
-    Stderr,
-}
-
-async fn take_pipe(
-    child: &mut Child,
-    kind: PipeKind,
-) -> io::Result<impl AsyncRead + Unpin + Send + 'static> {
-    let pipe = match kind {
-        PipeKind::Stdout => child.stdout.take().map(PipedOutput::Stdout),
-        PipeKind::Stderr => child.stderr.take().map(PipedOutput::Stderr),
-    };
-    match pipe {
-        Some(PipedOutput::Stdout(stdout)) => Ok(TracePipe::Stdout(stdout)),
-        Some(PipedOutput::Stderr(stderr)) => Ok(TracePipe::Stderr(stderr)),
-        None => {
+async fn take_pipes(child: &mut Child) -> io::Result<(ChildStdout, ChildStderr)> {
+    match (child.stdout.take(), child.stderr.take()) {
+        (Some(stdout), Some(stderr)) => Ok((stdout, stderr)),
+        _ => {
             let _ = child.start_kill();
             let _ = child.wait().await;
             Err(io::Error::other("xtables-monitor pipe unavailable"))
-        }
-    }
-}
-
-enum PipedOutput {
-    Stdout(tokio::process::ChildStdout),
-    Stderr(tokio::process::ChildStderr),
-}
-
-enum TracePipe {
-    Stdout(tokio::process::ChildStdout),
-    Stderr(tokio::process::ChildStderr),
-}
-
-impl AsyncRead for TracePipe {
-    fn poll_read(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buffer: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<io::Result<()>> {
-        match &mut *self {
-            Self::Stdout(stdout) => std::pin::Pin::new(stdout).poll_read(cx, buffer),
-            Self::Stderr(stderr) => std::pin::Pin::new(stderr).poll_read(cx, buffer),
         }
     }
 }
@@ -452,7 +417,7 @@ enum TraceMonitorStatus {
     Stopped,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 struct TracePacket {
     sequence: u64,
     family: u8,
@@ -461,7 +426,6 @@ struct TracePacket {
     steps: Vec<TraceStep>,
     farthest_observed_boundary: Option<RootNetfilterBoundary>,
     truncated: bool,
-    #[serde(skip)]
     complete: bool,
 }
 
@@ -510,7 +474,7 @@ impl TracePacket {
                 && step.rule.as_deref().is_some_and(|rule| {
                     rule_has_option_value(rule, "-p", "udp")
                         && rule_has_option_value(rule, "--dport", "53")
-                        && rule_has_option_value(rule, "--length", "67")
+                        && rule_has_exact_packet_length(rule, GUEST_DNS_READINESS_PACKET_BYTES)
                         && rule_has_option_value(rule, "--comment", namespace)
                         && rule_has_option_value(rule, "-j", "TRACE")
                 })
@@ -519,7 +483,7 @@ impl TracePacket {
             header.input.as_deref() == Some(host_device)
                 && header.source.as_deref() == Some(peer_ip)
                 && header.destination.as_deref() == Some(READINESS_DNS_IPV4)
-                && header.length == Some(READINESS_PACKET_BYTES)
+                && header.length == Some(GUEST_DNS_READINESS_PACKET_BYTES)
                 && (header
                     .protocol
                     .as_deref()
@@ -640,16 +604,28 @@ impl TracePacket {
 }
 
 fn rule_has_option_value(rule: &str, option: &str, expected: &str) -> bool {
+    rule_option_value(rule, option) == Some(expected)
+}
+
+fn rule_has_exact_packet_length(rule: &str, expected: u64) -> bool {
+    let Some(value) = rule_option_value(rule, "--length") else {
+        return false;
+    };
+    let (minimum, maximum) = value.split_once(':').unwrap_or((value, value));
+    minimum.parse() == Ok(expected) && maximum.parse() == Ok(expected)
+}
+
+fn rule_option_value<'a>(rule: &'a str, option: &str) -> Option<&'a str> {
     let mut tokens = rule.split_whitespace();
     while let Some(token) = tokens.next() {
         if token == option {
-            return tokens.next() == Some(expected);
+            return tokens.next();
         }
     }
-    false
+    None
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 struct TracePacketHeader {
     input: Option<String>,
     source: Option<String>,
@@ -689,13 +665,12 @@ struct TracePacketReport {
     complete: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 struct TraceStep {
     table: String,
     chain: String,
     kind: String,
     verdict: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     rule: Option<String>,
 }
 
@@ -986,21 +961,12 @@ impl GuestDnsNetfilterTraceReader {
         let matches = state
             .packets
             .iter()
-            .filter_map(|packet| {
-                (packet.sequence > cursor.sequence)
-                    .then(|| packet.report(namespace, host_device, peer_ip, dns_port))
-                    .flatten()
-            })
+            .filter(|packet| packet.sequence > cursor.sequence)
+            .filter_map(|packet| packet.report(namespace, host_device, peer_ip, dns_port))
             .collect::<Vec<_>>();
         let matched_packets = matches.len();
-        let packets = matches
-            .into_iter()
-            .rev()
-            .take(MAX_REPORTED_PACKETS)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
+        let first_reported = matched_packets.saturating_sub(MAX_REPORTED_PACKETS);
+        let packets: Vec<_> = matches.into_iter().skip(first_reported).collect();
         let buffer_truncated = state
             .packets
             .front()
@@ -1186,24 +1152,24 @@ mod tests {
     async fn capture_waits_for_expected_packet_and_keeps_report_bounded() {
         let (reader, state) = reader_and_state();
         let cursor = reader.cursor();
-        let ingest_state = Arc::clone(&state);
         let changed = Arc::clone(&reader.changed);
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            ingest_verified_fixture(&ingest_state);
-            changed.notify_waiters();
-        });
+        let capture = reader.capture(
+            cursor,
+            "vm0-ns-00-01",
+            "vm0-ve-00-01",
+            "10.200.0.2",
+            5300,
+            1,
+        );
+        tokio::pin!(capture);
+        assert!(
+            futures_util::poll!(capture.as_mut()).is_pending(),
+            "capture should wait for the expected packet"
+        );
+        ingest_verified_fixture(&state);
+        changed.notify_waiters();
 
-        let report = reader
-            .capture(
-                cursor,
-                "vm0-ns-00-01",
-                "vm0-ve-00-01",
-                "10.200.0.2",
-                5300,
-                1,
-            )
-            .await;
+        let report = capture.await;
         let output = serde_json::to_string(&report).unwrap();
 
         assert!(matches!(report.status, TraceReportStatus::Captured));
@@ -1248,6 +1214,13 @@ mod tests {
         assert!(packet.truncated);
     }
 
+    #[test]
+    fn exact_packet_length_accepts_single_value_and_equal_range() {
+        assert!(rule_has_exact_packet_length("--length 67", 67));
+        assert!(rule_has_exact_packet_length("--length 67:67", 67));
+        assert!(!rule_has_exact_packet_length("--length 66:67", 67));
+    }
+
     #[tokio::test]
     async fn process_exit_marks_monitor_unavailable() {
         let mut command = Command::new("sh");
@@ -1270,5 +1243,22 @@ mod tests {
             assert!(matches!(state.status, TraceMonitorStatus::Unavailable(_)));
         }
         monitor.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn shutdown_kills_and_reaps_monitor_process() {
+        let mut command = Command::new("sleep");
+        command.arg("60");
+        let mut monitor = GuestDnsNetfilterTraceMonitor::start_command(command)
+            .await
+            .unwrap();
+
+        monitor.shutdown().await;
+
+        assert!(monitor.task.is_none());
+        assert!(matches!(
+            lock_state(&monitor.reader.state).status,
+            TraceMonitorStatus::Stopped
+        ));
     }
 }

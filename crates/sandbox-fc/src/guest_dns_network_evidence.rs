@@ -9,12 +9,12 @@ use crate::command::{CommandError, exec_with_timeout};
 use crate::guest_dns_netfilter_trace::{
     GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceCursor, GuestDnsNetfilterTraceReport,
 };
+use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 
 const BASELINE_COMMAND_TIMEOUT: Duration = Duration::from_millis(250);
 const PEER_DEVICE: &str = "veth0";
 const EXPECTED_NAMESPACE_MASQUERADE_RULE: &str =
     "-A POSTROUTING -s 192.168.241.0/29 -o veth0 -j MASQUERADE";
-const EXPECTED_READINESS_PACKET_BYTES: u64 = 67;
 const FAILURE_DETAIL_LIMIT_BYTES: usize = 256;
 
 #[derive(Clone, Debug, Serialize)]
@@ -45,6 +45,8 @@ impl GuestDnsNetworkEvidenceTarget {
     }
 }
 
+// The trace reader is runtime-wide diagnostic capability, not attachment
+// identity. Baseline reuse is keyed by the namespace-facing fields only.
 impl PartialEq for GuestDnsNetworkEvidenceTarget {
     fn eq(&self, other: &Self) -> bool {
         self.namespace == other.namespace
@@ -491,7 +493,7 @@ fn correlate(
             Some(deltas),
         );
     }
-    if deltas.namespace_masquerade.bytes != expected_packets * EXPECTED_READINESS_PACKET_BYTES {
+    if deltas.namespace_masquerade.bytes != expected_packets * GUEST_DNS_READINESS_PACKET_BYTES {
         return EvidenceCorrelation::inconclusive(
             EvidenceReason::MasqueradeByteMismatch,
             Some(deltas),
@@ -526,82 +528,46 @@ fn correlate(
 }
 
 fn observe_counters(
-    target: &GuestDnsNetworkEvidenceTarget,
-    baseline: Option<&GuestDnsNetworkEvidenceBaseline>,
-    terminal: &NetworkCapture,
+    correlation: &EvidenceCorrelation,
     readiness_attempts: u16,
 ) -> CounterObservations {
-    let Some(baseline) = baseline else {
-        return CounterObservations::uniform(CounterObservationStatus::BaselineUnavailable);
+    let Some(deltas) = correlation.deltas else {
+        let status = match correlation.reason {
+            EvidenceReason::ZeroAttempts => CounterObservationStatus::ZeroAttempts,
+            EvidenceReason::BaselineUnavailable => CounterObservationStatus::BaselineUnavailable,
+            EvidenceReason::TerminalUnavailable => CounterObservationStatus::TerminalUnavailable,
+            EvidenceReason::IdentityMismatch => CounterObservationStatus::IdentityMismatch,
+            EvidenceReason::CounterReset => CounterObservationStatus::CounterReset,
+            // These reasons normally retain deltas. Missing deltas cannot
+            // support a positive independent observation.
+            EvidenceReason::ExactCorrelation
+            | EvidenceReason::MasqueradePacketMismatch
+            | EvidenceReason::MasqueradeByteMismatch
+            | EvidenceReason::NamespaceTxPacketMismatch
+            | EvidenceReason::RootRxPacketMismatch
+            | EvidenceReason::VethByteMismatch
+            | EvidenceReason::VethErrorOrDrop => CounterObservationStatus::NotObserved,
+        };
+        return CounterObservations::uniform(status);
     };
-    if baseline.target != *target {
-        return CounterObservations::uniform(CounterObservationStatus::IdentityMismatch);
-    }
-    let CaptureValue::Captured(baseline_namespace_link) = &baseline.capture.namespace_link else {
-        return CounterObservations::uniform(CounterObservationStatus::BaselineUnavailable);
-    };
-    let CaptureValue::Captured(baseline_root_link) = &baseline.capture.root_link else {
-        return CounterObservations::uniform(CounterObservationStatus::BaselineUnavailable);
-    };
-    let CaptureValue::Captured(baseline_masquerade) = &baseline.capture.namespace_masquerade else {
-        return CounterObservations::uniform(CounterObservationStatus::BaselineUnavailable);
-    };
-    let CaptureValue::Captured(terminal_namespace_link) = &terminal.namespace_link else {
-        return CounterObservations::uniform(CounterObservationStatus::TerminalUnavailable);
-    };
-    let CaptureValue::Captured(terminal_root_link) = &terminal.root_link else {
-        return CounterObservations::uniform(CounterObservationStatus::TerminalUnavailable);
-    };
-    let CaptureValue::Captured(terminal_masquerade) = &terminal.namespace_masquerade else {
-        return CounterObservations::uniform(CounterObservationStatus::TerminalUnavailable);
-    };
-    if !reciprocal_identity(baseline_namespace_link, baseline_root_link)
-        || !reciprocal_identity(terminal_namespace_link, terminal_root_link)
-        || !same_identity(baseline_namespace_link, terminal_namespace_link)
-        || !same_identity(baseline_root_link, terminal_root_link)
+
+    let expected_packets = u64::from(readiness_attempts);
+    let exact_namespace_masquerade = if deltas.namespace_masquerade.packets == expected_packets
+        && deltas.namespace_masquerade.bytes == expected_packets * GUEST_DNS_READINESS_PACKET_BYTES
     {
-        return CounterObservations::uniform(CounterObservationStatus::IdentityMismatch);
-    }
-
-    let Some(namespace_link_delta) = terminal_namespace_link
-        .stats64
-        .checked_delta(baseline_namespace_link.stats64)
-    else {
-        return CounterObservations::uniform(CounterObservationStatus::CounterReset);
-    };
-    let Some(root_link_delta) = terminal_root_link
-        .stats64
-        .checked_delta(baseline_root_link.stats64)
-    else {
-        return CounterObservations::uniform(CounterObservationStatus::CounterReset);
-    };
-    let Some(namespace_masquerade_delta) = terminal_masquerade.checked_delta(*baseline_masquerade)
-    else {
-        return CounterObservations::uniform(CounterObservationStatus::CounterReset);
-    };
-
-    let exact_namespace_masquerade = if readiness_attempts == 0 {
-        CounterObservationStatus::ZeroAttempts
+        CounterObservationStatus::Observed
     } else {
-        let expected_packets = u64::from(readiness_attempts);
-        if namespace_masquerade_delta.packets == expected_packets
-            && namespace_masquerade_delta.bytes
-                == expected_packets * EXPECTED_READINESS_PACKET_BYTES
-        {
-            CounterObservationStatus::Observed
-        } else {
-            CounterObservationStatus::NotObserved
-        }
+        CounterObservationStatus::NotObserved
     };
-    let veth_error_or_drop = namespace_link_delta.tx.errors != 0
-        || namespace_link_delta.tx.dropped != 0
-        || root_link_delta.rx.errors != 0
-        || root_link_delta.rx.dropped != 0;
+    let veth_error_or_drop = deltas.namespace_link.tx.errors != 0
+        || deltas.namespace_link.tx.dropped != 0
+        || deltas.root_link.rx.errors != 0
+        || deltas.root_link.rx.dropped != 0;
     let aggregate_veth_handoff = if veth_error_or_drop {
         CounterObservationStatus::ErrorOrDrop
-    } else if namespace_link_delta.tx.packets > 0
-        && namespace_link_delta.tx.packets == root_link_delta.rx.packets
-        && namespace_link_delta.tx.bytes == root_link_delta.rx.bytes
+    } else if deltas.namespace_link.tx.packets > 0
+        && deltas.namespace_link.tx.packets == deltas.root_link.rx.packets
+        && deltas.namespace_link.tx.bytes == deltas.root_link.rx.bytes
     {
         CounterObservationStatus::Observed
     } else {
@@ -647,7 +613,7 @@ fn render_report(
     root_netfilter_trace: Option<&GuestDnsNetfilterTraceReport>,
 ) -> String {
     let correlation = correlate(target, baseline, terminal, readiness_attempts);
-    let counter_observations = observe_counters(target, baseline, terminal, readiness_attempts);
+    let counter_observations = observe_counters(&correlation, readiness_attempts);
     let report = EvidenceReport {
         target,
         readiness_attempts,
@@ -911,7 +877,7 @@ mod tests {
         }
 
         let correlation = correlate(&target(), Some(&baseline), &terminal, 3);
-        let observations = observe_counters(&target(), Some(&baseline), &terminal, 3);
+        let observations = observe_counters(&correlation, 3);
 
         assert_eq!(
             correlation.classification,
