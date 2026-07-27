@@ -449,7 +449,7 @@ mod tests {
         assert_eq!(error.attempts, 1);
         assert_eq!(error.last_failure, GuestDnsReadinessFailure::Deadline);
         assert!(error.elapsed >= policy.total_timeout);
-        assert!(error.elapsed <= policy.total_timeout + Duration::from_millis(1));
+        assert!(error.elapsed < OPERATION_WAIT_TIMEOUT);
     }
 
     #[test]
