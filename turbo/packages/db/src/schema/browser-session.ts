@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
-  check,
   index,
   integer,
   pgTable,
@@ -42,9 +41,11 @@ export const browserProfiles = pgTable(
 /**
  * Thread-scoped profiles used by all new managed browsers.
  *
- * browserProfiles remains the compatibility store for sessions created before
- * thread-scoped profiles shipped. Existing sessions keep that profile until
- * the thread creates a replacement browser.
+ * browserProfiles remains the compatibility store while API versions that
+ * predate thread scope can still serve traffic. New sessions dual-reference a
+ * legacy owner profile and this thread profile; current APIs always prefer the
+ * thread profile. The legacy reference can be removed only after the previous
+ * API version has fully drained.
  */
 export const browserThreadProfiles = pgTable(
   "browser_thread_profiles",
@@ -85,11 +86,16 @@ export const browserSessions = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
-    /** Legacy shared profile for browser sessions created before thread scope. */
-    browserProfileId: uuid("browser_profile_id").references(() => {
-      return browserProfiles.id;
-    }),
-    /** Thread-scoped profile for all newly created browser sessions. */
+    /**
+     * Compatibility reference required by API versions that predate thread
+     * profiles. New sessions dual-write this and browserThreadProfileId.
+     */
+    browserProfileId: uuid("browser_profile_id")
+      .notNull()
+      .references(() => {
+        return browserProfiles.id;
+      }),
+    /** Thread-scoped profile preferred by current APIs when present. */
     browserThreadProfileId: uuid("browser_thread_profile_id").references(() => {
       return browserThreadProfiles.id;
     }),
@@ -129,10 +135,6 @@ export const browserSessions = pgTable(
         .where(
           sql`${table.status} IN ('creating', 'active', 'resuming', 'stopping')`,
         ),
-      check(
-        "browser_sessions_profile_scope_check",
-        sql`num_nonnulls(${table.browserProfileId}, ${table.browserThreadProfileId}) = 1`,
-      ),
     ];
   },
 );

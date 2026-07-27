@@ -22,11 +22,17 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  readBrowserProfileAsPreviousApi,
+  setComputerUseHostAsPreviousApi,
+} from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
+const computerUse = createComputerUseBddApi(context);
 const BROWSER_USE_API_URL = "https://api.browser-use.com/api/v3";
 const CRON_SECRET = "test-browser-reconcile-secret";
 const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
@@ -274,6 +280,46 @@ describe("zero browser route", () => {
     });
   });
 
+  it("normalizes a previous API host-only write during cloud browser rollout", async () => {
+    const { runs, chat, actor, agent } = await setupBrowserScenario();
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "Open a managed browser before selecting this computer",
+        cloudBrowserEnabled: true,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected a chat run");
+    }
+    const host = await computerUse.startComputerUseHost(actor);
+
+    // The preceding API version knows only computer_use_host_id, so this
+    // intentionally omits cloudBrowserEnabled from its update shape.
+    await setComputerUseHostAsPreviousApi(context, {
+      threadId: sent.body.threadId,
+      computerUseHostId: host.hostId,
+    });
+
+    const browserToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      sent.body.runId,
+      ["browser:read", "browser:write"],
+    );
+    const rejected = await requestBrowserUse({
+      authorization: `Bearer ${browserToken}`,
+    });
+    expect(rejected.status).toBe(403);
+    await expect(rejected.json()).resolves.toMatchObject({
+      error: {
+        code: "BROWSER_AUTHORIZATION_REQUIRED",
+        message: "Cloud browser is not enabled for this chat thread",
+      },
+    });
+  });
+
   it("lets an agent request cloud browser access for its chat thread", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
@@ -484,6 +530,32 @@ describe("zero browser route", () => {
       }),
     ).toStrictEqual(expect.arrayContaining([...profileIds]));
     expect(deletedProfiles).toStrictEqual([]);
+
+    if (!actor.orgId) {
+      throw new Error("Expected a browser test actor with an organization");
+    }
+    const actorOrgId = actor.orgId;
+    // No current production endpoint can invoke the previous API binary. The
+    // guarded compatibility fixture uses only its old profile lookup shape.
+    const previousApiRows = await Promise.all(
+      [created.body.browser.id, createdInOtherThread.body.browser.id].map(
+        async (browserId) => {
+          return await readBrowserProfileAsPreviousApi(context, {
+            browserId,
+            orgId: actorOrgId,
+            userId: actor.userId,
+          });
+        },
+      ),
+    );
+    expect(
+      new Set(
+        previousApiRows.map((row) => {
+          return row.browserProfileId;
+        }),
+      ).size,
+    ).toBe(1);
+    expect([...profileIds]).toContain(previousApiRows[0]?.providerProfileId);
 
     const copiedToAnotherThread = await createApp({
       signal: context.signal,

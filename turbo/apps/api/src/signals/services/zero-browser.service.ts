@@ -82,6 +82,11 @@ type BrowserProfileRow = typeof browserProfiles.$inferSelect;
 type BrowserThreadProfileRow = typeof browserThreadProfiles.$inferSelect;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
+interface BrowserProfilePair {
+  readonly compatibilityProfile: BrowserProfileRow;
+  readonly threadProfile: BrowserThreadProfileRow;
+}
+
 export interface BrowserServiceError {
   readonly kind: "error";
   readonly status: 400 | 402 | 403 | 404 | 409 | 502 | 503;
@@ -923,7 +928,7 @@ async function loadActiveInstance(
   return row ?? null;
 }
 
-async function loadOwnedBrowserProfile(
+async function loadOwnedThreadBrowserProfile(
   db: Db,
   owner: Pick<BrowserRunContext, "orgId" | "userId" | "chatThreadId">,
 ): Promise<BrowserThreadProfileRow | null> {
@@ -935,6 +940,23 @@ async function loadOwnedBrowserProfile(
         eq(browserThreadProfiles.chatThreadId, owner.chatThreadId),
         eq(browserThreadProfiles.orgId, owner.orgId),
         eq(browserThreadProfiles.userId, owner.userId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function loadOwnedCompatibilityBrowserProfile(
+  db: Db,
+  owner: Pick<BrowserRunContext, "orgId" | "userId">,
+): Promise<BrowserProfileRow | null> {
+  const [row] = await db
+    .select()
+    .from(browserProfiles)
+    .where(
+      and(
+        eq(browserProfiles.orgId, owner.orgId),
+        eq(browserProfiles.userId, owner.userId),
       ),
     )
     .limit(1);
@@ -1014,20 +1036,57 @@ async function claimBrowserProfile(
   if (created) {
     return { profile: created, created: true };
   }
-  const existing = await loadOwnedBrowserProfile(db, args);
+  const existing = await loadOwnedThreadBrowserProfile(db, args);
   if (!existing) {
     throw new Error("Managed browser profile claim did not resolve an owner");
   }
   return { profile: existing, created: false };
 }
 
+async function getOrCreateCompatibilityBrowserProfile(
+  db: Db,
+  args: Pick<BrowserRunContext, "orgId" | "userId"> & {
+    readonly providerProfileId: string;
+  },
+): Promise<BrowserProfileRow> {
+  const [created] = await db
+    .insert(browserProfiles)
+    .values({
+      id: randomUUID(),
+      orgId: args.orgId,
+      userId: args.userId,
+      providerProfileId: args.providerProfileId,
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (created) {
+    return created;
+  }
+  const existing = await loadOwnedCompatibilityBrowserProfile(db, args);
+  if (!existing) {
+    throw new Error(
+      "Managed browser compatibility profile claim did not resolve an owner",
+    );
+  }
+  return existing;
+}
+
 async function getOrCreateBrowserProfile(
   db: Db,
   context: BrowserRunContext,
-): Promise<BrowserServiceResult<BrowserThreadProfileRow>> {
-  const existing = await loadOwnedBrowserProfile(db, context);
+): Promise<BrowserServiceResult<BrowserProfilePair>> {
+  const existing = await loadOwnedThreadBrowserProfile(db, context);
   if (existing) {
-    return { kind: "ok", value: existing };
+    return {
+      kind: "ok",
+      value: {
+        compatibilityProfile: await getOrCreateCompatibilityBrowserProfile(db, {
+          ...context,
+          providerProfileId: existing.providerProfileId,
+        }),
+        threadProfile: existing,
+      },
+    };
   }
 
   let createdProviderProfileId: string | null = null;
@@ -1035,9 +1094,21 @@ async function getOrCreateBrowserProfile(
   const transaction = await settle(
     db.transaction(async (tx) => {
       await lockBrowserProfileCreation(tx, context.chatThreadId);
-      const lockedExisting = await loadOwnedBrowserProfile(tx, context);
+      const lockedExisting = await loadOwnedThreadBrowserProfile(tx, context);
       if (lockedExisting) {
-        return { kind: "ok" as const, value: lockedExisting };
+        return {
+          kind: "ok" as const,
+          value: {
+            compatibilityProfile: await getOrCreateCompatibilityBrowserProfile(
+              tx,
+              {
+                ...context,
+                providerProfileId: lockedExisting.providerProfileId,
+              },
+            ),
+            threadProfile: lockedExisting,
+          },
+        };
       }
 
       const browserProfileId = randomUUID();
@@ -1060,7 +1131,19 @@ async function getOrCreateBrowserProfile(
         providerProfileId: provider.value,
       });
       retainedCreatedProfile = claimed.created;
-      return { kind: "ok" as const, value: claimed.profile };
+      return {
+        kind: "ok" as const,
+        value: {
+          compatibilityProfile: await getOrCreateCompatibilityBrowserProfile(
+            tx,
+            {
+              ...context,
+              providerProfileId: claimed.profile.providerProfileId,
+            },
+          ),
+          threadProfile: claimed.profile,
+        },
+      };
     }),
   );
   if (
@@ -1286,6 +1369,7 @@ async function claimFreshBrowser(
   context: BrowserRunContext,
   args: BrowserCreateInput & {
     readonly browserId: string;
+    readonly browserProfileId: string;
     readonly browserThreadProfileId: string;
   },
   signal: AbortSignal,
@@ -1362,7 +1446,7 @@ async function claimFreshBrowser(
         orgId: context.orgId,
         userId: context.userId,
         name: args.name,
-        browserProfileId: null,
+        browserProfileId: args.browserProfileId,
         browserThreadProfileId: args.browserThreadProfileId,
         status: "creating",
         proxyCountryCode: args.proxyCountryCode,
@@ -1416,7 +1500,8 @@ const createBrowserForContext$ = command(
       {
         ...args.input,
         browserId: randomUUID(),
-        browserThreadProfileId: profile.value.id,
+        browserProfileId: profile.value.compatibilityProfile.id,
+        browserThreadProfileId: profile.value.threadProfile.id,
       },
       signal,
     );

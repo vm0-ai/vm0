@@ -3493,7 +3493,7 @@
           "name": "browser_profile_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "browser_thread_profile_id": {
           "name": "browser_thread_profile_id",
@@ -3697,12 +3697,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "browser_sessions_profile_scope_check": {
-          "name": "browser_sessions_profile_scope_check",
-          "value": "num_nonnulls(\"browser_sessions\".\"browser_profile_id\", \"browser_sessions\".\"browser_thread_profile_id\") = 1"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.browser_thread_profiles": {
