@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { animationFrame } from "signal-timers";
 import { onRef } from "../../utils.ts";
 import {
   zeroOrgContract,
@@ -21,14 +22,36 @@ import { accept } from "../../../lib/accept.ts";
 
 const internalBillingScrollTarget$ = state<"buy-credits" | null>(null);
 
-export const billingScrollTarget$ = computed((get) => {
-  return get(internalBillingScrollTarget$);
+export const requestBuyCreditsScroll$ = command(({ set }) => {
+  set(internalBillingScrollTarget$, "buy-credits");
 });
 
-export const setBillingScrollTarget$ = command(
-  ({ set }, target: "buy-credits" | null) => {
-    set(internalBillingScrollTarget$, target);
+export const clearBillingScrollTarget$ = command(({ set }) => {
+  set(internalBillingScrollTarget$, null);
+});
+
+const scrollToBuyCreditsIfRequested$ = command(
+  ({ get, set }, element: HTMLDivElement) => {
+    if (get(internalBillingScrollTarget$) !== "buy-credits") {
+      return;
+    }
+    element.scrollIntoView({ block: "start", behavior: "smooth" });
+    set(clearBillingScrollTarget$);
   },
+);
+
+export const buyCreditsScrollRef$ = onRef(
+  command(({ get, set }, element: HTMLDivElement, signal: AbortSignal) => {
+    if (get(internalBillingScrollTarget$) !== "buy-credits") {
+      return;
+    }
+    animationFrame(
+      () => {
+        set(scrollToBuyCreditsIfRequested$, element);
+      },
+      { signal },
+    );
+  }),
 );
 
 // ---------------------------------------------------------------------------

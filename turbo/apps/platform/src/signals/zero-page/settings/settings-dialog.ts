@@ -5,9 +5,10 @@ import { isOrgAdmin$ } from "../../org.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { resetSignal } from "../../utils.ts";
 import {
+  clearBillingScrollTarget$,
   clearPendingLogo$,
   initProfileName$,
-  setBillingScrollTarget$,
+  requestBuyCreditsScroll$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
 
@@ -100,6 +101,9 @@ export const settingsActiveSection$ = computed((get) => {
 export const setSettingsActiveSection$ = command(
   ({ get, set }, section: SettingsSection) => {
     set(internalActiveSection$, section);
+    if (section !== "billing") {
+      set(clearBillingScrollTarget$);
+    }
     if (section === "model") {
       set(reloadPersonalModelProviders$);
     }
@@ -114,7 +118,7 @@ export const setSettingsActiveSection$ = command(
 export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(internalActiveSection$, "billing");
   set(setBillingSubPage$, true);
-  set(setBillingScrollTarget$, null);
+  set(clearBillingScrollTarget$);
 
   const params = new URLSearchParams(get(searchParams$));
   params.set("settings", "billing");
@@ -149,6 +153,7 @@ export const handoffSettingsDialogSession$ = command(({ set }) => {
 export const closeSettingsModal$ = command(({ get, set }) => {
   set(resetSettingsDialogSignal$);
   set(clearSettingsDialogSession$);
+  set(clearBillingScrollTarget$);
 
   const params = new URLSearchParams(get(searchParams$));
   if (params.has("settings") || params.has("billingView")) {
@@ -208,6 +213,7 @@ export const setSettingsDialogOpen$ = command(
 export const openSettingsDialogAt$ = command(
   async ({ set }, section: SettingsSection, signal: AbortSignal) => {
     set(internalActiveSection$, section);
+    set(clearBillingScrollTarget$);
     await set(setSettingsDialogOpen$, true, signal);
   },
 );
@@ -228,9 +234,11 @@ export const checkUnifiedSettingsParam$ = command(
     const value = params.get("settings");
     const billingView = params.get("billingView");
     if (!value) {
+      set(clearBillingScrollTarget$);
       return;
     }
     if (!isSettingsSection(value)) {
+      set(clearBillingScrollTarget$);
       const next = new URLSearchParams(get(searchParams$));
       next.delete("settings");
       next.delete("billingView");
@@ -245,7 +253,7 @@ export const checkUnifiedSettingsParam$ = command(
     signal.throwIfAborted();
     if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
       set(setBillingSubPage$, false);
-      set(setBillingScrollTarget$, null);
+      set(clearBillingScrollTarget$);
       const next = new URLSearchParams(get(searchParams$));
       next.delete("settings");
       next.delete("billingView");
@@ -257,10 +265,11 @@ export const checkUnifiedSettingsParam$ = command(
       !isAdmin && isAdminOnlySettingsSection(section) ? "preference" : section;
     set(internalActiveSection$, resolved);
     set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
-    set(
-      setBillingScrollTarget$,
-      opensBuyCredits && resolved === "billing" ? "buy-credits" : null,
-    );
+    if (opensBuyCredits && resolved === "billing") {
+      set(requestBuyCreditsScroll$);
+    } else {
+      set(clearBillingScrollTarget$);
+    }
     await set(setSettingsDialogOpen$, true, signal);
   },
 );
