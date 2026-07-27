@@ -682,6 +682,15 @@ function mapClerkOrgRole(clerkRole: string): OrgRole {
   return clerkRole === "org:admin" ? "admin" : "member";
 }
 
+function requiredClerkMembershipUserId(
+  userId: string | null | undefined,
+): string {
+  if (!userId) {
+    throw new Error("Clerk organization membership is missing its user ID");
+  }
+  return userId;
+}
+
 function userPrimaryEmail(user: User): string {
   const primary = user.emailAddresses.find((e) => {
     return e.id === user.primaryEmailAddressId;
@@ -785,27 +794,33 @@ export function zeroOrgMembersList(
       }),
     ]);
 
-    const memberUserIds = memberships.data
-      .map((m) => {
-        return m.publicUserData?.userId;
-      })
-      .filter((id): id is string => {
-        return Boolean(id);
-      });
-    const memberProfiles = await fetchUserProfileMap(db, client, memberUserIds);
-
-    const memberList: OrgMember[] = memberships.data.map((membership) => {
-      const uid = membership.publicUserData?.userId ?? "";
-      const profile = memberProfiles.get(uid);
+    const membersWithUserIds = memberships.data.map((membership) => {
       return {
-        userId: uid,
+        membership,
+        userId: requiredClerkMembershipUserId(
+          membership.publicUserData?.userId,
+        ),
+      };
+    });
+    const memberProfiles = await fetchUserProfileMap(
+      db,
+      client,
+      membersWithUserIds.map((member) => {
+        return member.userId;
+      }),
+    );
+
+    const memberList: OrgMember[] = membersWithUserIds.map((member) => {
+      const profile = memberProfiles.get(member.userId);
+      return {
+        userId: member.userId,
         email: profile?.email ?? "",
         firstName: profile?.firstName ?? null,
         lastName: profile?.lastName ?? null,
         imageUrl: profile?.imageUrl ?? "",
-        role: mapClerkOrgRole(membership.role),
-        joinedAt: membership.createdAt
-          ? new Date(membership.createdAt).toISOString()
+        role: mapClerkOrgRole(member.membership.role),
+        joinedAt: member.membership.createdAt
+          ? new Date(member.membership.createdAt).toISOString()
           : "",
       };
     });
@@ -827,20 +842,16 @@ export function zeroOrgMembersList(
     > = [];
     if (args.callerRole === "admin") {
       const requestsData = await fetchClerkMembershipRequests(args.orgId);
-      const requestUserIds = requestsData
-        .map((r) => {
-          return r.public_user_data?.user_id;
-        })
-        .filter((id): id is string => {
-          return Boolean(id);
-        });
+      const requestUserIds = requestsData.map((request) => {
+        return request.public_user_data.user_id;
+      });
       const requestProfiles = await fetchUserProfileMap(
         db,
         client,
         requestUserIds,
       );
       membershipRequests = requestsData.map((req) => {
-        const uid = req.public_user_data?.user_id ?? "";
+        const uid = req.public_user_data.user_id;
         const profile = requestProfiles.get(uid);
         return {
           id: req.id,

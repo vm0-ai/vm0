@@ -6,7 +6,7 @@ const CLERK_API_BASE = "https://api.clerk.com/v1";
 
 const membershipRequestDataSchema = z.object({
   id: z.string(),
-  public_user_data: z.object({ user_id: z.string().optional() }).optional(),
+  public_user_data: z.object({ user_id: z.string().min(1) }),
   created_at: z.number(),
 });
 

@@ -1000,6 +1000,19 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestListMembers<S extends 200 | 400 | 401 | 403 | 404 | 500>(
+      actor: ApiTestUser,
+      statuses: readonly S[],
+    ) {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembersContract,
+      );
+      return await accept(
+        client.members({ headers: authenticate(actor) }),
+        statuses,
+      );
+    },
+
     async requestReadOrgWithBearer(
       token: string,
       statuses: readonly (200 | 401 | 403 | 404)[],
