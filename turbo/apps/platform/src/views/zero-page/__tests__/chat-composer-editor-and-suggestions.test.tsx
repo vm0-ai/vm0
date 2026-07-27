@@ -258,14 +258,15 @@ describe("chat composer models", () => {
     );
     expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
 
-    await user.keyboard("sales");
+    await user.keyboard("research");
 
     await waitFor(() => {
       expect(screen.queryByText("support-escalation")).not.toBeInTheDocument();
     });
-    const matchedPrefix = screen.getByText("sales", { selector: "span" });
-    expect(matchedPrefix).toHaveClass("text-primary/60");
-    expect(screen.getByText("-research")).toBeInTheDocument();
+    const matchedSubstring = screen.getByText("research", {
+      selector: "span",
+    });
+    expect(matchedSubstring).toHaveClass("text-primary/60");
 
     await user.keyboard("{Enter}");
 

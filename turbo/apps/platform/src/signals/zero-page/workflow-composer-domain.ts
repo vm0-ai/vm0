@@ -7,7 +7,7 @@ export function matchesWorkflowNameQuery(
     return true;
   }
 
-  return workflowName.toLowerCase().startsWith(query.toLowerCase());
+  return workflowName.toLowerCase().includes(query.toLowerCase());
 }
 
 export interface SlashWorkflowRange {
