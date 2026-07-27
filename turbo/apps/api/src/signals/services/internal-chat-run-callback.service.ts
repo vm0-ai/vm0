@@ -303,9 +303,8 @@ const chatCallbackPayloadSchema = z
       .optional(),
     feishuDelivery: feishuDeliveryTargetSchema.optional(),
     teamsDelivery: teamsDeliveryTargetSchema.optional(),
-    // Set for goal-triggered runs so terminal push notifications can be gated:
-    // an active goal loops on every idle, so interim per-iteration pushes are
-    // suppressed and only terminal states (complete/blocked/auto-stopped) notify.
+    // Retain while callbacks created by this version can be dispatched by
+    // rollback-eligible API versions that still gate pushes by run origin.
     isGoalRun: z.boolean().optional(),
   })
   .passthrough();
@@ -1702,7 +1701,7 @@ async function runCompletedChatCallbackSideEffects(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
-  readonly isGoalRun: boolean;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly lastResultText: string | null;
   readonly followupContext: readonly ChatCompletionContextMessage[];
   readonly structuredPromptEnabled: boolean;
@@ -1743,18 +1742,8 @@ async function runCompletedChatCallbackSideEffects(args: {
   })();
 
   const pushStep = (async () => {
-    // A goal-triggered run that completes while the goal is still active is just
-    // one iteration of a self-continuing loop, so suppress its push. If the run
-    // completed or blocked the goal, it no longer loads as active and falls
-    // through to notify.
-    if (args.isGoalRun) {
-      const goal = await loadActiveGoalForThread(args.db, {
-        orgId: args.chatThread.orgId,
-        threadId: args.chatThread.chatThreadId,
-      });
-      if (goal !== null) {
-        return;
-      }
+    if (args.suppressWebPushForActiveGoal) {
+      return;
     }
 
     let summary: string | null = null;
@@ -1836,8 +1825,13 @@ async function runFailedChatCallbackSideEffects(args: {
   readonly db: Db;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly displayErrorMessage: string;
 }): Promise<void> {
+  if (args.suppressWebPushForActiveGoal) {
+    return;
+  }
+
   await sendUserPushNotifications({
     db: args.db,
     userId: args.chatThread.userId,
@@ -2116,6 +2110,18 @@ async function chatThreadForRunFromDb(
     userId: row.userId,
     orgId: row.orgId,
   };
+}
+
+async function runHasActiveGoal(db: Db, runId: string): Promise<boolean> {
+  const chatThread = await chatThreadForRunFromDb(db, runId);
+  if (!chatThread) {
+    return false;
+  }
+  const goal = await loadActiveGoalForThread(db, {
+    orgId: chatThread.orgId,
+    threadId: chatThread.chatThreadId,
+  });
+  return goal !== null;
 }
 
 async function loadAgentForAutoSend(
@@ -3118,7 +3124,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
-  readonly isGoalRun: boolean;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
@@ -3185,7 +3191,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         runId: args.runId,
         run: args.run,
         chatThread: args.chatThread,
-        isGoalRun: args.isGoalRun,
+        suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
         lastResultText: completed.lastResultText,
         followupContext: completed.followupContext,
         structuredPromptEnabled,
@@ -3208,6 +3214,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly errorMessage: string;
   readonly dependencies: ChatCallbackDependencies;
   readonly timing: ChatCallbackPreCreateTimingCollector;
@@ -3258,6 +3265,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         db: args.db,
         run: args.run,
         chatThread: args.chatThread,
+        suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
         displayErrorMessage: failed.displayErrorMessage,
       });
     },
@@ -3436,6 +3444,7 @@ interface TerminalChatCallbackArgs {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
+  readonly suppressWebPushForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
 }
@@ -3503,7 +3512,6 @@ async function processTerminalChatCallback(
     return;
   }
   const { run, chatThread } = loaded;
-  const isGoalRun = args.payload.isGoalRun ?? false;
 
   const prepared = await settle(
     callbackStatus === "completed"
@@ -3512,7 +3520,7 @@ async function processTerminalChatCallback(
           runId,
           run,
           chatThread,
-          isGoalRun,
+          suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
           dependencies: args.dependencies,
           timing,
           signal: args.signal,
@@ -3526,6 +3534,7 @@ async function processTerminalChatCallback(
           runId,
           run,
           chatThread,
+          suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
           errorMessage: terminalCallbackErrorMessage(
             args.callback.error,
             run.error,
@@ -3652,6 +3661,8 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       feishuDelivery: args.runInput.feishuDelivery,
       teamsDelivery: args.runInput.teamsDelivery,
     };
+    const suppressWebPushForActiveGoal = await runHasActiveGoal(db, runId);
+    args.signal.throwIfAborted();
     await processTerminalChatCallback({
       db,
       callback: {
@@ -3661,20 +3672,22 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
         payload,
       },
       payload,
+      suppressWebPushForActiveGoal,
       dependencies: withoutQueuedRunDependency(args.dependencies),
       signal: args.signal,
     });
   };
 }
 
-function handleChatInternalCallback(args: {
+async function handleChatInternalCallback(args: {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
-}):
+}): Promise<
   | { readonly success: true }
-  | { readonly success: false; readonly error: string } {
+  | { readonly success: false; readonly error: string }
+> {
   const payload = chatCallbackPayloadSchema.safeParse(args.callback.payload);
   if (!payload.success) {
     return {
@@ -3708,6 +3721,15 @@ function handleChatInternalCallback(args: {
     return { success: true };
   }
 
+  // Goal continuation runs after this callback is acknowledged and may pause a
+  // failed goal before the background notification step starts. Snapshot the
+  // goal state here so the Push decision reflects the moment the run ended.
+  const suppressWebPushForActiveGoal = await runHasActiveGoal(
+    args.db,
+    args.callback.runId,
+  );
+  args.signal.throwIfAborted();
+
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
@@ -3723,6 +3745,7 @@ function handleChatInternalCallback(args: {
         db: args.db,
         callback: args.callback,
         payload: payload.data,
+        suppressWebPushForActiveGoal,
         dependencies: args.dependencies,
         signal: backgroundSignal,
       }),

@@ -6,7 +6,7 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";

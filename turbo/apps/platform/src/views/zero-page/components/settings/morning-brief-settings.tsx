@@ -1,6 +1,6 @@
 import { useGet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Button } from "@vm0/ui/components/ui/button";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { Switch } from "@vm0/ui/components/ui/switch";

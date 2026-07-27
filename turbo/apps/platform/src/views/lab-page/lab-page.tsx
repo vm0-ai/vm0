@@ -5,7 +5,7 @@ import {
   getUserOverridableFeatureSwitchKeys,
   type FeatureSwitchMetadata,
 } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Switch, Button, cn } from "@vm0/ui";
 import {
   featureSwitch$,

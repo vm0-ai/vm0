@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   cronDrainEmailOutboxContract,
   cronExecuteMorningBriefsContract,

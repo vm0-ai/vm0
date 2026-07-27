@@ -9,7 +9,7 @@ import type {
   ConnectorAuthMethodId,
   ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 interface TestConnectorAuthMethod {
   readonly detail: PublicConnectorCatalogAuthMethodDetail;

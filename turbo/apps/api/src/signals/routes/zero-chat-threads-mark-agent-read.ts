@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { chatThreadMarkAgentReadContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";

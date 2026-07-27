@@ -7,7 +7,7 @@ import type {
   GithubWorkflowRunConclusion,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   type ZeroWorkflowAutomationCreateRequest,

@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
 import { eq } from "drizzle-orm";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 

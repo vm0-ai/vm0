@@ -12,7 +12,7 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { chatIdb$ } from "../../../signals/external/chat-idb-store.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";

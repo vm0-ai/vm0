@@ -10,7 +10,7 @@ import { HttpResponse, http } from "msw";
 import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import {

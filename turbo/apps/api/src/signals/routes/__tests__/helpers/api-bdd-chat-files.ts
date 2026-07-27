@@ -8,6 +8,7 @@ import {
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
   chatThreadDraftContract,
+  chatThreadEventsContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadModelSelectionContract,
@@ -18,6 +19,7 @@ import {
   chatThreadMessagesContract,
   type AttachFile,
   type ArtifactsListResponse,
+  type ChatEventResponse,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -259,6 +261,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadMessagesClient() {
     return chatFilesApp(context)(chatThreadMessagesContract);
+  }
+
+  function threadEventsClient() {
+    return chatFilesApp(context)(chatThreadEventsContract);
   }
 
   function threadArtifactsClient() {
@@ -899,6 +905,31 @@ export function createChatFilesBddApi(context: TestContext) {
     }> {
       const response = await accept(
         threadMessagesClient().list({
+          headers: authenticate(context, actor),
+          params: { threadId },
+          query,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async listThreadEvents(
+      actor: ApiTestUser,
+      threadId: string,
+      query: {
+        readonly sinceSeqId?: number;
+        readonly beforeSeqId?: number;
+        readonly sinceId?: string;
+        readonly beforeId?: string;
+        readonly limit?: number;
+      } = {},
+    ): Promise<{
+      readonly events: readonly ChatEventResponse[];
+      readonly hasHistoryBefore?: boolean;
+    }> {
+      const response = await accept(
+        threadEventsClient().list({
           headers: authenticate(context, actor),
           params: { threadId },
           query,
