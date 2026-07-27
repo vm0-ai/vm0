@@ -808,6 +808,30 @@ describe("connectors page", () => {
     });
   });
 
+  it("disconnects a connected catalog connector from the options menu", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+    });
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+      ).toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+    );
+    click(menuItemByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
+    });
+  });
+
   it("moves scope review into the connector options menu", async () => {
     const storedScopes = ["https://www.googleapis.com/auth/adwords"];
     const addedScopes = [
