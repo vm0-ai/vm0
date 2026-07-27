@@ -2641,6 +2641,216 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSecondRead);
   });
 
+  it("loads 17 exact connector skill versions in one bounded storage preload", async () => {
+    const fixtureSuffix = randomUUID().slice(0, 8);
+    const skills = Array.from({ length: 17 }, (_, index) => {
+      const sequence = String(index + 1).padStart(2, "0");
+      const connectorRef = `batch-skill-${fixtureSuffix}-${sequence}`;
+      const selectedVersionId = createHash("sha256")
+        .update(`selected:${connectorRef}`)
+        .digest("hex");
+      const newerVersionId = createHash("sha256")
+        .update(`newer:${connectorRef}`)
+        .digest("hex");
+      return {
+        connectorRef,
+        selectedVersionId,
+        newerVersionId,
+        skill: buildBundledSkillFixture(connectorRef, selectedVersionId),
+      };
+    });
+    configureSource();
+    const previousSystemStates: (VolumeStorageState | null)[] = [];
+    for (const skill of skills) {
+      previousSystemStates.push(
+        await readVolumeStorageState({
+          orgId: SYSTEM_ORG_ID,
+          storageName: skill.skill.storageName,
+        }),
+      );
+    }
+
+    const firstSkill = skills[0];
+    if (!firstSkill) {
+      throw new Error("Expected connector skill fixtures");
+    }
+    const release = buildRelease({
+      version: `2026-07-15.external-batch-skills-${fixtureSuffix}`,
+      connectorRef: firstSkill.connectorRef,
+      label: "External Batch Skill 01",
+      mutateArtifact: (artifact) => {
+        const template = firstRecord(artifact.connectors, "connectors");
+        const iconKey = recordValue(template.icon, "connector icon").key;
+        if (typeof iconKey !== "string") {
+          throw new Error("Expected connector icon key");
+        }
+        artifact.connectors = skills.map((skill, index) => {
+          const sequence = String(index + 1).padStart(2, "0");
+          const connector = buildCatalogConnector({
+            connectorRef: skill.connectorRef,
+            label: `External Batch Skill ${sequence}`,
+            iconKey,
+          });
+          const presentation = publicAuthMethod({
+            id: "api-token",
+            grantKind: "manual",
+            manual: true,
+          });
+          presentation.label = "API Token";
+          const privateName = `BATCH_SKILL_${sequence}_TOKEN`;
+          connector.authMethods = [
+            canonicalAuthMethod(presentation, {
+              id: "api-token",
+              storage: {
+                version: 1,
+                secrets: [privateName],
+                variables: [],
+              },
+              grant: {
+                kind: "manual",
+                fields: [
+                  {
+                    privateName,
+                    publicId: "credential",
+                    storage: "secret",
+                  },
+                ],
+              },
+              access: {
+                kind: "static",
+                envBindings: {
+                  [privateName]: `$secrets.${privateName}`,
+                },
+              },
+              revoke: { kind: "none" },
+            }),
+          ];
+          connector.skill = skill.skill.descriptor;
+          return connector;
+        });
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "External batch connector skill agent",
+      visibility: "private",
+    });
+    const activeRunIds = new Set<string>();
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      for (const runId of activeRunIds) {
+        await runs.requestCancelRun(actor, runId, [200, 404]);
+      }
+      for (const [index, skill] of skills.entries()) {
+        await systemStorageStateAction({
+          action: "cleanup",
+          object_key_prefix: skill.skill.s3Prefix,
+        });
+        await restoreVolumeStorageState({
+          orgId: SYSTEM_ORG_ID,
+          storageName: skill.skill.storageName,
+          previous: previousSystemStates[index] ?? null,
+        });
+        await createConnectorCleanup(actor, skill.connectorRef)();
+      }
+      await bdd.deleteAgent(actor, agent.agentId);
+    });
+
+    for (const [index, skill] of skills.entries()) {
+      await connectorsApi.connectManualGrant(
+        actor,
+        skill.connectorRef,
+        "api-token",
+        { credential: `batch-skill-secret-${index + 1}` },
+        agent.agentId,
+      );
+    }
+
+    const createAndClaimRun = async (prompt: string) => {
+      const run = await runs.createRun(actor, {
+        agentId: agent.agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      activeRunIds.add(run.runId);
+      expect(run.status).not.toBe("failed");
+      await runs.heartbeatRunner(runnerGroup);
+      await expect
+        .poll(
+          async () => {
+            return (await runs.pollRunner(runnerGroup)).body.job?.runId;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(run.runId);
+      return {
+        run,
+        claim: await runs.claimRunnerJob(run.runId),
+      };
+    };
+    const expectSkillMounts = (
+      claim: Awaited<ReturnType<typeof runs.claimRunnerJob>>,
+    ): void => {
+      const storageMounts =
+        expectCanonicalStorageManifest(
+          claim.storageManifest,
+        )?.storageMounts.filter((mount) => {
+          return skills.some((skill) => {
+            return mount.name === skill.skill.storageName;
+          });
+        }) ?? [];
+      expect(storageMounts).toHaveLength(skills.length);
+      for (const skill of skills) {
+        expect(storageMounts).toContainEqual(
+          expect.objectContaining({
+            name: skill.skill.storageName,
+            mountPath: `/home/user/.claude/skills/${skill.connectorRef}`,
+            versionId: skill.selectedVersionId,
+            archiveSize: 321,
+            archiveUrl: expect.any(String),
+          }),
+        );
+      }
+    };
+
+    const headRun = await createAndClaimRun(
+      "Use all connector skills at their registered HEAD versions",
+    );
+    expectSkillMounts(headRun.claim);
+    await runs.requestCancelRun(actor, headRun.run.runId, [200]);
+    activeRunIds.delete(headRun.run.runId);
+
+    for (const skill of skills) {
+      await seedVolumeStorageVersion({
+        orgId: SYSTEM_ORG_ID,
+        storageName: skill.skill.storageName,
+        versionId: skill.newerVersionId,
+        s3Prefix: skill.skill.s3Prefix,
+        s3Key: `${skill.skill.s3Prefix}/${skill.newerVersionId}`,
+      });
+    }
+
+    const historicalRun = await createAndClaimRun(
+      "Use all connector skills after their storage HEADs advance",
+    );
+    expectSkillMounts(historicalRun.claim);
+    await runs.requestCancelRun(actor, historicalRun.run.runId, [200]);
+    activeRunIds.delete(historicalRun.run.runId);
+  }, 30_000);
+
   it("mounts an external connector skill from its exact system version", async () => {
     const connectorRef = `external-skill-${randomUUID().slice(0, 8)}`;
     const selectedVersionId = createHash("sha256")
