@@ -23,6 +23,7 @@ import {
 import {
   holdChatMessageInsertTransactionFixture,
   insertChatMessageTransactionFixture,
+  insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-messages";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -1172,6 +1173,44 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 });
 
 describe("CHAT-01 chat thread read state", () => {
+  it("uses event type rather than legacy lifecycle payload for read cursors", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Read cursor event type agent",
+    );
+    const run = await completeChatRunInThread(actor, runnerGroup, {
+      agentId,
+      prompt: "read cursor event type",
+    });
+    const firstRead = await chat.markThreadRead(actor, run.threadId);
+    if (!firstRead.lastReadAt) {
+      throw new Error("Expected the completed run to establish a read cursor");
+    }
+
+    const conflicting =
+      await insertOutputEventWithConflictingLegacyPayloadFixture({
+        threadId: run.threadId,
+        content: "explicit output event with stale lifecycle payload",
+        createdAt: new Date(new Date(firstRead.lastReadAt).getTime() + 1000),
+        legacyPayload: "run.completed",
+      });
+    const page = await chat.listThreadEvents(actor, run.threadId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({
+        id: conflicting.id,
+        eventType: "output.message",
+      }),
+    );
+
+    await expect(chat.listThreadUnreads(actor, agentId)).resolves.toStrictEqual(
+      [],
+    );
+    await expect(
+      chat.markThreadRead(actor, run.threadId),
+    ).resolves.toMatchObject({
+      lastReadAt: firstRead.lastReadAt,
+    });
+  }, 120_000);
+
   it("lists unread agent ids behind the agent unread feature switch", async () => {
     const {
       actor: owner,
@@ -1707,6 +1746,21 @@ describe("CHAT-03 run usage events", () => {
       sandboxHeaders,
       [200],
     );
+    const conflicting =
+      await insertOutputEventWithConflictingLegacyPayloadFixture({
+        threadId,
+        runId,
+        content: "explicit output event with stale usage payload",
+        legacyPayload: "usage.recorded",
+      });
+    const page = await chat.listThreadEvents(actor, threadId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({
+        id: conflicting.id,
+        eventType: "output.message",
+      }),
+    );
+
     const billing = createBillingMediaApi(context);
     await billing.processOrgUsageEvents(actor);
 
