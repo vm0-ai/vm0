@@ -6633,10 +6633,16 @@ async function prepareRunRuntimeContext(args: {
 async function connectorCatalogSnapshotForRun(args: {
   readonly db: Db;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly connectorScope: EffectiveConnectorScope;
+  readonly timing: ApiDispatchTimingCollector;
 }): Promise<ConnectorRuntimeSnapshot> {
   return (
     args.preloadedConnectorCatalogSnapshot ??
-    (await loadConnectorRuntimeSnapshot(args.db))
+    (await loadConnectorRuntimeSnapshot(args.db, {
+      timing: args.timing,
+      requestedConnectorCount:
+        args.connectorScope.allowedConnectorTypes?.length,
+    }))
   );
 }
 

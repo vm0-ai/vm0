@@ -5,6 +5,8 @@ import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contrac
 import { z } from "zod";
 
 import { safeJsonParse, safeSync } from "../../utils";
+import type { ApiDispatchTimingActionType } from "../api-dispatch-timing.service";
+import type { ConnectorCatalogLoadTiming } from "../connector-catalog-load-timing.service";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
@@ -145,32 +147,66 @@ function assertSupportedArtifactSchema(value: unknown): void {
   }
 }
 
+function measureSnapshotPhase<T>(
+  timing: ConnectorCatalogLoadTiming | undefined,
+  actionType: ApiDispatchTimingActionType,
+  operation: () => T,
+): T {
+  return timing ? timing.measureSync(actionType, operation) : operation();
+}
+
 function parseAndValidateCatalog(args: {
   readonly bytes: Uint8Array;
   readonly catalogVersion: string;
+  readonly timing?: ConnectorCatalogLoadTiming;
 }): ConnectorCatalogArtifact {
-  const json = decodedJson(args.bytes);
-  assertSupportedArtifactSchema(json);
-  const artifact = parseStrict(
-    json,
-    connectorCatalogArtifactSchema,
-    "invalid-artifact",
+  const json = measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_decode_json",
+    () => {
+      return decodedJson(args.bytes);
+    },
   );
-  if (artifact.catalogVersion !== args.catalogVersion) {
-    fail("invalid-reference");
-  }
-  const publicProjection = safeSync(() => {
-    validateConnectorCatalogPublicProjection(artifact);
-  });
-  if (!("ok" in publicProjection)) {
-    fail("public-leakage");
-  }
-  const relationships = safeSync(() => {
-    validateConnectorCatalogArtifact(artifact);
-  });
-  if (!("ok" in relationships)) {
-    fail("relationship-mismatch");
-  }
+  const artifact = measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_validate_schema",
+    () => {
+      assertSupportedArtifactSchema(json);
+      const parsed = parseStrict(
+        json,
+        connectorCatalogArtifactSchema,
+        "invalid-artifact",
+      );
+      if (parsed.catalogVersion !== args.catalogVersion) {
+        fail("invalid-reference");
+      }
+      return parsed;
+    },
+  );
+  measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_validate_public_projection",
+    () => {
+      const publicProjection = safeSync(() => {
+        validateConnectorCatalogPublicProjection(artifact);
+      });
+      if (!("ok" in publicProjection)) {
+        fail("public-leakage");
+      }
+    },
+  );
+  measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_validate_relationships",
+    () => {
+      const relationships = safeSync(() => {
+        validateConnectorCatalogArtifact(artifact);
+      });
+      if (!("ok" in relationships)) {
+        fail("relationship-mismatch");
+      }
+    },
+  );
   return artifact;
 }
 
@@ -242,6 +278,7 @@ export function decodeConnectorCatalogSnapshot(args: {
   readonly catalogRawSize: number;
   readonly catalogVersion: string;
   readonly catalogDigest: string;
+  readonly timing?: ConnectorCatalogLoadTiming;
 }): DecodedConnectorCatalogSnapshot {
   if (
     args.catalogGzip.byteLength > CONNECTOR_CATALOG_MAX_GZIP_BYTES ||
@@ -249,15 +286,29 @@ export function decodeConnectorCatalogSnapshot(args: {
   ) {
     fail("object-too-large");
   }
-  const rawBytes = gunzipCatalog(args.catalogGzip);
-  if (rawBytes.byteLength !== args.catalogRawSize) {
-    fail("invalid-reference");
-  }
-  assertDigest(rawBytes, args.catalogDigest);
+  const rawBytes = measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_decompress",
+    () => {
+      const decompressed = gunzipCatalog(args.catalogGzip);
+      if (decompressed.byteLength !== args.catalogRawSize) {
+        fail("invalid-reference");
+      }
+      return decompressed;
+    },
+  );
+  measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_verify_digest",
+    () => {
+      assertDigest(rawBytes, args.catalogDigest);
+    },
+  );
   return {
     artifact: parseAndValidateCatalog({
       bytes: rawBytes,
       catalogVersion: args.catalogVersion,
+      ...(args.timing === undefined ? {} : { timing: args.timing }),
     }),
   };
 }
