@@ -26,3 +26,10 @@ implicit_exception_flow.py:270: use metadata_keys.CONNECTOR_ROUTE_CANDIDATES for
 implicit_exception_flow.py:278: use metadata_keys.AUTH_REFRESHED_SECRETS for flow.metadata access
 implicit_exception_flow.py:286: use metadata_keys.AUTH_BASE_FORWARD_ADMISSION for flow.metadata access
 implicit_exception_flow.py:294: use metadata_keys.MODEL_USAGE_PROVIDER for flow.metadata access
+implicit_exception_flow.py:363: use metadata_keys.VM_NETWORK_LOG_PATH for flow.metadata access
+implicit_exception_flow.py:373: use metadata_keys.FIREWALL_BILLABLE for flow.metadata access
+implicit_exception_flow.py:381: use metadata_keys.REQUEST_STREAM_COMPLETE for flow.metadata access
+implicit_exception_flow.py:389: use metadata_keys.NETWORK_LOG_TARGET for flow.metadata access
+implicit_exception_flow.py:429: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
+implicit_exception_flow.py:501: use metadata_keys.CONNECTOR_ROUTE_REASON for flow.metadata access
+implicit_exception_flow.py:509: use metadata_keys.CONNECTOR_ROUTE_CANDIDATES for flow.metadata access

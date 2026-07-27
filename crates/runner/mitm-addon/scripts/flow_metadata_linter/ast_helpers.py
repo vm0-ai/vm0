@@ -375,8 +375,17 @@ def _pattern_is_exhaustive(pattern: ast.pattern) -> bool:
     return False
 
 
+def _comparison_operator_may_raise(operator: ast.cmpop) -> bool:
+    """Return whether one comparison step can invoke user code."""
+    return not isinstance(operator, (ast.Is, ast.IsNot))
+
+
 def _is_modeled_implicit_exception_operation(node: ast.AST) -> bool:
     """Return whether evaluating ``node`` performs a modeled fallible operation."""
+    if isinstance(node, ast.Compare):
+        return any(_comparison_operator_may_raise(operator) for operator in node.ops)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return _truth_test_may_raise(node.operand)
     return isinstance(
         node,
         (
@@ -384,7 +393,6 @@ def _is_modeled_implicit_exception_operation(node: ast.AST) -> bool:
             ast.Await,
             ast.BinOp,
             ast.Call,
-            ast.Compare,
             ast.Subscript,
             ast.UnaryOp,
             ast.YieldFrom,
@@ -414,6 +422,8 @@ def _truth_test_may_raise(node: ast.AST) -> bool:
         return _truth_test_may_raise(node.body) or _truth_test_may_raise(node.orelse)
     if isinstance(node, ast.BoolOp):
         return any(_truth_test_may_raise(value) for value in node.values)
+    if isinstance(node, ast.Compare):
+        return _comparison_operator_may_raise(node.ops[-1])
     return not (isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not))
 
 
@@ -543,6 +553,8 @@ class _ModeledImplicitExceptionVisitor(ast.NodeVisitor):
                 if _truth_test_may_raise(condition):
                     self.may_raise = True
                     return
+                if _static_truth_value(condition) is False:
+                    return
         for expression in body:
             self.visit(expression)
             if self.may_raise:
@@ -582,11 +594,8 @@ def _function_definition_may_raise(node: ast.FunctionDef | ast.AsyncFunctionDef)
     return _expressions_may_raise(
         [
             *node.decorator_list,
-            *_type_params(node),
             *node.args.defaults,
             *node.args.kw_defaults,
-            *_argument_annotations(node.args),
-            node.returns,
         ]
     )
 
@@ -595,11 +604,18 @@ def _class_definition_may_raise(node: ast.ClassDef) -> bool:
     return _expressions_may_raise(
         [
             *node.decorator_list,
-            *_type_params(node),
             *node.bases,
             *node.keywords,
         ]
     )
+
+
+def _annotation_target_may_raise(node: ast.AST) -> bool:
+    if isinstance(node, ast.Attribute):
+        return _expression_may_raise(node.value)
+    if isinstance(node, ast.Subscript):
+        return _expressions_may_raise([node.value, node.slice])
+    return False
 
 
 def _with_protected_region_may_raise(items: list[ast.withitem], body_flow: _FlowSummary) -> bool:
@@ -646,10 +662,12 @@ def _try_statement_flow(statement: ast.Try) -> _FlowSummary:
         raises = raises or orelse_flow.raises
     handler_flows = [_body_flow(handler.body) for handler in statement.handlers]
     falls_through = normal_path_falls_through or any(flow.falls_through for flow in handler_flows)
-    raises = (
-        raises
-        or any(flow.raises for flow in handler_flows)
-        or any(_expression_may_raise(handler.type) for handler in statement.handlers)
+    raises = raises or (
+        body_flow.raises
+        and (
+            any(flow.raises for flow in handler_flows)
+            or any(_expression_may_raise(handler.type) for handler in statement.handlers)
+        )
     )
     if not statement.finalbody:
         return _FlowSummary(falls_through=falls_through, raises=raises)
@@ -746,15 +764,21 @@ def _statement_flow(statement: ast.stmt) -> _FlowSummary:
         has_unmatched_path = True
         raises = False
         for case in statement.cases:
-            case_flow = _body_flow(case.body)
-            case_falls_through = case_falls_through or case_flow.falls_through
+            guard_truth = _static_truth_value(case.guard) if case.guard is not None else True
+            case_flow = (
+                _body_flow(case.body)
+                if guard_truth is not False
+                else _FlowSummary(falls_through=False, raises=False)
+            )
+            if guard_truth is not False:
+                case_falls_through = case_falls_through or case_flow.falls_through
             raises = (
                 raises
                 or _expression_may_raise(case.guard)
                 or (case.guard is not None and _truth_test_may_raise(case.guard))
                 or case_flow.raises
             )
-            if case.guard is None and _pattern_is_exhaustive(case.pattern):
+            if guard_truth is True and _pattern_is_exhaustive(case.pattern):
                 has_unmatched_path = False
                 break
         return _FlowSummary(
@@ -777,7 +801,11 @@ def _statement_flow(statement: ast.stmt) -> _FlowSummary:
     elif isinstance(statement, ast.Assign):
         raises = _expressions_may_raise([statement.value, *statement.targets])
     elif isinstance(statement, ast.AnnAssign):
-        raises = _expressions_may_raise([statement.value, statement.annotation, statement.target])
+        raises = (
+            _expressions_may_raise([statement.value, statement.target])
+            if statement.value is not None
+            else _annotation_target_may_raise(statement.target)
+        )
     elif isinstance(statement, ast.AugAssign):
         raises = True
     elif isinstance(statement, ast.Delete):
