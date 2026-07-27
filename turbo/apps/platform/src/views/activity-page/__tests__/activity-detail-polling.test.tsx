@@ -680,6 +680,7 @@ function checkoutNetworkLogs(): NetworkLogEntry[] {
         "content-type": "application/json",
       },
       request_body: '{"cartId":"cart_123","retry":true}',
+      request_body_truncated: false,
       response_headers: {
         "content-type": "application/json",
       },
@@ -745,6 +746,7 @@ function mixedNetworkLogs(): NetworkLogEntry[] {
       upstream_binding_client_binding_hosts:
         "api.github.com, uploads.github.com",
       request_body_truncated: true,
+      response_body_truncated: false,
     },
     {
       timestamp: "2026-03-10T14:56:12.000Z",
@@ -1816,6 +1818,7 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("[Binary data, 15B base64-encoded]"),
     ).toBeInTheDocument();
+    expect(screen.getByText("complete")).toBeInTheDocument();
     expect(screen.getByText("truncated")).toBeInTheDocument();
   });
 
@@ -2061,6 +2064,8 @@ describe("activity detail polling", () => {
         Object.fromEntries(expectedDetails),
       );
       expect(screen.getByText("Request Body")).toBeInTheDocument();
+      expect(screen.getByText("Response Body")).toBeInTheDocument();
+      expect(screen.getByText("complete")).toBeInTheDocument();
       expect(screen.getByText("truncated")).toBeInTheDocument();
     });
 

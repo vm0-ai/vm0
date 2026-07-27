@@ -124,7 +124,7 @@ function BodyBlock({
     <CollapsibleSection
       title={title}
       badge={encoding}
-      truncated={truncated === true}
+      truncated={truncated}
       copyText={isBinary ? undefined : body}
     >
       <pre
