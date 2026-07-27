@@ -65,6 +65,14 @@ describe("app auth pages", () => {
       "path",
     );
     expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-in-force-redirect-url",
+      "https://app.vm0.ai",
+    );
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-up-force-redirect-url",
+      "https://app.vm0.ai",
+    );
     expect(screen.getByAltText("VM0")).toHaveAttribute(
       "src",
       platformVm0LogoDarkImg,
@@ -84,6 +92,9 @@ describe("app auth pages", () => {
     });
 
     expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
+    expect(
+      screen.queryByTestId("clerk-google-one-tap"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the app-hosted sign-in route with an allowed redirect URL", async () => {
@@ -212,6 +223,9 @@ describe("app auth pages", () => {
       "data-clerk-force-redirect-url",
       redirectUrl,
     );
+    expect(
+      screen.queryByTestId("clerk-google-one-tap"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps app-hosted auth pages scrollable inside the root safe area", async () => {

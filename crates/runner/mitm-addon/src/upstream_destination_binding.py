@@ -33,6 +33,7 @@ __all__ = (
     "bound_destination_endpoint_for_flow",
     "diagnostic_snapshot_for_flow",
     "flow_matches_bound_destination",
+    "flow_matches_direct_bound_destination",
     "forget_client_bindings",
     "forget_server_binding",
     "has_server_binding",
@@ -310,11 +311,14 @@ def _binding_matches(
 def _server_binding_matches_current_destination(
     server: object,
     binding: UpstreamDestinationBinding,
+    *,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> bool:
     if bool(getattr(server, "connected", False)):
         connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
             server,
             port=binding.port,
+            extra_endpoints=extra_endpoints,
         )
         return (
             binding.original_address is not None
@@ -484,6 +488,41 @@ def flow_matches_bound_destination(
         )
 
     return _address_matches(normalized_host, port, getattr(server, "address", None))
+
+
+def flow_matches_direct_bound_destination(
+    flow: http.HTTPFlow,
+    *,
+    allowed_kinds: frozenset[BindingKind],
+) -> bool:
+    """Return whether the current server has a matching direct binding.
+
+    Connected transparent flows include the client socket endpoint as the same
+    authoritative evidence accepted when the direct binding was created.
+    """
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
+        return False
+    try:
+        normalized_host = normalize_trusted_hostname(trusted_host)
+    except (UnicodeError, ValueError):
+        return False
+
+    server = flow.server_conn
+    server_id = _connection_id(server)
+    binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
+    if binding is None:
+        return False
+    return _binding_matches(
+        binding,
+        host=normalized_host,
+        port=flow.request.port,
+        allowed_kinds=allowed_kinds,
+    ) and _server_binding_matches_current_destination(
+        server,
+        binding,
+        extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
+    )
 
 
 def bound_destination_endpoint_for_flow(

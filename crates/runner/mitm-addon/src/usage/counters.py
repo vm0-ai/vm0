@@ -148,10 +148,13 @@ def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
 
 
 def increment_in_flight_flows() -> None:
-    """Track a new in-flight billable flow (call from request).
+    """Track a newly admitted usage flow (call from request).
 
-    Covers billable model-provider and connector flows — any flow that may
-    enqueue a webhook POST before response/error runs.
+    Admission is owned by ``terminal_usage.track_flow_if_needed`` and includes
+    billable model-provider and connector flows plus non-billable observable
+    model-provider flows. Holding the count through terminal release lets
+    terminal hooks enqueue billing events and model-usage observations before
+    the runner shutdown drain advances.
     """
     global _in_flight_flows
     with _counter_lock:

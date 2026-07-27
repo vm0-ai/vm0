@@ -35,6 +35,7 @@ interface ImageOptions {
   styleSource: "github" | "r2";
   compile?: boolean;
   all?: boolean;
+  json?: boolean;
 }
 
 interface ImageGenerateCommandConfig {
@@ -209,6 +210,7 @@ export function createImageGenerateCommand(
       "--all",
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
+    .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
       "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, or nano-banana-2",
@@ -279,8 +281,9 @@ ${config.examples}
 
 Output:
   Prints the generated /f/ image file URL and metadata with --compiled-prompt
-  or --raw-prompt. With --style <id> --prompt "..." --compile, prints a
-  prompt-compilation packet for the current agent.
+  or --raw-prompt. Use --json for the complete result object. With
+  --style <id> --prompt "..." --compile, prints a prompt-compilation packet
+  for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -335,12 +338,18 @@ ${formatRegistryListing(styles, "image styles")}`;
             options.compile || options.style
               ? "--compile requires --prompt <text> or piped stdin"
               : undefined,
+          requireExecutionFor: options.json ? "--json" : undefined,
         });
         if (dispatch.outcome === "handled") return;
         const resolvedPrompt = dispatch.prompt;
         const mode = resolveImagePromptMode(options, config.usageCommand);
 
         if (mode === "compile") {
+          if (options.json) {
+            throw new Error(
+              "--json is only available for direct built-in generation",
+            );
+          }
           const styleId = options.style;
           if (!styleId) {
             throw new Error("--compile requires --style <id>");
@@ -405,6 +414,11 @@ ${formatRegistryListing(styles, "image styles")}`;
           inputFidelity,
           imagePromptStrength,
         });
+
+        if (options.json) {
+          console.log(JSON.stringify(result));
+          return;
+        }
 
         console.log(chalk.green(`✓ Image generated: ${result.url}`));
         console.log(chalk.dim(`  File: ${result.filename}`));

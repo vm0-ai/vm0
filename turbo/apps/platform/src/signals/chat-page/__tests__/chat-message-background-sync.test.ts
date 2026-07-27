@@ -14,7 +14,7 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
-import { resetSignalScope } from "../../utils.ts";
+import { resetSignal } from "../../utils.ts";
 import { writeIndexedDbChatMessages$ } from "../chat-message-indexed-db.ts";
 import { setupChatMessageBackgroundSync$ } from "../chat-message-background-sync.ts";
 
@@ -23,7 +23,7 @@ vi.mock("idb", async () => {
 });
 
 const context = testContext();
-const resetSubscriberSignal$ = resetSignalScope();
+const resetSubscriberSignal$ = resetSignal();
 
 const USER_ID = "background-sync-user";
 const ORG_ID = "background-sync-org";
@@ -82,12 +82,6 @@ function mockSignedInUser(): void {
   });
 }
 
-function abortError(message: string): Error {
-  const error = new Error(message);
-  error.name = "AbortError";
-  return error;
-}
-
 describe("chat message background sync", () => {
   afterEach(() => {
     clearMockedAuth();
@@ -122,13 +116,13 @@ describe("chat message background sync", () => {
     });
 
     await context.store.set(setupRealtime$, context.signal);
-    const subscriber = context.store.set(
+    const subscriberSignal = context.store.set(
       resetSubscriberSignal$,
       context.signal,
     );
     const subscription = context.store.set(
       setupChatMessageBackgroundSync$,
-      subscriber.signal,
+      subscriberSignal,
     );
 
     try {
@@ -152,7 +146,7 @@ describe("chat message background sync", () => {
         { sinceSeqId: 2, beforeSeqId: undefined },
       ]);
     } finally {
-      subscriber.abort(abortError("test done"));
+      context.store.set(resetSubscriberSignal$, context.signal);
       await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
       appDb.close();
     }
@@ -187,13 +181,13 @@ describe("chat message background sync", () => {
     );
 
     await context.store.set(setupRealtime$, context.signal);
-    const subscriber = context.store.set(
+    const subscriberSignal = context.store.set(
       resetSubscriberSignal$,
       context.signal,
     );
     const subscription = context.store.set(
       setupChatMessageBackgroundSync$,
-      subscriber.signal,
+      subscriberSignal,
     );
 
     try {
@@ -209,7 +203,7 @@ describe("chat message background sync", () => {
       await otherThreadRequested.promise;
       expect(cachedThreadRequests).toBe(0);
     } finally {
-      subscriber.abort(abortError("test done"));
+      context.store.set(resetSubscriberSignal$, context.signal);
       await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
       appDb.close();
     }

@@ -5,7 +5,9 @@ use super::super::support::{
     push_job, shutdown, test_profiles, wait_cancel_token, wait_cancel_token_removed,
     wait_discover_entered, wait_status_mode,
 };
+use std::process::Stdio;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
 // -----------------------------------------------------------------------
 // Test 3: Shutdown completes without deadlock (regression #8898)
@@ -89,6 +91,74 @@ async fn shutdown_drains_memory_prefetch_before_stopped() {
     )
     .await;
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
+async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let (stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    env.handle.block_heartbeats();
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    drop(stdin);
+
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(2))
+            .await,
+        "kmsg EOF should drive runner teardown",
+    );
+    assert!(
+        !run_handle.is_finished(),
+        "blocked final heartbeat should hold teardown open",
+    );
+    assert_kmsg_child_reaped(pid, starttime).await;
+    assert!(env.cancel.is_cancelled(), "kmsg EOF should stop discovery");
+
+    env.handle.unblock_heartbeats();
+    assert_run_error_contains(run_handle, "Eof").await;
+}
+
+#[tokio::test]
+async fn kmsg_stdout_read_error_stops_runner_and_kills_child() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let (mut stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    env.handle.block_heartbeats();
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    stdin.write_all(&[0xff, b'\n']).await.unwrap();
+    stdin.flush().await.unwrap();
+
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(2))
+            .await,
+        "kmsg read error should drive runner teardown",
+    );
+    assert_kmsg_child_reaped(pid, starttime).await;
+
+    env.handle.unblock_heartbeats();
+    assert_run_error_contains(run_handle, "ReadError").await;
+}
+
+#[tokio::test]
+async fn normal_shutdown_cancels_kmsg_and_reaps_child_without_error() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let (_stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    env.trigger_stopping().await;
+
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "normal hard shutdown should stop the kmsg monitor",
+    )
+    .await;
+    assert_kmsg_child_reaped(pid, starttime).await;
 }
 
 /// SIGTERM while a job is in flight: per-job cancellation fires, the
@@ -272,4 +342,55 @@ async fn drain_then_hard_shutdown_upgrades() {
         "Draining → hard shutdown should exit within 3s",
     )
     .await;
+}
+
+async fn install_controllable_kmsg(
+    config: &mut RunConfig,
+) -> (tokio::process::ChildStdin, u32, u64) {
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn controllable kmsg child");
+    let stdin = child.stdin.take().expect("capture test child stdin");
+    let pid = child.id().expect("test child pid");
+    let starttime = crate::process::read_process_stat(pid)
+        .await
+        .expect("test child should be visible in procfs")
+        .starttime;
+    config.shutdown.kmsg_handle =
+        crate::kmsg_log::KmsgHandle::from_test_child(child, NetworkLogManager::new())
+            .expect("create test kmsg handle");
+    (stdin, pid, starttime)
+}
+
+async fn assert_kmsg_child_reaped(pid: u32, starttime: u64) {
+    let observed_starttime = crate::process::read_process_stat(pid)
+        .await
+        .map(|stat| stat.starttime);
+    assert_ne!(
+        observed_starttime,
+        Some(starttime),
+        "kmsg child pid {pid} with start time {starttime} was not reaped",
+    );
+}
+
+async fn assert_run_error_contains(
+    mut run_handle: tokio::task::JoinHandle<RunnerResult<()>>,
+    expected: &str,
+) {
+    let result = match tokio::time::timeout(Duration::from_secs(5), &mut run_handle).await {
+        Ok(result) => result.expect("run task should not panic"),
+        Err(_) => {
+            run_handle.abort();
+            let _ = run_handle.await;
+            panic!("runner did not finish after kmsg failure");
+        }
+    };
+    let error = result.expect_err("kmsg failure should return a runner error");
+    assert!(
+        error.to_string().contains(expected),
+        "expected error containing {expected:?}, got {error}",
+    );
 }

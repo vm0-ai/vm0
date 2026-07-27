@@ -1184,7 +1184,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         mut mitm_crash_rx,
     } = proxy;
     let ShutdownHandles {
-        kmsg_handle,
+        mut kmsg_handle,
         dns_handle,
         mut memory_prefetch,
     } = shutdown;
@@ -1395,6 +1395,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         test_observer: test_hooks.test_observer.clone(),
     };
     let mut draining_idle_pool_drained = false;
+    let mut terminal_error = None;
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
@@ -1562,6 +1563,29 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     &provider_state.cancel_tokens,
                     &lifecycle,
                 ).await;
+            }
+            result = kmsg_handle.wait() => {
+                let mode = lifecycle.current_mode();
+                if !matches!(mode, RunnerMode::Stopping | RunnerMode::Stopped) {
+                    let message = match &result {
+                        Ok(exit) => format!("kmsg monitor exited unexpectedly: {exit:?}"),
+                        Err(error) => format!("kmsg monitor task failed: {error}"),
+                    };
+                    error!(
+                        component = "kmsg",
+                        ?mode,
+                        result = ?result,
+                        "required runner component exited"
+                    );
+                    terminal_error = Some(RunnerError::Internal(message));
+                    handle_stopping_signal(
+                        "kmsg-monitor",
+                        &provider_state.cancel,
+                        &provider_state.cancel_tokens,
+                        &lifecycle,
+                    ).await;
+                }
+                kmsg_handle.kill_and_reap_child().await;
             }
             // Reap completed jobs promptly in all live modes. Without this,
             // normal Running mode can retain completed JoinSet entries and
@@ -1871,7 +1895,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.phase_complete("status_stopped", phase);
     info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
 
-    Ok(())
+    if let Some(error) = terminal_error {
+        Err(error)
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
