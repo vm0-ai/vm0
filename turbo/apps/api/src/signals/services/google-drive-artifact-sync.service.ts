@@ -17,7 +17,7 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, exists, or } from "drizzle-orm";
 import { z } from "zod";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -499,7 +499,7 @@ async function assembleZip(
   entries: readonly ZipEntry[],
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const archive = archiver("zip", { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const chunks: Buffer[] = [];
   const done = createDeferredPromise<Buffer>(signal);
 

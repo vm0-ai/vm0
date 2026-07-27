@@ -19,6 +19,7 @@ import {
   hashFileContent,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
+import { storageDml } from "./storage-dml.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 interface VolumeFileInput {
@@ -184,7 +185,7 @@ const uploadVolumeServerSideInner$ = command(
     const timestamp = nowDate();
 
     const [storage] = await writeDb
-      .insert(storages)
+      .insert(storageDml)
       .values({
         id: storageId,
         userId: VOLUME_ORG_USER_ID,
@@ -195,12 +196,12 @@ const uploadVolumeServerSideInner$ = command(
         fileCount: 0,
       })
       .onConflictDoUpdate({
-        target: [storages.orgId, storages.userId, storages.name],
+        target: [storageDml.orgId, storageDml.userId, storageDml.name],
         set: { updatedAt: timestamp },
       })
       .returning({
-        id: storages.id,
-        s3Prefix: storages.s3Prefix,
+        id: storageDml.id,
+        s3Prefix: storageDml.s3Prefix,
       });
     signal.throwIfAborted();
 

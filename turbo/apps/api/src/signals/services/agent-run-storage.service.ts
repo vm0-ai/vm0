@@ -12,11 +12,16 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
-import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
+import {
+  isValidVersionPrefix,
+  MIN_VERSION_PREFIX_LENGTH,
+  VERSION_ID_LENGTH,
+} from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import { computed, type Computed } from "ccstate";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl } from "../external/s3";
@@ -43,6 +48,7 @@ import {
   type ApiDispatchTimingDimensionsInput,
 } from "./api-dispatch-timing.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
+import { storageDml } from "./storage-dml.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 type ManifestStorage = LegacyStorageManifest["storages"][number];
@@ -149,22 +155,52 @@ interface StorageLookup {
   readonly name: string;
 }
 
+interface StorageRequest {
+  readonly lookup: StorageLookup;
+  readonly version: string | undefined;
+}
+
+interface StorageIndexRequest {
+  readonly lookup: StorageLookup;
+  readonly exactVersionId: string | null;
+}
+
+interface StorageIndexRow {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly storageId: string;
+  readonly headVersionId: string | null;
+  readonly s3Prefix: string;
+  readonly headId: string | null;
+  readonly headS3Key: string | null;
+  readonly headArchiveSize: number | null;
+  readonly headFileCount: number | null;
+  readonly exactId: string | null;
+  readonly exactS3Key: string | null;
+  readonly exactArchiveSize: number | null;
+  readonly exactFileCount: number | null;
+}
+
 interface ArtifactStorageRow {
   readonly id: string;
   readonly headVersionId: string | null;
   readonly s3Prefix: string;
 }
 
+interface StorageVersionIndexEntry {
+  readonly id: string;
+  readonly s3Key: string;
+  readonly archiveSize: number;
+  readonly fileCount: number;
+}
+
 interface StorageIndexEntry {
   readonly storageId: string;
   readonly headVersionId: string | null;
   readonly s3Prefix: string;
-  readonly headVersion: {
-    readonly id: string;
-    readonly s3Key: string;
-    readonly archiveSize: number;
-    readonly fileCount: number;
-  } | null;
+  readonly headVersion: StorageVersionIndexEntry | null;
+  readonly exactVersions: ReadonlyMap<string, StorageVersionIndexEntry>;
 }
 
 interface StorageManifestInputs {
@@ -246,10 +282,11 @@ interface StorageManifestPhaseTimingWindow {
 }
 
 /**
- * Pre-fetched (orgId, userId, name) -> storage row map. A single run
- * resolves dozens to hundreds of volumes/artifacts; looking each up with its
- * own `SELECT storages` round-trip saturates the connection pool, so the exact
- * requested rows are loaded once and resolved from memory instead.
+ * Pre-fetched (orgId, userId, name) -> storage row and requested exact-version
+ * map. A single run resolves dozens to hundreds of volumes/artifacts; looking
+ * each one up with its own database round-trip saturates the connection pool,
+ * so the exact requested rows and full pinned versions are loaded once and
+ * resolved from memory instead.
  */
 type StorageIndex = ReadonlyMap<string, StorageIndexEntry>;
 
@@ -1060,34 +1097,115 @@ function artifactStorageLookup(
   return { orgId, userId, name };
 }
 
-async function loadStorageIndex(
-  db: Db,
-  lookups: readonly StorageLookup[],
-): Promise<StorageIndex> {
-  const lookupsByKey = new Map<string, StorageLookup>();
-  for (const lookup of lookups) {
-    lookupsByKey.set(
-      storageIndexKey(lookup.orgId, lookup.userId, lookup.name),
-      lookup,
+function isFullStorageVersionId(version: string): boolean {
+  return version.length === VERSION_ID_LENGTH && isValidVersionPrefix(version);
+}
+
+const headStorageVersions = alias(storageVersions, "head_storage_versions");
+const exactStorageVersions = alias(storageVersions, "exact_storage_versions");
+
+function uniqueStorageIndexRequests(
+  requests: readonly StorageRequest[],
+): readonly StorageIndexRequest[] {
+  const requestsByKey = new Map<string, StorageIndexRequest>();
+  for (const request of requests) {
+    const exactVersionId =
+      request.version !== undefined && isFullStorageVersionId(request.version)
+        ? request.version
+        : null;
+    requestsByKey.set(
+      JSON.stringify([
+        request.lookup.orgId,
+        request.lookup.userId,
+        request.lookup.name,
+        exactVersionId,
+      ]),
+      { lookup: request.lookup, exactVersionId },
     );
   }
-  const uniqueLookups = [...lookupsByKey.values()];
-  if (uniqueLookups.length === 0) {
+  return [...requestsByKey.values()];
+}
+
+function buildStorageIndex(rows: readonly StorageIndexRow[]): StorageIndex {
+  const exactVersionsByStorageId = new Map<
+    string,
+    Map<string, StorageVersionIndexEntry>
+  >();
+  for (const row of rows) {
+    if (
+      row.exactId === null ||
+      row.exactS3Key === null ||
+      row.exactArchiveSize === null ||
+      row.exactFileCount === null
+    ) {
+      continue;
+    }
+    const versions =
+      exactVersionsByStorageId.get(row.storageId) ??
+      new Map<string, StorageVersionIndexEntry>();
+    versions.set(row.exactId, {
+      id: row.exactId,
+      s3Key: row.exactS3Key,
+      archiveSize: row.exactArchiveSize,
+      fileCount: row.exactFileCount,
+    });
+    exactVersionsByStorageId.set(row.storageId, versions);
+  }
+
+  const index = new Map<string, StorageIndexEntry>();
+  for (const row of rows) {
+    const key = storageIndexKey(row.orgId, row.userId, row.name);
+    if (index.has(key)) {
+      continue;
+    }
+    index.set(key, {
+      storageId: row.storageId,
+      headVersionId: row.headVersionId,
+      s3Prefix: row.s3Prefix,
+      headVersion:
+        row.headId &&
+        row.headS3Key &&
+        row.headArchiveSize !== null &&
+        row.headFileCount !== null
+          ? {
+              id: row.headId,
+              s3Key: row.headS3Key,
+              archiveSize: row.headArchiveSize,
+              fileCount: row.headFileCount,
+            }
+          : null,
+      exactVersions:
+        exactVersionsByStorageId.get(row.storageId) ??
+        new Map<string, StorageVersionIndexEntry>(),
+    });
+  }
+  return index;
+}
+
+async function loadStorageIndex(
+  db: Db,
+  requests: readonly StorageRequest[],
+): Promise<StorageIndex> {
+  const uniqueRequests = uniqueStorageIndexRequests(requests);
+  if (uniqueRequests.length === 0) {
     return new Map<string, StorageIndexEntry>();
   }
 
-  const orgIds = uniqueLookups.map((lookup) => {
-    return lookup.orgId;
+  const orgIds = uniqueRequests.map((request) => {
+    return request.lookup.orgId;
   });
-  const userIds = uniqueLookups.map((lookup) => {
-    return lookup.userId;
+  const userIds = uniqueRequests.map((request) => {
+    return request.lookup.userId;
   });
-  const names = uniqueLookups.map((lookup) => {
-    return lookup.name;
+  const names = uniqueRequests.map((request) => {
+    return request.lookup.name;
+  });
+  const exactVersionIds = uniqueRequests.map((request) => {
+    return request.exactVersionId;
   });
   // Raw array interpolation expands to a SQL tuple in Drizzle. Keep each
   // zipped array in one driver parameter so the statement shape stays fixed.
-  const rows = await db
+  const rows: StorageIndexRow[] = await db
     .select({
       orgId: storages.orgId,
       userId: storages.userId,
@@ -1095,47 +1213,45 @@ async function loadStorageIndex(
       storageId: storages.id,
       headVersionId: storages.headVersionId,
       s3Prefix: storages.s3Prefix,
-      versionId: storageVersions.id,
-      s3Key: storageVersions.s3Key,
-      archiveSize: storageVersions.archiveSize,
-      fileCount: storageVersions.fileCount,
+      headId: headStorageVersions.id,
+      headS3Key: headStorageVersions.s3Key,
+      headArchiveSize: headStorageVersions.archiveSize,
+      headFileCount: headStorageVersions.fileCount,
+      exactId: exactStorageVersions.id,
+      exactS3Key: exactStorageVersions.s3Key,
+      exactArchiveSize: exactStorageVersions.archiveSize,
+      exactFileCount: exactStorageVersions.fileCount,
     })
     .from(storages)
     .innerJoin(
       sql`unnest(
         ${sql.param(orgIds)}::text[],
         ${sql.param(userIds)}::text[],
-        ${sql.param(names)}::varchar(256)[]
-      ) AS requested(org_id, user_id, name)`,
+        ${sql.param(names)}::varchar(256)[],
+        ${sql.param(exactVersionIds)}::varchar(64)[]
+      ) AS requested(org_id, user_id, name, version_id)`,
       and(
         eq(storages.orgId, sql`requested.org_id`),
         eq(storages.userId, sql`requested.user_id`),
         eq(storages.name, sql`requested.name`),
       ),
     )
-    .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id));
+    .leftJoin(
+      headStorageVersions,
+      eq(storages.headVersionId, headStorageVersions.id),
+    )
+    .leftJoin(
+      exactStorageVersions,
+      and(
+        eq(
+          exactStorageVersions.id,
+          sql`NULLIF(requested.version_id, ${storages.headVersionId})`,
+        ),
+        eq(exactStorageVersions.storageId, storages.id),
+      ),
+    );
 
-  const index = new Map<string, StorageIndexEntry>();
-  for (const row of rows) {
-    index.set(storageIndexKey(row.orgId, row.userId, row.name), {
-      storageId: row.storageId,
-      headVersionId: row.headVersionId,
-      s3Prefix: row.s3Prefix,
-      headVersion:
-        row.versionId &&
-        row.s3Key &&
-        row.archiveSize !== null &&
-        row.fileCount !== null
-          ? {
-              id: row.versionId,
-              s3Key: row.s3Key,
-              archiveSize: row.archiveSize,
-              fileCount: row.fileCount,
-            }
-          : null,
-    });
-  }
-  return index;
+  return buildStorageIndex(rows);
 }
 
 interface EnsureArtifactStorageArgs {
@@ -1169,7 +1285,7 @@ async function findOrCreateArtifactStorage(
     async () => {
       const location = newStorageS3Location(args.orgId);
       return await args.db
-        .insert(storages)
+        .insert(storageDml)
         .values({
           id: location.storageId,
           orgId: args.orgId,
@@ -1179,9 +1295,9 @@ async function findOrCreateArtifactStorage(
         })
         .onConflictDoNothing()
         .returning({
-          id: storages.id,
-          headVersionId: storages.headVersionId,
-          s3Prefix: storages.s3Prefix,
+          id: storageDml.id,
+          headVersionId: storageDml.headVersionId,
+          s3Prefix: storageDml.s3Prefix,
         });
     },
   );
@@ -1317,19 +1433,39 @@ function resolveLatestVersion(
     throw new Error(`Storage "${lookup.name}" HEAD version not found`);
   }
 
+  return storageResolutionFromVersion(entry, lookup, entry.headVersion);
+}
+
+function storageResolutionFromVersion(
+  storage: StorageIndexEntry,
+  lookup: StorageLookup,
+  version: StorageVersionIndexEntry,
+): StorageResolution {
   return {
-    storageId: entry.storageId,
-    versionId: entry.headVersion.id,
-    s3Prefix: entry.s3Prefix,
-    s3Key: entry.headVersion.s3Key,
-    archiveSize: entry.headVersion.archiveSize,
-    fileCount: entry.headVersion.fileCount,
+    storageId: storage.storageId,
+    versionId: version.id,
+    s3Prefix: storage.s3Prefix,
+    s3Key: version.s3Key,
+    archiveSize: version.archiveSize,
+    fileCount: version.fileCount,
     resolvedOrgId: lookup.orgId,
     resolvedUserId: lookup.userId,
   };
 }
 
-async function resolveExactVersion(
+function resolvePreloadedExactVersion(
+  storage: StorageIndexEntry,
+  lookup: StorageLookup,
+  version: string,
+): StorageResolution | null {
+  const match =
+    storage.headVersion?.id === version
+      ? storage.headVersion
+      : storage.exactVersions.get(version);
+  return match ? storageResolutionFromVersion(storage, lookup, match) : null;
+}
+
+async function queryExactVersion(
   db: Db,
   storage: StorageIndexEntry,
   lookup: StorageLookup,
@@ -1382,15 +1518,20 @@ async function resolvePinnedVersion(
     throw new Error(`Storage "${lookup.name}" not found in database`);
   }
 
-  const exactMatch = await resolveExactVersion(db, storage, lookup, version);
+  if (isFullStorageVersionId(version)) {
+    const exactMatch = resolvePreloadedExactVersion(storage, lookup, version);
+    if (exactMatch) {
+      return exactMatch;
+    }
+    throw new Error(`Storage "${lookup.name}" version "${version}" not found`);
+  }
+
+  const exactMatch = await queryExactVersion(db, storage, lookup, version);
   if (exactMatch) {
     return exactMatch;
   }
 
-  if (
-    version.length < MIN_VERSION_PREFIX_LENGTH ||
-    !/^[a-f0-9]+$/i.test(version)
-  ) {
+  if (!isValidVersionPrefix(version)) {
     throw new Error(
       `Version prefix too short. Minimum ${MIN_VERSION_PREFIX_LENGTH} characters required.`,
     );
@@ -1550,7 +1691,7 @@ async function resolveAdditionalStorageInput(args: {
   readonly source: StorageManifestSource;
 }): Promise<ResolvedManifestStorageInput | null> {
   if (args.source === "connector_skill") {
-    return await resolveConnectorSkillStorageInput(args);
+    return resolveConnectorSkillStorageInput(args);
   }
   const resolvedResult = await settle(
     resolveVolumeStorage({
@@ -1585,11 +1726,10 @@ function connectorSkillRegistrationError(): Error {
   return new Error(CONNECTOR_SKILL_REGISTRATION_ERROR);
 }
 
-async function resolveConnectorSkillStorageInput(args: {
-  readonly db: Db;
+function resolveConnectorSkillStorageInput(args: {
   readonly index: StorageIndex;
   readonly volume: AdditionalVolume;
-}): Promise<ResolvedManifestStorageInput> {
+}): ResolvedManifestStorageInput {
   const version = args.volume.version;
   if (
     !args.volume.system ||
@@ -1606,7 +1746,7 @@ async function resolveConnectorSkillStorageInput(args: {
   if (!storage) {
     throw connectorSkillRegistrationError();
   }
-  const resolved = await resolveExactVersion(args.db, storage, lookup, version);
+  const resolved = resolvePreloadedExactVersion(storage, lookup, version);
   if (!resolved) {
     throw connectorSkillRegistrationError();
   }
@@ -2144,23 +2284,23 @@ async function ensureStorageManifestArtifacts(
 
 async function loadTimedStorageIndex(args: {
   readonly db: Db;
-  readonly lookups: readonly StorageLookup[];
+  readonly requests: readonly StorageRequest[];
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<StorageIndex> {
-  // Resolve every volume/artifact from one pre-fetched snapshot instead of a
-  // per-item `SELECT storages` round-trip. Loaded after ensureArtifactStorage
-  // so freshly created artifact rows are included.
+  // Resolve every volume/artifact and full pinned version from one pre-fetched
+  // snapshot instead of per-item database round-trips. Loaded after
+  // ensureArtifactStorage so freshly created artifact rows are included.
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_prepare_storage_manifest_load_storage_index",
     "nested",
     async () => {
-      return await loadStorageIndex(args.db, args.lookups);
+      return await loadStorageIndex(args.db, args.requests);
     },
   );
 }
 
-function storageManifestLookups(args: {
+function storageManifestRequests(args: {
   readonly agentOrgId: string;
   readonly runtimeOrgId: string;
   readonly userId: string;
@@ -2170,35 +2310,57 @@ function storageManifestLookups(args: {
     | readonly StorageManifestSource[]
     | undefined;
   readonly artifacts: readonly ContextArtifact[];
-}): readonly StorageLookup[] {
-  const lookups: StorageLookup[] = [];
+}): readonly StorageRequest[] {
+  const requests: StorageRequest[] = [];
 
   for (const volume of args.composeVolumes) {
+    const version = volumeVersion(volume);
     if (volume.system) {
-      lookups.push(volumeStorageLookup(SYSTEM_ORG_ID, volume));
+      requests.push({
+        lookup: volumeStorageLookup(SYSTEM_ORG_ID, volume),
+        version,
+      });
     }
-    lookups.push(volumeStorageLookup(args.agentOrgId, volume));
+    requests.push({
+      lookup: volumeStorageLookup(args.agentOrgId, volume),
+      version,
+    });
   }
   for (const [index, volume] of (args.additionalVolumes ?? []).entries()) {
+    const version = volumeVersion(volume);
     if (
       additionalVolumeSourceAt(args.additionalVolumeSources, index) ===
       "connector_skill"
     ) {
-      lookups.push(volumeStorageLookup(SYSTEM_ORG_ID, volume));
+      requests.push({
+        lookup: volumeStorageLookup(SYSTEM_ORG_ID, volume),
+        version,
+      });
       continue;
     }
     if (volume.system) {
-      lookups.push(volumeStorageLookup(SYSTEM_ORG_ID, volume));
+      requests.push({
+        lookup: volumeStorageLookup(SYSTEM_ORG_ID, volume),
+        version,
+      });
     }
-    lookups.push(volumeStorageLookup(args.runtimeOrgId, volume));
+    requests.push({
+      lookup: volumeStorageLookup(args.runtimeOrgId, volume),
+      version,
+    });
   }
   for (const artifact of args.artifacts) {
-    lookups.push(
-      artifactStorageLookup(args.runtimeOrgId, args.userId, artifact.name),
-    );
+    requests.push({
+      lookup: artifactStorageLookup(
+        args.runtimeOrgId,
+        args.userId,
+        artifact.name,
+      ),
+      version: artifact.version,
+    });
   }
 
-  return lookups;
+  return requests;
 }
 
 function createStorageManifestEntryPhaseTimings(args: {
@@ -2555,11 +2717,14 @@ async function buildEntriesFromPersistedStorageMounts(
   assertUniquePersistedMountPaths(args.mounts);
   const storageIndex = await loadTimedStorageIndex({
     db: args.db,
-    lookups: args.mounts.map((mount) => {
+    requests: args.mounts.map((mount) => {
       return {
-        orgId: mount.orgId,
-        userId: mount.userId,
-        name: mount.name,
+        lookup: {
+          orgId: mount.orgId,
+          userId: mount.userId,
+          name: mount.name,
+        },
+        version: mount.version,
       };
     }),
     timing: args.timing,
@@ -2759,7 +2924,7 @@ async function buildLegacyStorageManifestEntries(
 
   const storageIndex = await loadTimedStorageIndex({
     db: args.db,
-    lookups: storageManifestLookups({
+    requests: storageManifestRequests({
       agentOrgId: args.agentOrgId,
       runtimeOrgId: args.runtimeOrgId,
       userId: args.userId,

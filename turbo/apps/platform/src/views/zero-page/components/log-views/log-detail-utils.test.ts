@@ -513,7 +513,7 @@ describe("groupEventsIntoMessages sequence ordering", () => {
 
 describe("groupEventsIntoMessages split sequence ordering", () => {
   it("keeps split orphan tool results before the next fractional sequence", () => {
-    const nextSequenceNumber = 9.000_001;
+    const nextSequenceNumber = 9.000001;
     const messages = groupEventsIntoMessages([
       {
         sequenceNumber: 9,
@@ -556,7 +556,7 @@ describe("groupEventsIntoMessages split sequence ordering", () => {
   });
 
   it("keeps split TodoWrite cards before the next fractional sequence", () => {
-    const nextSequenceNumber = 7.000_001;
+    const nextSequenceNumber = 7.000001;
     const messages = groupEventsIntoMessages([
       {
         sequenceNumber: 7,
