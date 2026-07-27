@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.153](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.152...sandbox-fc-v0.37.153) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** distinguish dns readiness timeouts ([#23282](https://github.com/vm0-ai/vm0/issues/23282)) ([1593bf9](https://github.com/vm0-ai/vm0/commit/1593bf9ddbce0c4b022ed7d772b845bbcd86be1b))
+
 ## [0.37.152](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.151...sandbox-fc-v0.37.152) (2026-07-27)
 
 
