@@ -2995,6 +2995,14 @@ function writeTargetMarker(
   return marker?.tableMetadata === undefined ? undefined : marker;
 }
 
+function writeRangeMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  const range = recordProperty(value, "RangeVar");
+  return range === undefined ? undefined : writeTargetMarker(range, markers);
+}
+
 function markerBelongsToTable(
   marker: SqlMarker | undefined,
   table: DrizzleTableMetadata,
@@ -3043,6 +3051,8 @@ function mappedWritableColumnNames(
       target === undefined ||
       typeof target.name !== "string" ||
       (requireValue ? target.val === undefined : target.val !== undefined) ||
+      (requireValue &&
+        recordProperty(target.val, "MultiAssignRef") !== undefined) ||
       !hasOnlyKeys(
         target,
         requireValue
@@ -3057,6 +3067,10 @@ function mappedWritableColumnNames(
     names.add(target.name);
   }
   return [...names];
+}
+
+function isSupportedWritePredicate(value: unknown): boolean {
+  return value !== undefined && !containsNodeKey(value, "CurrentOfExpr");
 }
 
 function hasTableColumnOrder(
@@ -3104,7 +3118,7 @@ function isSingleTargetDelete(
     deletion !== undefined &&
     hasOnlyKeys(deletion, new Set(["relation", "whereClause"])) &&
     writeTargetMarker(deletion.relation, markers) !== undefined &&
-    deletion.whereClause !== undefined
+    isSupportedWritePredicate(deletion.whereClause)
   );
 }
 
@@ -3210,7 +3224,7 @@ function isUnnestUpdate(
       update,
       new Set(["fromClause", "relation", "targetList", "whereClause"]),
     ) ||
-    update.whereClause === undefined ||
+    !isSupportedWritePredicate(update.whereClause) ||
     !Array.isArray(update.fromClause) ||
     update.fromClause.length !== 1
   ) {
@@ -3301,7 +3315,7 @@ function lockingCteBody(
     !hasOnlyKeys(selectedTarget, new Set(["location", "val"]))
       ? undefined
       : columnMarker(selectedTarget.val, markers);
-  const sourceTable = directRangeMarker(select.fromClause[0], markers, false);
+  const sourceTable = writeRangeMarker(select.fromClause[0], markers);
   const orderColumn = lockingSortMarker(select.sortClause[0], markers);
   const lock = recordProperty(select.lockingClause[0], "LockingClause");
   if (
@@ -3314,7 +3328,7 @@ function lockingCteBody(
   ) {
     return undefined;
   }
-  const lockTable = directRangeMarker(lock.lockedRels[0], markers, false);
+  const lockTable = writeRangeMarker(lock.lockedRels[0], markers);
   return selectedColumn !== undefined &&
     sourceTable?.tableMetadata !== undefined &&
     orderColumn !== undefined &&
@@ -3352,7 +3366,7 @@ function isLockingCteUpdate(
         "withClause",
       ]),
     ) ||
-    update.whereClause === undefined ||
+    !isSupportedWritePredicate(update.whereClause) ||
     !Array.isArray(update.fromClause) ||
     update.fromClause.length !== 1
   ) {

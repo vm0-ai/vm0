@@ -565,6 +565,15 @@ const queryBuilderCases = {
     {
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE CURRENT OF cleanup_cursor
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
         const query = sql\`
           DELETE FROM cleanup_rows
           WHERE expires_at <= \${cutoff}
@@ -668,6 +677,22 @@ const queryBuilderCases = {
         await db.execute(sql\`
           DELETE FROM \${notATable}
           WHERE \${eq(cleanupRows.id, 1)}
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET (consumed_units, updated_at) = (
+            consumption.units_applied,
+            \${updatedAt}
+          )
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(units_applied)
+          WHERE true
         \`);
       `,
     },
@@ -1025,6 +1050,24 @@ const queryBuilderCases = {
           SET last_requested_at = \${issuedAt}::timestamp
           FROM locked
           WHERE \${eq(cacheRows.cacheKey, cacheRows.cacheKey)}
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM ONLY \${cacheRows}
+            WHERE true
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE true
         \`);
       `,
     },
