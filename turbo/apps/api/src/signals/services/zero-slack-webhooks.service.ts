@@ -749,7 +749,7 @@ const resolveSlackAgentRouteAdmission$ = command(
     };
     const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
     signal.throwIfAborted();
-    if (existingRoute?.chatThreadId) {
+    if (existingRoute) {
       return { kind: "canonical", routeId: existingRoute.id };
     }
 
@@ -1592,15 +1592,10 @@ export const handleZeroSlackEvents$ = command(
             success: true,
             isRetry: Boolean(retryNum),
             retryNum: retryNum ?? null,
-            outcome:
-              ingress.status === "ignored"
-                ? "legacy_cutover_ignored"
-                : ingress.inserted
-                  ? "accepted"
-                  : "deduplicated",
+            outcome: ingress.inserted ? "accepted" : "deduplicated",
             status: ingress.status,
           });
-          if (ingress.status !== "processed" && ingress.status !== "ignored") {
+          if (ingress.status !== "processed") {
             // Admission is durable and already acknowledged to Slack. Keep the
             // processor alive if the request signal is cancelled afterward.
             const backgroundSignal = new AbortController().signal;

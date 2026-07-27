@@ -3,7 +3,7 @@ import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { and, asc, eq, inArray, isNotNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { logger } from "../../lib/log";
@@ -217,7 +217,6 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       and(
         eq(slackChatIngress.id, ingressId),
         eq(slackChatIngress.status, "processing"),
-        isNotNull(slackChatThreadRoutes.chatThreadId),
       ),
     )
     .limit(1);

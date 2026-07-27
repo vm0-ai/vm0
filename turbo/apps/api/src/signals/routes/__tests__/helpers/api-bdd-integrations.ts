@@ -1058,34 +1058,6 @@ export function createBddIntegrationApi(context: TestContext) {
       return response.body;
     },
 
-    async seedSlackRouteThroughPreviousWriter(args: {
-      readonly actor: ApiTestUser;
-      readonly teamId: string;
-      readonly connectionId: string;
-      readonly channelId: string;
-      readonly threadTs: string;
-    }): Promise<void> {
-      if (!args.actor.orgId) {
-        throw new Error("Expected previous-writer actor to belong to an org");
-      }
-      const client = setupApp({ context })(testSlackStateContract);
-      await accept(
-        client.post({
-          body: {
-            team_id: args.teamId,
-            org_id: args.actor.orgId,
-            vm0_user_id: args.actor.userId,
-            previous_writer_route: {
-              connection_id: args.connectionId,
-              channel_id: args.channelId,
-              thread_ts: args.threadTs,
-            },
-          },
-        }),
-        [200],
-      );
-    },
-
     async deleteSlackTestState(teamId: string): Promise<void> {
       const client = setupApp({ context })(testSlackStateContract);
       await accept(client.delete({ query: { team_id: teamId } }), [200]);

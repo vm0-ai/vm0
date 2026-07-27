@@ -525,10 +525,7 @@ function slackChatRoutes(db: ReadonlyDb, teamId: string) {
       channelId: slackChatThreadRoutes.channelId,
       threadTs: slackChatThreadRoutes.threadTs,
       userId: slackChatThreadRoutes.userId,
-      backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
-      legacyCutoverEventId: slackChatThreadRoutes.legacyCutoverEventId,
-      legacyCutoverMessageTs: slackChatThreadRoutes.legacyCutoverMessageTs,
       createdAt: slackChatThreadRoutes.createdAt,
     })
     .from(slackChatThreadRoutes)
@@ -950,9 +947,6 @@ function shouldUpsertSlackInstallationForPost(
   if (!body.team_id) {
     return false;
   }
-  if (body.previous_writer_route) {
-    return false;
-  }
 
   if (body.seed_connection || !body.delete_connection) {
     return true;
@@ -1044,35 +1038,6 @@ async function seedPostSlackUserData(
   }
 }
 
-async function maybeSeedPreviousSlackRouteForPost(
-  db: Db,
-  body: TestSlackStatePostBody,
-  userId: string,
-): Promise<void> {
-  if (!body.previous_writer_route) {
-    return;
-  }
-  await db
-    .insert(slackChatThreadRoutes)
-    .values({
-      connectionId: body.previous_writer_route.connection_id,
-      channelId: body.previous_writer_route.channel_id,
-      threadTs: body.previous_writer_route.thread_ts,
-      userId,
-      backend: "legacy",
-      chatThreadId: null,
-      createdAt: nowDate(),
-    })
-    .onConflictDoNothing({
-      target: [
-        slackChatThreadRoutes.connectionId,
-        slackChatThreadRoutes.channelId,
-        slackChatThreadRoutes.threadTs,
-        slackChatThreadRoutes.userId,
-      ],
-    });
-}
-
 const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -1136,8 +1101,6 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const defaultAgent = await maybeSeedDefaultAgentForPost(db, body, actor);
   signal.throwIfAborted();
   await seedPostSlackUserData(db, body, actor);
-  signal.throwIfAborted();
-  await maybeSeedPreviousSlackRouteForPost(db, body, actor.userId);
   signal.throwIfAborted();
 
   return {
