@@ -216,10 +216,3 @@ async function fetchAhrefsUserInfo(
     email: null,
   };
 }
-
-/**
- * Get the primary secret name for Ahrefs connector.
- */
-export function getAhrefsSecretName(): string {
-  return "AHREFS_ACCESS_TOKEN";
-}

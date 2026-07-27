@@ -206,10 +206,3 @@ export async function refreshRedditToken(
     expiresIn: data.expires_in,
   };
 }
-
-/**
- * Get the primary secret name for Reddit connector (the access token).
- */
-export function getRedditSecretName(): string {
-  return "REDDIT_ACCESS_TOKEN";
-}

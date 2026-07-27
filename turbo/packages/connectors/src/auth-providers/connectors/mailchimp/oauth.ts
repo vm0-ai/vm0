@@ -142,10 +142,3 @@ async function fetchMailchimpMetadata(accessToken: string): Promise<{
     },
   };
 }
-
-/**
- * Get the primary secret name for Mailchimp connector (the access token).
- */
-export function getMailchimpSecretName(): string {
-  return "MAILCHIMP_ACCESS_TOKEN";
-}

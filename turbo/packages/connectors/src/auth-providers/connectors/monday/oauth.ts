@@ -215,10 +215,3 @@ async function fetchMondayUserInfo(
     email: me.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Monday.com connector.
- */
-export function getMondaySecretName(): string {
-  return "MONDAY_ACCESS_TOKEN";
-}

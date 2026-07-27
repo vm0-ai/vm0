@@ -199,10 +199,3 @@ async function fetchDropboxUserInfo(
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Dropbox connector (the access token).
- */
-export function getDropboxSecretName(): string {
-  return "DROPBOX_ACCESS_TOKEN";
-}

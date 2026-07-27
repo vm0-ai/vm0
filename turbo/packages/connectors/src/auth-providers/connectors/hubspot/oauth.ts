@@ -184,10 +184,3 @@ async function fetchHubSpotUserInfo(
     hubDomain: data.hub_domain ?? null,
   };
 }
-
-/**
- * Get the primary secret name for HubSpot connector (the access token).
- */
-export function getHubSpotSecretName(): string {
-  return "HUBSPOT_ACCESS_TOKEN";
-}

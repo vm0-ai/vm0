@@ -124,10 +124,3 @@ async function fetchVercelUserInfo(
     email: data.user.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Vercel connector (the access token).
- */
-export function getVercelSecretName(): string {
-  return "VERCEL_ACCESS_TOKEN";
-}

@@ -176,12 +176,3 @@ export async function refreshNotionToken(
     expiresIn: data.expires_in,
   };
 }
-
-/**
- * Get the primary secret name for Notion connector (the access token).
- * Uses an explicit key rather than Object.keys() ordering to avoid
- * fragile dependency on property insertion order.
- */
-export function getNotionSecretName(): string {
-  return "NOTION_ACCESS_TOKEN";
-}

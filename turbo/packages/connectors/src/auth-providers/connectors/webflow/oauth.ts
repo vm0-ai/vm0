@@ -122,10 +122,3 @@ async function fetchWebflowUserInfo(accessToken: string): Promise<{
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Webflow connector.
- */
-export function getWebflowSecretName(): string {
-  return "WEBFLOW_ACCESS_TOKEN";
-}

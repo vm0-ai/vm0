@@ -203,10 +203,3 @@ async function fetchStripeAccountInfo(
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Stripe connector (the access token).
- */
-export function getStripeSecretName(): string {
-  return "STRIPE_ACCESS_TOKEN";
-}
