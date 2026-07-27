@@ -291,17 +291,6 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
     return TrustedAuthority(host=normalized_sni, port=port, url=trusted_url)
 
 
-def get_original_url(flow: http.HTTPFlow) -> str:
-    """Reconstruct the original target URL from the request.
-
-    Uses the trusted authority for HTTPS firewall/auth decisions. ``pretty_url``
-    is intentionally not used: it takes the port from the Host header, so a
-    request to ``host:8443`` with a plain ``Host: host`` (no port) would lose
-    the ``:8443`` and break firewall rule matching.
-    """
-    return get_trusted_authority(flow).url
-
-
 _QueryPair = tuple[str, str]
 
 

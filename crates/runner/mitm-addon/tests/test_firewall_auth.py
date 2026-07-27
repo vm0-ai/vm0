@@ -45,7 +45,7 @@ from tests.firewall_auth_helpers import (
 )
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
-from url_utils import get_original_url
+from url_utils import get_trusted_authority
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
 
@@ -1191,7 +1191,7 @@ class TestHandleFirewallRequest:
             ),
         )
         flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
-        flow.metadata[metadata_keys.ORIGINAL_URL] = get_original_url(flow)
+        flow.metadata[metadata_keys.ORIGINAL_URL] = get_trusted_authority(flow).url
         api_entry = _api_entry(
             base="https://sts.amazonaws.com",
             auth_config={
