@@ -44,10 +44,8 @@ export const KEYBOARD_PREV_THREAD_ID = "b0000000-0000-4000-a000-000000000707";
 export const KEYBOARD_CURRENT_THREAD_ID =
   "b0000000-0000-4000-a000-000000000708";
 export const KEYBOARD_NEXT_THREAD_ID = "b0000000-0000-4000-a000-000000000709";
-export const SERVER_QUEUED_VISIBLE_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000710";
-export const SERVER_QUEUED_RESOLVED_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000711";
+const SERVER_QUEUED_VISIBLE_THREAD_ID = "b0000000-0000-4000-a000-000000000710";
+const SERVER_QUEUED_RESOLVED_THREAD_ID = "b0000000-0000-4000-a000-000000000711";
 export const SERVER_QUEUED_RUN_THREAD_ID =
   "b0000000-0000-4000-a000-000000000712";
 export const RUNNING_THREAD_ID = "b0000000-0000-4000-a000-000000000713";
@@ -66,10 +64,7 @@ type ChatMessageSeed =
   | Omit<Extract<PagedChatMessage, { role: "user" }>, "seqId">
   | Omit<Extract<PagedChatMessage, { role: "assistant" }>, "seqId">;
 
-export function replaceNavigatorProperty(
-  property: string,
-  value: unknown,
-): void {
+function replaceNavigatorProperty(property: string, value: unknown): void {
   const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
   Object.defineProperty(navigator, property, {
     configurable: true,
@@ -108,20 +103,17 @@ export function computerUsePermissions() {
   };
 }
 
-export interface PushBrowserMock {
+interface PushBrowserMock {
   readonly register: ReturnType<typeof vi.fn>;
 }
 
-export type TestPushManager = Pick<
-  PushManager,
-  "getSubscription" | "subscribe"
->;
+type TestPushManager = Pick<PushManager, "getSubscription" | "subscribe">;
 
-export interface TestServiceWorkerRegistration {
+interface TestServiceWorkerRegistration {
   readonly pushManager: TestPushManager;
 }
 
-export interface TestServiceWorkerContainer {
+interface TestServiceWorkerContainer {
   readonly register: () => Promise<TestServiceWorkerRegistration>;
 }
 
@@ -680,16 +672,6 @@ export function linkByText(text: string): HTMLElement {
   });
   if (!link) {
     throw new Error(`${text} link not found`);
-  }
-  return link;
-}
-
-export function linkByLabel(label: string): HTMLElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!link) {
-    throw new Error(`${label} link not found`);
   }
   return link;
 }

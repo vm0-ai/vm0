@@ -4,7 +4,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
+import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
 import {
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
   isConnectorAppOauthCallbackEnabled,
@@ -32,7 +32,6 @@ import type {
 import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorListResponse,
-  ConnectorReconnectReason,
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
@@ -162,7 +161,7 @@ export function getConnectorStatusAuthMethod(
   );
 }
 
-export function getConnectorStatusAuthMethodsByGrantKind(
+function getConnectorStatusAuthMethodsByGrantKind(
   connector: PublicConnectorCatalogStatusItem,
   grantKind: ConnectorStatusGrantKind,
 ): PublicConnectorCatalogAuthMethodDetail[] {
@@ -191,17 +190,6 @@ export function hasConnectorStatusProviderDrivenConnectMethod(
     );
   });
 }
-
-export function hasConnectorStatusAuthCodeGrant(
-  connector: PublicConnectorCatalogStatusItem,
-): boolean {
-  return getConnectorStatusAuthMethodsByGrantKind(connector, "auth-code").some(
-    () => {
-      return true;
-    },
-  );
-}
-
 export function hasConnectorStatusBrowserAuthGrant(
   connector: PublicConnectorCatalogStatusItem,
 ): boolean {
@@ -237,7 +225,7 @@ export function getAvailableStatusAuthCodeAuthMethod(
   return parsed.data;
 }
 
-export function getOnlyAvailableStatusAuthCodeAuthMethod(
+function getOnlyAvailableStatusAuthCodeAuthMethod(
   connector: PublicConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const authMethod = connector.singleAuthCodeAuthMethodId;
@@ -251,23 +239,7 @@ export function getOnlyAvailableStatusAuthCodeAuthMethod(
   }
   return getAvailableStatusAuthCodeAuthMethod(connector, authMethod);
 }
-
-export function getAvailableStatusBrowserAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
-  authMethod: string,
-): ConnectorAuthMethodId | null {
-  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
-  if (!parsed.success) {
-    return null;
-  }
-  const method = getConnectorStatusAuthMethod(connector, parsed.data);
-  if (!method || !isBrowserAuthGrantKind(method.grantKind)) {
-    return null;
-  }
-  return parsed.data;
-}
-
-export function getOnlyAvailableStatusBrowserAuthMethod(
+function getOnlyAvailableStatusBrowserAuthMethod(
   connector: PublicConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const [method] = connector.authMethods;
@@ -289,7 +261,7 @@ export function getOnlyAvailableStatusBrowserAuthMethodDetail(
     : null;
 }
 
-export function getAvailableStatusNoAuthMethod(
+function getAvailableStatusNoAuthMethod(
   connector: PublicConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
@@ -366,21 +338,6 @@ export function connectorExpiryCountdownText(
     return "Expires in less than 1 hour";
   }
   return formatExpiryCountdown(Math.ceil(remainingMs / HOUR_MS), "hour");
-}
-
-const reconnectReasonTooltipText = {
-  provider_session_expired:
-    "The provider session expired. Reconnect to continue.",
-  authorization_expired_or_revoked:
-    "Authorization expired or was revoked. Reconnect to continue.",
-  credential_expired: "The stored credential expired. Reconnect to continue.",
-} satisfies Record<ConnectorReconnectReason, string>;
-
-export function connectorReconnectReasonTooltipText(
-  connector: PublicConnectorCatalogStatusItem,
-): string | null {
-  const reason = connector.connection?.reconnectReason;
-  return reason ? reconnectReasonTooltipText[reason] : null;
 }
 
 /**

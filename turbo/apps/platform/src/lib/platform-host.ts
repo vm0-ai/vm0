@@ -1,8 +1,8 @@
-export type PlatformEnvironment = "development" | "preview" | "production";
+type PlatformEnvironment = "development" | "preview" | "production";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
-export interface PlatformRuntimeConfig {
+interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
   readonly clerkPublishableKey: string;
   readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";

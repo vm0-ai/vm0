@@ -28,7 +28,7 @@ export type AgentCustomConnectorUpdate = z.infer<
  * Contract for GET/PUT /api/zero/agents/:id/custom-connectors
  *
  * Mirrors {@link import("./user-connectors").zeroUserConnectorsContract} but
- * over org custom connector UUIDs (not the built-in ConnectorType enum).
+ * over org custom connector UUIDs (not official connector refs).
  * A user's secret alone does not authorize an agent — they must also enable
  * the custom connector here for every agent that should use it.
  */

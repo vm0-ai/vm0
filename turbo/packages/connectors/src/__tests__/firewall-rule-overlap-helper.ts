@@ -31,18 +31,6 @@ interface FirewallRuleOverlap {
   readonly path: string;
 }
 
-export interface FirewallRuleReference {
-  readonly permissionName: string;
-  readonly rule: string;
-}
-
-interface FirewallRuleReferenceOverlap {
-  readonly left: FirewallRuleReference;
-  readonly right: FirewallRuleReference;
-  readonly method: string;
-  readonly path: string;
-}
-
 function isRuleMethod(value: string): value is RuleMethod {
   return VALID_RULE_METHODS.includes(value as RuleMethod);
 }
@@ -252,26 +240,4 @@ export function findFirewallRuleOverlap(
     method,
     path: pathFromSegments(segments),
   };
-}
-
-export function findFirewallRuleReferenceOverlaps(
-  leftRules: readonly FirewallRuleReference[],
-  rightRules: readonly FirewallRuleReference[],
-): FirewallRuleReferenceOverlap[] {
-  const overlaps: FirewallRuleReferenceOverlap[] = [];
-
-  for (const left of leftRules) {
-    for (const right of rightRules) {
-      const overlap = findFirewallRuleOverlap(left.rule, right.rule);
-      if (overlap === null) continue;
-      overlaps.push({
-        left,
-        right,
-        method: overlap.method,
-        path: overlap.path,
-      });
-    }
-  }
-
-  return overlaps;
 }

@@ -7,38 +7,6 @@ import { jsonParseOr } from "../utils.ts";
 // Composer UI state — search, dialogs, loading indicators
 // ---------------------------------------------------------------------------
 
-// -- Slash workflow picker --------------------------------------------------
-
-const internalSlashWorkflowCaretIndex$ = state(0);
-export const slashWorkflowCaretIndex$ = computed((get) => {
-  return get(internalSlashWorkflowCaretIndex$);
-});
-export const setSlashWorkflowCaretIndex$ = command(
-  ({ set }, caretIndex: number) => {
-    set(internalSlashWorkflowCaretIndex$, caretIndex);
-  },
-);
-
-const internalSlashWorkflowEditorFocused$ = state(false);
-export const slashWorkflowEditorFocused$ = computed((get) => {
-  return get(internalSlashWorkflowEditorFocused$);
-});
-export const setSlashWorkflowEditorFocused$ = command(
-  ({ set }, focused: boolean) => {
-    set(internalSlashWorkflowEditorFocused$, focused);
-  },
-);
-
-const internalSelectedSlashWorkflowIndex$ = state(0);
-export const selectedSlashWorkflowIndex$ = computed((get) => {
-  return get(internalSelectedSlashWorkflowIndex$);
-});
-export const setSelectedSlashWorkflowIndex$ = command(
-  ({ set }, index: number) => {
-    set(internalSelectedSlashWorkflowIndex$, index);
-  },
-);
-
 // -- New-thread Computer Use host selection ---------------------------------
 
 const internalNewThreadComputerUseHostId$ = state<string | null>(null);
@@ -198,21 +166,6 @@ export const templateCardHtmlPreview$ = computed((get) => {
 export const setTemplateCardHtmlPreview$ = command(
   ({ set }, value: TemplateCardHtmlPreviewState | null) => {
     set(internalTemplateCardHtmlPreview$, value);
-  },
-);
-
-const internalTemplateCardDefaultHtmlPreviews$ = state<
-  Readonly<Record<string, TemplateCardHtmlPreviewState>>
->({});
-export const templateCardDefaultHtmlPreviews$ = computed((get) => {
-  return get(internalTemplateCardDefaultHtmlPreviews$);
-});
-export const setTemplateCardDefaultHtmlPreview$ = command(
-  ({ get, set }, embedUrl: string, value: TemplateCardHtmlPreviewState) => {
-    set(internalTemplateCardDefaultHtmlPreviews$, {
-      ...get(internalTemplateCardDefaultHtmlPreviews$),
-      [embedUrl]: value,
-    });
   },
 );
 

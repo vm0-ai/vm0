@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import {
   buildZoomAuthorizationUrl,
   exchangeZoomCode,
@@ -8,13 +7,14 @@ import {
   refreshZoomToken,
 } from "../zoom/oauth";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
 }
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("zoom", "oauth");
+  return authCodeGrantFixture(["user:read:user", "meeting:read:list_meetings"]);
 }
 
 describe("connector/providers/zoom", () => {

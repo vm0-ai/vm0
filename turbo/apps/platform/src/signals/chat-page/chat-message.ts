@@ -19,21 +19,7 @@ import { nowDate } from "../../lib/time.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import type { ChatMessage } from "./chat-message-types.ts";
 
-export { chatThreads$ } from "../agent-chat.ts";
-
-export {
-  zeroChatAttachments$,
-  uploadZeroAttachment$,
-  restoreZeroAttachments$,
-  removeZeroAttachment$,
-  appendZeroChatInput$,
-  setZeroChatInputSyncTarget$,
-  zeroDragOver$,
-  setZeroDragOver$,
-  canSendZeroChat$,
-  type ZeroChatAttachment,
-  type DraftInputSyncTarget,
-} from "../zero-page/chat-draft.ts";
+export { type ZeroChatAttachment } from "../zero-page/chat-draft.ts";
 
 // ---------------------------------------------------------------------------
 // Re-export paged message types from @vm0/core

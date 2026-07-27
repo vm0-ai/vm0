@@ -42,7 +42,7 @@ export function parseComputerUseAuthorizationUrl(
   };
 }
 
-export function createComputerUseAuthorizationSignals(
+function createComputerUseAuthorizationSignals(
   descriptor: ComputerUseAuthorizationDescriptor,
 ): ComputerUseAuthorizationSignals {
   return descriptor;
