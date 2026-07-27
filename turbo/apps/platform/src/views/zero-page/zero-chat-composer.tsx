@@ -186,6 +186,8 @@ import {
   setUploadPopoverOpen$,
   templatePickerOpen$,
   setTemplatePickerOpen$,
+  templatePickerReferenceValue$,
+  setTemplatePickerReferenceValue$,
   openWebsiteTemplatePreview$,
   templatePickerCategory$,
   setTemplatePickerCategory$,
@@ -5243,6 +5245,39 @@ function selectedComposerTemplateAttachment(
     : undefined;
 }
 
+function inlineComposerTemplatePicker({
+  picker,
+  enabled,
+  insertTemplate,
+  onDraftChange,
+}: {
+  picker: ComposerTemplatePicker | undefined;
+  enabled: boolean;
+  insertTemplate: (
+    value: GenerationTemplateRequest,
+    attachment: ComposerTemplateAttachment,
+  ) => void;
+  onDraftChange: (() => void) | undefined;
+}): ComposerTemplatePicker | undefined {
+  if (!picker || !enabled) {
+    return picker;
+  }
+  return {
+    value: undefined,
+    onChange(value) {
+      if (!value) {
+        return;
+      }
+      const attachment = selectedComposerTemplateAttachment(value);
+      if (!attachment) {
+        return;
+      }
+      insertTemplate(value, attachment);
+      onDraftChange?.();
+    },
+  };
+}
+
 function composerTemplateAttachmentLifecycleKey(
   attachment: ComposerTemplateAttachment | undefined,
 ): string {
@@ -5272,6 +5307,8 @@ function ComposerTemplateAttachmentSync({
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
+  const readSelectedTemplate = useSet(composer.readSelectedTemplate$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
@@ -5288,6 +5325,7 @@ function ComposerTemplateAttachmentSync({
     );
     setSearch("");
     setPreviewSlug(null);
+    setReferenceValue(readSelectedTemplate() ?? null);
     setCategory(category);
     setOpen(true);
   };
@@ -5317,6 +5355,7 @@ function ComposerTemplateAttachmentSync({
 
 function TemplatePickerButton({
   picker,
+  onOpen,
   hasPptTab,
   presentationItems,
   hasIllustrationTab,
@@ -5325,6 +5364,7 @@ function TemplatePickerButton({
   runtime,
 }: {
   picker: ComposerTemplatePicker;
+  onOpen: () => void;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
@@ -5334,9 +5374,11 @@ function TemplatePickerButton({
 }) {
   const open = useGet(templatePickerOpen$);
   const category = useGet(templatePickerCategory$);
+  const referenceValue = useGet(templatePickerReferenceValue$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const selectedTitle = selectedTemplateTitle(picker.value);
   const selectedCategory = resolveTemplatePickerCategory({
@@ -5378,9 +5420,11 @@ function TemplatePickerButton({
               onFocus={prewarmPicker}
               onPointerDown={prewarmPicker}
               onClick={() => {
+                onOpen();
                 prewarmPicker();
                 setSearch("");
                 setPreviewSlug(null);
+                setReferenceValue(null);
                 setOpen(true);
               }}
             >
@@ -5394,9 +5438,10 @@ function TemplatePickerButton({
       </TooltipProvider>
       {open && (
         <TemplatePickerDialog
-          value={picker.value}
+          value={referenceValue ?? picker.value}
           onChange={picker.onChange}
           onClose={() => {
+            setReferenceValue(null);
             setOpen(false);
           }}
           hasPptTab={hasPptTab}
@@ -5423,12 +5468,14 @@ function ComposerTemplatePickerSlot({
   const hasVideoTab = true;
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  const prepareTemplateInsertion = useSet(composer.prepareTemplateInsertion$);
   if (!picker) {
     return null;
   }
   return (
     <TemplatePickerButton
       picker={picker}
+      onOpen={prepareTemplateInsertion}
       hasPptTab={hasPptTab}
       presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
@@ -6449,6 +6496,7 @@ function toPersistedAttachments(
 function restoreChatClipboardPayload({
   event,
   structuredPromptEnabled,
+  inlineTemplatesEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
   insertStructuredPrompt,
@@ -6458,6 +6506,7 @@ function restoreChatClipboardPayload({
 }: {
   event: ComposerPasteEvent;
   structuredPromptEnabled: boolean;
+  inlineTemplatesEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
   insertStructuredPrompt: (value: UserMessageDocument) => void;
@@ -6504,7 +6553,8 @@ function restoreChatClipboardPayload({
     return (
       part.type === "text" ||
       part.type === "chat_thread" ||
-      part.type === "feedback"
+      part.type === "feedback" ||
+      (inlineTemplatesEnabled && part.type === "template")
     );
   });
   if (structuredPrompt && hasInsertableStructuredPart) {
@@ -6515,7 +6565,7 @@ function restoreChatClipboardPayload({
   const templatePart = structuredPrompt?.parts.find((part) => {
     return part.type === "template";
   });
-  if (templatePart?.type === "template") {
+  if (!inlineTemplatesEnabled && templatePart?.type === "template") {
     onTemplateChange?.(templatePart.template);
   }
   if (allowedAttachments.length > 0) {
@@ -6820,6 +6870,10 @@ export function useZeroChatComposer({
   const featureSwitches = useGet(featureSwitch$);
   const structuredPromptEnabled =
     featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
+  const inlineTemplatesEnabled =
+    structuredPromptEnabled &&
+    (featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
+      false);
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -6840,6 +6894,7 @@ export function useZeroChatComposer({
   } = resolved;
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
   const insertStructuredPrompt = useSet(composer.insertStructuredPrompt$);
+  const insertTemplate = useSet(composer.insertTemplate$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
@@ -6854,6 +6909,12 @@ export function useZeroChatComposer({
     visualAttachmentUnsupported,
   );
   const uploadsReady = attachmentUploadsState === "hasData";
+  const composerTemplatePicker = inlineComposerTemplatePicker({
+    picker: templatePicker,
+    enabled: inlineTemplatesEnabled,
+    insertTemplate,
+    onDraftChange,
+  });
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
@@ -6864,11 +6925,12 @@ export function useZeroChatComposer({
       restoreChatClipboardPayload({
         event: e,
         structuredPromptEnabled,
+        inlineTemplatesEnabled,
         visualAttachmentUnsupported,
         insertPromptMarkdown,
         insertStructuredPrompt,
         restoreAttachments,
-        onTemplateChange: templatePicker?.onChange,
+        onTemplateChange: composerTemplatePicker?.onChange,
         onDraftChange,
       })
     ) {
@@ -7082,9 +7144,17 @@ export function useZeroChatComposer({
         return;
       }
       if (sendAction === "send") {
-        onSend(prompt, templatePicker?.value, submission.editorDocument);
+        onSend(
+          prompt,
+          composerTemplatePicker?.value,
+          submission.editorDocument,
+        );
       } else {
-        onQueue?.(prompt, templatePicker?.value, submission.editorDocument);
+        onQueue?.(
+          prompt,
+          composerTemplatePicker?.value,
+          submission.editorDocument,
+        );
       }
     };
     detach(submitCurrentInput(), Reason.DomCallback);
@@ -7213,7 +7283,7 @@ export function useZeroChatComposer({
             <div className="flex flex-col">
               <ComposerTemplateAttachmentSync
                 composer={composer}
-                picker={templatePicker}
+                picker={composerTemplatePicker}
                 onDraftChange={onDraftChange}
                 runtime={composer.templatePreview}
               />
@@ -7244,7 +7314,7 @@ export function useZeroChatComposer({
                   />
                   <ComposerTemplatePickerSlot
                     composer={composer}
-                    picker={templatePicker}
+                    picker={composerTemplatePicker}
                   />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}

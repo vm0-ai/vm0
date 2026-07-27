@@ -71,6 +71,17 @@ export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
   set(internalTemplatePickerOpen$, open);
 });
 
+const internalTemplatePickerReferenceValue$ =
+  state<GenerationTemplateRequest | null>(null);
+export const templatePickerReferenceValue$ = computed((get) => {
+  return get(internalTemplatePickerReferenceValue$);
+});
+export const setTemplatePickerReferenceValue$ = command(
+  ({ set }, value: GenerationTemplateRequest | null) => {
+    set(internalTemplatePickerReferenceValue$, value);
+  },
+);
+
 const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
 export const websiteTemplatePreviewId$ = computed((get) => {
   return get(internalWebsiteTemplatePreviewId$);

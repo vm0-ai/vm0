@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
+  generationTemplateRequestSchema,
   userMessageDocumentSchema,
   type FeedbackNotePart,
   type GenerationTemplateRequest,
@@ -15,6 +16,7 @@ import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
+export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export interface EditorDocumentContext {
@@ -71,7 +73,7 @@ function chatThreadPart(
   };
 }
 
-function templatePart(
+function legacyTemplatePart(
   node: ProseMirrorNode,
   generationTemplate: GenerationTemplateRequest | undefined,
 ): UserMessagePart | null {
@@ -88,6 +90,23 @@ function templatePart(
     type: "template",
     titleSnapshot: title,
     template: generationTemplate,
+  };
+}
+
+function inlineTemplatePart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "template" }> | null {
+  const title: unknown = node.attrs.title;
+  const parsedTemplate = generationTemplateRequestSchema.safeParse(
+    node.attrs.template,
+  );
+  if (typeof title !== "string" || !parsedTemplate.success) {
+    return null;
+  }
+  return {
+    type: "template",
+    titleSnapshot: title,
+    template: parsedTemplate.data,
   };
 }
 
@@ -110,6 +129,14 @@ function appendParagraphParts(
     }
     if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
       const part = chatThreadPart(node);
+      if (!part) {
+        return false;
+      }
+      parts.push(part);
+      continue;
+    }
+    if (node.type.name === INLINE_TEMPLATE_NODE_NAME) {
+      const part = inlineTemplatePart(node);
       if (!part) {
         return false;
       }
@@ -187,7 +214,11 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
   }
   if (
     !note.every((part): part is FeedbackNotePart => {
-      return part.type === "text" || part.type === "chat_thread";
+      return (
+        part.type === "text" ||
+        part.type === "chat_thread" ||
+        part.type === "template"
+      );
     })
   ) {
     return null;
@@ -200,7 +231,7 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
   };
 }
 
-function templateCount(document: ProseMirrorNode): number | null {
+function legacyTemplateCount(document: ProseMirrorNode): number | null {
   let count = 0;
   for (let index = 0; index < document.childCount; index++) {
     const nodeName = document.child(index).type.name;
@@ -256,7 +287,7 @@ export function editorDocToMessageDocument(
   const parts: UserMessagePart[] = [];
   const attachments = context.attachments ?? [];
   let filesAppended = false;
-  const documentTemplateCount = templateCount(document);
+  const documentTemplateCount = legacyTemplateCount(document);
   if (documentTemplateCount === null) {
     return null;
   }
@@ -265,7 +296,7 @@ export function editorDocToMessageDocument(
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
-      const part = templatePart(node, context.generationTemplate);
+      const part = legacyTemplatePart(node, context.generationTemplate);
       if (!part) {
         return null;
       }
@@ -356,6 +387,21 @@ function templatePreviewImageUrl(
 
 function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   return {
+    type: INLINE_TEMPLATE_NODE_NAME,
+    attrs: {
+      templateType: part.template.type,
+      template: part.template,
+      title: part.titleSnapshot,
+      category: templateCategory(part.template.type),
+      previewImageUrl: templatePreviewImageUrl(part.template),
+    },
+  } satisfies JSONContent;
+}
+
+function legacyTemplateNode(
+  part: Extract<UserMessagePart, { type: "template" }>,
+) {
+  return {
     type: TEMPLATE_ATTACHMENT_NODE_NAME,
     attrs: {
       templateType: part.template.type,
@@ -369,9 +415,13 @@ function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
 function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
   return note
     .map((part) => {
-      return part.type === "text"
-        ? part.text
-        : serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      if (part.type === "text") {
+        return part.text;
+      }
+      if (part.type === "chat_thread") {
+        return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      return `Select ${part.titleSnapshot} ${part.template.type} template`;
     })
     .join("");
 }
@@ -391,6 +441,11 @@ function feedbackNoteContent(note: readonly FeedbackNotePart[]): JSONContent[] {
   };
 
   for (const part of note) {
+    if (part.type === "template") {
+      paragraphContent.push(templateNode(part));
+      trailingParagraph = false;
+      continue;
+    }
     if (part.type === "chat_thread") {
       paragraphContent.push({
         type: CHAT_THREAD_MENTION_NODE_NAME,
@@ -435,66 +490,82 @@ function formattedFeedbackParts(
   );
 }
 
+interface RestoredEditorState {
+  readonly content: JSONContent[];
+  paragraphContent: JSONContent[];
+  trailingParagraph: boolean;
+}
+
+function flushRestoredParagraph(state: RestoredEditorState): void {
+  state.content.push(
+    state.paragraphContent.length > 0
+      ? { type: "paragraph", content: state.paragraphContent }
+      : { type: "paragraph" },
+  );
+  state.paragraphContent = [];
+  state.trailingParagraph = false;
+}
+
+function appendRestoredText(state: RestoredEditorState, text: string): void {
+  const lines = text.split("\n");
+  for (const [index, line] of lines.entries()) {
+    if (line.length > 0) {
+      state.paragraphContent.push({ type: "text", text: line });
+      state.trailingParagraph = false;
+    }
+    if (index < lines.length - 1) {
+      flushRestoredParagraph(state);
+      state.trailingParagraph = true;
+    }
+  }
+}
+
 /**
  * Restores the editor-owned portion of a business document. File parts stay in
  * the existing external attachment state and therefore do not become Tiptap
  * nodes. Newlines are canonically restored as paragraph boundaries.
  */
-export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
+export function messageDocumentToEditorDoc(
+  value: unknown,
+  options: { readonly inlineTemplates?: boolean } = {},
+): JSONContent | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
   }
 
-  const content: JSONContent[] = [];
-  let paragraphContent: JSONContent[] = [];
-  let trailingParagraph = false;
-  let templateCount = 0;
+  const state: RestoredEditorState = {
+    content: [],
+    paragraphContent: [],
+    trailingParagraph: false,
+  };
+  let legacyTemplateCount = 0;
   let feedbackIndex = 0;
   const feedbackCount = parsed.data.parts.filter((part) => {
     return part.type === "feedback";
   }).length;
-  const flushParagraph = () => {
-    content.push(
-      paragraphContent.length > 0
-        ? { type: "paragraph", content: paragraphContent }
-        : { type: "paragraph" },
-    );
-    paragraphContent = [];
-    trailingParagraph = false;
-  };
 
   for (const part of parsed.data.parts) {
     if (part.type === "text") {
-      const lines = part.text.split("\n");
-      for (const [index, line] of lines.entries()) {
-        if (line.length > 0) {
-          paragraphContent.push({ type: "text", text: line });
-          trailingParagraph = false;
-        }
-        if (index < lines.length - 1) {
-          flushParagraph();
-          trailingParagraph = true;
-        }
-      }
+      appendRestoredText(state, part.text);
       continue;
     }
     if (part.type === "chat_thread") {
-      paragraphContent.push({
+      state.paragraphContent.push({
         type: CHAT_THREAD_MENTION_NODE_NAME,
         attrs: {
           threadId: part.threadId,
           title: part.titleSnapshot,
         },
       });
-      trailingParagraph = false;
+      state.trailingParagraph = false;
       continue;
     }
     if (part.type === "feedback") {
-      if (paragraphContent.length > 0 || trailingParagraph) {
-        flushParagraph();
+      if (state.paragraphContent.length > 0 || state.trailingParagraph) {
+        flushRestoredParagraph(state);
       }
-      content.push({
+      state.content.push({
         type: FEEDBACK_ITEM_NODE_NAME,
         attrs: {
           feedbackId: feedbackIndex + 1,
@@ -516,28 +587,36 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
       continue;
     }
     if (part.type === "template") {
-      templateCount += 1;
-      if (templateCount > 1) {
+      if (options.inlineTemplates === true) {
+        state.paragraphContent.push(templateNode(part));
+        state.trailingParagraph = false;
+        continue;
+      }
+      legacyTemplateCount += 1;
+      if (legacyTemplateCount > 1) {
         return null;
       }
-      if (paragraphContent.length > 0) {
-        flushParagraph();
+      if (state.paragraphContent.length > 0) {
+        flushRestoredParagraph(state);
       }
-      content.push(templateNode(part));
+      state.content.push(legacyTemplateNode(part));
     }
   }
 
-  if (paragraphContent.length > 0 || trailingParagraph) {
-    flushParagraph();
+  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
+    flushRestoredParagraph(state);
   }
-  if (content.length === 0) {
-    content.push({ type: "paragraph" });
+  if (state.content.length === 0) {
+    state.content.push({ type: "paragraph" });
   }
-  return { type: "doc", content };
+  return { type: "doc", content: state.content };
 }
 
 /** Serializes the business document to the same plain prompt representation. */
-export function messageDocumentToPrompt(value: unknown): string | null {
+export function messageDocumentToPrompt(
+  value: unknown,
+  options: { readonly inlineTemplates?: boolean } = {},
+): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -573,6 +652,8 @@ export function messageDocumentToPrompt(value: unknown): string | null {
         part.threadId,
         part.titleSnapshot,
       );
+    } else if (part.type === "template" && options.inlineTemplates === true) {
+      inlineText += `Select ${part.titleSnapshot} ${part.template.type} template`;
     }
   }
   flushFeedback();
@@ -581,7 +662,10 @@ export function messageDocumentToPrompt(value: unknown): string | null {
 }
 
 /** Serializes the business document into a compact human-readable label. */
-export function messageDocumentToDisplayText(value: unknown): string | null {
+export function messageDocumentToDisplayText(
+  value: unknown,
+  options: { readonly inlineTemplates?: boolean } = {},
+): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -618,13 +702,18 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
       inlineText += `[Chat thread: ${part.titleSnapshot}]`;
       continue;
     }
+    if (part.type === "template") {
+      if (options.inlineTemplates === true) {
+        inlineText += `[Template: ${part.titleSnapshot}]`;
+      } else {
+        flushInlineText();
+        blocks.push(`[Template: ${part.titleSnapshot}]`);
+      }
+      continue;
+    }
 
     flushInlineText();
-    if (part.type === "template") {
-      blocks.push(`[Template: ${part.titleSnapshot}]`);
-    } else {
-      blocks.push(`[File: ${part.filenameSnapshot}]`);
-    }
+    blocks.push(`[File: ${part.filenameSnapshot}]`);
   }
   flushFeedback();
   flushInlineText();

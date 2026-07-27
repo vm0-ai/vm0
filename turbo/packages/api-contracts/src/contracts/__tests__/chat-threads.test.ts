@@ -12,6 +12,7 @@ import {
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   pagedChatMessageSchema,
+  userMessageDocumentSchema,
 } from "../chat-threads";
 
 const legacyModelSelection = {
@@ -229,6 +230,31 @@ describe("chat thread model request compatibility", () => {
 });
 
 describe("chat thread generation template contract", () => {
+  it("accepts template parts inside feedback notes", () => {
+    const parsed = userMessageDocumentSchema.safeParse({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "Original reply",
+          note: [
+            { type: "text", text: "Use " },
+            {
+              type: "template",
+              titleSnapshot: "Paper cut",
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: "paper-cut" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
   it("accepts presentation template selections", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "presentation",

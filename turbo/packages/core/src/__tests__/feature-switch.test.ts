@@ -34,6 +34,9 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
+    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(false);
   });
 
@@ -124,6 +127,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
@@ -155,6 +161,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,

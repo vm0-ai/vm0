@@ -112,12 +112,20 @@ function structuredDraftAttachments(
 
 function structuredDraftState(
   threadDraft: ChatThreadDraft,
+  inlineTemplatesEnabled: boolean,
 ): RestoredDraftState | null {
   const document = threadDraft.draftStructuredPrompt;
-  if (!document || messageDocumentToEditorDoc(document) === null) {
+  if (
+    !document ||
+    messageDocumentToEditorDoc(document, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }) === null
+  ) {
     return null;
   }
-  const content = messageDocumentToPrompt(document);
+  const content = messageDocumentToPrompt(document, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
   if (content === null) {
     return null;
   }
@@ -128,7 +136,7 @@ function structuredDraftState(
     content,
     structuredPrompt: document,
     generationTemplate:
-      generationTemplate?.type === "template"
+      !inlineTemplatesEnabled && generationTemplate?.type === "template"
         ? generationTemplate.template
         : undefined,
     attachments: structuredDraftAttachments(
@@ -155,8 +163,12 @@ const loadDraft$ = command(
     const features = get(featureSwitch$);
     const structuredPromptEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
+    const inlineTemplatesEnabled =
+      structuredPromptEnabled &&
+      (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
     const restoredDraft = structuredPromptEnabled
-      ? (structuredDraftState(threadDraft) ?? legacyDraftState(threadDraft))
+      ? (structuredDraftState(threadDraft, inlineTemplatesEnabled) ??
+        legacyDraftState(threadDraft))
       : legacyDraftState(threadDraft);
     const hasDraft =
       restoredDraft.content.length > 0 ||
@@ -217,11 +229,16 @@ const setupPaneThread$ = command(
     const initialOptimisticEntries = get(
       createOptimisticChatMessagesForThread(threadId),
     );
+    const features = get(featureSwitch$);
+    const inlineTemplatesEnabled =
+      (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
+      (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
     const thread = createChatThreadSignals(
       threadId,
       draft,
       dataSource,
       initialOptimisticEntries,
+      inlineTemplatesEnabled,
     );
     set(spec.setPaneThread$, thread);
 

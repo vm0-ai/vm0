@@ -9,7 +9,10 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
 } from "@vm0/core";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  GenerationTemplateRequest,
+  UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
@@ -49,6 +52,155 @@ const PRESENTATION_DECK_METADATA =
   '<script id="vm0-deck-metadata" type="application/json">{"kind":"presentation-html","editProtocolVersion":1,"slides":{}}</script>';
 
 describe("chat composer templates", () => {
+  it("inserts multiple inline templates and sends a template-only message", async () => {
+    const user = userEvent.setup({ delay: null });
+    const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const second = PRESENTATION_TEMPLATE_PICKER_ITEMS[1]!;
+    let submittedStructuredPrompt: UserMessageDocument | undefined;
+    let submittedGenerationTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedStructuredPrompt = body.structuredPrompt;
+        submittedGenerationTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    for (const template of [first, second]) {
+      click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      });
+      await user.click(
+        screen.getByLabelText(`Select template ${template.title}`),
+      );
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    }
+
+    const templateChips = document.querySelectorAll(
+      "[data-composer-inline-template]",
+    );
+    expect(templateChips).toHaveLength(2);
+    for (const chip of templateChips) {
+      expect(chip.querySelector("img")).not.toBeInTheDocument();
+      expect(chip.querySelector("svg")).toBeInTheDocument();
+      expect(chip).toHaveClass(
+        "-top-px",
+        "bg-orange-500/10",
+        "text-orange-600",
+        "hover:bg-orange-500/15",
+      );
+      expect(
+        chip.querySelector('button[aria-label^="Remove template"]'),
+      ).not.toBeInTheDocument();
+    }
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submittedGenerationTemplate).toBeUndefined();
+      expect(submittedStructuredPrompt?.parts).toHaveLength(2);
+      expect(submittedStructuredPrompt?.parts[0]).toMatchObject({
+        type: "template",
+        titleSnapshot: first.title,
+        template: {
+          type: "presentation",
+          selection: { templateId: first.templateId },
+        },
+      });
+      expect(submittedStructuredPrompt?.parts[1]).toMatchObject({
+        type: "template",
+        titleSnapshot: second.title,
+        template: {
+          type: "presentation",
+          selection: { templateId: second.templateId },
+        },
+      });
+    });
+  });
+
+  it("replaces a selected inline template instead of inserting another", async () => {
+    const user = userEvent.setup({ delay: null });
+    const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const replacement = PRESENTATION_TEMPLATE_PICKER_ITEMS[1]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(
+      await screen.findByLabelText(`Select template ${first.title}`),
+    );
+    await user.click(
+      await screen.findByLabelText(`Preview template ${first.title}`),
+    );
+    const selectedChip = document.querySelector(
+      "[data-composer-inline-template]",
+    );
+    expect(selectedChip).toHaveAttribute("data-selected", "");
+    expect(selectedChip).toHaveStyle({
+      outline: "none",
+      userSelect: "none",
+    });
+    expect(selectedChip).toHaveClass(
+      "select-none",
+      "data-[selected]:bg-orange-500/15",
+      "data-[selected]:ring-orange-500/40",
+    );
+    expect(
+      screen.getByLabelText(`Preview template ${first.title}`),
+    ).toHaveClass("text-orange-600");
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByLabelText(`Select template ${first.title}`),
+    ).toHaveAttribute("aria-pressed", "true");
+    await user.click(
+      screen.getByLabelText(`Select template ${replacement.title}`),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll("[data-composer-inline-template]"),
+      ).toHaveLength(1);
+      expect(
+        screen.queryByLabelText(`Preview template ${first.title}`),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Preview template ${replacement.title}`),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("prewarms template previews only after the template button is used", async () => {
     const imagePreloads = trackTemplatePreviewImagePreloads();
     const restoreIdleCallback = mockImmediateIdleCallback();

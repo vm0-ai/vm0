@@ -1,14 +1,126 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
 describe("structured user messages", () => {
+  it("renders templates inline in message and feedback-note order", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000748";
+    const templateItem = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const template = {
+      type: "illustration" as const,
+      selection: {
+        illustrationStyleId: templateItem.illustrationStyleId,
+      },
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Inline template rendering",
+      chatMessages: [
+        {
+          id: "00000000-0000-4000-8000-000000000748",
+          role: "user",
+          content: "Legacy body stays hidden",
+          runId: "d0000000-0000-4000-a000-000000000748",
+          structuredPrompt: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Before " },
+              {
+                type: "template",
+                titleSnapshot: templateItem.title,
+                template,
+              },
+              { type: "text", text: " after" },
+              {
+                type: "feedback",
+                quote: "Earlier answer",
+                note: [
+                  { type: "text", text: "Restyle with " },
+                  {
+                    type: "template",
+                    titleSnapshot: templateItem.title,
+                    template,
+                  },
+                ],
+              },
+            ],
+          },
+          createdAt: "2026-07-27T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    });
+
+    const structuredMessage = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    const references = screen.getAllByLabelText(
+      `Message template ${templateItem.title}`,
+    );
+    expect(references).toHaveLength(2);
+    for (const reference of references) {
+      expect(reference.tagName).toBe("BUTTON");
+      expect(reference).toHaveAttribute("aria-haspopup", "dialog");
+      expect(reference).toHaveAttribute(
+        "data-structured-template-reference",
+        "",
+      );
+      expect(reference).toHaveClass(
+        "-top-px",
+        "rounded-md",
+        "bg-orange-500/10",
+        "text-orange-600",
+      );
+      expect(reference.querySelector("svg")).toBeInTheDocument();
+      expect(reference.textContent).toBe(templateItem.title);
+    }
+    expect(structuredMessage).toContainElement(references[0]);
+    const feedback = document.querySelector("[data-structured-feedback-group]");
+    expect(feedback).toBeInstanceOf(HTMLElement);
+    expect(feedback).toContainElement(references[1]);
+    expect(structuredMessage.textContent).toContain(
+      `Before ${templateItem.title} after`,
+    );
+    expect(feedback).toHaveTextContent(`Restyle with ${templateItem.title}`);
+
+    await user.click(references[0]!);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    const illustrationTab = queryAllByRoleFast("tab").find((tab) => {
+      return tab.textContent === "Illustration";
+    });
+    expect(illustrationTab).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByLabelText(`Select template ${templateItem.title}`),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      document.querySelector("[data-composer-inline-template]"),
+    ).toBeNull();
+  });
+
   it("renders ordered snapshots and keeps the legacy Markdown fallback", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000741";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000742";
@@ -115,6 +227,17 @@ describe("structured user messages", () => {
       'a[aria-label="Open chat Archived source"]',
     );
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
+    expect(threadLink).toHaveClass(
+      "bg-orange-500/10",
+      "text-orange-600",
+      "hover:bg-orange-500/15",
+    );
+    expect(threadLink?.querySelector("svg")).toBeInTheDocument();
+    expect(
+      threadLink?.querySelector(
+        'path[d="M3 20l1.3 -3.9c-2.324 -3.437 -1.426 -7.872 2.1 -10.374c3.526 -2.501 8.59 -2.296 11.845 .48c3.255 2.777 3.695 7.266 1.029 10.501c-2.666 3.235 -7.615 4.215 -11.574 2.293l-4.7 1"]',
+      ),
+    ).toBeInTheDocument();
     const template = screen.getByLabelText("Message template Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
     expect(template).toBeInTheDocument();

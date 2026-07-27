@@ -255,15 +255,16 @@ function truncateIncomplete(value: string): string {
 function formatIncompleteMessage(
   message: IncompleteRoundMessage,
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): string {
   if (
     message.role === "user" &&
     structuredPromptEnabled &&
     message.structuredPrompt
   ) {
-    const prompt = projectStructuredUserMessage(
-      message.structuredPrompt,
-    ).agentPrompt;
+    const prompt = projectStructuredUserMessage(message.structuredPrompt, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }).agentPrompt;
     return `User: ${truncateIncomplete(prompt) || "[empty message]"}`;
   }
   const attach = formatAttachFileIds(message.attachFiles);
@@ -283,6 +284,7 @@ function formatIncompleteMessage(
 function buildWebChatIncompleteContext(
   rounds: readonly IncompleteRound[],
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled: boolean,
 ): string {
   if (rounds.length === 0) {
     return "";
@@ -291,7 +293,11 @@ function buildWebChatIncompleteContext(
   const blocks = rounds.map((round, index) => {
     const relativeIndex = index - total + 1;
     const rendered = round.messages.map((message) => {
-      return formatIncompleteMessage(message, structuredPromptEnabled);
+      return formatIncompleteMessage(
+        message,
+        structuredPromptEnabled,
+        inlineTemplatesEnabled,
+      );
     });
     const hasAssistant = round.messages.some((message) => {
       return message.role === "assistant";
@@ -326,8 +332,13 @@ export async function loadWebChatIncompleteContext(
   db: Db,
   threadId: string,
   structuredPromptEnabled: boolean,
+  inlineTemplatesEnabled = false,
 ): Promise<string> {
   const selection = await selectIncompleteRoundFrontier(db, threadId);
   const rounds = await loadSelectedIncompleteRounds(db, threadId, selection);
-  return buildWebChatIncompleteContext(rounds, structuredPromptEnabled);
+  return buildWebChatIncompleteContext(
+    rounds,
+    structuredPromptEnabled,
+    inlineTemplatesEnabled,
+  );
 }

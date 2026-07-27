@@ -340,21 +340,24 @@ const userMessageChatThreadPartSchema = z
   })
   .strict();
 
+const userMessageTemplatePartSchema = z
+  .object({
+    type: z.literal("template"),
+    titleSnapshot: z.string().min(1),
+    template: generationTemplateRequestSchema,
+  })
+  .strict();
+
 const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
+  userMessageTemplatePartSchema,
 ]);
 
 const userMessagePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
-  z
-    .object({
-      type: z.literal("template"),
-      titleSnapshot: z.string().min(1),
-      template: generationTemplateRequestSchema,
-    })
-    .strict(),
+  userMessageTemplatePartSchema,
   z
     .object({
       type: z.literal("file"),

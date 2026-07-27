@@ -223,6 +223,89 @@ function dispatchDocumentShortcut(
 }
 
 describe("chat inline feedback", () => {
+  it("inserts a template node inside a feedback note", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The illustration direction is too generic.";
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const sentMessages: RunCreateCapture[] = [];
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Template feedback",
+      chatMessages: [
+        {
+          id: "msg-template-feedback-user",
+          role: "user",
+          content: "Review the direction",
+          runId: "run-template-feedback",
+          createdAt: "2026-07-27T10:00:00Z",
+        },
+        {
+          id: "msg-template-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-template-feedback",
+          createdAt: "2026-07-27T10:00:01Z",
+        },
+      ],
+      onRunCreate(body) {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPrompt]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(await screen.findByText("Provide feedback"));
+    const feedbackNote = await findFeedbackNote();
+    await user.click(feedbackNote);
+
+    click(screen.getByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText(`Select template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(
+        feedbackNote.querySelector("[data-composer-inline-template]"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]?.generationTemplate).toBeUndefined();
+    expect(sentMessages[0]?.structuredPrompt?.parts).toHaveLength(1);
+    expect(sentMessages[0]?.structuredPrompt?.parts[0]).toMatchObject({
+      type: "feedback",
+      quote: assistantReply,
+      note: [
+        {
+          type: "template",
+          titleSnapshot: template.title,
+          template: {
+            type: "presentation",
+            selection: { templateId: template.templateId },
+          },
+        },
+      ],
+    });
+    expect(sentMessages[0]?.prompt).toContain(
+      `Select ${template.title} presentation template`,
+    );
+    await waitFor(() => {
+      expect(feedbackNotes()).toHaveLength(0);
+    });
+  });
+
   it("keeps ordinary text and inline feedback in one composer document", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";

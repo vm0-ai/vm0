@@ -51,6 +51,7 @@ import {
   IconRoute,
   IconSearch,
   IconTarget,
+  IconTemplate,
   IconX,
   IconClock,
   IconCoins,
@@ -291,6 +292,13 @@ import {
 } from "../../signals/chat-page/chat-thread-emoji.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import {
+  setTemplatePickerCategory$,
+  setTemplatePickerOpen$,
+  setTemplatePickerPreviewSlug$,
+  setTemplatePickerReferenceValue$,
+  setTemplatePickerSearch$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   useZeroChatComposer,
   type ZeroChatComposerProps,
@@ -6642,25 +6650,31 @@ const STRUCTURED_REFERENCE_CHIP_CLASS =
   "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
   "text-xs font-medium";
+const STRUCTURED_INLINE_REFERENCE_CLASS =
+  "relative -top-px mx-0.5 inline-flex h-7 max-w-[240px] items-center " +
+  "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
+  "font-medium text-orange-600 transition-colors hover:bg-orange-500/15 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
+  "active:bg-orange-500/20 dark:bg-orange-400/15 dark:text-orange-300 " +
+  "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
-function StructuredTemplateIcon({
-  type,
-}: {
-  type: GenerationTemplateRequest["type"];
-}) {
-  if (type === "video") {
-    return <IconVideo size={15} stroke={1.8} className="shrink-0" />;
+function templatePickerCategoryForReference(
+  template: GenerationTemplateRequest,
+): string {
+  return template.type === "presentation" ? "slides" : template.type;
+}
+
+function presentationTemplatePreviewSlug(
+  template: GenerationTemplateRequest,
+): string | null {
+  if (template.type !== "presentation") {
+    return null;
   }
-  if (type === "illustration") {
-    return <IconPhoto size={15} stroke={1.8} className="shrink-0" />;
-  }
-  if (type === "workflow") {
-    return <IconRoute size={15} stroke={1.8} className="shrink-0" />;
-  }
-  if (type === "website") {
-    return <IconWorld size={15} stroke={1.8} className="shrink-0" />;
-  }
-  return <IconPresentation size={15} stroke={1.8} className="shrink-0" />;
+  return (
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.templateId === template.selection.templateId;
+    })?.slug ?? null
+  );
 }
 
 function StructuredTemplateReference({
@@ -6669,17 +6683,36 @@ function StructuredTemplateReference({
   part: Extract<UserMessagePart, { type: "template" }>;
 }) {
   const typeLabel = generationTemplateTypeLabel(part.template);
+  const setTemplatePickerCategory = useSet(setTemplatePickerCategory$);
+  const setTemplatePickerOpen = useSet(setTemplatePickerOpen$);
+  const setTemplatePickerPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setTemplatePickerReferenceValue = useSet(
+    setTemplatePickerReferenceValue$,
+  );
+  const setTemplatePickerSearch = useSet(setTemplatePickerSearch$);
   return (
-    <span
+    <button
+      type="button"
+      data-structured-template-reference=""
       aria-label={`Message template ${part.titleSnapshot}`}
-      className="inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-muted-foreground"
+      aria-haspopup="dialog"
+      className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
+      onClick={() => {
+        setTemplatePickerCategory(
+          templatePickerCategoryForReference(part.template),
+        );
+        setTemplatePickerSearch("");
+        setTemplatePickerPreviewSlug(
+          presentationTemplatePreviewSlug(part.template),
+        );
+        setTemplatePickerReferenceValue(part.template);
+        setTemplatePickerOpen(true);
+      }}
     >
-      <StructuredTemplateIcon type={part.template.type} />
-      <span className="shrink-0">{typeLabel ?? part.template.type}</span>
-      <span className="shrink-0">·</span>
+      <IconTemplate size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-    </span>
+    </button>
   );
 }
 
@@ -6731,10 +6764,10 @@ function StructuredChatThreadReference({
       pathname={ROUTES.chat}
       options={{ pathParams: { threadId } }}
       aria-label={`Open chat ${title}`}
-      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} text-primary transition-colors hover:bg-foreground/10`}
+      className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={title}
     >
-      <IconMessageCircle size={14} stroke={1.8} className="shrink-0" />
+      <IconMessageCircle size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{title}</span>
     </Link>
   );
@@ -6761,6 +6794,9 @@ function StructuredFeedbackNote({
               title={part.titleSnapshot}
             />
           );
+        }
+        if (part.type === "template") {
+          return <StructuredTemplateReference key={key} part={part} />;
         }
         return <span key={key}>{part.text}</span>;
       })}
@@ -6878,14 +6914,20 @@ function StructuredUserMessage({
   document,
   attachments,
   elevatedFileIds,
+  inlineTemplatesEnabled,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
+  inlineTemplatesEnabled: boolean;
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter((part) => {
-    return !isElevatedStructuredPart(part, elevatedFileIds);
+    return !isElevatedStructuredPart(
+      part,
+      elevatedFileIds,
+      inlineTemplatesEnabled,
+    );
   });
   if (bodyParts.length === 0) {
     return null;
@@ -6942,9 +6984,10 @@ function StructuredUserMessage({
 function isElevatedStructuredPart(
   part: UserMessagePart,
   elevatedFileIds: ReadonlySet<string>,
+  inlineTemplatesEnabled: boolean,
 ): boolean {
   return (
-    part.type === "template" ||
+    (!inlineTemplatesEnabled && part.type === "template") ||
     (part.type === "file" && elevatedFileIds.has(part.fileId))
   );
 }
@@ -6954,11 +6997,13 @@ function StructuredUserMessageContent({
   attachments,
   referenceAttachments,
   onImageClick,
+  inlineTemplatesEnabled,
 }: {
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
+  inlineTemplatesEnabled: boolean;
 }) {
   const imageAttachments = attachments.filter((attachment) => {
     return attachment.id !== null && attachment.isImage;
@@ -6968,11 +7013,17 @@ function StructuredUserMessageContent({
       return attachment.id ? [attachment.id] : [];
     }),
   );
-  const templateParts = document.parts.filter((part) => {
-    return part.type === "template";
-  });
+  const templateParts = inlineTemplatesEnabled
+    ? []
+    : document.parts.filter((part) => {
+        return part.type === "template";
+      });
   const hasBody = document.parts.some((part) => {
-    return !isElevatedStructuredPart(part, imageAttachmentIds);
+    return !isElevatedStructuredPart(
+      part,
+      imageAttachmentIds,
+      inlineTemplatesEnabled,
+    );
   });
 
   return (
@@ -7000,6 +7051,7 @@ function StructuredUserMessageContent({
               document={document}
               attachments={referenceAttachments}
               elevatedFileIds={imageAttachmentIds}
+              inlineTemplatesEnabled={inlineTemplatesEnabled}
             />
           </div>
         </div>
@@ -7113,6 +7165,19 @@ function GoalUserMessage({
   );
 }
 
+function useStructuredPromptRendering() {
+  const featureSwitches = useGet(featureSwitch$);
+  const structured =
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
+  return {
+    structured,
+    inlineTemplates:
+      structured &&
+      (featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
+        false),
+  };
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -7120,12 +7185,10 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
-  const featureSwitches = useGet(featureSwitch$);
-  const structuredPromptEnabled =
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
+  const { structured, inlineTemplates } = useStructuredPromptRendering();
   const structuredPrompt =
     message.role === "user" &&
-    shouldUseStructuredPrompt(structuredPromptEnabled, message.structuredPrompt)
+    shouldUseStructuredPrompt(structured, message.structuredPrompt)
       ? message.structuredPrompt
       : undefined;
   const content = message.content ?? "";
@@ -7141,7 +7204,9 @@ function PagedUserMessage({
       ? ""
       : cleanContent;
   const copyText = structuredPrompt
-    ? (messageDocumentToPrompt(structuredPrompt) ?? "")
+    ? (messageDocumentToPrompt(structuredPrompt, {
+        inlineTemplates,
+      }) ?? "")
     : legacyCopyText;
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
@@ -7213,6 +7278,7 @@ function PagedUserMessage({
               attachments={allAttachments}
               referenceAttachments={message.attachFiles ?? []}
               onImageClick={openLightbox}
+              inlineTemplatesEnabled={inlineTemplates}
             />
           ) : (
             <>

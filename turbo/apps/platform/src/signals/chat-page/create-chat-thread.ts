@@ -4319,11 +4319,13 @@ function createThreadComposer(
   draft: DraftSignals,
   threadId: string,
   agentId$: Computed<string | null>,
+  inlineTemplatesEnabled: boolean,
 ) {
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     threadId,
     agentId$,
+    inlineTemplatesEnabled,
   );
   return {
     workflowComposer,
@@ -4337,6 +4339,7 @@ export function createChatThreadSignals(
   draft: DraftSignals,
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
+  inlineTemplatesEnabled = false,
 ): ChatThreadSignals {
   const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
@@ -4363,7 +4366,12 @@ export function createChatThreadSignals(
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
-  const composer = createThreadComposer(draft, threadId, threadOwned.agentId$);
+  const composer = createThreadComposer(
+    draft,
+    threadId,
+    threadOwned.agentId$,
+    inlineTemplatesEnabled,
+  );
   const artifact = createArtifacts(threadId);
   const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
     artifact.artifacts$,
