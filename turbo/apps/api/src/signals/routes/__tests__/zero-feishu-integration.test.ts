@@ -1826,6 +1826,8 @@ describe("Feishu integration", () => {
       "Feishu open ID: ou_feishu_user",
     );
     expect(claim.appendSystemPrompt).toContain("Scope: Direct message");
+    expect(claim.appendSystemPrompt).toContain("Chat ID: oc_feishu_dm");
+    expect(claim.appendSystemPrompt).not.toContain("Group ID:");
     expect(claim.appendSystemPrompt).toContain(
       `Installation ID: ${fixture.installationId}`,
     );
@@ -2276,6 +2278,10 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
     expect(groupClaim.appendSystemPrompt).toContain("Scope: Group mention");
+    expect(groupClaim.appendSystemPrompt).toContain("Chat ID: oc_feishu_group");
+    expect(groupClaim.appendSystemPrompt).toContain(
+      "Group ID: oc_feishu_group (same as Chat ID; use it directly as the `--chat` value for `zero feishu message send`)",
+    );
     expect(groupClaim.appendSystemPrompt).toContain(
       "# Recent Channel Messages",
     );
