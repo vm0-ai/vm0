@@ -7992,7 +7992,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero telegram bot list",
       "zero telegram message send --help",
       "zero phone message --help",
-      "do not invent `zero github message` or `zero email message` commands",
+      "do not invent `zero github message` commands",
+      "Email from web chat: use the Gmail skill",
+      "zero mail link <gmail-draft-id>",
     ]) {
       expect(appendSystemPrompt).toContain(toolHint);
     }
@@ -8013,6 +8015,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.PlanUpgradeGuidance]: true,
       [FeatureSwitchKey.ZeroFinance]: true,
+      [FeatureSwitchKey.ZeroMail]: true,
+      [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
       [FeatureSwitchKey.CodexSessionPruning]: false,
       [FeatureSwitchKey.ClaudeSessionPruning]: false,
     });
