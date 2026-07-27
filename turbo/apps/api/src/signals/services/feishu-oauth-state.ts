@@ -5,7 +5,7 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { now } from "../external/time";
 import { safeJsonParse } from "../utils";
-import { feishuOAuthConnectUrl } from "./feishu-config";
+import { feishuOAuthCallbackUrl, feishuOAuthConnectUrl } from "./feishu-config";
 
 const FEISHU_OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
 
@@ -13,6 +13,7 @@ const feishuOAuthStateSchema = z.object({
   installationId: z.string().uuid(),
   orgId: z.string().min(1),
   userId: z.string().min(1),
+  redirectUri: z.url().optional(),
   timestamp: z.number().int(),
 });
 
@@ -28,6 +29,7 @@ function createFeishuOAuthState(args: {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly redirectUri?: string;
 }): string {
   const encodedPayload = Buffer.from(
     JSON.stringify({
@@ -72,4 +74,17 @@ export function buildFeishuOAuthConnectUrl(args: {
   readonly userId: string;
 }): string {
   return feishuOAuthConnectUrl(createFeishuOAuthState(args));
+}
+
+export function createFeishuOAuthAuthorizationState(
+  state: FeishuOAuthState,
+  callbackTarget: "app" | undefined,
+): string {
+  return createFeishuOAuthState({
+    installationId: state.installationId,
+    orgId: state.orgId,
+    userId: state.userId,
+    redirectUri:
+      callbackTarget === "app" ? feishuOAuthCallbackUrl() : undefined,
+  });
 }

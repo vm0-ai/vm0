@@ -70,6 +70,10 @@ export function feishuCallbackUrl(installationId: string): string {
 }
 
 export function feishuOAuthCallbackUrl(): string {
+  return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
+}
+
+export function feishuOAuthApiCallbackUrl(): string {
   return new URL(
     "/api/zero/feishu/oauth/callback",
     env("FEISHU_CALLBACK_BASE_URL"),

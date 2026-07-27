@@ -1025,7 +1025,7 @@ describe("Feishu integration", () => {
     const connectUrl = status.body.installations?.[0]?.connectUrl;
     expect(connectUrl).toBeDefined();
     expect(status.body.oauthRedirectUrl).toBe(
-      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+      `${APP_ORIGIN}/connectors/feishu/callback`,
     );
     if (!connectUrl) {
       throw new Error("Expected Feishu status to return an OAuth connect URL");
@@ -1039,7 +1039,17 @@ describe("Feishu integration", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const connectResponse = await oauthApp.request(connectUrl);
+    const legacyConnectResponse = await oauthApp.request(connectUrl);
+    expect(legacyConnectResponse.status).toBe(307);
+    expect(
+      new URL(
+        legacyConnectResponse.headers.get("location") ?? "",
+      ).searchParams.get("redirect_uri"),
+    ).toBe("https://www.vm0.test/api/zero/feishu/oauth/callback");
+
+    const appConnectUrl = new URL(connectUrl);
+    appConnectUrl.searchParams.set("callbackTarget", "app");
+    const connectResponse = await oauthApp.request(appConnectUrl);
     expect(connectResponse.status).toBe(307);
     const authorizationUrl = new URL(
       connectResponse.headers.get("location") ?? "",
@@ -1047,7 +1057,7 @@ describe("Feishu integration", () => {
     expect(authorizationUrl.origin).toBe("https://accounts.feishu.cn");
     expect(authorizationUrl.searchParams.get("client_id")).toBe(appId);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+      `${APP_ORIGIN}/connectors/feishu/callback`,
     );
     const state = authorizationUrl.searchParams.get("state");
     if (!state) {
@@ -1057,13 +1067,14 @@ describe("Feishu integration", () => {
     const callbackResponse = await oauthApp.request(
       `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-oauth-code",
+        responseMode: "json",
         state,
       })}`,
     );
-    expect(callbackResponse.status).toBe(307);
-    expect(callbackResponse.headers.get("location")).toBe(
-      `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
-    );
+    expect(callbackResponse.status).toBe(200);
+    await expect(callbackResponse.json()).resolves.toStrictEqual({
+      redirectUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
+    });
     await flushWaitUntilForTest();
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
@@ -1516,6 +1527,13 @@ describe("Feishu integration", () => {
         return message.kind === "send";
       })
       .map(messageContent);
+    const helpReply = requireValue(
+      outboundMessages.find((message) => {
+        return messageContent(message).includes("Zero commands");
+      }),
+      "Expected Feishu help reply",
+    );
+    expect(helpReply.msgType).toBe("text");
     expect(
       commandReplies.some((content) => {
         return content.includes("Zero commands");
