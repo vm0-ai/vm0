@@ -310,11 +310,14 @@ def _binding_matches(
 def _server_binding_matches_current_destination(
     server: object,
     binding: UpstreamDestinationBinding,
+    *,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> bool:
     if bool(getattr(server, "connected", False)):
         connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
             server,
             port=binding.port,
+            extra_endpoints=extra_endpoints,
         )
         return (
             binding.original_address is not None
@@ -509,31 +512,15 @@ def flow_matches_direct_bound_destination(
     binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
     if binding is None:
         return False
-    if bool(getattr(server, "connected", False)):
-        connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
-            server,
-            port=binding.port,
-            extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
-        )
-        current_destination_matches = (
-            binding.original_address is not None
-            and connected_endpoint is not None
-            and _endpoint_matches(connected_endpoint, binding.original_address)
-        )
-    else:
-        current_destination_matches = _address_matches(
-            binding.host,
-            binding.port,
-            getattr(server, "address", None),
-        )
-    return (
-        _binding_matches(
-            binding,
-            host=normalized_host,
-            port=flow.request.port,
-            allowed_kinds=allowed_kinds,
-        )
-        and current_destination_matches
+    return _binding_matches(
+        binding,
+        host=normalized_host,
+        port=flow.request.port,
+        allowed_kinds=allowed_kinds,
+    ) and _server_binding_matches_current_destination(
+        server,
+        binding,
+        extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
     )
 
 

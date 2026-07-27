@@ -247,13 +247,14 @@ async def test_public_destination_allows_public_runtime_destination(
     ],
 )
 @pytest.mark.parametrize(
-    "disconnect_hook_state",
+    "upstream_change",
     [
         pytest.param("completed", id="disconnect-hook-completed"),
         pytest.param("pending", id="disconnect-hook-pending"),
+        pytest.param("peer-changed", id="connected-peer-changed"),
     ],
 )
-async def test_public_destination_disconnect_during_auth_prevents_credential_application(
+async def test_public_destination_upstream_change_during_auth_prevents_credential_application(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -261,7 +262,7 @@ async def test_public_destination_disconnect_during_auth_prevents_credential_app
     monkeypatch,
     auth_config,
     token_meta,
-    disconnect_hook_state,
+    upstream_change,
 ):
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
@@ -295,9 +296,12 @@ async def test_public_destination_disconnect_during_auth_prevents_credential_app
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
-            flow.server_conn.state = connection.ConnectionState.CLOSED
-            if disconnect_hook_state == "completed":
-                mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
+            if upstream_change == "peer-changed":
+                flow.server_conn.peername = ("10.0.0.1", 443)
+            else:
+                flow.server_conn.state = connection.ConnectionState.CLOSED
+                if upstream_change == "completed":
+                    mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
             release_auth_resolution.set()
             await request_task
         finally:
