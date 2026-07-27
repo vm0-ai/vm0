@@ -271,6 +271,72 @@ function stableStringValue(
     : undefined;
 }
 
+// A Drizzle-declared call signature can be attached to a different runtime
+// function. Follow immutable aliases and Drizzle-produced factories instead
+// of treating the signature itself as runtime provenance.
+function hasStableDrizzleRuntimeSymbol(
+  checker: TypeChecker,
+  symbol: TypeScriptSymbol,
+  visited: Set<TypeScriptSymbol>,
+): boolean {
+  const resolved = resolvedSymbol(checker, symbol);
+  if (resolved === undefined || visited.has(resolved)) {
+    return false;
+  }
+  if (isDrizzleSymbol(checker, resolved)) {
+    return true;
+  }
+  if (
+    resolved.declarations === undefined ||
+    resolved.declarations.length === 0
+  ) {
+    return false;
+  }
+  visited.add(resolved);
+  const stable = resolved.declarations.every((declaration) => {
+    return (
+      isVariableDeclaration(declaration) &&
+      isVariableDeclarationList(declaration.parent) &&
+      (declaration.parent.flags & NodeFlags.Const) !== 0 &&
+      declaration.initializer !== undefined &&
+      hasStableDrizzleRuntimeOrigin(checker, declaration.initializer, visited)
+    );
+  });
+  visited.delete(resolved);
+  return stable;
+}
+
+function hasStableDrizzleRuntimeOrigin(
+  checker: TypeChecker,
+  node: Node,
+  visited: Set<TypeScriptSymbol>,
+): boolean {
+  const expression = unwrapStableOriginExpression(node);
+  if (isIdentifier(expression)) {
+    const symbol = checker.getSymbolAtLocation(expression);
+    return (
+      symbol !== undefined &&
+      hasStableDrizzleRuntimeSymbol(checker, symbol, visited)
+    );
+  }
+  if (isPropertyAccessExpression(expression)) {
+    const property = checker.getSymbolAtLocation(expression.name);
+    return (
+      isDrizzleSymbol(checker, property) &&
+      hasStableDrizzleRuntimeOrigin(checker, expression.expression, visited)
+    );
+  }
+  if (!isCallExpression(expression)) {
+    return false;
+  }
+  const signature = checker.getResolvedSignature(expression);
+  return (
+    signature?.declaration !== undefined &&
+    isDrizzleDeclaration(signature.declaration) &&
+    hasStableDrizzleRuntimeOrigin(checker, expression.expression, visited)
+  );
+}
+
 function hasDirectDrizzleCallOrigin(checker: TypeChecker, node: Node): boolean {
   const expression = unwrapStableOriginExpression(node);
   if (!isCallExpression(expression)) {
@@ -285,10 +351,10 @@ function hasDirectDrizzleCallOrigin(checker: TypeChecker, node: Node): boolean {
   }
   const callee = unwrapStableOriginExpression(expression.expression);
   if (isCallExpression(callee)) {
-    return hasDirectDrizzleCallOrigin(checker, callee);
+    return hasStableDrizzleRuntimeOrigin(checker, callee, new Set());
   }
   if (!isPropertyAccessExpression(callee)) {
-    return true;
+    return hasStableDrizzleRuntimeOrigin(checker, callee, new Set());
   }
   const receiver = unwrapStableOriginExpression(callee.expression);
   return isDrizzleColumnBuilderType(
@@ -297,7 +363,7 @@ function hasDirectDrizzleCallOrigin(checker: TypeChecker, node: Node): boolean {
     receiver,
   )
     ? freshDrizzleColumnBuilderName(checker, receiver) !== undefined
-    : true;
+    : hasStableDrizzleRuntimeOrigin(checker, callee, new Set());
 }
 
 function initialColumnBuilderCall(
@@ -458,6 +524,11 @@ function stableDrizzleTableOrigin(
     if (
       signature === undefined ||
       !isPgTableFactorySignature(signature) ||
+      !hasStableDrizzleRuntimeOrigin(
+        checker,
+        expression.expression,
+        new Set(),
+      ) ||
       columns === undefined ||
       !isDrizzleTableType(
         checker,
@@ -871,6 +942,9 @@ function concreteDrizzleTableMetadata(
     if (
       directProperty === undefined ||
       column === undefined ||
+      // pgTable(...) assigns this runtime method after assigning columns, so
+      // the same-named schema property is not a directly accessible column.
+      propertyName === "enableRLS" ||
       column.tableName !== name ||
       columns.has(column.databaseName)
     ) {

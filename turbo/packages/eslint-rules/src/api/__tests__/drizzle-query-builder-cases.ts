@@ -727,6 +727,75 @@ const queryBuilderCases = {
     {
       code: `
         import { sql } from "drizzle-orm";
+        import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+        const runtimeTimestamp = ((name: string) =>
+          timestamp(name).$onUpdateFn(
+            () => new Date(),
+          )) as unknown as typeof timestamp;
+        const hiddenFactoryRows = pgTable("hidden_factory_rows", {
+          value: integer("value").notNull(),
+          updatedAt: runtimeTimestamp("updated_at").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            hiddenFactoryRows: typeof hiddenFactoryRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${hiddenFactoryRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+        const runtimeRows = pgTable("hidden_table_factory_rows", {
+          value: integer("value").notNull(),
+          updatedAt: timestamp("updated_at")
+            .notNull()
+            .$onUpdateFn(() => new Date()),
+        });
+        const hiddenTableFactory = ((
+          name: string,
+          columns: unknown,
+        ) => {
+          void name;
+          void columns;
+          return runtimeRows;
+        }) as unknown as typeof pgTable;
+        const hiddenTableFactoryRows = hiddenTableFactory(
+          "hidden_table_factory_rows",
+          {
+            value: integer("value").notNull(),
+            updatedAt: timestamp("updated_at").notNull(),
+          },
+        );
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            hiddenTableFactoryRows: typeof hiddenTableFactoryRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${hiddenTableFactoryRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
         import { integer, pgTable } from "drizzle-orm/pg-core";
         const claimedFirst = integer("claimed_value").notNull();
         const claimedSecond = integer("actual_value").notNull();
@@ -807,6 +876,29 @@ const queryBuilderCases = {
           DO UPDATE SET
             second = \${second},
             first = \${first}
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, text } from "drizzle-orm/pg-core";
+        const collidingRows = pgTable("colliding_rows", {
+          enableRLS: text("enable_rls").notNull(),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            collidingRows: typeof collidingRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const key: string;
+        declare const value: number;
+        await db.execute(sql\`
+          INSERT INTO \${collidingRows} (enable_rls, value)
+          VALUES (\${key}, \${value})
+          ON CONFLICT (enable_rls)
+          DO UPDATE SET value = \${value}
         \`);
       `,
     },
@@ -2939,6 +3031,44 @@ const queryBuilderCases = {
         declare const values: readonly number[];
         await db.execute(sql\`
           UPDATE \${namedRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import {
+          customType,
+          integer,
+          pgEnum,
+          pgTable,
+        } from "drizzle-orm/pg-core";
+        const integerColumn = integer;
+        const status = pgEnum("factory_status", ["ready", "done"]);
+        const customText = customType<{ data: string }>({
+          dataType() {
+            return "text";
+          },
+        });
+        const factoryRows = pgTable("factory_rows", {
+          value: integerColumn("value").notNull(),
+          status: status("status").notNull(),
+          payload: customText("payload").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            factoryRows: typeof factoryRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${factoryRows}
           SET value = source.value
           FROM unnest(
             \${sql.param(values)}::integer[]
