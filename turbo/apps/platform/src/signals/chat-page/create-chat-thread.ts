@@ -94,11 +94,16 @@ import {
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
 import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
-import type { BodyRenderBlock, ParsedBodyBlock } from "./parse-body-blocks.ts";
+import {
+  classifyChatAttachment,
+  type BodyRenderBlock,
+  type ParsedBodyBlock,
+} from "./parse-body-blocks.ts";
 import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
 import {
   createArtifactCardSignalsRegistry,
   type ArtifactCardSignalsRegistry,
+  type ArtifactSignals,
 } from "./artifact-card-signals.ts";
 import {
   createConnectorCardSignalsRegistry,
@@ -1268,10 +1273,25 @@ function skipsMessageBodyRendering(message: ChatEvent): boolean {
   );
 }
 
+function registerMessageAttachments(
+  message: ChatMessage,
+  artifactCardSignals: ArtifactCardSignalsRegistry,
+): void {
+  for (const attachment of chatEventAttachFiles(message) ?? []) {
+    artifactCardSignals.register({
+      filename: attachment.filename,
+      url: attachment.url,
+      kind: classifyChatAttachment(attachment),
+    });
+  }
+}
+
 function registerChatMessage(
   message: ChatEvent,
   registerBodyBlocks: BodyBlocksRenderer,
+  artifactCardSignals: ArtifactCardSignalsRegistry,
 ): RegisteredChatMessage {
+  registerMessageAttachments(message, artifactCardSignals);
   const blocks = skipsMessageBodyRendering(message)
     ? []
     : registerBodyBlocks(parseMessageBodyBlocks(message));
@@ -1282,6 +1302,7 @@ function createMergePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
   registerBodyBlocks: BodyBlocksRenderer,
+  artifactCardSignals: ArtifactCardSignalsRegistry,
 ) {
   return command(({ get, set }, msgs: ChatEvent[]): void => {
     if (msgs.length === 0) {
@@ -1303,7 +1324,11 @@ function createMergePersistentMessages(
       captureTaskCompletedSuccessfully();
     }
     const registeredMessages = msgs.map((message) => {
-      return registerChatMessage(message, registerBodyBlocks);
+      return registerChatMessage(
+        message,
+        registerBodyBlocks,
+        artifactCardSignals,
+      );
     });
     set(persistentMessages$, (prev) => {
       return mergeRegisteredMessages([prev, registeredMessages]);
@@ -2315,10 +2340,12 @@ function createBodyBlocksRenderer({
 }
 
 function createInitializeIndexedDbMessages({
+  artifactCardSignals,
   threadId,
   persistentMessages$,
   registerBodyBlocks,
 }: {
+  artifactCardSignals: ArtifactCardSignalsRegistry;
   threadId: string;
   persistentMessages$: PersistentChatMessages$;
   registerBodyBlocks: BodyBlocksRenderer;
@@ -2326,7 +2353,11 @@ function createInitializeIndexedDbMessages({
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: ChatEvent[]): void => {
       const registeredMessages = messages.map((message) => {
-        return registerChatMessage(message, registerBodyBlocks);
+        return registerChatMessage(
+          message,
+          registerBodyBlocks,
+          artifactCardSignals,
+        );
       });
       set(persistentMessages$, (previous) => {
         return mergeRegisteredMessages([previous, registeredMessages]);
@@ -2444,6 +2475,7 @@ function createPagedMessages(
 
   for (const entry of initialOptimisticEntries) {
     registerBodyBlocks(entry.parsedBodyBlocks);
+    registerMessageAttachments(entry.message, artifactCardSignals);
   }
   const persistentChatMessages$ = state<RegisteredChatMessage[]>([]);
   const hasServerConfirmedOldestMessage$ = state(false);
@@ -2458,6 +2490,7 @@ function createPagedMessages(
     ({ set }, input: OptimisticChatMessageInput): void => {
       const entry = createOptimisticChatMessageEntry(input);
       registerBodyBlocks(entry.parsedBodyBlocks);
+      registerMessageAttachments(entry.message, artifactCardSignals);
       set(appendOptimisticChatMessage$, entry);
     },
   );
@@ -2503,8 +2536,10 @@ function createPagedMessages(
     threadId,
     persistentChatMessages$,
     registerBodyBlocks,
+    artifactCardSignals,
   );
   const initializeIndexedDbMessages$ = createInitializeIndexedDbMessages({
+    artifactCardSignals,
     threadId,
     persistentMessages$: persistentChatMessages$,
     registerBodyBlocks,
@@ -2539,6 +2574,9 @@ function createPagedMessages(
     activeGoalObjective$,
     mailDraftCardSignalsById$,
     browserSessionCardSignalsById$,
+    artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
+      return artifactCardSignals.find(url);
+    },
     syncRemoteMessages$,
   };
 }
@@ -4231,6 +4269,7 @@ function publicChatThreadMessageSignals(
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
     messageImageGroups$: messages.messageImageGroups$,
+    artifactSignalsForUrl: messages.artifactSignalsForUrl,
     mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
     browserSessionCardSignalsById$: messages.browserSessionCardSignalsById$,
     hasMessages$: messages.hasMessages$,

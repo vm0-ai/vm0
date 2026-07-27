@@ -112,7 +112,7 @@ describe("website template items", () => {
       resourceId: "template:black-slabs",
       previewKind: "iframe",
       previewImageUrl:
-        "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260708-5f944f83/black-slabs-preview-480x270.webp",
+        "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260727-ccff774/black-slabs-preview-960x540.webp",
       sourcePath: "black-slabs",
       target: "website",
     });
@@ -125,7 +125,7 @@ describe("website template items", () => {
         /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+\.html$/u,
       );
       expect(item.previewImageUrl).toMatch(
-        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+-preview-(?:480x270|960x540)\.webp$/u,
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+-preview-960x540\.webp$/u,
       );
       expect(item.previewUrl).not.toContain("drive.google.com");
       expect(item.previewUrl).not.toContain("docs.google.com");

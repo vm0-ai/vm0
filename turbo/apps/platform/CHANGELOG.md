@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.640.0](https://github.com/vm0-ai/vm0/compare/app-v0.639.1...app-v0.640.0) (2026-07-27)
+
+
+### Features
+
+* **connectors:** enable meta ads app oauth callback ([#23250](https://github.com/vm0-ai/vm0/issues/23250)) ([9ccbe6b](https://github.com/vm0-ai/vm0/commit/9ccbe6b18b8c3d532d41971f74693c613bd0f0e7))
+* thread-owned chat sidebar shell behind newChatThreadSidebar switch ([#23269](https://github.com/vm0-ai/vm0/issues/23269)) ([c67c965](https://github.com/vm0-ai/vm0/commit/c67c96547fb4646b7d424a42de7f790b28e3f3a1))
+
+
+### Bug Fixes
+
+* **platform:** hydrate feature switches during bootstrap ([#23248](https://github.com/vm0-ai/vm0/issues/23248)) ([4dadc1f](https://github.com/vm0-ai/vm0/commit/4dadc1f57c6becf4a9f3e282ce0e3e5ce92b2b42))
+* **platform:** keep auth loading visible until clerk mounts ([#23256](https://github.com/vm0-ai/vm0/issues/23256)) ([271d1fa](https://github.com/vm0-ai/vm0/commit/271d1fa541bd29f180b684fbdd81c124593089d8))
+* **platform:** mount google one tap only on exact sign-in route ([#23183](https://github.com/vm0-ai/vm0/issues/23183)) ([6f8d1d0](https://github.com/vm0-ai/vm0/commit/6f8d1d0152c716ccd54d82232049403d234ce48a))
+* **platform:** normalize feedback item top spacing ([#23229](https://github.com/vm0-ai/vm0/issues/23229)) ([dc1497b](https://github.com/vm0-ai/vm0/commit/dc1497bd55bbd09212d77eeb26ffe74590e1a351))
+
+
+### Refactoring
+
+* **chat:** type the immutable event stream ([#23148](https://github.com/vm0-ai/vm0/issues/23148)) ([6cdd9c5](https://github.com/vm0-ai/vm0/commit/6cdd9c5155895556f1e9f78ced2e190dad080568))
+* **platform:** simplify realtime, oauth, and indexeddb ownership ([#23222](https://github.com/vm0-ai/vm0/issues/23222)) ([82e7dc1](https://github.com/vm0-ai/vm0/commit/82e7dc1416aeac1cf858b21d4290a8f67529fa85))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.235.0
+    * @vm0/connectors bumped to 1.196.0
+    * @vm0/core bumped to 8.474.0
+
 ## [0.639.1](https://github.com/vm0-ai/vm0/compare/app-v0.639.0...app-v0.639.1) (2026-07-27)
 
 

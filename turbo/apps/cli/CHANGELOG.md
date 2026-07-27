@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.259.0](https://github.com/vm0-ai/vm0/compare/cli-v9.258.5...cli-v9.259.0) (2026-07-27)
+
+
+### Features
+
+* **cli:** add complete json output for built-in media generation ([#23251](https://github.com/vm0-ai/vm0/issues/23251)) ([3d9c94c](https://github.com/vm0-ai/vm0/commit/3d9c94c9587292a9b2a3a96ef805cc4e664c8663))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.235.0
+    * @vm0/connectors bumped to 1.196.0
+    * @vm0/core bumped to 8.474.0
+
 ## [9.258.5](https://github.com/vm0-ai/vm0/compare/cli-v9.258.4...cli-v9.258.5) (2026-07-27)
 
 
