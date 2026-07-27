@@ -207,11 +207,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Mailchimp email marketing connector",
     enabled: false,
   },
-  [FeatureSwitchKey.ResendConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Resend email service connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.PexelsConnector]: {
     maintainer: "bingjie@vm0.ai",
     description: "Enable the Pexels stock photo and video connector",
@@ -290,16 +285,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Enable the test-oauth connector, a synthetic OAuth 2.0 provider used only for automated tests. Off in prod.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.FreshdeskConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Freshdesk helpdesk connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.StabilityAiConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Stability AI image generation connector",
     enabled: false,
   },
   [FeatureSwitchKey.ZoomConnector]: {

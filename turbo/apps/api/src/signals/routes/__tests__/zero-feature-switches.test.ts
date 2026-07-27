@@ -12,6 +12,34 @@ function client() {
 }
 
 describe("/api/zero/feature-switches", () => {
+  it("ignores unregistered feature switch keys", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_removed_feature_switch_test",
+      "org_removed_feature_switch_test",
+      "org:member",
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+
+    const updated = await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            removedFeature: true,
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(updated.body.switches).not.toHaveProperty("removedFeature");
+    expect(updated.body.effectiveSwitches).not.toHaveProperty("removedFeature");
+
+    const current = await accept(client().get({ headers }), [200]);
+    expect(current.body.switches).not.toHaveProperty("removedFeature");
+    expect(current.body.effectiveSwitches).not.toHaveProperty("removedFeature");
+  });
+
   it("does not persist or activate inline templates for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
