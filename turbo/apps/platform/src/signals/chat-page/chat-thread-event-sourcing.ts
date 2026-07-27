@@ -39,6 +39,7 @@ interface ChatThreadSnapshotData {
 interface ChatThreadEventState {
   readonly snapshot: ChatThreadSnapshotData | null;
   readonly events: readonly ChatThreadEvent[];
+  readonly latestEventId: string | null;
 }
 
 interface ChatThreadEventUpdate {
@@ -61,6 +62,7 @@ const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
 const chatThreadEventState$ = state<ChatThreadEventState>({
   snapshot: null,
   events: [],
+  latestEventId: null,
 });
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
@@ -92,13 +94,14 @@ async function readChatThreadEventState(
   store: Stores,
   signal?: AbortSignal,
 ): Promise<ChatThreadEventState> {
-  const [snapshot, events] = await Promise.all([
+  const [snapshot, eventLog] = await Promise.all([
     store.readStore.readSnapshot(signal),
-    store.readStore.readEvents(signal),
+    store.readStore.readEventLog(signal),
   ]);
   return {
     snapshot,
-    events,
+    events: eventLog.events,
+    latestEventId: eventLog.latestEventId ?? snapshot?.latestEventId ?? null,
   };
 }
 
@@ -119,8 +122,7 @@ const chatThreadEventStores$ = computed((get): Stores => {
 });
 
 const lastEventId$ = computed((get): string | null => {
-  const state = get(chatThreadEventState$);
-  return state.events.at(-1)?.id ?? state.snapshot?.latestEventId ?? null;
+  return get(chatThreadEventState$).latestEventId;
 });
 
 async function fetchRemoteSnapshot(
@@ -188,6 +190,7 @@ async function fetchChatThreadEventUpdate(
         state: {
           snapshot,
           events,
+          latestEventId: cursor,
         },
         replacementSnapshot: snapshotReplaced ? snapshot : null,
         newEvents,
@@ -201,6 +204,7 @@ async function fetchChatThreadEventUpdate(
     state: {
       snapshot,
       events,
+      latestEventId: cursor,
     },
     replacementSnapshot: snapshotReplaced ? snapshot : null,
     newEvents,

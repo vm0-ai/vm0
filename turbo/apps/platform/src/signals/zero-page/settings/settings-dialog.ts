@@ -1,13 +1,16 @@
 import { command, computed, state } from "ccstate";
+import type { UserProfileModalProps } from "@clerk/react/types";
+import { clerk$ } from "../../auth.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
-import { resetSignal } from "../../utils.ts";
+import { onRef, resetSignal } from "../../utils.ts";
 import {
+  clearBillingScrollTarget$,
   clearPendingLogo$,
   initProfileName$,
-  setBillingScrollTarget$,
+  requestBuyCreditsScroll$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
 
@@ -45,7 +48,8 @@ const resetSettingsDialogSignal$ = resetSignal();
 const internalSettingsDialogSessionActive$ = state(false);
 const internalSettingsDialogInitialized$ = state(false);
 const internalSettingsDialogHandoffPending$ = state(false);
-const internalExternalProfileModalOpen$ = state(false);
+const internalSettingsClerkProfilePortalContainer$ =
+  state<HTMLDivElement | null>(null);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
   readonly section: SettingsSection;
@@ -57,13 +61,43 @@ export const settingsDialogOpen$ = computed((get) => {
 
 export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
 
-export const externalProfileModalOpen$ = computed((get) => {
-  return get(internalExternalProfileModalOpen$);
+export const settingsClerkProfilePortalContainer$ = computed((get) => {
+  return get(internalSettingsClerkProfilePortalContainer$);
 });
 
-export const setExternalProfileModalOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(internalExternalProfileModalOpen$, open);
+export const setSettingsClerkProfilePortalContainer$ = onRef(
+  command(
+    async ({ get, set }, container: HTMLDivElement, signal: AbortSignal) => {
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      signal.addEventListener(
+        "abort",
+        () => {
+          clerk.closeUserProfile();
+          set(internalSettingsClerkProfilePortalContainer$, null);
+        },
+        { once: true },
+      );
+      set(internalSettingsClerkProfilePortalContainer$, container);
+    },
+  ),
+);
+
+export const openSettingsUserProfile$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const container = get(internalSettingsClerkProfilePortalContainer$);
+    if (!container) {
+      return;
+    }
+    const props = {
+      apiKeysProps: { hide: true },
+      getContainer: () => {
+        return container;
+      },
+    } satisfies UserProfileModalProps;
+    clerk.openUserProfile(props);
   },
 );
 
@@ -100,6 +134,9 @@ export const settingsActiveSection$ = computed((get) => {
 export const setSettingsActiveSection$ = command(
   ({ get, set }, section: SettingsSection) => {
     set(internalActiveSection$, section);
+    if (section !== "billing") {
+      set(clearBillingScrollTarget$);
+    }
     if (section === "model") {
       set(reloadPersonalModelProviders$);
     }
@@ -114,7 +151,7 @@ export const setSettingsActiveSection$ = command(
 export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(internalActiveSection$, "billing");
   set(setBillingSubPage$, true);
-  set(setBillingScrollTarget$, null);
+  set(clearBillingScrollTarget$);
 
   const params = new URLSearchParams(get(searchParams$));
   params.set("settings", "billing");
@@ -149,6 +186,7 @@ export const handoffSettingsDialogSession$ = command(({ set }) => {
 export const closeSettingsModal$ = command(({ get, set }) => {
   set(resetSettingsDialogSignal$);
   set(clearSettingsDialogSession$);
+  set(clearBillingScrollTarget$);
 
   const params = new URLSearchParams(get(searchParams$));
   if (params.has("settings") || params.has("billingView")) {
@@ -208,6 +246,7 @@ export const setSettingsDialogOpen$ = command(
 export const openSettingsDialogAt$ = command(
   async ({ set }, section: SettingsSection, signal: AbortSignal) => {
     set(internalActiveSection$, section);
+    set(clearBillingScrollTarget$);
     await set(setSettingsDialogOpen$, true, signal);
   },
 );
@@ -228,9 +267,11 @@ export const checkUnifiedSettingsParam$ = command(
     const value = params.get("settings");
     const billingView = params.get("billingView");
     if (!value) {
+      set(clearBillingScrollTarget$);
       return;
     }
     if (!isSettingsSection(value)) {
+      set(clearBillingScrollTarget$);
       const next = new URLSearchParams(get(searchParams$));
       next.delete("settings");
       next.delete("billingView");
@@ -245,7 +286,7 @@ export const checkUnifiedSettingsParam$ = command(
     signal.throwIfAborted();
     if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
       set(setBillingSubPage$, false);
-      set(setBillingScrollTarget$, null);
+      set(clearBillingScrollTarget$);
       const next = new URLSearchParams(get(searchParams$));
       next.delete("settings");
       next.delete("billingView");
@@ -257,10 +298,11 @@ export const checkUnifiedSettingsParam$ = command(
       !isAdmin && isAdminOnlySettingsSection(section) ? "preference" : section;
     set(internalActiveSection$, resolved);
     set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
-    set(
-      setBillingScrollTarget$,
-      opensBuyCredits && resolved === "billing" ? "buy-credits" : null,
-    );
+    if (opensBuyCredits && resolved === "billing") {
+      set(requestBuyCreditsScroll$);
+    } else {
+      set(clearBillingScrollTarget$);
+    }
     await set(setSettingsDialogOpen$, true, signal);
   },
 );
