@@ -387,6 +387,7 @@ export async function setLoop(
     // eslint-disable-next-line no-restricted-syntax
     try {
       const done = await loopBody(signal);
+      signal.throwIfAborted();
       if (done) {
         return;
       }
@@ -417,6 +418,7 @@ export async function setLoop(
         : delay(backoff, { signal }));
     }
   }
+  signal.throwIfAborted();
 }
 
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
@@ -428,28 +430,6 @@ export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
     set(controller$, controller);
 
     return AbortSignal.any([controller.signal, ...signals]);
-  });
-}
-
-interface ResetSignalScope {
-  readonly signal: AbortSignal;
-  readonly abort: (reason?: unknown) => void;
-}
-
-export function resetSignalScope(): Command<ResetSignalScope, AbortSignal[]> {
-  const controller$ = state<AbortController | undefined>(undefined);
-
-  return command(({ get, set }, ...signals: AbortSignal[]) => {
-    get(controller$)?.abort();
-    const controller = new AbortController();
-    set(controller$, controller);
-
-    return {
-      signal: AbortSignal.any([controller.signal, ...signals]),
-      abort: (reason?: unknown) => {
-        controller.abort(reason);
-      },
-    };
   });
 }
 

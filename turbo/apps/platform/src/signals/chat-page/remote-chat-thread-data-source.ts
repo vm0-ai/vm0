@@ -14,12 +14,7 @@ import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { threadCodexServiceTierFromSelection } from "./model-selection-request.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import {
-  createDeferredPromise,
-  onRejection,
-  resetSignalScope,
-  withCleanup,
-} from "../utils.ts";
+import { createDeferredPromise } from "../utils.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
 import {
@@ -346,92 +341,61 @@ const markRead$ = command(
 );
 
 function createSubscribeRealtime() {
-  const resetSubscriptionSignal$ = resetSignalScope();
-
   return command(
     async (
       { set },
       { threadId, handlers }: SubscribeRealtimeArgs,
       signal: AbortSignal,
     ) => {
-      const subscriptionScope = set(resetSubscriptionSignal$, signal);
-      const subscriptionSignal = subscriptionScope.signal;
-
-      await withCleanup(
-        (async () => {
-          const ready = createDeferredPromise<void>(subscriptionSignal);
-          const subscriptions: ChatRealtimeSubscription[] = [
-            {
-              topic: `chatThreadAutomationsChanged:${threadId}`,
-              loopCommand$: handlers.onAutomationsChanged$,
-            },
-            {
-              topic: `chatThreadArtifactsChanged:${threadId}`,
-              loopCommand$: handlers.onArtifactsChanged$,
-            },
-            {
-              topic: `chatThreadWorkflowsChanged:${threadId}`,
-              loopCommand$: handlers.onWorkflowsChanged$,
-            },
-            {
-              topic: `chatThreadWorkflowQueueChanged:${threadId}`,
-              loopCommand$: handlers.onWorkflowQueueChanged$,
-            },
-          ];
-
-          let pendingSubscriptions = subscriptions.length;
-          const markSubscribed = () => {
-            pendingSubscriptions -= 1;
-            if (pendingSubscriptions === 0 && !ready.settled()) {
-              ready.resolve();
-            }
-          };
-          const options = { onSubscribed: markSubscribed };
-          const startSubscription = async (
-            subscription: ChatRealtimeSubscription,
-          ) => {
-            await set(
-              setAblyLoop$,
-              {
-                topic: subscription.topic,
-                loopCommand$: subscription.loopCommand$,
-                options,
-              },
-              subscriptionSignal,
-            );
-            subscriptionSignal.throwIfAborted();
-            if (ready.settled()) {
-              return;
-            }
-            const error = new Error(
-              `Realtime subscription ended before ready: ${subscription.topic}`,
-            );
-            ready.reject(error);
-            throw error;
-          };
-          const subscriptionPromises = subscriptions.map(startSubscription);
-          const subscription = Promise.all(subscriptionPromises);
-
-          await Promise.race([ready.promise, subscription]);
-          subscriptionSignal.throwIfAborted();
-          if (ready.settled() && handlers.onSubscribed$) {
-            await onRejection(
-              Promise.resolve(set(handlers.onSubscribed$, subscriptionSignal)),
-              async () => {
-                subscriptionScope.abort();
-                await Promise.allSettled(subscriptionPromises);
-                signal.throwIfAborted();
-              },
-            );
-            subscriptionSignal.throwIfAborted();
-          }
-          await subscription;
-          subscriptionSignal.throwIfAborted();
-        })(),
-        () => {
-          subscriptionScope.abort(signal.reason);
+      const ready = createDeferredPromise<void>(signal);
+      const subscriptions: ChatRealtimeSubscription[] = [
+        {
+          topic: `chatThreadAutomationsChanged:${threadId}`,
+          loopCommand$: handlers.onAutomationsChanged$,
         },
+        {
+          topic: `chatThreadArtifactsChanged:${threadId}`,
+          loopCommand$: handlers.onArtifactsChanged$,
+        },
+        {
+          topic: `chatThreadWorkflowsChanged:${threadId}`,
+          loopCommand$: handlers.onWorkflowsChanged$,
+        },
+        {
+          topic: `chatThreadWorkflowQueueChanged:${threadId}`,
+          loopCommand$: handlers.onWorkflowQueueChanged$,
+        },
+      ];
+
+      let pendingSubscriptions = subscriptions.length;
+      const markSubscribed = () => {
+        pendingSubscriptions -= 1;
+        if (pendingSubscriptions === 0 && !ready.settled()) {
+          ready.resolve();
+        }
+      };
+      const options = { onSubscribed: markSubscribed };
+      const subscription = Promise.all(
+        subscriptions.map((subscription) => {
+          return set(
+            setAblyLoop$,
+            {
+              topic: subscription.topic,
+              loopCommand$: subscription.loopCommand$,
+              options,
+            },
+            signal,
+          );
+        }),
       );
+
+      await Promise.race([ready.promise, subscription]);
+      signal.throwIfAborted();
+      if (ready.settled() && handlers.onSubscribed$) {
+        await set(handlers.onSubscribed$, signal);
+        signal.throwIfAborted();
+      }
+      await subscription;
     },
   );
 }

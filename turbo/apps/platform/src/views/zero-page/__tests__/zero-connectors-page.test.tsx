@@ -45,12 +45,12 @@ import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
-import { resetSignalScope } from "../../../signals/utils.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
 
 const context = testContext();
-const abortAfterManualGrantConnectSignalScope$ = resetSignalScope();
+const resetAfterManualGrantConnectSignal$ = resetSignal();
 
 function createMockAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
@@ -2370,18 +2370,14 @@ describe("connectors page", () => {
       within(connectorCardByLabel("Public Axiom")).getByRole("img"),
     ).toHaveAccessibleName("Connector icon unavailable");
 
-    const abortScope = context.store.set(
-      abortAfterManualGrantConnectSignalScope$,
+    const abortSignal = context.store.set(
+      resetAfterManualGrantConnectSignal$,
       context.signal,
     );
-    const originalThrowIfAborted = abortScope.signal.throwIfAborted.bind(
-      abortScope.signal,
-    );
-    Object.defineProperty(abortScope.signal, "throwIfAborted", {
+    const originalThrowIfAborted = abortSignal.throwIfAborted.bind(abortSignal);
+    Object.defineProperty(abortSignal, "throwIfAborted", {
       value: () => {
-        abortScope.abort(
-          new DOMException("Aborted after connector connect", "AbortError"),
-        );
+        context.store.set(resetAfterManualGrantConnectSignal$, context.signal);
         originalThrowIfAborted();
       },
     });
@@ -2395,7 +2391,7 @@ describe("connectors page", () => {
           inputValues: { apiToken: "xaat-test" },
           options: { connectorLabel: "Public Axiom" },
         },
-        abortScope.signal,
+        abortSignal,
       ),
     ).rejects.toMatchObject({ name: "AbortError" });
 
