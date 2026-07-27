@@ -49,8 +49,8 @@ import {
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
   type ChatEvent,
-  type ChatInputEvent,
   type ChatPromptEvent,
+  type ChatUserMessageEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -214,6 +214,18 @@ function isUsageMessage(
   return msg.eventType === "usage.recorded";
 }
 
+function isAutomationQueueStateMessage(msg: ChatMessage): msg is Extract<
+  ChatMessage,
+  {
+    eventType: "queue.automation_paused" | "queue.automation_resumed";
+  }
+> {
+  return (
+    msg.eventType === "queue.automation_paused" ||
+    msg.eventType === "queue.automation_resumed"
+  );
+}
+
 function isInterruptControlMessage(
   msg: ChatMessage,
 ): msg is Extract<ChatMessage, { eventType: "control.interrupt" }> {
@@ -222,7 +234,10 @@ function isInterruptControlMessage(
 
 function isInputChatEvent(
   msg: ChatMessage,
-): msg is Extract<ChatMessage, { eventType: ChatInputEvent["eventType"] }> {
+): msg is Extract<
+  ChatMessage,
+  { eventType: ChatUserMessageEvent["eventType"] }
+> {
   return msg.eventType === "input.prompt" || msg.eventType === "input.rejected";
 }
 
@@ -1322,7 +1337,8 @@ function skipsMessageBodyRendering(message: ChatEvent): boolean {
     isInterruptControlMessage(message) ||
     isRecallControlMessage(message) ||
     isQueueMarkerMessage(message) ||
-    isGoalMarkerMessage(message)
+    isGoalMarkerMessage(message) ||
+    isAutomationQueueStateMessage(message)
   );
 }
 
@@ -1539,6 +1555,7 @@ function semanticTranscriptMessagesFromRaw(
       isRecallControlMessage(message) ||
       isQueueMarkerMessage(message) ||
       isGoalMarkerMessage(message) ||
+      isAutomationQueueStateMessage(message) ||
       isInterruptedAssistantCancellation(message, interruptedRunIds) ||
       recalledIds.has(message.id) ||
       replacedIds.has(message.id)
@@ -1568,7 +1585,8 @@ function semanticTranscriptMessagesFromRaw(
     const isQueued =
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
-      message.eventType === "input.prompt";
+      (message.eventType === "input.prompt" ||
+        message.eventType === "input.automation");
     return [{ message, blocks: entry.blocks, isQueued, isOptimisticRun }];
   });
 }
@@ -1941,9 +1959,12 @@ function createMessageSemanticSignals(
             )
               ? message.structuredPrompt
               : undefined;
-          const text = structuredPrompt
-            ? messageDocumentToDisplayText(structuredPrompt)
-            : message.content;
+          const text =
+            message.eventType === "input.automation"
+              ? message.triggerBrief
+              : structuredPrompt
+                ? messageDocumentToDisplayText(structuredPrompt)
+                : message.content;
           return { id: message.id, text: (text ?? "").trim() };
         }),
       );

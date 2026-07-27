@@ -4915,6 +4915,13 @@
       "when": 1785153523179,
       "tag": "0701_contract_chat_event_type",
       "breakpoints": true
+    },
+    {
+      "idx": 702,
+      "version": "7",
+      "when": 1785171570229,
+      "tag": "0702_sturdy_power_pack",
+      "breakpoints": true
     }
   ]
 }

@@ -110,6 +110,7 @@ export async function touchChatThreadLastMessageAt(
 export function visibleChatEventCondition(db: Pick<Db, "select">) {
   const isCompatibilityUserEvent = chatEventTypeIn([
     "input.prompt",
+    "input.automation",
     "input.rejected",
     "control.interrupt",
     "control.revoke",
