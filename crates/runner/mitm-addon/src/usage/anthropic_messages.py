@@ -227,21 +227,6 @@ def _extract_anthropic_messages_usage_from_decoded_json_body(
     return extractor.finish()
 
 
-def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | None:
-    """Extract usage from a non-streaming Anthropic API JSON response.
-
-    This is the silent best-effort API: it returns ``None`` when decoding or
-    parsing fails, the decoded body is empty, or no selected usage or metadata
-    fields are found.
-    """
-    if headers:
-        body = body_decoding.decompress_body(
-            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
-        )
-    usage, _error = _extract_anthropic_messages_usage_from_decoded_json_body(body)
-    return usage
-
-
 def extract_anthropic_messages_usage_with_error_from_json(
     body: bytes, headers
 ) -> tuple[dict | None, str | None]:
