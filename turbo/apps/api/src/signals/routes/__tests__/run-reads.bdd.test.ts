@@ -1806,6 +1806,10 @@ function networkHardeningRows(
       request_body_encoding: "utf-16",
       request_body_truncated: "false",
       response_body_encoding: "binary",
+      model_catalog_cache_status: "unbounded-provider-value",
+      model_catalog_cache_entry_age_ms: "61000",
+      model_catalog_cache_validation_latency_ms: -1,
+      model_catalog_cache_eviction_count: 33,
     },
     {
       _time: "2026-06-10T12:01:00Z",
@@ -1816,6 +1820,11 @@ function networkHardeningRows(
       host: "blocked.example.com",
       port: 443,
       firewall_error: "connector_not_configured",
+      model_catalog_cache_status: "model_catalog_revalidated_200_same",
+      model_catalog_cache_bypass_reason: "response_cache_control",
+      model_catalog_cache_entry_age_ms: 61_000,
+      model_catalog_cache_validation_latency_ms: 1700,
+      model_catalog_cache_eviction_count: 1,
     },
     {
       _time: "2026-06-10T12:02:00Z",
@@ -2286,6 +2295,11 @@ describe("RUN-04: agent run telemetry families", () => {
         host: "blocked.example.com",
         port: 443,
         firewall_error: "connector_not_configured",
+        model_catalog_cache_status: "model_catalog_revalidated_200_same",
+        model_catalog_cache_bypass_reason: "response_cache_control",
+        model_catalog_cache_entry_age_ms: 61_000,
+        model_catalog_cache_validation_latency_ms: 1700,
+        model_catalog_cache_eviction_count: 1,
       },
     ];
     const expectedNextCursor = timeLogCursor(

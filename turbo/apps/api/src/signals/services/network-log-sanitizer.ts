@@ -1,4 +1,8 @@
 import {
+  modelCatalogCacheBypassReasonSchema,
+  modelCatalogCacheEvictionCountSchema,
+  modelCatalogCacheMillisecondsSchema,
+  modelCatalogCacheStatusSchema,
   networkLogActionSchema,
   networkLogEntrySchema,
   type NetworkLogEntry,
@@ -53,6 +57,34 @@ function networkActionValue(
   return parsed.success ? parsed.data : undefined;
 }
 
+function modelCatalogCacheStatusValue(
+  value: unknown,
+): NetworkLogEntry["model_catalog_cache_status"] | undefined {
+  const parsed = modelCatalogCacheStatusSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function modelCatalogCacheBypassReasonValue(
+  value: unknown,
+): NetworkLogEntry["model_catalog_cache_bypass_reason"] | undefined {
+  const parsed = modelCatalogCacheBypassReasonSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function modelCatalogCacheMillisecondsValue(
+  value: unknown,
+): number | undefined {
+  const parsed = modelCatalogCacheMillisecondsSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function modelCatalogCacheEvictionCountValue(
+  value: unknown,
+): number | undefined {
+  const parsed = modelCatalogCacheEvictionCountSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function networkBodyEncodingValue(value: unknown): string | undefined {
   const isUtf8 =
     typeof value === "string" &&
@@ -97,6 +129,22 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     request_size: numberValue(event.request_size),
     response_size: numberValue(event.response_size),
     browser_user_agent: booleanValue(event.browser_user_agent),
+    model_catalog_cache_status: modelCatalogCacheStatusValue(
+      event.model_catalog_cache_status,
+    ),
+    model_catalog_cache_bypass_reason: modelCatalogCacheBypassReasonValue(
+      event.model_catalog_cache_bypass_reason,
+    ),
+    model_catalog_cache_entry_age_ms: modelCatalogCacheMillisecondsValue(
+      event.model_catalog_cache_entry_age_ms,
+    ),
+    model_catalog_cache_validation_latency_ms:
+      modelCatalogCacheMillisecondsValue(
+        event.model_catalog_cache_validation_latency_ms,
+      ),
+    model_catalog_cache_eviction_count: modelCatalogCacheEvictionCountValue(
+      event.model_catalog_cache_eviction_count,
+    ),
     dns_event: stringValue(event.dns_event),
     dns_query_type: stringValue(event.dns_query_type),
     dns_result: stringValue(event.dns_result),
