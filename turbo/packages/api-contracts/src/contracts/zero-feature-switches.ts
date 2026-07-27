@@ -13,6 +13,11 @@ export const featureSwitchesResponseSchema = z.object({
    * message parts.
    */
   supportsStructuredFeedbackParts: z.boolean().optional(),
+  /**
+   * Optional capability handshake for multiple inline template parts.
+   * Older API deployments omit this field.
+   */
+  supportsStructuredInlineTemplates: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

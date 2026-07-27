@@ -109,21 +109,60 @@ export function buildGenerationTemplatePrompt(
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
 }
 
-// Shared framing for every artifact-template block, kept in one place so the
-// three builders cannot drift. It balances two jobs that pull in opposite
-// directions:
-//   1. The user *deliberately* selected this template — a strong signal, so it is
-//      the default style for that artifact in this run, and the agent must not
-//      re-ask for an already-selected style (vm0-ai/vm0#17525).
-//   2. The selection must not hijack unrelated work in this run, so the "does
-//      not force you to generate" boundary is load-bearing, not decorative.
-// State the facts and hand back the decision, rather than naming a step ("resolve
-// from the registry") without the facts needed to act on it.
+function stripGenerationTemplateContext(prompt: string): string {
+  const lines = prompt.split("\n");
+  if (lines[0] === "# Workflow Template Context") {
+    return lines.slice(lines[1] === "" ? 2 : 1).join("\n");
+  }
+  if (lines[0] !== "# Artifact Template Context") {
+    return prompt;
+  }
+  const framingEnd = lines.findIndex((line, index) => {
+    return index > 1 && line === "";
+  });
+  return lines.slice(framingEnd + 1).join("\n");
+}
+
+export function buildGenerationTemplatesPrompt(
+  generationTemplates: readonly GenerationTemplateInput[],
+  options?: BuildGenerationTemplatePromptOptions,
+): GenerationTemplatePromptResult {
+  if (generationTemplates.length === 0) {
+    return { status: "resolved", prompt: "" };
+  }
+  const details: string[] = [];
+  for (const [index, generationTemplate] of generationTemplates.entries()) {
+    const built = buildGenerationTemplatePrompt(generationTemplate, options);
+    if (built.status === "invalid") {
+      return built;
+    }
+    details.push(
+      [
+        `## Template #${index + 1} (${generationTemplate.type})`,
+        "",
+        stripGenerationTemplateContext(built.prompt),
+      ].join("\n"),
+    );
+  }
+  return {
+    status: "resolved",
+    prompt: [
+      "# Inline Templates",
+      "",
+      "Match each numbered template marker in the current user message with the same numbered section below.",
+      "- Apply each template only to the request around its marker.",
+      "- A template is context, not a request by itself.",
+      "",
+      details.join("\n\n"),
+    ].join("\n"),
+  };
+}
+
 function templateFraming(artifactNoun: string): readonly string[] {
   return [
     "# Artifact Template Context",
     "",
-    `- The user deliberately selected this artifact template for this run — treat it as the default style for any ${artifactNoun} you produce here.`,
+    `- The user deliberately selected this artifact template for this run — treat it as the default style whenever you produce ${artifactNoun} here.`,
     `- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce an artifact at all. If a request isn't about producing ${artifactNoun}, just answer it normally.`,
     "- Other artifact templates, files, or attachments may also be present.",
     "",

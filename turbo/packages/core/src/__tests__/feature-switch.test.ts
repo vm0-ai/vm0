@@ -40,6 +40,9 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
+    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -126,6 +129,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
@@ -154,6 +160,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
@@ -209,6 +218,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.GithubWebhookAutomations,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.StructuredPromptInlineTemplates,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroPeopleSearch,
     );
@@ -227,6 +239,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ZeroPeopleSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,

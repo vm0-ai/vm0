@@ -61,6 +61,7 @@ export enum FeatureSwitchKey {
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
   StructuredPrompt = "structuredPrompt",
+  StructuredPromptInlineTemplates = "structuredPromptInlineTemplates",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",

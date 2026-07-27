@@ -355,6 +355,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.StructuredPromptInlineTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable multiple inline artifact templates in structured chat prompts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
