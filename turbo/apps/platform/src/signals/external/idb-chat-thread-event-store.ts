@@ -16,21 +16,18 @@ import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
 const SINGLETON_ID = "current";
 const EVENT_READ_PAGE_SIZE = 300;
 
-type ChatThreadEventOrderKey = [createdAt: string, id: string];
-
 interface ChatThreadSnapshotRecord {
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-  readonly latestEventId: string | null;
+  readonly latestSeqId: number | null;
 }
 
 interface ChatThreadEventLog {
   readonly events: readonly ChatThreadEvent[];
-  readonly latestEventId: string | null;
+  readonly latestSeqId: number | null;
 }
 
 interface ChatThreadEventReadBoundary {
-  readonly latestEventId: string;
-  readonly latestEventOrderKey: ChatThreadEventOrderKey;
+  readonly latestSeqId: number;
 }
 
 interface StoredChatThreadSnapshot extends ChatThreadSnapshotRecord {
@@ -44,12 +41,15 @@ function validateSnapshot(raw: unknown): ChatThreadSnapshotRecord | null {
     return null;
   }
   const row = raw as Partial<StoredChatThreadSnapshot>;
+  const latestSeqId = row.latestSeqId;
   return {
     chatThreads: chatThreadSnapshotProjectionSchema
       .array()
       .parse(row.chatThreads ?? []),
-    latestEventId:
-      typeof row.latestEventId === "string" ? row.latestEventId : null,
+    latestSeqId:
+      latestSeqId === undefined || latestSeqId === null
+        ? null
+        : validateSeqId(latestSeqId),
   };
 }
 
@@ -57,30 +57,15 @@ function validateEvent(raw: unknown): ChatThreadEvent {
   return chatThreadEventSchema.parse(raw);
 }
 
-function validateLatestEventId(raw: unknown): string | null {
-  if (raw === null) {
-    return null;
-  }
-  if (typeof raw !== "string") {
-    throw new Error("Invalid IndexedDB chat thread event primary key");
+function validateSeqId(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0) {
+    throw new Error("Invalid IndexedDB chat thread event seq_id");
   }
   return raw;
 }
 
-function validateEventOrderKey(raw: unknown): ChatThreadEventOrderKey {
-  if (
-    !Array.isArray(raw) ||
-    raw.length !== 2 ||
-    typeof raw[0] !== "string" ||
-    typeof raw[1] !== "string"
-  ) {
-    throw new Error("Invalid IndexedDB chat thread event order key");
-  }
-  return [raw[0], raw[1]];
-}
-
 function emptyEventLog(): ChatThreadEventLog {
-  return { events: [], latestEventId: null };
+  return { events: [], latestSeqId: null };
 }
 
 async function readEventBoundary(
@@ -100,14 +85,8 @@ async function readEventBoundary(
       if (!latestCursor) {
         return null;
       }
-      const latestEventId = validateLatestEventId(latestCursor.primaryKey);
-      const latestEventOrderKey = validateEventOrderKey(latestCursor.key);
-      if (latestEventOrderKey[1] !== latestEventId) {
-        throw new Error("IndexedDB chat thread event boundary is inconsistent");
-      }
       return {
-        latestEventId,
-        latestEventOrderKey,
+        latestSeqId: validateSeqId(latestCursor.key),
       };
     },
     null,
@@ -117,8 +96,8 @@ async function readEventBoundary(
 
 async function readEventPage(
   getDb: GetDb,
-  after: ChatThreadEventOrderKey | null,
-  through: ChatThreadEventOrderKey,
+  after: number | null,
+  through: number,
   signal?: AbortSignal,
 ): Promise<readonly ChatThreadEvent[] | null> {
   return await chatIdbReadOr(
@@ -165,12 +144,12 @@ function createReadStore(getDb: GetDb) {
       }
 
       const events: ChatThreadEvent[] = [];
-      let after: ChatThreadEventOrderKey | null = null;
-      while (events.at(-1)?.id !== boundary.latestEventId) {
+      let after: number | null = null;
+      while (events.at(-1)?.seqId !== boundary.latestSeqId) {
         const page = await readEventPage(
           getDb,
           after,
-          boundary.latestEventOrderKey,
+          boundary.latestSeqId,
           signal,
         );
         if (!page) {
@@ -181,12 +160,12 @@ function createReadStore(getDb: GetDb) {
           return emptyEventLog();
         }
         events.push(...page);
-        after = [lastEvent.createdAt, lastEvent.id];
+        after = lastEvent.seqId;
       }
 
       return {
         events,
-        latestEventId: boundary.latestEventId,
+        latestSeqId: boundary.latestSeqId,
       } satisfies ChatThreadEventLog;
     },
   };
@@ -218,7 +197,7 @@ function createWriteStore(getDb: GetDb) {
             tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
               id: SINGLETON_ID,
               chatThreads: [...snapshot.chatThreads],
-              latestEventId: snapshot.latestEventId,
+              latestSeqId: snapshot.latestSeqId,
             } satisfies StoredChatThreadSnapshot),
             ...requests,
             tx.done,

@@ -159,7 +159,6 @@ async function validateChatEventSourcesAreAppendOnly(
   let agentComposeId: string | undefined;
   let threadId: string | undefined;
   let messageId: string | undefined;
-  let eventId: string | undefined;
 
   try {
     const agentCompose = await client.query<{ id: string }>(`
@@ -239,7 +238,7 @@ async function validateChatEventSourcesAreAppendOnly(
     );
     assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
 
-    const event = await client.query<{ id: string }>(
+    const event = await client.query<{ id: string; seqId: string }>(
       `
         INSERT INTO "chat_thread_events" (
           "user_id",
@@ -257,14 +256,80 @@ async function validateChatEventSourcesAreAppendOnly(
           $2,
           'append-only migration test'
         )
-        RETURNING "id"
+        RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId, agentComposeId],
     );
-    eventId = event.rows[0]?.id;
+    const eventId = event.rows[0]?.id;
     if (!eventId) {
       throw new Error("Failed to create append-only chat thread event fixture");
     }
+    assert.equal(event.rows[0]?.seqId, "1");
+    const threadEventSequenceState = await client.query<{
+      lastSeqId: string;
+    }>(
+      `
+        SELECT "last_seq_id" AS "lastSeqId"
+        FROM "chat_thread_event_sequences"
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+      `,
+    );
+    assert.equal(threadEventSequenceState.rows[0]?.lastSeqId, "1");
+
+    const nextEvent = await client.query<{ id: string; seqId: string }>(
+      `
+        INSERT INTO "chat_thread_events" (
+          "user_id",
+          "org_id",
+          "chat_thread_id",
+          "kind",
+          "agent_compose_id",
+          "title"
+        )
+        VALUES (
+          'append-only-test-user',
+          'append-only-test-org',
+          $1,
+          'renamed',
+          $2,
+          'advanced append-only migration test'
+        )
+        RETURNING "id", "seq_id" AS "seqId"
+      `,
+      [threadId, agentComposeId],
+    );
+    const nextEventId = nextEvent.rows[0]?.id;
+    if (!nextEventId) {
+      throw new Error("Failed to create second chat thread event fixture");
+    }
+    assert.equal(nextEvent.rows[0]?.seqId, "2");
+
+    const snapshot = await client.query<{ latestSeqId: string }>(
+      `
+        INSERT INTO "chat_thread_snapshots" (
+          "user_id",
+          "org_id",
+          "latest_event_id"
+        )
+        VALUES ('append-only-test-user', 'append-only-test-org', $1)
+        RETURNING "latest_event_seq_id" AS "latestSeqId"
+      `,
+      [eventId],
+    );
+    assert.equal(snapshot.rows[0]?.latestSeqId, "1");
+
+    const advancedSnapshot = await client.query<{ latestSeqId: string }>(
+      `
+        UPDATE "chat_thread_snapshots"
+        SET "latest_event_id" = $1
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+        RETURNING "latest_event_seq_id" AS "latestSeqId"
+      `,
+      [nextEventId],
+    );
+    assert.equal(advancedSnapshot.rows[0]?.latestSeqId, "2");
 
     await expectAppendOnlyUpdateRejected(client, {
       tableName: "chat_messages",
@@ -280,14 +345,23 @@ async function validateChatEventSourcesAreAppendOnly(
     console.log("   ✅ chat_messages rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
     console.log(
-      "   ✅ previous API writes receive a database-allocated seq_id\n",
+      "   ✅ previous API writes receive database-allocated seq_ids\n",
     );
   } finally {
-    if (eventId) {
-      await client.query(`DELETE FROM "chat_thread_events" WHERE "id" = $1`, [
-        eventId,
-      ]);
-    }
+    await client.query(
+      `
+        DELETE FROM "chat_thread_snapshots"
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+      `,
+    );
+    await client.query(
+      `
+        DELETE FROM "chat_thread_events"
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+      `,
+    );
     if (agentComposeId) {
       await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
         agentComposeId,

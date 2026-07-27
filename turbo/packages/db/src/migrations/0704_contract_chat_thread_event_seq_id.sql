@@ -1,0 +1,2 @@
+ALTER TABLE "chat_thread_events" ALTER COLUMN "seq_id" SET NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "chat_thread_events_user_org_seq_unique" ON "chat_thread_events" USING btree ("user_id","org_id","seq_id");

@@ -9,7 +9,6 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
@@ -40,6 +39,7 @@ import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
+import { appendChatThreadEvent } from "../../services/zero-chat-thread-event.service";
 import {
   connectorCatalogExecutableCapabilityState,
   persistConnectorCatalogCompatibility,
@@ -529,7 +529,7 @@ async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
     agentComposeId: composeId,
     title,
   });
-  await db.insert(chatThreadEvents).values({
+  await appendChatThreadEvent(db, {
     userId,
     orgId,
     chatThreadId: threadId,

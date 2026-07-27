@@ -143,6 +143,7 @@ function mockSidebarThread(): void {
         },
       ],
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {

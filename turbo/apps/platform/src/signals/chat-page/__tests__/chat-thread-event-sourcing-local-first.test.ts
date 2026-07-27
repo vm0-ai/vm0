@@ -34,6 +34,7 @@ import { loadIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { createRemoteChatThreadDataSource } from "../remote-chat-thread-data-source.ts";
 import { openChatIdb } from "../../external/chat-idb-store.ts";
 import { createIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
+import type { OptimisticChatThreadEvent } from "../chat-thread-event-types.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -46,6 +47,7 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const OPTIMISTIC_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const EVENT_ID = "d0000000-0000-4000-a000-000000000001";
+const EVENT_SEQ_ID = 1;
 const OPTIMISTIC_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 const OPTIMISTIC_MODEL_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
 
@@ -62,7 +64,7 @@ async function clearThreadEventCache(): Promise<void> {
 async function seedThreadEventCache(args: {
   readonly snapshot: {
     readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-    readonly latestEventId: string | null;
+    readonly latestSeqId: number | null;
   } | null;
   readonly events?: readonly ChatThreadEvent[];
 }): Promise<void> {
@@ -124,7 +126,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
             id: THREAD_ID,
@@ -144,6 +146,7 @@ describe("chat thread event sourcing local-first list", () => {
       events: [
         {
           id: EVENT_ID,
+          seqId: EVENT_SEQ_ID + 1,
           kind: "renamed",
           chatThreadId: THREAD_ID,
           agentId: AGENT_ID,
@@ -220,7 +223,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
             id: THREAD_ID,
@@ -242,6 +245,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     const renamedEvent = {
       id: OPTIMISTIC_EVENT_ID,
+      seqId: EVENT_SEQ_ID + 1,
       kind: "renamed",
       chatThreadId: THREAD_ID,
       agentId: AGENT_ID,
@@ -301,7 +305,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
             id: THREAD_ID,
@@ -397,7 +401,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: snapshotThreads,
       },
       events: [],
@@ -440,7 +444,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
             id: THREAD_ID,
@@ -508,7 +512,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
             id: THREAD_ID,
@@ -584,7 +588,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: null,
+        latestSeqId: null,
         chatThreads: [],
       },
       events: [],
@@ -618,7 +622,7 @@ describe("chat thread event sourcing local-first list", () => {
       serviceTier: null,
       computerUseHostId: null,
       createdAt: "2026-07-03T05:00:00.000Z",
-    } satisfies ChatThreadEvent;
+    } satisfies OptimisticChatThreadEvent;
     context.store.set(registerOptimisticChatThreadEvent$, createdEvent);
     context.store.set(registerOptimisticChatThreadEvent$, {
       id: OPTIMISTIC_MODEL_EVENT_ID,
@@ -694,7 +698,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     context.store.set(reconcileOptimisticChatThreadEvents$, {
       snapshot: [],
-      events: [createdEvent],
+      events: [{ ...createdEvent, seqId: EVENT_SEQ_ID }],
     });
 
     await expect(
@@ -722,7 +726,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: [],
       },
       events: [],
@@ -738,12 +742,15 @@ describe("chat thread event sourcing local-first list", () => {
       serviceTier: null,
       computerUseHostId: null,
       createdAt: "2026-07-03T05:00:00.000Z",
-    } satisfies ChatThreadEvent;
+    } satisfies OptimisticChatThreadEvent;
 
     context.store.set(registerOptimisticChatThreadEvent$, createdEvent);
 
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      return respond(200, { events: [createdEvent], hasMore: false });
+      return respond(200, {
+        events: [{ ...createdEvent, seqId: EVENT_SEQ_ID + 1 }],
+        hasMore: false,
+      });
     });
     context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
       return respond(200, { threadIds: [] });
@@ -762,7 +769,10 @@ describe("chat thread event sourcing local-first list", () => {
 
     await vi.waitFor(async () => {
       const eventLog = await threadEventStores.readStore.readEventLog();
-      expect(eventLog.events).toContainEqual(createdEvent);
+      expect(eventLog.events).toContainEqual({
+        ...createdEvent,
+        seqId: EVENT_SEQ_ID + 1,
+      });
     });
     await expect(
       context.store.get(sidebarChatThreadIds$),
@@ -779,7 +789,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
-        latestEventId: EVENT_ID,
+        latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
             id: THREAD_ID,
@@ -799,6 +809,7 @@ describe("chat thread event sourcing local-first list", () => {
       events: [
         {
           id: EVENT_ID,
+          seqId: EVENT_SEQ_ID + 1,
           kind: "renamed",
           chatThreadId: THREAD_ID,
           agentId: AGENT_ID,

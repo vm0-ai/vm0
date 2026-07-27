@@ -219,6 +219,8 @@ const chatThreadSnapshotProjectionSchema = z.object({
 
 const chatThreadEventSchema = z.object({
   id: chatThreadEventIdSchema,
+  /** Server-assigned strict position within the user/org event stream. */
+  seqId: z.number().int().positive(),
   kind: z.enum([
     "created",
     "renamed",
@@ -910,6 +912,7 @@ export const chatThreadsContract = c.router({
       200: z.object({
         chatThreads: z.array(chatThreadSnapshotProjectionSchema),
         latestEventId: chatThreadEventIdSchema.nullable(),
+        latestSeqId: z.number().int().positive().nullable(),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -922,6 +925,9 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads/events",
     headers: authHeadersSchema,
     query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      // Previous clients use UUID cursors. The API resolves them to seq_id
+      // until those clients can no longer remain active.
       sinceEventId: chatThreadEventIdSchema.optional(),
     }),
     responses: {
@@ -933,8 +939,7 @@ export const chatThreadsContract = c.router({
       403: apiErrorSchema,
       410: apiErrorSchema,
     },
-    summary:
-      "List chat thread lifecycle events after an optional event id cursor.",
+    summary: "List chat thread lifecycle events after an optional cursor.",
   },
   activeIds: {
     method: "GET",

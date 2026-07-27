@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, or } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type {
   ChatThreadEvent,
@@ -8,6 +8,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
+  chatThreadEventSequences,
   chatThreadEvents,
   type ChatThreadEventKind,
 } from "@vm0/db/schema/chat-thread-event";
@@ -22,6 +23,31 @@ const cursorChatThreadEvent = alias(
   "cursor_chat_thread_event",
 );
 const pageChatThreadEvent = alias(chatThreadEvents, "page_chat_thread_event");
+
+async function reserveChatThreadEventSeqId(
+  db: ChatThreadEventDb,
+  userId: string,
+  orgId: string,
+): Promise<number> {
+  const [sequence] = await db
+    .insert(chatThreadEventSequences)
+    .values({
+      userId,
+      orgId,
+      lastSeqId: 1,
+    })
+    .onConflictDoUpdate({
+      target: [chatThreadEventSequences.userId, chatThreadEventSequences.orgId],
+      set: {
+        lastSeqId: sql`${chatThreadEventSequences.lastSeqId} + 1`,
+      },
+    })
+    .returning({ seqId: chatThreadEventSequences.lastSeqId });
+  if (!sequence) {
+    throw new Error("Unable to reserve chat thread event seq_id");
+  }
+  return sequence.seqId;
+}
 
 export async function appendChatThreadEvent(
   db: ChatThreadEventDb,
@@ -54,12 +80,15 @@ export async function appendChatThreadEvent(
     throw new Error("Unable to resolve org for chat thread event");
   }
 
+  const seqId = await reserveChatThreadEventSeqId(db, args.userId, orgId);
+
   await db
     .insert(chatThreadEvents)
     .values({
       ...(args.eventId !== undefined ? { id: args.eventId } : {}),
       userId: args.userId,
       orgId,
+      seqId,
       chatThreadId: args.chatThreadId,
       kind: args.kind,
       agentComposeId: args.agentComposeId,
@@ -82,10 +111,12 @@ export async function getChatThreadSnapshot(
 ): Promise<{
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
   readonly latestEventId: string | null;
+  readonly latestSeqId: number | null;
 }> {
   const [snapshot] = await db
     .select({
       latestEventId: chatThreadSnapshots.latestEventId,
+      latestSeqId: chatThreadSnapshots.latestEventSeqId,
       chatThreads: chatThreadSnapshots.chatThreads,
     })
     .from(chatThreadSnapshots)
@@ -109,11 +140,13 @@ export async function getChatThreadSnapshot(
         };
       }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
+    latestSeqId: snapshot?.latestSeqId ?? null,
   };
 }
 
 type ChatThreadEventRow = {
   readonly id: string;
+  readonly seqId: number;
   readonly kind: ChatThreadEventKind;
   readonly chatThreadId: string;
   readonly agentComposeId: string;
@@ -134,6 +167,7 @@ export function chatThreadServiceTierFromCodex(
 function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
   return {
     id: row.id,
+    seqId: row.seqId,
     kind: row.kind,
     chatThreadId: row.chatThreadId,
     agentId: row.agentComposeId,
@@ -151,6 +185,7 @@ export async function getChatThreadEventsSince(
   args: {
     readonly userId: string;
     readonly orgId: string;
+    readonly sinceSeqId?: number;
     readonly sinceEventId?: string;
   },
 ): Promise<
@@ -162,13 +197,20 @@ export async function getChatThreadEventsSince(
   | { readonly kind: "expired" }
 > {
   let rows: readonly ChatThreadEventRow[];
-  if (args.sinceEventId !== undefined) {
-    // Keep a valid cursor row when its page is empty while preserving the
-    // composite event index's timestamp lower bound.
+  const cursorPredicate =
+    args.sinceSeqId !== undefined
+      ? eq(cursorChatThreadEvent.seqId, args.sinceSeqId)
+      : args.sinceEventId !== undefined
+        ? eq(cursorChatThreadEvent.id, args.sinceEventId)
+        : undefined;
+  if (cursorPredicate !== undefined) {
+    // Keep a valid cursor row when its page is empty. UUID cursors remain
+    // accepted during rollout, but both cursor forms page on seq_id.
     const cursorRows = await db
       .select({
         event: {
           id: pageChatThreadEvent.id,
+          seqId: pageChatThreadEvent.seqId,
           kind: pageChatThreadEvent.kind,
           chatThreadId: pageChatThreadEvent.chatThreadId,
           agentComposeId: pageChatThreadEvent.agentComposeId,
@@ -186,27 +228,17 @@ export async function getChatThreadEventsSince(
         and(
           eq(pageChatThreadEvent.userId, args.userId),
           eq(pageChatThreadEvent.orgId, args.orgId),
-          gte(pageChatThreadEvent.createdAt, cursorChatThreadEvent.createdAt),
-          or(
-            gt(pageChatThreadEvent.createdAt, cursorChatThreadEvent.createdAt),
-            and(
-              eq(
-                pageChatThreadEvent.createdAt,
-                cursorChatThreadEvent.createdAt,
-              ),
-              gt(pageChatThreadEvent.id, cursorChatThreadEvent.id),
-            ),
-          ),
+          gt(pageChatThreadEvent.seqId, cursorChatThreadEvent.seqId),
         ),
       )
       .where(
         and(
           eq(cursorChatThreadEvent.userId, args.userId),
           eq(cursorChatThreadEvent.orgId, args.orgId),
-          eq(cursorChatThreadEvent.id, args.sinceEventId),
+          cursorPredicate,
         ),
       )
-      .orderBy(asc(pageChatThreadEvent.createdAt), asc(pageChatThreadEvent.id))
+      .orderBy(asc(pageChatThreadEvent.seqId))
       .limit(CHAT_THREAD_EVENTS_PAGE_SIZE + 1);
     if (cursorRows.length === 0) {
       return { kind: "expired" };
@@ -218,6 +250,7 @@ export async function getChatThreadEventsSince(
     rows = await db
       .select({
         id: chatThreadEvents.id,
+        seqId: chatThreadEvents.seqId,
         kind: chatThreadEvents.kind,
         chatThreadId: chatThreadEvents.chatThreadId,
         agentComposeId: chatThreadEvents.agentComposeId,
@@ -235,7 +268,7 @@ export async function getChatThreadEventsSince(
           eq(chatThreadEvents.orgId, args.orgId),
         ),
       )
-      .orderBy(asc(chatThreadEvents.createdAt), asc(chatThreadEvents.id))
+      .orderBy(asc(chatThreadEvents.seqId))
       .limit(CHAT_THREAD_EVENTS_PAGE_SIZE + 1);
   }
 

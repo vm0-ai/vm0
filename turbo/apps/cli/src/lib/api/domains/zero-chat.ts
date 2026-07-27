@@ -14,7 +14,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-  readonly latestEventId: string | null;
+  readonly latestSeqId: number | null;
 }
 
 type ZeroChatThreadEventsResult =
@@ -54,18 +54,21 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
   const client = initClient(chatThreadsContract, config);
   const result = await client.snapshot();
   if (result.status === 200) {
-    return result.body;
+    return {
+      chatThreads: result.body.chatThreads,
+      latestSeqId: result.body.latestSeqId,
+    };
   }
   handleError(result, "Failed to get chat thread snapshot");
 }
 
 export async function listZeroChatThreadEvents(options: {
-  sinceEventId?: string;
+  sinceSeqId?: number;
 }): Promise<ZeroChatThreadEventsResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
   const result = await client.events({
-    query: options.sinceEventId ? { sinceEventId: options.sinceEventId } : {},
+    query: options.sinceSeqId ? { sinceSeqId: options.sinceSeqId } : {},
   });
   if (result.status === 200) {
     return {

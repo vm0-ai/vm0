@@ -531,6 +531,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(snapshot.body).toStrictEqual({
       chatThreads: [],
       latestEventId: null,
+      latestSeqId: null,
     });
     const events = await accept(
       zeroClient.events({ headers: zeroHeaders, query: {} }),
@@ -623,6 +624,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(emptySnapshot).toStrictEqual({
       chatThreads: [],
       latestEventId: null,
+      latestSeqId: null,
     });
 
     const thread = await chat.createThread(actor, {
@@ -650,6 +652,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     }
     expect(allEvents.body.hasMore).toBeFalsy();
     expect(allEvents.body.events).toHaveLength(4);
+    expect(
+      allEvents.body.events.map((event) => {
+        return event.seqId;
+      }),
+    ).toStrictEqual([1, 2, 3, 4]);
     expect(allEvents.body.events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -687,9 +694,40 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ]),
     );
 
+    const modelSelectionEvent = allEvents.body.events.find((event) => {
+      return event.id === modelSelectionEventId;
+    });
+    const serviceTierEvent = allEvents.body.events.find((event) => {
+      return event.kind === "service_tier_updated";
+    });
+    if (!modelSelectionEvent || !serviceTierEvent) {
+      throw new Error("Expected model selection event pair");
+    }
+    expect(serviceTierEvent.createdAt).toBe(modelSelectionEvent.createdAt);
+    expect(serviceTierEvent.seqId).toBe(modelSelectionEvent.seqId + 1);
+    const afterCollidingTimestamp = await chat.requestThreadEvents(
+      actor,
+      { sinceSeqId: modelSelectionEvent.seqId },
+      [200],
+    );
+    expect(afterCollidingTimestamp.status).toBe(200);
+    if (afterCollidingTimestamp.status !== 200) {
+      throw new Error("Expected colliding timestamp cursor page to load");
+    }
+    expect(afterCollidingTimestamp.body.events).toStrictEqual([
+      serviceTierEvent,
+    ]);
+
+    const createEvent = allEvents.body.events.find((event) => {
+      return event.id === createEventId;
+    });
+    if (!createEvent) {
+      throw new Error("Expected created thread event");
+    }
+
     const afterCreate = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: createEventId },
+      { sinceSeqId: createEvent.seqId },
       [200],
     );
     expect(afterCreate.status).toBe(200);
@@ -705,9 +743,22 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ]),
     );
 
+    const afterLegacyCursor = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: createEventId },
+      [200],
+    );
+    expect(afterLegacyCursor.status).toBe(200);
+    if (afterLegacyCursor.status !== 200) {
+      throw new Error("Expected legacy thread event cursor to load");
+    }
+    expect(afterLegacyCursor.body.events).toStrictEqual(
+      afterCreate.body.events,
+    );
+
     const expired = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: randomUUID() },
+      { sinceSeqId: 999_999 },
       [410],
     );
     expect(expired.body).toStrictEqual({
@@ -796,8 +847,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const initialCompact = await compactChatThreadSnapshots();
     expect(initialCompact.eventsApplied).toBeGreaterThanOrEqual(2);
 
+    const liveCreateEvent = (await allThreadEvents(actor)).find((event) => {
+      return event.id === liveCreateEventId;
+    });
+    if (!liveCreateEvent) {
+      throw new Error("Expected live thread creation event");
+    }
+
     const baselineSnapshot = await chat.getThreadSnapshot(actor);
     expect(baselineSnapshot.latestEventId).not.toBeNull();
+    expect(baselineSnapshot.latestSeqId).not.toBeNull();
     expect(
       baselineSnapshot.chatThreads.map((thread) => {
         return thread.id;
@@ -836,6 +895,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
     expect(compactedSnapshot.latestEventId).not.toBeNull();
+    expect(compactedSnapshot.latestSeqId).not.toBeNull();
     expect(compactedSnapshot.chatThreads).toStrictEqual([
       expect.objectContaining({
         id: liveThread.id,
@@ -848,7 +908,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const prunedCursor = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: liveCreateEventId },
+      { sinceSeqId: liveCreateEvent.seqId },
       [410],
     );
     expect(prunedCursor.body).toStrictEqual({
@@ -860,7 +920,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const retainedAnchorCursor = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: compactedSnapshot.latestEventId ?? undefined },
+      { sinceSeqId: compactedSnapshot.latestSeqId ?? undefined },
       [200],
     );
     expect(retainedAnchorCursor.status).toBe(200);

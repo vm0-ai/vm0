@@ -21,6 +21,10 @@ import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { pathParams$ } from "../route.ts";
 import { bestEffort } from "../utils.ts";
+import type {
+  ChatThreadEventView,
+  OptimisticChatThreadEvent,
+} from "./chat-thread-event-types.ts";
 
 const L = logger("ChatThreadEventSourcing");
 const EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD = 100;
@@ -36,13 +40,13 @@ interface ChatThreadEventData {
 
 interface ChatThreadSnapshotData {
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-  readonly latestEventId: string | null;
+  readonly latestSeqId: number | null;
 }
 
 interface ChatThreadEventState {
   readonly snapshot: ChatThreadSnapshotData | null;
   readonly events: readonly ChatThreadEvent[];
-  readonly latestEventId: string | null;
+  readonly latestSeqId: number | null;
 }
 
 interface ChatThreadEventUpdate {
@@ -67,11 +71,13 @@ export interface ThreadMeta {
   readonly cloudBrowserEnabled: boolean;
 }
 
-const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
+const optimisticChatThreadEventsState$ = state<
+  readonly OptimisticChatThreadEvent[]
+>([]);
 const chatThreadEventState$ = state<ChatThreadEventState>({
   snapshot: null,
   events: [],
-  latestEventId: null,
+  latestSeqId: null,
 });
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
@@ -83,9 +89,9 @@ const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
 });
 
 function filterUnsettledOptimisticChatThreadEvents(
-  optimistic: readonly ChatThreadEvent[],
+  optimistic: readonly OptimisticChatThreadEvent[],
   persisted: ChatThreadEventData,
-): ChatThreadEvent[] {
+): OptimisticChatThreadEvent[] {
   if (optimistic.length === 0) {
     return [];
   }
@@ -110,7 +116,7 @@ async function readChatThreadEventState(
   return {
     snapshot,
     events: eventLog.events,
-    latestEventId: eventLog.latestEventId ?? snapshot?.latestEventId ?? null,
+    latestSeqId: eventLog.latestSeqId ?? snapshot?.latestSeqId ?? null,
   };
 }
 
@@ -130,8 +136,8 @@ const chatThreadEventStores$ = computed((get): Stores => {
   });
 });
 
-const lastEventId$ = computed((get): string | null => {
-  return get(chatThreadEventState$).latestEventId;
+const lastEventSeqId$ = computed((get): number | null => {
+  return get(chatThreadEventState$).latestSeqId;
 });
 
 async function fetchRemoteSnapshot(
@@ -146,17 +152,20 @@ async function fetchRemoteSnapshot(
     { showErrorToast: mode !== "snapshot-rebase" },
   );
   signal?.throwIfAborted();
-  return result.body;
+  return {
+    chatThreads: result.body.chatThreads,
+    latestSeqId: result.body.latestSeqId,
+  };
 }
 
 async function fetchRemoteEvents(
   client: ChatThreadsClient,
-  cursor: string | null,
+  cursor: number | null,
   mode: ChatThreadEventSyncMode,
   signal?: AbortSignal,
 ) {
   const request = client.events({
-    query: cursor ? { sinceEventId: cursor } : {},
+    query: cursor ? { sinceSeqId: cursor } : {},
     fetchOptions: { signal },
   });
   return await accept(request, [200, 410], signal, {
@@ -166,7 +175,7 @@ async function fetchRemoteEvents(
 
 async function fetchChatThreadEventUpdate(
   currentState: ChatThreadEventState,
-  initialCursor: string | null,
+  initialCursor: number | null,
   client: ChatThreadsClient,
   mode: ChatThreadEventSyncMode,
   signal?: AbortSignal,
@@ -180,7 +189,7 @@ async function fetchChatThreadEventUpdate(
   if (mode === "snapshot-rebase" || !snapshot || cursor === null) {
     snapshot = await fetchRemoteSnapshot(client, mode, signal);
     events = [];
-    cursor = snapshot.latestEventId;
+    cursor = snapshot.latestSeqId;
     snapshotReplaced = true;
   }
 
@@ -193,7 +202,7 @@ async function fetchChatThreadEventUpdate(
       snapshot = await fetchRemoteSnapshot(client, mode, signal);
       events = [];
       newEvents = [];
-      cursor = snapshot.latestEventId;
+      cursor = snapshot.latestSeqId;
       snapshotReplaced = true;
       continue;
     }
@@ -201,7 +210,7 @@ async function fetchChatThreadEventUpdate(
     if (result.body.events.length > 0) {
       events = [...events, ...result.body.events];
       newEvents = [...newEvents, ...result.body.events];
-      cursor = result.body.events[result.body.events.length - 1]!.id;
+      cursor = result.body.events[result.body.events.length - 1]!.seqId;
     }
 
     if (!result.body.hasMore || result.body.events.length === 0) {
@@ -212,7 +221,7 @@ async function fetchChatThreadEventUpdate(
         state: {
           snapshot,
           events,
-          latestEventId: cursor,
+          latestSeqId: cursor,
         },
         replacementSnapshot: snapshotReplaced ? snapshot : null,
         newEvents,
@@ -226,7 +235,7 @@ async function fetchChatThreadEventUpdate(
     state: {
       snapshot,
       events,
-      latestEventId: cursor,
+      latestSeqId: cursor,
     },
     replacementSnapshot: snapshotReplaced ? snapshot : null,
     newEvents,
@@ -258,7 +267,7 @@ const syncChatThreadEvents$ = command(
     const client = get(zeroClient$)(chatThreadsContract);
     const update = await fetchChatThreadEventUpdate(
       state,
-      get(lastEventId$),
+      get(lastEventSeqId$),
       client,
       mode,
       signal,
@@ -350,20 +359,10 @@ const allChatThreadsEvents$ = computed((get) => {
     get(optimisticChatThreadEventsState$),
     persistedData,
   );
-  const byId = new Map<string, ChatThreadEvent>();
-  for (const event of optimistic) {
-    byId.set(event.id, event);
-  }
-  for (const event of persisted) {
-    byId.set(event.id, event);
-  }
-  return [...byId.values()].sort((a, b) => {
-    const timeCompare = a.createdAt.localeCompare(b.createdAt);
-    if (timeCompare !== 0) {
-      return timeCompare;
-    }
-    return a.id.localeCompare(b.id);
+  const sequenced = [...persisted].sort((left, right) => {
+    return left.seqId - right.seqId;
   });
+  return [...sequenced, ...optimistic] satisfies ChatThreadEventView[];
 });
 
 export const eventDrivenChatThreads$ = computed((get) => {
@@ -438,7 +437,7 @@ const syncCurrentChatThreadDocumentTitle$ = command(
 );
 
 export const registerOptimisticChatThreadEvent$ = command(
-  ({ set }, event: ChatThreadEvent) => {
+  ({ set }, event: OptimisticChatThreadEvent) => {
     set(optimisticChatThreadEventsState$, (events) => {
       if (
         events.some((existing) => {
@@ -473,7 +472,7 @@ export const touchOptimisticChatThreadSort$ = command(
       computerUseHostId: null,
       cloudBrowserEnabled: false,
       createdAt: args.createdAt,
-    } satisfies ChatThreadEvent);
+    } satisfies OptimisticChatThreadEvent);
   },
 );
 

@@ -4915,6 +4915,27 @@
       "when": 1785153523179,
       "tag": "0701_contract_chat_event_type",
       "breakpoints": true
+    },
+    {
+      "idx": 702,
+      "version": "7",
+      "when": 1785165243080,
+      "tag": "0702_add_chat_thread_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 703,
+      "version": "7",
+      "when": 1785165264836,
+      "tag": "0703_backfill_chat_thread_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 704,
+      "version": "7",
+      "when": 1785165319545,
+      "tag": "0704_contract_chat_thread_event_seq_id",
+      "breakpoints": true
     }
   ]
 }

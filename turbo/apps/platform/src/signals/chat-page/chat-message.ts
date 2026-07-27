@@ -6,7 +6,6 @@ import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,
-  type ChatThreadEvent,
   chatThreadPinContract,
   chatThreadUnpinContract,
   chatThreadRenameContract,
@@ -18,6 +17,7 @@ import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import type { ChatMessage } from "./chat-message-types.ts";
+import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 
 export { type ZeroChatAttachment } from "../zero-page/chat-draft.ts";
 
@@ -59,7 +59,7 @@ export const deleteChatThread$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
 
     const client = get(zeroClient$)(chatThreadByIdContract);
@@ -116,7 +116,7 @@ export const pinChatThread$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
     const client = get(zeroClient$)(chatThreadPinContract);
     await accept(
@@ -151,7 +151,7 @@ export const unpinChatThread$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
     const client = get(zeroClient$)(chatThreadUnpinContract);
     await accept(
@@ -202,7 +202,7 @@ export const renameChatThread$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
 
     const client = get(zeroClient$)(chatThreadRenameContract);

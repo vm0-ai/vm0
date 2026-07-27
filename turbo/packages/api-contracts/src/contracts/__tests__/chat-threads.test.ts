@@ -116,6 +116,17 @@ describe("chat message pagination request compatibility", () => {
   });
 });
 
+describe("chat thread event sequence contract", () => {
+  it("coerces current sequence cursors", () => {
+    expect(
+      chatThreadsContract.events.query.safeParse({ sinceSeqId: "42" }),
+    ).toMatchObject({
+      success: true,
+      data: { sinceSeqId: 42 },
+    });
+  });
+});
+
 describe("chat thread model request compatibility", () => {
   it("normalizes legacy thread create modelSelection bodies to model", () => {
     const parsed = chatThreadsContract.create.body.safeParse({

@@ -90,6 +90,7 @@ const getChatThreadSnapshotInner$ = computed(async (get) => {
     body: {
       chatThreads: [...snapshot.chatThreads],
       latestEventId: snapshot.latestEventId,
+      latestSeqId: snapshot.latestSeqId,
     },
   };
 });
@@ -101,6 +102,7 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
   const result = await getChatThreadEventsSince(db, {
     userId: auth.userId,
     orgId: auth.orgId,
+    sinceSeqId: query.sinceSeqId,
     sinceEventId: query.sinceEventId,
   });
 

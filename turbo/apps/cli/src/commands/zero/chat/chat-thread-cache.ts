@@ -20,7 +20,7 @@ import {
 } from "../../../lib/api";
 import { decodeZeroTokenPayload, getApiUrl } from "../../../lib/api/config";
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const MAX_EVENT_PAGES_PER_SYNC = 20;
 
 interface ChatThreadCache {
@@ -56,11 +56,14 @@ function parseCache(raw: string): ChatThreadCache | null {
     .array()
     .safeParse(value.snapshot.chatThreads);
   const events = chatThreadEventSchema.array().safeParse(value.events);
-  const latestEventId = value.snapshot.latestEventId;
+  const latestSeqId = value.snapshot.latestSeqId;
   if (
     !chatThreads.success ||
     !events.success ||
-    (latestEventId !== null && typeof latestEventId !== "string")
+    (latestSeqId !== null &&
+      (typeof latestSeqId !== "number" ||
+        !Number.isSafeInteger(latestSeqId) ||
+        latestSeqId <= 0))
   ) {
     return null;
   }
@@ -69,7 +72,7 @@ function parseCache(raw: string): ChatThreadCache | null {
     version: CACHE_VERSION,
     snapshot: {
       chatThreads: chatThreads.data,
-      latestEventId,
+      latestSeqId,
     },
     events: events.data,
   };
@@ -135,8 +138,7 @@ function mergeEvents(
     byId.set(event.id, event);
   }
   return [...byId.values()].sort((left, right) => {
-    const timeCompare = left.createdAt.localeCompare(right.createdAt);
-    return timeCompare !== 0 ? timeCompare : left.id.localeCompare(right.id);
+    return left.seqId - right.seqId;
   });
 }
 
@@ -148,8 +150,8 @@ async function freshCache(): Promise<ChatThreadCache> {
   };
 }
 
-function latestEventId(cache: ChatThreadCache): string | undefined {
-  return cache.events.at(-1)?.id ?? cache.snapshot.latestEventId ?? undefined;
+function latestSeqId(cache: ChatThreadCache): number | undefined {
+  return cache.events.at(-1)?.seqId ?? cache.snapshot.latestSeqId ?? undefined;
 }
 
 export async function syncCachedChatThreads(): Promise<
@@ -157,15 +159,15 @@ export async function syncCachedChatThreads(): Promise<
 > {
   const path = await cachePath();
   let cache = (await readCache(path)) ?? (await freshCache());
-  let cursor = latestEventId(cache);
+  let cursor = latestSeqId(cache);
 
   for (let page = 0; page < MAX_EVENT_PAGES_PER_SYNC; page++) {
     const result = await listZeroChatThreadEvents({
-      sinceEventId: cursor,
+      sinceSeqId: cursor,
     });
     if (result.kind === "expired") {
       cache = await freshCache();
-      cursor = latestEventId(cache);
+      cursor = latestSeqId(cache);
       continue;
     }
 
@@ -176,7 +178,7 @@ export async function syncCachedChatThreads(): Promise<
       };
       const lastEvent = result.events.at(-1);
       if (lastEvent) {
-        cursor = lastEvent.id;
+        cursor = lastEvent.seqId;
       }
     }
 

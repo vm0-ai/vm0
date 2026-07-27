@@ -18,6 +18,10 @@ const INITIAL_EVENT_ID = "00000000-0000-4000-8000-000000000301";
 const RENAME_EVENT_ID = "00000000-0000-4000-8000-000000000302";
 const SORT_EVENT_ID = "00000000-0000-4000-8000-000000000303";
 const REFRESH_EVENT_ID = "00000000-0000-4000-8000-000000000304";
+const INITIAL_SEQ_ID = 1;
+const RENAME_SEQ_ID = 2;
+const SORT_SEQ_ID = 3;
+const REFRESH_SEQ_ID = 4;
 const SNAPSHOT_URL = "http://localhost:3000/api/zero/chat-threads/snapshot";
 const EVENTS_URL = "http://localhost:3000/api/zero/chat-threads/events";
 
@@ -54,6 +58,7 @@ function snapshotThread(options: {
 
 function event(options: {
   readonly id: string;
+  readonly seqId: number;
   readonly kind: "renamed" | "sort_touched";
   readonly chatThreadId: string;
   readonly agentId: string;
@@ -121,17 +126,19 @@ describe("zero chat list command", () => {
             }),
           ],
           latestEventId: INITIAL_EVENT_ID,
+          latestSeqId: INITIAL_SEQ_ID,
         });
       }),
       http.get(EVENTS_URL, ({ request }) => {
         eventRequests++;
-        const cursor = new URL(request.url).searchParams.get("sinceEventId");
+        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
         if (eventRequests === 1) {
-          expect(cursor).toBe(INITIAL_EVENT_ID);
+          expect(cursor).toBe(String(INITIAL_SEQ_ID));
           return HttpResponse.json({
             events: [
               event({
                 id: RENAME_EVENT_ID,
+                seqId: RENAME_SEQ_ID,
                 kind: "renamed",
                 chatThreadId: THREAD_ID,
                 agentId: AGENT_ID,
@@ -143,11 +150,12 @@ describe("zero chat list command", () => {
           });
         }
 
-        expect(cursor).toBe(RENAME_EVENT_ID);
+        expect(cursor).toBe(String(RENAME_SEQ_ID));
         return HttpResponse.json({
           events: [
             event({
               id: SORT_EVENT_ID,
+              seqId: SORT_SEQ_ID,
               kind: "sort_touched",
               chatThreadId: SECOND_THREAD_ID,
               agentId: AGENT_ID,
@@ -218,13 +226,14 @@ describe("zero chat list command", () => {
           ],
           latestEventId:
             snapshotRequests === 1 ? INITIAL_EVENT_ID : REFRESH_EVENT_ID,
+          latestSeqId: snapshotRequests === 1 ? INITIAL_SEQ_ID : REFRESH_SEQ_ID,
         });
       }),
       http.get(EVENTS_URL, ({ request }) => {
         eventRequests++;
-        const cursor = new URL(request.url).searchParams.get("sinceEventId");
+        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
         if (eventRequests === 2) {
-          expect(cursor).toBe(INITIAL_EVENT_ID);
+          expect(cursor).toBe(String(INITIAL_SEQ_ID));
           return HttpResponse.json(
             {
               error: {
@@ -236,7 +245,7 @@ describe("zero chat list command", () => {
           );
         }
         expect(cursor).toBe(
-          eventRequests === 1 ? INITIAL_EVENT_ID : REFRESH_EVENT_ID,
+          String(eventRequests === 1 ? INITIAL_SEQ_ID : REFRESH_SEQ_ID),
         );
         return HttpResponse.json({ events: [], hasMore: false });
       }),
@@ -273,6 +282,7 @@ describe("zero chat list command", () => {
             }),
           ],
           latestEventId: INITIAL_EVENT_ID,
+          latestSeqId: INITIAL_SEQ_ID,
         });
       }),
       http.get(EVENTS_URL, () => {

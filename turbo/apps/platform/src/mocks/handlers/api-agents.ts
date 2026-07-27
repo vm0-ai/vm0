@@ -162,6 +162,7 @@ export const apiAgentsHandlers = [
     return respond(200, {
       chatThreads: [],
       latestEventId: null,
+      latestSeqId: null,
     });
   }),
 
