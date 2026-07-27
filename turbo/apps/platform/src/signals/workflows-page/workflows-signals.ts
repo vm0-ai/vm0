@@ -106,7 +106,7 @@ export type WorkflowAutomationCreateDialog =
   | "webhook"
   | null;
 export type NotionPageContentUpdatedScopeMode = "page" | "database";
-export type WorkflowAutomationCategoryKey =
+type WorkflowAutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
@@ -119,7 +119,7 @@ type WorkflowWebhookAutomationSummary = Extract<
 type WorkflowGithubLabelActor =
   GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
 export type WorkflowAutomationEntry = ZeroWorkflowAutomationsListEntry;
-export const WORKFLOW_DETAIL_FILE_PARAM = "file";
+const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
   switch (route) {
@@ -139,7 +139,7 @@ function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
   }
 }
 
-export function workflowDetailRouteForTab(
+function workflowDetailRouteForTab(
   tab: WorkflowDetailTab,
 ):
   | typeof ROUTES.workflowDetailAutomations
@@ -866,26 +866,6 @@ export const copyWorkflow$ = command(
     return result.body;
   },
 );
-
-export const runWorkflow$ = command(
-  async (
-    { get },
-    workflowId: string,
-    signal: AbortSignal,
-  ): Promise<{ chatThreadId: string; runId: string | null }> => {
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
-    const result = await accept(
-      client.run({
-        params: { workflowId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return result.body;
-  },
-);
-
 export const openWorkflowChat$ = command(
   async ({ get, set }, workflowId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroWorkflowsDetailContract);

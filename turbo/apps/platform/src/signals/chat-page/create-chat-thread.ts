@@ -162,14 +162,7 @@ import {
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
-export type {
-  DraftInputSyncTarget,
-  DraftSignals,
-} from "../zero-page/chat-draft.ts";
-export type {
-  ChatThreadSignals,
-  SendMessageOptions,
-} from "./chat-thread-signals.ts";
+export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 

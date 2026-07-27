@@ -5,7 +5,7 @@ import {
   type PlatformService,
 } from "../lib/platform-host.ts";
 
-export type PlatformHostTarget = PlatformService;
+type PlatformHostTarget = PlatformService;
 export { rewritePlatformHostname };
 
 function trimTrailingSlash(base: string): string {

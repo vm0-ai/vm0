@@ -1,6 +1,6 @@
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
-import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -15,7 +15,10 @@ const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
 
 describe("connector callback page", () => {
   it("forwards provider parameters and renders a durable success page", async () => {
-    const githubIcon = getStaticConnectorIconMetadata("github");
+    const githubIcon: PublicConnectorCatalogIcon = {
+      url: "https://icons.example.test/github.svg",
+      invertInDarkMode: true,
+    };
     context.store.set(
       setConnectorAppOauthCallbackMetadata$,
       JSON.stringify({ connectorRef: "github", icon: githubIcon }),

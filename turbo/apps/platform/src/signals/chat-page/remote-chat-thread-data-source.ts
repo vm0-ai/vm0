@@ -263,7 +263,7 @@ export const listMessagesAfter$ = command(
   },
 );
 
-export const listMessagesBefore$ = command(
+const listMessagesBefore$ = command(
   async (
     { get },
     { threadId, beforeSeqId }: ListMessagesBeforeArgs,

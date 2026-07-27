@@ -52,8 +52,6 @@ import {
   setAgentDemoteConfirmOpen$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 
-export type { AgentDeleteWorkflow, AgentDeleteCopyTarget };
-
 interface ZeroSettingsTabProps {
   agentId: string;
   displayName: string;

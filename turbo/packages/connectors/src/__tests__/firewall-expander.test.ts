@@ -8,6 +8,7 @@ import {
   hasBaseUrlVars,
   resolveFirewallBaseUrlTemplate,
   resolveFirewallBaseUrlVars,
+  UNKNOWN_PERMISSION_GRANT,
 } from "../firewall-types";
 import {
   collectAndValidatePermissions,
@@ -66,6 +67,26 @@ describe("firewall expander helpers", () => {
     const names = collectAndValidatePermissions(config);
     expect([...names].sort()).toEqual(["read", "upload"]);
   });
+
+  it.each(["all", UNKNOWN_PERMISSION_GRANT])(
+    'collectAndValidatePermissions rejects reserved permission name "%s"',
+    (name) => {
+      const config: FirewallConfig = {
+        name: "reserved-permission",
+        apis: [
+          {
+            base: "https://api.example.com",
+            auth: { headers: {} },
+            permissions: [{ name, rules: ["GET /items"] }],
+          },
+        ],
+      };
+
+      expect(() => {
+        return collectAndValidatePermissions(config);
+      }).toThrow(`permission named "${name}"`);
+    },
+  );
 
   it("collectAndValidatePermissions rejects unsafe firewall base paths", () => {
     const config: FirewallConfig = {

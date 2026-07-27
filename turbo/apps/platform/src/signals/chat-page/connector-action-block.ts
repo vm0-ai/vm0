@@ -139,7 +139,7 @@ export function parseCustomConnectorProposalUrl(
   };
 }
 
-export function createCustomConnectorSignals(
+function createCustomConnectorSignals(
   descriptor: CustomConnectorActionDescriptor,
 ): CustomConnectorSignals {
   return descriptor;
@@ -260,7 +260,7 @@ function createConnectorActivation(
   });
 }
 
-export function createConnectorSignals(
+function createConnectorSignals(
   descriptor: ConnectorActionDescriptor,
 ): ConnectorSignals {
   const catalogItem$ = computed(async (get) => {

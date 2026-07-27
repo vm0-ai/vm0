@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import {
   connectorAuthClientIdentity,
-  getConnectorAuthMethodAuthCodeGrantConfig,
-  resolveConnectorAuthClientForMethod,
   type StaticConfidentialConnectorAuthClient,
-} from "../../../connector-utils";
+} from "../../../connector-auth-method";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
@@ -14,6 +12,7 @@ import {
 } from "../meta-ads/oauth";
 import { metaAdsProvider } from "../meta-ads/provider";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 const TOKEN_URL = "https://graph.facebook.com/v22.0/oauth/access_token";
 const USER_URL = "https://graph.facebook.com/v22.0/me";
@@ -25,7 +24,15 @@ const testAuthClient = {
 } satisfies StaticConfidentialConnectorAuthClient;
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("meta-ads", "oauth");
+  return authCodeGrantFixture([
+    "ads_management",
+    "ads_read",
+    "business_management",
+    "pages_manage_ads",
+    "pages_read_engagement",
+    "pages_show_list",
+    "public_profile",
+  ]);
 }
 
 describe("connector/providers/meta-ads", () => {
@@ -206,10 +213,7 @@ describe("connector/providers/meta-ads", () => {
   describe("metaAdsProvider", () => {
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {
       const url = metaAdsProvider.grant.buildAuthUrl({
-        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
-          "meta-ads",
-          "oauth",
-        ),
+        authCodeGrant: authCodeGrant(),
         authClient: connectorAuthClientIdentity(testAuthClient),
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -217,22 +221,6 @@ describe("connector/providers/meta-ads", () => {
 
       expect(url).toContain("client_id=test-client");
       expect(url).toContain("facebook.com/v22.0/dialog/oauth");
-    });
-
-    it("resolves the OAuth client from Meta Ads env names", () => {
-      const env: Record<string, string> = {
-        META_ADS_OAUTH_CLIENT_ID: "test-client-id",
-        META_ADS_OAUTH_CLIENT_SECRET: "test-client-secret",
-      };
-
-      expect(
-        resolveConnectorAuthClientForMethod("meta-ads", "oauth", (name) => {
-          return env[name];
-        }),
-      ).toMatchObject({
-        clientId: "test-client-id",
-        clientSecret: "test-client-secret",
-      });
     });
 
     it("refreshes the stored long-lived access token", async () => {
