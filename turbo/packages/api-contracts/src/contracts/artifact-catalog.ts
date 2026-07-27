@@ -46,6 +46,7 @@ const artifactCatalogListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
   cursor: z.string().optional(),
   kind: artifactKindSchema.optional(),
+  chatThreadId: z.string().uuid().optional(),
 });
 
 const artifactCatalogListResponseSchema = z.object({

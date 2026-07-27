@@ -993,6 +993,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly limit?: number;
         readonly cursor?: string;
         readonly kind?: ArtifactCatalogKind;
+        readonly chatThreadId?: string;
       } = {},
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];
@@ -1006,19 +1007,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async requestListArtifactCatalog(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403)[],
-    ) {
-      return await accept(
-        artifactCatalogClient().list({
-          headers: authenticate(context, actor),
-          query: {},
-        }),
-        statuses,
-      );
     },
 
     async getArtifactCatalogEntry(

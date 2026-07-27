@@ -15,6 +15,7 @@ import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
+import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
@@ -127,6 +128,8 @@ export interface ChatThreadSignals {
   // -- Thread-owned automation resources -----------------------------------
   headerAutomations: HeaderAutomationSignals;
   workflowQueue: WorkflowQueueSignals;
+  // -- Thread-owned utility sidebar (NewChatThreadSidebar switch) -----------
+  sidebar: ThreadSidebarSignals;
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;
   toggleTimelineExpanded$: Command<void, [string]>;

@@ -122,7 +122,10 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  newChatThreadSidebarEnabled$,
+} from "../../signals/external/feature-switch.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -208,7 +211,6 @@ import {
   currentArtifactInboxThreadId$,
   currentArtifactRef$,
   openArtifactFromInbox$,
-  openArtifactInbox$,
   setArtifactInboxQuery$,
   setArtifactInboxSection$,
   setArtifactPanelResizing$,
@@ -229,9 +231,16 @@ import {
   closeHeaderAutomationSidebar$,
   currentEditingHeaderWorkflowAutomationId$,
   currentHeaderAutomationThreadId$,
-  openHeaderAutomationSidebar$,
   setEditingHeaderWorkflowAutomationId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
+import {
+  activeThreadSidebar$,
+  openThreadAutomations$,
+} from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import {
+  ThreadSidebarSlot,
+  useOpenThreadArtifacts,
+} from "./thread-sidebar.tsx";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { currentBrowserSessionId$ } from "../../signals/zero-page/browser-session-sidebar.ts";
@@ -346,10 +355,14 @@ function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const openInbox = useSet(openArtifactInbox$);
-  const open = inboxThreadId === thread.threadId;
+  const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  const open = newSidebarEnabled
+    ? sidebarTarget?.type === "artifacts"
+    : inboxThreadId === thread.threadId;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -359,7 +372,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
             type="button"
             onClick={() => {
               reloadArtifacts();
-              openInbox(thread.threadId);
+              openThreadArtifacts();
             }}
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
@@ -388,8 +401,10 @@ export function AutomationMenuButton({
   ariaLabel?: string;
 }) {
   const reloadAutomations = useSet(thread.headerAutomations.reload$);
-  const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
+  const openAutomationSidebar = useSet(openThreadAutomations$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
@@ -397,7 +412,9 @@ export function AutomationMenuButton({
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
       : (lastResolvedAutomations ?? []);
-  const open = openThreadId === thread.threadId;
+  const open = newSidebarEnabled
+    ? sidebarTarget?.type === "automations"
+    : openThreadId === thread.threadId;
 
   // Show the opener when the thread has a workflow automation.
   // Goals live in the composer, so a goal-only thread has nothing here.
@@ -421,7 +438,7 @@ export function AutomationMenuButton({
             aria-pressed={open}
             onClick={() => {
               reloadAutomations();
-              openAutomationSidebar(thread.threadId);
+              openAutomationSidebar(thread);
             }}
           >
             <IconClock size={18} />
@@ -2346,11 +2363,20 @@ function HeaderGmailLabelAutomationEditForm({
     </form>
   );
 }
-function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
+function HeaderAutomationSidebar({
+  thread,
+  onClose,
+}: {
+  thread: ChatThreadSignals;
+  // Overrides the legacy search-param close when the thread-owned sidebar
+  // hosts the automations list.
+  onClose?: () => void;
+}) {
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
-  const close = useSet(closeHeaderAutomationSidebar$);
+  const legacyClose = useSet(closeHeaderAutomationSidebar$);
+  const close = onClose ?? legacyClose;
   const workflowAutomations =
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
@@ -2585,7 +2611,18 @@ function useSelectedMailDraftSignals(
   );
 }
 
+function ThreadAutomationsSidebarSlot({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const close = useSet(thread.sidebar.close$);
+  return <HeaderAutomationSidebar thread={thread} onClose={close} />;
+}
+
 export function ZeroChatThreadPage() {
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
+  const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
@@ -2608,11 +2645,12 @@ export function ZeroChatThreadPage() {
   const automationPanelOpen = automationPanelThread !== undefined;
   const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
   const browserPanelOpen = selectedBrowserSessionSignals !== undefined;
-  const rightPanelOpen =
-    artifactPanelOpen ||
-    automationPanelOpen ||
-    mailDraftPanelOpen ||
-    browserPanelOpen;
+  const rightPanelOpen = newSidebarEnabled
+    ? activeThreadSidebar !== null
+    : artifactPanelOpen ||
+      automationPanelOpen ||
+      mailDraftPanelOpen ||
+      browserPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
       useGet(artifactPanelWidth$),
@@ -2651,7 +2689,21 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {selectedBrowserSessionSignals ? (
+          {newSidebarEnabled ? (
+            activeThreadSidebar ? (
+              activeThreadSidebar.target.type === "automations" ? (
+                <ThreadAutomationsSidebarSlot
+                  key={activeThreadSidebar.thread.threadId}
+                  thread={activeThreadSidebar.thread}
+                />
+              ) : (
+                <ThreadSidebarSlot
+                  thread={activeThreadSidebar.thread}
+                  target={activeThreadSidebar.target}
+                />
+              )
+            ) : null
+          ) : selectedBrowserSessionSignals ? (
             <BrowserSessionSidebar signals={selectedBrowserSessionSignals} />
           ) : selectedMailDraftSignals ? (
             <MailDraftSidebar signals={selectedMailDraftSignals} />
