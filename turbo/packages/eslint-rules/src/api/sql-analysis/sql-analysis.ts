@@ -14,6 +14,7 @@ import {
 
 import {
   getDrizzleColumnMetadata,
+  getStableDrizzleColumnOrigin,
   getStableDrizzleTableMetadata,
   isDrizzleArrayParameter,
   isDrizzleColumnType,
@@ -25,6 +26,7 @@ import {
   resolvedSymbol,
   type DrizzleTableColumnMetadata,
   type DrizzleTableMetadata,
+  type StableDrizzleColumnOrigin,
 } from "../drizzle.ts";
 import { parsePostgres } from "./postgres-parser.ts";
 import {
@@ -176,6 +178,7 @@ interface SqlMarker {
   readonly isTable: boolean;
   readonly isWrapper: boolean;
   readonly node: TSESTree.Expression;
+  readonly stableColumnOrigin: StableDrizzleColumnOrigin | undefined;
   readonly tableMetadata: DrizzleTableMetadata | undefined;
 }
 
@@ -443,6 +446,15 @@ function markerColumnMetadata(
   );
 }
 
+function markerStableColumnOrigin(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): StableDrizzleColumnOrigin | undefined {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return getStableDrizzleColumnOrigin(checker, tsNode);
+}
+
 function markerTableMetadata(
   node: TSESTree.Expression,
   checker: TypeChecker,
@@ -659,6 +671,7 @@ function parseSqlVariant(
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
+    let cachedStableColumnOrigin: StableDrizzleColumnOrigin | null | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
     let cachedTableMetadata: DrizzleTableMetadata | null | undefined;
@@ -736,6 +749,11 @@ function parseSqlVariant(
         return cachedWrapper;
       },
       node: expression,
+      get stableColumnOrigin(): StableDrizzleColumnOrigin | undefined {
+        cachedStableColumnOrigin ??=
+          markerStableColumnOrigin(expression, checker, services) ?? null;
+        return cachedStableColumnOrigin ?? undefined;
+      },
       get tableMetadata(): DrizzleTableMetadata | undefined {
         cachedTableMetadata ??=
           markerTableMetadata(expression, checker, services) ?? null;
@@ -3008,15 +3026,19 @@ function markerBelongsToTable(
   marker: SqlMarker | undefined,
   table: DrizzleTableMetadata,
 ): boolean {
-  const column = marker?.columnMetadata;
+  const origin = marker?.stableColumnOrigin;
+  const column = origin?.column;
   const tableColumn =
     column === undefined ? undefined : table.columns.get(column.databaseName);
   return (
     marker !== undefined &&
+    origin !== undefined &&
     column !== undefined &&
-    column.tableName === table.name &&
+    origin.table.name === table.name &&
+    origin.table.schema === table.schema &&
     tableColumn !== undefined &&
-    tableColumn.propertySymbol === marker.expressionSymbol
+    tableColumn.propertySymbol === column.propertySymbol &&
+    column.propertySymbol === marker.expressionSymbol
   );
 }
 
@@ -3421,7 +3443,8 @@ function isLockingCteUpdate(
     exactCteRelation(update.fromClause[0], cte.ctename) &&
     sameMarkerSymbol(targetTable, body.sourceTable, body.lockTable) &&
     sameMarkerSymbol(body.selectedColumn, body.orderColumn) &&
-    markerBelongsToTable(body.selectedColumn, table)
+    markerBelongsToTable(body.selectedColumn, table) &&
+    markerBelongsToTable(body.orderColumn, table)
   );
 }
 

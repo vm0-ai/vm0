@@ -335,6 +335,43 @@ const queryBuilderCases = {
       `,
     },
     {
+      code: `${lockingCteUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const otherCacheRows = pgTable("other_cache_rows", {
+          cacheKey: text("cache_key").primaryKey(),
+          lastRequestedAt: timestamp("last_requested_at").notNull(),
+        });
+        const disguisedCacheRows =
+          otherCacheRows as unknown as typeof cacheRows;
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${disguisedCacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE true
+            ORDER BY \${disguisedCacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}
+          FROM locked
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE true
+            ORDER BY \${disguisedCacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}
+          FROM locked
+          WHERE true
+        \`);
+      `,
+    },
+    {
       descendantErrors: [
         { messageId: "typedApi", data: { helper: "and" } },
         { messageId: "typedApi", data: { helper: "eq" } },
@@ -572,6 +609,175 @@ const queryBuilderCases = {
           SET
             value = source.value,
             updated_at = \${updatedAt}
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+        const claimedColumns = {
+          value: integer("value").notNull(),
+          updatedAt: timestamp("updated_at").notNull(),
+        };
+        const assertedRuntimeRows = pgTable(
+          "asserted_runtime_rows",
+          ({
+            value: integer("value").notNull(),
+            updatedAt: timestamp("updated_at")
+              .notNull()
+              .$onUpdateFn(() => new Date()),
+          } as unknown as typeof claimedColumns),
+        );
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            assertedRuntimeRows: typeof assertedRuntimeRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${assertedRuntimeRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const runtimeName = "runtime_value" as "claimed_value";
+        const assertedNameRows = pgTable("asserted_name_rows", {
+          value: integer(runtimeName).notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            assertedNameRows: typeof assertedNameRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${assertedNameRows}
+          SET claimed_value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const sharedColumn = integer();
+        const reusedBuilderRows = pgTable("reused_builder_rows", {
+          first: sharedColumn,
+          second: sharedColumn,
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            reusedBuilderRows: typeof reusedBuilderRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${reusedBuilderRows}
+          SET second = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+        const updatedAt = timestamp("updated_at").notNull();
+        updatedAt.$onUpdateFn(() => new Date());
+        const mutatedBuilderRows = pgTable("mutated_builder_rows", {
+          value: integer("value").notNull(),
+          updatedAt,
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            mutatedBuilderRows: typeof mutatedBuilderRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${mutatedBuilderRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const claimedFirst = integer("claimed_value").notNull();
+        const claimedSecond = integer("actual_value").notNull();
+        const assertedFirst =
+          integer("actual_value").notNull() as unknown as typeof claimedFirst;
+        const assertedSecond =
+          integer("claimed_value").notNull() as unknown as typeof claimedSecond;
+        const assertedColumnRows = pgTable("asserted_column_rows", {
+          first: assertedFirst,
+          second: assertedSecond,
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            assertedColumnRows: typeof assertedColumnRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${assertedColumnRows}
+          SET claimed_value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const claimedColumns = {
+          first: integer("claimed_value").notNull(),
+          second: integer("actual_value").notNull(),
+        };
+        const assertedConfigRows = pgTable(
+          "asserted_config_rows",
+          ({
+            first: integer("actual_value").notNull(),
+            second: integer("claimed_value").notNull(),
+          } as unknown as typeof claimedColumns),
+        );
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            assertedConfigRows: typeof assertedConfigRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${assertedConfigRows}
+          SET claimed_value = source.value
           FROM unnest(
             \${sql.param(values)}::integer[]
           ) AS source(value)
@@ -2712,6 +2918,31 @@ const queryBuilderCases = {
             \${sql.param(values)}::integer[],
             \${sql.param(values)}::integer[]
           ) AS source(first, second)
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const valueColumnName = "value";
+        const namedRows = pgTable("named_rows", {
+          value: integer(valueColumnName).notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            namedRows: typeof namedRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${namedRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
           WHERE true
         \`);
       `,
