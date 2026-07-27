@@ -1,8 +1,10 @@
-import { SignIn, SignUp } from "@clerk/react";
+import { GoogleOneTap, SignIn, SignUp } from "@clerk/react";
 import { useGet } from "ccstate-react";
+import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   buildSignInRedirectUrl,
   buildSignupRedirectUrl,
+  resolveAppUrl,
 } from "../../signals/auth.ts";
 import { theme$ } from "../../signals/theme.ts";
 import { AuthLayout } from "./auth-layout.tsx";
@@ -15,26 +17,36 @@ interface AuthPageProps {
 }
 
 export function AuthPage({ mode }: AuthPageProps) {
+  const activeRoute = useGet(activeRoute$);
   const theme = useGet(theme$);
 
   if (mode === "sign-in") {
+    const appUrl = resolveAppUrl();
     const redirectUrl = buildSignInRedirectUrl(location.search);
 
     return (
-      <AuthLayout>
-        <div
-          className="relative z-10 flex w-full max-w-md flex-col gap-3"
-          data-testid="app-sign-in"
-        >
-          <SignIn
-            appearance={getClerkAppearance(theme)}
-            fallbackRedirectUrl={redirectUrl}
-            forceRedirectUrl={redirectUrl}
-            path="/sign-in"
-            routing="path"
+      <>
+        {activeRoute === "signIn" && (
+          <GoogleOneTap
+            signInForceRedirectUrl={appUrl}
+            signUpForceRedirectUrl={appUrl}
           />
-        </div>
-      </AuthLayout>
+        )}
+        <AuthLayout>
+          <div
+            className="relative z-10 flex w-full max-w-md flex-col gap-3"
+            data-testid="app-sign-in"
+          >
+            <SignIn
+              appearance={getClerkAppearance(theme)}
+              fallbackRedirectUrl={redirectUrl}
+              forceRedirectUrl={redirectUrl}
+              path="/sign-in"
+              routing="path"
+            />
+          </div>
+        </AuthLayout>
+      </>
     );
   }
 
