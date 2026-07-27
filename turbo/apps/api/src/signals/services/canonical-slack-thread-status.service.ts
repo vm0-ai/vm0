@@ -170,7 +170,7 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
     )
     .innerJoin(
       slackChatIngress,
-      eq(slackChatIngress.id, chatMessages.revokesMessageId),
+      eq(slackChatIngress.id, chatMessages.revokesEventId),
     )
     .where(
       and(
