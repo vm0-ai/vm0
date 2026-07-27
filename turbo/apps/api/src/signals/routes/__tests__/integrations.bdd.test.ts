@@ -1864,6 +1864,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
 
   it("forks Slack DM threads without replacing the main session", async () => {
     const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    await integrations.enableSlackDmSessionRoutingSwitch(actor);
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
@@ -1932,6 +1934,43 @@ describe("INT-01: Slack app deep webhook flows", () => {
         channel: channelId,
         thread_ts: secondMessageTs,
         text: "Continued main Slack DM answer",
+      }),
+    );
+
+    const alternateAgent = await bdd.createAgent(actor, {
+      displayName: "BDD alternate Slack DM agent",
+    });
+    await integrations.postSlackInteractive(
+      integrations.agentPickerSubmission({
+        workspaceId: teamId,
+        slackUserId,
+        selectedValue: alternateAgent.agentId,
+        channelId,
+      }),
+    );
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "use an alternate Slack DM agent",
+      ts: "2950.000250",
+      channel: channelId,
+    });
+    const alternateRunId = await pollSlackRun(runnerGroup);
+    const alternateClaim = await runs.claimRunnerJob(alternateRunId);
+    expect(alternateClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: alternateRunId,
+      sandboxToken: alternateClaim.sandboxToken,
+      cliAgentType: alternateClaim.cliAgentType,
+    });
+    await flushWaitUntilForTest();
+    await integrations.postSlackInteractive(
+      integrations.agentPickerSubmission({
+        workspaceId: teamId,
+        slackUserId,
+        selectedValue: "__org_default__",
+        channelId,
       }),
     );
 
@@ -3393,7 +3432,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       user: slackUserId,
       text: "run with my override",
       ts: "5000.000200",
-      thread_ts: "5000.000100",
       channel: "D_BDD_FAIL",
     });
     await flushWaitUntilAndAssert(() => {

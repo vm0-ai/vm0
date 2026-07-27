@@ -1230,12 +1230,17 @@ function isTeamsThreadReply(activity: TeamsMessageActivity): boolean {
   );
 }
 
-function teamsSessionThreadId(activity: TeamsMessageActivity): string {
+function teamsSessionThreadId(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly agentId: string;
+  readonly selectedModel: string | null;
+}): string {
+  const { activity } = args;
   if (
     activity.conversationType === "personal" &&
     !isTeamsThreadReply(activity)
   ) {
-    return TEAMS_DIRECT_MESSAGE_THREAD_ID;
+    return `${TEAMS_DIRECT_MESSAGE_THREAD_ID}:${args.agentId}:${args.selectedModel ?? "default"}`;
   }
   return activity.threadId;
 }
@@ -1549,6 +1554,8 @@ function teamsDeliveryTarget(args: {
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
   readonly connection: TeamsConnection;
+  readonly composeId: string;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
   readonly files: readonly TeamsPromptFile[];
 }): TeamsDeliveryTarget {
   return teamsDeliveryTargetSchema.parse({
@@ -1559,7 +1566,11 @@ function teamsDeliveryTarget(args: {
     channelId: args.activity.channelId,
     conversationId: args.activity.conversationId,
     conversationType: args.activity.conversationType,
-    threadId: teamsSessionThreadId(args.activity),
+    threadId: teamsSessionThreadId({
+      activity: args.activity,
+      agentId: args.composeId,
+      selectedModel: args.modelRoute?.selectedModel ?? null,
+    }),
     activityId: args.activity.activityId,
     serviceUrl: args.activity.serviceUrl,
     connectionId: args.connection.id,
@@ -1614,7 +1625,11 @@ async function persistTeamsChatMessage(args: {
   const route = await ensureTeamsChatThreadRoute(args.db, {
     connectionId: args.connection.id,
     conversationId: args.activity.conversationId,
-    threadId: teamsSessionThreadId(args.activity),
+    threadId: teamsSessionThreadId({
+      activity: args.activity,
+      agentId: args.composeId,
+      selectedModel: args.modelRoute?.selectedModel ?? null,
+    }),
     userId: args.connection.vm0UserId,
     orgId: args.installation.orgId,
     agentComposeId: args.composeId,
@@ -1627,6 +1642,8 @@ async function persistTeamsChatMessage(args: {
     activity: args.activity,
     installation: args.installation,
     connection: args.connection,
+    composeId: args.composeId,
+    modelRoute: args.modelRoute,
     files: [...args.promptFiles, ...args.promptContext.files],
   });
   const prompt = promptForTeamsRun(args);

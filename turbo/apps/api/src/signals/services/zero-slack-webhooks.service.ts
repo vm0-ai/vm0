@@ -1,6 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
 import type { Block, KnownBlock } from "@slack/web-api";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
@@ -211,6 +215,18 @@ type SlackAgentRouteAdmission =
       readonly kind: "ignored";
     };
 
+interface SlackAgentRouteArgs {
+  readonly db: Db;
+  readonly workspaceId: string;
+  readonly channelId: string;
+  readonly channelType: SlackChannelType;
+  readonly slackUserId: string;
+  readonly messageTs: string;
+  readonly threadTs?: string;
+  readonly eventId: string;
+  readonly isRetry: boolean;
+}
+
 interface WorkspaceAgentSummary {
   readonly id: string;
   readonly name: string;
@@ -226,6 +242,11 @@ type EffectiveComposeResolution =
   | {
       readonly status: "not_configured" | "not_found" | "not_accessible";
     };
+
+type ResolvedEffectiveCompose = Extract<
+  EffectiveComposeResolution,
+  { readonly status: "resolved" }
+>;
 
 interface SlackAgentAdmissionNoticeBase {
   readonly installation: SlackInstallation;
@@ -687,20 +708,168 @@ const postSlackAgentAdmissionNotice$ = command(
   },
 );
 
+const resolveSlackRouteCompose$ = command(
+  async (
+    { set },
+    args: SlackAgentAdmissionNoticeBase & {
+      readonly db: Db;
+      readonly connection: SlackConnection;
+      readonly orgId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ResolvedEffectiveCompose | undefined> => {
+    const effectiveCompose = await resolveEffectiveCompose(
+      args.db,
+      args.connection.vm0UserId,
+      args.orgId,
+    );
+    signal.throwIfAborted();
+    if (effectiveCompose.status === "resolved") {
+      return effectiveCompose;
+    }
+    waitUntil(
+      tapError(
+        set(postSlackAgentAdmissionNotice$, {
+          kind: effectiveCompose.status,
+          installation: args.installation,
+          connection: args.connection,
+          workspaceId: args.workspaceId,
+          channelId: args.channelId,
+          channelType: args.channelType,
+          slackUserId: args.slackUserId,
+          messageTs: args.messageTs,
+          ...(args.threadTs ? { threadTs: args.threadTs } : {}),
+        }),
+        (error) => {
+          L.error("Failed to post Slack admission notice", { error });
+        },
+      ),
+    );
+    return undefined;
+  },
+);
+
+const resolveConnectedSlackAgentRouteAdmission$ = command(
+  async (
+    { get, set },
+    args: SlackAgentRouteArgs & {
+      readonly installation: SlackInstallation;
+      readonly connection: SlackConnection;
+      readonly orgId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<SlackAgentRouteAdmission> => {
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.connection.vm0UserId),
+    );
+    signal.throwIfAborted();
+    const reuseMainDirectMessageSession =
+      args.channelType === "dm" &&
+      args.threadTs === undefined &&
+      isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {
+        orgId: args.orgId,
+        userId: args.connection.vm0UserId,
+        overrides,
+      });
+    let effectiveCompose = reuseMainDirectMessageSession
+      ? await set(
+          resolveSlackRouteCompose$,
+          {
+            db: args.db,
+            connection: args.connection,
+            orgId: args.orgId,
+            installation: args.installation,
+            workspaceId: args.workspaceId,
+            channelId: args.channelId,
+            channelType: args.channelType,
+            slackUserId: args.slackUserId,
+            messageTs: args.messageTs,
+          },
+          signal,
+        )
+      : undefined;
+    if (reuseMainDirectMessageSession && !effectiveCompose) {
+      return { kind: "ignored" };
+    }
+    const mainDirectMessageModelRoute = reuseMainDirectMessageSession
+      ? await set(
+          resolveIntegrationModelRouteForUser$,
+          {
+            orgId: args.orgId,
+            userId: args.connection.vm0UserId,
+          },
+          signal,
+        )
+      : undefined;
+    signal.throwIfAborted();
+    const sessionThreadTs = slackSessionThreadTs({
+      channelType: args.channelType,
+      messageTs: args.messageTs,
+      ...(args.threadTs ? { threadTs: args.threadTs } : {}),
+      ...(effectiveCompose
+        ? { agentComposeId: effectiveCompose.composeId }
+        : {}),
+      selectedModel: mainDirectMessageModelRoute?.selectedModel ?? null,
+    });
+    const routeKey = {
+      connectionId: args.connection.id,
+      channelId: args.channelId,
+      threadTs: sessionThreadTs,
+      userId: args.connection.vm0UserId,
+    };
+    const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
+    signal.throwIfAborted();
+    if (existingRoute) {
+      return { kind: "canonical", routeId: existingRoute.id };
+    }
+
+    effectiveCompose ??= await set(
+      resolveSlackRouteCompose$,
+      {
+        db: args.db,
+        connection: args.connection,
+        orgId: args.orgId,
+        installation: args.installation,
+        workspaceId: args.workspaceId,
+        channelId: args.channelId,
+        channelType: args.channelType,
+        slackUserId: args.slackUserId,
+        messageTs: args.messageTs,
+        ...(args.threadTs ? { threadTs: args.threadTs } : {}),
+      },
+      signal,
+    );
+    if (!effectiveCompose) {
+      return { kind: "ignored" };
+    }
+
+    const modelRoute = reuseMainDirectMessageSession
+      ? mainDirectMessageModelRoute
+      : await set(
+          resolveIntegrationModelRouteForUser$,
+          {
+            orgId: args.orgId,
+            userId: args.connection.vm0UserId,
+          },
+          signal,
+        );
+    signal.throwIfAborted();
+    const route = await ensureCanonicalSlackChatThreadRoute(args.db, {
+      ...routeKey,
+      orgId: args.orgId,
+      agentComposeId: effectiveCompose.composeId,
+      selectedModel: modelRoute?.selectedModel ?? null,
+      currentTime: nowDate(),
+    });
+    signal.throwIfAborted();
+    return { kind: "canonical", routeId: route.id };
+  },
+);
+
 const resolveSlackAgentRouteAdmission$ = command(
   async (
     { set },
-    args: {
-      readonly db: Db;
-      readonly workspaceId: string;
-      readonly channelId: string;
-      readonly channelType: SlackChannelType;
-      readonly slackUserId: string;
-      readonly messageTs: string;
-      readonly threadTs?: string;
-      readonly eventId: string;
-      readonly isRetry: boolean;
-    },
+    args: SlackAgentRouteArgs,
     signal: AbortSignal,
   ): Promise<SlackAgentRouteAdmission> => {
     const installation = await installationForWorkspace(
@@ -740,70 +909,11 @@ const resolveSlackAgentRouteAdmission$ = command(
       }
       return { kind: "ignored" };
     }
-
-    const sessionThreadTs = slackSessionThreadTs({
-      channelType: args.channelType,
-      messageTs: args.messageTs,
-      ...(args.threadTs ? { threadTs: args.threadTs } : {}),
-    });
-    const routeKey = {
-      connectionId: connection.id,
-      channelId: args.channelId,
-      threadTs: sessionThreadTs,
-      userId: connection.vm0UserId,
-    };
-    const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
-    signal.throwIfAborted();
-    if (existingRoute) {
-      return { kind: "canonical", routeId: existingRoute.id };
-    }
-
-    const effectiveCompose = await resolveEffectiveCompose(
-      args.db,
-      connection.vm0UserId,
-      orgId,
-    );
-    signal.throwIfAborted();
-    if (effectiveCompose.status !== "resolved") {
-      waitUntil(
-        tapError(
-          set(postSlackAgentAdmissionNotice$, {
-            kind: effectiveCompose.status,
-            installation,
-            connection,
-            workspaceId: args.workspaceId,
-            channelId: args.channelId,
-            channelType: args.channelType,
-            slackUserId: args.slackUserId,
-            messageTs: args.messageTs,
-            ...(args.threadTs ? { threadTs: args.threadTs } : {}),
-          }),
-          (error) => {
-            L.error("Failed to post Slack admission notice", { error });
-          },
-        ),
-      );
-      return { kind: "ignored" };
-    }
-
-    const modelRoute = await set(
-      resolveIntegrationModelRouteForUser$,
-      {
-        orgId,
-        userId: connection.vm0UserId,
-      },
+    return await set(
+      resolveConnectedSlackAgentRouteAdmission$,
+      { ...args, installation, connection, orgId },
       signal,
     );
-    signal.throwIfAborted();
-    const route = await ensureCanonicalSlackChatThreadRoute(args.db, {
-      ...routeKey,
-      orgId,
-      agentComposeId: effectiveCompose.composeId,
-      selectedModel: modelRoute?.selectedModel ?? null,
-      currentTime: nowDate(),
-    });
-    signal.throwIfAborted();
-    return { kind: "canonical", routeId: route.id };
   },
 );
 

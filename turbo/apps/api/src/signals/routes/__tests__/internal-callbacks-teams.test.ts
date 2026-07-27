@@ -81,6 +81,7 @@ interface ConnectedTeamsActor {
   readonly fixture: TeamsConnectFixture;
   readonly actor: ReturnType<typeof authOrgApi.user>;
   readonly runnerGroup: string;
+  readonly defaultAgentId: string;
 }
 
 function teamsServiceBaseUrl(serviceUrl: string): string {
@@ -388,7 +389,12 @@ async function setupConnectedTeamsActor(
   await flushWaitUntilForTest();
   clearTeamsApiCalls(setupTeamsApi);
 
-  return { fixture, actor, runnerGroup };
+  return {
+    fixture,
+    actor,
+    runnerGroup,
+    defaultAgentId: defaultAgent.body.agentId,
+  };
 }
 
 async function dispatchTeamsRun(args: {
@@ -467,6 +473,39 @@ async function dispatchTeamsPersonalRun(args: {
     orgRole: "org:admin",
   });
   return await runIdForPrompt(actor, args.text);
+}
+
+async function switchTeamsAgent(args: {
+  readonly fixture: TeamsConnectFixture;
+  readonly activityId: string;
+  readonly agentId: string;
+}): Promise<void> {
+  const response = await postTeamsActivityForTest({
+    signal: context.signal,
+    activity: teamsMessageActivityForTest(args.fixture, {
+      id: args.activityId,
+      conversation: {
+        id: `a:personal-${args.fixture.teamsUserId}`,
+        conversationType: "personal",
+      },
+      channelData: {
+        tenant: {
+          id: args.fixture.teamsTenantId,
+          name: args.fixture.teamsTenantName,
+        },
+        teamsAppId: BOT_APP_ID,
+      },
+      text: "",
+      entities: [],
+      value: {
+        zeroTeamsAction: "switch_agent",
+        selectedComposeId: args.agentId,
+      },
+    }),
+  });
+  expect(response.status).toBe(200);
+  await response.json();
+  await flushWaitUntilForTest();
 }
 
 async function claimTeamsRun(args: {
@@ -604,6 +643,37 @@ describe("Teams org internal callbacks", () => {
       runId: secondRunId,
       sandboxToken: secondClaim.sandboxToken,
       exitCode: 0,
+    });
+
+    const alternateAgent = await authOrgApi.createAgent(teams.actor, {
+      displayName: "Alternate Teams DM agent",
+      visibility: "public",
+    });
+    await switchTeamsAgent({
+      fixture: teams.fixture,
+      activityId: "activity-personal-switch-alternate",
+      agentId: alternateAgent.agentId,
+    });
+    const alternateRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-alternate-agent",
+      text: "use an alternate Teams DM agent",
+    });
+    const alternateClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: alternateRunId,
+    });
+    expect(alternateClaim.resumeSession).toBeNull();
+    clearTeamsApiCalls(teamsApi);
+    await completeSandboxRun({
+      runId: alternateRunId,
+      sandboxToken: alternateClaim.sandboxToken,
+      exitCode: 0,
+    });
+    await switchTeamsAgent({
+      fixture: teams.fixture,
+      activityId: "activity-personal-switch-default",
+      agentId: teams.defaultAgentId,
     });
 
     const rootActivityId = "activity-personal-main-second";

@@ -419,6 +419,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SlackDmSessionRouting]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Reuse agent/model-scoped sessions for top-level Slack direct messages after compatible callback readers are deployed.",
+    enabled: false,
+  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:

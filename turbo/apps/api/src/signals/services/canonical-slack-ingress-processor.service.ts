@@ -39,7 +39,10 @@ import {
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { slackSessionThreadTs } from "./slack-chat-ingress.service";
+import {
+  isSlackDirectMessageSessionThreadTs,
+  slackSessionThreadTs,
+} from "./slack-chat-ingress.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import {
@@ -234,15 +237,21 @@ function requireMatchingEvent(
 ) {
   const parsed = slackEventCallbackSchema.parse(JSON.parse(payload) as unknown);
   const event = parsed.event;
+  const channelType = slackChannelType(event);
+  const matchesThread =
+    channelType === "dm" && !event.thread_ts
+      ? isSlackDirectMessageSessionThreadTs(route.threadTs) ||
+        route.threadTs === event.ts
+      : slackSessionThreadTs({
+          channelType,
+          messageTs: event.ts,
+          ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
+        }) === route.threadTs;
   if (
     parsed.team_id !== route.workspaceId ||
     event.user !== route.slackUserId ||
     event.channel !== route.channelId ||
-    slackSessionThreadTs({
-      channelType: slackChannelType(event),
-      messageTs: event.ts,
-      ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
-    }) !== route.threadTs
+    !matchesThread
   ) {
     throw new Error("Canonical Slack ingress payload does not match its route");
   }

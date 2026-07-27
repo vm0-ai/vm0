@@ -27,11 +27,17 @@ export function slackSessionThreadTs(args: {
   readonly channelType: "channel" | "dm" | "group_dm";
   readonly messageTs: string;
   readonly threadTs?: string;
+  readonly agentComposeId?: string;
+  readonly selectedModel?: string | null;
 }): string {
-  if (args.channelType === "dm" && !args.threadTs) {
-    return SLACK_DIRECT_MESSAGE_THREAD_TS;
+  if (args.channelType === "dm" && !args.threadTs && args.agentComposeId) {
+    return `${SLACK_DIRECT_MESSAGE_THREAD_TS}:${args.agentComposeId}:${args.selectedModel ?? "default"}`;
   }
   return args.threadTs ?? args.messageTs;
+}
+
+export function isSlackDirectMessageSessionThreadTs(threadTs: string): boolean {
+  return threadTs.startsWith(`${SLACK_DIRECT_MESSAGE_THREAD_TS}:`);
 }
 
 function slackChatThreadRouteWhere(key: SlackChatThreadRouteKey) {
