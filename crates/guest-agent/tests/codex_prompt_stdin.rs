@@ -6,6 +6,7 @@ use guest_agent::active_input::ActiveInputRuntime;
 use guest_agent::masker::SecretMasker;
 use guest_agent::run_context::GuestRuntime;
 use shell_quote::quote_shell_arg;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -16,6 +17,16 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
     "features.plugins=false",
     "features.apps=false",
 ];
+const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
+    ["features.fast_mode=true", r#"service_tier="fast""#];
+const STRUCTURED_CODEX_RUNTIME_CONFIG: &str = r#"{
+    "providerId": "minimax",
+    "name": "MiniMax",
+    "baseUrl": "https://api.minimax.io/v1",
+    "envKey": "OPENAI_API_KEY",
+    "wireApi": "responses",
+    "supportsWebsockets": false
+}"#;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -96,6 +107,100 @@ async fn fresh_and_resumed_codex_apply_fixed_startup_policy() -> TestResult {
 }
 
 #[tokio::test]
+async fn eligible_chatgpt_codex_exec_applies_fast_startup_policy() -> TestResult {
+    let mock = common::build_and_locate_mock_codex()?;
+    let root = tempfile::tempdir()?;
+    let argv_path = root.path().join("codex-argv");
+    let recording_mock = recording_codex(root.path(), &mock, &argv_path)?;
+    common::ensure_canonical_workspace_for_test()?;
+    let user_env = HashMap::from([
+        ("CHATGPT_ACCOUNT_ID".to_string(), "account-test".to_string()),
+        ("OPENAI_MODEL".to_string(), "gpt-5.5".to_string()),
+        ("VM0_CODEX_SERVICE_TIER".to_string(), "fast".to_string()),
+    ]);
+    let runtime = build_runtime_with_startup_config(
+        root.path(),
+        &recording_mock,
+        "codex-exec-fast-mode",
+        "verify fast mode",
+        false,
+        &user_env,
+        "",
+    )?;
+
+    let result = execute_with_timeout(&runtime).await?;
+
+    assert_eq!(result.exit_code, common::CLEAN_EXIT);
+    let args = read_recorded_args(&argv_path)?;
+    for config in CODEX_FAST_MODE_STARTUP_CONFIGS {
+        assert_config_count(&args, config, 1);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn codex_exec_preserves_provider_config_precedence() -> TestResult {
+    let mock = common::build_and_locate_mock_codex()?;
+    let root = tempfile::tempdir()?;
+    let argv_path = root.path().join("codex-argv");
+    let recording_mock = recording_codex(root.path(), &mock, &argv_path)?;
+    common::ensure_canonical_workspace_for_test()?;
+    let legacy_base_url = "https://api.legacy-provider.test/v1";
+    let legacy_user_env =
+        HashMap::from([("OPENAI_BASE_URL".to_string(), legacy_base_url.to_string())]);
+    let legacy_runtime = build_runtime_with_startup_config(
+        root.path(),
+        &recording_mock,
+        "codex-exec-legacy-provider",
+        "verify legacy provider",
+        false,
+        &legacy_user_env,
+        "",
+    )?;
+
+    let legacy_result = execute_with_timeout(&legacy_runtime).await?;
+
+    assert_eq!(legacy_result.exit_code, common::CLEAN_EXIT);
+    let legacy_args = read_recorded_args(&argv_path)?;
+    assert_config_count(
+        &legacy_args,
+        &format!(r#"openai_base_url="{legacy_base_url}""#),
+        1,
+    );
+
+    let structured_user_env = HashMap::from([
+        ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
+        ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
+        (
+            "OPENAI_BASE_URL".to_string(),
+            "https://api.should-not-win.test/v1".to_string(),
+        ),
+    ]);
+    let structured_runtime = build_runtime_with_startup_config(
+        root.path(),
+        &recording_mock,
+        "codex-exec-structured-provider",
+        "verify structured provider",
+        false,
+        &structured_user_env,
+        STRUCTURED_CODEX_RUNTIME_CONFIG,
+    )?;
+
+    let structured_result = execute_with_timeout(&structured_runtime).await?;
+
+    assert_eq!(structured_result.exit_code, common::CLEAN_EXIT);
+    let structured_args = read_recorded_args(&argv_path)?;
+    assert_config_count(&structured_args, r#"model_provider="minimax""#, 1);
+    assert!(
+        !structured_args
+            .iter()
+            .any(|arg| arg.starts_with("openai_base_url=")),
+        "structured provider must suppress legacy base URL: {structured_args:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn codex_exit_before_reading_stdin_preserves_exit_and_stderr() -> TestResult {
     let root = tempfile::tempdir()?;
     common::ensure_canonical_workspace_for_test()?;
@@ -150,6 +255,18 @@ fn build_runtime(
     prompt: &str,
     resume: bool,
 ) -> TestResult<GuestRuntime> {
+    build_runtime_with_startup_config(root, mock_path, run_id, prompt, resume, &HashMap::new(), "")
+}
+
+fn build_runtime_with_startup_config(
+    root: &Path,
+    mock_path: &Path,
+    run_id: &str,
+    prompt: &str,
+    resume: bool,
+    user_env: &HashMap<String, String>,
+    codex_runtime_config: &str,
+) -> TestResult<GuestRuntime> {
     let home = root.join(format!("home-{run_id}"));
     let runtime_dir = home.join("runtime");
     std::fs::create_dir_all(&home)?;
@@ -157,9 +274,14 @@ fn build_runtime(
         &runtime_dir,
         &guest_contracts::env::RunPayload {
             prompt: prompt.to_string(),
+            codex_runtime_config: codex_runtime_config.to_string(),
             ..guest_contracts::env::RunPayload::default()
         },
     )?;
+    let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
+    std::fs::create_dir_all(&user_env_dir)?;
+    let user_env_file = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
+    std::fs::write(&user_env_file, serde_json::to_vec(user_env)?)?;
     let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
         run_id: run_id.to_string(),
         api_url: "http://127.0.0.1:1".to_string(),
@@ -174,6 +296,7 @@ fn build_runtime(
         use_mock_codex: "true".to_string(),
         mock_codex_path: Some(mock_path.to_string_lossy().into_owned()),
         cli_agent_type: "codex".to_string(),
+        user_env_file: user_env_file.to_string_lossy().into_owned(),
         run_payload_file: run_payload_file.to_string_lossy().into_owned(),
         home: Some(home.to_string_lossy().into_owned()),
         guest_runtime_dir: Some(runtime_dir.clone()),
@@ -245,16 +368,27 @@ fn recording_codex(root: &Path, mock: &Path, argv_path: &Path) -> TestResult<Pat
 }
 
 fn assert_fixed_startup_policy(argv_path: &Path) -> TestResult {
-    let args = std::fs::read_to_string(argv_path)?
-        .lines()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+    let args = read_recorded_args(argv_path)?;
     for expected in CODEX_FIXED_STARTUP_CONFIGS {
-        assert!(
-            args.windows(2)
-                .any(|window| matches!(window, [flag, value] if flag == "-c" && value == expected)),
-            "Codex argv should include fixed startup config {expected:?}: {args:?}"
-        );
+        assert_config_count(&args, expected, 1);
     }
     Ok(())
+}
+
+fn read_recorded_args(argv_path: &Path) -> TestResult<Vec<String>> {
+    Ok(std::fs::read_to_string(argv_path)?
+        .lines()
+        .map(str::to_string)
+        .collect())
+}
+
+fn assert_config_count(args: &[String], config: &str, expected_count: usize) {
+    let actual_count = args
+        .windows(2)
+        .filter(|window| matches!(window, [flag, value] if flag == "-c" && value == config))
+        .count();
+    assert_eq!(
+        actual_count, expected_count,
+        "unexpected count for Codex config {config:?}: {args:?}"
+    );
 }
