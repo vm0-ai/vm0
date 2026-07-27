@@ -473,8 +473,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ImageStyleR2]: {
     maintainer: "bingjie@vm0.ai",

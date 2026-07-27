@@ -13,6 +13,7 @@ describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplateV2, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
@@ -160,7 +161,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
