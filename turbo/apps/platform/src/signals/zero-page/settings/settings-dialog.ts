@@ -1,9 +1,11 @@
 import { command, computed, state } from "ccstate";
+import type { UserProfileModalProps } from "@clerk/react/types";
+import { clerk$ } from "../../auth.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
-import { resetSignal } from "../../utils.ts";
+import { onRef, resetSignal } from "../../utils.ts";
 import {
   clearBillingScrollTarget$,
   clearPendingLogo$,
@@ -46,7 +48,8 @@ const resetSettingsDialogSignal$ = resetSignal();
 const internalSettingsDialogSessionActive$ = state(false);
 const internalSettingsDialogInitialized$ = state(false);
 const internalSettingsDialogHandoffPending$ = state(false);
-const internalExternalProfileModalOpen$ = state(false);
+const internalSettingsClerkProfilePortalContainer$ =
+  state<HTMLDivElement | null>(null);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
   readonly section: SettingsSection;
@@ -58,13 +61,43 @@ export const settingsDialogOpen$ = computed((get) => {
 
 export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
 
-export const externalProfileModalOpen$ = computed((get) => {
-  return get(internalExternalProfileModalOpen$);
+export const settingsClerkProfilePortalContainer$ = computed((get) => {
+  return get(internalSettingsClerkProfilePortalContainer$);
 });
 
-export const setExternalProfileModalOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(internalExternalProfileModalOpen$, open);
+export const setSettingsClerkProfilePortalContainer$ = onRef(
+  command(
+    async ({ get, set }, container: HTMLDivElement, signal: AbortSignal) => {
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      signal.addEventListener(
+        "abort",
+        () => {
+          clerk.closeUserProfile();
+          set(internalSettingsClerkProfilePortalContainer$, null);
+        },
+        { once: true },
+      );
+      set(internalSettingsClerkProfilePortalContainer$, container);
+    },
+  ),
+);
+
+export const openSettingsUserProfile$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const container = get(internalSettingsClerkProfilePortalContainer$);
+    if (!container) {
+      return;
+    }
+    const props = {
+      apiKeysProps: { hide: true },
+      getContainer: () => {
+        return container;
+      },
+    } satisfies UserProfileModalProps;
+    clerk.openUserProfile(props);
   },
 );
 
