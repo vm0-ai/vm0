@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import {
   artifactCatalogContract,
   type ArtifactSummary,
@@ -140,6 +140,40 @@ describe("artifact catalog page", () => {
       screen.getByTestId("artifact-catalog-file-preview-icon"),
     ).toBeInTheDocument();
     expect(screen.getByText("PDF")).toBeInTheDocument();
+  });
+
+  it("falls back when a thumbnail fails to load", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [
+          artifact({
+            kind: "image",
+            title: "broken-preview.png",
+            thumbnail: {
+              url: "https://cdn.vm0.io/artifacts/test/broken-preview.png",
+            },
+          }),
+        ],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    const card = await findCard("broken-preview.png");
+    const thumbnail = card.querySelector(
+      '[data-testid="artifact-catalog-thumbnail"]',
+    );
+    expect(thumbnail).toBeInTheDocument();
+
+    fireEvent.error(thumbnail!);
+
+    await waitFor(() => {
+      expect(thumbnail).toHaveClass("hidden");
+      expect(
+        screen.getByTestId("artifact-catalog-file-preview-icon"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("appends the next page when the list is scrolled to the end", async () => {

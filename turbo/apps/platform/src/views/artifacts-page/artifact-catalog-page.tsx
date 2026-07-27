@@ -26,6 +26,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { AttachmentLightbox } from "../zero-page/zero-attachment-chips.tsx";
+import { ArtifactThumbnailImage } from "../zero-page/zero-artifact-thumbnail.tsx";
 import { emptyArtifactImg } from "../zero-page/platform-assets.ts";
 import {
   FilePreviewIcon,
@@ -137,14 +138,14 @@ function ArtifactCatalogCard({
         className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-background"
       >
         {artifact.thumbnail ? (
-          <img
+          <ArtifactThumbnailImage
             src={r2ImageTransformUrl(artifact.thumbnail.url, {
               width: ARTIFACT_CARD_THUMBNAIL_WIDTH_PX,
               fit: "scale-down",
             })}
-            alt=""
-            loading="lazy"
             className="h-full w-full object-cover"
+            fallback={<ArtifactCatalogFallbackPreview artifact={artifact} />}
+            testId="artifact-catalog-thumbnail"
           />
         ) : artifact.kind === "file" ? (
           <ArtifactCatalogFallbackPreview artifact={artifact} />
