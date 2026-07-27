@@ -28,7 +28,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:black-slabs",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/black-slabs-example.html`,
-    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/black-slabs-preview-480x270.webp`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/black-slabs-preview-960x540.webp`,
     sourcePath: "black-slabs",
     target: "website",
   },

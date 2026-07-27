@@ -112,7 +112,7 @@ describe("website template items", () => {
       resourceId: "template:black-slabs",
       previewKind: "iframe",
       previewImageUrl:
-        "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260727-ccff774/black-slabs-preview-480x270.webp",
+        "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260727-ccff774/black-slabs-preview-960x540.webp",
       sourcePath: "black-slabs",
       target: "website",
     });
