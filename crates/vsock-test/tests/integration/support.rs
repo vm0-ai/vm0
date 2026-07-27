@@ -193,7 +193,8 @@ pub(crate) fn captured_output_bytes(output: &ExecOwnedCapturedOutput) -> &[u8] {
 
 /// Test harness: creates temp dir, starts guest thread, connects host.
 ///
-/// Implements `Drop` to clean up temp dirs and join guest threads even on panic.
+/// Implements `Drop` to clean up temp dirs and wait a bounded time for guest threads,
+/// including during panic unwinding.
 pub(crate) struct Harness {
     pub(crate) dir: std::path::PathBuf,
     _dir_guard: tempfile::TempDir,
@@ -325,7 +326,7 @@ fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
 
 impl Drop for Harness {
     fn drop(&mut self) {
-        // Drop host first to close the connection, then join guest thread.
+        // Drop host first to close the connection, then wait briefly for the guest thread.
         drop(self.host.take());
         cleanup_guest(&mut self.guest, GUEST_FINISH_TIMEOUT);
     }
