@@ -173,7 +173,11 @@ tests must not resolve a different mitmproxy version from production.
 | `test_openai_responses_event_json.py`                   | OpenAI Responses event JSON usage extraction and merge behavior                                                      |
 | `test_openai_responses_json.py`                         | OpenAI Responses non-SSE JSON usage extraction                                                                       |
 | `test_openai_responses_sse.py`                          | OpenAI Responses SSE usage extraction                                                                                |
-| `test_response_streaming.py`                            | Response streaming parser setup                                                                                      |
+| `test_response_stream_buffering.py`                     | Response-stream callback byte counting and bounded capture-buffer retention                                          |
+| `test_response_encoding_inspection_risk.py`             | Response decoder admission and non-streamable encoding risk diagnostics                                              |
+| `test_x_response_parsers.py`                            | X connector NDJSON and JSON response parser state and finalization                                                   |
+| `test_model_provider_response_parser_setup.py`          | Model-provider JSON and SSE response parser selection, feeding, and finalization                                     |
+| `test_response_stream_state_release.py`                 | Direct response-stream state release, idempotency, and callback ownership                                            |
 | `test_model_provider_json_fallback.py`                  | Model provider buffered JSON fallback usage pipeline                                                                 |
 | `test_model_provider_json_streaming.py`                 | Model provider streaming JSON response usage pipeline                                                                |
 | `test_model_provider_sse_usage.py`                      | Model provider SSE usage pipeline                                                                                    |
