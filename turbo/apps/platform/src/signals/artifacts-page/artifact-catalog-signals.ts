@@ -12,6 +12,7 @@ import {
   publicAttachmentUrl,
 } from "../../views/zero-page/zero-attachment-url.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
 import {
   classifyChatAttachment,
   type BodyPreviewKind,
@@ -217,6 +218,20 @@ function artifactDetailPreview(detail: ArtifactDetail): {
   };
 }
 
+const selectedArtifactText$ = computed(
+  async (get, { signal }): Promise<string> => {
+    const detail = await get(selectedArtifactDetail$);
+    if (!detail) {
+      throw new Error("Selected artifact is unavailable");
+    }
+    const preview = artifactDetailPreview(detail);
+    if (!isTextPreviewKind(preview.kind)) {
+      throw new Error("Selected artifact is not a text preview");
+    }
+    return fetchPreviewText(preview.url, signal);
+  },
+);
+
 /**
  * Open a card. The kind entity is fetched here rather than with the list, so
  * browsing the grid never pays for detail queries.
@@ -252,6 +267,14 @@ export const openArtifact$ = command(
     if (preview.kind === "file") {
       await downloadAttachmentUrl(preview.url, signal, preview.filename);
       signal.throwIfAborted();
+      return;
+    }
+    if (isTextPreviewKind(preview.kind)) {
+      set(openDocumentLightbox$, {
+        ...base,
+        kind: preview.kind,
+        text$: selectedArtifactText$,
+      });
       return;
     }
     set(openDocumentLightbox$, { ...base, kind: preview.kind });

@@ -30,6 +30,10 @@ import {
 import { closeMailDraftSidebar$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../../signals/text-preview.ts";
+import {
   FileAttachmentChip,
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
@@ -227,9 +231,11 @@ function AttachmentSummary({
 
 function MailAttachmentPreview({
   attachment,
+  text$,
   url,
 }: {
   readonly attachment: ZeroMailAttachment;
+  readonly text$?: TextPreviewComputed;
   readonly url: string | null | undefined;
 }) {
   if (!url) {
@@ -262,6 +268,7 @@ function MailAttachmentPreview({
         kind={kind}
         shareAvailable={false}
         splitViewAvailable={false}
+        text$={isTextPreviewKind(kind) ? text$ : undefined}
         url={url}
       />
     );
@@ -896,12 +903,13 @@ function MailDraftDetails({
   readonly signals: MailDraftSignals;
 }) {
   const setAttachmentScopeRef = useSet(signals.setAttachmentScopeRef$);
-  const attachmentUrlsLoadable = useLoadable(signals.attachmentUrls$);
-  const attachmentUrls =
-    attachmentUrlsLoadable.state === "hasData"
-      ? attachmentUrlsLoadable.data
+  const attachmentPreviewsLoadable = useLoadable(signals.attachmentPreviews$);
+  const attachmentPreviews =
+    attachmentPreviewsLoadable.state === "hasData"
+      ? attachmentPreviewsLoadable.data
       : null;
-  const attachmentUrlsLoading = attachmentUrlsLoadable.state === "loading";
+  const attachmentUrls = attachmentPreviews?.urls ?? null;
+  const attachmentUrlsLoading = attachmentPreviewsLoadable.state === "loading";
   const attachments = draft.version === 3 ? draft.attachments : [];
   return (
     <div
@@ -929,6 +937,7 @@ function MailDraftDetails({
                 <MailAttachmentPreview
                   key={key}
                   attachment={attachment}
+                  text$={attachmentPreviews?.text.get(attachment.partId)}
                   url={
                     attachmentUrlsLoading
                       ? undefined

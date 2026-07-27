@@ -148,6 +148,10 @@ import {
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
 import {
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../../signals/text-preview.ts";
+import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
   type ConnectorSignals,
@@ -6190,11 +6194,13 @@ interface ResolvedMessageAttachment {
   readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
+  readonly text$?: TextPreviewComputed;
 }
 
 function resolveAttachments(
   message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
+  artifactSignalsForUrl: ChatThreadSignals["artifactSignalsForUrl"],
 ): ResolvedMessageAttachment[] {
   const source =
     message.attachFiles && message.attachFiles.length > 0
@@ -6211,6 +6217,9 @@ function resolveAttachments(
       url: f.url,
       contentType,
     });
+    const text$ = isTextPreviewKind(kind)
+      ? artifactSignalsForUrl(f.url)?.text$
+      : undefined;
     return {
       id: "id" in f && typeof f.id === "string" ? f.id : null,
       filename: f.filename,
@@ -6219,6 +6228,7 @@ function resolveAttachments(
       ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
+      ...(text$ ? { text$ } : {}),
     };
   });
 }
@@ -6402,6 +6412,7 @@ function UserMessageAttachments({
               filename={a.filename}
               url={a.url}
               kind={a.kind}
+              text$={a.text$}
             />
           );
         }
@@ -7132,13 +7143,12 @@ function PagedUserMessage({
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox(url);
-  };
+  const openLightbox = openImageLightbox;
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
-  const allAttachments = resolveAttachments(message, parsed);
+  const findArtifact = thread.artifactSignalsForUrl;
+  const allAttachments = resolveAttachments(message, parsed, findArtifact);
   const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
     message,
     parsed,
@@ -7279,6 +7289,7 @@ function PagedAssistantGroup({
         key={message.id}
         message={message}
         compactTop={compactTop}
+        thread={thread}
       />
     );
   };
@@ -7328,15 +7339,21 @@ function PagedAssistantGroup({
 function PagedAssistantMessageItem({
   message,
   compactTop = false,
+  thread,
 }: {
   message: EnrichedChatMessage;
   compactTop?: boolean;
+  thread: ChatThreadSignals;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
-  const attachments = resolveAttachments(message, []);
+  const attachments = resolveAttachments(
+    message,
+    [],
+    thread.artifactSignalsForUrl,
+  );
 
   if (message.error) {
     return (

@@ -19,6 +19,7 @@ import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
+import type { ArtifactSignals } from "./artifact-card-signals.ts";
 
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
@@ -145,6 +146,7 @@ export interface ChatThreadSignals {
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
+  artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   browserSessionCardSignalsById$: Computed<
     ReadonlyMap<string, BrowserSessionSignals>
