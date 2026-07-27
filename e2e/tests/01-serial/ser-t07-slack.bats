@@ -126,7 +126,7 @@ teardown_file() {
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]
     [[ "$(echo "$state" | jq -r '.chat_thread_routes | length')" -eq 1 ]]
-    [[ "$(echo "$state" | jq -r '.chat_thread_routes[0].backend')" == "canonical" ]]
+    [[ "$(echo "$state" | jq -r '.chat_thread_routes[0] | has("backend")')" == "false" ]]
     [[ "$(echo "$state" | jq -r '.chat_thread_routes[0].chatThreadId')" != "null" ]]
     [[ "$(echo "$state" | jq -r '.chat_ingress | length')" -eq 1 ]]
     [[ "$(echo "$state" | jq -r '.chat_ingress[0].status')" == "processed" ]]
