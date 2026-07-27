@@ -44,6 +44,7 @@ import {
   replyFeishuAgentUnavailable,
   replyToUnconnectedFeishuMessage,
   resolveEffectiveFeishuAgent,
+  shouldReplyInFeishuThread,
   type FeishuDispatchConnection,
   type FeishuDispatchInstallation,
   type FeishuInboundMessage,
@@ -78,10 +79,20 @@ const feishuInboundMessageSchema = z.object({
   file: feishuPromptFileSchema.nullable(),
 });
 
-function canonicalThreadId(message: FeishuInboundMessage): string {
-  return (
-    message.rootId ?? message.threadId ?? message.parentId ?? message.messageId
-  );
+function canonicalThreadId(args: {
+  readonly message: FeishuInboundMessage;
+  readonly agentId: string;
+  readonly selectedModel: string | null;
+}): string {
+  const { message } = args;
+  const replyThreadId =
+    message.rootId ?? message.threadId ?? message.parentId ?? null;
+  if (message.chatType === "p2p") {
+    return message.threadId
+      ? `thread:${message.threadId}`
+      : `direct-message:${args.agentId}:${args.selectedModel ?? "default"}`;
+  }
+  return replyThreadId ?? message.messageId;
 }
 
 async function claimIngress(
@@ -235,7 +246,11 @@ async function persistCanonicalFeishuIngress(args: {
   readonly appendSystemPrompt: string;
   readonly signal: AbortSignal;
 }): Promise<PersistedCanonicalFeishuIngress> {
-  const threadId = canonicalThreadId(args.message);
+  const threadId = canonicalThreadId({
+    message: args.message,
+    agentId: args.agentId,
+    selectedModel: args.selectedModel,
+  });
   const route = await ensureFeishuChatThreadRoute(args.db, {
     connectionId: args.connection.id,
     chatId: args.message.chatId,
@@ -260,7 +275,7 @@ async function persistCanonicalFeishuIngress(args: {
         chatId: args.message.chatId,
         messageId: args.message.messageId,
         threadId,
-        replyInThread: args.message.chatType !== "p2p",
+        replyInThread: shouldReplyInFeishuThread(args.message),
         reactionId: args.reactionId,
         files: [
           ...(args.message.file ? [args.message.file] : []),
@@ -365,7 +380,7 @@ async function notifyQueuedFeishuRun(args: {
     text: `Concurrency limit reached. Will start automatically when a slot is available.\n\n[View queue](${env("APP_URL")}/?queue=1)`,
     kind: "warning",
   });
-  if (args.message.chatType === "p2p") {
+  if (!shouldReplyInFeishuThread(args.message)) {
     await sendFeishuMessage({
       db: args.db,
       installationId: args.message.installationId,

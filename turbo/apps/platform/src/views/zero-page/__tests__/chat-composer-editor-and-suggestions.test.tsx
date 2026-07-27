@@ -231,6 +231,9 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
+      },
     });
 
     const editor = await findComposerEditor();
@@ -258,14 +261,15 @@ describe("chat composer models", () => {
     );
     expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
 
-    await user.keyboard("sales");
+    await user.keyboard("ReSeArCh");
 
     await waitFor(() => {
       expect(screen.queryByText("support-escalation")).not.toBeInTheDocument();
     });
-    const matchedPrefix = screen.getByText("sales", { selector: "span" });
-    expect(matchedPrefix).toHaveClass("text-primary/60");
-    expect(screen.getByText("-research")).toBeInTheDocument();
+    const matchedSubstring = screen.getByText("research", {
+      selector: "span",
+    });
+    expect(matchedSubstring).toHaveClass("text-primary/60");
 
     await user.keyboard("{Enter}");
 
@@ -280,6 +284,44 @@ describe("chat composer models", () => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
+  it("keeps slash skill substring matching behind the feature switch", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "research-assistant",
+          displayName: "Research Assistant",
+          description: "Research a topic from the beginning",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: false,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/ReSeArCh");
+
+    const slashWorkflowMenu = await screen.findByTestId("slash-workflow-menu");
+    expect(slashWorkflowMenu).toHaveTextContent("/research-assistant");
+    expect(slashWorkflowMenu).not.toHaveTextContent("/sales-research");
   });
 
   it("does not highlight workflow names inside URLs", async () => {
