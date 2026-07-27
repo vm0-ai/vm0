@@ -29,13 +29,14 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
+import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
 const queuedUserMessageTriggerSourceDecoder = zodDriverValueDecoder(
-  z.enum(["web", "slack", "feishu"]),
+  z.enum(["web", "slack", "feishu", "teams"]),
 );
 
 const queuedUserMessageRunParamsSchema = z.object({
@@ -61,6 +62,7 @@ const queuedUserMessageRunParamsSchema = z.object({
       files: z.array(feishuOrgCallbackFileSchema).optional(),
     })
     .optional(),
+  teamsDelivery: teamsDeliveryTargetSchema.optional(),
   apiStartTime: z.number().optional(),
   userInfoExtras: z
     .object({
@@ -68,6 +70,9 @@ const queuedUserMessageRunParamsSchema = z.object({
       slackUserId: z.string().optional(),
       feishuDisplayName: z.string().optional(),
       feishuOpenId: z.string().optional(),
+      teamsUserDisplayName: z.string().optional(),
+      teamsUserPrincipalName: z.string().optional(),
+      teamsUserId: z.string().optional(),
     })
     .optional(),
 });
@@ -80,6 +85,7 @@ const queuedUserMessageItemTypes = [
   "user_message",
   "slack_user_message",
   "feishu_user_message",
+  "teams_user_message",
 ] as const;
 
 export interface QueuedUserMessage {
@@ -94,7 +100,7 @@ export interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
-  readonly triggerSource: "web" | "slack" | "feishu";
+  readonly triggerSource: "web" | "slack" | "feishu" | "teams";
   readonly encryptedParams: string | null;
 }
 
@@ -206,6 +212,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
       triggerSource: sql`CASE
         WHEN ${eq(chatMessageQueue.triggerSource, sql`'slack'`)} THEN 'slack'
         WHEN ${eq(chatMessageQueue.triggerSource, sql`'feishu'`)} THEN 'feishu'
+        WHEN ${eq(chatMessageQueue.triggerSource, sql`'teams'`)} THEN 'teams'
         ELSE 'web'
       END`.mapWith(queuedUserMessageTriggerSourceDecoder),
       encryptedParams: chatMessageQueue.encryptedParams,
@@ -269,7 +276,7 @@ export async function enqueueUserMessageQueueItem(
     readonly userId: string;
     readonly chatThreadId: string;
     readonly chatMessageId: string;
-    readonly triggerSource?: "web" | "slack" | "feishu";
+    readonly triggerSource?: "web" | "slack" | "feishu" | "teams";
     readonly encryptedParams?: string;
   },
 ): Promise<void> {
@@ -284,7 +291,9 @@ export async function enqueueUserMessageQueueItem(
           ? "slack_user_message"
           : args.triggerSource === "feishu"
             ? "feishu_user_message"
-            : "user_message",
+            : args.triggerSource === "teams"
+              ? "teams_user_message"
+              : "user_message",
       chatMessageId: args.chatMessageId,
       triggerSource: args.triggerSource,
       encryptedParams: args.encryptedParams,

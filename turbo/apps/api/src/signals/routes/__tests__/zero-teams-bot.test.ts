@@ -2015,7 +2015,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.requestCancelRun(actor, secondRunId, [200]);
   });
 
-  it("sends typing and adds audit/footer text for Teams run pre-dispatch failures", async () => {
+  it("clears thinking and adds audit/footer text for Teams run admission failures", async () => {
     const fixture = await trackTeamsFixture(
       Promise.resolve(teamsConnectFixture()),
     );
@@ -2100,10 +2100,9 @@ describe("POST /api/zero/teams/bot", () => {
       threadReplies: {},
     });
     const failedResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
-        fixture,
+      activity: teamsMessageActivity(fixture, {
         id: "activity-run-pre-dispatch-failure",
-        text: "run without entitlement",
+        text: "<at>Zero</at> run without entitlement",
       }),
       token: teamsToken(),
     });
@@ -2111,14 +2110,8 @@ describe("POST /api/zero/teams/bot", () => {
     const body = await readTeamsBotResponseAndFlush(failedResponse);
     expect(body).not.toHaveProperty("dispatch");
 
-    expect(outboundRequests).toHaveLength(2);
+    expect(outboundRequests).toHaveLength(1);
     expect(outboundRequests[0]).toMatchObject({
-      body: {
-        type: "typing",
-        channelData: { tenant: { id: fixture.teamsTenantId } },
-      },
-    });
-    expect(outboundRequests[1]).toMatchObject({
       activityId: "activity-run-pre-dispatch-failure",
       body: {
         type: "message",
@@ -2126,10 +2119,72 @@ describe("POST /api/zero/teams/bot", () => {
         textFormat: "markdown",
       },
     });
-    expect(outboundRequests[1]?.body).toMatchObject({
+    expect(outboundRequests[0]?.body).toMatchObject({
       text: expect.stringContaining("Sent via Teams support agent"),
     });
+    expect(outboundRequests.reactions).toStrictEqual([
+      {
+        method: "PUT",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-run-pre-dispatch-failure",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+      {
+        method: "DELETE",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-run-pre-dispatch-failure",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
+  });
+
+  it("deduplicates repeated Teams activities before queueing a second run", async () => {
+    const { fixture, actor, outboundRequests } =
+      await setupConnectedTeamsBotActor();
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      chatMessages: [],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
+    outboundRequests.splice(0, outboundRequests.length);
+    outboundRequests.reactions.splice(0, outboundRequests.reactions.length);
+    const activity = teamsPersonalMessageActivity({
+      fixture,
+      id: "activity-deduplicated",
+      text: "run this Teams task once",
+    });
+
+    for (const attempt of [1, 2]) {
+      const response = await postTeamsActivity({
+        activity,
+        token: teamsToken(),
+      });
+      expect(response.status, `attempt ${attempt}`).toBe(200);
+      await readTeamsBotResponseAndFlush(response);
+    }
+
+    const matchingRuns = (
+      await runsApi.listAgentRuns(actor, { limit: 20 })
+    ).runs.filter((run) => {
+      return run.prompt === "run this Teams task once";
+    });
+    expect(matchingRuns).toHaveLength(1);
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      body: {
+        type: "typing",
+        channelData: { tenant: { id: fixture.teamsTenantId } },
+      },
+    });
     expect(outboundRequests.reactions).toHaveLength(0);
+
+    const run = matchingRuns[0];
+    if (!run) {
+      throw new Error("Expected the deduplicated Teams run");
+    }
+    await runsApi.requestCancelRun(actor, run.id, [200]);
   });
 
   it("dispatches connected Teams messages to the org default agent", async () => {
