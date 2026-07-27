@@ -12,9 +12,8 @@ import {
 } from "@vm0/core";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ModelProviderResponse,
@@ -36,6 +35,10 @@ import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { composerOverflowConnectorRefs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  normalizeMockChatEvents,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 
 export const context = testContext();
 
@@ -377,7 +380,7 @@ export function mockAgent(options?: {
 export function mockThread(options?: {
   selectedModel?: string | null;
   activeRunIds?: string[];
-  messages?: PagedChatMessage[];
+  messages?: MockChatEventInput[];
 }): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
@@ -415,12 +418,17 @@ export function mockThread(options?: {
           : [],
     });
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId || query.beforeSeqId) {
-      return respond(200, { messages: [], hasHistoryBefore: false });
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+    if (
+      query.sinceSeqId ||
+      query.beforeSeqId ||
+      query.sinceId ||
+      query.beforeId
+    ) {
+      return respond(200, { events: [], hasHistoryBefore: false });
     }
     return respond(200, {
-      messages: options?.messages ?? [],
+      events: normalizeMockChatEvents(options?.messages ?? []),
       hasHistoryBefore: false,
     });
   });

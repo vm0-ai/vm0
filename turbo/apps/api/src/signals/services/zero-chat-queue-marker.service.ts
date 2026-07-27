@@ -4,10 +4,8 @@ import { and, eq, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
-import {
-  deleteChatMessage,
-  insertChatMessage,
-} from "./zero-chat-message.service";
+import { revokeChatEvent, insertChatEvent } from "./zero-chat-event.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -52,7 +50,7 @@ export async function appendQueuedRunAssistantMarker(
     .where(
       and(
         eq(chatMessages.runId, args.runId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn(["run.queued"]),
         eq(chatMessages.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
       ),
     )
@@ -61,9 +59,9 @@ export async function appendQueuedRunAssistantMarker(
     return { kind: "existing" };
   }
 
-  const marker = await insertChatMessage(tx, {
+  const marker = await insertChatEvent(tx, {
     chatThreadId: args.chatThreadId,
-    role: "assistant",
+    eventType: "run.queued",
     content: QUEUED_RUN_ASSISTANT_MESSAGE,
     runId: args.runId,
     runGroupId: args.runGroupId,
@@ -95,22 +93,22 @@ export async function revokeQueuedRunAssistantMarkers(
     .where(
       and(
         eq(chatMessages.runId, args.runId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn(["run.queued"]),
         eq(chatMessages.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
         notExists(
           tx
             .select({ one: revoker.id })
             .from(revoker)
-            .where(eq(revoker.revokesMessageId, chatMessages.id)),
+            .where(eq(revoker.revokesEventId, chatMessages.id)),
         ),
       ),
     );
 
   let notifiedThreadId: string | null = null;
   for (const marker of markers) {
-    const inserted = await deleteChatMessage(tx, marker.id, {
+    const inserted = await revokeChatEvent(tx, marker.id, {
       chatThreadId: marker.chatThreadId,
-      role: "assistant",
+      eventType: "run.dequeued",
       runId: args.runId,
       runGroupId: marker.runGroupId ?? undefined,
       runEventId: QUEUED_RUN_MARKER_REVOKE_EVENT_ID,

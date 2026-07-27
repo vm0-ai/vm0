@@ -2,8 +2,8 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  chatThreadMessagesContract,
-  type PagedChatMessage,
+  chatThreadEventsContract,
+  type ChatEventResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -19,9 +19,11 @@ const PAGE_SIZE = 50;
 // fetched and flushed into the persistent message state.
 const GATED_BEFORE_SEQ_ID = 51;
 
-function messageForSeq(seqId: number): PagedChatMessage {
+function eventForSeq(seqId: number): ChatEventResponse {
   return {
     id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
+    threadId: THREAD_ID,
+    eventType: "goal.changed",
     role: "assistant",
     // Control rows participate in history pagination without rendering
     // hundreds of unrelated transcript nodes in this progress-only test.
@@ -34,15 +36,15 @@ function messageForSeq(seqId: number): PagedChatMessage {
   };
 }
 
-function messagesInRange(
+function eventsInRange(
   fromSeqId: number,
   toSeqId: number,
-): PagedChatMessage[] {
-  const messages: PagedChatMessage[] = [];
+): ChatEventResponse[] {
+  const events: ChatEventResponse[] = [];
   for (let seqId = fromSeqId; seqId <= toSeqId; seqId++) {
-    messages.push(messageForSeq(seqId));
+    events.push(eventForSeq(seqId));
   }
-  return messages;
+  return events;
 }
 
 function mockPagedHistory(): {
@@ -53,17 +55,14 @@ function mockPagedHistory(): {
   const finalHistoryPage = context.mocks.deferred<void>();
   const beforeSeqIds: number[] = [];
   context.mocks.api(
-    chatThreadMessagesContract.list,
+    chatThreadEventsContract.list,
     async ({ query, respond }) => {
       if (query.sinceSeqId !== undefined) {
-        return respond(200, { messages: [] });
+        return respond(200, { events: [] });
       }
       if (query.beforeSeqId === undefined) {
         return respond(200, {
-          messages: messagesInRange(
-            TOTAL_MESSAGES - PAGE_SIZE + 1,
-            TOTAL_MESSAGES,
-          ),
+          events: eventsInRange(TOTAL_MESSAGES - PAGE_SIZE + 1, TOTAL_MESSAGES),
           hasHistoryBefore: true,
         });
       }
@@ -74,7 +73,7 @@ function mockPagedHistory(): {
       const toSeqId = query.beforeSeqId - 1;
       const fromSeqId = Math.max(1, toSeqId - PAGE_SIZE + 1);
       return respond(200, {
-        messages: messagesInRange(fromSeqId, toSeqId),
+        events: eventsInRange(fromSeqId, toSeqId),
         hasHistoryBefore: fromSeqId > 1,
       });
     },

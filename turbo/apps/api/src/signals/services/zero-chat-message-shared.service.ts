@@ -6,7 +6,7 @@ import {
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, isNotNull, isNull, ne, notExists, or, sql } from "drizzle-orm";
+import { eq, isNotNull, isNull, not, notExists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { env } from "../../lib/env";
@@ -23,8 +23,9 @@ import {
 import { listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
+import { insertChatEvents } from "./zero-chat-event.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { publishFirstAssistantMessageCreated } from "./zero-chat-first-assistant-message-metric.service";
-import { insertChatMessages } from "./zero-chat-message.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
@@ -106,24 +107,30 @@ export async function touchChatThreadLastMessageAt(
   });
 }
 
-export function visibleChatMessageCondition(db: Pick<Db, "select">) {
+export function visibleChatEventCondition(db: Pick<Db, "select">) {
+  const isCompatibilityUserEvent = chatEventTypeIn([
+    "input.prompt",
+    "input.rejected",
+    "control.interrupt",
+    "control.revoke",
+  ]);
   return sql.join(
     [
       notExists(
         db
           .select({ id: revoker.id })
           .from(revoker)
-          .where(eq(revoker.revokesMessageId, chatMessages.id)),
+          .where(eq(revoker.revokesEventId, chatMessages.id)),
       ),
       or(
-        ne(chatMessages.role, "user"),
+        not(isCompatibilityUserEvent),
         isNotNull(chatMessages.runId),
-        isNull(chatMessages.revokesMessageId),
+        isNull(chatMessages.revokesEventId),
         isNotNull(chatMessages.content),
         isNotNull(chatMessages.error),
       ),
       or(
-        ne(chatMessages.role, "user"),
+        not(isCompatibilityUserEvent),
         isNotNull(chatMessages.runId),
         isNull(chatMessages.interruptsRunId),
       ),
@@ -249,7 +256,7 @@ export async function insertAssistantEventMessages(
       const deterministicRows =
         itemsWithRunEventId.length === 0
           ? []
-          : await insertChatMessages(
+          : await insertChatEvents(
               tx,
               itemsWithRunEventId.map((item) => {
                 return {
@@ -260,7 +267,7 @@ export async function insertAssistantEventMessages(
                   chatThreadId: args.threadId,
                   runId: args.runId,
                   runGroupId: runContext.runGroupId,
-                  role: "assistant",
+                  eventType: "output.message",
                   content: item.content,
                   sequenceNumber: item.sequenceNumber,
                   runEventId: item.runEventId,
@@ -273,14 +280,14 @@ export async function insertAssistantEventMessages(
       const legacyRows =
         legacyItems.length === 0
           ? []
-          : await insertChatMessages(
+          : await insertChatEvents(
               tx,
               legacyItems.map((item) => {
                 return {
                   chatThreadId: args.threadId,
                   runId: args.runId,
                   runGroupId: runContext.runGroupId,
-                  role: "assistant",
+                  eventType: "output.message",
                   content: item.content,
                   sequenceNumber: item.sequenceNumber,
                   runEventId: null,

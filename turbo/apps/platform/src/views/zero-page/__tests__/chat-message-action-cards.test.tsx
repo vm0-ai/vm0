@@ -1,6 +1,6 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  chatMessagesContract,
+  chatEventsContract,
   chatThreadMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -936,7 +936,7 @@ describe("chat message action cards", () => {
       prompt: string | undefined;
       threadId: string | undefined;
     }[] = [];
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       rejectedPrompts.push({ prompt: body.prompt, threadId: body.threadId });
       return respond(402, {
         error: {

@@ -1525,6 +1525,184 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
+const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 696;
+const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 697;
+const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 698;
+
+async function validateChatEventTypeBackfill(): Promise<void> {
+  console.log("=== Validate populated ChatEvent type backfill ===\n");
+
+  const testDb = "migration_chat_event_type_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, CHAT_EVENT_TYPE_PREVIOUS_MIGRATION);
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const agentCompose = await client.query<{ id: string }>(`
+        INSERT INTO "agent_composes" ("user_id", "name", "org_id")
+        VALUES (
+          'chat-event-backfill-user',
+          'chat-event-backfill-test',
+          'chat-event-backfill-org'
+        )
+        RETURNING "id"
+      `);
+      const agentComposeId = agentCompose.rows[0]?.id;
+      assert.ok(agentComposeId);
+
+      const thread = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_threads" (
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            'chat-event-backfill-user',
+            $1,
+            'chat event backfill test'
+          )
+          RETURNING "id"
+        `,
+        [agentComposeId],
+      );
+      const threadId = thread.rows[0]?.id;
+      assert.ok(threadId);
+
+      const messages = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content"
+          )
+          VALUES
+            ($1, 'user', 'legacy prompt'),
+            ($1, 'assistant', 'legacy response')
+          RETURNING "id"
+        `,
+        [threadId],
+      );
+      const promptId = messages.rows[0]?.id;
+      assert.ok(promptId);
+
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "structured_prompt_with_feedback",
+            "revokes_message_id"
+          )
+          VALUES ($1, 'user', $2::jsonb, $3)
+        `,
+        [
+          threadId,
+          JSON.stringify({
+            version: 1,
+            parts: [
+              {
+                type: "feedback",
+                quote: "legacy response",
+                note: [{ type: "text", text: "Make this more concise" }],
+              },
+            ],
+          }),
+          promptId,
+        ],
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_ADDITIVE_MIGRATION,
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'assistant', 'typed writer during rollout', 'output.message')
+        `,
+        [threadId],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_BACKFILL_MIGRATION,
+      );
+
+      const classified = await client.query<{
+        eventType: string | null;
+        role: string;
+      }>(
+        `
+          SELECT
+            "role",
+            "event_type" AS "eventType"
+          FROM "chat_messages"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(classified.rows, [
+        { eventType: "input.prompt", role: "user" },
+        { eventType: "output.message", role: "assistant" },
+        { eventType: "input.prompt", role: "user" },
+        { eventType: "output.message", role: "assistant" },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+
+      const legacyWrite = await client.query<{ eventType: string | null }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content"
+          )
+          VALUES ($1, 'user', 'legacy writer after migration')
+          RETURNING "event_type" AS "eventType"
+        `,
+        [threadId],
+      );
+      assert.equal(legacyWrite.rows[0]?.eventType, null);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Historical rows are classified and append-only protection remains active\n",
+  );
+}
+
 const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
 const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
 
@@ -3799,6 +3977,7 @@ async function main(): Promise<void> {
     await validateSlackLegacySchemaContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
+    await validateChatEventTypeBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

@@ -1,28 +1,24 @@
-import { chatMessages } from "@vm0/db/schema/chat-message";
 import {
   CANONICAL_ASSET_VERSION,
   chatMessageAssetRefs,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
-import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { publishedOutputMessageIdForRun } from "./assistant-message-id";
-import { insertChatMessage } from "./zero-chat-message.service";
 
-type ChatMessageWriteTransaction = Parameters<
+type ChatEventWriteTransaction = Parameters<
   Parameters<Db["transaction"]>[0]
 >[0];
 
 interface AttachCanonicalPublishedAssetsArgs {
   readonly runId: string;
   readonly threadId: string;
-  readonly runGroupId: string | undefined;
-  readonly createdAt: Date;
+  readonly completedEventId: string;
 }
 
-export async function attachCanonicalPublishedAssetsToAssistantResponse(
-  tx: ChatMessageWriteTransaction,
+export async function attachCanonicalPublishedAssetsToCompletionEvent(
+  tx: ChatEventWriteTransaction,
   args: AttachCanonicalPublishedAssetsArgs,
 ): Promise<void> {
   const assets = await tx
@@ -42,47 +38,12 @@ export async function attachCanonicalPublishedAssetsToAssistantResponse(
     return;
   }
 
-  const [latestResponse] = await tx
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, args.threadId),
-        eq(chatMessages.runId, args.runId),
-        eq(chatMessages.role, "assistant"),
-        isNotNull(chatMessages.content),
-        isNotNull(chatMessages.sequenceNumber),
-      ),
-    )
-    .orderBy(desc(chatMessages.sequenceNumber), desc(chatMessages.seqId))
-    .limit(1);
-
-  const attachmentOnlyMessageId = publishedOutputMessageIdForRun(args.runId);
-  const responseMessageId =
-    latestResponse?.id ??
-    (
-      await insertChatMessage(
-        tx,
-        {
-          id: attachmentOnlyMessageId,
-          chatThreadId: args.threadId,
-          role: "assistant",
-          content: null,
-          runId: args.runId,
-          runGroupId: args.runGroupId,
-          createdAt: args.createdAt,
-        },
-        "id",
-      )
-    )?.id ??
-    attachmentOnlyMessageId;
-
   await tx
     .insert(chatMessageAssetRefs)
     .values(
       assets.map((asset, position) => {
         return {
-          chatMessageId: responseMessageId,
+          chatMessageId: args.completedEventId,
           assetId: asset.id,
           position,
         };

@@ -136,23 +136,41 @@ describe("upgradeChatIdb local cache resets", () => {
   );
 
   it.each([18, 19])(
-    "drops the mirrored artifact history when upgrading from v%i",
+    "drops artifact history and rebuilds chat events when upgrading from v%i",
     (oldVersion) => {
-      const { db, createObjectStore, deleteObjectStore } =
+      const { db, createdStores, createObjectStore, deleteObjectStore } =
         fakeDb(legacyStores());
 
       upgradeChatIdb(db, oldVersion);
 
-      expect(deleteObjectStore).toHaveBeenCalledTimes(2);
+      expect(deleteObjectStore).toHaveBeenCalledTimes(3);
+      expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
       expect(deleteObjectStore).toHaveBeenCalledWith(
         LEGACY_ARTIFACT_ITEMS_STORE,
       );
       expect(deleteObjectStore).toHaveBeenCalledWith(
         LEGACY_ARTIFACT_SYNC_STORE,
       );
-      expect(createObjectStore).not.toHaveBeenCalled();
+      expect(createObjectStore).toHaveBeenCalledTimes(1);
+      expectChatMessagesStoreCreated(createdStores, createObjectStore);
     },
   );
+
+  it("resets only the legacy chat cache when upgrading from v20", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 20);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(1);
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+  });
 
   it("does not rebuild local caches at the current schema version", () => {
     const { db, createObjectStore, deleteObjectStore } = fakeDb([
