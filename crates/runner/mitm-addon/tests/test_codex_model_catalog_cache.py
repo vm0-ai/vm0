@@ -304,6 +304,35 @@ def test_brotli_miss_is_decoded_and_identity_fallback_still_streams(real_flow):
             id="malformed-json",
         ),
         pytest.param(
+            _catalog_response(body=b'{"models":[],"value":NaN}'),
+            "response_json",
+            id="non-standard-json-constant",
+        ),
+        pytest.param(
+            _catalog_response(body=b'{"models":[],"value":1e999}'),
+            "response_json",
+            id="non-finite-json-number",
+        ),
+        pytest.param(
+            _catalog_response(body='{"models":[]}'.encode("utf-16")),
+            "response_json",
+            id="non-utf8-json",
+        ),
+        pytest.param(
+            _catalog_response(
+                body=b'{"models":[],"value":' + b"9" * 5000 + b"}",
+            ),
+            "response_json",
+            id="unbounded-json-integer",
+        ),
+        pytest.param(
+            _catalog_response(
+                body=b'{"models":[],"value":' + b"[" * 50_000 + b"0" + b"]" * 50_000 + b"}",
+            ),
+            "response_json",
+            id="deep-json",
+        ),
+        pytest.param(
             _catalog_response(body=b'{"items":[]}'),
             "response_shape",
             id="wrong-shape",
@@ -351,6 +380,18 @@ def test_invalid_identity_responses_pass_through_without_installing(
             None,
             "response_encoding",
             id="incomplete",
+        ),
+        pytest.param(
+            brotli.compress(b'{"models":[],"value":NaN}'),
+            None,
+            "response_json",
+            id="non-standard-json-constant",
+        ),
+        pytest.param(
+            brotli.compress(b'{"items":[]}'),
+            None,
+            "response_shape",
+            id="wrong-shape",
         ),
         pytest.param(
             brotli.compress(

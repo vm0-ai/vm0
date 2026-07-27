@@ -3,12 +3,14 @@
 import hashlib
 import hmac
 import json
+import math
 import secrets
 import time
 import urllib.parse
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from typing import NoReturn
 
 from mitmproxy import http
 
@@ -309,6 +311,17 @@ def _content_type_is_json(content_type: str) -> bool:
     return media_type == "application/json" or (
         media_type.startswith("application/") and media_type.endswith("+json")
     )
+
+
+def _reject_non_json_constant(_value: str) -> NoReturn:
+    raise ValueError("non-standard JSON constant")
+
+
+def _parse_finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite JSON number")
+    return parsed
 
 
 def _content_length(headers: http.Headers) -> int | None:
@@ -630,8 +643,12 @@ def _validated_response_body(
     if content_length is not None and content_length != len(body):
         return "response_body"
     try:
-        payload = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = json.loads(
+            body.decode("utf-8"),
+            parse_constant=_reject_non_json_constant,
+            parse_float=_parse_finite_json_float,
+        )
+    except (UnicodeDecodeError, ValueError, RecursionError):
         return "response_json"
     if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
         return "response_shape"
@@ -701,6 +718,15 @@ def finalize_response(flow: http.HTTPFlow) -> None:
         validated = _validated_response_body(response, state)
         if isinstance(validated, str):
             _set_not_stored(flow, state, validated, now=now)
+            if state.upstream_encoding == _BROTLI_ENCODING and validated in (
+                "response_json",
+                "response_shape",
+            ):
+                flow.response = http.Response.make(
+                    _HTTP_STATUS_BAD_GATEWAY,
+                    b"",
+                    {"Content-Type": "text/plain"},
+                )
             return
         if state.key in _entries:
             _set_not_stored(flow, state, "concurrent_change", now=now)
