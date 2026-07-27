@@ -3906,7 +3906,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, websiteV2.runId);
   }, 90_000);
 
-  it("switches an illustration run from GitHub to R2 through the user feature switch", async () => {
+  it("uses R2 by default and preserves GitHub fallback through the user feature switch", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
@@ -3915,6 +3915,31 @@ describe("CHAT-02: generation templates and attachments", () => {
     if (!style) {
       throw new Error("Expected the ink-storefront illustration style");
     }
+
+    const defaultR2Run = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a flower shop from the default R2 source",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+    const defaultR2Prompt =
+      (await api.readRun(actor, defaultR2Run.runId)).appendSystemPrompt ?? "";
+    expect(defaultR2Prompt).toContain(
+      "Style source: private R2 registry resource image-style:ink-storefront",
+    );
+    expect(defaultR2Prompt).toContain("--compile --style-source r2");
+    await cancelChatRun(actor, defaultR2Run.runId);
+
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ImageStyleR2]: false },
+    );
 
     const githubRun = await sendChatRun(actor, {
       agentId,
@@ -3932,37 +3957,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(githubPrompt).not.toContain("private R2 registry resource");
     expect(githubPrompt).not.toContain("--style-source r2");
     await cancelChatRun(actor, githubRun.runId);
-
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ImageStyleR2]: true },
-    );
-
-    const r2Run = await sendChatRun(actor, {
-      agentId,
-      prompt: "draw a flower shop from R2",
-      generationTemplate: {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      },
-    });
-    const r2Prompt =
-      (await api.readRun(actor, r2Run.runId)).appendSystemPrompt ?? "";
-    expect(r2Prompt).toContain(
-      "Style source: private R2 registry resource image-style:ink-storefront",
-    );
-    expect(r2Prompt).toContain("--compile --style-source r2");
-    expect(r2Prompt).toContain(
-      "If the R2 source is unavailable, stop without generating; do not fall back to GitHub.",
-    );
-    expect(r2Prompt).not.toContain(
-      "Style source: vm0-ai/vm0-skills@main:illustration-template/ink-storefront",
-    );
-    await cancelChatRun(actor, r2Run.runId);
 
     const githubOnlyRun = await sendChatRun(actor, {
       agentId,
@@ -4007,7 +4001,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(firstPrompt).toContain("Follow the returned packet completely");
     expect(firstPrompt).toContain(
-      "If the source is unavailable, stop without generating",
+      "If the R2 source is unavailable, stop without generating; do not fall back to GitHub.",
     );
     expect(firstPrompt).toContain("--compiled-prompt");
     expect(firstPrompt).toContain(style.illustrationStyleId);

@@ -464,7 +464,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.PlanUpgradeGuidance]: {
     maintainer: "ethan@vm0.ai",
