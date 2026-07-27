@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -408,6 +411,48 @@ describe("ORG-01: org update and delete error matrix", () => {
 });
 
 describe("ORG-02: membership admin matrix", () => {
+  it("rejects Clerk member records without required user identifiers", async () => {
+    const admin = api.user();
+    const orgId = orgIdOf(admin);
+    api.mockClerkOrg(admin);
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValueOnce(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: {},
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    const missingMemberId = await api.requestListMembers(admin, [500]);
+    expect(missingMemberId.status).toBe(500);
+
+    server.use(
+      http.get(
+        "https://api.clerk.com/v1/organizations/:orgId/membership_requests",
+        ({ params }) => {
+          if (params.orgId !== orgId) {
+            return HttpResponse.json({ data: [] });
+          }
+          return HttpResponse.json({
+            data: [
+              {
+                id: `request-${shortId()}`,
+                public_user_data: {},
+                created_at: now(),
+              },
+            ],
+          });
+        },
+      ),
+    );
+    const missingRequestUserId = await api.requestListMembers(admin, [500]);
+    expect(missingRequestUserId.status).toBe(500);
+  });
+
   it("enforces role, self, unknown-target, invalid-body, and clerk-failure arms across member routes [ORG-MEMBERS-C]", async () => {
     const admin = api.user();
     const orgId = orgIdOf(admin);
