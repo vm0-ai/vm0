@@ -777,7 +777,6 @@ describe("POST /api/zero/mail/drafts/link", () => {
           from: {
             containsAny: ["recipient@example.com", "copy@example.com"],
           },
-          subject: { contains: "Attachment review" },
         },
       },
       chatThreadId: fixture.thread.id,

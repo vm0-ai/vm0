@@ -2063,14 +2063,12 @@ function mailFollowUpEventConfig(
   if (recipients.length === 0) {
     return null;
   }
-  const subject = draft.subject.trim();
   return {
     provider: "gmail",
     event: "new_message",
     threadId: draft.gmailThreadId,
     match: {
       from: { containsAny: recipients },
-      ...(subject ? { subject: { contains: subject } } : {}),
     },
   };
 }
