@@ -41,12 +41,31 @@ import {
   expectTemplateAttachedToComposer,
 } from "./chat-composer-test-helpers.ts";
 
-beforeEach(() => {
-  context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-});
-
 const PRESENTATION_DECK_METADATA =
   '<script id="vm0-deck-metadata" type="application/json">{"kind":"presentation-html","editProtocolVersion":1,"slides":{}}</script>';
+
+beforeEach(() => {
+  context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+  context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
+    const requestedUrl = new URL(request.url).searchParams.get("url");
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.embedUrl === requestedUrl;
+    });
+    const slideCount = Math.max(
+      template?.slideCount ?? template?.previewImages.length ?? 1,
+      1,
+    );
+    return new Response(
+      `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}${Array.from(
+        { length: slideCount },
+        (_, index) => {
+          return `<section data-vm0-slide data-slide-id="slide-${String(index + 1)}"><h1>Slide ${String(index + 1)}</h1></section>`;
+        },
+      ).join("")}</body></html>`,
+      { headers: { "Content-Type": "text/html" } },
+    );
+  });
+});
 
 describe("chat composer templates", () => {
   it("prewarms template previews only after the template button is used", async () => {
@@ -1071,7 +1090,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("resumes presentation template detail preview loading after reopening the same slide", async () => {
+  it("starts presentation detail loading from preview and resumes it after reopening", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
     let previewFetchCount = 0;
@@ -1104,7 +1123,6 @@ describe("chat composer templates", () => {
       configurable: true,
       value: vi.fn(),
     });
-    Reflect.set(globalThis, "vm0LoadTemplateDetailHtmlPreviewInHappyDom", true);
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
       const requestedUrl = new URL(request.url).searchParams.get("url");
       if (requestedUrl === template.embedUrl) {
@@ -1181,11 +1199,21 @@ describe("chat composer templates", () => {
         ),
       ).resolves.toContain("Slide one");
       expect(previewFetchCount).toBe(1);
-    } finally {
-      Reflect.deleteProperty(
-        globalThis,
-        "vm0LoadTemplateDetailHtmlPreviewInHappyDom",
+      const reopenedTemplateButton = queryAllByRoleFast("button").find(
+        (candidate) => {
+          return (
+            candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+          );
+        },
       );
+      if (!reopenedTemplateButton) {
+        throw new Error("Template button not found");
+      }
+      click(reopenedTemplateButton);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:template-detail-1",
+      );
+    } finally {
       if (originalCreateObjectURL) {
         Object.defineProperty(URL, "createObjectURL", {
           configurable: true,
@@ -1207,7 +1235,6 @@ describe("chat composer templates", () => {
 
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    vi.stubGlobal("vm0LoadTemplateDetailHtmlPreviewInHappyDom", true);
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(
         `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${PRESENTATION_DECK_METADATA}${template.previewImages
