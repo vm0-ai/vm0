@@ -652,7 +652,7 @@ function aggregateOrgCredits(
       });
     }
     teamUsage.sort((a, b) => {
-      return b.credits - a.credits;
+      return b.credits - a.credits || a.userId.localeCompare(b.userId);
     });
     orgCreditsMap.set(orgId, { creditsUsed, teamUsage });
   }
@@ -876,7 +876,8 @@ function mergeAgentRows(
       return (
         b.credits - a.credits ||
         b.runs - a.runs ||
-        a.agentName.localeCompare(b.agentName)
+        a.agentName.localeCompare(b.agentName) ||
+        (a.agentId ?? "").localeCompare(b.agentId ?? "")
       );
     });
     result.set(userKey, list);

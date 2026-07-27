@@ -479,9 +479,6 @@ async function queryUsageInsightAgentBuckets(
       .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
       .groupBy(({ agentName }) => {
         return agentName;
-      })
-      .orderBy(({ agentName, totalCredits }) => {
-        return [desc(totalCredits), agentName];
       }),
   );
   const topSeven = db
@@ -490,6 +487,7 @@ async function queryUsageInsightAgentBuckets(
       db
         .select({ agentName: agentTotals.agentName })
         .from(agentTotals)
+        .orderBy(desc(agentTotals.totalCredits), agentTotals.agentName)
         .limit(7),
     );
   const agentName = agentNameExpr();

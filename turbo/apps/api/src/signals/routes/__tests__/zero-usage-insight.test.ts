@@ -358,21 +358,22 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
-  it("groupBy=agent with 9 agents produces top-7 + others series keys", async () => {
+  it("uses agent name to break ties at the top-7 boundary", async () => {
     const actor = await entitledInsightActor();
+    const names: string[] = [];
+    const suffix = randomUUID().slice(0, 8);
 
     for (let i = 1; i <= 9; i++) {
-      const compose = await createInsightCompose(
-        actor,
-        `agent-${i}-${randomUUID().slice(0, 8)}`,
-      );
+      const name = `tie-agent-${String(i).padStart(2, "0")}-${suffix}`;
+      names.push(name);
+      const compose = await createInsightCompose(actor, name);
       const runId = await createSourceRun(actor, compose.composeId, "cli");
       await reportRunUsage(actor, runId, [
         {
           kind: "connector",
           category: "call",
           quantity: 1,
-          credits: i * 100,
+          credits: 100,
         },
       ]);
     }
@@ -393,7 +394,7 @@ describe("GET /api/zero/usage/insight", () => {
         seriesKeys.add(key);
       }
     }
-    expect(seriesKeys.size).toBeLessThanOrEqual(8);
+    expect(seriesKeys).toStrictEqual(new Set([...names.slice(0, 7), "others"]));
     expect(seriesKeys.has("others")).toBeTruthy();
   });
 
