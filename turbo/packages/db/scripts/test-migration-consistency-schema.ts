@@ -1526,7 +1526,8 @@ async function applyMigrationsUpToInTransaction(
 }
 
 const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 695;
-const CHAT_EVENT_TYPE_MIGRATION = 696;
+const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 696;
+const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 697;
 
 async function validateChatEventTypeBackfill(): Promise<void> {
   console.log("=== Validate populated ChatEvent type backfill ===\n");
@@ -1621,7 +1622,34 @@ async function validateChatEventTypeBackfill(): Promise<void> {
         rowId: promptId,
       });
 
-      await applyMigrationsUpToInTransaction(client, CHAT_EVENT_TYPE_MIGRATION);
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_ADDITIVE_MIGRATION,
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'assistant', 'typed writer during rollout', 'output.message')
+        `,
+        [threadId],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_BACKFILL_MIGRATION,
+      );
 
       const classified = await client.query<{
         eventType: string | null;
@@ -1641,6 +1669,7 @@ async function validateChatEventTypeBackfill(): Promise<void> {
         { eventType: "input.prompt", role: "user" },
         { eventType: "output.message", role: "assistant" },
         { eventType: "input.prompt", role: "user" },
+        { eventType: "output.message", role: "assistant" },
       ]);
 
       await expectAppendOnlyUpdateRejected(client, {

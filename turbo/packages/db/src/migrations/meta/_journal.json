@@ -4880,6 +4880,13 @@
       "when": 1785119251024,
       "tag": "0696_chat_event_type",
       "breakpoints": true
+    },
+    {
+      "idx": 697,
+      "version": "7",
+      "when": 1785119251025,
+      "tag": "0697_backfill_chat_event_type",
+      "breakpoints": true
     }
   ]
 }

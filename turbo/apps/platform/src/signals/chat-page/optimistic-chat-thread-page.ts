@@ -1,7 +1,6 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  chatEventsContract,
   chatThreadModelSelectionContract,
   chatThreadsContract,
   type AttachFile,
@@ -36,6 +35,7 @@ import {
   createOptimisticChatMessageEntry,
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
+import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
 import {
   applyCodexFastModeDefault,
   isCodexFastModeAvailableForSelection,
@@ -584,19 +584,17 @@ const sendNewThreadMessage$ = command(
       await Promise.all([clearDraftResult, createResult]);
       signal.throwIfAborted();
 
-      const result = await accept(
-        createClient(chatEventsContract).send({
-          body: sendBody,
-          fetchOptions: { signal },
-        }),
-        [201],
+      const result = await sendChatEventWithCompatibility(
+        createClient,
+        sendBody,
+        signal,
       );
       signal.throwIfAborted();
       L.debug("sendNewThreadMessage$ POST chat/events 201", {
-        threadId: result.body.threadId,
-        runId: result.body.runId,
+        threadId: result.threadId,
+        runId: result.runId,
       });
-      return { threadId: result.body.threadId, runId: result.body.runId };
+      return { threadId: result.threadId, runId: result.runId };
     })();
     return { threadId, sendResult };
   },

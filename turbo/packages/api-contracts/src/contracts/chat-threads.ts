@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { chatEventCompatibilityRole, chatEventTypeSchema } from "./chat-events";
+import {
+  chatEventCompatibilityRole,
+  chatEventTypeSchema,
+  type ChatEventType,
+} from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
@@ -661,6 +665,63 @@ const chatEventResponseSchema = z.discriminatedUnion("eventType", [
   usageRecordedEventSchema
     .extend(assistantEventCompatibilityResponseShape)
     .strict(),
+]);
+
+/**
+ * Response emitted by the API release immediately before ChatEvent routes
+ * shipped. Keep this codec at the HTTP boundary only: canonical application
+ * state must contain ChatEvent values.
+ */
+const legacyPagedChatMessageBaseSchema = z.object({
+  id: z.string(),
+  content: z.string().nullable(),
+  runId: z.string().optional(),
+  runGroupId: z.string().optional(),
+  triggerSource: triggerSourceSchema.optional(),
+  slackMessagePermalink: z.string().url().optional(),
+  feishuChatOpenUrl: z.string().url().optional(),
+  isGoalRun: z.boolean().optional(),
+  runEventId: z.string().optional(),
+  goalEvent: zeroGoalEventSchema.optional(),
+  goalSnapshot: z
+    .object({
+      objectiveBrief: z.string().min(1),
+    })
+    .optional(),
+  usage: chatMessageUsagePayloadSchema.optional(),
+  revokesMessageId: z.string().optional(),
+  interruptsRunId: z.string().optional(),
+  error: z.string().optional(),
+  attachFiles: z.array(resolvedAttachFileSchema).optional(),
+  generationTemplate: generationTemplateRequestSchema.optional(),
+  seqId: z.number().int().positive(),
+  sequenceNumber: z.number().nullable().optional(),
+  workflowSnapshot: workflowSnapshotSchema.optional(),
+  createdAt: z.string(),
+});
+
+const legacyPagedChatMessageSchema = z.discriminatedUnion("role", [
+  legacyPagedChatMessageBaseSchema
+    .extend({
+      role: z.literal("user"),
+      structuredPrompt: userMessageDocumentSchema.optional(),
+    })
+    .strict(),
+  legacyPagedChatMessageBaseSchema
+    .extend({
+      role: z.literal("assistant"),
+      thinking: z.string().optional(),
+      runLifecycleEvent: z
+        .enum(["completed", "failed", "cancelled"])
+        .optional(),
+      recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
+    })
+    .strict(),
+]);
+
+const chatMessageCompatibilityResponseSchema = z.union([
+  chatEventResponseSchema,
+  legacyPagedChatMessageSchema,
 ]);
 
 if (
@@ -1480,6 +1541,31 @@ export const chatThreadMessagesContract = c.router({
 });
 
 /**
+ * Read contract for the API release immediately before ChatEvent routes
+ * shipped. This is a client-only rollout bridge and must not be used to type
+ * current `/messages` route handlers.
+ */
+export const precedingChatThreadMessagesContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/messages",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    query: chatThreadMessagesContract.list.query,
+    responses: {
+      200: z.object({
+        messages: z.array(legacyPagedChatMessageSchema),
+        hasHistoryBefore: z.boolean().optional(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Read chat messages from the preceding API release",
+  },
+});
+
+/**
  * Canonical ChatEvent read contract. The message-named routes above remain
  * compatibility aliases for the preceding App and CLI releases.
  */
@@ -1681,6 +1767,8 @@ export type ChatThreadEventsContract = typeof chatThreadEventsContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 /** @deprecated Use ChatThreadEventsContract. */
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
+export type PrecedingChatThreadMessagesContract =
+  typeof precedingChatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
 export type ArtifactsContract = typeof artifactsContract;
 export type ChatSearchContract = typeof chatSearchContract;
@@ -1720,6 +1808,8 @@ export {
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
   chatEventResponseSchema,
+  legacyPagedChatMessageSchema,
+  chatMessageCompatibilityResponseSchema,
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
@@ -1776,6 +1866,16 @@ export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
+export type LegacyPagedChatMessage = z.infer<
+  typeof legacyPagedChatMessageSchema
+>;
+export type ChatMessageCompatibilityResponse = z.infer<
+  typeof chatMessageCompatibilityResponseSchema
+>;
+export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
+export type ChatMessageSendBody = z.infer<
+  typeof chatMessagesContract.send.body
+>;
 
 export function canonicalChatEvent(response: ChatEventResponse): ChatEvent {
   if (response.role !== chatEventCompatibilityRole(response.eventType)) {
@@ -1793,6 +1893,93 @@ export function canonicalChatEvent(response: ChatEventResponse): ChatEvent {
   void role;
   void revokesMessageId;
   return event;
+}
+
+function legacyChatEventType(message: LegacyPagedChatMessage): ChatEventType {
+  if (message.role === "user") {
+    if (message.interruptsRunId !== undefined) {
+      return "control.interrupt";
+    }
+    if (message.error !== undefined) {
+      return "input.rejected";
+    }
+    if (
+      message.revokesMessageId !== undefined &&
+      message.content === null &&
+      message.structuredPrompt === undefined &&
+      message.attachFiles === undefined &&
+      message.generationTemplate === undefined
+    ) {
+      return "control.revoke";
+    }
+    return "input.prompt";
+  }
+
+  if (message.runEventId === "queue:queued") {
+    return "run.queued";
+  }
+  if (message.runEventId === "queue:dequeued") {
+    return "run.dequeued";
+  }
+  if (message.runLifecycleEvent !== undefined) {
+    return `run.${message.runLifecycleEvent}`;
+  }
+  if (message.goalEvent !== undefined) {
+    return "goal.changed";
+  }
+  if (message.usage !== undefined) {
+    return "usage.recorded";
+  }
+  if (message.recommendedFollowups !== undefined) {
+    return "output.followups";
+  }
+  if (message.thinking !== undefined) {
+    return "output.thinking";
+  }
+  if (message.error !== undefined) {
+    return "output.error";
+  }
+  if (message.content !== null) {
+    return "output.message";
+  }
+  throw new Error(`Cannot classify legacy chat message ${message.id}`);
+}
+
+/**
+ * Converts the one-release `/messages` response into the canonical event
+ * domain. The thread id was path-scoped and absent from the legacy payload.
+ */
+export function canonicalChatEventFromCompatibilityResponse(
+  threadId: string,
+  response: ChatMessageCompatibilityResponse,
+): ChatEvent {
+  if ("eventType" in response) {
+    return canonicalChatEvent(response);
+  }
+  const { role, revokesMessageId, ...message } = response;
+  void role;
+  return chatEventSchema.parse({
+    ...message,
+    threadId,
+    eventType: legacyChatEventType(response),
+    ...(revokesMessageId === undefined
+      ? {}
+      : { revokesEventId: revokesMessageId }),
+  });
+}
+
+/** Maps canonical event write names to the preceding `/messages` request. */
+export function legacyChatMessageSendBody(
+  body: ChatEventSendBody,
+): ChatMessageSendBody {
+  const { clientEventId, revokesEventId, ...request } = body;
+  return chatMessagesContract.send.body.parse({
+    ...request,
+    ...(clientEventId === undefined ? {} : { clientMessageId: clientEventId }),
+    ...(revokesEventId === undefined
+      ? {}
+      : { revokesMessageId: revokesEventId }),
+  });
 }
 
 export function chatEventResponse(event: ChatEvent): ChatEventResponse {

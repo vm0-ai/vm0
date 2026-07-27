@@ -44,7 +44,6 @@ import {
 } from "./optimistic-chat-messages.ts";
 import type { ChatMessage } from "./chat-message-types.ts";
 import {
-  chatEventsContract,
   chatThreadArtifactsContract,
   type AttachFile,
   type GenerationTemplateRequest,
@@ -94,6 +93,7 @@ import {
   loadIndexedDbChatEvents$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
+import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
 import type { BodyRenderBlock, ParsedBodyBlock } from "./parse-body-blocks.ts";
 import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
 import {
@@ -3329,31 +3329,28 @@ const postSendMessage$ = command(
       features[FeatureSwitchKey.CodexFastMode] ?? false;
     const realAgentInPreviewEnabled =
       features[FeatureSwitchKey.RealAgentInPreview] ?? false;
-    const client = get(zeroClient$)(chatEventsContract);
     const [, sendResult] = await Promise.all([
       set(args.flushDraftClear$, signal),
-      accept(
-        client.send({
-          body: sendMessageRequestBody({
-            agentId: args.agentId,
-            clientEventId: args.clientEventId,
-            chatThreadSortEventId: args.chatThreadSortEventId,
-            threadId: args.threadId,
-            result: args.result,
-            modelSelection: args.modelSelection,
-            codexFastModeEnabled,
-            realAgentInPreviewEnabled,
-            generationTemplate: args.generationTemplate,
-            structuredPrompt: args.structuredPrompt,
-            options: args.options,
-          }),
-          fetchOptions: { signal },
+      sendChatEventWithCompatibility(
+        get(zeroClient$),
+        sendMessageRequestBody({
+          agentId: args.agentId,
+          clientEventId: args.clientEventId,
+          chatThreadSortEventId: args.chatThreadSortEventId,
+          threadId: args.threadId,
+          result: args.result,
+          modelSelection: args.modelSelection,
+          codexFastModeEnabled,
+          realAgentInPreviewEnabled,
+          generationTemplate: args.generationTemplate,
+          structuredPrompt: args.structuredPrompt,
+          options: args.options,
         }),
-        [201],
+        signal,
       ),
     ]);
     signal.throwIfAborted();
-    return sendResult.body.runId;
+    return sendResult.runId;
   },
 );
 

@@ -12,10 +12,14 @@ import {
 } from "../chat-events";
 import {
   canonicalChatEvent,
+  canonicalChatEventFromCompatibilityResponse,
   chatEventResponse,
   chatEventResponseSchema,
   chatEventSchema,
   chatEventsContract,
+  chatMessagesContract,
+  legacyChatMessageSendBody,
+  legacyPagedChatMessageSchema,
   chatThreadEventsContract,
   type ChatEvent,
 } from "../chat-threads";
@@ -219,6 +223,37 @@ describe("ChatEvent catalog", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("upgrades every preceding message response leaf into a ChatEvent", () => {
+    for (const event of chatEvents) {
+      const response = chatEventResponse(event);
+      const {
+        eventType,
+        threadId,
+        revokesEventId,
+        ...legacyCompatibilityResponse
+      } = response;
+      void eventType;
+      void threadId;
+      void revokesEventId;
+      const legacy = legacyPagedChatMessageSchema.parse(
+        event.eventType === "run.queued"
+          ? { ...legacyCompatibilityResponse, runEventId: "queue:queued" }
+          : event.eventType === "run.dequeued"
+            ? { ...legacyCompatibilityResponse, runEventId: "queue:dequeued" }
+            : legacyCompatibilityResponse,
+      );
+      expect(
+        canonicalChatEventFromCompatibilityResponse(THREAD_ID, legacy),
+      ).toStrictEqual(
+        event.eventType === "run.queued"
+          ? { ...event, runEventId: "queue:queued" }
+          : event.eventType === "run.dequeued"
+            ? { ...event, runEventId: "queue:dequeued" }
+            : event,
+      );
+    }
+  });
 });
 
 describe("ChatEvent revocation rules", () => {
@@ -342,5 +377,23 @@ describe("ChatEvent HTTP contracts", () => {
       revokesEventId: "input-prompt",
       clientEventId: "00000000-0000-4000-8000-000000000002",
     });
+  });
+
+  it("maps canonical write ids to the preceding message route", () => {
+    const legacy = legacyChatMessageSendBody(
+      chatEventsContract.send.body.parse({
+        agentId: "agent-1",
+        threadId: THREAD_ID,
+        revokesEventId: "input-prompt",
+        clientEventId: "00000000-0000-4000-8000-000000000002",
+      }),
+    );
+
+    expect(chatMessagesContract.send.body.parse(legacy)).toMatchObject({
+      revokesMessageId: "input-prompt",
+      clientMessageId: "00000000-0000-4000-8000-000000000002",
+    });
+    expect(legacy).not.toHaveProperty("revokesEventId");
+    expect(legacy).not.toHaveProperty("clientEventId");
   });
 });

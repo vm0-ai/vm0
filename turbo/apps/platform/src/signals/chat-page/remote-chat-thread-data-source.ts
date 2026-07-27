@@ -5,9 +5,6 @@ import {
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
-  chatThreadEventsContract,
-  chatEventsContract,
-  canonicalChatEvent,
   type ChatThreadEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -27,6 +24,10 @@ import {
   applyUnreadSnapshot$,
   recordOptimisticReadMark$,
 } from "./sidebar-unread-threads.ts";
+import {
+  listChatEventsWithCompatibility,
+  sendChatEventWithCompatibility,
+} from "./chat-event-api-rollout.ts";
 import {
   chatThreadMetaMap$,
   optimisticChatThreadCreateUnsettled,
@@ -182,26 +183,23 @@ const appendQueuedEvent$ = command(
     }: AppendQueuedEventArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatEventsContract);
-    await accept(
-      client.send({
-        body: {
-          agentId,
-          prompt: content ?? "",
-          threadId,
-          hasTextContent,
-          clientEventId: clientEventId,
-          chatThreadSortEventId,
-          generationTemplate,
-          ...(structuredPrompt ? { structuredPrompt } : {}),
-          ...(runOptions ? { runOptions } : {}),
-          ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
-          ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
-          attachFiles: attachments ?? undefined,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
+    await sendChatEventWithCompatibility(
+      get(zeroClient$),
+      {
+        agentId,
+        prompt: content ?? "",
+        threadId,
+        hasTextContent,
+        clientEventId: clientEventId,
+        chatThreadSortEventId,
+        generationTemplate,
+        ...(structuredPrompt ? { structuredPrompt } : {}),
+        ...(runOptions ? { runOptions } : {}),
+        ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
+        ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+        attachFiles: attachments ?? undefined,
+      },
+      signal,
     );
     signal.throwIfAborted();
   },
@@ -213,18 +211,15 @@ const recallEvent$ = command(
     { threadId, agentId, revokesEventId, clientEventId }: RecallEventArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatEventsContract);
-    await accept(
-      client.send({
-        body: {
-          agentId,
-          threadId,
-          revokesEventId: revokesEventId,
-          clientEventId: clientEventId,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
+    await sendChatEventWithCompatibility(
+      get(zeroClient$),
+      {
+        agentId,
+        threadId,
+        revokesEventId: revokesEventId,
+        clientEventId: clientEventId,
+      },
+      signal,
     );
     signal.throwIfAborted();
   },
@@ -236,21 +231,18 @@ export const listEventsAfter$ = command(
     { threadId, sinceSeqId }: ListEventsAfterArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadEventsContract);
-    const result = await accept(
-      client.list({
-        params: { threadId },
-        query: { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
-        fetchOptions: { signal },
-      }),
-      [200],
+    const result = await listChatEventsWithCompatibility(
+      get(zeroClient$),
+      threadId,
+      { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
+      signal,
     );
     signal.throwIfAborted();
     L.debug("listEventsAfter$", {
       threadId,
       sinceSeqId,
-      count: result.body.events.length,
-      runEvents: result.body.events.flatMap((event) => {
+      count: result.events.length,
+      runEvents: result.events.flatMap((event) => {
         if (!event.runId) {
           return [];
         }
@@ -262,10 +254,7 @@ export const listEventsAfter$ = command(
         ];
       }),
     });
-    return {
-      events: result.body.events.map(canonicalChatEvent),
-      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
-    };
+    return result;
   },
 );
 
@@ -275,20 +264,12 @@ export const listEventsBefore$ = command(
     { threadId, beforeSeqId }: ListEventsBeforeArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadEventsContract);
-    const result = await accept(
-      client.list({
-        params: { threadId },
-        query: { beforeSeqId, limit: 50 },
-        fetchOptions: { signal },
-      }),
-      [200],
+    return await listChatEventsWithCompatibility(
+      get(zeroClient$),
+      threadId,
+      { beforeSeqId, limit: 50 },
+      signal,
     );
-    signal.throwIfAborted();
-    return {
-      events: result.body.events.map(canonicalChatEvent),
-      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
-    };
   },
 );
 
@@ -298,7 +279,6 @@ const cancelRuns$ = command(
     { threadId, agentId, interrupts }: CancelRunsArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatEventsContract);
     L.debug("cancelRun$ start", {
       threadId,
       pendingRunIds: interrupts.map((interrupt) => {
@@ -307,17 +287,15 @@ const cancelRuns$ = command(
     });
     await Promise.all(
       interrupts.map(async ({ runId, clientEventId }) => {
-        await accept(
-          client.send({
-            body: {
-              agentId,
-              threadId,
-              interruptsRunId: runId,
-              clientEventId: clientEventId,
-            },
-            fetchOptions: { signal },
-          }),
-          [201],
+        await sendChatEventWithCompatibility(
+          get(zeroClient$),
+          {
+            agentId,
+            threadId,
+            interruptsRunId: runId,
+            clientEventId: clientEventId,
+          },
+          signal,
         );
         L.debug("cancelRun$ server accepted cancel", { threadId, runId });
       }),
