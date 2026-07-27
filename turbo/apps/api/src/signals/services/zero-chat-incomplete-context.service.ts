@@ -1,7 +1,17 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import { and, asc, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  not,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -87,9 +97,9 @@ async function selectIncompleteRoundFrontier(
         WHERE ${and(
           eq(chatMessages.chatThreadId, threadId),
           isNotNull(chatMessages.runId),
-          sql`NOT (
-            ${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)
-          )`,
+          not(
+            sql`${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)`,
+          ),
           visibleChatMessageCondition(db),
           or(
             isSuccessfulRun,

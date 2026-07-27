@@ -5,10 +5,13 @@ import {
   type ParserServicesWithTypeInformation,
   type TSESTree,
 } from "@typescript-eslint/utils";
-import { type TypeChecker } from "typescript";
+import { TypeFlags, type Type, type TypeChecker } from "typescript";
 
 import {
   isDrizzleColumnType,
+  isDrizzleArrayOperandType,
+  isDrizzlePatternOperandType,
+  isDrizzleSelectType,
   isDrizzleTableType,
   isDrizzleWrapperType,
 } from "../drizzle.ts";
@@ -19,12 +22,26 @@ import {
   type SqlSourceVariant,
 } from "./sql-source.ts";
 
-type SqlAnalysisContext = "predicate" | "statement";
+export type SqlAnalysisContext =
+  | "ordering"
+  | "predicate"
+  | "relation"
+  | "selection"
+  | "statement";
 
 export type SqlAnalysisFinding =
   | {
-      readonly helper: "and" | "eq" | "gt" | "gte" | "lt" | "lte" | "ne" | "or";
+      readonly helper: SqlHelper;
       readonly kind: "helper";
+      readonly node: TSESTree.Node;
+    }
+  | {
+      readonly helper: "exists" | "notExists";
+      readonly kind: "existence-predicate";
+      readonly node: TSESTree.Node;
+    }
+  | {
+      readonly kind: "empty-fragment";
       readonly node: TSESTree.Node;
     }
   | {
@@ -32,17 +49,89 @@ export type SqlAnalysisFinding =
       readonly node: TSESTree.Expression;
     };
 
+export interface SqlCapabilityChecks {
+  acceptsOptionalSql(node: TSESTree.Expression): boolean;
+  hasDirectResultMapping(node: TSESTree.Expression): boolean;
+  hasParameterListOrigin(node: TSESTree.Expression): boolean;
+  isInlineParameterList(node: TSESTree.Expression): boolean;
+}
+
+const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
+  acceptsOptionalSql(): boolean {
+    return false;
+  },
+  hasDirectResultMapping(): boolean {
+    return false;
+  },
+  hasParameterListOrigin(): boolean {
+    return false;
+  },
+  isInlineParameterList(): boolean {
+    return false;
+  },
+};
+
 export interface SqlAnalysis {
   readonly expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>;
+  readonly findingSignatures: readonly SqlFindingSignature[];
   readonly findings: readonly SqlAnalysisFinding[];
   readonly hasWholeReplacementBoundary: boolean;
   readonly isSimpleSelect: boolean;
   readonly isTruePredicate: boolean;
 }
 
+interface SqlFindingSignature {
+  readonly boundaryIsRoot: boolean;
+  readonly boundaryType: TSESTree.Node["type"];
+  readonly helper: SqlHelper | undefined;
+  readonly isPartial: boolean;
+  readonly kind: SqlAnalysisFinding["kind"];
+  readonly ownsResultMapping: boolean;
+}
+
+type SqlHelper =
+  | "and"
+  | "arrayContained"
+  | "arrayContains"
+  | "arrayOverlaps"
+  | "asc"
+  | "avg"
+  | "avgDistinct"
+  | "between"
+  | "count"
+  | "countDistinct"
+  | "desc"
+  | "eq"
+  | "exists"
+  | "gt"
+  | "gte"
+  | "ilike"
+  | "inArray"
+  | "isNotNull"
+  | "isNull"
+  | "like"
+  | "lt"
+  | "lte"
+  | "max"
+  | "min"
+  | "ne"
+  | "not"
+  | "notBetween"
+  | "notExists"
+  | "notIlike"
+  | "notInArray"
+  | "notLike"
+  | "or"
+  | "sum"
+  | "sumDistinct";
+
 interface SqlMarker {
   readonly chunk: SqlSourceChunk;
+  readonly isArrayOperand: boolean;
   readonly isColumn: boolean;
+  readonly isPatternOperand: boolean;
+  readonly isSelect: boolean;
+  readonly isStringOrWrapper: boolean;
   readonly isTable: boolean;
   readonly isWrapper: boolean;
   readonly node: TSESTree.Expression;
@@ -52,6 +141,11 @@ interface ParsedSql {
   readonly markers: ReadonlyMap<string, SqlMarker>;
   readonly sourceRanges: readonly SqlSourceRange[];
   readonly statement: unknown;
+}
+
+interface RenderedSql {
+  readonly source: string;
+  readonly sourceRanges: readonly SqlSourceRange[];
 }
 
 interface SqlSourceRange {
@@ -64,6 +158,7 @@ type StructuralExpression = (
   | {
       readonly children: readonly StructuralExpression[];
       readonly kind: "opaque";
+      readonly nodeKey: string;
     }
   | {
       readonly kind: "constant";
@@ -81,16 +176,75 @@ type StructuralExpression = (
   | {
       readonly items: readonly StructuralExpression[];
       readonly kind: "boolean";
-      readonly operator: "and" | "or";
+      readonly operator: "and" | "not" | "or";
+    }
+  | {
+      readonly argument: StructuralExpression | undefined;
+      readonly filter: StructuralExpression | undefined;
+      readonly helper: AggregateHelper | undefined;
+      readonly hasInternalOrdering: boolean;
+      readonly isDistinct: boolean;
+      readonly isStar: boolean;
+      readonly isVariadic: boolean;
+      readonly isWindowed: boolean;
+      readonly kind: "aggregate";
+      readonly orderings: readonly StructuralOrdering[];
+    }
+  | {
+      readonly escape: StructuralExpression | undefined;
+      readonly helper: PatternHelper;
+      readonly kind: "pattern";
+      readonly left: StructuralExpression;
+      readonly right: StructuralExpression;
+    }
+  | {
+      readonly helper: ArrayHelper;
+      readonly kind: "array";
+      readonly left: StructuralExpression;
+      readonly right: StructuralExpression;
+    }
+  | {
+      readonly helper: "inArray" | "notInArray";
+      readonly kind: "membership";
+      readonly left: StructuralExpression;
+      readonly values: readonly StructuralExpression[];
+    }
+  | {
+      readonly helper: "between" | "notBetween";
+      readonly kind: "range";
+      readonly left: StructuralExpression;
+      readonly maximum: StructuralExpression;
+      readonly minimum: StructuralExpression;
+    }
+  | {
+      readonly helper: "isNotNull" | "isNull";
+      readonly kind: "null";
+      readonly operand: StructuralExpression;
+    }
+  | {
+      readonly children: readonly StructuralExpression[];
+      readonly isHandBuiltSelect: boolean;
+      readonly kind: "existence";
+      readonly selectMarker: SqlMarker | undefined;
+      readonly subselect: unknown;
     }
 ) & {
   readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
 };
 
+interface StructuralOrdering {
+  readonly direction: "asc" | "desc" | undefined;
+  readonly expression: StructuralExpression;
+  readonly hasExplicitNullOrdering: boolean;
+  readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
+}
+
 type ClassifiedHelperFinding = Extract<
   SqlAnalysisFinding,
-  { readonly kind: "helper" }
+  { readonly kind: "existence-predicate" | "helper" }
 > & {
+  readonly isolationContext: "ordering" | "predicate" | "selection";
+  readonly isPartial: boolean;
   readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
 };
 
@@ -98,6 +252,16 @@ interface ExpressionClassification {
   readonly anchor: TSESTree.Node | undefined;
   readonly findings: readonly ClassifiedHelperFinding[];
   readonly isWholeReplacement: boolean;
+}
+
+interface ClassificationContext {
+  readonly allowsOptionalSql: boolean;
+  readonly capabilities: SqlCapabilityChecks;
+  readonly checker: TypeChecker;
+  readonly ownsResultMapping: boolean;
+  readonly root: TSESTree.Expression;
+  readonly services: ParserServicesWithTypeInformation;
+  readonly variant: SqlSourceVariant;
 }
 
 interface RelationMatch {
@@ -121,6 +285,33 @@ const COMPARISON_HELPERS = new Map<
   [">=", "gte"],
   ["<", "lt"],
   ["<=", "lte"],
+]);
+
+type AggregateHelper =
+  | "avg"
+  | "avgDistinct"
+  | "count"
+  | "countDistinct"
+  | "max"
+  | "min"
+  | "sum"
+  | "sumDistinct";
+
+type ArrayHelper = "arrayContained" | "arrayContains" | "arrayOverlaps";
+
+type PatternHelper = "ilike" | "like" | "notIlike" | "notLike";
+
+const ARRAY_HELPERS = new Map<string, ArrayHelper>([
+  ["@>", "arrayContains"],
+  ["<@", "arrayContained"],
+  ["&&", "arrayOverlaps"],
+]);
+
+const PATTERN_HELPERS = new Map<string, PatternHelper>([
+  ["~~", "like"],
+  ["!~~", "notLike"],
+  ["~~*", "ilike"],
+  ["!~~*", "notIlike"],
 ]);
 
 const EXPRESSION_NODE_KEYS = new Set([
@@ -172,6 +363,45 @@ function markerIsColumn(
   return isDrizzleColumnType(checker, type, tsNode);
 }
 
+function markerIsArrayOperand(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return isDrizzleArrayOperandType(
+    checker,
+    checker.getTypeAtLocation(tsNode),
+    tsNode,
+  );
+}
+
+function markerIsPatternOperand(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return isDrizzlePatternOperandType(
+    checker,
+    checker.getTypeAtLocation(tsNode),
+    tsNode,
+  );
+}
+
+function markerIsSelect(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return isDrizzleSelectType(
+    checker,
+    checker.getTypeAtLocation(tsNode),
+    tsNode,
+  );
+}
+
 function markerIsTable(
   node: TSESTree.Expression,
   checker: TypeChecker,
@@ -180,6 +410,36 @@ function markerIsTable(
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
   const type = checker.getTypeAtLocation(tsNode);
   return isDrizzleTableType(checker, type, tsNode);
+}
+
+function isStringOrDrizzleWrapper(type: Type, checker: TypeChecker): boolean {
+  if (type.isUnion()) {
+    return type.types.every((member) => {
+      return isStringOrDrizzleWrapper(member, checker);
+    });
+  }
+  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+    return false;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return (
+      constraint !== undefined && isStringOrDrizzleWrapper(constraint, checker)
+    );
+  }
+  return (
+    (type.flags & TypeFlags.StringLike) !== 0 ||
+    isDrizzleWrapperType(checker, type)
+  );
+}
+
+function markerIsStringOrWrapper(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return isStringOrDrizzleWrapper(checker.getTypeAtLocation(tsNode), checker);
 }
 
 function markerIsWrapper(
@@ -218,37 +478,73 @@ function parseSqlVariant(
   });
   const prefix = markerPrefix(literals);
   const markers = new Map<string, SqlMarker>();
-  const sourceRanges: SqlSourceRange[] = [];
-  const contextPrefix = context === "statement" ? "" : "SELECT 1 WHERE ";
-  let source = contextPrefix;
-  // libpg_query locations are UTF-8 byte offsets, not JavaScript string
-  // indexes.
-  let sourceByteLength = trackSourceRanges
-    ? Buffer.byteLength(contextPrefix)
-    : 0;
+  const markerNames: string[] = [];
+  const selectCandidateNames = new Set<string>();
+  const contextPrefix =
+    context === "statement"
+      ? ""
+      : context === "predicate"
+        ? "SELECT 1 WHERE "
+        : context === "selection"
+          ? "SELECT "
+          : context === "ordering"
+            ? "SELECT 1 ORDER BY "
+            : "SELECT 1 FROM ";
   let markerIndex = 0;
+  let precedingLiteral = "";
   for (const chunk of variant.chunks) {
-    const start = sourceByteLength;
     if (chunk.kind === "literal") {
-      source += chunk.text;
-      if (trackSourceRanges) {
-        sourceByteLength += Buffer.byteLength(chunk.text);
-        sourceRanges.push({ chunk, end: sourceByteLength, start });
-      }
+      precedingLiteral += chunk.text;
       continue;
     }
     const expression = chunk.expression;
     const name = `${prefix}${markerIndex}`;
-    const markerSource = `"${name}"`;
     markerIndex += 1;
+    markerNames.push(name);
+    if (/\bEXISTS\b/i.test(precedingLiteral)) {
+      selectCandidateNames.add(name);
+    }
+    precedingLiteral = "";
+    let cachedArrayOperand: boolean | undefined;
     let cachedColumn: boolean | undefined;
+    let cachedPatternOperand: boolean | undefined;
+    let cachedSelect: boolean | undefined;
+    let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
     let cachedWrapper: boolean | undefined;
     const marker: SqlMarker = {
       chunk,
+      get isArrayOperand(): boolean {
+        cachedArrayOperand ??= markerIsArrayOperand(
+          expression,
+          checker,
+          services,
+        );
+        return cachedArrayOperand;
+      },
       get isColumn(): boolean {
         cachedColumn ??= markerIsColumn(expression, checker, services);
         return cachedColumn;
+      },
+      get isPatternOperand(): boolean {
+        cachedPatternOperand ??= markerIsPatternOperand(
+          expression,
+          checker,
+          services,
+        );
+        return cachedPatternOperand;
+      },
+      get isSelect(): boolean {
+        cachedSelect ??= markerIsSelect(expression, checker, services);
+        return cachedSelect;
+      },
+      get isStringOrWrapper(): boolean {
+        cachedStringOrWrapper ??= markerIsStringOrWrapper(
+          expression,
+          checker,
+          services,
+        );
+        return cachedStringOrWrapper;
       },
       get isTable(): boolean {
         cachedTable ??= markerIsTable(expression, checker, services);
@@ -261,19 +557,58 @@ function parseSqlVariant(
       node: expression,
     };
     markers.set(name, marker);
-    source += markerSource;
-    if (trackSourceRanges) {
-      sourceByteLength += Buffer.byteLength(markerSource);
-      sourceRanges.push({ chunk, end: sourceByteLength, start });
-    }
   }
 
-  const parseResult = parsePostgres(source);
+  function render(useSelectMarkers: boolean): RenderedSql {
+    const sourceRanges: SqlSourceRange[] = [];
+    let source = contextPrefix;
+    // libpg_query locations are UTF-8 byte offsets, not JavaScript string
+    // indexes.
+    let sourceByteLength = trackSourceRanges
+      ? Buffer.byteLength(contextPrefix)
+      : 0;
+    let expressionIndex = 0;
+    for (const chunk of variant.chunks) {
+      const start = sourceByteLength;
+      let chunkSource: string;
+      if (chunk.kind === "literal") {
+        chunkSource = chunk.text;
+      } else {
+        const name = markerNames[expressionIndex];
+        expressionIndex += 1;
+        if (name === undefined) {
+          return { source: "", sourceRanges: [] };
+        }
+        const markerIdentifier = `"${name}"`;
+        chunkSource =
+          useSelectMarkers &&
+          selectCandidateNames.has(name) &&
+          markers.get(name)?.isSelect === true
+            ? `(SELECT ${markerIdentifier})`
+            : markerIdentifier;
+      }
+      source += chunkSource;
+      if (trackSourceRanges) {
+        sourceByteLength += Buffer.byteLength(chunkSource);
+        sourceRanges.push({ chunk, end: sourceByteLength, start });
+      }
+    }
+    return { source, sourceRanges };
+  }
+
+  let rendered = render(false);
+  let parseResult = parsePostgres(rendered.source);
+  if (parseResult === null && selectCandidateNames.size > 0) {
+    rendered = render(true);
+    parseResult = parsePostgres(rendered.source);
+  }
   if (parseResult === null || parseResult.statements.length !== 1) {
     return null;
   }
   const statement = parseResult.statements[0];
-  return statement === undefined ? null : { markers, sourceRanges, statement };
+  return statement === undefined
+    ? null
+    : { markers, sourceRanges: rendered.sourceRanges, statement };
 }
 
 function stringNodeValue(value: unknown): string | undefined {
@@ -394,6 +729,63 @@ function collectStructuralExpressions(
   return expressions;
 }
 
+function listItems(value: unknown): readonly unknown[] | undefined {
+  const list = recordProperty(value, "List");
+  return Array.isArray(list?.items) ? list.items : undefined;
+}
+
+function functionName(value: unknown): readonly string[] | undefined {
+  const call = recordProperty(value, "FuncCall");
+  if (!Array.isArray(call?.funcname)) {
+    return undefined;
+  }
+  const names = call.funcname.map(stringNodeValue);
+  return names.every((name): name is string => {
+    return name !== undefined;
+  })
+    ? names
+    : undefined;
+}
+
+function aggregateHelper(
+  call: Record<string, unknown>,
+): AggregateHelper | undefined {
+  const names = functionName({ FuncCall: call });
+  if (names?.length !== 1) {
+    return undefined;
+  }
+  const name = names[0]?.toLowerCase();
+  const isDistinct = call.agg_distinct === true;
+  if (name === "count") {
+    return isDistinct ? "countDistinct" : "count";
+  }
+  if (name === "avg") {
+    return isDistinct ? "avgDistinct" : "avg";
+  }
+  if (name === "sum") {
+    return isDistinct ? "sumDistinct" : "sum";
+  }
+  if (!isDistinct && (name === "max" || name === "min")) {
+    return name;
+  }
+  return undefined;
+}
+
+function opaqueNodeKey(value: unknown): string {
+  if (!isRecord(value)) {
+    return "unknown";
+  }
+  const key = Object.keys(value)[0] ?? "unknown";
+  const names = functionName(value);
+  return names === undefined
+    ? key
+    : `${key}:${names
+        .map((name) => {
+          return name.toLowerCase();
+        })
+        .join(".")}`;
+}
+
 function structuralExpression(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
@@ -417,30 +809,125 @@ function structuralExpression(
   const binary = recordProperty(value, "A_Expr");
   const binaryOperator = operatorName(binary?.name);
   if (
-    binary?.kind === "AEXPR_OP" &&
+    binary !== undefined &&
     binaryOperator !== undefined &&
     binary.lexpr !== undefined &&
     binary.rexpr !== undefined
   ) {
     const left = structuralExpression(binary.lexpr, markers, sourceRanges);
     const right = structuralExpression(binary.rexpr, markers, sourceRanges);
-    return {
-      kind: "comparison",
-      left,
-      operator: binaryOperator,
-      right,
-      sourceChunks: mergeSourceChunks(ownSourceChunks(value, sourceRanges), [
+    const own = ownSourceChunks(value, sourceRanges);
+    if (binary.kind === "AEXPR_LIKE" || binary.kind === "AEXPR_ILIKE") {
+      const helper = PATTERN_HELPERS.get(binaryOperator);
+      if (helper !== undefined) {
+        const rightCall = recordProperty(binary.rexpr, "FuncCall");
+        const rightNames = functionName(binary.rexpr);
+        const rightArguments = Array.isArray(rightCall?.args)
+          ? rightCall.args
+          : undefined;
+        const hasEscape =
+          rightNames?.length === 2 &&
+          rightNames[0] === "pg_catalog" &&
+          rightNames[1] === "like_escape" &&
+          rightArguments?.length === 2;
+        const pattern = hasEscape
+          ? structuralExpression(rightArguments?.[0], markers, sourceRanges)
+          : right;
+        const escape = hasEscape
+          ? structuralExpression(rightArguments?.[1], markers, sourceRanges)
+          : undefined;
+        return {
+          escape,
+          helper,
+          kind: "pattern",
+          left,
+          right: pattern,
+          sourceChunks: mergeSourceChunks(
+            own,
+            escape === undefined ? [left, pattern] : [left, pattern, escape],
+          ),
+        };
+      }
+    }
+    if (binary.kind === "AEXPR_OP") {
+      const arrayHelper = ARRAY_HELPERS.get(binaryOperator);
+      if (arrayHelper !== undefined) {
+        return {
+          helper: arrayHelper,
+          kind: "array",
+          left,
+          right,
+          sourceChunks: mergeSourceChunks(own, [left, right]),
+        };
+      }
+      return {
+        kind: "comparison",
         left,
+        operator: binaryOperator,
         right,
+        sourceChunks: mergeSourceChunks(own, [left, right]),
+      };
+    }
+    const items = listItems(binary.rexpr);
+    if (
+      binary.kind === "AEXPR_IN" &&
+      items !== undefined &&
+      (binaryOperator === "=" || binaryOperator === "<>")
+    ) {
+      const values = items.map((item) => {
+        return structuralExpression(item, markers, sourceRanges);
+      });
+      return {
+        helper: binaryOperator === "=" ? "inArray" : "notInArray",
+        kind: "membership",
+        left,
+        sourceChunks: mergeSourceChunks(own, [left, ...values]),
+        values,
+      };
+    }
+    if (
+      (binary.kind === "AEXPR_BETWEEN" ||
+        binary.kind === "AEXPR_NOT_BETWEEN") &&
+      items?.length === 2
+    ) {
+      const minimum = structuralExpression(items[0], markers, sourceRanges);
+      const maximum = structuralExpression(items[1], markers, sourceRanges);
+      return {
+        helper: binary.kind === "AEXPR_BETWEEN" ? "between" : "notBetween",
+        kind: "range",
+        left,
+        maximum,
+        minimum,
+        sourceChunks: mergeSourceChunks(own, [left, minimum, maximum]),
+      };
+    }
+  }
+
+  const nullTest = recordProperty(value, "NullTest");
+  if (
+    nullTest?.arg !== undefined &&
+    (nullTest.nulltesttype === "IS_NULL" ||
+      nullTest.nulltesttype === "IS_NOT_NULL")
+  ) {
+    const operand = structuralExpression(nullTest.arg, markers, sourceRanges);
+    return {
+      helper: nullTest.nulltesttype === "IS_NULL" ? "isNull" : "isNotNull",
+      kind: "null",
+      operand,
+      sourceChunks: mergeSourceChunks(ownSourceChunks(value, sourceRanges), [
+        operand,
       ]),
     };
   }
 
   const boolean = recordProperty(value, "BoolExpr");
   if (
-    (boolean?.boolop === "AND_EXPR" || boolean?.boolop === "OR_EXPR") &&
+    (boolean?.boolop === "AND_EXPR" ||
+      boolean?.boolop === "NOT_EXPR" ||
+      boolean?.boolop === "OR_EXPR") &&
     Array.isArray(boolean.args) &&
-    boolean.args.length >= 2
+    ((boolean.boolop === "NOT_EXPR" && boolean.args.length === 1) ||
+      (boolean.boolop !== "NOT_EXPR" && boolean.args.length >= 2))
   ) {
     const items = boolean.args.map((item) => {
       return structuralExpression(item, markers, sourceRanges);
@@ -448,11 +935,89 @@ function structuralExpression(
     return {
       items,
       kind: "boolean",
-      operator: boolean.boolop === "AND_EXPR" ? "and" : "or",
+      operator:
+        boolean.boolop === "AND_EXPR"
+          ? "and"
+          : boolean.boolop === "OR_EXPR"
+            ? "or"
+            : "not",
       sourceChunks: mergeSourceChunks(
         ownSourceChunks(value, sourceRanges),
         items,
       ),
+    };
+  }
+
+  const call = recordProperty(value, "FuncCall");
+  if (call !== undefined) {
+    const helper = aggregateHelper(call);
+    const args = Array.isArray(call.args) ? call.args : [];
+    const isStar = call.agg_star === true;
+    const validArity =
+      helper === "count" && isStar
+        ? args.length === 0
+        : !isStar && args.length === 1;
+    if (helper !== undefined && validArity) {
+      const orderings = Array.isArray(call.agg_order)
+        ? call.agg_order.flatMap((item) => {
+            return structuralOrdering(item, markers, sourceRanges);
+          })
+        : [];
+      const argument =
+        args[0] === undefined
+          ? undefined
+          : structuralExpression(args[0], markers, sourceRanges);
+      const filter =
+        call.agg_filter === undefined
+          ? undefined
+          : structuralExpression(call.agg_filter, markers, sourceRanges);
+      return {
+        argument,
+        filter,
+        helper,
+        hasInternalOrdering: orderings.length > 0,
+        isDistinct: call.agg_distinct === true,
+        isStar,
+        isVariadic: call.func_variadic === true,
+        isWindowed: call.over !== undefined,
+        kind: "aggregate",
+        orderings,
+        sourceChunks: mergeSourceChunks(
+          ownSourceChunks(value, sourceRanges),
+          [
+            argument,
+            filter,
+            ...orderings.map((ordering) => {
+              return ordering.expression;
+            }),
+          ].filter((item): item is StructuralExpression => {
+            return item !== undefined;
+          }),
+        ),
+      };
+    }
+  }
+
+  const sublink = recordProperty(value, "SubLink");
+  if (
+    sublink?.subLinkType === "EXISTS_SUBLINK" &&
+    sublink.subselect !== undefined
+  ) {
+    const children = collectStructuralExpressions(
+      sublink.subselect,
+      markers,
+      sourceRanges,
+    );
+    return {
+      children,
+      isHandBuiltSelect: isHandBuiltExistenceSelect(sublink.subselect, markers),
+      kind: "existence",
+      selectMarker: syntheticSelectMarker(sublink.subselect, markers),
+      sourceChunks: mergeSourceChunks(
+        ownSourceChunks(value, sourceRanges),
+        children,
+      ),
+      subselect: sublink.subselect,
     };
   }
 
@@ -461,6 +1026,7 @@ function structuralExpression(
   return {
     children,
     kind: "opaque",
+    nodeKey: opaqueNodeKey(value),
     sourceChunks: mergeSourceChunks(
       ownSourceChunks(value, sourceRanges),
       children,
@@ -477,7 +1043,9 @@ function deduplicateFindings<T extends SqlAnalysisFinding>(
     const key =
       finding.kind === "query-builder"
         ? finding.kind
-        : `${finding.kind}:${finding.helper}`;
+        : finding.kind === "empty-fragment"
+          ? finding.kind
+          : `${finding.kind}:${finding.helper}`;
     const nodeKeys = seen.get(finding.node);
     if (nodeKeys?.has(key) === true) {
       continue;
@@ -492,8 +1060,187 @@ function deduplicateFindings<T extends SqlAnalysisFinding>(
   return result;
 }
 
+interface FindingWithSignature {
+  readonly finding: SqlAnalysisFinding;
+  readonly signature: SqlFindingSignature;
+}
+
+function deduplicateFindingEntries(
+  entries: readonly FindingWithSignature[],
+): FindingWithSignature[] {
+  const findings = deduplicateFindings(
+    entries.map((entry) => {
+      return entry.finding;
+    }),
+  );
+  return findings.flatMap((finding) => {
+    const entry = entries.find((candidate) => {
+      return candidate.finding === finding;
+    });
+    return entry === undefined ? [] : [entry];
+  });
+}
+
+type DrizzleOperandRole =
+  | "array"
+  | "column"
+  | "pattern"
+  | "string-or-wrapper"
+  | "wrapper";
+
+function directMarkerMatchesRole(
+  marker: SqlMarker,
+  role: DrizzleOperandRole,
+): boolean {
+  if (role === "array") {
+    return marker.isArrayOperand;
+  }
+  if (role === "column") {
+    return marker.isColumn;
+  }
+  if (role === "pattern") {
+    return marker.isPatternOperand;
+  }
+  if (role === "string-or-wrapper") {
+    return marker.isStringOrWrapper;
+  }
+  return marker.isWrapper;
+}
+
+function nodeMatchesRole(
+  node: TSESTree.Expression,
+  role: DrizzleOperandRole,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  const type = checker.getTypeAtLocation(tsNode);
+  if (role === "array") {
+    return isDrizzleArrayOperandType(checker, type, tsNode);
+  }
+  if (role === "column") {
+    return isDrizzleColumnType(checker, type, tsNode);
+  }
+  if (role === "pattern") {
+    return isDrizzlePatternOperandType(checker, type, tsNode);
+  }
+  if (role === "string-or-wrapper") {
+    return isStringOrDrizzleWrapper(type, checker);
+  }
+  return isDrizzleWrapperType(checker, type);
+}
+
+function operandNode(
+  expression: StructuralExpression,
+  role: DrizzleOperandRole,
+  classificationContext: ClassificationContext,
+): TSESTree.Expression | undefined {
+  if (expression.kind === "marker") {
+    return directMarkerMatchesRole(expression.marker, role)
+      ? expression.marker.node
+      : undefined;
+  }
+  const boundary = exactExpressionBoundary(
+    expression,
+    classificationContext.variant,
+    classificationContext.root,
+    classificationContext.checker,
+    classificationContext.services,
+  );
+  return boundary !== undefined &&
+    nodeMatchesRole(
+      boundary,
+      role,
+      classificationContext.checker,
+      classificationContext.services,
+    )
+    ? boundary
+    : undefined;
+}
+
+function nestedClassificationContext(
+  context: ClassificationContext,
+): ClassificationContext {
+  return context.ownsResultMapping || !context.allowsOptionalSql
+    ? { ...context, allowsOptionalSql: true, ownsResultMapping: false }
+    : context;
+}
+
+function classifiedFinding(
+  helper: SqlHelper,
+  node: TSESTree.Node,
+  sourceChunks: ReadonlySet<SqlSourceChunk>,
+  isolationContext: "ordering" | "predicate" | "selection" = "predicate",
+  isPartial = false,
+): ClassifiedHelperFinding {
+  return {
+    helper,
+    isolationContext,
+    isPartial,
+    kind: "helper",
+    node,
+    sourceChunks,
+  };
+}
+
+function firstClassificationNode(
+  classification: ExpressionClassification,
+): TSESTree.Node | undefined {
+  return classification.anchor ?? classification.findings[0]?.node;
+}
+
+function classifyExistence(
+  expression: Extract<StructuralExpression, { readonly kind: "existence" }>,
+  helper: "exists" | "notExists",
+  context: ClassificationContext,
+): ExpressionClassification {
+  const selectMarker = expression.selectMarker;
+  if (selectMarker?.isSelect === true) {
+    return {
+      anchor: selectMarker.node,
+      findings: [
+        classifiedFinding(helper, selectMarker.node, expression.sourceChunks),
+      ],
+      isWholeReplacement: true,
+    };
+  }
+  if (expression.isHandBuiltSelect) {
+    const handBuilt = literalBoundaryNode(
+      expression.sourceChunks,
+      context.root,
+    );
+    return {
+      anchor: handBuilt,
+      findings: [
+        {
+          helper,
+          isolationContext: "predicate",
+          isPartial: false,
+          kind: "existence-predicate",
+          node: handBuilt,
+          sourceChunks: expression.sourceChunks,
+        },
+      ],
+      isWholeReplacement: true,
+    };
+  }
+  const children = expression.children.map((child) => {
+    return classifyExpression(child, nestedClassificationContext(context));
+  });
+  return {
+    anchor: children.map(firstClassificationNode).find((node) => {
+      return node !== undefined;
+    }),
+    findings: children.flatMap((child) => {
+      return child.findings;
+    }),
+    isWholeReplacement: false,
+  };
+}
+
 function classifyExpression(
   expression: StructuralExpression,
+  context: ClassificationContext,
 ): ExpressionClassification {
   if (expression.kind === "marker") {
     return {
@@ -514,26 +1261,22 @@ function classifyExpression(
   }
   if (expression.kind === "comparison") {
     const helper = COMPARISON_HELPERS.get(expression.operator);
-    if (
-      helper !== undefined &&
-      expression.left.kind === "marker" &&
-      (expression.left.marker.isColumn || expression.left.marker.isWrapper)
-    ) {
+    const leftNode =
+      helper === undefined
+        ? undefined
+        : operandNode(expression.left, "wrapper", context);
+    if (helper !== undefined && leftNode !== undefined) {
       return {
-        anchor: expression.left.marker.node,
+        anchor: leftNode,
         findings: [
-          {
-            helper,
-            kind: "helper",
-            node: expression.left.marker.node,
-            sourceChunks: expression.sourceChunks,
-          },
+          classifiedFinding(helper, leftNode, expression.sourceChunks),
         ],
         isWholeReplacement: true,
       };
     }
-    const left = classifyExpression(expression.left);
-    const right = classifyExpression(expression.right);
+    const childContext = nestedClassificationContext(context);
+    const left = classifyExpression(expression.left, childContext);
+    const right = classifyExpression(expression.right, childContext);
     return {
       anchor:
         left.anchor ??
@@ -545,33 +1288,275 @@ function classifyExpression(
     };
   }
   if (expression.kind === "boolean") {
-    for (const item of expression.items) {
-      const child = classifyExpression(item);
-      const reportNode = child.anchor ?? child.findings[0]?.node;
-      if (reportNode !== undefined) {
-        return {
-          anchor: reportNode,
-          findings: [
-            {
-              helper: expression.operator,
-              kind: "helper",
-              node: reportNode,
-              sourceChunks: expression.sourceChunks,
-            },
-          ],
-          isWholeReplacement: true,
-        };
+    if (
+      expression.operator === "not" &&
+      expression.items[0]?.kind === "existence"
+    ) {
+      return classifyExistence(expression.items[0], "notExists", context);
+    }
+    const helper = expression.operator;
+    const children = expression.items.map((item) => {
+      return classifyExpression(item, nestedClassificationContext(context));
+    });
+    if ((helper !== "and" && helper !== "or") || context.allowsOptionalSql) {
+      for (const child of children) {
+        const reportNode = firstClassificationNode(child);
+        if (reportNode !== undefined) {
+          return {
+            anchor: reportNode,
+            findings: [
+              classifiedFinding(helper, reportNode, expression.sourceChunks),
+            ],
+            isWholeReplacement: true,
+          };
+        }
       }
     }
     return {
-      anchor: undefined,
-      findings: [],
+      anchor: children.map(firstClassificationNode).find((node) => {
+        return node !== undefined;
+      }),
+      findings: children.flatMap((child) => {
+        return child.findings;
+      }),
       isWholeReplacement: false,
     };
   }
 
+  if (expression.kind === "null") {
+    const node = operandNode(expression.operand, "wrapper", context);
+    if (node !== undefined) {
+      return {
+        anchor: node,
+        findings: [
+          classifiedFinding(expression.helper, node, expression.sourceChunks),
+        ],
+        isWholeReplacement: true,
+      };
+    }
+    return classifyExpression(
+      expression.operand,
+      nestedClassificationContext(context),
+    );
+  }
+
+  if (expression.kind === "pattern") {
+    const left = operandNode(expression.left, "pattern", context);
+    const right = operandNode(expression.right, "string-or-wrapper", context);
+    if (left !== undefined && right !== undefined) {
+      return {
+        anchor: left,
+        findings: [
+          classifiedFinding(
+            expression.helper,
+            left,
+            expression.sourceChunks,
+            "predicate",
+            expression.escape !== undefined,
+          ),
+        ],
+        isWholeReplacement: expression.escape === undefined,
+      };
+    }
+    const childContext = nestedClassificationContext(context);
+    const children = [expression.left, expression.right, expression.escape]
+      .filter((item): item is StructuralExpression => {
+        return item !== undefined;
+      })
+      .map((item) => {
+        return classifyExpression(item, childContext);
+      });
+    return {
+      anchor: children.map(firstClassificationNode).find((node) => {
+        return node !== undefined;
+      }),
+      findings: children.flatMap((child) => {
+        return child.findings;
+      }),
+      isWholeReplacement: false,
+    };
+  }
+
+  if (expression.kind === "array") {
+    const left = operandNode(expression.left, "array", context);
+    const right = operandNode(expression.right, "wrapper", context);
+    if (left !== undefined && right !== undefined) {
+      return {
+        anchor: left,
+        findings: [
+          classifiedFinding(expression.helper, left, expression.sourceChunks),
+        ],
+        isWholeReplacement: true,
+      };
+    }
+    const childContext = nestedClassificationContext(context);
+    const leftChild = classifyExpression(expression.left, childContext);
+    const rightChild = classifyExpression(expression.right, childContext);
+    return {
+      anchor:
+        firstClassificationNode(leftChild) ??
+        firstClassificationNode(rightChild),
+      findings: [...leftChild.findings, ...rightChild.findings],
+      isWholeReplacement: false,
+    };
+  }
+
+  if (expression.kind === "membership") {
+    const directColumn =
+      expression.left.kind === "marker" && expression.left.marker.isColumn
+        ? expression.left.marker.node
+        : undefined;
+    const lowerColumn =
+      expression.left.kind === "opaque" &&
+      expression.left.nodeKey === "FuncCall:lower" &&
+      expression.left.children.length === 1 &&
+      expression.left.children[0]?.kind === "marker" &&
+      expression.left.children[0].marker.isColumn
+        ? expression.left.children[0].marker.node
+        : undefined;
+    const value =
+      expression.values.length === 1 && expression.values[0]?.kind === "marker"
+        ? expression.values[0].marker.node
+        : undefined;
+    const validValues =
+      value !== undefined &&
+      (lowerColumn === undefined
+        ? context.capabilities.hasParameterListOrigin(value)
+        : context.capabilities.isInlineParameterList(value));
+    const left = directColumn ?? lowerColumn;
+    if (left !== undefined && validValues) {
+      return {
+        anchor: left,
+        findings: [
+          classifiedFinding(expression.helper, left, expression.sourceChunks),
+        ],
+        isWholeReplacement: true,
+      };
+    }
+    const childContext = nestedClassificationContext(context);
+    const children = [expression.left, ...expression.values].map((item) => {
+      return classifyExpression(item, childContext);
+    });
+    return {
+      anchor: children.map(firstClassificationNode).find((node) => {
+        return node !== undefined;
+      }),
+      findings: children.flatMap((child) => {
+        return child.findings;
+      }),
+      isWholeReplacement: false,
+    };
+  }
+
+  if (expression.kind === "range") {
+    const left = operandNode(expression.left, "wrapper", context);
+    if (left !== undefined) {
+      return {
+        anchor: left,
+        findings: [
+          classifiedFinding(expression.helper, left, expression.sourceChunks),
+        ],
+        isWholeReplacement: true,
+      };
+    }
+    const childContext = nestedClassificationContext(context);
+    const children = [
+      expression.left,
+      expression.minimum,
+      expression.maximum,
+    ].map((item) => {
+      return classifyExpression(item, childContext);
+    });
+    return {
+      anchor: children.map(firstClassificationNode).find((node) => {
+        return node !== undefined;
+      }),
+      findings: children.flatMap((child) => {
+        return child.findings;
+      }),
+      isWholeReplacement: false,
+    };
+  }
+
+  if (expression.kind === "aggregate") {
+    const childContext = nestedClassificationContext(context);
+    const argumentClassification =
+      expression.argument === undefined
+        ? undefined
+        : classifyExpression(expression.argument, childContext);
+    const filterClassification =
+      expression.filter === undefined
+        ? undefined
+        : classifyExpression(expression.filter, childContext);
+    const orderingClassifications = expression.orderings.map((ordering) => {
+      return classifyOrdering(ordering, childContext);
+    });
+    const children = [
+      argumentClassification,
+      filterClassification,
+      ...orderingClassifications,
+    ].filter((item): item is ExpressionClassification => {
+      return item !== undefined;
+    });
+    const argumentNode =
+      expression.argument === undefined
+        ? undefined
+        : operandNode(expression.argument, "wrapper", context);
+    const validArgument = expression.isStar
+      ? expression.helper === "count"
+      : argumentNode !== undefined;
+    const helper = expression.helper;
+    const sameColumnDecoder =
+      (helper === "max" || helper === "min") &&
+      expression.argument !== undefined &&
+      operandNode(expression.argument, "column", context) !== undefined;
+    const mappingAllowed =
+      !context.ownsResultMapping ||
+      context.capabilities.hasDirectResultMapping(context.root) ||
+      sameColumnDecoder;
+    if (
+      helper !== undefined &&
+      validArgument &&
+      !expression.hasInternalOrdering &&
+      !expression.isVariadic &&
+      !expression.isWindowed &&
+      mappingAllowed
+    ) {
+      const node =
+        argumentNode ??
+        literalBoundaryNode(expression.sourceChunks, context.root);
+      return {
+        anchor: node,
+        findings: [
+          classifiedFinding(
+            helper,
+            node,
+            expression.sourceChunks,
+            "selection",
+            expression.filter !== undefined,
+          ),
+          ...(filterClassification?.findings ?? []),
+        ],
+        isWholeReplacement: expression.filter === undefined,
+      };
+    }
+    return {
+      anchor: children.map(firstClassificationNode).find((node) => {
+        return node !== undefined;
+      }),
+      findings: children.flatMap((child) => {
+        return child.findings;
+      }),
+      isWholeReplacement: false,
+    };
+  }
+
+  if (expression.kind === "existence") {
+    return classifyExistence(expression, "exists", context);
+  }
+
   const children = expression.children.map((child) => {
-    return classifyExpression(child);
+    return classifyExpression(child, nestedClassificationContext(context));
   });
   return {
     anchor:
@@ -651,6 +1636,126 @@ function relationMatch(
   };
 }
 
+function syntheticSelectMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  const select = recordProperty(value, "SelectStmt");
+  if (
+    select === undefined ||
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    Object.keys(select).some((key) => {
+      return !["limitOption", "op", "targetList"].includes(key);
+    }) ||
+    !Array.isArray(select.targetList) ||
+    select.targetList.length !== 1
+  ) {
+    return undefined;
+  }
+  const target = recordProperty(select.targetList[0], "ResTarget");
+  if (
+    target === undefined ||
+    Object.keys(target).some((key) => {
+      return !["location", "val"].includes(key);
+    })
+  ) {
+    return undefined;
+  }
+  return columnMarker(target.val, markers);
+}
+
+function isSelectOneTarget(value: unknown): boolean {
+  const target = recordProperty(value, "ResTarget");
+  if (
+    target === undefined ||
+    Object.keys(target).some((key) => {
+      return !["location", "val"].includes(key);
+    })
+  ) {
+    return false;
+  }
+  const constant = recordProperty(target.val, "A_Const");
+  const integer = recordProperty(constant, "ival");
+  return integer?.ival === 1;
+}
+
+function predicateMarkers(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): readonly SqlMarker[] | undefined {
+  const direct = columnMarker(value, markers);
+  if (direct !== undefined) {
+    return [direct];
+  }
+  const boolean = recordProperty(value, "BoolExpr");
+  if (
+    boolean?.boolop !== "AND_EXPR" ||
+    !Array.isArray(boolean.args) ||
+    boolean.args.length < 2
+  ) {
+    return undefined;
+  }
+  const result = boolean.args.map((argument) => {
+    return columnMarker(argument, markers);
+  });
+  return result.every((marker): marker is SqlMarker => {
+    return marker !== undefined;
+  })
+    ? result
+    : undefined;
+}
+
+function isHandBuiltExistenceSelect(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const select = recordProperty(value, "SelectStmt");
+  if (
+    select === undefined ||
+    select.op !== "SETOP_NONE" ||
+    Object.keys(select).some((key) => {
+      return ![
+        "fromClause",
+        "limitCount",
+        "limitOption",
+        "op",
+        "targetList",
+        "whereClause",
+      ].includes(key);
+    }) ||
+    !Array.isArray(select.targetList) ||
+    select.targetList.length !== 1 ||
+    !isSelectOneTarget(select.targetList[0]) ||
+    !Array.isArray(select.fromClause) ||
+    select.fromClause.length !== 1 ||
+    select.whereClause === undefined
+  ) {
+    return false;
+  }
+  const relation = relationMatch(select.fromClause[0], markers);
+  const predicates = predicateMarkers(select.whereClause, markers);
+  const validLimit =
+    select.limitOption === "LIMIT_OPTION_DEFAULT" &&
+    select.limitCount === undefined
+      ? true
+      : select.limitOption === "LIMIT_OPTION_COUNT" &&
+        isLimitOne(select.limitCount);
+  return (
+    validLimit &&
+    relation?.sourceTable.isTable === true &&
+    relation.joinedTables.every((marker) => {
+      return marker.isTable;
+    }) &&
+    relation.joinedConditions.every((marker) => {
+      return marker.isWrapper;
+    }) &&
+    predicates?.every((marker) => {
+      return marker.isWrapper;
+    }) === true
+  );
+}
+
 function isLimitOne(value: unknown): boolean {
   const constant = recordProperty(value, "A_Const");
   const integer = recordProperty(constant, "ival");
@@ -702,6 +1807,309 @@ function predicateExpression(statement: unknown): unknown {
   return selectStatement(statement)?.whereClause;
 }
 
+function selectedExpressions(statement: unknown): readonly unknown[] {
+  const select = selectStatement(statement);
+  if (!Array.isArray(select?.targetList)) {
+    return [];
+  }
+  return select.targetList.flatMap((item) => {
+    const target = recordProperty(item, "ResTarget");
+    return target?.val === undefined ? [] : [target.val];
+  });
+}
+
+function contextOwnsWholeExpression(
+  context: "ordering" | "predicate" | "selection",
+  statement: unknown,
+): boolean {
+  const select = selectStatement(statement);
+  if (
+    select === undefined ||
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    !Array.isArray(select.targetList) ||
+    select.targetList.length !== 1
+  ) {
+    return false;
+  }
+  if (context === "selection") {
+    const target = recordProperty(select.targetList[0], "ResTarget");
+    return (
+      Object.keys(select).every((key) => {
+        return ["limitOption", "op", "targetList"].includes(key);
+      }) &&
+      target?.val !== undefined &&
+      Object.keys(target).every((key) => {
+        return ["location", "val"].includes(key);
+      })
+    );
+  }
+  if (!isSelectOneTarget(select.targetList[0])) {
+    return false;
+  }
+  if (context === "predicate") {
+    return (
+      select.whereClause !== undefined &&
+      Object.keys(select).every((key) => {
+        return ["limitOption", "op", "targetList", "whereClause"].includes(key);
+      })
+    );
+  }
+  return (
+    Array.isArray(select.sortClause) &&
+    select.sortClause.length === 1 &&
+    Object.keys(select).every((key) => {
+      return ["limitOption", "op", "sortClause", "targetList"].includes(key);
+    })
+  );
+}
+
+function orderingExpressions(
+  statement: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
+): readonly StructuralOrdering[] {
+  const select = selectStatement(statement);
+  if (!Array.isArray(select?.sortClause)) {
+    return [];
+  }
+  return select.sortClause.flatMap((item) => {
+    return structuralOrdering(item, markers, sourceRanges);
+  });
+}
+
+function structuralOrdering(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
+): readonly StructuralOrdering[] {
+  const sort = recordProperty(value, "SortBy");
+  if (sort?.node === undefined) {
+    return [];
+  }
+  const expression = structuralExpression(sort.node, markers, sourceRanges);
+  const direction =
+    sort.sortby_dir === "SORTBY_ASC"
+      ? "asc"
+      : sort.sortby_dir === "SORTBY_DESC"
+        ? "desc"
+        : undefined;
+  return [
+    {
+      direction,
+      expression,
+      hasExplicitNullOrdering:
+        sort.sortby_nulls === "SORTBY_NULLS_FIRST" ||
+        sort.sortby_nulls === "SORTBY_NULLS_LAST",
+      sourceChunks: expression.sourceChunks,
+    },
+  ];
+}
+
+function collectStructuralOrderings(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
+): readonly StructuralOrdering[] {
+  const orderings: StructuralOrdering[] = [];
+
+  function visit(current: unknown): void {
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        visit(item);
+      }
+      return;
+    }
+    if (!isRecord(current)) {
+      return;
+    }
+    const ordering = structuralOrdering(current, markers, sourceRanges);
+    if (ordering.length > 0) {
+      orderings.push(...ordering);
+      return;
+    }
+    for (const child of Object.values(current)) {
+      visit(child);
+    }
+  }
+
+  visit(value);
+  return orderings;
+}
+
+function structuralExpressionsForContext(
+  context: SqlAnalysisContext,
+  parsed: ParsedSql,
+): readonly StructuralExpression[] {
+  if (context === "predicate") {
+    const predicate = predicateExpression(parsed.statement);
+    return predicate === undefined
+      ? []
+      : [structuralExpression(predicate, parsed.markers, parsed.sourceRanges)];
+  }
+  if (context === "selection") {
+    return selectedExpressions(parsed.statement).map((expression) => {
+      return structuralExpression(
+        expression,
+        parsed.markers,
+        parsed.sourceRanges,
+      );
+    });
+  }
+  if (context === "relation") {
+    const from = selectStatement(parsed.statement)?.fromClause;
+    return collectStructuralExpressions(
+      from,
+      parsed.markers,
+      parsed.sourceRanges,
+    );
+  }
+  if (context === "ordering") {
+    return orderingExpressions(
+      parsed.statement,
+      parsed.markers,
+      parsed.sourceRanges,
+    ).map((ordering) => {
+      return ordering.expression;
+    });
+  }
+  return collectStructuralExpressions(
+    parsed.statement,
+    parsed.markers,
+    parsed.sourceRanges,
+  );
+}
+
+function sameOptionalExpression(
+  left: StructuralExpression | undefined,
+  right: StructuralExpression | undefined,
+): boolean {
+  return left === undefined
+    ? right === undefined
+    : right !== undefined && sameStructuralExpression(left, right);
+}
+
+function sameStructuralExpressions(
+  left: readonly StructuralExpression[],
+  right: readonly StructuralExpression[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((item, index) => {
+      const other = right[index];
+      return other !== undefined && sameStructuralExpression(item, other);
+    })
+  );
+}
+
+function sameStructuralOrderings(
+  left: readonly StructuralOrdering[],
+  right: readonly StructuralOrdering[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((item, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        item.direction === other.direction &&
+        item.hasExplicitNullOrdering === other.hasExplicitNullOrdering &&
+        sameStructuralExpression(item.expression, other.expression)
+      );
+    })
+  );
+}
+
+function sameStructuralExpression(
+  left: StructuralExpression,
+  right: StructuralExpression,
+): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+  if (left.kind === "marker" && right.kind === "marker") {
+    return left.marker.chunk === right.marker.chunk;
+  }
+  if (left.kind === "constant" && right.kind === "constant") {
+    return true;
+  }
+  if (left.kind === "comparison" && right.kind === "comparison") {
+    return (
+      left.operator === right.operator &&
+      sameStructuralExpression(left.left, right.left) &&
+      sameStructuralExpression(left.right, right.right)
+    );
+  }
+  if (left.kind === "boolean" && right.kind === "boolean") {
+    return (
+      left.operator === right.operator &&
+      sameStructuralExpressions(left.items, right.items)
+    );
+  }
+  if (left.kind === "null" && right.kind === "null") {
+    return (
+      left.helper === right.helper &&
+      sameStructuralExpression(left.operand, right.operand)
+    );
+  }
+  if (left.kind === "pattern" && right.kind === "pattern") {
+    return (
+      left.helper === right.helper &&
+      sameStructuralExpression(left.left, right.left) &&
+      sameStructuralExpression(left.right, right.right) &&
+      sameOptionalExpression(left.escape, right.escape)
+    );
+  }
+  if (left.kind === "array" && right.kind === "array") {
+    return (
+      left.helper === right.helper &&
+      sameStructuralExpression(left.left, right.left) &&
+      sameStructuralExpression(left.right, right.right)
+    );
+  }
+  if (left.kind === "membership" && right.kind === "membership") {
+    return (
+      left.helper === right.helper &&
+      sameStructuralExpression(left.left, right.left) &&
+      sameStructuralExpressions(left.values, right.values)
+    );
+  }
+  if (left.kind === "range" && right.kind === "range") {
+    return (
+      left.helper === right.helper &&
+      sameStructuralExpression(left.left, right.left) &&
+      sameStructuralExpression(left.minimum, right.minimum) &&
+      sameStructuralExpression(left.maximum, right.maximum)
+    );
+  }
+  if (left.kind === "aggregate" && right.kind === "aggregate") {
+    return (
+      left.helper === right.helper &&
+      left.hasInternalOrdering === right.hasInternalOrdering &&
+      left.isDistinct === right.isDistinct &&
+      left.isStar === right.isStar &&
+      left.isVariadic === right.isVariadic &&
+      left.isWindowed === right.isWindowed &&
+      sameOptionalExpression(left.argument, right.argument) &&
+      sameOptionalExpression(left.filter, right.filter) &&
+      sameStructuralOrderings(left.orderings, right.orderings)
+    );
+  }
+  if (left.kind === "existence" && right.kind === "existence") {
+    return (
+      left.isHandBuiltSelect === right.isHandBuiltSelect &&
+      left.selectMarker?.chunk === right.selectMarker?.chunk &&
+      sameStructuralExpressions(left.children, right.children)
+    );
+  }
+  return (
+    left.kind === "opaque" &&
+    right.kind === "opaque" &&
+    left.nodeKey === right.nodeKey &&
+    sameStructuralExpressions(left.children, right.children)
+  );
+}
+
 function isTrueConstant(expression: unknown): boolean {
   const constant = recordProperty(expression, "A_Const");
   const boolean = recordProperty(constant, "boolval");
@@ -738,14 +2146,11 @@ function isWithinCompositionRoot(
   return false;
 }
 
-function commonCompositionBoundaries(
+function compositionBoundariesForChunks(
   chunks: readonly SqlSourceChunk[],
   root: TSESTree.Expression,
 ): TSESTree.Expression[] {
-  const contributingChunks = chunks.filter((chunk) => {
-    return chunk.kind === "expression" || chunk.text.trim() !== "";
-  });
-  const firstChunk = contributingChunks[0];
+  const firstChunk = chunks[0];
   if (firstChunk === undefined) {
     return [];
   }
@@ -758,7 +2163,7 @@ function commonCompositionBoundaries(
         return (
           isCompositionBoundary(origin) &&
           isWithinCompositionRoot(origin, root) &&
-          contributingChunks.every((chunk) => {
+          chunks.every((chunk) => {
             return chunk.origins.includes(origin);
           })
         );
@@ -784,6 +2189,18 @@ function commonCompositionBoundaries(
   ];
 }
 
+function commonCompositionBoundaries(
+  chunks: readonly SqlSourceChunk[],
+  root: TSESTree.Expression,
+): TSESTree.Expression[] {
+  return compositionBoundariesForChunks(
+    chunks.filter((chunk) => {
+      return chunk.kind === "expression" || chunk.text.trim() !== "";
+    }),
+    root,
+  );
+}
+
 function commonCompositionBoundary(
   variant: SqlSourceVariant,
   root: TSESTree.Expression,
@@ -791,12 +2208,100 @@ function commonCompositionBoundary(
   return commonCompositionBoundaries(variant.chunks, root)[0];
 }
 
-function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
+function literalBoundaryNode(
+  chunks: ReadonlySet<SqlSourceChunk>,
+  root: TSESTree.Expression,
+): TSESTree.Expression {
+  return commonCompositionBoundaries([...chunks], root)[0] ?? root;
+}
+
+function exactExpressionBoundary(
+  expression: StructuralExpression,
+  variant: SqlSourceVariant,
+  root: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): TSESTree.Expression | undefined {
+  const candidates = commonCompositionBoundaries(
+    [...expression.sourceChunks],
+    root,
+  );
+  for (const candidate of candidates) {
+    const candidateVariant = {
+      chunks: variant.chunks.filter((chunk) => {
+        return chunk.origins.includes(candidate);
+      }),
+    };
+    const parsed = parseSqlVariant(
+      candidateVariant,
+      "selection",
+      true,
+      checker,
+      services,
+    );
+    if (parsed === null) {
+      continue;
+    }
+    if (!contextOwnsWholeExpression("selection", parsed.statement)) {
+      continue;
+    }
+    const selected = selectedExpressions(parsed.statement);
+    if (selected.length !== 1 || selected[0] === undefined) {
+      continue;
+    }
+    const candidateExpression = structuralExpression(
+      selected[0],
+      parsed.markers,
+      parsed.sourceRanges,
+    );
+    if (sameStructuralExpression(expression, candidateExpression)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function classifyOrdering(
+  ordering: StructuralOrdering,
+  context: ClassificationContext,
+): ExpressionClassification {
+  if (ordering.direction === undefined) {
+    return classifyExpression(ordering.expression, context);
+  }
+  const node = operandNode(ordering.expression, "wrapper", context);
+  if (node === undefined) {
+    return classifyExpression(
+      ordering.expression,
+      nestedClassificationContext(context),
+    );
+  }
   return {
-    helper: finding.helper,
-    kind: finding.kind,
-    node: finding.node,
+    anchor: node,
+    findings: [
+      classifiedFinding(
+        ordering.direction,
+        node,
+        ordering.sourceChunks,
+        "ordering",
+        ordering.hasExplicitNullOrdering,
+      ),
+    ],
+    isWholeReplacement: !ordering.hasExplicitNullOrdering,
   };
+}
+
+function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
+  return finding.kind === "existence-predicate"
+    ? {
+        helper: finding.helper,
+        kind: finding.kind,
+        node: finding.node,
+      }
+    : {
+        helper: finding.helper,
+        kind: finding.kind,
+        node: finding.node,
+      };
 }
 
 function replacementBoundaryForFinding(
@@ -805,7 +2310,11 @@ function replacementBoundaryForFinding(
   root: TSESTree.Expression,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
+  capabilities: SqlCapabilityChecks,
 ): TSESTree.Expression | undefined {
+  if (finding.isPartial) {
+    return undefined;
+  }
   // A parsed descendant can cross template boundaries because Drizzle inserts
   // nested SQL without parentheses. Reparse each editable boundary in
   // isolation before claiming that the helper can replace it.
@@ -821,23 +2330,50 @@ function replacementBoundaryForFinding(
     };
     const parsed = parseSqlVariant(
       candidateVariant,
-      "predicate",
-      false,
+      finding.isolationContext,
+      true,
       checker,
       services,
     );
-    const expression =
-      parsed === null ? undefined : predicateExpression(parsed.statement);
-    if (parsed === null || expression === undefined) {
+    if (parsed === null) {
       continue;
     }
-    const classification = classifyExpression(
-      structuralExpression(expression, parsed.markers, parsed.sourceRanges),
-    );
     if (
-      classification.isWholeReplacement &&
+      !contextOwnsWholeExpression(finding.isolationContext, parsed.statement)
+    ) {
+      continue;
+    }
+    const classificationContext: ClassificationContext = {
+      allowsOptionalSql: true,
+      capabilities,
+      checker,
+      ownsResultMapping: false,
+      root: candidate,
+      services,
+      variant: candidateVariant,
+    };
+    const classifications =
+      finding.isolationContext === "ordering"
+        ? orderingExpressions(
+            parsed.statement,
+            parsed.markers,
+            parsed.sourceRanges,
+          ).map((ordering) => {
+            return classifyOrdering(ordering, classificationContext);
+          })
+        : structuralExpressionsForContext(finding.isolationContext, parsed).map(
+            (expression) => {
+              return classifyExpression(expression, classificationContext);
+            },
+          );
+    const classification = classifications[0];
+    const candidateFinding = classification?.findings[0];
+    if (
+      classifications.length === 1 &&
+      classification?.isWholeReplacement === true &&
       classification.findings.length === 1 &&
-      classification.findings[0]?.helper === finding.helper
+      candidateFinding?.kind === finding.kind &&
+      candidateFinding.helper === finding.helper
     ) {
       return candidate;
     }
@@ -853,12 +2389,23 @@ function analyzeParsed(
   variant: SqlSourceVariant,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
+  capabilities: SqlCapabilityChecks,
 ): SqlAnalysis {
   const simpleSelect =
     context === "statement" && isSimpleSelect(parsed.statement, parsed.markers);
   if (simpleSelect) {
     return {
       expandedTemplates: new Set(),
+      findingSignatures: [
+        {
+          boundaryIsRoot: true,
+          boundaryType: node.type,
+          helper: undefined,
+          isPartial: false,
+          kind: "query-builder",
+          ownsResultMapping: false,
+        },
+      ],
       findings: [{ kind: "query-builder", node }],
       hasWholeReplacementBoundary: true,
       isSimpleSelect: true,
@@ -866,48 +2413,100 @@ function analyzeParsed(
     };
   }
 
-  const expression =
-    context === "predicate"
-      ? predicateExpression(parsed.statement)
-      : parsed.statement;
   const structuralExpressions =
-    context === "predicate" && expression !== undefined
-      ? [structuralExpression(expression, parsed.markers, parsed.sourceRanges)]
-      : collectStructuralExpressions(
-          expression,
+    context === "ordering"
+      ? []
+      : structuralExpressionsForContext(context, parsed);
+  const orderings =
+    context === "ordering"
+      ? orderingExpressions(
+          parsed.statement,
           parsed.markers,
           parsed.sourceRanges,
-        );
-  const classifications = structuralExpressions.map((item) => {
-    return classifyExpression(item);
-  });
-  const predicateClassification =
-    context === "predicate" ? classifications[0] : undefined;
-  const predicateFinding = predicateClassification?.findings[0];
-  const rootNeedsCompositionBoundary =
-    hasLocalExpansion && predicateFinding !== undefined;
+        )
+      : context === "statement"
+        ? collectStructuralOrderings(
+            parsed.statement,
+            parsed.markers,
+            parsed.sourceRanges,
+          )
+        : [];
+  const ownsResultMapping =
+    context === "selection" && structuralExpressions.length === 1;
+  const classificationContext: ClassificationContext = {
+    allowsOptionalSql:
+      context === "statement" ||
+      context === "relation" ||
+      capabilities.acceptsOptionalSql(node),
+    capabilities,
+    checker,
+    ownsResultMapping,
+    root: node,
+    services,
+    variant,
+  };
+  const classifications = [
+    ...structuralExpressions.map((item) => {
+      return classifyExpression(item, classificationContext);
+    }),
+    ...orderings.map((ordering) => {
+      return classifyOrdering(ordering, classificationContext);
+    }),
+  ];
+  const rootClassification =
+    classifications.length === 1 ? classifications[0] : undefined;
+  const rootFinding = rootClassification?.findings[0];
   const canReplaceRoot =
-    predicateClassification?.isWholeReplacement === true &&
-    predicateClassification.findings.length === 1 &&
-    predicateFinding?.kind === "helper" &&
-    rootNeedsCompositionBoundary;
+    hasLocalExpansion &&
+    (context === "ordering" ||
+      context === "predicate" ||
+      context === "selection") &&
+    contextOwnsWholeExpression(context, parsed.statement) &&
+    rootClassification?.isWholeReplacement === true &&
+    rootClassification.findings.length === 1 &&
+    rootFinding !== undefined &&
+    !rootFinding.isPartial;
   const replacementBoundary = canReplaceRoot
     ? commonCompositionBoundary(variant, node)
     : undefined;
   const hasWholeReplacementBoundary = replacementBoundary !== undefined;
-  const findings = deduplicateFindings(
+  const findingEntries = deduplicateFindingEntries(
     classifications.flatMap((classification) => {
       if (hasWholeReplacementBoundary) {
         return classification.findings.map((finding) => {
-          return publicFinding({
+          const publicResult = publicFinding({
             ...finding,
             node: replacementBoundary ?? node,
           });
+          return {
+            finding: publicResult,
+            signature: {
+              boundaryIsRoot: publicResult.node === node,
+              boundaryType: publicResult.node.type,
+              helper: finding.helper,
+              isPartial: finding.isPartial,
+              kind: finding.kind,
+              ownsResultMapping,
+            },
+          };
         });
       }
       return classification.findings.flatMap((finding) => {
         if (!hasLocalExpansion) {
-          return [publicFinding(finding)];
+          const publicResult = publicFinding(finding);
+          return [
+            {
+              finding: publicResult,
+              signature: {
+                boundaryIsRoot: publicResult.node === node,
+                boundaryType: publicResult.node.type,
+                helper: finding.helper,
+                isPartial: finding.isPartial,
+                kind: finding.kind,
+                ownsResultMapping,
+              },
+            },
+          ];
         }
         const boundary = replacementBoundaryForFinding(
           finding,
@@ -915,22 +2514,43 @@ function analyzeParsed(
           node,
           checker,
           services,
+          capabilities,
         );
-        return boundary === undefined
-          ? []
-          : [publicFinding({ ...finding, node: boundary })];
+        if (boundary === undefined) {
+          return [];
+        }
+        const publicResult = publicFinding({ ...finding, node: boundary });
+        return [
+          {
+            finding: publicResult,
+            signature: {
+              boundaryIsRoot: boundary === node,
+              boundaryType: boundary.type,
+              helper: finding.helper,
+              isPartial: finding.isPartial,
+              kind: finding.kind,
+              ownsResultMapping,
+            },
+          },
+        ];
       });
     }),
   );
   return {
     expandedTemplates: new Set(),
-    findings,
+    findingSignatures: findingEntries.map((entry) => {
+      return entry.signature;
+    }),
+    findings: findingEntries.map((entry) => {
+      return entry.finding;
+    }),
     hasWholeReplacementBoundary,
     isSimpleSelect: false,
     isTruePredicate:
       context === "predicate" &&
-      expression !== undefined &&
-      isTrueConstant(expression),
+      contextOwnsWholeExpression(context, parsed.statement) &&
+      predicateExpression(parsed.statement) !== undefined &&
+      isTrueConstant(predicateExpression(parsed.statement)),
   };
 }
 
@@ -939,17 +2559,20 @@ function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
     left.isSimpleSelect !== right.isSimpleSelect ||
     left.isTruePredicate !== right.isTruePredicate ||
     left.hasWholeReplacementBoundary !== right.hasWholeReplacementBoundary ||
-    left.findings.length !== right.findings.length
+    left.findingSignatures.length !== right.findingSignatures.length
   ) {
     return false;
   }
-  return left.findings.every((finding, index) => {
-    const other = right.findings[index];
+  return left.findingSignatures.every((finding, index) => {
+    const other = right.findingSignatures[index];
     return (
       other !== undefined &&
+      finding.boundaryIsRoot === other.boundaryIsRoot &&
+      finding.boundaryType === other.boundaryType &&
+      finding.helper === other.helper &&
+      finding.isPartial === other.isPartial &&
       finding.kind === other.kind &&
-      (finding.kind === "query-builder" ||
-        (other.kind === "helper" && finding.helper === other.helper))
+      finding.ownsResultMapping === other.ownsResultMapping
     );
   });
 }
@@ -959,11 +2582,55 @@ function emptyAnalysis(
 ): SqlAnalysis {
   return {
     expandedTemplates,
+    findingSignatures: [],
     findings: [],
     hasWholeReplacementBoundary: false,
     isSimpleSelect: false,
     isTruePredicate: false,
   };
+}
+
+function emptyTemplateFindings(
+  variants: readonly SqlSourceVariant[],
+  root: TSESTree.Expression,
+): readonly SqlAnalysisFinding[] | undefined {
+  const boundaries: TSESTree.Expression[] = [];
+  for (const variant of variants) {
+    if (
+      variant.chunks.length === 0 ||
+      variant.chunks.some((chunk) => {
+        return chunk.kind !== "literal" || chunk.text !== "";
+      })
+    ) {
+      return undefined;
+    }
+    boundaries.push(
+      compositionBoundariesForChunks(variant.chunks, root)[0] ?? root,
+    );
+  }
+  return deduplicateFindings(
+    boundaries.map((node) => {
+      return { kind: "empty-fragment", node };
+    }),
+  );
+}
+
+const SQL_CAPABILITY_TOKEN =
+  /(?:<>|>=|<=|@>|<@|&&|(?<![-=>])=(?!=|>)|(?<![-@>])>|<(?![@=>])|\b(?:AND|ASC|AVG|BETWEEN|COUNT|DESC|EXISTS|ILIKE|IN|IS|LIKE|MAX|MIN|NOT|NULL|OR|SUM|TRUE)\b)/i;
+
+function variantMightContainCapability(
+  variant: SqlSourceVariant,
+  context: SqlAnalysisContext,
+): boolean {
+  const literalSource = variant.chunks
+    .map((chunk) => {
+      return chunk.kind === "literal" ? chunk.text : " ";
+    })
+    .join("");
+  return (
+    SQL_CAPABILITY_TOKEN.test(literalSource) ||
+    (context === "statement" && /\bSELECT\b/i.test(literalSource))
+  );
 }
 
 export function analyzeSql(
@@ -972,6 +2639,7 @@ export function analyzeSql(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   composer: SqlSourceComposer,
+  capabilities: SqlCapabilityChecks = NO_CAPABILITY_CHECKS,
 ): SqlAnalysis {
   let composerCache = ANALYSIS_CACHE.get(composer);
   if (composerCache === undefined) {
@@ -987,51 +2655,80 @@ export function analyzeSql(
   if (source === null) {
     analysis = emptyAnalysis(new Set());
   } else {
-    const variants: SqlAnalysis[] = [];
-    for (const variant of source.variants) {
-      const parsed = parseSqlVariant(
-        variant,
-        context,
-        source.hasLocalExpansion,
-        checker,
-        services,
-      );
-      if (parsed === null) {
-        variants.length = 0;
-        break;
-      }
-      variants.push(
-        analyzeParsed(
-          node,
-          context,
-          source.hasLocalExpansion,
-          parsed,
-          variant,
-          checker,
-          services,
-        ),
-      );
-    }
-    const first = variants[0];
-    if (
-      first === undefined ||
-      variants.some((variant) => {
-        return !sameAnalysisSignature(variant, first);
+    const emptyFindings = emptyTemplateFindings(source.variants, node);
+    if (emptyFindings !== undefined) {
+      analysis = {
+        expandedTemplates: source.expandedTemplates,
+        findingSignatures: emptyFindings.map((finding) => {
+          return {
+            boundaryIsRoot: finding.node === node,
+            boundaryType: finding.node.type,
+            helper: undefined,
+            isPartial: false,
+            kind: finding.kind,
+            ownsResultMapping: false,
+          };
+        }),
+        findings: emptyFindings,
+        hasWholeReplacementBoundary: source.hasLocalExpansion,
+        isSimpleSelect: false,
+        isTruePredicate: false,
+      };
+    } else if (
+      !source.variants.some((variant) => {
+        return variantMightContainCapability(variant, context);
       })
     ) {
       analysis = emptyAnalysis(source.expandedTemplates);
     } else {
-      analysis = {
-        expandedTemplates: source.expandedTemplates,
-        findings: deduplicateFindings(
-          variants.flatMap((variant) => {
-            return variant.findings;
-          }),
-        ),
-        hasWholeReplacementBoundary: first.hasWholeReplacementBoundary,
-        isSimpleSelect: first.isSimpleSelect,
-        isTruePredicate: first.isTruePredicate,
-      };
+      const variants: SqlAnalysis[] = [];
+      for (const variant of source.variants) {
+        const parsed = parseSqlVariant(
+          variant,
+          context,
+          source.hasLocalExpansion,
+          checker,
+          services,
+        );
+        if (parsed === null) {
+          variants.length = 0;
+          break;
+        }
+        variants.push(
+          analyzeParsed(
+            node,
+            context,
+            source.hasLocalExpansion,
+            parsed,
+            variant,
+            checker,
+            services,
+            capabilities,
+          ),
+        );
+      }
+      const first = variants[0];
+      if (
+        first === undefined ||
+        variants.some((variant) => {
+          return !sameAnalysisSignature(variant, first);
+        })
+      ) {
+        analysis = emptyAnalysis(source.expandedTemplates);
+      } else {
+        analysis = {
+          expandedTemplates: source.expandedTemplates,
+          findingSignatures: first.findingSignatures,
+          findings: deduplicateFindings(
+            variants.flatMap((variant) => {
+              return variant.findings;
+            }),
+          ),
+          hasWholeReplacementBoundary: first.hasWholeReplacementBoundary,
+          isSimpleSelect: first.isSimpleSelect,
+          isTruePredicate: first.isTruePredicate,
+        };
+      }
     }
   }
   const nodeCache = composerCache.get(node);

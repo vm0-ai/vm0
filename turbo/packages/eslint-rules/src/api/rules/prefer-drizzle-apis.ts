@@ -20,738 +20,80 @@ import {
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
-  TypeFlags,
   type Expression as TypeScriptExpression,
   type Node,
+  type Signature,
   type Symbol as TypeScriptSymbol,
-  type Type,
   type VariableDeclaration,
 } from "typescript";
 
 import {
-  isDrizzleArrayOperandType,
-  isDrizzleColumnType,
-  isDrizzlePatternOperandType,
+  isDrizzleDeclaration,
   isDrizzleSqlTag,
   isDrizzleSymbol,
-  isDrizzleTableType,
-  isDrizzleWrapperType,
   isNamedDrizzleSignature,
   resolvedSymbol,
 } from "../drizzle.ts";
 import { createExecuteRawRowsMatcher } from "../execute-raw-rows.ts";
 import {
-  SQL_TEMPLATE_EXPRESSION_BOUNDARY,
-  sqlCodeMask,
-} from "../sql-lexing.ts";
-import { analyzeSql, type SqlAnalysis } from "../sql-analysis/sql-analysis.ts";
+  analyzeSql,
+  type SqlAnalysis,
+  type SqlAnalysisContext,
+  type SqlCapabilityChecks,
+} from "../sql-analysis/sql-analysis.ts";
 import { createSqlSourceComposer } from "../sql-analysis/sql-source.ts";
 import { createRule } from "../utils.ts";
 
-type BinaryLeftOperand = "array" | "pattern" | "wrapper";
-type BinaryRightOperand = "any" | "string-or-wrapper" | "wrapper";
-type BinaryRightBoundary = "pattern" | "predicate";
-
-interface BinaryHelper {
-  readonly helper: string;
-  readonly left: BinaryLeftOperand;
-  readonly right: BinaryRightOperand;
-  readonly rightBoundary: BinaryRightBoundary;
-}
-
-const BINARY_HELPERS = new Map<string, BinaryHelper>([
-  [
-    "=",
-    { helper: "eq", left: "wrapper", right: "any", rightBoundary: "predicate" },
-  ],
-  [
-    "<>",
-    { helper: "ne", left: "wrapper", right: "any", rightBoundary: "predicate" },
-  ],
-  [
-    ">",
-    { helper: "gt", left: "wrapper", right: "any", rightBoundary: "predicate" },
-  ],
-  [
-    ">=",
-    {
-      helper: "gte",
-      left: "wrapper",
-      right: "any",
-      rightBoundary: "predicate",
-    },
-  ],
-  [
-    "<",
-    { helper: "lt", left: "wrapper", right: "any", rightBoundary: "predicate" },
-  ],
-  [
-    "<=",
-    {
-      helper: "lte",
-      left: "wrapper",
-      right: "any",
-      rightBoundary: "predicate",
-    },
-  ],
-  [
-    "LIKE",
-    {
-      helper: "like",
-      left: "pattern",
-      right: "string-or-wrapper",
-      rightBoundary: "pattern",
-    },
-  ],
-  [
-    "NOT LIKE",
-    {
-      helper: "notLike",
-      left: "pattern",
-      right: "string-or-wrapper",
-      rightBoundary: "pattern",
-    },
-  ],
-  [
-    "ILIKE",
-    {
-      helper: "ilike",
-      left: "pattern",
-      right: "string-or-wrapper",
-      rightBoundary: "pattern",
-    },
-  ],
-  [
-    "NOT ILIKE",
-    {
-      helper: "notIlike",
-      left: "pattern",
-      right: "string-or-wrapper",
-      rightBoundary: "pattern",
-    },
-  ],
-  [
-    "@>",
-    {
-      helper: "arrayContains",
-      left: "array",
-      right: "wrapper",
-      rightBoundary: "predicate",
-    },
-  ],
-  [
-    "<@",
-    {
-      helper: "arrayContained",
-      left: "array",
-      right: "wrapper",
-      rightBoundary: "predicate",
-    },
-  ],
-  [
-    "&&",
-    {
-      helper: "arrayOverlaps",
-      left: "array",
-      right: "wrapper",
-      rightBoundary: "predicate",
-    },
-  ],
-]);
-
-const STRUCTURAL_HELPERS = new Set([
+const PREDICATE_HELPERS = new Set([
   "and",
+  "arrayContained",
+  "arrayContains",
+  "arrayOverlaps",
+  "between",
   "eq",
+  "exists",
   "gt",
   "gte",
+  "ilike",
+  "inArray",
+  "isNotNull",
+  "isNull",
+  "like",
   "lt",
   "lte",
   "ne",
+  "not",
+  "notBetween",
+  "notExists",
+  "notIlike",
+  "notInArray",
+  "notLike",
   "or",
 ]);
 
-type BooleanToken = "operand" | "and" | "or" | "(" | ")";
-type BooleanExpressionKind = "operand" | "and" | "or";
-type ExistenceKeyword =
-  | "and"
-  | "exists"
-  | "from"
-  | "inner"
-  | "join"
-  | "limit"
-  | "not"
-  | "on"
-  | "select"
-  | "where"
-  | "one"
-  | "("
-  | ")";
+const SELECTION_HELPERS = new Set([
+  "asc",
+  "avg",
+  "avgDistinct",
+  "count",
+  "countDistinct",
+  "desc",
+  "max",
+  "min",
+  "sum",
+  "sumDistinct",
+]);
 
-interface ExistenceExpressionToken {
-  readonly kind: "expression";
-  readonly index: number;
-}
+const SELECTION_OBJECT_METHODS = new Set([
+  "returning",
+  "select",
+  "selectDistinct",
+  "selectDistinctOn",
+  "set",
+  "values",
+]);
 
-type ExistenceToken = ExistenceKeyword | ExistenceExpressionToken;
-
-interface ExistenceTemplateMatch {
-  readonly helper: "exists" | "notExists";
-  readonly tableExpressionIndexes: readonly number[];
-  readonly predicateExpressionIndexes: readonly number[];
-}
-
-function quasiText(node: TSESTree.TemplateElement): string {
-  return node.value.cooked ?? node.value.raw;
-}
-
-interface NullPredicateMatch {
-  helper: "isNull" | "isNotNull";
-  length: number;
-}
-
-function nullPredicateMatch(quasi: string): NullPredicateMatch | undefined {
-  const match = /^\s*IS\s+(NOT\s+)?NULL\b/i.exec(quasi);
-  if (match === null) {
-    return undefined;
-  }
-  return {
-    helper: match[1] === undefined ? "isNull" : "isNotNull",
-    length: match[0].length,
-  };
-}
-
-function hasPredicateLeftBoundary(quasi: string): boolean {
-  const prefix = quasi.trimEnd();
-  return (
-    prefix === "" ||
-    prefix.endsWith("(") ||
-    /\b(?:AND|HAVING|NOT|ON|OR|WHEN|WHERE)$/i.test(prefix)
-  );
-}
-
-function removeRightOperandPostfix(quasi: string): string | undefined {
-  let suffix = quasi;
-  while (/^\s*::/.test(suffix)) {
-    const cast =
-      /^\s*::\s*[a-z_][\w$]*(?:\s*\.\s*[a-z_][\w$]*)?(?:\s*\([^()]*\))?(?:\s*\[\s*\])*/i.exec(
-        suffix,
-      );
-    if (cast === null) {
-      return undefined;
-    }
-    suffix = suffix.slice(cast[0].length);
-  }
-
-  const timeZone = /^\s+AT\s+TIME\s+ZONE\s+'(?:''|[^'])*'/i.exec(suffix);
-  if (timeZone !== null) {
-    suffix = suffix.slice(timeZone[0].length);
-  }
-  return suffix;
-}
-
-function hasPredicateRightBoundary(quasi: string): boolean {
-  const withoutPostfix = removeRightOperandPostfix(quasi);
-  if (withoutPostfix === undefined) {
-    return false;
-  }
-  const suffix = withoutPostfix.trimStart();
-  return (
-    suffix === "" ||
-    /^[),;]/.test(suffix) ||
-    /^(?:AND|ELSE|END|EXCEPT|FETCH|FOR|FULL|GROUP|HAVING|INNER|INTERSECT|LEFT|LIMIT|OFFSET|ON|OR|ORDER|RETURNING|RIGHT|THEN|UNION|WHEN|WHERE)\b/i.test(
-      suffix,
-    )
-  );
-}
-
-function hasPatternRightBoundary(quasi: string): boolean {
-  const escape = /^\s+ESCAPE\s+'(?:''|[^'])*'/i.exec(quasi);
-  return hasPredicateRightBoundary(
-    escape === null ? quasi : quasi.slice(escape[0].length),
-  );
-}
-
-function membershipRightBoundary(quasi: string): boolean {
-  const close = /^\s*\)/.exec(quasi);
-  return (
-    close !== null && hasPredicateRightBoundary(quasi.slice(close[0].length))
-  );
-}
-
-function lowerCallStart(quasi: string): number | undefined {
-  const match = /\bLOWER\s*\(\s*$/i.exec(quasi);
-  if (match === null || hasSqlIdentifierPrefix(quasi, match.index)) {
-    return undefined;
-  }
-  return match.index;
-}
-
-function hasOrderingLeftBoundary(quasi: string): boolean {
-  const prefix = quasi.trimEnd();
-  return (
-    prefix === "" ||
-    prefix.endsWith(",") ||
-    prefix.endsWith("(") ||
-    /\bORDER\s+BY$/i.test(prefix)
-  );
-}
-
-interface OrderingMatch {
-  helper: "asc" | "desc";
-}
-
-function orderingMatch(quasi: string): OrderingMatch | undefined {
-  const direction = /^\s+(ASC|DESC)\b/i.exec(quasi);
-  if (direction === null) {
-    return undefined;
-  }
-  let length = direction[0].length;
-  const nulls = /^\s+NULLS\s+(?:FIRST|LAST)\b/i.exec(quasi.slice(length));
-  if (nulls !== null) {
-    length += nulls[0].length;
-  }
-  const suffix = quasi.slice(length).trimStart();
-  if (
-    suffix !== "" &&
-    !/^[,);]/.test(suffix) &&
-    !/^(?:FETCH|FOR|LIMIT|OFFSET)\b/i.test(suffix)
-  ) {
-    return undefined;
-  }
-  return {
-    helper: direction[1]?.toLowerCase() === "asc" ? "asc" : "desc",
-  };
-}
-
-interface AggregateMatch {
-  helper:
-    | "avg"
-    | "avgDistinct"
-    | "count"
-    | "countDistinct"
-    | "max"
-    | "min"
-    | "sum"
-    | "sumDistinct";
-  start: number;
-}
-
-function previousNonWhitespaceCharacter(
-  source: string,
-  start: number,
-): string | undefined {
-  let offset = start - 1;
-  while (offset >= 0 && /\s/.test(source[offset] ?? "")) {
-    offset -= 1;
-  }
-  return offset < 0 ? undefined : source[offset];
-}
-
-function isSqlIdentifierCharacter(character: string | undefined): boolean {
-  if (character === undefined) {
-    return false;
-  }
-  return /[\w$]/.test(character) || character.charCodeAt(0) > 0x7f;
-}
-
-function hasSqlIdentifierPrefix(source: string, start: number): boolean {
-  const previous = previousNonWhitespaceCharacter(source, start);
-  return (
-    isSqlIdentifierCharacter(source[start - 1]) ||
-    previous === "." ||
-    previous === SQL_TEMPLATE_EXPRESSION_BOUNDARY
-  );
-}
-
-function aggregateMatch(quasi: string): AggregateMatch | undefined {
-  const distinct = /\b(AVG|COUNT|SUM)\s*\(\s*DISTINCT\s*$/i.exec(quasi);
-  if (distinct !== null && !hasSqlIdentifierPrefix(quasi, distinct.index)) {
-    const aggregate = distinct[1]?.toLowerCase();
-    const helper =
-      aggregate === "avg"
-        ? "avgDistinct"
-        : aggregate === "count"
-          ? "countDistinct"
-          : "sumDistinct";
-    return { helper, start: distinct.index };
-  }
-  const aggregate = /\b(AVG|SUM|COUNT|MAX|MIN)\s*\(\s*$/i.exec(quasi);
-  if (aggregate === null) {
-    return undefined;
-  }
-  if (hasSqlIdentifierPrefix(quasi, aggregate.index)) {
-    return undefined;
-  }
-  const helper = aggregate[1]?.toLowerCase();
-  if (
-    helper !== "avg" &&
-    helper !== "sum" &&
-    helper !== "count" &&
-    helper !== "max" &&
-    helper !== "min"
-  ) {
-    return undefined;
-  }
-  return { helper, start: aggregate.index };
-}
-
-function aggregateRemainder(quasi: string): string | undefined {
-  const close = /^\s*\)/.exec(quasi);
-  return close === null ? undefined : quasi.slice(close[0].length);
-}
-
-interface UnaryPredicateMatch {
-  readonly helper: "exists" | "not" | "notExists";
-  readonly start: number;
-}
-
-function unaryPredicateMatch(quasi: string): UnaryPredicateMatch | undefined {
-  const match = /\b(?:(NOT)\s+)?(EXISTS)\s*$|\b(NOT)\s*$/i.exec(quasi);
-  if (match === null) {
-    return undefined;
-  }
-  if (match[2] !== undefined) {
-    return {
-      helper: match[1] === undefined ? "exists" : "notExists",
-      start: match.index,
-    };
-  }
-  return { helper: "not", start: match.index };
-}
-
-interface RangeMatch {
-  readonly helper: "between" | "notBetween";
-}
-
-function rangeMatch(
-  firstSeparator: string,
-  secondSeparator: string,
-): RangeMatch | undefined {
-  const secondRemainder = removeRightOperandPostfix(secondSeparator);
-  if (secondRemainder?.trim().toUpperCase() !== "AND") {
-    return undefined;
-  }
-  const operator = firstSeparator.trim().toUpperCase();
-  if (operator === "BETWEEN") {
-    return { helper: "between" };
-  }
-  return operator === "NOT BETWEEN" ? { helper: "notBetween" } : undefined;
-}
-
-function skipSqlWhitespace(source: string, start: number): number {
-  let offset = start;
-  while (/\s/.test(source[offset] ?? "")) {
-    offset += 1;
-  }
-  return offset;
-}
-
-function sqlKeywordAt(
-  source: string,
-  offset: number,
-  keyword: string,
-): boolean {
-  if (source.slice(offset, offset + keyword.length).toUpperCase() !== keyword) {
-    return false;
-  }
-  return !/[\w$]/.test(source[offset + keyword.length] ?? "");
-}
-
-function hasAggregateWindowSuffix(source: string, start: number): boolean {
-  let offset = skipSqlWhitespace(source, start);
-  if (sqlKeywordAt(source, offset, "OVER")) {
-    return true;
-  }
-  if (!sqlKeywordAt(source, offset, "FILTER")) {
-    return false;
-  }
-  offset = skipSqlWhitespace(source, offset + "FILTER".length);
-  if (source[offset] !== "(") {
-    return false;
-  }
-  let depth = 0;
-  while (offset < source.length) {
-    const character = source[offset];
-    if (character === "(") {
-      depth += 1;
-    } else if (character === ")") {
-      depth -= 1;
-      if (depth === 0) {
-        offset += 1;
-        break;
-      }
-    }
-    offset += 1;
-  }
-  return (
-    depth === 0 &&
-    sqlKeywordAt(source, skipSqlWhitespace(source, offset), "OVER")
-  );
-}
-
-interface SqlSourceMatch {
-  readonly end: number;
-  readonly start: number;
-}
-
-function countStarMatches(code: string): readonly SqlSourceMatch[] {
-  const count = /\bCOUNT\s*\(\s*\*\s*\)/gi;
-  const matches: SqlSourceMatch[] = [];
-  for (const match of code.matchAll(count)) {
-    const start = match.index;
-    if (hasSqlIdentifierPrefix(code, start)) {
-      continue;
-    }
-    if (hasAggregateWindowSuffix(code, start + match[0].length)) {
-      continue;
-    }
-    matches.push({ start, end: start + match[0].length });
-  }
-  return matches;
-}
-
-function tokenizeBooleanQuasi(quasi: string): BooleanToken[] | undefined {
-  const tokens: BooleanToken[] = [];
-  let offset = 0;
-  while (offset < quasi.length) {
-    const whitespace = /^\s+/.exec(quasi.slice(offset));
-    if (whitespace !== null) {
-      offset += whitespace[0].length;
-      continue;
-    }
-    const character = quasi[offset];
-    if (character === "(" || character === ")") {
-      tokens.push(character);
-      offset += 1;
-      continue;
-    }
-    const operator = /^(AND|OR)\b/i.exec(quasi.slice(offset));
-    if (operator === null) {
-      return undefined;
-    }
-    tokens.push(operator[1]?.toLowerCase() === "and" ? "and" : "or");
-    offset += operator[0].length;
-  }
-  return tokens;
-}
-
-function booleanTokens(quasis: readonly string[]): BooleanToken[] | undefined {
-  const tokens: BooleanToken[] = [];
-  for (let index = 0; index < quasis.length; index += 1) {
-    const quasiTokens = tokenizeBooleanQuasi(quasis[index] ?? "");
-    if (quasiTokens === undefined) {
-      return undefined;
-    }
-    tokens.push(...quasiTokens);
-    if (index < quasis.length - 1) {
-      tokens.push("operand");
-    }
-  }
-  return tokens;
-}
-
-function booleanHelper(quasis: readonly string[]): "and" | "or" | undefined {
-  const tokens = booleanTokens(quasis);
-  if (tokens === undefined) {
-    return undefined;
-  }
-  const parsedTokens = tokens;
-  let offset = 0;
-
-  function primary(): BooleanExpressionKind | undefined {
-    const token = parsedTokens[offset];
-    if (token === "operand") {
-      offset += 1;
-      return "operand";
-    }
-    if (token !== "(") {
-      return undefined;
-    }
-    offset += 1;
-    const expression = disjunction();
-    if (expression === undefined || parsedTokens[offset] !== ")") {
-      return undefined;
-    }
-    offset += 1;
-    return expression;
-  }
-
-  function conjunction(): BooleanExpressionKind | undefined {
-    let expression = primary();
-    if (expression === undefined) {
-      return undefined;
-    }
-    while (parsedTokens[offset] === "and") {
-      offset += 1;
-      if (primary() === undefined) {
-        return undefined;
-      }
-      expression = "and";
-    }
-    return expression;
-  }
-
-  function disjunction(): BooleanExpressionKind | undefined {
-    let expression = conjunction();
-    if (expression === undefined) {
-      return undefined;
-    }
-    while (parsedTokens[offset] === "or") {
-      offset += 1;
-      if (conjunction() === undefined) {
-        return undefined;
-      }
-      expression = "or";
-    }
-    return expression;
-  }
-
-  const expression = disjunction();
-  return offset === parsedTokens.length && expression !== "operand"
-    ? expression
-    : undefined;
-}
-
-function tokenizeExistenceQuasi(quasi: string): ExistenceKeyword[] | undefined {
-  const tokens: ExistenceKeyword[] = [];
-  let offset = 0;
-  while (offset < quasi.length) {
-    const whitespace = /^\s+/.exec(quasi.slice(offset));
-    if (whitespace !== null) {
-      offset += whitespace[0].length;
-      continue;
-    }
-    const character = quasi[offset];
-    if (character === "(" || character === ")") {
-      tokens.push(character);
-      offset += 1;
-      continue;
-    }
-    const one = /^1\b/.exec(quasi.slice(offset));
-    if (one !== null) {
-      tokens.push("one");
-      offset += one[0].length;
-      continue;
-    }
-    const keyword =
-      /^(AND|EXISTS|FROM|INNER|JOIN|LIMIT|NOT|ON|SELECT|WHERE)\b/i.exec(
-        quasi.slice(offset),
-      );
-    if (keyword === null) {
-      return undefined;
-    }
-    const value = keyword[1]?.toLowerCase();
-    if (
-      value !== "and" &&
-      value !== "exists" &&
-      value !== "from" &&
-      value !== "inner" &&
-      value !== "join" &&
-      value !== "limit" &&
-      value !== "not" &&
-      value !== "on" &&
-      value !== "select" &&
-      value !== "where"
-    ) {
-      return undefined;
-    }
-    tokens.push(value);
-    offset += keyword[0].length;
-  }
-  return tokens;
-}
-
-function existenceTokens(
-  quasis: readonly string[],
-): ExistenceToken[] | undefined {
-  const tokens: ExistenceToken[] = [];
-  for (let index = 0; index < quasis.length; index += 1) {
-    const quasiTokens = tokenizeExistenceQuasi(quasis[index] ?? "");
-    if (quasiTokens === undefined) {
-      return undefined;
-    }
-    tokens.push(...quasiTokens);
-    if (index < quasis.length - 1) {
-      tokens.push({ kind: "expression", index });
-    }
-  }
-  return tokens;
-}
-
-function existenceTemplateMatch(
-  quasis: readonly string[],
-): ExistenceTemplateMatch | undefined {
-  const tokens = existenceTokens(quasis);
-  if (tokens === undefined) {
-    return undefined;
-  }
-  const parsedTokens = tokens;
-  let offset = 0;
-  const tableExpressionIndexes: number[] = [];
-  const predicateExpressionIndexes: number[] = [];
-
-  function consume(keyword: ExistenceKeyword): boolean {
-    if (parsedTokens[offset] !== keyword) {
-      return false;
-    }
-    offset += 1;
-    return true;
-  }
-
-  function consumeExpression(target: number[]): boolean {
-    const token = parsedTokens[offset];
-    if (typeof token === "string" || token === undefined) {
-      return false;
-    }
-    target.push(token.index);
-    offset += 1;
-    return true;
-  }
-
-  const negated = consume("not");
-  if (
-    !consume("exists") ||
-    !consume("(") ||
-    !consume("select") ||
-    !consume("one") ||
-    !consume("from") ||
-    !consumeExpression(tableExpressionIndexes)
-  ) {
-    return undefined;
-  }
-
-  while (consume("inner")) {
-    if (
-      !consume("join") ||
-      !consumeExpression(tableExpressionIndexes) ||
-      !consume("on") ||
-      !consumeExpression(predicateExpressionIndexes)
-    ) {
-      return undefined;
-    }
-  }
-
-  if (!consume("where") || !consumeExpression(predicateExpressionIndexes)) {
-    return undefined;
-  }
-  while (consume("and")) {
-    if (!consumeExpression(predicateExpressionIndexes)) {
-      return undefined;
-    }
-  }
-  if (consume("limit") && !consume("one")) {
-    return undefined;
-  }
-  if (!consume(")") || offset !== parsedTokens.length) {
-    return undefined;
-  }
-
-  return {
-    helper: negated ? "notExists" : "exists",
-    tableExpressionIndexes,
-    predicateExpressionIndexes,
-  };
-}
+const RELATIONAL_QUERY_METHODS = new Set(["findFirst", "findMany"]);
 
 export const preferDrizzleApis = createRule({
   name: "prefer-drizzle-apis",
@@ -782,28 +124,19 @@ export const preferDrizzleApis = createRule({
   create(context) {
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
-    const isExecuteRawRowsCallee = createExecuteRawRowsMatcher(
+    const executeRawRowsMatcher = createExecuteRawRowsMatcher(
       context.sourceCode.ast,
       checker,
       services,
     );
-    const structurallyOwnedTemplates =
-      new WeakSet<TSESTree.TaggedTemplateExpression>();
-    const structurallyWholeTemplates =
-      new WeakSet<TSESTree.TaggedTemplateExpression>();
     const structuralCallInspections: Array<() => void> = [];
-    const legacyTemplateInspections: Array<() => void> = [];
     const reportedStructuralFindings = new WeakMap<
       TSESTree.Node,
       Set<string>
     >();
-    const expressionTypeCache = new WeakMap<
-      TSESTree.Expression,
-      { readonly location: Node; readonly type: Type }
-    >();
-    const drizzleMethodCache = new WeakMap<
-      TSESTree.MemberExpression,
-      boolean
+    const resolvedCallSignatureCache = new WeakMap<
+      TSESTree.CallExpression,
+      Signature | null
     >();
     const sqlSourceComposer = createSqlSourceComposer(
       context.sourceCode,
@@ -811,22 +144,84 @@ export const preferDrizzleApis = createRule({
       services,
       isSafeSqlTerminalUse,
     );
+    const sqlCapabilityChecks: SqlCapabilityChecks = {
+      acceptsOptionalSql,
+      hasDirectResultMapping: hasDirectMapWith,
+      hasParameterListOrigin,
+      isInlineParameterList: isInlineParameterListSqlJoin,
+    };
 
-    function expressionType(node: TSESTree.Expression): {
-      readonly location: Node;
-      readonly type: Type;
-    } {
-      const cached = expressionTypeCache.get(node);
-      if (cached !== undefined) {
-        return cached;
+    function acceptsOptionalSql(node: TSESTree.Expression): boolean {
+      if (isRelationalWhereCallbackResult(node)) {
+        return true;
       }
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const result = {
-        location: tsNode,
-        type: checker.getTypeAtLocation(tsNode),
-      };
-      expressionTypeCache.set(node, result);
-      return result;
+      const parent = node.parent;
+      if (
+        parent.type === AST_NODE_TYPES.TemplateLiteral &&
+        parent.expressions.includes(node) &&
+        parent.parent.type === AST_NODE_TYPES.TaggedTemplateExpression &&
+        parent.parent.quasi === parent
+      ) {
+        return isDrizzleSqlTag(checker, services, parent.parent.tag);
+      }
+      if (
+        parent.type !== AST_NODE_TYPES.CallExpression ||
+        !parent.arguments.includes(node)
+      ) {
+        return false;
+      }
+      if (
+        isNamedDrizzleCall(parent, "and") ||
+        isNamedDrizzleCall(parent, "or")
+      ) {
+        return true;
+      }
+      const predicateIndex = predicateArgumentIndex(parent);
+      const method =
+        parent.callee.type === AST_NODE_TYPES.MemberExpression
+          ? memberName(parent.callee)
+          : undefined;
+      return (
+        method !== undefined &&
+        predicateIndex !== undefined &&
+        parent.arguments[predicateIndex] === node &&
+        isDrizzleMethodCall(parent, method)
+      );
+    }
+
+    function isRelationalWhereCallbackResult(
+      node: TSESTree.Expression,
+    ): boolean {
+      const parent = node.parent;
+      const callback =
+        (parent.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+          parent.type === AST_NODE_TYPES.FunctionExpression) &&
+        parent.body === node
+          ? parent
+          : parent.type === AST_NODE_TYPES.ReturnStatement &&
+              parent.argument === node &&
+              parent.parent.type === AST_NODE_TYPES.BlockStatement &&
+              parent.parent.body.length === 1 &&
+              (parent.parent.parent.type ===
+                AST_NODE_TYPES.ArrowFunctionExpression ||
+                parent.parent.parent.type ===
+                  AST_NODE_TYPES.FunctionExpression) &&
+              parent.parent.parent.body === parent.parent
+            ? parent.parent.parent
+            : undefined;
+      if (callback === undefined) {
+        return false;
+      }
+      const property = callback.parent;
+      return (
+        property.type === AST_NODE_TYPES.Property &&
+        property.value === callback &&
+        staticPropertyName(property) === "where"
+      );
+    }
+
+    function isExecuteRawRowsCallee(node: TSESTree.Expression): boolean {
+      return executeRawRowsMatcher(node);
     }
 
     function reportTypedApi(node: TSESTree.Node, helper: string): void {
@@ -842,7 +237,9 @@ export const preferDrizzleApis = createRule({
         const key =
           finding.kind === "query-builder"
             ? finding.kind
-            : `${finding.kind}:${finding.helper}`;
+            : finding.kind === "empty-fragment"
+              ? finding.kind
+              : `${finding.kind}:${finding.helper}`;
         const reported = reportedStructuralFindings.get(finding.node);
         if (reported?.has(key) === true) {
           continue;
@@ -857,46 +254,21 @@ export const preferDrizzleApis = createRule({
             node: finding.node,
             messageId: "queryBuilder",
           });
+        } else if (finding.kind === "empty-fragment") {
+          context.report({
+            node: finding.node,
+            messageId: "emptyFragment",
+          });
+        } else if (finding.kind === "existence-predicate") {
+          context.report({
+            node: finding.node,
+            messageId: "existencePredicate",
+            data: { helper: finding.helper },
+          });
         } else {
           reportTypedApi(finding.node, finding.helper);
         }
       }
-    }
-
-    function registerStructuralOwnership(analysis: SqlAnalysis): void {
-      for (const template of analysis.expandedTemplates) {
-        structurallyOwnedTemplates.add(template);
-        // Expansion can cross into a shared alias or factory definition. A
-        // use-site finding replaces only templates in its own syntax subtree.
-        if (
-          analysis.findings.some((finding) => {
-            let current: TSESTree.Node | null | undefined = template;
-            while (current !== undefined && current !== null) {
-              if (current === finding.node) {
-                return true;
-              }
-              current = current.parent;
-            }
-            return false;
-          })
-        ) {
-          structurallyWholeTemplates.add(template);
-        }
-      }
-    }
-
-    function reportLegacy(
-      template: TSESTree.TaggedTemplateExpression,
-      node: TSESTree.Node,
-      helper: string,
-    ): void {
-      if (
-        structurallyOwnedTemplates.has(template) &&
-        STRUCTURAL_HELPERS.has(helper)
-      ) {
-        return;
-      }
-      reportTypedApi(node, helper);
     }
 
     function memberName(node: TSESTree.MemberExpression): string | undefined {
@@ -909,31 +281,37 @@ export const preferDrizzleApis = createRule({
       node: TSESTree.CallExpression,
       name: string,
     ): boolean {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const signature = checker.getResolvedSignature(tsNode);
+      const signature = resolvedCallSignature(node);
       return (
         signature !== undefined && isNamedDrizzleSignature(signature, name)
       );
     }
 
-    function isDrizzleMethod(
-      node: TSESTree.MemberExpression,
+    function resolvedCallSignature(
+      node: TSESTree.CallExpression,
+    ): Signature | undefined {
+      const cached = resolvedCallSignatureCache.get(node);
+      if (cached !== undefined) {
+        return cached ?? undefined;
+      }
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      const signature = checker.getResolvedSignature(tsNode);
+      resolvedCallSignatureCache.set(node, signature ?? null);
+      return signature;
+    }
+
+    function isDrizzleMethodCall(
+      node: TSESTree.CallExpression,
       name: string,
     ): boolean {
-      if (memberName(node) !== name) {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(node.callee) !== name
+      ) {
         return false;
       }
-      const cached = drizzleMethodCache.get(node);
-      if (cached !== undefined) {
-        return cached;
-      }
-      const tsProperty = services.esTreeNodeToTSNodeMap.get(node.property);
-      const result = isDrizzleSymbol(
-        checker,
-        checker.getSymbolAtLocation(tsProperty),
-      );
-      drizzleMethodCache.set(node, result);
-      return result;
+      const declaration = resolvedCallSignature(node)?.declaration;
+      return declaration !== undefined && isDrizzleDeclaration(declaration);
     }
 
     function predicateArgumentIndex(
@@ -956,8 +334,107 @@ export const preferDrizzleApis = createRule({
         : undefined;
     }
 
+    function isDrizzleHelperUse(
+      call: TSESTree.CallExpression,
+      node: TSESTree.Expression,
+    ): boolean {
+      const name =
+        call.callee.type === AST_NODE_TYPES.Identifier
+          ? call.callee.name
+          : call.callee.type === AST_NODE_TYPES.MemberExpression
+            ? memberName(call.callee)
+            : undefined;
+      return (
+        name !== undefined &&
+        (PREDICATE_HELPERS.has(name) || SELECTION_HELPERS.has(name)) &&
+        call.arguments.includes(node) &&
+        isNamedDrizzleCall(call, name)
+      );
+    }
+
+    function selectionObjectCall(
+      node: TSESTree.Expression,
+    ): TSESTree.CallExpression | undefined {
+      let current: TSESTree.Node = node;
+      while (true) {
+        const parent: TSESTree.Node = current.parent;
+        if (
+          parent.type === AST_NODE_TYPES.Property &&
+          parent.value === current &&
+          parent.parent.type === AST_NODE_TYPES.ObjectExpression
+        ) {
+          current = parent.parent;
+          continue;
+        }
+        if (
+          parent.type === AST_NODE_TYPES.ArrayExpression &&
+          parent.elements.includes(current)
+        ) {
+          current = parent;
+          continue;
+        }
+        if (
+          parent.type !== AST_NODE_TYPES.CallExpression ||
+          !parent.arguments.includes(current) ||
+          parent.callee.type !== AST_NODE_TYPES.MemberExpression
+        ) {
+          return undefined;
+        }
+        const method = memberName(parent.callee);
+        return method !== undefined &&
+          SELECTION_OBJECT_METHODS.has(method) &&
+          isDrizzleMethodCall(parent, method)
+          ? parent
+          : undefined;
+      }
+    }
+
+    function isDirectDrizzleMethodUse(
+      call: TSESTree.CallExpression,
+      node: TSESTree.Expression,
+    ): boolean {
+      if (
+        call.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        !call.arguments.includes(node)
+      ) {
+        return false;
+      }
+      const method = memberName(call.callee);
+      if (method === undefined || !isDrizzleMethodCall(call, method)) {
+        return false;
+      }
+      if (
+        method === "execute" ||
+        method === "from" ||
+        method === "groupBy" ||
+        method === "orderBy"
+      ) {
+        return true;
+      }
+      const predicateIndex = predicateArgumentIndex(call);
+      return (
+        predicateIndex !== undefined && call.arguments[predicateIndex] === node
+      );
+    }
+
     function isSafeSqlTerminalUse(node: TSESTree.Expression): boolean {
       const parent = node.parent;
+      if (parent.type === AST_NODE_TYPES.MemberExpression) {
+        const method = memberName(parent);
+        const call = parent.parent;
+        if (
+          parent.object === node &&
+          (method === "as" || method === "mapWith") &&
+          call.type === AST_NODE_TYPES.CallExpression &&
+          call.callee === parent &&
+          isDrizzleMethodCall(call, method)
+        ) {
+          return true;
+        }
+      }
+      if (selectionObjectCall(node) !== undefined) {
+        return true;
+      }
       if (
         parent.type !== AST_NODE_TYPES.CallExpression ||
         parent.arguments.some((argument) => {
@@ -966,23 +443,12 @@ export const preferDrizzleApis = createRule({
       ) {
         return false;
       }
-      if (
-        parent.arguments.length === 3 &&
-        parent.arguments[1] === node &&
-        isExecuteRawRowsCallee(parent.callee)
-      ) {
-        return true;
-      }
-      const predicateIndex = predicateArgumentIndex(parent);
-      if (parent.callee.type !== AST_NODE_TYPES.MemberExpression) {
-        return false;
-      }
-      const method = memberName(parent.callee);
       return (
-        predicateIndex !== undefined &&
-        method !== undefined &&
-        parent.arguments[predicateIndex] === node &&
-        isDrizzleMethod(parent.callee, method)
+        (parent.arguments.length === 3 &&
+          parent.arguments[1] === node &&
+          isExecuteRawRowsCallee(parent.callee)) ||
+        isDirectDrizzleMethodUse(parent, node) ||
+        isDrizzleHelperUse(parent, node)
       );
     }
 
@@ -1011,8 +477,8 @@ export const preferDrizzleApis = createRule({
           checker,
           services,
           sqlSourceComposer,
+          sqlCapabilityChecks,
         );
-        registerStructuralOwnership(analysis);
         reportStructuralAnalysis(analysis);
       });
     }
@@ -1034,19 +500,24 @@ export const preferDrizzleApis = createRule({
       ) {
         return;
       }
-      const predicateMember = node.callee;
       structuralCallInspections.push(() => {
-        if (!isDrizzleMethod(predicateMember, method)) {
-          return;
-        }
         const analysis = analyzeSql(
           predicate,
           "predicate",
           checker,
           services,
           sqlSourceComposer,
+          sqlCapabilityChecks,
         );
-        registerStructuralOwnership(analysis);
+        if (
+          analysis.findings.length === 0 &&
+          !(method === "innerJoin" && analysis.isTruePredicate)
+        ) {
+          return;
+        }
+        if (!isDrizzleMethodCall(node, method)) {
+          return;
+        }
         reportStructuralAnalysis(analysis);
         if (method === "innerJoin" && analysis.isTruePredicate) {
           context.report({ node, messageId: "crossJoin" });
@@ -1054,18 +525,371 @@ export const preferDrizzleApis = createRule({
       });
     }
 
-    function isTrueSqlTag(node: TSESTree.Expression): boolean {
-      if (node.type !== AST_NODE_TYPES.TaggedTemplateExpression) {
-        return false;
+    function contextRoots(node: TSESTree.Node): readonly TSESTree.Expression[] {
+      if (node.type === AST_NODE_TYPES.ObjectExpression) {
+        return node.properties.flatMap((property) => {
+          return property.type === AST_NODE_TYPES.Property &&
+            property.kind === "init" &&
+            !property.computed
+            ? contextRoots(property.value)
+            : [];
+        });
       }
-      const quasi = node.quasi.quasis[0];
-      return (
-        isDrizzleSqlTag(checker, services, node.tag) &&
-        node.quasi.expressions.length === 0 &&
-        node.quasi.quasis.length === 1 &&
-        quasi !== undefined &&
-        quasiText(quasi).trim().toLowerCase() === "true"
+      if (node.type === AST_NODE_TYPES.ArrayExpression) {
+        return node.elements.flatMap((element) => {
+          return element === null ||
+            element.type === AST_NODE_TYPES.SpreadElement
+            ? []
+            : contextRoots(element);
+        });
+      }
+      if (
+        node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        node.type === AST_NODE_TYPES.FunctionExpression
+      ) {
+        if (node.body.type !== AST_NODE_TYPES.BlockStatement) {
+          return contextRoots(node.body);
+        }
+        if (
+          node.body.body.length !== 1 ||
+          node.body.body[0]?.type !== AST_NODE_TYPES.ReturnStatement ||
+          node.body.body[0].argument === null
+        ) {
+          return [];
+        }
+        return contextRoots(node.body.body[0].argument);
+      }
+      if (
+        node.type === AST_NODE_TYPES.CallExpression ||
+        node.type === AST_NODE_TYPES.ChainExpression ||
+        node.type === AST_NODE_TYPES.ConditionalExpression ||
+        node.type === AST_NODE_TYPES.Identifier ||
+        node.type === AST_NODE_TYPES.TaggedTemplateExpression ||
+        node.type === AST_NODE_TYPES.TSAsExpression ||
+        node.type === AST_NODE_TYPES.TSNonNullExpression ||
+        node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+        node.type === AST_NODE_TYPES.TSTypeAssertion
+      ) {
+        return sqlSourceComposer.couldCompose(node) ? [node] : [];
+      }
+      return [];
+    }
+
+    function reportAnalysis(
+      node: TSESTree.Expression,
+      analysisContext: SqlAnalysisContext,
+    ): SqlAnalysis {
+      const analysis = analyzeSql(
+        node,
+        analysisContext,
+        checker,
+        services,
+        sqlSourceComposer,
+        sqlCapabilityChecks,
       );
+      reportStructuralAnalysis(analysis);
+      return analysis;
+    }
+
+    function inspectAdditionalContextCall(node: TSESTree.CallExpression): void {
+      const helper =
+        node.callee.type === AST_NODE_TYPES.Identifier
+          ? node.callee.name
+          : node.callee.type === AST_NODE_TYPES.MemberExpression
+            ? memberName(node.callee)
+            : undefined;
+      const helperContext =
+        helper === undefined
+          ? undefined
+          : PREDICATE_HELPERS.has(helper)
+            ? "predicate"
+            : SELECTION_HELPERS.has(helper)
+              ? "selection"
+              : undefined;
+      if (helper !== undefined && helperContext !== undefined) {
+        const roots = node.arguments.flatMap((argument) => {
+          return argument.type === AST_NODE_TYPES.SpreadElement
+            ? []
+            : contextRoots(argument);
+        });
+        if (roots.length > 0) {
+          structuralCallInspections.push(() => {
+            const analyses = roots.map((root) => {
+              return analyzeSql(
+                root,
+                helperContext,
+                checker,
+                services,
+                sqlSourceComposer,
+                sqlCapabilityChecks,
+              );
+            });
+            if (
+              !analyses.some((analysis) => {
+                return analysis.findings.length > 0;
+              })
+            ) {
+              return;
+            }
+            if (!isNamedDrizzleCall(node, helper)) {
+              return;
+            }
+            for (const analysis of analyses) {
+              reportStructuralAnalysis(analysis);
+            }
+          });
+        }
+      }
+
+      if (node.callee.type === AST_NODE_TYPES.MemberExpression) {
+        const member = node.callee;
+        const method = memberName(member);
+        if (method === undefined) {
+          return;
+        }
+        if (
+          (method === "as" || method === "mapWith") &&
+          sqlSourceComposer.couldCompose(member.object)
+        ) {
+          const root = member.object;
+          structuralCallInspections.push(() => {
+            const analysis = analyzeSql(
+              root,
+              "selection",
+              checker,
+              services,
+              sqlSourceComposer,
+              sqlCapabilityChecks,
+            );
+            if (analysis.findings.length === 0) {
+              return;
+            }
+            if (isDrizzleMethodCall(node, method)) {
+              reportStructuralAnalysis(analysis);
+            }
+          });
+        }
+
+        let analysisContext:
+          | "ordering"
+          | "relation"
+          | "selection"
+          | "statement"
+          | undefined;
+        let argumentsToInspect = node.arguments;
+        if (method === "execute") {
+          analysisContext = "statement";
+        } else if (method === "from") {
+          analysisContext = "relation";
+          argumentsToInspect = node.arguments.slice(0, 1);
+        } else if (method === "orderBy") {
+          analysisContext = "ordering";
+        } else if (method === "groupBy") {
+          analysisContext = "selection";
+        } else if (
+          method === "innerJoin" ||
+          method === "innerJoinLateral" ||
+          method === "leftJoin" ||
+          method === "leftJoinLateral" ||
+          method === "rightJoin" ||
+          method === "fullJoin"
+        ) {
+          analysisContext = "relation";
+          argumentsToInspect = node.arguments.slice(0, 1);
+        } else if (SELECTION_OBJECT_METHODS.has(method)) {
+          analysisContext = "selection";
+        }
+        if (analysisContext === undefined) {
+          return;
+        }
+        const roots = argumentsToInspect.flatMap((argument) => {
+          return argument.type === AST_NODE_TYPES.SpreadElement
+            ? []
+            : contextRoots(argument);
+        });
+        if (roots.length === 0) {
+          return;
+        }
+        structuralCallInspections.push(() => {
+          const analyses = roots.map((root) => {
+            return analyzeSql(
+              root,
+              analysisContext,
+              checker,
+              services,
+              sqlSourceComposer,
+              sqlCapabilityChecks,
+            );
+          });
+          if (
+            !analyses.some((analysis) => {
+              return analysis.findings.length > 0;
+            })
+          ) {
+            return;
+          }
+          if (!isDrizzleMethodCall(node, method)) {
+            return;
+          }
+          for (const analysis of analyses) {
+            reportStructuralAnalysis(analysis);
+          }
+        });
+        return;
+      }
+    }
+
+    function staticPropertyName(node: TSESTree.Property): string | undefined {
+      if (node.computed) {
+        return undefined;
+      }
+      if (node.key.type === AST_NODE_TYPES.Identifier) {
+        return node.key.name;
+      }
+      return node.key.type === AST_NODE_TYPES.Literal &&
+        typeof node.key.value === "string"
+        ? node.key.value
+        : undefined;
+    }
+
+    interface ContextualRoot {
+      readonly context: "ordering" | "predicate" | "selection";
+      readonly node: TSESTree.Expression;
+    }
+
+    function relationalConfigRoots(
+      node: TSESTree.ObjectExpression,
+    ): readonly ContextualRoot[] {
+      return node.properties.flatMap((property) => {
+        if (
+          property.type !== AST_NODE_TYPES.Property ||
+          property.kind !== "init"
+        ) {
+          return [];
+        }
+        const name = staticPropertyName(property);
+        if (
+          name === "with" &&
+          property.value.type === AST_NODE_TYPES.ObjectExpression
+        ) {
+          return property.value.properties.flatMap((relation) => {
+            return relation.type === AST_NODE_TYPES.Property &&
+              relation.kind === "init" &&
+              relation.value.type === AST_NODE_TYPES.ObjectExpression
+              ? relationalConfigRoots(relation.value)
+              : [];
+          });
+        }
+        const analysisContext =
+          name === "where"
+            ? "predicate"
+            : name === "orderBy"
+              ? "ordering"
+              : name === "extras"
+                ? "selection"
+                : undefined;
+        return analysisContext === undefined
+          ? []
+          : contextRoots(property.value).map((root) => {
+              return { context: analysisContext, node: root };
+            });
+      });
+    }
+
+    function inspectRelationalQueryCall(node: TSESTree.CallExpression): void {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        node.arguments.length === 0
+      ) {
+        return;
+      }
+      const method = memberName(node.callee);
+      const config = node.arguments[0];
+      if (
+        method === undefined ||
+        !RELATIONAL_QUERY_METHODS.has(method) ||
+        config?.type !== AST_NODE_TYPES.ObjectExpression
+      ) {
+        return;
+      }
+      const roots = relationalConfigRoots(config);
+      if (roots.length === 0) {
+        return;
+      }
+      structuralCallInspections.push(() => {
+        const analyses = roots.map((root) => {
+          return analyzeSql(
+            root.node,
+            root.context,
+            checker,
+            services,
+            sqlSourceComposer,
+            sqlCapabilityChecks,
+          );
+        });
+        if (
+          !analyses.some((analysis) => {
+            return analysis.findings.length > 0;
+          })
+        ) {
+          return;
+        }
+        if (!isDrizzleMethodCall(node, method)) {
+          return;
+        }
+        for (const analysis of analyses) {
+          reportStructuralAnalysis(analysis);
+        }
+      });
+    }
+
+    function inspectLateralJoin(node: TSESTree.CallExpression): void {
+      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
+        return;
+      }
+      const method = memberName(node.callee);
+      if (
+        (method !== "innerJoinLateral" && method !== "leftJoinLateral") ||
+        node.arguments.length !== 2
+      ) {
+        return;
+      }
+      const relation = node.arguments[0];
+      const condition = node.arguments[1];
+      if (
+        relation === undefined ||
+        relation.type === AST_NODE_TYPES.SpreadElement ||
+        condition === undefined ||
+        condition.type === AST_NODE_TYPES.SpreadElement ||
+        !sqlSourceComposer.couldCompose(condition)
+      ) {
+        return;
+      }
+      structuralCallInspections.push(() => {
+        const analysis = analyzeSql(
+          condition,
+          "predicate",
+          checker,
+          services,
+          sqlSourceComposer,
+          sqlCapabilityChecks,
+        );
+        if (analysis.findings.length === 0 && !analysis.isTruePredicate) {
+          return;
+        }
+        if (!isDrizzleMethodCall(node, method)) {
+          return;
+        }
+        reportStructuralAnalysis(analysis);
+        if (
+          !analysis.isTruePredicate ||
+          (method === "leftJoinLateral" &&
+            !leftLateralIsNullRejected(node, relation))
+        ) {
+          return;
+        }
+        context.report({ node, messageId: "crossJoinLateral" });
+      });
     }
 
     function expressionSymbol(
@@ -1149,64 +973,13 @@ export const preferDrizzleApis = createRule({
       );
     }
 
-    function isStringOrDrizzleWrapper(type: Type): boolean {
-      if (type.isUnion()) {
-        return type.types.every(isStringOrDrizzleWrapper);
-      }
-      if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
-        return false;
-      }
-      if ((type.flags & TypeFlags.TypeParameter) !== 0) {
-        const constraint = checker.getBaseConstraintOfType(type);
-        return constraint !== undefined && isStringOrDrizzleWrapper(constraint);
-      }
-      return (
-        (type.flags & TypeFlags.StringLike) !== 0 ||
-        isDrizzleWrapperType(checker, type)
-      );
-    }
-
-    function binaryLeftMatches(
-      expected: BinaryLeftOperand,
-      expression: { readonly location: Node; readonly type: Type },
-    ): boolean {
-      if (expected === "wrapper") {
-        return isDrizzleWrapperType(checker, expression.type);
-      }
-      if (expected === "pattern") {
-        return isDrizzlePatternOperandType(
-          checker,
-          expression.type,
-          expression.location,
-        );
-      }
-      return isDrizzleArrayOperandType(
-        checker,
-        expression.type,
-        expression.location,
-      );
-    }
-
-    function binaryRightMatches(
-      expected: BinaryRightOperand,
-      type: Type,
-    ): boolean {
-      if (expected === "any") {
-        return true;
-      }
-      return expected === "wrapper"
-        ? isDrizzleWrapperType(checker, type)
-        : isStringOrDrizzleWrapper(type);
-    }
-
     function hasDirectMapWith(
       node: TSESTree.TaggedTemplateExpression,
     ): boolean {
       const member = node.parent;
       if (
         member.type !== AST_NODE_TYPES.MemberExpression ||
-        member.object !== node ||
-        !isDrizzleMethod(member, "mapWith")
+        member.object !== node
       ) {
         return false;
       }
@@ -1214,30 +987,10 @@ export const preferDrizzleApis = createRule({
       return (
         call.type === AST_NODE_TYPES.CallExpression &&
         call.callee === member &&
+        isDrizzleMethodCall(call, "mapWith") &&
         call.arguments.length === 1 &&
         call.arguments[0]?.type !== AST_NODE_TYPES.SpreadElement
       );
-    }
-
-    function isOptionalDrizzleContext(type: Type | undefined): boolean {
-      if (type === undefined || !type.isUnion()) {
-        return false;
-      }
-      let hasUndefined = false;
-      let hasWrapper = false;
-      for (const member of type.types) {
-        if ((member.flags & TypeFlags.Undefined) !== 0) {
-          hasUndefined = true;
-        } else if (
-          (member.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0 ||
-          !isDrizzleWrapperType(checker, member)
-        ) {
-          return false;
-        } else {
-          hasWrapper = true;
-        }
-      }
-      return hasUndefined && hasWrapper;
     }
 
     function isConstVariable(declaration: VariableDeclaration): boolean {
@@ -1454,290 +1207,29 @@ export const preferDrizzleApis = createRule({
       CallExpression(node: TSESTree.CallExpression): void {
         inspectRawQueryCall(node);
         inspectPredicateCall(node);
-        if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
-          return;
-        }
-        const method = memberName(node.callee);
-        if (method !== "innerJoinLateral" && method !== "leftJoinLateral") {
-          return;
-        }
-        if (
-          !isDrizzleMethod(node.callee, method) ||
-          node.arguments.length !== 2
-        ) {
-          return;
-        }
-        const relation = node.arguments[0];
-        const condition = node.arguments[1];
-        if (
-          relation === undefined ||
-          relation.type === AST_NODE_TYPES.SpreadElement ||
-          condition === undefined ||
-          condition.type === AST_NODE_TYPES.SpreadElement ||
-          !isTrueSqlTag(condition)
-        ) {
-          return;
-        }
-        if (
-          method === "leftJoinLateral" &&
-          !leftLateralIsNullRejected(node, relation)
-        ) {
-          return;
-        }
-        context.report({ node, messageId: "crossJoinLateral" });
+        inspectAdditionalContextCall(node);
+        inspectLateralJoin(node);
+        inspectRelationalQueryCall(node);
       },
       TaggedTemplateExpression(node: TSESTree.TaggedTemplateExpression): void {
-        legacyTemplateInspections.push(() => {
+        const firstQuasi = node.quasi.quasis[0];
+        const isExactEmpty =
+          node.quasi.expressions.length === 0 &&
+          node.quasi.quasis.length === 1 &&
+          firstQuasi !== undefined &&
+          (firstQuasi.value.cooked ?? firstQuasi.value.raw) === "";
+        if (!isExactEmpty) {
+          return;
+        }
+        structuralCallInspections.push(() => {
           if (!isDrizzleSqlTag(checker, services, node.tag)) {
             return;
           }
-          if (structurallyWholeTemplates.has(node)) {
-            return;
-          }
-
-          const quasis = node.quasi.quasis.map(quasiText);
-          const syntaxSource = sqlCodeMask(
-            quasis.join(SQL_TEMPLATE_EXPRESSION_BOUNDARY),
-          );
-          const syntaxQuasis = syntaxSource.split(
-            SQL_TEMPLATE_EXPRESSION_BOUNDARY,
-          );
-          const expressions = node.quasi.expressions;
-          if (
-            expressions.length === 0 &&
-            quasis.length === 1 &&
-            quasis[0] === ""
-          ) {
-            context.report({ node, messageId: "emptyFragment" });
-            return;
-          }
-          const countStars = countStarMatches(syntaxSource);
-          for (const match of countStars) {
-            const isWholeAggregate =
-              expressions.length === 0 &&
-              syntaxSource.slice(0, match.start).trim() === "" &&
-              syntaxSource.slice(match.end).trim() === "";
-            if (!isWholeAggregate || hasDirectMapWith(node)) {
-              reportLegacy(node, node, "count");
-            }
-          }
-          const existence = existenceTemplateMatch(syntaxQuasis);
-          if (
-            existence !== undefined &&
-            existence.tableExpressionIndexes.every((index) => {
-              const expressionNode = expressions[index];
-              if (expressionNode === undefined) {
-                return false;
-              }
-              const expression = expressionType(expressionNode);
-              return isDrizzleTableType(
-                checker,
-                expression.type,
-                expression.location,
-              );
-            }) &&
-            existence.predicateExpressionIndexes.every((index) => {
-              const expressionNode = expressions[index];
-              return (
-                expressionNode !== undefined &&
-                isDrizzleWrapperType(
-                  checker,
-                  expressionType(expressionNode).type,
-                )
-              );
-            })
-          ) {
-            context.report({
-              node,
-              messageId: "existencePredicate",
-              data: { helper: existence.helper },
-            });
-            return;
-          }
-          for (let index = 0; index < expressions.length - 1; index += 1) {
-            const columnNode = expressions[index];
-            const valuesNode = expressions[index + 1];
-            if (columnNode === undefined || valuesNode === undefined) {
-              continue;
-            }
-            const prefix = syntaxQuasis[index] ?? "";
-            const lowerStart = lowerCallStart(prefix);
-            if (
-              lowerStart !== undefined &&
-              hasPredicateLeftBoundary(prefix.slice(0, lowerStart)) &&
-              /^\s*\)\s+IN\s*\(\s*$/i.test(syntaxQuasis[index + 1] ?? "") &&
-              membershipRightBoundary(syntaxQuasis[index + 2] ?? "") &&
-              isDrizzleColumnType(
-                checker,
-                expressionType(columnNode).type,
-                expressionType(columnNode).location,
-              ) &&
-              isInlineParameterListSqlJoin(valuesNode)
-            ) {
-              reportLegacy(node, columnNode, "inArray");
-            }
-          }
-          for (let index = 0; index < expressions.length - 1; index += 1) {
-            const leftNode = expressions[index];
-            const rightNode = expressions[index + 1];
-            if (leftNode === undefined || rightNode === undefined) {
-              continue;
-            }
-            const left = expressionType(leftNode);
-            const right = expressionType(rightNode);
-            const middle = syntaxQuasis[index + 1] ?? "";
-            const rawSuffix = quasis[index + 2] ?? "";
-            const binary = BINARY_HELPERS.get(middle.trim().toUpperCase());
-            if (
-              binary !== undefined &&
-              hasPredicateLeftBoundary(syntaxQuasis[index] ?? "") &&
-              (binary.rightBoundary === "pattern"
-                ? hasPatternRightBoundary(rawSuffix)
-                : hasPredicateRightBoundary(rawSuffix)) &&
-              binaryLeftMatches(binary.left, left) &&
-              binaryRightMatches(binary.right, right.type)
-            ) {
-              reportLegacy(node, leftNode, binary.helper);
-            }
-            const membership = /^\s+(NOT\s+)?IN\s*\(\s*$/i.exec(middle);
-            if (
-              membership !== null &&
-              hasPredicateLeftBoundary(syntaxQuasis[index] ?? "") &&
-              membershipRightBoundary(rawSuffix) &&
-              isDrizzleColumnType(checker, left.type, left.location) &&
-              hasParameterListOrigin(rightNode)
-            ) {
-              reportLegacy(
-                node,
-                leftNode,
-                membership[1] === undefined ? "inArray" : "notInArray",
-              );
-            }
-          }
-
-          for (let index = 0; index < expressions.length - 2; index += 1) {
-            const leftNode = expressions[index];
-            const minimumNode = expressions[index + 1];
-            const maximumNode = expressions[index + 2];
-            if (
-              leftNode === undefined ||
-              minimumNode === undefined ||
-              maximumNode === undefined
-            ) {
-              continue;
-            }
-            const range = rangeMatch(
-              syntaxQuasis[index + 1] ?? "",
-              quasis[index + 2] ?? "",
-            );
-            if (
-              range !== undefined &&
-              hasPredicateLeftBoundary(syntaxQuasis[index] ?? "") &&
-              hasPredicateRightBoundary(quasis[index + 3] ?? "") &&
-              isDrizzleWrapperType(checker, expressionType(leftNode).type)
-            ) {
-              reportLegacy(node, leftNode, range.helper);
-            }
-          }
-
-          for (let index = 0; index < expressions.length; index += 1) {
-            const expressionNode = expressions[index];
-            if (expressionNode === undefined) {
-              continue;
-            }
-            const expression = expressionType(expressionNode);
-            const prefix = syntaxQuasis[index] ?? "";
-            const suffix = syntaxQuasis[index + 1] ?? "";
-            const rawSuffix = quasis[index + 1] ?? "";
-
-            const unary = unaryPredicateMatch(prefix);
-            if (
-              unary !== undefined &&
-              hasPredicateLeftBoundary(prefix.slice(0, unary.start)) &&
-              hasPredicateRightBoundary(rawSuffix) &&
-              isDrizzleWrapperType(checker, expression.type)
-            ) {
-              reportLegacy(node, expressionNode, unary.helper);
-            }
-
-            const nullMatch = nullPredicateMatch(suffix);
-            if (
-              nullMatch !== undefined &&
-              hasPredicateLeftBoundary(prefix) &&
-              hasPredicateRightBoundary(rawSuffix.slice(nullMatch.length)) &&
-              isDrizzleWrapperType(checker, expression.type)
-            ) {
-              reportLegacy(node, expressionNode, nullMatch.helper);
-            }
-
-            const order = orderingMatch(suffix);
-            if (
-              order !== undefined &&
-              hasOrderingLeftBoundary(prefix) &&
-              isDrizzleWrapperType(checker, expression.type)
-            ) {
-              reportLegacy(node, expressionNode, order.helper);
-            }
-
-            const aggregate = aggregateMatch(prefix);
-            const aggregateSuffix = aggregateRemainder(
-              syntaxQuasis
-                .slice(index + 1)
-                .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY),
-            );
-            if (
-              aggregate === undefined ||
-              aggregateSuffix === undefined ||
-              (index > 0 && prefix.slice(0, aggregate.start).trim() === "") ||
-              hasAggregateWindowSuffix(aggregateSuffix, 0) ||
-              !isDrizzleWrapperType(checker, expression.type)
-            ) {
-              continue;
-            }
-            const isWholeAggregate =
-              expressions.length === 1 &&
-              prefix.slice(0, aggregate.start).trim() === "" &&
-              aggregateSuffix.trim() === "";
-            if (!isWholeAggregate) {
-              reportLegacy(node, expressionNode, aggregate.helper);
-            } else if (
-              hasDirectMapWith(node) ||
-              ((aggregate.helper === "max" || aggregate.helper === "min") &&
-                isDrizzleColumnType(
-                  checker,
-                  expression.type,
-                  expression.location,
-                ))
-            ) {
-              reportLegacy(node, node, aggregate.helper);
-            }
-          }
-
-          const boolean = booleanHelper(syntaxQuasis);
-          if (boolean === undefined) {
-            return;
-          }
-          if (
-            !expressions.every((expressionNode) => {
-              return isDrizzleWrapperType(
-                checker,
-                expressionType(expressionNode).type,
-              );
-            })
-          ) {
-            return;
-          }
-          const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-          if (isOptionalDrizzleContext(checker.getContextualType(tsNode))) {
-            reportLegacy(node, node, boolean);
-          }
+          reportAnalysis(node, "predicate");
         });
       },
       "Program:exit"(): void {
         for (const inspect of structuralCallInspections) {
-          inspect();
-        }
-        for (const inspect of legacyTemplateInspections) {
           inspect();
         }
       },

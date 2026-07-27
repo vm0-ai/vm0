@@ -328,8 +328,10 @@ function activityTimeWindowPredicate(p: UsageInsightSqlParams) {
 
 function usageRowTokenExpr() {
   return sql`CASE
-    WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)}
-      AND ${inArray(usageEvent.category, MODEL_TOKEN_CATEGORIES)}
+    WHEN ${and(
+      eq(usageEvent.kind, MODEL_USAGE_KIND),
+      inArray(usageEvent.category, MODEL_TOKEN_CATEGORIES),
+    )}
     THEN ${usageEvent.quantity}
     ELSE 0
   END::bigint`.mapWith(pgInt8ToSafeIntegerDecoder);
