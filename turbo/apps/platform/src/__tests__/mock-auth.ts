@@ -153,6 +153,9 @@ export function clearMockedAuth() {
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
   clerkListeners.length = 0;
+  internalMockedClerkStatus = "loading";
+  clerkStatusListeners.length = 0;
+  mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
   mockedClerk.openSignIn.mockReset();
   mockedClerk.openUserProfile.mockReset();
@@ -175,6 +178,22 @@ export function clearMockedAuth() {
 }
 
 const clerkListeners: (() => void)[] = [];
+type MockClerkStatus = "degraded" | "error" | "loading" | "ready";
+type MockClerkStatusListener = (status: MockClerkStatus) => void;
+
+let internalMockedClerkStatus: MockClerkStatus = "loading";
+const clerkStatusListeners: MockClerkStatusListener[] = [];
+
+function defaultClerkStatusOn(
+  _event: "status",
+  listener: MockClerkStatusListener,
+  options?: { notify?: boolean },
+): void {
+  clerkStatusListeners.push(listener);
+  if (options?.notify) {
+    listener(internalMockedClerkStatus);
+  }
+}
 
 export function emitMockedClerkEvent(): void {
   for (const listener of clerkListeners) {
@@ -247,6 +266,12 @@ interface MockedUserProfileOptions {
 
 export const mockedClerk = {
   initialize,
+  get loaded() {
+    return internalMockedClerkStatus === "ready";
+  },
+  get status() {
+    return internalMockedClerkStatus;
+  },
   get user() {
     return internalMockedUser;
   },
@@ -278,6 +303,19 @@ export const mockedClerk = {
   openUserProfile: vi.fn<(options?: MockedUserProfileOptions) => void>(),
   closeUserProfile: vi.fn<() => void>(),
   load: vi.fn(defaultLoadImpl),
+  on: defaultClerkStatusOn,
+  off: (_event: "status", listener: MockClerkStatusListener) => {
+    const index = clerkStatusListeners.indexOf(listener);
+    if (index !== -1) {
+      clerkStatusListeners.splice(index, 1);
+    }
+  },
+  __testMarkLoaded: () => {
+    internalMockedClerkStatus = "ready";
+    for (const listener of clerkStatusListeners) {
+      listener(internalMockedClerkStatus);
+    }
+  },
   addListener: (cb: () => void) => {
     clerkListeners.push(cb);
     return () => {

@@ -211,15 +211,17 @@ describe("platform auth redirects", () => {
     });
 
     expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key");
-    expect(mockedClerk.load).toHaveBeenCalledWith({
-      afterSignOutUrl: "https://app.vm0.ai/sign-in",
-      signInUrl: "https://app.vm0.ai/sign-in",
-      signUpUrl: "https://app.vm0.ai/sign-up",
-      ui: expect.objectContaining({
-        ClerkUI: expect.any(Function),
-        version: "1.26.0",
+    expect(mockedClerk.load).toHaveBeenCalledWith(
+      expect.objectContaining({
+        afterSignOutUrl: "https://app.vm0.ai/sign-in",
+        signInUrl: "https://app.vm0.ai/sign-in",
+        signUpUrl: "https://app.vm0.ai/sign-up",
+        ui: expect.objectContaining({
+          ClerkUI: expect.any(Function),
+          version: "1.26.0",
+        }),
       }),
-    });
+    );
   });
 
   it("redirects an unauthenticated satellite user through primary auth", async () => {
@@ -244,16 +246,18 @@ describe("platform auth redirects", () => {
     expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key", {
       domain: "app.okou.ai",
     });
-    expect(mockedClerk.load).toHaveBeenCalledWith({
-      afterSignOutUrl: "https://app.vm0.ai/sign-in",
-      isSatellite: true,
-      satelliteAutoSync: true,
-      signInUrl: "https://app.vm0.ai/sign-in",
-      signUpUrl: "https://app.vm0.ai/sign-up",
-      ui: expect.objectContaining({
-        ClerkUI: expect.any(Function),
-        version: "1.26.0",
+    expect(mockedClerk.load).toHaveBeenCalledWith(
+      expect.objectContaining({
+        afterSignOutUrl: "https://app.vm0.ai/sign-in",
+        isSatellite: true,
+        satelliteAutoSync: true,
+        signInUrl: "https://app.vm0.ai/sign-in",
+        signUpUrl: "https://app.vm0.ai/sign-up",
+        ui: expect.objectContaining({
+          ClerkUI: expect.any(Function),
+          version: "1.26.0",
+        }),
       }),
-    });
+    );
   });
 });

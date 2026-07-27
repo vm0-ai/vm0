@@ -3,9 +3,12 @@ import {
   createElement,
   Fragment,
   type ReactNode,
+  useEffect,
+  useRef,
   useSyncExternalStore,
 } from "react";
 import { vi } from "vitest";
+import { detach, Reason } from "../../signals/utils.ts";
 
 const CLERK_AUTH_COMPONENT_MOUNT_EVENT = "vm0:test-clerk-auth-component-mount";
 const getClerkAuthComponentMounted = vi.fn<() => boolean>(() => {
@@ -38,16 +41,46 @@ function subscribeToClerkAuthComponent(listener: () => void): () => void {
 }
 
 interface ClerkProviderProps {
+  Clerk?: {
+    readonly loaded: boolean;
+    load: (
+      options: Omit<ClerkProviderProps, "children" | "Clerk">,
+    ) => Promise<void>;
+    __testMarkLoaded?: () => void;
+  };
+  afterSignOutUrl?: string;
   children: ReactNode;
   allowedRedirectOrigins?: readonly (string | RegExp)[];
+  appearance?: unknown;
+  domain?: string;
+  isSatellite?: boolean;
   localization?: unknown;
+  publishableKey?: string;
+  satelliteAutoSync?: boolean;
   signInFallbackRedirectUrl?: string;
   signInUrl?: string;
   signUpFallbackRedirectUrl?: string;
   signUpUrl?: string;
+  ui?: unknown;
 }
 
-export function ClerkProvider({ children }: ClerkProviderProps) {
+export function ClerkProvider({
+  children,
+  Clerk: clerk,
+  ...loadOptions
+}: ClerkProviderProps) {
+  const loadPromiseRef = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    if (!clerk || clerk.loaded || loadPromiseRef.current) {
+      return;
+    }
+    const loadPromise = (async () => {
+      await clerk.load(loadOptions);
+      clerk.__testMarkLoaded?.();
+    })();
+    loadPromiseRef.current = loadPromise;
+    detach(loadPromise, Reason.Entrance, "mock-clerk-load");
+  });
   return children;
 }
 
