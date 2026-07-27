@@ -7,6 +7,7 @@ import http.client as http_client
 import multiprocessing
 import ssl
 import threading
+import time
 from concurrent.futures import Future
 from unittest.mock import MagicMock, call, patch
 
@@ -30,17 +31,40 @@ async def _run_ready_tasks() -> None:
     await ready.wait()
 
 
+class _BlockingConnectSocket(FakeSocket):
+    def __init__(
+        self,
+        entered: threading.Event,
+        release: threading.Event,
+    ) -> None:
+        super().__init__(http_response())
+        self._entered = entered
+        self._release = release
+
+    def connect(
+        self,
+        address: tuple[str, int] | tuple[str, int, int, int],
+    ) -> None:
+        super().connect(address)
+        self._entered.set()
+        if not self._release.wait(timeout=2):
+            raise TimeoutError("test did not release connect")
+
+    def shutdown(self, how: int) -> None:
+        super().shutdown(how)
+        self._release.set()
+
+
 def _run_blocked_forward_then_shutdown_wait_false() -> None:
     async def main():
         forward_started = threading.Event()
         never_release = threading.Event()
 
-        def create_connection(_address, _timeout, _source_address):
+        def block_connect(_address):
             forward_started.set()
             never_release.wait()
-            return FakeSocket(http_response())
 
-        with fake_forwarder_upstream(create_connection=create_connection):
+        with fake_forwarder_upstream(connect_side_effect=block_connect):
             task = asyncio.create_task(
                 forwarder.forward_request("https://example.com", "GET", [], None)
             )
@@ -117,7 +141,7 @@ class TestAuthBaseForwarderSecurity:
         ):
             await forwarder.forward_request(url, "GET", [], None)
 
-        assert upstream.create_connection_calls == []
+        assert upstream.connect_calls == []
         assert upstream.sockets == []
 
     async def test_rejects_dns_private_destination_without_opening_connection(self):
@@ -127,8 +151,8 @@ class TestAuthBaseForwarderSecurity:
         ):
             await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
 
-        assert upstream.getaddrinfo_calls == [("hooks.example.com", 443)]
-        assert upstream.create_connection_calls == []
+        assert upstream.resolve_calls == ["hooks.example.com"]
+        assert upstream.connect_calls == []
 
     async def test_rejects_mixed_dns_answers_without_opening_connection(self):
         with (
@@ -137,8 +161,8 @@ class TestAuthBaseForwarderSecurity:
         ):
             await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
 
-        assert upstream.getaddrinfo_calls == [("hooks.example.com", 443)]
-        assert upstream.create_connection_calls == []
+        assert upstream.resolve_calls == ["hooks.example.com"]
+        assert upstream.connect_calls == []
 
     async def test_allows_public_dns_destination_and_forwards_with_original_host(self):
         with fake_forwarder_upstream(
@@ -154,8 +178,8 @@ class TestAuthBaseForwarderSecurity:
         assert status == 200
         assert body == b"ok"
         assert list(headers.items(multi=True)) == []
-        assert upstream.getaddrinfo_calls == [("hooks.example.com", 443)]
-        assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+        assert upstream.resolve_calls == ["hooks.example.com"]
+        assert upstream.connect_calls == [("93.184.216.34", 443)]
         assert upstream.contexts[-1].server_hostnames == ["hooks.example.com"]
         assert upstream.socket.request_lines()[0] == "GET /path HTTP/1.1"
         assert upstream.socket.request_header_values("Host") == ["hooks.example.com"]
@@ -181,13 +205,10 @@ class TestAuthBaseForwarderSecurity:
         assert second_body == b"ok"
         assert len(upstream.contexts) == 1
         assert upstream.contexts[0].server_hostnames == ["example.com", "example.com"]
-        assert upstream.getaddrinfo_calls == [
-            ("example.com", 443),
-            ("example.com", 443),
-        ]
-        assert upstream.create_connection_calls == [
-            (("93.184.216.34", 443), 30, None),
-            (("93.184.216.34", 443), 30, None),
+        assert upstream.resolve_calls == ["example.com", "example.com"]
+        assert upstream.connect_calls == [
+            ("93.184.216.34", 443),
+            ("93.184.216.34", 443),
         ]
         assert [socket.request_lines()[0] for socket in upstream.sockets] == [
             "GET /one HTTP/1.1",
@@ -206,21 +227,21 @@ class TestAuthBaseForwarderSecurity:
     )
     async def test_rejects_unsupported_scheme_before_dns(self, url: str):
         with (
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(ValueError, match="Unsupported URL scheme"),
         ):
             await forwarder.forward_request(url, "GET", [], None)
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
     async def test_rejects_missing_host_before_dns(self):
         with (
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(ValueError, match="Invalid upstream URL: missing host"),
         ):
             await forwarder.forward_request("https:///path", "GET", [], None)
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
     @pytest.mark.parametrize(
         "url",
@@ -231,21 +252,21 @@ class TestAuthBaseForwarderSecurity:
     )
     async def test_rejects_invalid_port_before_dns(self, url: str):
         with (
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(ValueError, match="Invalid upstream URL: invalid port"),
         ):
             await forwarder.forward_request(url, "GET", [], None)
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
     async def test_rejects_bracketed_non_ipv6_authority_before_dns(self):
         with (
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(ValueError, match="Invalid upstream URL: invalid host"),
         ):
             await forwarder.forward_request("https://[v1.invalid]/path", "GET", [], None)
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
     @pytest.mark.parametrize(
         "url",
@@ -263,12 +284,12 @@ class TestAuthBaseForwarderSecurity:
     )
     async def test_rejects_unsafe_raw_host_before_dns(self, url: str):
         with (
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(ValueError, match="Invalid upstream URL: invalid host"),
         ):
             await forwarder.forward_request(url, "GET", [], None)
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
     @pytest.mark.parametrize(
         ("url", "expected_host"),
@@ -282,7 +303,7 @@ class TestAuthBaseForwarderSecurity:
         with fake_forwarder_upstream() as upstream:
             await forwarder.forward_request(url, "GET", [], None)
 
-        assert upstream.getaddrinfo_calls == [(expected_host, 443)]
+        assert upstream.resolve_calls == [expected_host]
         assert upstream.contexts[-1].server_hostnames == [expected_host]
         assert upstream.socket.request_header_values("Host") == [expected_host]
 
@@ -295,12 +316,12 @@ class TestAuthBaseForwarderSecurity:
     )
     async def test_rejects_userinfo_authority_before_dns(self, url: str):
         with (
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(ValueError, match="Unsupported URL authority"),
         ):
             await forwarder.forward_request(url, "GET", [], None)
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
 
 class TestAuthBaseForwarderTransportSecurity:
@@ -309,61 +330,98 @@ class TestAuthBaseForwarderTransportSecurity:
         wrapped_sock = MagicMock()
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
         conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
-            timeout=30,
-            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
+            validated_addresses=(
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
+            ),
         )
         vars(conn)["_context"] = context
 
-        with patch.object(forwarder.socket, "create_connection", return_value=raw_sock) as connect:
+        with patch.object(forwarder.socket, "socket", return_value=raw_sock) as create_socket:
             conn.connect()
 
-        connect.assert_called_once_with(("93.184.216.34", 443), 30, None)
+        create_socket.assert_called_once_with(
+            forwarder.socket.AF_INET,
+            forwarder.socket.SOCK_STREAM,
+        )
+        raw_sock.connect.assert_called_once_with(("93.184.216.34", 443))
         raw_sock.setsockopt.assert_called_once_with(
             forwarder.socket.IPPROTO_TCP,
             forwarder.socket.TCP_NODELAY,
             1,
         )
-        context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
+        context.wrap_socket.assert_called_once_with(
+            raw_sock,
+            server_hostname="hooks.example.com",
+            do_handshake_on_connect=False,
+        )
+        wrapped_sock.do_handshake.assert_called_once_with()
         assert conn.sock is wrapped_sock
 
     def test_validated_connection_retries_checked_addresses_without_new_dns(self):
+        failed_sock = MagicMock()
+        failed_sock.connect.side_effect = OSError("no route")
         raw_sock = MagicMock()
         wrapped_sock = MagicMock()
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
         conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
-            timeout=30,
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
             validated_addresses=(
-                forwarder._ValidatedAddress("2001:4860:4860::8888", 443),
-                forwarder._ValidatedAddress("93.184.216.34", 443),
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET6,
+                    "2001:4860:4860::8888",
+                    443,
+                ),
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
             ),
         )
         vars(conn)["_context"] = context
 
         with patch.object(
             forwarder.socket,
-            "create_connection",
-            side_effect=[OSError("no route"), raw_sock],
-        ) as connect:
+            "socket",
+            side_effect=[failed_sock, raw_sock],
+        ) as create_socket:
             conn.connect()
 
-        connect.assert_has_calls(
+        create_socket.assert_has_calls(
             [
-                call(("2001:4860:4860::8888", 443), 30, None),
-                call(("93.184.216.34", 443), 30, None),
+                call(forwarder.socket.AF_INET6, forwarder.socket.SOCK_STREAM),
+                call(forwarder.socket.AF_INET, forwarder.socket.SOCK_STREAM),
             ]
         )
+        failed_sock.connect.assert_called_once_with(("2001:4860:4860::8888", 443, 0, 0))
+        failed_sock.close.assert_called_once_with()
+        raw_sock.connect.assert_called_once_with(("93.184.216.34", 443))
         raw_sock.setsockopt.assert_called_once_with(
             forwarder.socket.IPPROTO_TCP,
             forwarder.socket.TCP_NODELAY,
             1,
         )
-        context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
+        context.wrap_socket.assert_called_once_with(
+            raw_sock,
+            server_hostname="hooks.example.com",
+            do_handshake_on_connect=False,
+        )
+        wrapped_sock.do_handshake.assert_called_once_with()
         assert conn.sock is wrapped_sock
 
     def test_validated_connection_context_keeps_https_security_defaults(self):
@@ -380,87 +438,125 @@ class TestAuthBaseForwarderTransportSecurity:
         wrapped_sock = MagicMock()
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
         conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
-            timeout=30,
-            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
+            validated_addresses=(
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
+            ),
         )
         vars(conn)["_context"] = context
 
-        with patch.object(forwarder.socket, "create_connection", return_value=raw_sock):
+        with patch.object(forwarder.socket, "socket", return_value=raw_sock):
             conn.connect()
 
         raw_sock.close.assert_not_called()
-        context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
+        context.wrap_socket.assert_called_once_with(
+            raw_sock,
+            server_hostname="hooks.example.com",
+            do_handshake_on_connect=False,
+        )
         assert conn.sock is wrapped_sock
 
-    def test_validated_connection_untracks_raw_socket_when_setsockopt_cleanup_close_fails(self):
+    def test_validated_connection_clears_raw_socket_when_setsockopt_cleanup_close_fails(
+        self,
+    ):
         raw_sock = MagicMock()
         raw_sock.setsockopt.side_effect = OSError(errno.EINVAL, "setsockopt failed")
         raw_sock.close.side_effect = OSError("close failed")
         context = MagicMock()
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
         conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
-            timeout=30,
-            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
+            validated_addresses=(
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
+            ),
         )
         vars(conn)["_context"] = context
 
         with (
-            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            patch.object(forwarder.socket, "socket", return_value=raw_sock),
             pytest.raises(OSError, match="setsockopt failed"),
         ):
             conn.connect()
 
         raw_sock.close.assert_called_once_with()
         context.wrap_socket.assert_not_called()
-        with forwarder._forward_request_active_closeables_lock:
-            assert raw_sock not in forwarder._forward_request_active_closeables
+        assert abort_handle.abort_for_shutdown()
+        raw_sock.shutdown.assert_not_called()
 
     def test_validated_connection_closes_raw_socket_when_tls_wrap_fails(self):
         raw_sock = MagicMock()
         context = MagicMock()
         context.wrap_socket.side_effect = OSError("tls failed")
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
         conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
-            timeout=30,
-            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
+            validated_addresses=(
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
+            ),
         )
         vars(conn)["_context"] = context
 
         with (
-            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            patch.object(forwarder.socket, "socket", return_value=raw_sock),
             pytest.raises(OSError, match="tls failed"),
         ):
             conn.connect()
 
         raw_sock.close.assert_called_once_with()
 
-    def test_validated_connection_untracks_raw_socket_when_tls_cleanup_close_fails(self):
+    def test_validated_connection_clears_raw_socket_when_tls_cleanup_close_fails(self):
         raw_sock = MagicMock()
         raw_sock.close.side_effect = OSError("close failed")
         context = MagicMock()
         context.wrap_socket.side_effect = OSError("tls failed")
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
         conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
-            timeout=30,
-            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
+            validated_addresses=(
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
+            ),
         )
         vars(conn)["_context"] = context
 
         with (
-            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            patch.object(forwarder.socket, "socket", return_value=raw_sock),
             pytest.raises(OSError, match="tls failed"),
         ):
             conn.connect()
 
         raw_sock.close.assert_called_once_with()
-        with forwarder._forward_request_active_closeables_lock:
-            assert raw_sock not in forwarder._forward_request_active_closeables
+        assert abort_handle.abort_for_shutdown()
+        raw_sock.shutdown.assert_not_called()
 
 
 class TestAuthBaseForwarderRequestBehavior:
@@ -599,10 +695,14 @@ class TestAuthBaseForwarderRequestBehavior:
                 None,
             )
 
-        assert upstream.getaddrinfo_calls == [(expected_dns_host, expected_connection_port)]
-        assert upstream.create_connection_calls == [
-            (("93.184.216.34", expected_connection_port), 30, None)
-        ]
+        expected_resolve_calls = [] if ":" in expected_dns_host else [expected_dns_host]
+        assert upstream.resolve_calls == expected_resolve_calls
+        expected_connect_address = (
+            (expected_dns_host, expected_connection_port, 0, 0)
+            if ":" in expected_dns_host
+            else ("93.184.216.34", expected_connection_port)
+        )
+        assert upstream.connect_calls == [expected_connect_address]
         assert upstream.socket.request_header_values("Host") == [expected_host_header]
 
     async def test_filters_request_hop_by_hop_headers_and_recomputes_content_length(self):
@@ -658,10 +758,7 @@ class TestAuthBaseForwarderRequestBehavior:
             b"ok"
         )
 
-        def create_connection(_address, _timeout, _source_address):
-            return FakeSocket(raw_response)
-
-        with fake_forwarder_upstream(create_connection=create_connection):
+        with fake_forwarder_upstream(socket_factory=lambda: FakeSocket(raw_response)):
             status, body, headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
@@ -756,7 +853,7 @@ class TestAuthBaseForwarderRequestBodyLimit:
     async def test_rejects_body_over_limit_before_connection_setup(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(forwarder.ForwardedRequestTooLargeError),
         ):
             await forwarder.forward_request(
@@ -766,7 +863,7 @@ class TestAuthBaseForwarderRequestBodyLimit:
                 b"12345",
             )
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
 
 class TestAuthBaseForwarderResourceCleanup:
@@ -845,15 +942,10 @@ class TestAuthBaseForwarderResourceCleanup:
         assert upstream.socket.closed
 
     async def test_closes_connection_when_getresponse_raises(self):
-        def create_connection(
-            _address: tuple[str, int],
-            _timeout: object,
-            _source_address: object,
-        ) -> FakeSocket:
-            return FakeSocket(b"not an HTTP response\r\n")
-
         with (
-            fake_forwarder_upstream(create_connection=create_connection) as upstream,
+            fake_forwarder_upstream(
+                socket_factory=lambda: FakeSocket(b"not an HTTP response\r\n")
+            ) as upstream,
             pytest.raises(http_client.BadStatusLine),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
@@ -881,6 +973,401 @@ class TestForwardRequestAsyncWrapper:
 
         assert process.exitcode == 0
 
+    async def test_deadline_covers_waiting_for_active_slot(self):
+        with patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1):
+            async with forwarder_concurrency_harness() as (scenario, _upstream):
+                with patch.object(
+                    forwarder,
+                    "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                    5,
+                ):
+                    running_task = scenario.track_task(
+                        asyncio.create_task(
+                            forwarder.forward_request(
+                                "https://example.com",
+                                "GET",
+                                [],
+                                None,
+                            )
+                        )
+                    )
+                    assert await scenario.wait_started(1)
+
+                with (
+                    patch.object(
+                        forwarder,
+                        "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                        0.05,
+                    ),
+                    pytest.raises(forwarder.AuthBaseForwardingDeadlineExceededError),
+                ):
+                    await forwarder.forward_request(
+                        "https://example.com",
+                        "GET",
+                        [],
+                        None,
+                    )
+
+                assert scenario.started == 1
+                assert forwarder.forward_request_admission_state_for_tests() == (
+                    1,
+                    0,
+                )
+                scenario.release()
+                status, body, _headers = await running_task
+
+        assert status == 200
+        assert body == b"ok"
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+    async def test_deadline_cancels_async_dns_and_releases_capacity(self):
+        lookup_entered = asyncio.Event()
+        lookup_cancelled = asyncio.Event()
+
+        async def blocked_lookup(_host: str) -> list[str]:
+            lookup_entered.set()
+            try:
+                await asyncio.Event().wait()
+                raise AssertionError("blocked DNS lookup unexpectedly resumed")
+            finally:
+                lookup_cancelled.set()
+
+        with (
+            patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                0.05,
+            ),
+            fake_forwarder_upstream(lookup_side_effect=blocked_lookup) as upstream,
+            pytest.raises(forwarder.AuthBaseForwardingDeadlineExceededError),
+        ):
+            await forwarder.forward_request(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert lookup_entered.is_set()
+        assert lookup_cancelled.is_set()
+        assert upstream.sockets == []
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+        with forwarder._forward_request_active_handles_lock:
+            assert not forwarder._forward_request_active_handles
+
+    async def test_shutdown_cancels_dns_before_socket_registration(self):
+        lookup_entered = asyncio.Event()
+        lookup_cancelled = asyncio.Event()
+
+        async def blocked_lookup(_host: str) -> list[str]:
+            lookup_entered.set()
+            try:
+                await asyncio.Event().wait()
+                raise AssertionError("blocked DNS lookup unexpectedly resumed")
+            finally:
+                lookup_cancelled.set()
+
+        with fake_forwarder_upstream(lookup_side_effect=blocked_lookup) as upstream:
+            task = asyncio.create_task(
+                forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                )
+            )
+            await lookup_entered.wait()
+            forwarder.shutdown_forward_request_workers(wait=False)
+
+            with pytest.raises(RuntimeError, match="workers are shut down"):
+                await task
+
+        assert lookup_cancelled.is_set()
+        assert upstream.sockets == []
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+    async def test_deadline_aborts_connect_before_reusing_capacity(self):
+        connect_entered = threading.Event()
+        release_connect = threading.Event()
+        blocked_socket = _BlockingConnectSocket(connect_entered, release_connect)
+        sockets = iter(
+            (
+                blocked_socket,
+                FakeSocket(http_response()),
+            )
+        )
+
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            fake_forwarder_upstream(socket_factory=lambda: next(sockets)),
+        ):
+            with (
+                patch.object(
+                    forwarder,
+                    "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                    0.05,
+                ),
+                pytest.raises(forwarder.AuthBaseForwardingDeadlineExceededError),
+            ):
+                await forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                )
+
+            assert connect_entered.is_set()
+            assert blocked_socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+            assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+            with patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                1,
+            ):
+                status, body, _headers = await forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                )
+
+        assert status == 200
+        assert body == b"ok"
+
+    async def test_deadline_aborts_deferred_tls_handshake(self):
+        handshake_entered = threading.Event()
+        release_handshake = threading.Event()
+
+        class BlockingHandshakeSocket(FakeSocket):
+            def do_handshake(self) -> None:
+                self.handshake_count += 1
+                handshake_entered.set()
+                if not release_handshake.wait(timeout=2):
+                    raise TimeoutError("test did not release TLS handshake")
+
+            def shutdown(self, how: int) -> None:
+                super().shutdown(how)
+                release_handshake.set()
+
+        socket = BlockingHandshakeSocket(http_response())
+        with (
+            patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                0.05,
+            ),
+            fake_forwarder_upstream(socket_factory=lambda: socket),
+            pytest.raises(forwarder.AuthBaseForwardingDeadlineExceededError),
+        ):
+            await forwarder.forward_request(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert handshake_entered.is_set()
+        assert socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+        assert socket.closed
+
+    async def test_absolute_deadline_stops_trickling_socket_response(self):
+        client_socket, server_socket = forwarder.socket.socketpair()
+        sent_body_bytes: list[bytes] = []
+        response_body = b"0123456789abcdef"
+
+        class SocketBackedForwardSocket(FakeSocket):
+            def settimeout(self, timeout: float | None) -> None:
+                super().settimeout(timeout)
+                client_socket.settimeout(timeout)
+
+            def sendall(self, data: bytes) -> None:
+                self.sent.extend(data)
+                client_socket.sendall(data)
+
+            def makefile(self, *args, **kwargs):
+                return client_socket.makefile(*args, **kwargs)
+
+            def shutdown(self, how: int) -> None:
+                super().shutdown(how)
+                client_socket.shutdown(how)
+
+            def close(self) -> None:
+                super().close()
+                client_socket.close()
+
+        def serve_trickling_response() -> None:
+            try:
+                request = bytearray()
+                while b"\r\n\r\n" not in request:
+                    chunk = server_socket.recv(4096)
+                    if not chunk:
+                        return
+                    request.extend(chunk)
+                server_socket.sendall(
+                    b"HTTP/1.1 200 OK\r\n"
+                    + f"Content-Length: {len(response_body)}\r\n\r\n".encode()
+                )
+                for byte in response_body:
+                    server_socket.sendall(bytes((byte,)))
+                    sent_body_bytes.append(bytes((byte,)))
+                    time.sleep(0.02)
+            except OSError:
+                pass
+            finally:
+                server_socket.close()
+
+        server_thread = threading.Thread(
+            target=serve_trickling_response,
+            name="auth-base-trickle-server",
+        )
+        socket = SocketBackedForwardSocket(b"")
+        server_thread.start()
+        try:
+            with (
+                patch.object(
+                    forwarder,
+                    "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                    0.2,
+                ),
+                fake_forwarder_upstream(socket_factory=lambda: socket),
+                pytest.raises(forwarder.AuthBaseForwardingDeadlineExceededError),
+            ):
+                await forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                )
+        finally:
+            client_socket.close()
+            server_socket.close()
+            await asyncio.to_thread(server_thread.join, 2)
+
+        assert not server_thread.is_alive()
+        assert 2 <= len(sent_body_bytes) < len(response_body)
+        assert socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+
+    async def test_deadline_does_not_abort_unrelated_forward(self):
+        first_entered = threading.Event()
+        first_release = threading.Event()
+        second_entered = threading.Event()
+        second_release = threading.Event()
+        first_socket = _BlockingConnectSocket(first_entered, first_release)
+        second_socket = _BlockingConnectSocket(second_entered, second_release)
+        sockets = iter((first_socket, second_socket))
+
+        with fake_forwarder_upstream(socket_factory=lambda: next(sockets)):
+            with patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                0.08,
+            ):
+                first_task = asyncio.create_task(
+                    forwarder.forward_request(
+                        "https://example.com",
+                        "GET",
+                        [],
+                        None,
+                    )
+                )
+                assert await asyncio.to_thread(first_entered.wait, 1)
+
+            with patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                1,
+            ):
+                second_task = asyncio.create_task(
+                    forwarder.forward_request(
+                        "https://example.com",
+                        "GET",
+                        [],
+                        None,
+                    )
+                )
+                assert await asyncio.to_thread(second_entered.wait, 1)
+
+                with pytest.raises(forwarder.AuthBaseForwardingDeadlineExceededError):
+                    await first_task
+
+                assert not second_task.done()
+                assert second_socket.shutdown_calls == []
+                second_release.set()
+                status, body, _headers = await second_task
+
+        assert status == 200
+        assert body == b"ok"
+        assert first_socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+        assert second_socket.shutdown_calls == []
+
+    async def test_caller_cancellation_keeps_worker_deadline_armed(self):
+        first_entered = threading.Event()
+        first_release = threading.Event()
+        first_socket = _BlockingConnectSocket(first_entered, first_release)
+        sockets = iter((first_socket, FakeSocket(http_response())))
+
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            fake_forwarder_upstream(socket_factory=lambda: next(sockets)),
+        ):
+            with patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                0.08,
+            ):
+                cancelled_task = asyncio.create_task(
+                    forwarder.forward_request(
+                        "https://example.com",
+                        "GET",
+                        [],
+                        None,
+                    )
+                )
+                assert await asyncio.to_thread(first_entered.wait, 1)
+                cancelled_task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await cancelled_task
+
+            with patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                1,
+            ):
+                status, body, _headers = await forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                )
+
+        assert status == 200
+        assert body == b"ok"
+        assert first_socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+
+    async def test_completed_forward_cancels_deadline_timer(self):
+        with (
+            patch.object(
+                forwarder,
+                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                0.1,
+            ),
+            fake_forwarder_upstream() as upstream,
+        ):
+            status, body, _headers = await forwarder.forward_request(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+            await asyncio.sleep(0.15)
+
+        assert status == 200
+        assert body == b"ok"
+        assert upstream.socket.shutdown_calls == []
+        with forwarder._forward_request_active_handles_lock:
+            assert not forwarder._forward_request_active_handles
+
     def test_shutdown_before_worker_start_cancels_pending_forward(self):
         future: Future[tuple[int, bytes, http.Headers]] = Future()
         with forwarder._forward_request_pending_futures_lock:
@@ -896,10 +1383,13 @@ class TestForwardRequestAsyncWrapper:
             forwarder._run_forward_request_worker(
                 future,
                 contextvars.copy_context(),
-                "https://example.com",
+                forwarder._prepare_forward_request("https://example.com"),
                 "GET",
                 [],
                 None,
+                (),
+                forwarder._ForwardRequestAbortHandle(MagicMock()),
+                time.monotonic() + 30,
             )
 
         forward_sync.assert_not_called()
@@ -916,7 +1406,7 @@ class TestForwardRequestAsyncWrapper:
     async def test_rejects_body_over_limit_before_forwarding(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
-            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            fake_forwarder_upstream() as upstream,
             pytest.raises(forwarder.ForwardedRequestTooLargeError),
         ):
             await forwarder.forward_request(
@@ -926,7 +1416,7 @@ class TestForwardRequestAsyncWrapper:
                 b"12345",
             )
 
-        getaddrinfo.assert_not_called()
+        assert upstream.resolve_calls == []
 
     async def test_rejects_when_admitted_forward_count_is_saturated(self):
         with patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 1):
@@ -940,8 +1430,8 @@ class TestForwardRequestAsyncWrapper:
                 with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
                     await forwarder.forward_request("https://example.com", "GET", [], None)
 
-        assert upstream.getaddrinfo_calls == [("example.com", 443)]
-        assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+        assert upstream.resolve_calls == ["example.com"]
+        assert upstream.connect_calls == [("93.184.216.34", 443)]
 
     async def test_rejects_when_admitted_forward_body_bytes_are_saturated(self):
         with (
@@ -958,13 +1448,13 @@ class TestForwardRequestAsyncWrapper:
                 with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
                     await forwarder.forward_request("https://example.com", "POST", [], b"x")
 
-        assert upstream.getaddrinfo_calls == [("example.com", 443)]
-        assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+        assert upstream.resolve_calls == ["example.com"]
+        assert upstream.connect_calls == [("93.184.216.34", 443)]
 
     async def test_releases_forward_slot_when_forwarding_raises(self):
         first = True
 
-        def create_connection(_address, _timeout, _source_address):
+        def make_socket():
             nonlocal first
 
             if first:
@@ -977,7 +1467,7 @@ class TestForwardRequestAsyncWrapper:
 
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
-            fake_forwarder_upstream(create_connection=create_connection),
+            fake_forwarder_upstream(socket_factory=make_socket),
         ):
             with pytest.raises(ConnectionError, match="upstream unavailable"):
                 await forwarder.forward_request("https://example.com", "GET", [], None)
@@ -1174,10 +1664,13 @@ class TestForwardRequestAsyncWrapper:
             forwarder._run_forward_request_worker(
                 future,
                 contextvars.copy_context(),
-                "https://example.com",
+                forwarder._prepare_forward_request("https://example.com"),
                 "GET",
                 [],
                 None,
+                (),
+                forwarder._ForwardRequestAbortHandle(MagicMock()),
+                time.monotonic() + 30,
             )
 
         assert future.done()
@@ -1256,10 +1749,7 @@ class TestForwardRequestAsyncWrapper:
 
         socket = BlockingSetsockoptSocket(http_response())
 
-        def create_connection(_address, _timeout, _source_address):
-            return socket
-
-        with fake_forwarder_upstream(create_connection=create_connection):
+        with fake_forwarder_upstream(socket_factory=lambda: socket):
             task = asyncio.create_task(
                 forwarder.forward_request("https://example.com", "GET", [], None)
             )
@@ -1267,33 +1757,38 @@ class TestForwardRequestAsyncWrapper:
                 assert await asyncio.to_thread(setsockopt_entered.wait, 2)
                 forwarder.shutdown_forward_request_workers(wait=False)
                 assert await asyncio.to_thread(socket_closed.wait, 2)
-                with forwarder._forward_request_active_closeables_lock:
-                    assert socket not in forwarder._forward_request_active_closeables
             finally:
                 release_setsockopt.set()
                 await asyncio.gather(task, return_exceptions=True)
 
         assert socket.closed
+        assert socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+        with forwarder._forward_request_active_handles_lock:
+            assert not forwarder._forward_request_active_handles
 
-    async def test_shutdown_closes_socket_created_after_active_close_snapshot(self):
+    async def test_shutdown_aborts_socket_during_connect(self):
         connect_entered = threading.Event()
         release_connect = threading.Event()
-        socket = FakeSocket(http_response())
 
-        def create_connection(_address, _timeout, _source_address):
-            connect_entered.set()
-            if not release_connect.wait(timeout=5):
-                raise TimeoutError("test did not release connect")
-            return socket
+        class BlockingConnectSocket(FakeSocket):
+            def connect(self, address) -> None:
+                self.connect_calls.append(address)
+                connect_entered.set()
+                if not release_connect.wait(timeout=5):
+                    raise TimeoutError("test did not release connect")
 
-        with fake_forwarder_upstream(create_connection=create_connection):
+            def shutdown(self, how: int) -> None:
+                super().shutdown(how)
+                release_connect.set()
+
+        socket = BlockingConnectSocket(http_response())
+        with fake_forwarder_upstream(socket_factory=lambda: socket):
             task = asyncio.create_task(
                 forwarder.forward_request("https://example.com", "GET", [], None)
             )
             try:
                 assert await asyncio.to_thread(connect_entered.wait, 2)
                 forwarder.shutdown_forward_request_workers(wait=False)
-                release_connect.set()
 
                 with pytest.raises(RuntimeError, match="workers are shut down"):
                     await asyncio.wait_for(task, timeout=2)
@@ -1302,9 +1797,10 @@ class TestForwardRequestAsyncWrapper:
                 await asyncio.gather(task, return_exceptions=True)
 
         assert socket.closed
+        assert socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
         assert not socket.setsockopt_calls
-        with forwarder._forward_request_active_closeables_lock:
-            assert socket not in forwarder._forward_request_active_closeables
+        with forwarder._forward_request_active_handles_lock:
+            assert not forwarder._forward_request_active_handles
         assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
     async def test_offloads_request_work_from_event_loop_thread(self):

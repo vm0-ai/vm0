@@ -14,12 +14,16 @@ import socket
 import ssl
 import sys
 import threading
+import time
 import urllib.parse
+from collections.abc import Callable
 from concurrent.futures import Future, InvalidStateError
 from contextlib import suppress
+from enum import Enum, auto
 from typing import NamedTuple, Protocol
 
 from mitmproxy import http
+from mitmproxy_rs import dns as mitmproxy_rs_dns
 
 import flow_metadata_keys as metadata_keys
 import public_destination
@@ -52,6 +56,7 @@ MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
+AUTH_BASE_FORWARD_DEADLINE_SECONDS = 30.0
 _FORWARD_REQUEST_CLEANUP_EXCEPTIONS: tuple[type[BaseException], ...] = (
     Exception,
     asyncio.CancelledError,
@@ -70,14 +75,15 @@ _forward_request_pending_futures_lock = threading.Lock()
 _forward_request_budget_lock = threading.Lock()
 _forward_request_admitted_count = 0
 _forward_request_admitted_body_bytes = 0
-_forward_request_active_closeables: set["_Closeable"] = set()
-_forward_request_active_closeables_lock = threading.Lock()
+_forward_request_active_handles: set["_ForwardRequestAbortHandle"] = set()
+_forward_request_active_handles_lock = threading.Lock()
 _https_context: ssl.SSLContext | None = None
 _https_context_lock = threading.Lock()
+_dns_resolver: "_AddressResolver | None" = None
 
 
-class _Closeable(Protocol):
-    def close(self) -> object:
+class _AddressResolver(Protocol):
+    async def lookup_ip(self, host: str) -> list[str]:
         raise NotImplementedError
 
 
@@ -91,26 +97,24 @@ class _ForwardRequestAdmissionState(NamedTuple):
 _forward_request_admission_state: _ForwardRequestAdmissionState | None = None
 
 
-def _track_active_closeable(closeable: _Closeable) -> bool:
-    with _forward_request_lifecycle_lock, _forward_request_active_closeables_lock:
+def _track_active_forward_request_handle(handle: "_ForwardRequestAbortHandle") -> bool:
+    with _forward_request_lifecycle_lock, _forward_request_active_handles_lock:
         if not _forward_request_accepting:
             return False
-        _forward_request_active_closeables.add(closeable)
+        _forward_request_active_handles.add(handle)
         return True
 
 
-def _untrack_active_closeable(closeable: _Closeable) -> None:
-    with _forward_request_active_closeables_lock:
-        _forward_request_active_closeables.discard(closeable)
+def _untrack_active_forward_request_handle(handle: "_ForwardRequestAbortHandle") -> None:
+    with _forward_request_active_handles_lock:
+        _forward_request_active_handles.discard(handle)
 
 
-def _close_active_forward_request_closeables() -> None:
-    with _forward_request_active_closeables_lock:
-        closeables = tuple(_forward_request_active_closeables)
-        _forward_request_active_closeables.clear()
-    for closeable in closeables:
-        with suppress(Exception):
-            closeable.close()
+def _abort_active_forward_request_handles() -> None:
+    with _forward_request_active_handles_lock:
+        handles = tuple(_forward_request_active_handles)
+    for handle in handles:
+        handle.abort_for_shutdown()
 
 
 def _cancel_pending_forward_request_futures() -> None:
@@ -161,6 +165,7 @@ def _join_forward_request_workers() -> None:
 
 def reset_forward_request_state_for_tests() -> None:
     """Reset forwarder worker state between tests."""
+    global _dns_resolver
     global _forward_request_accepting
     global _forward_request_admitted_body_bytes
     global _forward_request_admitted_count
@@ -172,6 +177,7 @@ def reset_forward_request_state_for_tests() -> None:
         _forward_request_admitted_body_bytes = 0
     with _https_context_lock:
         _https_context = None
+    _dns_resolver = None
     _forward_request_accepting = True
 
 
@@ -185,8 +191,8 @@ def shutdown_forward_request_workers(*, wait: bool) -> None:
         admission_state = _forward_request_admission_state
         _forward_request_admission_state = None
     _wake_forward_request_admission_waiters(admission_state)
+    _abort_active_forward_request_handles()
     _cancel_pending_forward_request_futures()
-    _close_active_forward_request_closeables()
     if wait:
         _join_forward_request_workers()
 
@@ -203,6 +209,10 @@ class AuthBaseForwardingSaturatedError(Exception):
     """Raised when auth.base forwarding admission is saturated."""
 
 
+class AuthBaseForwardingDeadlineExceededError(Exception):
+    """Raised when one auth.base forwarding attempt exceeds its total lifetime."""
+
+
 class UnsafeAuthBaseDestinationError(Exception):
     """Raised when an auth.base upstream destination is not public internet."""
 
@@ -213,6 +223,135 @@ class InvalidResolvedAuthHeaderError(Exception):
 
 class InvalidAuthBaseRequestHeadersError(Exception):
     """Raised when client representation headers cannot be forwarded safely."""
+
+
+class _ForwardRequestTerminalState(Enum):
+    COMPLETED = auto()
+    DEADLINE_EXPIRED = auto()
+    SHUTDOWN_ABORTED = auto()
+
+
+def _abort_socket(sock: socket.socket) -> None:
+    with suppress(Exception):
+        sock.shutdown(socket.SHUT_RDWR)
+    with suppress(Exception):
+        sock.close()
+
+
+class _ForwardRequestAbortHandle:
+    """Serialize one forward's async lookup, socket, deadline, and shutdown."""
+
+    __slots__ = ("_async_cancel", "_lock", "_loop", "_socket", "_terminal_state")
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._async_cancel: Callable[[], object] | None = None
+        self._lock = threading.Lock()
+        self._loop = loop
+        self._socket: socket.socket | None = None
+        self._terminal_state: _ForwardRequestTerminalState | None = None
+
+    def register_async_cancel(self, cancel: Callable[[], object]) -> None:
+        with self._lock:
+            terminal_state = self._terminal_state
+            if terminal_state is None:
+                self._async_cancel = cancel
+                return
+        cancel()
+        self._raise_terminal(terminal_state)
+
+    def clear_async_cancel(self, cancel: Callable[[], object]) -> None:
+        with self._lock:
+            if self._async_cancel is cancel:
+                self._async_cancel = None
+
+    def register_socket(self, sock: socket.socket) -> None:
+        with self._lock:
+            terminal_state = self._terminal_state
+            if terminal_state is None:
+                self._socket = sock
+                return
+        _abort_socket(sock)
+        self._raise_terminal(terminal_state)
+
+    def replace_socket(self, current: socket.socket, replacement: socket.socket) -> None:
+        with self._lock:
+            terminal_state = self._terminal_state
+            if terminal_state is None and self._socket is current:
+                self._socket = replacement
+                return
+        _abort_socket(replacement)
+        if terminal_state is None:
+            raise RuntimeError("auth.base forwarding socket ownership changed unexpectedly")
+        self._raise_terminal(terminal_state)
+
+    def clear_socket(self, sock: socket.socket) -> None:
+        with self._lock:
+            if self._socket is sock:
+                self._socket = None
+
+    def abort_for_deadline(self) -> bool:
+        return self._abort(_ForwardRequestTerminalState.DEADLINE_EXPIRED)
+
+    def abort_for_shutdown(self) -> bool:
+        return self._abort(_ForwardRequestTerminalState.SHUTDOWN_ABORTED)
+
+    def finish(self, deadline: float) -> _ForwardRequestTerminalState:
+        async_cancel: Callable[[], object] | None = None
+        sock: socket.socket | None = None
+        with self._lock:
+            if self._terminal_state is None:
+                if time.monotonic() >= deadline:
+                    self._terminal_state = _ForwardRequestTerminalState.DEADLINE_EXPIRED
+                    async_cancel = self._async_cancel
+                    sock = self._socket
+                else:
+                    self._terminal_state = _ForwardRequestTerminalState.COMPLETED
+                self._async_cancel = None
+                self._socket = None
+            terminal_state = self._terminal_state
+        self._cancel_async(async_cancel)
+        if sock is not None:
+            _abort_socket(sock)
+        return terminal_state
+
+    @property
+    def terminal_state(self) -> _ForwardRequestTerminalState | None:
+        with self._lock:
+            return self._terminal_state
+
+    def raise_if_aborted(self) -> None:
+        terminal_state = self.terminal_state
+        if terminal_state is not None:
+            self._raise_terminal(terminal_state)
+
+    def _abort(self, terminal_state: _ForwardRequestTerminalState) -> bool:
+        async_cancel: Callable[[], object] | None = None
+        sock: socket.socket | None = None
+        with self._lock:
+            if self._terminal_state is not None:
+                return False
+            self._terminal_state = terminal_state
+            async_cancel = self._async_cancel
+            sock = self._socket
+            self._async_cancel = None
+            self._socket = None
+        self._cancel_async(async_cancel)
+        if sock is not None:
+            _abort_socket(sock)
+        return True
+
+    def _cancel_async(self, cancel: Callable[[], object] | None) -> None:
+        if cancel is not None:
+            with suppress(RuntimeError):
+                self._loop.call_soon_threadsafe(cancel)
+
+    @staticmethod
+    def _raise_terminal(terminal_state: _ForwardRequestTerminalState) -> None:
+        if terminal_state is _ForwardRequestTerminalState.DEADLINE_EXPIRED:
+            raise AuthBaseForwardingDeadlineExceededError("auth.base forwarding deadline exceeded")
+        if terminal_state is _ForwardRequestTerminalState.SHUTDOWN_ABORTED:
+            raise RuntimeError("auth.base forwarding workers are shut down")
+        raise RuntimeError("auth.base forwarding attempt is already completed")
 
 
 class AuthBaseForwardingAdmission:
@@ -226,27 +365,31 @@ class AuthBaseForwardingAdmission:
 
 
 class _ValidatedAddress(NamedTuple):
+    family: socket.AddressFamily
     host: str
     port: int
 
 
-def _connect_to_validated_addresses(validated_addresses: tuple[_ValidatedAddress, ...]):
-    def create_connection(_address, timeout, source_address):
-        last_error: OSError | None = None
-        for address in validated_addresses:
-            try:
-                return socket.create_connection(
-                    (address.host, address.port),
-                    timeout,
-                    source_address,
-                )
-            except OSError as exc:
-                last_error = exc
-        if last_error is not None:
-            raise last_error
-        raise OSError("getaddrinfo returns an empty list")
+class _PreparedForwardRequest(NamedTuple):
+    host: str
+    port: int | None
+    target: str
 
-    return create_connection
+
+type _SocketAddress = tuple[str, int] | tuple[str, int, int, int]
+
+
+def _validated_socket_address(address: _ValidatedAddress) -> _SocketAddress:
+    if address.family == socket.AF_INET6:
+        return address.host, address.port, 0, 0
+    return address.host, address.port
+
+
+def _remaining_deadline_seconds(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise AuthBaseForwardingDeadlineExceededError("auth.base forwarding deadline exceeded")
+    return remaining
 
 
 def _create_https_context() -> ssl.SSLContext:
@@ -280,71 +423,99 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
         host: str,
         port: int | None,
         *,
-        timeout,
+        deadline: float,
+        abort_handle: _ForwardRequestAbortHandle,
         validated_addresses: tuple[_ValidatedAddress, ...],
     ) -> None:
-        super().__init__(host, port=port, timeout=timeout)
+        super().__init__(
+            host,
+            port=port,
+            timeout=_remaining_deadline_seconds(deadline),
+        )
+        self._abort_handle = abort_handle
+        self._deadline = deadline
         self._validated_addresses = validated_addresses
         self._context = _get_https_context()
-        self._tracked_closeables: list[_Closeable] = []
 
-    def _track_closeable(self, closeable: _Closeable) -> None:
-        if not _track_active_closeable(closeable):
-            with suppress(Exception):
-                closeable.close()
-            raise RuntimeError("auth.base forwarding workers are shut down")
-        self._tracked_closeables.append(closeable)
-
-    def _untrack_closeables(self) -> None:
-        for closeable in self._tracked_closeables:
-            _untrack_active_closeable(closeable)
-        self._tracked_closeables.clear()
-
-    def _close_and_untrack_after_connect_failure(self, closeable: _Closeable) -> None:
+    def _close_and_clear_socket(self, sock: socket.socket) -> None:
+        self._abort_handle.clear_socket(sock)
         with suppress(Exception):
-            closeable.close()
-        self._untrack_closeables()
+            sock.close()
+
+    def _connect_raw_socket(self) -> socket.socket:
+        last_error: OSError | None = None
+        for address in self._validated_addresses:
+            self._abort_handle.raise_if_aborted()
+            raw_sock = socket.socket(address.family, socket.SOCK_STREAM)
+            try:
+                self._abort_handle.register_socket(raw_sock)
+                raw_sock.settimeout(_remaining_deadline_seconds(self._deadline))
+                raw_sock.connect(_validated_socket_address(address))
+                self._abort_handle.raise_if_aborted()
+            except OSError as exc:
+                last_error = exc
+                self._close_and_clear_socket(raw_sock)
+                continue
+            except Exception:
+                self._close_and_clear_socket(raw_sock)
+                raise
+            return raw_sock
+        if last_error is not None:
+            raise last_error
+        raise OSError("address resolver returned an empty list")
 
     def connect(self) -> None:
-        raw_sock = _connect_to_validated_addresses(self._validated_addresses)(
-            (self.host, self.port),
-            self.timeout,
-            None,
-        )
-        self._track_closeable(raw_sock)
+        raw_sock = self._connect_raw_socket()
         try:
             raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except OSError as exc:
             if exc.errno != errno.ENOPROTOOPT:
-                self._close_and_untrack_after_connect_failure(raw_sock)
+                self._close_and_clear_socket(raw_sock)
                 raise
         try:
-            wrapped_sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
+            wrapped_sock = self._context.wrap_socket(
+                raw_sock,
+                server_hostname=self.host,
+                do_handshake_on_connect=False,
+            )
             if wrapped_sock is not raw_sock:
-                self._track_closeable(wrapped_sock)
+                self._abort_handle.replace_socket(raw_sock, wrapped_sock)
             self.sock = wrapped_sock
+            self.set_remaining_timeout()
+            wrapped_sock.do_handshake()
         except Exception:
-            self._close_and_untrack_after_connect_failure(raw_sock)
+            current_sock = self.sock
+            self.sock = None
+            self._close_and_clear_socket(current_sock if current_sock is not None else raw_sock)
             raise
 
+    def set_remaining_timeout(self) -> None:
+        self._abort_handle.raise_if_aborted()
+        if self.sock is not None:
+            self.sock.settimeout(_remaining_deadline_seconds(self._deadline))
+
     def close(self) -> None:
+        sock = self.sock
         try:
             super().close()
         finally:
-            self._untrack_closeables()
+            if sock is not None:
+                self._abort_handle.clear_socket(sock)
 
 
 def _make_validated_https_connection(
     host: str,
     port: int | None,
     *,
-    timeout,
+    deadline: float,
+    abort_handle: _ForwardRequestAbortHandle,
     validated_addresses: tuple[_ValidatedAddress, ...],
-) -> http_client.HTTPConnection:
+) -> _ValidatedTLSConnection:
     return _ValidatedTLSConnection(
         host,
         port=port,
-        timeout=timeout,
+        deadline=deadline,
+        abort_handle=abort_handle,
         validated_addresses=validated_addresses,
     )
 
@@ -658,38 +829,61 @@ def _raise_unsafe_destination() -> None:
     raise UnsafeAuthBaseDestinationError("Unsafe auth.base upstream destination")
 
 
-def _resolve_validated_addresses(host: str, port: int) -> tuple[_ValidatedAddress, ...]:
-    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+def _get_dns_resolver() -> _AddressResolver:
+    global _dns_resolver
+
+    resolver = _dns_resolver
+    if resolver is None:
+        resolver = mitmproxy_rs_dns.DnsResolver()
+        _dns_resolver = resolver
+    return resolver
+
+
+def _validated_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address, port: int):
+    family = socket.AF_INET6 if address.version == IPV6_VERSION else socket.AF_INET
+    return _ValidatedAddress(family, address.compressed, port)
+
+
+async def _resolve_validated_addresses(
+    host: str,
+    port: int,
+    abort_handle: _ForwardRequestAbortHandle,
+) -> tuple[_ValidatedAddress, ...]:
+    try:
+        literal_address = ipaddress.ip_address(host)
+    except ValueError:
+        lookup_future = asyncio.ensure_future(_get_dns_resolver().lookup_ip(host))
+
+        def cancel_lookup() -> object:
+            return lookup_future.cancel()
+
+        abort_handle.register_async_cancel(cancel_lookup)
+        try:
+            resolved_hosts = await lookup_future
+        finally:
+            abort_handle.clear_async_cancel(cancel_lookup)
+    else:
+        resolved_hosts = [literal_address.compressed]
+
     seen: set[str] = set()
     addresses: list[_ValidatedAddress] = []
-    for _family, _socktype, _proto, _canonname, sockaddr in infos:
-        address = ipaddress.ip_address(sockaddr[0])
+    for resolved_host in resolved_hosts:
+        address = ipaddress.ip_address(resolved_host)
         key = address.compressed
         if key in seen:
             continue
         seen.add(key)
         if not _is_public_unicast_address(address):
             _raise_unsafe_destination()
-        addresses.append(_ValidatedAddress(address.compressed, port))
+        addresses.append(_validated_address(address, port))
     if not addresses:
         raise ValueError("Invalid upstream URL: host did not resolve")
     return tuple(addresses)
 
 
-def _forward_request_sync(
-    url: str,
-    method: str,
-    headers: list[tuple[str, str]],
-    body: bytes | None,
-) -> tuple[int, bytes, http.Headers]:
-    """Forward an HTTPS request to the real URL and return (status, body, headers).
-
-    Security: only https URLs are allowed, and redirects are returned
-    to the sandbox client instead of being followed inside the addon.
-    """
-    _validate_request_body_size(body)
+def _prepare_forward_request(url: str) -> _PreparedForwardRequest:
     parsed = urllib.parse.urlsplit(url)
-    conn_factory = _connection_factory(parsed.scheme.lower())
+    _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
     host = _normalized_forward_request_host(parsed)
     if authority_has_empty_port(parsed.netloc):
@@ -698,21 +892,50 @@ def _forward_request_sync(
         port = parsed.port
     except ValueError as exc:
         raise ValueError("Invalid upstream URL: invalid port") from exc
-    effective_port = port if port is not None else DEFAULT_HTTPS_PORT
-    validated_addresses = _resolve_validated_addresses(host, effective_port)
-    conn = conn_factory(host, port=port, timeout=30, validated_addresses=validated_addresses)
+    return _PreparedForwardRequest(host, port, _request_target(parsed))
+
+
+def _forward_request_sync(
+    prepared: _PreparedForwardRequest,
+    method: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+    validated_addresses: tuple[_ValidatedAddress, ...],
+    abort_handle: _ForwardRequestAbortHandle,
+    deadline: float,
+) -> tuple[int, bytes, http.Headers]:
+    """Forward an HTTPS request to the real URL and return (status, body, headers).
+
+    Security: only https URLs are allowed, and redirects are returned
+    to the sandbox client instead of being followed inside the addon.
+    """
+    abort_handle.raise_if_aborted()
+    conn = _make_validated_https_connection(
+        prepared.host,
+        port=prepared.port,
+        deadline=deadline,
+        abort_handle=abort_handle,
+        validated_addresses=validated_addresses,
+    )
     resp = None
     try:
         conn.putrequest(
             method,
-            _request_target(parsed),
+            prepared.target,
             skip_host=True,
             skip_accept_encoding=True,
         )
-        for header_name, header_value in _outbound_request_headers(headers, host, port, body):
+        for header_name, header_value in _outbound_request_headers(
+            headers,
+            prepared.host,
+            prepared.port,
+            body,
+        ):
             conn.putheader(header_name, header_value)
         conn.endheaders(body)
+        conn.set_remaining_timeout()
         resp = conn.getresponse()
+        conn.set_remaining_timeout()
         resp_body = _read_response_body(resp)
         return resp.status, resp_body, _filter_response_headers(resp.getheaders())
     finally:
@@ -766,21 +989,41 @@ def _release_forward_request_resources(
     loop: asyncio.AbstractEventLoop,
     semaphore: asyncio.Semaphore,
     admission: AuthBaseForwardingAdmission,
+    abort_handle: _ForwardRequestAbortHandle,
+    deadline_timer: asyncio.TimerHandle,
     _future: Future[tuple[int, bytes, http.Headers]],
 ) -> None:
+    _untrack_active_forward_request_handle(abort_handle)
     release_forward_request_admission(admission)
+
+    def release_on_loop() -> None:
+        deadline_timer.cancel()
+        semaphore.release()
+
     with suppress(RuntimeError):
-        loop.call_soon_threadsafe(semaphore.release)
+        loop.call_soon_threadsafe(release_on_loop)
 
 
 def _forward_request_sync_in_context(
     context: contextvars.Context,
-    url: str,
+    prepared: _PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
+    validated_addresses: tuple[_ValidatedAddress, ...],
+    abort_handle: _ForwardRequestAbortHandle,
+    deadline: float,
 ) -> tuple[int, bytes, http.Headers]:
-    return context.run(_forward_request_sync, url, method, headers, body)
+    return context.run(
+        _forward_request_sync,
+        prepared,
+        method,
+        headers,
+        body,
+        validated_addresses,
+        abort_handle,
+        deadline,
+    )
 
 
 def _set_forward_request_future_exception(
@@ -791,13 +1034,35 @@ def _set_forward_request_future_exception(
         future.set_exception(exc)
 
 
+def _set_forward_request_terminal_exception(
+    future: Future[tuple[int, bytes, http.Headers]],
+    terminal_state: _ForwardRequestTerminalState,
+) -> bool:
+    if terminal_state is _ForwardRequestTerminalState.DEADLINE_EXPIRED:
+        _set_forward_request_future_exception(
+            future,
+            AuthBaseForwardingDeadlineExceededError("auth.base forwarding deadline exceeded"),
+        )
+        return True
+    if terminal_state is _ForwardRequestTerminalState.SHUTDOWN_ABORTED:
+        _set_forward_request_future_exception(
+            future,
+            RuntimeError("auth.base forwarding workers are shut down"),
+        )
+        return True
+    return False
+
+
 def _run_forward_request_worker(
     future: Future[tuple[int, bytes, http.Headers]],
     context: contextvars.Context,
-    url: str,
+    prepared: _PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
+    validated_addresses: tuple[_ValidatedAddress, ...],
+    abort_handle: _ForwardRequestAbortHandle,
+    deadline: float,
 ) -> None:
     try:
         with _forward_request_lifecycle_lock:
@@ -810,33 +1075,61 @@ def _run_forward_request_worker(
                 return
             _discard_pending_forward_request_future(future)
         try:
-            result = _forward_request_sync_in_context(context, url, method, headers, body)
+            result = _forward_request_sync_in_context(
+                context,
+                prepared,
+                method,
+                headers,
+                body,
+                validated_addresses,
+                abort_handle,
+                deadline,
+            )
         except Exception as exc:
-            _set_forward_request_future_exception(future, exc)
+            terminal_state = abort_handle.finish(deadline)
+            if not _set_forward_request_terminal_exception(future, terminal_state):
+                _set_forward_request_future_exception(future, exc)
         else:
-            with suppress(InvalidStateError):
-                future.set_result(result)
+            terminal_state = abort_handle.finish(deadline)
+            if not _set_forward_request_terminal_exception(future, terminal_state):
+                with suppress(InvalidStateError):
+                    future.set_result(result)
     finally:
         if sys.exc_info()[1] is not None and future.running():
-            _set_forward_request_future_exception(
-                future,
-                RuntimeError("auth.base forwarding worker exited without completing future"),
-            )
+            terminal_state = abort_handle.finish(deadline)
+            if not _set_forward_request_terminal_exception(future, terminal_state):
+                _set_forward_request_future_exception(
+                    future,
+                    RuntimeError("auth.base forwarding worker exited without completing future"),
+                )
         with _forward_request_workers_lock:
             _forward_request_workers.discard(threading.current_thread())
 
 
 def _start_forward_request_worker(
     context: contextvars.Context,
-    url: str,
+    prepared: _PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
+    validated_addresses: tuple[_ValidatedAddress, ...],
+    abort_handle: _ForwardRequestAbortHandle,
+    deadline: float,
 ) -> Future[tuple[int, bytes, http.Headers]]:
     future: Future[tuple[int, bytes, http.Headers]] = Future()
     worker = threading.Thread(
         target=_run_forward_request_worker,
-        args=(future, context, url, method, headers, body),
+        args=(
+            future,
+            context,
+            prepared,
+            method,
+            headers,
+            body,
+            validated_addresses,
+            abort_handle,
+            deadline,
+        ),
         name="auth-base-forward",
         daemon=True,
     )
@@ -867,18 +1160,21 @@ async def forward_request(
     *,
     admission: AuthBaseForwardingAdmission | None = None,
 ) -> tuple[int, bytes, http.Headers]:
-    """Forward an auth.base request through the synchronous worker lifecycle.
+    """Forward an auth.base request within one absolute worker lifetime.
 
     When this coroutine starts, it reserves admission capacity unless `admission` is supplied.
     A supplied admission is consumed: it is resized to the actual request body or released if
     validation or resizing fails. The caller must not release or reuse it after scheduling or
     awaiting this coroutine.
 
-    If the coroutine exits before submitting a worker, it releases the admission. After
-    submission, the future's completion callback releases both admission and concurrency
-    capacity. Cancellation before submission creates no worker, while cancelling a pending worker
-    future prevents it from running. Once synchronous work has started, cancelling the await does
-    not stop it; the worker retains both resources until completion.
+    One monotonic deadline covers active-slot waiting, DNS, connect, TLS, request, and response
+    work. Deadline expiry cancels async resolution or aborts the request's active socket. After
+    worker submission, only the worker future's completion callback releases admission and
+    concurrency capacity.
+
+    Cancellation before submission creates no worker, while cancelling a pending worker future
+    prevents it from running. Once synchronous work has started, caller cancellation does not stop
+    it; the independent deadline remains armed and the worker retains resources until completion.
 
     Request body size, admission saturation, shutdown, URL/header/destination validation, upstream
     forwarding, and response processing failures propagate to the caller.
@@ -899,40 +1195,90 @@ async def forward_request(
             release_forward_request_admission(admission)
             raise
 
+    deadline = time.monotonic() + AUTH_BASE_FORWARD_DEADLINE_SECONDS
     submitted = False
+    semaphore_acquired = False
+    abort_handle: _ForwardRequestAbortHandle | None = None
+    deadline_timer: asyncio.TimerHandle | None = None
     try:
         loop = asyncio.get_running_loop()
         semaphore = _get_forward_request_admission_semaphore()
         context = contextvars.copy_context()
-        await semaphore.acquire()
-        if not _can_submit_forward_request(semaphore):
-            semaphore.release()
-            raise RuntimeError("auth.base forwarding workers are shut down")
         try:
-            future = _start_forward_request_worker(
-                context,
-                url,
-                method,
-                headers,
-                body,
-            )
-        except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
-            semaphore.release()
+            async with asyncio.timeout(_remaining_deadline_seconds(deadline)):
+                await semaphore.acquire()
+                semaphore_acquired = True
+        except TimeoutError as exc:
+            raise AuthBaseForwardingDeadlineExceededError(
+                "auth.base forwarding deadline exceeded"
+            ) from exc
+        if not _can_submit_forward_request(semaphore):
+            raise RuntimeError("auth.base forwarding workers are shut down")
+
+        abort_handle = _ForwardRequestAbortHandle(loop)
+        if not _track_active_forward_request_handle(abort_handle):
+            abort_handle.abort_for_shutdown()
+            raise RuntimeError("auth.base forwarding workers are shut down")
+
+        prepared = _prepare_forward_request(url)
+        effective_port = prepared.port if prepared.port is not None else DEFAULT_HTTPS_PORT
+        try:
+            async with asyncio.timeout(_remaining_deadline_seconds(deadline)):
+                validated_addresses = await _resolve_validated_addresses(
+                    prepared.host,
+                    effective_port,
+                    abort_handle,
+                )
+        except TimeoutError as exc:
+            abort_handle.abort_for_deadline()
+            raise AuthBaseForwardingDeadlineExceededError(
+                "auth.base forwarding deadline exceeded"
+            ) from exc
+        except asyncio.CancelledError:
+            if abort_handle.terminal_state is _ForwardRequestTerminalState.SHUTDOWN_ABORTED:
+                raise RuntimeError("auth.base forwarding workers are shut down") from None
             raise
+
+        deadline_timer = loop.call_later(
+            _remaining_deadline_seconds(deadline),
+            abort_handle.abort_for_deadline,
+        )
+        future = _start_forward_request_worker(
+            context,
+            prepared,
+            method,
+            headers,
+            body,
+            validated_addresses,
+            abort_handle,
+            deadline,
+        )
         future.add_done_callback(
             lambda completed_future: _release_forward_request_resources(
                 loop,
                 semaphore,
                 admission,
+                abort_handle,
+                deadline_timer,
                 completed_future,
             )
         )
         submitted = True
+        semaphore_acquired = False
         try:
             return await asyncio.wrap_future(future, loop=loop)
         except asyncio.CancelledError:
             future.cancel()
+            if abort_handle.terminal_state is _ForwardRequestTerminalState.SHUTDOWN_ABORTED:
+                raise RuntimeError("auth.base forwarding workers are shut down") from None
             raise
     finally:
         if not submitted:
+            if deadline_timer is not None:
+                deadline_timer.cancel()
+            if abort_handle is not None:
+                abort_handle.finish(deadline)
+                _untrack_active_forward_request_handle(abort_handle)
+            if semaphore_acquired:
+                semaphore.release()
             release_forward_request_admission(admission)
