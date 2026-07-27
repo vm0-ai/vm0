@@ -226,21 +226,6 @@ def create_stream_decode_session(
     return None
 
 
-def create_stream_decode_feed(
-    headers: http.Headers,
-    feed: _StreamDecodeFeed,
-    *,
-    max_decoded_chunk: int = STREAM_DECODE_CHUNK_LIMIT,
-) -> _StreamDecodeFeed | None:
-    """Create a bounded streaming decoder that feeds decoded usage-parser chunks."""
-    session = create_stream_decode_session(
-        headers,
-        feed,
-        max_decoded_chunk=max_decoded_chunk,
-    )
-    return None if session is None else session.feed
-
-
 def decompress_body(
     data: bytes, headers: http.Headers, max_output: int = DEFAULT_BODY_DECODE_LIMIT
 ) -> bytes:
