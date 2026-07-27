@@ -60,7 +60,8 @@ pub(crate) enum SessionHistoryRestoreFallback {
     /// Live verification could no longer confirm a previously verified parked
     /// identity.
     StaleIdleIdentity,
-    /// The parked identity did not match the requested resume history.
+    /// The resume request could not be matched to the reused sandbox's parked
+    /// session-history state.
     ///
     /// The payload retains the specific mismatch reason when one is available.
     IdentityMismatch(Option<RestoredSessionIdentityMismatchReason>),
