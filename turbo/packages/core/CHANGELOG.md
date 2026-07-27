@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.476.0](https://github.com/vm0-ai/vm0/compare/core-v8.475.0...core-v8.476.0) (2026-07-27)
+
+
+### Features
+
+* **chat:** add automation queue event consumers ([#23356](https://github.com/vm0-ai/vm0/issues/23356)) ([ae28bdd](https://github.com/vm0-ai/vm0/commit/ae28bdda4f94c2ea12f0fec5f26017cc62fd4abb))
+* **chat:** support multiple inline templates ([#23326](https://github.com/vm0-ai/vm0/issues/23326)) ([1e0f8f4](https://github.com/vm0-ai/vm0/commit/1e0f8f4b2b742fbc0a417b8ec410d7b0b824f856))
+* enable website template v2 globally ([#23289](https://github.com/vm0-ai/vm0/issues/23289)) ([2bbb2cc](https://github.com/vm0-ai/vm0/commit/2bbb2cc8ff6911b83bde9dc0abd326d7be137b7f))
+
+
+### Refactoring
+
+* move feature switch keys into core ([#23299](https://github.com/vm0-ai/vm0/issues/23299)) ([11071e0](https://github.com/vm0-ai/vm0/commit/11071e056383e7ead21cc578961ed8496865f718))
+* remove graduated user-facing feature switches ([#23308](https://github.com/vm0-ai/vm0/issues/23308)) ([88670a3](https://github.com/vm0-ai/vm0/commit/88670a3f7df97bdf4a6caec3b17ed1550126f51a))
+* retire mail and thread mention feature switches ([#23324](https://github.com/vm0-ai/vm0/issues/23324)) ([535b9bc](https://github.com/vm0-ai/vm0/commit/535b9bc54238cc1ee75367dd33c9e4f314981eb7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.0
+
 ## [8.475.0](https://github.com/vm0-ai/vm0/compare/core-v8.474.0...core-v8.475.0) (2026-07-27)
 
 
