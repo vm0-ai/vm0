@@ -1331,6 +1331,7 @@ impl FirecrackerSandbox {
                     );
                     self.runtime.kill_process().await;
                     return Err(SandboxError::GuestDnsReadiness {
+                        reason: error.last_failure.sandbox_reason(),
                         message: format!(
                             "guest DNS readiness for namespace {}: {error}",
                             self.network.name(),

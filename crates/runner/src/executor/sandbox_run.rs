@@ -7,8 +7,9 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
-    SandboxFactory, SandboxId, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
-    SandboxNbdNetlinkConnectStage, SandboxStartObserver, SandboxStartStage,
+    SandboxFactory, SandboxGuestDnsReadinessReason, SandboxId, SandboxNbdCowCreateOutcome,
+    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxStartObserver,
+    SandboxStartStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -524,6 +525,14 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         let cache_hit = workspace_image
             .as_ref()
             .is_some_and(WorkspaceImageLease::is_cache_hit);
+        if failure.invalidate_consumed_workspace_cache && cache_hit {
+            invalidate_workspace_cache_hit(
+                workspace_image.as_ref(),
+                context.run_id,
+                "sandbox_prepare_failed",
+            )
+            .await;
+        }
         let retry_guest_dns = failure.retry == SandboxPrepareRetry::GuestDnsReadiness;
         let retry_without_workspace =
             failure.retry == SandboxPrepareRetry::WithoutWorkspaceImage && cache_hit;
@@ -668,6 +677,7 @@ pub(super) struct SandboxPrepareError {
     error: RunnerError,
     retry: SandboxPrepareRetry,
     cleanup_completed: bool,
+    invalidate_consumed_workspace_cache: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -693,14 +703,29 @@ impl SandboxPrepareError {
             error,
             retry: SandboxPrepareRetry::WithoutWorkspaceImage,
             cleanup_completed,
+            invalidate_consumed_workspace_cache: false,
         }
     }
 
-    fn guest_dns_readiness(error: RunnerError, cleanup_completed: bool) -> Self {
+    fn guest_dns_readiness(
+        error: RunnerError,
+        cleanup_completed: bool,
+        reason: SandboxGuestDnsReadinessReason,
+    ) -> Self {
+        let suppress_replacement = matches!(
+            reason,
+            SandboxGuestDnsReadinessReason::ProcessTimeout
+                | SandboxGuestDnsReadinessReason::Deadline
+        );
         Self {
             error,
-            retry: SandboxPrepareRetry::GuestDnsReadiness,
+            retry: if suppress_replacement {
+                SandboxPrepareRetry::None
+            } else {
+                SandboxPrepareRetry::GuestDnsReadiness
+            },
             cleanup_completed,
+            invalidate_consumed_workspace_cache: suppress_replacement,
         }
     }
 
@@ -709,6 +734,7 @@ impl SandboxPrepareError {
             error,
             retry: SandboxPrepareRetry::None,
             cleanup_completed: false,
+            invalidate_consumed_workspace_cache: false,
         }
     }
 }
@@ -1002,7 +1028,10 @@ async fn create_started_sandbox(
         sandbox.start_with_observer(&mut observer).await
     };
     if let Err(e) = start_result {
-        let guest_dns_readiness = matches!(&e, SandboxError::GuestDnsReadiness { .. });
+        let guest_dns_readiness_reason = match &e {
+            SandboxError::GuestDnsReadiness { reason, .. } => Some(*reason),
+            _ => None,
+        };
         telemetry.record(
             RUNNER_FRESH_SANDBOX_START,
             sandbox_start_started.elapsed(),
@@ -1025,7 +1054,7 @@ async fn create_started_sandbox(
         let network_log_observation = network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
-        if guest_dns_readiness {
+        if guest_dns_readiness_reason.is_some() {
             let observation = match network_log_start_offset {
                 Some(start_offset) => {
                     inspect_readiness_log_segment(&network_log_path, start_offset).await
@@ -1050,10 +1079,11 @@ async fn create_started_sandbox(
             .is_completed();
         let cleanup_completed = unregister_completed && destroy_completed;
         let error = e.into();
-        return Err(if guest_dns_readiness {
-            SandboxPrepareError::guest_dns_readiness(error, cleanup_completed)
-        } else {
-            SandboxPrepareError::retry_without_workspace_image(error, cleanup_completed)
+        return Err(match guest_dns_readiness_reason {
+            Some(reason) => {
+                SandboxPrepareError::guest_dns_readiness(error, cleanup_completed, reason)
+            }
+            None => SandboxPrepareError::retry_without_workspace_image(error, cleanup_completed),
         });
     }
     telemetry.record(
