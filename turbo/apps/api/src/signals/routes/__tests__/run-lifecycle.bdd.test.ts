@@ -7846,7 +7846,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
-  it("isolates scoped projection rows, reuses them warm, and falls back for a malformed selected row", async () => {
+  it("isolates scoped projection rows, reuses them warm and concurrently, and falls back for a malformed selected row", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const actor = bdd.user();
@@ -7914,6 +7914,49 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       }),
     );
     await api.requestCancelRun(actor, second.runId, [200]);
+
+    const concurrentAgent = await bdd.createAgent(actor, {
+      displayName: "Concurrent projection agent",
+      visibility: "private",
+    });
+    await api.enableAgentConnectors(actor, concurrentAgent.agentId, [
+      "airtable",
+      "figma",
+      "gitlab",
+      "linear",
+      "neon",
+    ]);
+    const [concurrentFirst, concurrentSecond] = await Promise.all([
+      api.createRun(actor, {
+        agentId: concurrentAgent.agentId,
+        prompt: "load the concurrent projection first",
+        modelProvider: "anthropic-api-key",
+      }),
+      api.createRun(actor, {
+        agentId: concurrentAgent.agentId,
+        prompt: "load the concurrent projection second",
+        modelProvider: "anthropic-api-key",
+      }),
+    ]);
+    const concurrentLoads = [concurrentFirst, concurrentSecond].map((run) => {
+      return singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(run.runId),
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      );
+    });
+    expect(concurrentLoads).toStrictEqual([
+      expect.objectContaining({ connector_runtime_source: "projection" }),
+      expect.objectContaining({ connector_runtime_source: "projection" }),
+    ]);
+    expect(
+      concurrentLoads
+        .map((event) => {
+          return event.connector_runtime_cache_status;
+        })
+        .sort(),
+    ).toStrictEqual(["hit", "miss"]);
+    await api.requestCancelRun(actor, concurrentFirst.runId, [200]);
+    await api.requestCancelRun(actor, concurrentSecond.runId, [200]);
 
     const malformedAgent = await bdd.createAgent(actor, {
       displayName: "Malformed projection fallback agent",

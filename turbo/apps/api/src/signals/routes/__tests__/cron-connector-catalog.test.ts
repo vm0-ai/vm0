@@ -3260,7 +3260,85 @@ describe("connector catalog valid lifecycle", () => {
       },
     ]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
-  });
+
+    const runs = createRunsApi(context);
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Catalog capability projection agent",
+      visibility: "private",
+    });
+    await runs.enableAgentConnectors(actor, agent.agentId, ["steam"]);
+    const activeRunIds = new Set<string>();
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      for (const runId of activeRunIds) {
+        await runs.requestCancelRun(actor, runId, [200, 400, 404]);
+      }
+      await bdd.deleteAgent(actor, agent.agentId);
+    });
+
+    const configuredRun = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "use the configured catalog capability",
+      modelProvider: "anthropic-api-key",
+    });
+    activeRunIds.add(configuredRun.runId);
+    if (configuredRun.status !== "pending") {
+      throw new Error(
+        `Expected configured capability run to be pending: ${configuredRun.error ?? configuredRun.status}`,
+      );
+    }
+    expect(
+      apiDispatchTimingEventForRun(
+        configuredRun.runId,
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toMatchObject({
+      connector_runtime_source: "projection",
+      connector_runtime_cache_status: "miss",
+    });
+    const configuredClaim = await runs.claimRunnerJob(configuredRun.runId);
+    expect(configuredClaim.environment).toMatchObject({
+      STEAM_ID: STEAM_TEST_ID,
+    });
+    await runs.requestCancelRun(actor, configuredRun.runId, [200]);
+
+    mockOptionalEnv("STEAM_WEB_API_KEY", undefined);
+    mockNow(new Date("2026-07-15T08:05:00.000Z"));
+    const missingConfiguration = await syncCatalog();
+    expect(
+      missingConfiguration.body.filtering.filteredAuthMethods,
+    ).toStrictEqual([
+      expect.objectContaining({
+        connectorRef: "steam",
+        authMethodId: "openid",
+        reasons: ["missing-platform-configuration"],
+      }),
+    ]);
+    const filteredRun = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "exclude the unavailable catalog capability",
+      modelProvider: "anthropic-api-key",
+    });
+    activeRunIds.add(filteredRun.runId);
+    expect(
+      apiDispatchTimingEventForRun(
+        filteredRun.runId,
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toMatchObject({
+      connector_runtime_source: "projection",
+      connector_runtime_cache_status: "miss",
+    });
+    const filteredClaim = await runs.claimRunnerJob(filteredRun.runId);
+    expect(filteredClaim.environment).not.toHaveProperty("STEAM_ID");
+    await runs.requestCancelRun(actor, filteredRun.runId, [200]);
+  }, 20_000);
 
   it("executes an external-code grant with catalog-owned storage", async () => {
     mockAwsExternalCodeProvider();
