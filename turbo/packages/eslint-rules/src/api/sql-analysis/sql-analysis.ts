@@ -3094,6 +3094,21 @@ function hasTableColumnOrder(
   return true;
 }
 
+function hasExactInsertColumnOrder(
+  names: readonly string[],
+  table: DrizzleTableMetadata,
+): boolean {
+  const emittedNames = [...table.columns.values()].flatMap((column) => {
+    return column.isEmittedOnInsert ? [column.databaseName] : [];
+  });
+  return (
+    names.length === emittedNames.length &&
+    names.every((name, index) => {
+      return name === emittedNames[index];
+    })
+  );
+}
+
 function coversDefaultedWritableColumns(
   names: readonly string[],
   table: DrizzleTableMetadata,
@@ -3511,9 +3526,8 @@ function isSingleRowUpsert(
     hasOnlyKeys(inference, new Set(["indexElems", "location"])) &&
     conflictColumnNames(inference.indexElems, table) !== undefined &&
     updateColumns !== undefined &&
-    hasTableColumnOrder(insertColumns, table) &&
+    hasExactInsertColumnOrder(insertColumns, table) &&
     hasTableColumnOrder(updateColumns, table) &&
-    coversDefaultedWritableColumns(insertColumns, table) &&
     coversDefaultedWritableColumns(updateColumns, table)
   );
 }

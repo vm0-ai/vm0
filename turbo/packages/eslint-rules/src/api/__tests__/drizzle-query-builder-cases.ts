@@ -767,6 +767,59 @@ const queryBuilderCases = {
     {
       code: `${upsertPreamble}
         import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (
+            org_id,
+            credits,
+            created_at,
+            updated_at
+          )
+          VALUES (\${orgId}, \${amount}, now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = org_metadata.credits + \${amount},
+            updated_at = now()
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, text } from "drizzle-orm/pg-core";
+        const optionalRows = pgTable("optional_rows", {
+          id: text("id").primaryKey(),
+          value: integer("value").notNull(),
+          note: text("note"),
+        });
+        const identityRows = pgTable("identity_rows", {
+          id: integer("id").generatedAlwaysAsIdentity(),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            identityRows: typeof identityRows;
+            optionalRows: typeof optionalRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const id: string;
+        declare const value: number;
+        await db.execute(sql\`
+          INSERT INTO \${optionalRows} (id, value)
+          VALUES (\${id}, \${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO \${identityRows} (value)
+          VALUES (\${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
         const fakeDb = {
           async execute(query: unknown) {
             return query;
@@ -2407,8 +2460,14 @@ const queryBuilderCases = {
       code: `${upsertPreamble}
         import * as drizzle from "drizzle-orm";
         await db["execute"](drizzle.sql\`
-          INSERT INTO \${orgMetadata} (org_id, credits, created_at, updated_at)
-          VALUES (\${orgId}, \${amount}, now(), now())
+          INSERT INTO \${orgMetadata} (
+            org_id,
+            credits,
+            tier,
+            created_at,
+            updated_at
+          )
+          VALUES (\${orgId}, \${amount}, 'free', now(), now())
           ON CONFLICT (org_id)
           DO UPDATE SET
             credits = COALESCE((
@@ -2418,6 +2477,33 @@ const queryBuilderCases = {
                 AND 'RETURNING ignored' = 'RETURNING ignored'
             ), 0) + \${amount},
             updated_at = now()
+        \`);
+      `,
+      errors: [{ messageId: "upsertQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, text } from "drizzle-orm/pg-core";
+        const generatedRows = pgTable("generated_rows", {
+          id: text("id").primaryKey(),
+          normalizedId: text("normalized_id").generatedAlwaysAs(
+            sql\`lower(id)\`,
+          ),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            generatedRows: typeof generatedRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const id: string;
+        declare const value: number;
+        await db.execute(sql\`
+          INSERT INTO \${generatedRows} (id, value)
+          VALUES (\${id}, \${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
         \`);
       `,
       errors: [{ messageId: "upsertQueryBuilder" }],

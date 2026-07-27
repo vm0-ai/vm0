@@ -176,6 +176,7 @@ export function isDrizzleTableType(
 export interface DrizzleTableColumnMetadata {
   readonly databaseName: string;
   readonly hasDefault: boolean;
+  readonly isEmittedOnInsert: boolean;
   readonly isWritable: boolean;
   readonly propertyName: string;
   readonly propertySymbol: TypeScriptSymbol;
@@ -190,6 +191,7 @@ export interface DrizzleTableMetadata {
 
 interface DrizzleColumnMetadata {
   readonly databaseName: string;
+  readonly isEmittedOnInsert: boolean;
   readonly tableName: string;
 }
 
@@ -249,11 +251,34 @@ function concreteDrizzleColumnMetadata(
     "hasDefault",
     location,
   );
+  const dialect = exactStringProperty(
+    checker,
+    metadataType,
+    "dialect",
+    location,
+  );
+  const generated = propertyType(checker, metadataType, "generated", location);
+  const generatedType =
+    generated === undefined
+      ? undefined
+      : exactStringProperty(checker, generated, "type", location);
+  const isEmittedOnInsert =
+    generated === undefined
+      ? undefined
+      : (generated.flags & TypeFlags.Undefined) !== 0
+        ? true
+        : generatedType === "always"
+          ? false
+          : generatedType === "byDefault"
+            ? true
+            : undefined;
   return databaseName === undefined ||
     tableName === undefined ||
-    hasDefault === undefined
+    hasDefault === undefined ||
+    dialect !== "pg" ||
+    isEmittedOnInsert === undefined
     ? undefined
-    : { databaseName, hasDefault, tableName };
+    : { databaseName, hasDefault, isEmittedOnInsert, tableName };
 }
 
 function sameColumnMetadata(
@@ -263,6 +288,7 @@ function sameColumnMetadata(
   return (
     left.databaseName === right.databaseName &&
     left.hasDefault === right.hasDefault &&
+    left.isEmittedOnInsert === right.isEmittedOnInsert &&
     left.tableName === right.tableName
   );
 }
@@ -398,6 +424,7 @@ function sameTableMetadata(
     if (
       other === undefined ||
       column.hasDefault !== other.hasDefault ||
+      column.isEmittedOnInsert !== other.isEmittedOnInsert ||
       column.isWritable !== other.isWritable ||
       column.propertyName !== other.propertyName ||
       column.tableName !== other.tableName
