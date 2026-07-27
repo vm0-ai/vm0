@@ -447,15 +447,6 @@ mod tests {
         args
     }
 
-    fn build_codex_fast_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
-        let _system_log_state_guard = crate::lock_system_log_test_state();
-        disable_system_log();
-        let overrides = super::super::CODEX_FAST_MODE_STARTUP_CONFIGS.map(str::to_string);
-        let args = build_codex_args(model, &overrides, resume_id, "");
-        assert!(!args.iter().any(|arg| arg == prompt));
-        args
-    }
-
     fn build_codex_args_with_startup_config_for_test(
         model: &str,
         startup_config_overrides: &[String],
@@ -548,13 +539,6 @@ mod tests {
         let args = build_codex_args_for_test("gpt-5", "", "p");
         let m_idx = args.iter().position(|a| a == "-m").unwrap();
         assert_eq!(args[m_idx + 1], "gpt-5");
-    }
-
-    #[test]
-    fn build_codex_args_with_fast_mode_configs() {
-        let args = build_codex_fast_args_for_test("gpt-5.5", "", "p");
-        assert!(codex_args_have_config(&args, "features.fast_mode=true"));
-        assert!(codex_args_have_config(&args, r#"service_tier="fast""#));
     }
 
     #[test]

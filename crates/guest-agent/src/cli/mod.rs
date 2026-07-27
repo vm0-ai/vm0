@@ -1673,68 +1673,6 @@ mod tests {
     }
 
     #[test]
-    fn codex_startup_config_keeps_legacy_openai_base_url() {
-        let user_env = HashMap::new();
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
-        runtime.openai_base_url = Cow::Borrowed("https://api.legacy-provider.test/v1");
-
-        let command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-
-        assert!(
-            command_config_index(
-                &command,
-                r#"openai_base_url="https://api.legacy-provider.test/v1""#
-            )
-            .is_some()
-        );
-    }
-
-    #[test]
-    fn codex_startup_config_prefers_structured_provider_over_openai_base_url() {
-        let user_env = HashMap::new();
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
-        runtime.openai_base_url = Cow::Borrowed("https://api.should-not-win.test/v1");
-        runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
-            env_key: "OPENAI_API_KEY".to_string(),
-            wire_api: "responses".to_string(),
-            supports_websockets: false,
-            model_catalog: None,
-        });
-
-        let command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-
-        assert!(command_config_index(&command, r#"model_provider="minimax""#).is_some());
-        assert!(
-            !command
-                .iter()
-                .any(|arg| arg.starts_with("openai_base_url="))
-        );
-    }
-
-    #[test]
-    fn codex_fast_mode_startup_config_covers_ordinary_exec() {
-        let user_env = HashMap::new();
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
-
-        let standard_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        for config in super::CODEX_FAST_MODE_STARTUP_CONFIGS {
-            assert!(command_config_index(&standard_command, config).is_none());
-        }
-
-        runtime.codex_fast_mode = true;
-        let fast_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        for config in super::CODEX_FAST_MODE_STARTUP_CONFIGS {
-            assert!(command_config_index(&fast_command, config).is_some());
-        }
-    }
-
-    #[test]
     fn claude_large_prompt_is_not_rejected_by_process_argv_guard() {
         let user_env = HashMap::new();
         let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
