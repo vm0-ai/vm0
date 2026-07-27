@@ -788,6 +788,7 @@ def observe_authenticated_models_etag(flow: http.HTTPFlow) -> None:
 
 def add_network_log_fields(flow: http.HTTPFlow, entry: dict[str, object]) -> None:
     """Project bounded cache telemetry onto one network-log row."""
+    # [NETWORK_LOG_FIELDS] — shared schema and UI boundary is api-contracts.
     telemetry = flow.metadata.get(_FLOW_TELEMETRY)
     if not isinstance(telemetry, _FlowTelemetry):
         return

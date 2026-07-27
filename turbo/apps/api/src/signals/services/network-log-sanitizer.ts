@@ -9,6 +9,10 @@ import {
 } from "@vm0/api-contracts/contracts/runs";
 
 type UnknownRecord = Record<string, unknown>;
+type UpstreamBindingField = Extract<
+  keyof NetworkLogEntry,
+  `upstream_binding_${string}`
+>;
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -106,6 +110,64 @@ function omitUndefined(record: UnknownRecord): UnknownRecord {
   );
 }
 
+function sanitizeUpstreamBindingFields(
+  event: UnknownRecord,
+): Record<UpstreamBindingField, unknown> {
+  return {
+    upstream_binding_reason: stringValue(event.upstream_binding_reason),
+    upstream_binding_trusted_host: stringValue(
+      event.upstream_binding_trusted_host,
+    ),
+    upstream_binding_request_host: stringValue(
+      event.upstream_binding_request_host,
+    ),
+    upstream_binding_request_port: numberValue(
+      event.upstream_binding_request_port,
+    ),
+    upstream_binding_server_connected: booleanValue(
+      event.upstream_binding_server_connected,
+    ),
+    upstream_binding_server_address: stringValue(
+      event.upstream_binding_server_address,
+    ),
+    upstream_binding_server_peername: stringValue(
+      event.upstream_binding_server_peername,
+    ),
+    upstream_binding_server_sockname: stringValue(
+      event.upstream_binding_server_sockname,
+    ),
+    upstream_binding_client_sockname: stringValue(
+      event.upstream_binding_client_sockname,
+    ),
+    upstream_binding_server_id: stringValue(event.upstream_binding_server_id),
+    upstream_binding_client_id: stringValue(event.upstream_binding_client_id),
+    upstream_binding_direct_binding_present: booleanValue(
+      event.upstream_binding_direct_binding_present,
+    ),
+    upstream_binding_direct_binding_host: stringValue(
+      event.upstream_binding_direct_binding_host,
+    ),
+    upstream_binding_direct_binding_port: numberValue(
+      event.upstream_binding_direct_binding_port,
+    ),
+    upstream_binding_direct_binding_kinds: stringValue(
+      event.upstream_binding_direct_binding_kinds,
+    ),
+    upstream_binding_client_binding_count: numberValue(
+      event.upstream_binding_client_binding_count,
+    ),
+    upstream_binding_client_binding_match: booleanValue(
+      event.upstream_binding_client_binding_match,
+    ),
+    upstream_binding_client_binding_endpoint_match: booleanValue(
+      event.upstream_binding_client_binding_endpoint_match,
+    ),
+    upstream_binding_client_binding_hosts: stringValue(
+      event.upstream_binding_client_binding_hosts,
+    ),
+  };
+}
+
 function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
   if (!isRecord(event)) {
     return null;
@@ -116,6 +178,8 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     return null;
   }
 
+  // [NETWORK_LOG_FIELDS] — keep this projection exhaustive against the
+  // shared contract so API reads cannot silently drop producer fields.
   const candidate = omitUndefined({
     timestamp,
     type: stringValue(event.type),
@@ -156,6 +220,7 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     firewall_params: stringRecordValue(event.firewall_params),
     firewall_billable: booleanValue(event.firewall_billable),
     firewall_error: stringValue(event.firewall_error),
+    ...sanitizeUpstreamBindingFields(event),
     connector_diagnostic_type: stringValue(event.connector_diagnostic_type),
     connector_diagnostic_reason: stringValue(event.connector_diagnostic_reason),
     connector_diagnostic_env_names: stringArrayValue(
@@ -186,7 +251,7 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
       event.response_body_encoding,
     ),
     response_body_truncated: booleanValue(event.response_body_truncated),
-  });
+  } satisfies Record<keyof NetworkLogEntry, unknown>);
 
   const parsed = networkLogEntrySchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;

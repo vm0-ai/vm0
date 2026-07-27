@@ -719,6 +719,31 @@ function mixedNetworkLogs(): NetworkLogEntry[] {
       firewall_error: "connector_not_configured",
       connector_route_reason: "connector_intent_required",
       connector_route_candidates: ["auditor", "primary"],
+      model_catalog_cache_status: "model_catalog_revalidation_not_stored",
+      model_catalog_cache_bypass_reason: "response_cache_control",
+      model_catalog_cache_entry_age_ms: 61_000,
+      model_catalog_cache_validation_latency_ms: 1700,
+      model_catalog_cache_eviction_count: 2,
+      upstream_binding_reason: "connector_auth",
+      upstream_binding_trusted_host: "api.github.com",
+      upstream_binding_request_host: "203.0.113.10",
+      upstream_binding_request_port: 443,
+      upstream_binding_server_connected: true,
+      upstream_binding_server_address: "203.0.113.10:443",
+      upstream_binding_server_peername: "140.82.121.4:443",
+      upstream_binding_server_sockname: "10.0.0.2:51000",
+      upstream_binding_client_sockname: "10.0.0.1:41000",
+      upstream_binding_server_id: "server-1",
+      upstream_binding_client_id: "client-1",
+      upstream_binding_direct_binding_present: true,
+      upstream_binding_direct_binding_host: "api.github.com",
+      upstream_binding_direct_binding_port: 443,
+      upstream_binding_direct_binding_kinds: "connector_auth",
+      upstream_binding_client_binding_count: 2,
+      upstream_binding_client_binding_match: true,
+      upstream_binding_client_binding_endpoint_match: false,
+      upstream_binding_client_binding_hosts:
+        "api.github.com, uploads.github.com",
     },
     {
       timestamp: "2026-03-10T14:56:12.000Z",
@@ -1995,12 +2020,45 @@ describe("activity detail polling", () => {
 
     click(screen.getByText("blocked.service.test:443"));
     await waitFor(() => {
-      expect(screen.getByText("Connector Route Reason")).toBeInTheDocument();
-      expect(screen.getByText("connector_intent_required")).toBeInTheDocument();
-      expect(
-        screen.getByText("Connector Route Candidates"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("auditor, primary")).toBeInTheDocument();
+      const expectedDetails = [
+        ["Connector Route Reason", "connector_intent_required"],
+        ["Connector Route Candidates", "auditor, primary"],
+        ["Model Catalog Cache Status", "model_catalog_revalidation_not_stored"],
+        ["Model Catalog Cache Bypass Reason", "response_cache_control"],
+        ["Model Catalog Cache Entry Age", "61.0s"],
+        ["Model Catalog Cache Validation Latency", "1.7s"],
+        ["Model Catalog Cache Eviction Count", "2"],
+        ["Upstream Binding Reason", "connector_auth"],
+        ["Upstream Binding Trusted Host", "api.github.com"],
+        ["Upstream Binding Request Host", "203.0.113.10"],
+        ["Upstream Binding Request Port", "443"],
+        ["Upstream Binding Server Connected", "Yes"],
+        ["Upstream Binding Server Address", "203.0.113.10:443"],
+        ["Upstream Binding Server Peername", "140.82.121.4:443"],
+        ["Upstream Binding Server Sockname", "10.0.0.2:51000"],
+        ["Upstream Binding Client Sockname", "10.0.0.1:41000"],
+        ["Upstream Binding Server ID", "server-1"],
+        ["Upstream Binding Client ID", "client-1"],
+        ["Upstream Direct Binding Present", "Yes"],
+        ["Upstream Direct Binding Host", "api.github.com"],
+        ["Upstream Direct Binding Port", "443"],
+        ["Upstream Direct Binding Kinds", "connector_auth"],
+        ["Upstream Client Binding Count", "2"],
+        ["Upstream Client Binding Match", "Yes"],
+        ["Upstream Client Binding Endpoint Match", "No"],
+        ["Upstream Client Binding Hosts", "api.github.com, uploads.github.com"],
+      ] as const;
+      const renderedDetails = Object.fromEntries(
+        expectedDetails.map(([label]) => {
+          return [
+            label,
+            screen.getByText(label).nextElementSibling?.textContent,
+          ];
+        }),
+      );
+      expect(renderedDetails).toStrictEqual(
+        Object.fromEntries(expectedDetails),
+      );
     });
 
     click(screen.getByLabelText("Type filter"));
