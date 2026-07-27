@@ -33,6 +33,7 @@ __all__ = (
     "bound_destination_endpoint_for_flow",
     "diagnostic_snapshot_for_flow",
     "flow_matches_bound_destination",
+    "flow_matches_direct_bound_destination",
     "forget_client_bindings",
     "forget_server_binding",
     "has_server_binding",
