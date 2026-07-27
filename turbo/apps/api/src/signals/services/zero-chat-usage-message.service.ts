@@ -75,6 +75,9 @@ async function loadUsageMessageContext(tx: WriteTx, runId: string) {
       totalCredits: sql`COALESCE(${sum(usageCreditsExpression())}, 0)::bigint`
         .mapWith(pgInt8ToSafeIntegerDecoder)
         .as("total_credits"),
+      maxProcessedAt: max(usageEventFinalized.maxProcessedAt)
+        .mapWith(usageEventFinalized.maxProcessedAt)
+        .as("max_processed_at"),
       settledAt: max(usageEventFinalized.settledAt)
         .mapWith(usageEventFinalized.settledAt)
         .as("settled_at"),
@@ -93,6 +96,7 @@ async function loadUsageMessageContext(tx: WriteTx, runId: string) {
       processedCount: finalizedUsage.count,
       totalCredits: finalizedUsage.totalCredits,
       settledAt: sql`COALESCE(
+        ${finalizedUsage.maxProcessedAt},
         ${finalizedUsage.settledAt},
         ${agentRuns.completedAt},
         ${agentRuns.createdAt}

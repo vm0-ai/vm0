@@ -519,7 +519,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
   });
 
-  it("aggregates compacted hourly usage without raw events", async () => {
+  it("aggregates run-linked and runless hourly usage without raw events", async () => {
     const seeded = await seedInsightActor();
     const runId = await seedCompletedRun(seeded);
     if (!seeded.actor.orgId) {
@@ -539,16 +539,38 @@ describe("GET /api/cron/aggregate-insights", () => {
       sourceEventCount: 3,
       maxProcessedAt: activityAt(),
     });
+    await insertUsageEventHourlyFixture({
+      processedHour: new Date("2999-01-02T11:00:00.000Z"),
+      orgId: seeded.actor.orgId,
+      userId: seeded.actor.userId,
+      runId: null,
+      kind: "maps",
+      provider: "hourly-runless-fixture",
+      category: "geocoding",
+      quantity: 1,
+      creditsCharged: 125,
+      allowanceUnits: 0,
+      sourceEventCount: 1,
+      maxProcessedAt: activityAt(),
+    });
     mockNow(new Date(FIXED_NOW_ISO));
     defaultClerkMocksFor(seeded);
 
     await runAggregation();
 
     const data = await findInsights(seeded.actor);
-    expect(data?.creditsUsed).toBe(725);
-    expect(data?.agents).toMatchObject([{ runs: 1, credits: 725 }]);
+    expect(data?.creditsUsed).toBe(850);
+    expect(data?.agents).toMatchObject([
+      { runs: 1, credits: 725 },
+      {
+        agentId: null,
+        agentName: "Other usage",
+        runs: 0,
+        credits: 125,
+      },
+    ]);
     expect(data?.teamUsage).toMatchObject([
-      { name: "Test User", credits: 725 },
+      { name: "Test User", credits: 850 },
     ]);
   });
 
