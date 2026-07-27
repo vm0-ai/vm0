@@ -4,10 +4,11 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconArrowLeft,
   IconArrowRight,
+  IconChevronLeft,
+  IconChevronRight,
   IconCircleCheck,
   IconCopy,
   IconDotsVertical,
-  IconInfoCircle,
   IconLoader2,
   IconPlus,
   IconSettings,
@@ -35,22 +36,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui/components/ui/select";
+import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
 
 import {
   platformFeishuAppCreatedCredentialsImg,
-  platformFeishuCreateAppVersionImg,
+  platformFeishuAvailabilitySettingsAllMembersImg,
   platformFeishuCreateEnterpriseCustomAppImg,
   platformFeishuEncryptionStrategyImg,
   platformFeishuEventRequestUrlImg,
   platformFeishuEventSubscriptionModeImg,
   platformFeishuSecuritySettingsRedirectUrlImg,
+  platformFeishuVersionAvailabilityEditImg,
+  platformFeishuVersionManagementCreateVersionImg,
 } from "../../lib/static-assets.ts";
 import {
   defaultAgentId$,
@@ -69,13 +67,16 @@ import {
   feishuDialogExisting$,
   feishuDialogInstallationId$,
   feishuDialogOpen$,
+  feishuGuideImageIndex$,
   feishuInstallations$,
   feishuOrgData$,
   feishuSetupForm$,
   feishuSetupStep$,
   feishuUninstallInstallationId$,
   goBackFeishuSetupStep$,
+  moveFeishuGuideImage$,
   openFeishuDialog$,
+  setFeishuGuideImageIndex$,
   setFeishuUninstallInstallationId$,
   setupFeishuOrg$,
   updateFeishuInstallationAgent$,
@@ -157,50 +158,82 @@ function FeishuGuideImage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-function FeishuGuideTooltip({
-  label,
+interface FeishuGuideCarouselImage {
+  readonly src: string;
+  readonly alt: string;
+  readonly label: string;
+}
+
+function FeishuGuideCarousel({
   images,
 }: {
-  label: string;
-  images: readonly { src: string; alt: string }[];
+  images: readonly [FeishuGuideCarouselImage, ...FeishuGuideCarouselImage[]];
 }) {
+  const activeIndex = useGet(feishuGuideImageIndex$);
+  const moveImage = useSet(moveFeishuGuideImage$);
+  const setActiveIndex = useSet(setFeishuGuideImageIndex$);
+  const activeImage = images[activeIndex] ?? images[0];
+  const move = (offset: number): void => {
+    moveImage(offset, images.length);
+  };
+
   return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Show ${label} guide`}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <IconInfoCircle size={16} stroke={1.7} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent
-          side="right"
-          align="start"
-          className="z-[60] max-h-[70vh] w-[min(640px,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-lg border border-border p-2"
-          style={{
-            backgroundColor: "hsl(var(--card))",
-            color: "hsl(var(--card-foreground))",
-            boxShadow:
-              "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+    <div className="space-y-2">
+      <div className="relative overflow-hidden rounded-lg border border-border bg-white">
+        <img
+          src={activeImage.src}
+          alt={activeImage.alt}
+          loading="lazy"
+          className="aspect-video w-full object-contain"
+        />
+        <button
+          type="button"
+          className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm"
+          aria-label="Show previous Feishu guide image"
+          onClick={() => {
+            move(-1);
           }}
         >
-          <div className="space-y-2">
-            {images.map((image) => {
-              return (
-                <FeishuGuideImage
-                  key={image.src}
-                  src={image.src}
-                  alt={image.alt}
-                />
-              );
-            })}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          <IconChevronLeft size={20} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm"
+          aria-label="Show next Feishu guide image"
+          onClick={() => {
+            move(1);
+          }}
+        >
+          <IconChevronRight size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-muted-foreground">
+          {activeImage.label}
+        </span>
+        <div className="flex items-center gap-1.5">
+          {images.map((image, index) => {
+            const active = index === activeIndex;
+            return (
+              <button
+                key={image.src}
+                type="button"
+                aria-label={`Show Feishu guide image ${index + 1}`}
+                aria-current={active ? "true" : undefined}
+                className={
+                  active
+                    ? "h-1.5 w-4 rounded-full bg-foreground"
+                    : "h-1.5 w-1.5 rounded-full bg-muted-foreground/35"
+                }
+                onClick={() => {
+                  setActiveIndex(index);
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -210,8 +243,8 @@ const FEISHU_SETUP_STEPS = [
   { key: "create", label: "Create" },
   { key: "credentials", label: "Credentials" },
   { key: "tokens", label: "Tokens" },
-  { key: "redirect", label: "Redirect" },
   { key: "events", label: "Events" },
+  { key: "redirect", label: "Redirect" },
   { key: "publish", label: "Publish" },
 ] as const satisfies readonly {
   key: FeishuSetupStep;
@@ -409,17 +442,8 @@ function FeishuCreateStep() {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <div className="mb-2 flex items-center gap-1 font-medium text-foreground">
-          <span>Create an enterprise custom app</span>
-          <FeishuGuideTooltip
-            label="creating a Feishu app"
-            images={[
-              {
-                src: platformFeishuCreateEnterpriseCustomAppImg,
-                alt: "Feishu app creation form with the app name, icon, and Create button highlighted",
-              },
-            ]}
-          />
+        <div className="mb-2 font-medium text-foreground">
+          Create an enterprise custom app
         </div>
         <p className="leading-relaxed">
           In the{" "}
@@ -434,6 +458,12 @@ function FeishuCreateStep() {
           , create an enterprise custom app named VM0, upload the VM0 icon, then
           add the Bot capability.
         </p>
+        <div className="mt-4">
+          <FeishuGuideImage
+            src={platformFeishuCreateEnterpriseCustomAppImg}
+            alt="Feishu app creation form with the app name, icon, and Create button highlighted"
+          />
+        </div>
       </div>
       <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
         <div>
@@ -471,22 +501,19 @@ function FeishuCredentialsStep({
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <div className="mb-2 flex items-center gap-1 font-medium text-foreground">
-          <span>Add the app credentials</span>
-          <FeishuGuideTooltip
-            label="finding Feishu app credentials"
-            images={[
-              {
-                src: platformFeishuAppCreatedCredentialsImg,
-                alt: "Feishu app creation result showing where to find the App ID and App Secret",
-              },
-            ]}
-          />
+        <div className="mb-2 font-medium text-foreground">
+          Add the app credentials
         </div>
         <p className="leading-relaxed">
           Copy the App ID and App Secret from Credentials &amp; Basic
           Information.
         </p>
+        <div className="mt-4">
+          <FeishuGuideImage
+            src={platformFeishuAppCreatedCredentialsImg}
+            alt="Feishu app creation result showing where to find the App ID and App Secret"
+          />
+        </div>
       </div>
       <FeishuAppCredentialFields form={form} saving={saving} />
     </div>
@@ -503,17 +530,8 @@ function FeishuTokensStep({
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <div className="mb-2 flex items-center gap-1 font-medium text-foreground">
-          <span>Add the event verification tokens</span>
-          <FeishuGuideTooltip
-            label="finding Feishu event verification tokens"
-            images={[
-              {
-                src: platformFeishuEncryptionStrategyImg,
-                alt: "Feishu Encryption Strategy screen showing the Encrypt Key and Verification Token",
-              },
-            ]}
-          />
+        <div className="mb-2 font-medium text-foreground">
+          Add the event verification tokens
         </div>
         <p className="leading-relaxed">
           Open the{" "}
@@ -529,6 +547,12 @@ function FeishuTokensStep({
           Open Event Configuration → Encryption Strategy, then copy the Encrypt
           Key and Verification Token.
         </p>
+        <div className="mt-4">
+          <FeishuGuideImage
+            src={platformFeishuEncryptionStrategyImg}
+            alt="Feishu Encryption Strategy screen showing the Encrypt Key and Verification Token"
+          />
+        </div>
       </div>
       <FeishuEventCredentialFields form={form} saving={saving} />
     </div>
@@ -540,21 +564,8 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-1 font-medium text-foreground">
-            <span>Configure event delivery</span>
-            <FeishuGuideTooltip
-              label="configuring Feishu event delivery"
-              images={[
-                {
-                  src: platformFeishuEventSubscriptionModeImg,
-                  alt: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
-                },
-                {
-                  src: platformFeishuEventRequestUrlImg,
-                  alt: "Feishu Event Configuration screen with the Request URL field highlighted",
-                },
-              ]}
-            />
+          <span className="font-medium text-foreground">
+            Configure event delivery
           </span>
           <SetupStatus complete={data?.callbackVerified ?? false}>
             {data?.callbackVerified
@@ -565,8 +576,29 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
         <p className="leading-relaxed">
           Open Event Configuration. Under Subscription mode, select “Send
           notifications to developer&apos;s server”. Then open Callback
-          Configuration and paste the callback URL.
+          Configuration and paste the callback URL. After Feishu verifies it,
+          add the “Receive message v1” event (
+          <code className="font-mono text-xs text-foreground">
+            im.message.receive_v1
+          </code>
+          ).
         </p>
+        <div className="mt-4">
+          <FeishuGuideCarousel
+            images={[
+              {
+                src: platformFeishuEventSubscriptionModeImg,
+                alt: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
+                label: "Select the event subscription mode",
+              },
+              {
+                src: platformFeishuEventRequestUrlImg,
+                alt: "Feishu Event Configuration screen with the Request URL field highlighted",
+                label: "Add the callback request URL",
+              },
+            ]}
+          />
+        </div>
       </div>
       <div className="flex gap-2">
         <Input value={data?.callbackUrl ?? ""} readOnly />
@@ -576,7 +608,8 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
       </div>
       {!data?.callbackVerified ? (
         <p className="text-sm text-muted-foreground">
-          This step advances automatically after Feishu verifies the callback.
+          Continue after Feishu verifies the callback URL and the message event
+          is subscribed.
         </p>
       ) : null}
     </div>
@@ -587,17 +620,8 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <div className="mb-2 flex items-center gap-1 font-medium text-foreground">
-          <span>Configure the OAuth redirect URL</span>
-          <FeishuGuideTooltip
-            label="configuring the Feishu OAuth redirect URL"
-            images={[
-              {
-                src: platformFeishuSecuritySettingsRedirectUrlImg,
-                alt: "Feishu Security Settings page showing where to add an OAuth redirect URL",
-              },
-            ]}
-          />
+        <div className="mb-2 font-medium text-foreground">
+          Configure the OAuth redirect URL
         </div>
         <p className="leading-relaxed">
           In the{" "}
@@ -623,6 +647,10 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
           />
         ) : null}
       </div>
+      <FeishuGuideImage
+        src={platformFeishuSecuritySettingsRedirectUrlImg}
+        alt="Feishu Security Settings page showing where to add an OAuth redirect URL"
+      />
     </div>
   );
 }
@@ -647,22 +675,33 @@ function FeishuPublishStep({
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <div className="mb-2 flex items-center gap-1 font-medium text-foreground">
-          <span>Publish the app</span>
-          <FeishuGuideTooltip
-            label="publishing a Feishu app version"
+        <div className="mb-2 font-medium text-foreground">Publish the app</div>
+        <p className="leading-relaxed">
+          Create and publish an app version, then edit its availability settings
+          and select All members. The app can only be used by other members of
+          your organization after you grant them access.
+        </p>
+        <div className="mt-4">
+          <FeishuGuideCarousel
             images={[
               {
-                src: platformFeishuCreateAppVersionImg,
-                alt: "Feishu app version creation page with the create version action highlighted",
+                src: platformFeishuVersionManagementCreateVersionImg,
+                alt: "Feishu Version Management page with the Create a version button highlighted",
+                label: "Create an app version",
+              },
+              {
+                src: platformFeishuVersionAvailabilityEditImg,
+                alt: "Feishu version details page with the availability settings edit action highlighted",
+                label: "Edit the availability settings",
+              },
+              {
+                src: platformFeishuAvailabilitySettingsAllMembersImg,
+                alt: "Feishu availability settings with All members selected",
+                label: "Make the app available to all members",
               },
             ]}
           />
         </div>
-        <p className="leading-relaxed">
-          Create and publish an app version. Once published, you can send the
-          bot a direct message or mention it in a group chat.
-        </p>
       </div>
       <div className="space-y-3 rounded-lg border border-border p-4">
         <div>
@@ -1101,7 +1140,7 @@ function FeishuBotMenu({
                   open({
                     appId: bot.appId,
                     defaultAgentId: bot.defaultAgentId,
-                    step: initialFeishuSetupStep(bot),
+                    step: "events",
                     installationId: bot.id,
                   });
                 }}
@@ -1191,7 +1230,9 @@ function FeishuBotRow({
             size="sm"
             className="h-9 justify-center"
             onClick={() => {
-              window.open(connectUrl, "_blank");
+              const url = new URL(connectUrl);
+              url.searchParams.set("callbackTarget", "app");
+              window.open(url.toString(), "_blank");
             }}
           >
             Connect
@@ -1283,9 +1324,37 @@ function FeishuBotsCard({
 
 function FeishuSettingsSkeleton() {
   return (
-    <div className="zero-card px-6 py-12 text-center text-sm text-muted-foreground">
-      Loading Feishu bots…
-    </div>
+    <section
+      className="zero-card overflow-hidden"
+      data-testid="feishu-settings-loading"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-8 w-[88px] rounded-md" />
+      </div>
+      {[0, 1, 2].map((index) => {
+        return (
+          <div key={index}>
+            <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-6 w-20 rounded-lg" />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-1.5 sm:w-[420px]">
+                <Skeleton className="h-9 min-w-0 flex-1 rounded-md" />
+                <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
+              </div>
+            </div>
+            {index < 2 ? (
+              <div className="mx-5 border-b border-border/50" />
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -1321,30 +1390,6 @@ function FeishuDialogBody({
       orgDefaultAgentName={orgDefaultAgentName}
       onClose={onClose}
     />
-  );
-}
-
-function FeishuDialogFooter({ data }: { data: FeishuDialogData | null }) {
-  const [disconnectLoadable, disconnect] = useLoadableSet(disconnectFeishuOrg$);
-  const signal = useGet(pageSignal$);
-  if (!data?.isConnected) {
-    return null;
-  }
-  return (
-    <DialogFooter className="border-t border-border pt-4">
-      <Button
-        type="button"
-        variant="outline"
-        disabled={disconnectLoadable.state === "loading"}
-        onClick={() => {
-          detach(disconnect(data.id, signal), Reason.DomCallback);
-        }}
-      >
-        {disconnectLoadable.state === "loading"
-          ? "Disconnecting…"
-          : "Disconnect"}
-      </Button>
-    </DialogFooter>
   );
 }
 
@@ -1396,7 +1441,6 @@ function FeishuSetupDialog({
           orgDefaultAgentName={orgDefaultAgentName}
           onClose={close}
         />
-        <FeishuDialogFooter data={data} />
       </DialogContent>
     </Dialog>
   );
@@ -1451,7 +1495,6 @@ function FeishuUninstallDialog({ bot }: { bot: FeishuBotInstallation | null }) {
                 (async () => {
                   await uninstallInstallation(installationId, signal);
                   setUninstallInstallationId(null);
-                  toast.success("Feishu bot uninstalled");
                 })(),
                 Reason.DomCallback,
               );
@@ -1463,13 +1506,6 @@ function FeishuUninstallDialog({ bot }: { bot: FeishuBotInstallation | null }) {
       </DialogContent>
     </Dialog>
   );
-}
-
-function initialFeishuSetupStep(data: FeishuBotInstallation): FeishuSetupStep {
-  if (!data.callbackVerified) {
-    return "redirect";
-  }
-  return "publish";
 }
 
 interface LoadableLike<T> {

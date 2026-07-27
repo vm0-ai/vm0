@@ -10,7 +10,6 @@ import {
 import type {
   EmailOutboxAddresses,
   EmailOutboxHeaders,
-  EmailOutboxPostSendAction,
   EmailOutboxTemplate,
 } from "@vm0/db/jsonb-contracts/email-outbox";
 
@@ -39,10 +38,6 @@ export const emailOutbox = pgTable(
 
     // Template (discriminated union stored as JSONB)
     template: jsonb("template").$type<EmailOutboxTemplate>().notNull(),
-
-    // Post-send action for email threading (discriminated union)
-    postSendAction:
-      jsonb("post_send_action").$type<EmailOutboxPostSendAction>(),
 
     // Queue status
     status: text("status").notNull().default("pending"), // pending | sending | sent | failed

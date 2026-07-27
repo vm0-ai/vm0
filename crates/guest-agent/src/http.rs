@@ -12,6 +12,7 @@ use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
+use reqwest::header::CONTENT_TYPE;
 use reqwest::{Client, RequestBuilder, Response};
 use serde::Serialize;
 use serde_json::Value;
@@ -318,6 +319,16 @@ impl HttpClient {
         body: &impl Serialize,
         max_attempts: u32,
     ) -> Result<Option<Value>, AgentError> {
+        let body = Bytes::from(serde_json::to_vec(body)?);
+        self.post_json_bytes(url, body, max_attempts).await
+    }
+
+    pub(crate) async fn post_json_bytes(
+        &self,
+        url: &str,
+        body: Bytes,
+        max_attempts: u32,
+    ) -> Result<Option<Value>, AgentError> {
         let client = self.inner()?;
         let api = self.api_config()?;
         let resp = send_with_retry(
@@ -330,7 +341,8 @@ impl HttpClient {
                 let mut req = client
                     .post(url)
                     .header("Authorization", format!("Bearer {}", api.token))
-                    .json(body);
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(body.clone());
 
                 if !api.vercel_bypass.is_empty() {
                     req = req.header("x-vercel-protection-bypass", &api.vercel_bypass);

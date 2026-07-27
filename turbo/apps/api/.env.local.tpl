@@ -38,7 +38,6 @@ R2_ACCOUNT_ID=op://Development/cloudflare/R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY
 R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
-CONNECTOR_CATALOG_SOURCE_MODE=static
 R2_USER_ARTIFACTS_BUCKET_NAME=user-artifact-dev
 R2_USER_ARTIFACTS_ACCESS_KEY_ID=op://Development/cloudflare/R2_USER_ARTIFACTS_ACCESS_KEY_ID
 R2_USER_ARTIFACTS_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_USER_ARTIFACTS_SECRET_ACCESS_KEY
@@ -140,6 +139,13 @@ ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 
 # Optional: Zero Web Search provider (Perplexity)
 ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
+
+# Optional: Zero Finance provider (APIDojo via RapidAPI)
+# 1Password: Development vault > APIDojo item > RAPIDAPI_KEY concealed field
+ZERO_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
+
+# Optional: Zero Browser provider (Browser Use)
+ZERO_BROWSER_USE_API_KEY=op://Development/browser-use/ZERO_BROWSER_USE_API_KEY
 
 # Optional: Steam Web API
 STEAM_WEB_API_KEY=op://Development/steam/STEAM_WEB_API_KEY

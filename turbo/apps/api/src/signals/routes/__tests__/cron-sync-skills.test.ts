@@ -24,6 +24,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { createBddApi } from "./helpers/api-bdd";
+import {
+  createRunsApi,
+  expectCanonicalStorageManifest,
+} from "./helpers/api-bdd-runs";
 import {
   cleanupOfficialTestSkillsState,
   findSkillByUrlState,
@@ -360,7 +365,6 @@ async function findSkillByUrl(url: string): Promise<{
 }
 
 async function findSystemStorageByName(name: string): Promise<{
-  readonly type: string;
   readonly headVersionId: string | null;
   readonly size: number;
   readonly versionSize: number | null;
@@ -472,13 +476,60 @@ describe("GET /api/cron/sync-skills", () => {
       throw new Error("Expected the alpha skill archive upload body");
     }
     expect(alphaStorage).toMatchObject({
-      type: "volume",
       headVersionId: expect.any(String),
       size: alphaVersion.size,
       versionSize: alphaVersion.size,
       archiveSize: alphaArchiveBody.length,
     });
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(4);
+  });
+
+  it("mounts only the current default seed skills in claimed runs", async () => {
+    const commitSha = newCommitSha();
+    setupMswHandlers(commitSha, createFullTarball([]));
+    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Seed Skill Mount Agent",
+      visibility: "private",
+    });
+
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "inspect default seed skill mounts",
+      modelProvider: "anthropic-api-key",
+    });
+    await runs.heartbeatRunner(runnerGroup);
+    const claim = await runs.claimRunnerJob(run.runId);
+    const skillMountPaths =
+      expectCanonicalStorageManifest(claim.storageManifest)
+        ?.storageMounts.map((storage) => {
+          return storage.mountPath;
+        })
+        .filter((mountPath) => {
+          return mountPath.startsWith("/home/user/.claude/skills/");
+        })
+        .sort() ?? [];
+
+    expect(skillMountPaths).toStrictEqual([
+      "/home/user/.claude/skills/computer-use",
+      "/home/user/.claude/skills/gen",
+      "/home/user/.claude/skills/workflow-setup",
+    ]);
+    expect(skillMountPaths).not.toContain(
+      "/home/user/.claude/skills/deep-dive",
+    );
+
+    await runs.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("excludes repository directories without a SKILL.md file", async () => {

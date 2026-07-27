@@ -588,7 +588,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("opens settings from the account menu and changes debug capture", async () => {
+  it("keeps the user profile inside settings and changes debug capture", async () => {
     prepareDefaultAgent();
     context.mocks.data.userPreferences({
       captureNetworkBodiesRemaining: 0,
@@ -648,20 +648,33 @@ describe("zero sidebar account menu", () => {
       );
     });
 
+    const clerkProfileModals: HTMLDivElement[] = [];
+    mockedClerk.openUserProfile.mockImplementation((options) => {
+      const container = options?.getContainer?.();
+      if (!container) {
+        throw new Error("Clerk profile portal container not found");
+      }
+      const modal = document.createElement("div");
+      modal.dataset.clerkUserProfile = "";
+      container.append(modal);
+      clerkProfileModals.push(modal);
+    });
+
     click(buttonByText("Manage"));
 
     await waitFor(() => {
+      expect(clerkProfileModals).toHaveLength(1);
       expect(mockedClerk.openUserProfile).toHaveBeenCalledWith({
         apiKeysProps: { hide: true },
+        getContainer: expect.any(Function),
       });
     });
 
-    const clerkProfileModal = document.createElement("div");
-    clerkProfileModal.dataset.clerkUserProfile = "";
-    document.body.append(clerkProfileModal);
-    await waitFor(() => {
-      expect(clerkProfileModal).toBeInTheDocument();
-    });
+    const clerkProfileModal = clerkProfileModals[0];
+    if (!clerkProfileModal) {
+      throw new Error("Clerk profile modal not found");
+    }
+    expect(openedSettingsDialog).toContainElement(clerkProfileModal);
     clerkProfileModal.remove();
 
     await waitFor(() => {
@@ -695,6 +708,7 @@ describe("zero sidebar account menu", () => {
     });
 
     const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+    mockedClerk.closeUserProfile.mockClear();
     click(buttonByLabel("Close", settingsDialog));
 
     await waitFor(() => {
@@ -703,6 +717,7 @@ describe("zero sidebar account menu", () => {
       ).not.toBeInTheDocument();
       expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
     });
+    expect(mockedClerk.closeUserProfile).toHaveBeenCalledTimes(1);
     expect(document.body.style.pointerEvents).not.toBe("none");
 
     const reopenedMenu = await openAccountMenu();
@@ -842,6 +857,56 @@ describe("zero sidebar account menu", () => {
         }),
       );
     });
+  });
+
+  it("keeps the session active when a token refresh detects offline state", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+
+    let modelProviderRequests = 0;
+    let forcedTokenRefreshes = 0;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      ({ respond }) => {
+        modelProviderRequests += 1;
+        return respond(401, {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      if (options?.skipCache) {
+        forcedTokenRefreshes += 1;
+        return Promise.reject(
+          Object.assign(new Error("Clerk is offline"), {
+            code: "clerk_offline",
+          }),
+        );
+      }
+      return Promise.resolve("test-token");
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    await waitFor(() => {
+      expect(modelProviderRequests).toBe(1);
+      expect(forcedTokenRefreshes).toBe(1);
+    });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
   it("suppresses global sign-in redirects during add-account auth transitions", async () => {

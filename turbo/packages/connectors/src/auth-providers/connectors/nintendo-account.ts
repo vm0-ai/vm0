@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { z } from "zod";
 
-import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorAuthProviderGrantUserInfo } from "../grant-result";
 import { OAuthProviderHttpError, throwOAuthError } from "../oauth/error";
 

@@ -1,9 +1,9 @@
-export interface OnboardingWorkflowStep {
+interface OnboardingWorkflowStep {
   readonly title: string;
   readonly description: string;
 }
 
-export interface OnboardingWorkflowDetails {
+interface OnboardingWorkflowDetails {
   readonly scenario: string;
   readonly steps: readonly OnboardingWorkflowStep[];
 }

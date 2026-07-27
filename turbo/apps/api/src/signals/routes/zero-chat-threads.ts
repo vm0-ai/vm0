@@ -35,10 +35,6 @@ import {
   getChatThreadSnapshot,
 } from "../services/zero-chat-thread-event.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import {
-  canonicalSlackWebVisibilityEnabled,
-  isChatThreadVisibleInWeb,
-} from "../services/canonical-slack-web-visibility.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
@@ -46,7 +42,6 @@ import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
 import { zeroChatThreadDraftGetRoutes } from "./zero-chat-threads-draft-get";
 import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
-import { zeroChatThreadsHtmlArtifactEditSnapshotRoutes } from "./zero-chat-threads-html-artifact-edit-snapshot";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
@@ -80,21 +75,6 @@ const getChatThreadInner$ = computed(async (get) => {
     return chatThreadNotFound();
   }
 
-  const db = get(db$);
-  const canonicalSlackVisible = await canonicalSlackWebVisibilityEnabled(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-  });
-  if (
-    !(await isChatThreadVisibleInWeb(db, {
-      threadId: params.id,
-      userId: auth.userId,
-      canonicalSlackVisible,
-    }))
-  ) {
-    return chatThreadNotFound();
-  }
-
   const thread = await get(
     zeroChatThreadDetail({ threadId: params.id, userId: auth.userId }),
   );
@@ -108,14 +88,9 @@ const getChatThreadInner$ = computed(async (get) => {
 const getChatThreadSnapshotInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const db = get(db$);
-  const includeCanonicalSlackThreads = await canonicalSlackWebVisibilityEnabled(
-    db,
-    auth,
-  );
   const snapshot = await getChatThreadSnapshot(db, {
     userId: auth.userId,
     orgId: auth.orgId,
-    includeCanonicalSlackThreads,
   });
 
   return {
@@ -131,15 +106,10 @@ const listChatThreadEventsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatThreadsContract.events));
   const db = get(db$);
-  const includeCanonicalSlackThreads = await canonicalSlackWebVisibilityEnabled(
-    db,
-    auth,
-  );
   const result = await getChatThreadEventsSince(db, {
     userId: auth.userId,
     orgId: auth.orgId,
     sinceEventId: query.sinceEventId,
-    includeCanonicalSlackThreads,
   });
 
   if (result.kind === "expired") {
@@ -165,15 +135,10 @@ const listChatThreadEventsInner$ = computed(async (get) => {
 
 const listChatThreadActiveIdsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const includeCanonicalSlackThreads = await canonicalSlackWebVisibilityEnabled(
-    get(db$),
-    auth,
-  );
   const threadIds = await get(
     zeroChatThreadActiveRunThreadIds({
       userId: auth.userId,
       orgId: auth.orgId,
-      includeCanonicalSlackThreads,
     }),
   );
 
@@ -185,25 +150,12 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
   const params = get(pathParamsOf(chatThreadMessagesContract.list));
   const query = get(queryOf(chatThreadMessagesContract.list));
 
-  const db = get(db$);
-  const canonicalSlackVisible = await canonicalSlackWebVisibilityEnabled(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-  });
-  if (
-    !(await isChatThreadVisibleInWeb(db, {
-      threadId: params.threadId,
-      userId: auth.userId,
-      canonicalSlackVisible,
-    }))
-  ) {
-    return chatThreadNotFound();
-  }
-
   const page = await get(
     zeroChatThreadMessagesPage({
       threadId: params.threadId,
       userId: auth.userId,
+      sinceSeqId: query.sinceSeqId,
+      beforeSeqId: query.beforeSeqId,
       sinceId: query.sinceId,
       beforeId: query.beforeId,
       limit: query.limit,
@@ -226,21 +178,6 @@ const getChatThreadMessageInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadMessagesContract.get));
 
-  const db = get(db$);
-  const canonicalSlackVisible = await canonicalSlackWebVisibilityEnabled(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-  });
-  if (
-    !(await isChatThreadVisibleInWeb(db, {
-      threadId: params.threadId,
-      userId: auth.userId,
-      canonicalSlackVisible,
-    }))
-  ) {
-    return chatThreadNotFound();
-  }
-
   const message = await get(
     zeroChatThreadMessageById({
       threadId: params.threadId,
@@ -258,18 +195,9 @@ const getChatThreadMessageInner$ = computed(async (get) => {
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
 
-  const includeCanonicalSlackThreads = await canonicalSlackWebVisibilityEnabled(
-    get(db$),
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-    },
-  );
-
   const draftThreadIds = await get(
     zeroChatThreadDraftIds({
       userId: auth.userId,
-      includeCanonicalSlackThreads,
     }),
   );
 
@@ -282,19 +210,11 @@ const listChatThreadDraftsInner$ = computed(async (get) => {
 const listChatThreadUnreadsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const query = get(queryOf(chatThreadsContract.unreads));
-  const includeCanonicalSlackThreads = await canonicalSlackWebVisibilityEnabled(
-    get(db$),
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-    },
-  );
 
   const unreads = await get(
     zeroChatThreadUnreads({
       userId: auth.userId,
       agentComposeId: query.agentId,
-      includeCanonicalSlackThreads,
     }),
   );
 
@@ -321,10 +241,6 @@ const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
     zeroChatThreadUnreadAgentIds({
       userId: auth.userId,
       orgId: auth.orgId,
-      includeCanonicalSlackThreads: await canonicalSlackWebVisibilityEnabled(
-        get(db$),
-        auth,
-      ),
     }),
   );
 
@@ -334,20 +250,6 @@ const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
 const listChatThreadArtifactsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
-  const db = get(db$);
-  const canonicalSlackVisible = await canonicalSlackWebVisibilityEnabled(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-  });
-  if (
-    !(await isChatThreadVisibleInWeb(db, {
-      threadId: params.threadId,
-      userId: auth.userId,
-      canonicalSlackVisible,
-    }))
-  ) {
-    return chatThreadNotFound();
-  }
   const [runs, lookup] = await Promise.all([
     get(
       zeroChatThreadArtifacts({
@@ -376,10 +278,6 @@ const listChatThreadArtifactsInner$ = computed(async (get) => {
 const searchChatInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatSearchContract.search));
-  const includeCanonicalSlackThreads = await canonicalSlackWebVisibilityEnabled(
-    get(db$),
-    auth,
-  );
   const result = await get(
     zeroChatSearch({
       userId: auth.userId,
@@ -390,7 +288,6 @@ const searchChatInner$ = computed(async (get) => {
       limit: query.limit,
       before: query.before,
       after: query.after,
-      includeCanonicalSlackThreads,
     }),
   );
 
@@ -404,14 +301,22 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadsContract.snapshot,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:read",
+      },
       getChatThreadSnapshotInner$,
     ),
   },
   {
     route: chatThreadsContract.events,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:read",
+      },
       listChatThreadEventsInner$,
     ),
   },
@@ -445,7 +350,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     route: chatThreadArtifactsContract.list,
     handler: authRoute({}, listChatThreadArtifactsInner$),
   },
-  ...zeroChatThreadsHtmlArtifactEditSnapshotRoutes,
   {
     route: chatThreadMessagesContract.list,
     handler: authRoute({}, listChatThreadMessagesInner$),

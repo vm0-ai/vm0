@@ -11,7 +11,6 @@ import {
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
-  storageTypeSchema,
   fileEntryWithHashSchema,
   storageChangesSchema,
   presignedUploadSchema,
@@ -492,8 +491,8 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
-        // Multi-artifact snapshots validated by artifactSnapshotsSchema and
-        // persisted to checkpoints.artifact_snapshots.
+        // Multi-artifact snapshots are folded into canonical checkpoint mounts
+        // and projected back into the legacy response shape.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
@@ -580,92 +579,6 @@ export const webhookHeartbeatContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Receive heartbeat from sandbox",
-  },
-});
-
-/**
- * Webhook storages contract for /api/webhooks/agent/storages
- * Note: This endpoint handles multipart form data upload
- * The contract defines the JSON response schema
- */
-export const webhookStoragesContract = c.router({
-  /**
-   * POST /api/webhooks/agent/storages
-   * Create a new version of a storage from sandbox
-   *
-   * Form fields:
-   * - runId: string (required)
-   * - storageName: string (required)
-   * - message: string (optional)
-   * - file: File (required, tar.gz archive)
-   */
-  upload: {
-    method: "POST",
-    path: "/api/webhooks/agent/storages",
-    headers: authHeadersSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
-    responses: {
-      200: z.object({
-        versionId: z.string(),
-        storageName: z.string(),
-        size: z.number(),
-        fileCount: z.number(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upload storage version from sandbox",
-  },
-});
-
-/**
- * Webhook storages incremental contract for /api/webhooks/agent/storages/incremental
- * Note: This endpoint handles multipart form data upload
- */
-export const webhookStoragesIncrementalContract = c.router({
-  /**
-   * POST /api/webhooks/agent/storages/incremental
-   * Create a new version using incremental upload
-   *
-   * Form fields:
-   * - runId: string (required)
-   * - storageName: string (required)
-   * - baseVersion: string (required)
-   * - changes: JSON string (required)
-   * - message: string (optional)
-   * - file: File (optional, tar.gz of changed files)
-   */
-  upload: {
-    method: "POST",
-    path: "/api/webhooks/agent/storages/incremental",
-    headers: authHeadersSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
-    responses: {
-      200: z.object({
-        versionId: z.string(),
-        storageName: z.string(),
-        size: z.number(),
-        fileCount: z.number(),
-        incrementalStats: z
-          .object({
-            addedFiles: z.number(),
-            modifiedFiles: z.number(),
-            deletedFiles: z.number(),
-            unchangedFiles: z.number(),
-            bytesUploaded: z.number(),
-          })
-          .optional(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upload storage version incrementally from sandbox",
   },
 });
 
@@ -802,8 +715,11 @@ export const webhookStoragesPrepareContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
-      storageName: z.string().min(1, "Storage name is required"),
-      storageType: storageTypeSchema,
+      /**
+       * Canonical Storage identity authorized against the run's writeback
+       * mounts.
+       */
+      storageId: z.string().uuid(),
       files: z.array(fileEntryWithHashSchema),
       parentVersionId: z.string().optional(),
       force: z.boolean().optional(),
@@ -844,8 +760,11 @@ export const webhookStoragesCommitContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
-      storageName: z.string().min(1, "Storage name is required"),
-      storageType: storageTypeSchema,
+      /**
+       * Canonical Storage identity authorized against the run's writeback
+       * mounts.
+       */
+      storageId: z.string().uuid(),
       versionId: z.string().min(1, "Version ID is required"),
       parentVersionId: z.string().optional(),
       files: z.array(fileEntryWithHashSchema),
@@ -892,9 +811,6 @@ export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
 export type WebhookCheckpointsPrepareHistoryContract =
   typeof webhookCheckpointsPrepareHistoryContract;
 export type WebhookHeartbeatContract = typeof webhookHeartbeatContract;
-export type WebhookStoragesContract = typeof webhookStoragesContract;
-export type WebhookStoragesIncrementalContract =
-  typeof webhookStoragesIncrementalContract;
 export type WebhookTelemetryContract = typeof webhookTelemetryContract;
 export type WebhookStoragesPrepareContract =
   typeof webhookStoragesPrepareContract;
@@ -944,40 +860,64 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-/**
- * Webhook model usage observation contract for
- * /api/webhooks/agent/model-usage-observation
- *
- * Receives model token observations from the sandbox for model usage statistics.
- * This endpoint is not a billing ledger input.
- */
-const modelUsageObservationCategorySchema = z.enum([
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-]);
-
 const webhookModelUsageObservationItemSchema = z
   .object({
     idempotencyKey: z.uuid(),
     model: z.string().min(1).max(255),
-    category: modelUsageObservationCategorySchema,
-    quantity: z.number().int().min(1),
+    inputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    outputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    cacheReadInputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    cacheCreationInputTokens: z
+      .number()
+      .int()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER),
   })
-  .strict();
+  .strict()
+  .refine(
+    (event) => {
+      return (
+        event.inputTokens > 0 ||
+        event.outputTokens > 0 ||
+        event.cacheReadInputTokens > 0 ||
+        event.cacheCreationInputTokens > 0
+      );
+    },
+    { message: "At least one token counter must be positive" },
+  );
 
+const webhookModelUsageObservationBodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    const idempotencyKeys = new Set<string>();
+    body.events.forEach((event, index) => {
+      if (idempotencyKeys.has(event.idempotencyKey)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["events", index, "idempotencyKey"],
+          message: "Idempotency keys must be unique within a request",
+        });
+      }
+      idempotencyKeys.add(event.idempotencyKey);
+    });
+  });
+
+/**
+ * Compact model usage observation contract for
+ * /api/webhooks/agent/model-usage-observation
+ *
+ * Each immutable event carries the four counters consumed by model rankings.
+ */
 export const webhookModelUsageObservationContract = c.router({
   send: {
     method: "POST",
     path: "/api/webhooks/agent/model-usage-observation",
     headers: authHeadersSchema,
-    body: z
-      .object({
-        runId: z.string().min(1, "runId is required"),
-        events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
-      })
-      .strict(),
+    body: webhookModelUsageObservationBodySchema,
     responses: {
       200: z.object({
         success: z.boolean(),
@@ -987,7 +927,7 @@ export const webhookModelUsageObservationContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Receive model usage observation data from sandbox",
+    summary: "Receive compact model usage observation data from sandbox",
   },
 });
 

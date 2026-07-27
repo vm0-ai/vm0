@@ -8,7 +8,7 @@ use crate::error::AgentError;
 use crate::{env, paths};
 use guest_common::log_info;
 
-use super::{CliRuntimeConfig, LOG_TAG, codex_runtime_config};
+use super::{CODEX_FIXED_STARTUP_CONFIGS, CliRuntimeConfig, LOG_TAG, codex_runtime_config};
 
 pub(super) fn build_cli_command_for_runtime(
     runtime: &CliRuntimeConfig<'_>,
@@ -168,9 +168,13 @@ fn build_codex_openai_base_url_config(openai_base_url: &str) -> String {
 
 fn push_codex_config_overrides(args: &mut Vec<String>, overrides: &[String]) {
     for override_value in overrides {
-        args.push("-c".to_string());
-        args.push(override_value.clone());
+        push_codex_config_override(args, override_value.clone());
     }
+}
+
+fn push_codex_config_override(args: &mut Vec<String>, override_value: impl Into<String>) {
+    args.push("-c".to_string());
+    args.push(override_value.into());
 }
 
 fn push_codex_fast_mode_configs(args: &mut Vec<String>) {
@@ -219,14 +223,18 @@ fn build_codex_args(
         paths::CANONICAL_WORKING_DIR.to_string(),
     ];
 
-    args.push("-c".to_string());
-    args.push(build_codex_memories_config());
+    push_codex_config_override(&mut args, build_codex_memories_config());
 
     if startup_config_overrides.is_empty() && !openai_base_url.is_empty() {
-        args.push("-c".to_string());
-        args.push(build_codex_openai_base_url_config(openai_base_url));
+        push_codex_config_override(
+            &mut args,
+            build_codex_openai_base_url_config(openai_base_url),
+        );
     }
     push_codex_config_overrides(&mut args, startup_config_overrides);
+    for override_value in CODEX_FIXED_STARTUP_CONFIGS {
+        push_codex_config_override(&mut args, override_value);
+    }
 
     if fast_mode {
         push_codex_fast_mode_configs(&mut args);

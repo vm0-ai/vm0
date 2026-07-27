@@ -106,4 +106,20 @@ describe("release-please API deployment graph", () => {
     expect(promoteApiProductionJob).not.toContain("api_deploy_required");
     expect(promoteApiProductionJob).not.toContain("api_release_created");
   });
+
+  it("promotes App after migrations without waiting for API promotion", () => {
+    const workflow = readText(".github/workflows/release-please.yml");
+    const promoteAppProductionJob = workflowJobBlock(
+      workflow,
+      "promote-app-production",
+    );
+
+    expect(promoteAppProductionJob).toContain(
+      "needs: [release-please, builds-complete, migrate-production]",
+    );
+    expect(promoteAppProductionJob).toContain(
+      "needs.migrate-production.result == 'success'",
+    );
+    expect(promoteAppProductionJob).not.toContain("promote-api-production");
+  });
 });

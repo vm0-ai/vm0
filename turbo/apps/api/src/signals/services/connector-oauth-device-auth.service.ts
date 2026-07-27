@@ -15,7 +15,7 @@ import {
 import {
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import {
   pollConnectorDeviceAuthorizationWithMethod,
   startConnectorDeviceAuthorizationWithMethod,

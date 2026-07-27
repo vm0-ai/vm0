@@ -3,11 +3,13 @@ name: Docker Toolchain Build
 on:
   pull_request:
     paths:
-      - 'docker/toolchain/**'
-      - '.devcontainer/link-agent-skills.sh'
-      - '.devcontainer/setup.sh'
-      - '.devcontainer/test.sh'
-      - '.github/workflows/docker-toolchain.yml'
+      - "docker/toolchain/**"
+      - ".devcontainer/devcontainer.json"
+      - ".devcontainer/devcontainer-lock.json"
+      - ".devcontainer/link-agent-skills.sh"
+      - ".devcontainer/setup.sh"
+      - ".devcontainer/test.sh"
+      - ".github/workflows/docker-toolchain.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Test devcontainer scripts
         run: bash .devcontainer/test.sh
@@ -43,7 +45,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

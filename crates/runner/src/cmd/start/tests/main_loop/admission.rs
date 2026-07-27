@@ -92,18 +92,19 @@ async fn claim_after_draining_sent_skips_unclaimed_job() {
     );
 }
 
-/// TOCTOU regression: a SIGTERM that iterates `cancel_tokens` *before*
-/// the main loop inserts a newly-claimed job's token would leave that
-/// job running uncancelled. The fix is a post-insert `mode_rx.borrow()`
-/// check that catches Stopping and cancels the token in that window.
+/// Ordering regression: hard shutdown publishes `Stopping` before entering
+/// the cancellation registry's hard-stop barrier. A discovery that registers
+/// in that window must observe Stopping and cancel before provider claim. The
+/// registry independently covers registrations after the barrier begins; this
+/// test isolates the discovery-side mode recheck.
 ///
 /// To reproduce deterministically, we use `send_if_modified` to flip
 /// the watch value to `Stopping` **without** waking `mode_rx.changed()`
-/// — this is exactly what the racy window looks like to the main loop:
-/// its outer select! is still polling discover_fut, unaware that the
-/// value has changed. When discover yields a job, the main loop takes
-/// the claim path, inserts the token, then reads `mode_rx.borrow()`
-/// and catches the Stopping value that was silently written.
+/// or entering the registry barrier. This is what the pre-barrier window
+/// looks like to the main loop: its outer select! is still polling
+/// discover_fut, unaware that the value has changed. When discover yields a
+/// job, the main loop takes the claim path, registers cancellation, then reads
+/// `mode_rx.borrow()` and catches the Stopping value that was silently written.
 #[tokio::test]
 async fn claim_after_stopping_sent_cancels_new_job() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
@@ -1134,8 +1135,8 @@ async fn duplicate_discovery_deduplicated() {
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
     // Push the same run_id again with reusable affinity. The duplicate first
-    // owns the idle reservation, then must restore it when cancel_tokens shows
-    // that the original run already owns local admission.
+    // owns the idle reservation, then must restore it when the cancellation
+    // registry reports that the original run already owns local admission.
     env.handle
         .discover_tx
         .send(reusable_affinity_protected_candidate(run_id, session_id))

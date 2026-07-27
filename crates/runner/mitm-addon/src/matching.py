@@ -14,7 +14,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, NamedTuple
-from typing import TypeAlias as _TypeAlias
 from urllib.parse import urlsplit
 
 import connector_intent
@@ -49,7 +48,7 @@ static_firewall_base_authority_key = _firewall_base_url.static_firewall_base_aut
 match_url_authority_key = _firewall_base_url.match_url_authority_key
 match_base_url = _firewall_base_url.match_base_url
 
-CompiledPathPattern: _TypeAlias = _firewall_patterns.CompiledPathPattern
+CompiledPathPattern = _firewall_patterns.CompiledPathPattern
 _compiled_rule_path_is_valid = _firewall_patterns._compiled_rule_path_is_valid
 compile_path_pattern = _firewall_patterns.compile_path_pattern
 match_compiled_path = _firewall_patterns.match_compiled_path
@@ -1024,7 +1023,12 @@ def _ensure_compiled_network_policies(
 
 
 class FirewallAllow(NamedTuple):
-    """Base URL matched and auth headers should be injected.
+    """Matched-firewall allow decision for connector auth handling.
+
+    Depending on the auth configuration, handling may inject headers or query
+    parameters, rewrite and forward through ``auth.base``, apply AWS SigV4
+    signing, or make no credential changes. Asterisk-form allows that proceed
+    without auth are represented by ``FirewallPolicyAllow`` instead.
 
     ``permission`` and ``rule`` are present for a matched permission. They are
     ``None`` for unknown-endpoint allow, where the firewall base matched but no

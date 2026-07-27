@@ -1,9 +1,14 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import type {
+  GithubDeploymentState,
   GithubLabelAppliedSubjectFilter,
+  GithubPullRequestReviewState,
+  GithubWorkflowRunConclusion,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
@@ -17,6 +22,7 @@ import {
   updateWorkflowAutomation,
 } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
+import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { parseDurationSeconds } from "../../shared/duration";
 import {
   resolveWorkflowRef,
@@ -42,6 +48,25 @@ interface AddOptions extends GmailAutomationOptions {
   readonly agent?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly repository?: string;
+  readonly workflow?: string;
+  readonly job?: string;
+  readonly conclusion?: string;
+  readonly branch?: string;
+  readonly triggeringEvent?: string;
+  readonly runnerLabel?: string;
+  readonly runnerGroup?: string;
+  readonly reviewState?: string;
+  readonly baseBranch?: string;
+  readonly headBranch?: string;
+  readonly trustedAuthor?: string;
+  readonly environment?: string;
+  readonly deploymentState?: string;
+  readonly ref?: string;
+  readonly productionEnvironment?: string;
+  readonly creator?: string;
+  readonly app?: string;
+  readonly commentPrefix?: string;
   readonly calendarId?: string;
   readonly pageUrl?: string;
   readonly parentPageUrl?: string;
@@ -55,6 +80,25 @@ interface UpdateOptions extends GmailAutomationOptions {
   readonly timezone?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly repository?: string;
+  readonly workflow?: string;
+  readonly job?: string;
+  readonly conclusion?: string;
+  readonly branch?: string;
+  readonly triggeringEvent?: string;
+  readonly runnerLabel?: string;
+  readonly runnerGroup?: string;
+  readonly reviewState?: string;
+  readonly baseBranch?: string;
+  readonly headBranch?: string;
+  readonly trustedAuthor?: string;
+  readonly environment?: string;
+  readonly deploymentState?: string;
+  readonly ref?: string;
+  readonly productionEnvironment?: string;
+  readonly creator?: string;
+  readonly app?: string;
+  readonly commentPrefix?: string;
 }
 
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
@@ -62,6 +106,7 @@ const EVENT_KINDS = [
   "gmail-new-message",
   "gmail-label-applied",
   "github-label-applied",
+  "github-workflow-run-completed",
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
@@ -70,7 +115,36 @@ const EVENT_KINDS = [
   "notion-page-content-updated",
   "webhook",
 ] as const;
-const AUTOMATION_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
+const GITHUB_WEBHOOK_EVENT_KINDS = [
+  "github-workflow-job-completed",
+  "github-pull-request-review-submitted",
+  "github-deployment-status-created",
+  "github-issue-comment-created",
+] as const;
+
+function githubWebhookAutomationsEnabled(): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
+    userId: payload?.userId,
+    orgId: payload?.orgId,
+  });
+}
+
+function automationKinds(): readonly string[] {
+  return [
+    ...SCHEDULE_KINDS,
+    ...EVENT_KINDS,
+    ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
+  ];
+}
+
+function githubWebhookEventKind(
+  kind: string,
+): kind is (typeof GITHUB_WEBHOOK_EVENT_KINDS)[number] {
+  return GITHUB_WEBHOOK_EVENT_KINDS.some((eventKind) => {
+    return eventKind === kind;
+  });
+}
 const EXACTLY_ONE_FLAG_MESSAGE =
   "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, or --database-url";
 
@@ -118,11 +192,72 @@ function addGithubAutomationOptions(command: Command): Command {
   return command
     .option(
       "--subject <subject>",
-      "GitHub subject filter for github-label-applied: both | issues | pull-requests",
+      "GitHub subject filter for label/comment automations: both | issues | pull-requests",
     )
     .option(
       "--actor <actor>",
-      "GitHub actor filter for github-label-applied: me | anyone",
+      "GitHub actor filter: me | anyone for labels, or comma-separated logins for workflow runs",
+    )
+    .option(
+      "--repository <repositories>",
+      "GitHub repositories, comma-separated owner/name values",
+    )
+    .option(
+      "--workflow <workflows>",
+      "GitHub workflows, comma-separated IDs, names, or paths",
+    )
+    .option(
+      "--conclusion <conclusions>",
+      "Workflow run or job conclusions, comma-separated values",
+    )
+    .option(
+      "--branch <branches>",
+      "Workflow run or job branches, comma-separated",
+    )
+    .option(
+      "--triggering-event <events>",
+      "Workflow run triggering events, comma-separated",
+    )
+    .option("--job <jobs>", "GitHub Actions job names or IDs, comma-separated")
+    .option("--runner-label <labels>", "Runner labels, comma-separated")
+    .option(
+      "--runner-group <groups>",
+      "Runner group names or IDs, comma-separated",
+    )
+    .option(
+      "--review-state <states>",
+      "Review states: approved, changes_requested, commented, or any",
+    )
+    .option(
+      "--base-branch <branches>",
+      "Pull request base branches, comma-separated",
+    )
+    .option(
+      "--head-branch <branches>",
+      "Pull request head branches, comma-separated",
+    )
+    .option(
+      "--trusted-author <logins>",
+      "Trusted GitHub author logins, comma-separated; omit to allow anyone",
+    )
+    .option("--environment <names>", "Deployment environments, comma-separated")
+    .option("--deployment-state <states>", "Deployment states, comma-separated")
+    .option("--ref <refs>", "Deployment refs, comma-separated")
+    .option(
+      "--production-environment <value>",
+      "Deployment environment filter: true | false | any",
+    )
+    .option(
+      "--creator <logins>",
+      "Deployment creator logins or IDs, comma-separated",
+    )
+    .option(
+      "--app <apps>",
+      "Deployment GitHub App slugs, names, or IDs, comma-separated",
+    )
+    .option(
+      "--comment-prefix <prefixes>",
+      "Required trimmed comment prefixes, comma-separated",
     );
 }
 
@@ -284,7 +419,7 @@ function buildSchedule(
       };
     default:
       throw new Error(
-        `Unknown automation kind: "${kind}". Use one of: ${AUTOMATION_KINDS.join(", ")}`,
+        `Unknown automation kind: "${kind}". Use one of: ${automationKinds().join(", ")}`,
       );
   }
 }
@@ -298,10 +433,119 @@ function hasScheduleAddOptions(options: AddOptions): boolean {
   );
 }
 
-function hasGithubAutomationOptions(
+function hasGithubLabelAutomationOptions(
   options: AddOptions | UpdateOptions,
 ): boolean {
   return options.subject !== undefined || options.actor !== undefined;
+}
+
+function hasGithubWorkflowRunSpecificOptions(
+  options: AddOptions | UpdateOptions,
+): boolean {
+  return (
+    options.repository !== undefined ||
+    options.workflow !== undefined ||
+    options.conclusion !== undefined ||
+    options.branch !== undefined ||
+    options.triggeringEvent !== undefined
+  );
+}
+
+type GithubAutomationOptionKey =
+  | "subject"
+  | "actor"
+  | "repository"
+  | "workflow"
+  | "job"
+  | "conclusion"
+  | "branch"
+  | "triggeringEvent"
+  | "runnerLabel"
+  | "runnerGroup"
+  | "reviewState"
+  | "baseBranch"
+  | "headBranch"
+  | "trustedAuthor"
+  | "environment"
+  | "deploymentState"
+  | "ref"
+  | "productionEnvironment"
+  | "creator"
+  | "app"
+  | "commentPrefix";
+
+const GITHUB_AUTOMATION_OPTION_KEYS: readonly GithubAutomationOptionKey[] = [
+  "subject",
+  "actor",
+  "repository",
+  "workflow",
+  "job",
+  "conclusion",
+  "branch",
+  "triggeringEvent",
+  "runnerLabel",
+  "runnerGroup",
+  "reviewState",
+  "baseBranch",
+  "headBranch",
+  "trustedAuthor",
+  "environment",
+  "deploymentState",
+  "ref",
+  "productionEnvironment",
+  "creator",
+  "app",
+  "commentPrefix",
+];
+
+function githubOptionValue(
+  options: AddOptions | UpdateOptions,
+  key: GithubAutomationOptionKey,
+): string | undefined {
+  return options[key];
+}
+
+function hasGithubWebhookOptions(options: AddOptions | UpdateOptions): boolean {
+  return GITHUB_AUTOMATION_OPTION_KEYS.some((key) => {
+    return githubOptionValue(options, key) !== undefined;
+  });
+}
+
+function hasGithubAutomationOptions(
+  options: AddOptions | UpdateOptions,
+): boolean {
+  return (
+    hasGithubLabelAutomationOptions(options) ||
+    hasGithubWorkflowRunSpecificOptions(options) ||
+    hasGithubWebhookOptions(options)
+  );
+}
+
+function assertOnlyGithubAutomationOptions(
+  options: AddOptions | UpdateOptions,
+  allowed: readonly GithubAutomationOptionKey[],
+): void {
+  const invalid = GITHUB_AUTOMATION_OPTION_KEYS.find((key) => {
+    return (
+      githubOptionValue(options, key) !== undefined && !allowed.includes(key)
+    );
+  });
+  if (invalid) {
+    throw new Error(
+      `--${invalid.replace(/[A-Z]/g, (match) => {
+        return `-${match.toLowerCase()}`;
+      })} does not apply to this GitHub automation`,
+    );
+  }
+}
+
+function hasAnyGithubAutomationOption(
+  options: AddOptions | UpdateOptions,
+  allowed: readonly GithubAutomationOptionKey[],
+): boolean {
+  return allowed.some((key) => {
+    return githubOptionValue(options, key) !== undefined;
+  });
 }
 
 function hasCalendarAutomationOptions(options: AddOptions): boolean {
@@ -435,6 +679,332 @@ function buildGithubLabelAppliedEventConfig(
   };
 }
 
+const GITHUB_WORKFLOW_RUN_CONCLUSIONS: readonly GithubWorkflowRunConclusion[] =
+  [
+    "action_required",
+    "cancelled",
+    "failure",
+    "neutral",
+    "skipped",
+    "stale",
+    "startup_failure",
+    "success",
+    "timed_out",
+  ];
+
+function parseGithubWorkflowRunFilter(
+  value: string | undefined,
+  fallback: readonly string[] | undefined,
+): string[] | undefined {
+  if (value === undefined) {
+    return fallback ? [...fallback] : undefined;
+  }
+  if (value.trim().toLowerCase() === "any") {
+    return undefined;
+  }
+  const values = Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((part) => {
+          return part.trim();
+        })
+        .filter(Boolean),
+    ),
+  );
+  if (values.length === 0) {
+    throw new Error("GitHub filters cannot be empty; use any");
+  }
+  return values;
+}
+
+function parseGithubWorkflowRunConclusions(
+  value: string | undefined,
+  fallback: readonly GithubWorkflowRunConclusion[] | undefined,
+): GithubWorkflowRunConclusion[] | undefined {
+  const values = parseGithubWorkflowRunFilter(value, fallback);
+  if (!values) {
+    return undefined;
+  }
+  return values.map((conclusion) => {
+    if (
+      GITHUB_WORKFLOW_RUN_CONCLUSIONS.includes(
+        conclusion as GithubWorkflowRunConclusion,
+      )
+    ) {
+      return conclusion as GithubWorkflowRunConclusion;
+    }
+    throw new Error(
+      `Invalid --conclusion "${conclusion}". Use one of: ${GITHUB_WORKFLOW_RUN_CONCLUSIONS.join(", ")}, any`,
+    );
+  });
+}
+
+const GITHUB_PULL_REQUEST_REVIEW_STATES: readonly GithubPullRequestReviewState[] =
+  ["approved", "changes_requested", "commented"];
+
+const GITHUB_DEPLOYMENT_STATES: readonly GithubDeploymentState[] = [
+  "error",
+  "failure",
+  "inactive",
+  "in_progress",
+  "pending",
+  "queued",
+  "success",
+  "waiting",
+];
+
+function parseGithubReviewStates(
+  value: string | undefined,
+  fallback: readonly GithubPullRequestReviewState[] | undefined,
+): GithubPullRequestReviewState[] | undefined {
+  const values = parseGithubWorkflowRunFilter(value, fallback);
+  if (!values) {
+    return undefined;
+  }
+  return values.map((state) => {
+    if (
+      GITHUB_PULL_REQUEST_REVIEW_STATES.includes(
+        state as GithubPullRequestReviewState,
+      )
+    ) {
+      return state as GithubPullRequestReviewState;
+    }
+    throw new Error(
+      `Invalid --review-state "${state}". Use one of: ${GITHUB_PULL_REQUEST_REVIEW_STATES.join(", ")}, any`,
+    );
+  });
+}
+
+function parseGithubDeploymentStates(
+  value: string | undefined,
+  fallback: readonly GithubDeploymentState[] | undefined,
+): GithubDeploymentState[] | undefined {
+  const values = parseGithubWorkflowRunFilter(value, fallback);
+  if (!values) {
+    return undefined;
+  }
+  return values.map((state) => {
+    if (GITHUB_DEPLOYMENT_STATES.includes(state as GithubDeploymentState)) {
+      return state as GithubDeploymentState;
+    }
+    throw new Error(
+      `Invalid --deployment-state "${state}". Use one of: ${GITHUB_DEPLOYMENT_STATES.join(", ")}, any`,
+    );
+  });
+}
+
+function parseProductionEnvironment(
+  value: string | undefined,
+  fallback: boolean | undefined,
+): boolean | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+  switch (value.trim().toLowerCase()) {
+    case "any":
+      return undefined;
+    case "true":
+      return true;
+    case "false":
+      return false;
+    default:
+      throw new Error(
+        `Invalid --production-environment "${value}". Use true, false, or any`,
+      );
+  }
+}
+
+function buildGithubWorkflowRunCompletedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    {
+      readonly kind: "event";
+      readonly eventType: "github-workflow-run-completed";
+    }
+  >,
+) {
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "workflow_run_completed" as const,
+    filters: {
+      repositories: parseGithubWorkflowRunFilter(
+        options.repository,
+        filters?.repositories,
+      ),
+      workflows: parseGithubWorkflowRunFilter(
+        options.workflow,
+        filters?.workflows,
+      ),
+      conclusions: parseGithubWorkflowRunConclusions(
+        options.conclusion,
+        filters?.conclusions,
+      ),
+      branches: parseGithubWorkflowRunFilter(options.branch, filters?.branches),
+      events: parseGithubWorkflowRunFilter(
+        options.triggeringEvent,
+        filters?.events,
+      ),
+      actors: parseGithubWorkflowRunFilter(options.actor, filters?.actors),
+    },
+  };
+}
+
+function buildGithubWorkflowJobCompletedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    {
+      readonly kind: "event";
+      readonly eventType: "github-workflow-job-completed";
+    }
+  >,
+) {
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "workflow_job_completed" as const,
+    filters: {
+      repositories: parseGithubWorkflowRunFilter(
+        options.repository,
+        filters?.repositories,
+      ),
+      workflows: parseGithubWorkflowRunFilter(
+        options.workflow,
+        filters?.workflows,
+      ),
+      jobs: parseGithubWorkflowRunFilter(options.job, filters?.jobs),
+      conclusions: parseGithubWorkflowRunConclusions(
+        options.conclusion,
+        filters?.conclusions,
+      ),
+      branches: parseGithubWorkflowRunFilter(options.branch, filters?.branches),
+      runnerLabels: parseGithubWorkflowRunFilter(
+        options.runnerLabel,
+        filters?.runnerLabels,
+      ),
+      runnerGroups: parseGithubWorkflowRunFilter(
+        options.runnerGroup,
+        filters?.runnerGroups,
+      ),
+    },
+  };
+}
+
+function buildGithubPullRequestReviewSubmittedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    {
+      readonly kind: "event";
+      readonly eventType: "github-pull-request-review-submitted";
+    }
+  >,
+) {
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "pull_request_review_submitted" as const,
+    filters: {
+      repositories: parseGithubWorkflowRunFilter(
+        options.repository,
+        filters?.repositories,
+      ),
+      reviewStates: parseGithubReviewStates(
+        options.reviewState,
+        filters?.reviewStates,
+      ),
+      baseBranches: parseGithubWorkflowRunFilter(
+        options.baseBranch,
+        filters?.baseBranches,
+      ),
+      headBranches: parseGithubWorkflowRunFilter(
+        options.headBranch,
+        filters?.headBranches,
+      ),
+      trustedAuthors: parseGithubWorkflowRunFilter(
+        options.trustedAuthor,
+        filters?.trustedAuthors,
+      ),
+    },
+  };
+}
+
+function buildGithubDeploymentStatusCreatedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    {
+      readonly kind: "event";
+      readonly eventType: "github-deployment-status-created";
+    }
+  >,
+) {
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "deployment_status_created" as const,
+    filters: {
+      repositories: parseGithubWorkflowRunFilter(
+        options.repository,
+        filters?.repositories,
+      ),
+      environments: parseGithubWorkflowRunFilter(
+        options.environment,
+        filters?.environments,
+      ),
+      states: parseGithubDeploymentStates(
+        options.deploymentState,
+        filters?.states,
+      ),
+      refs: parseGithubWorkflowRunFilter(options.ref, filters?.refs),
+      productionEnvironment: parseProductionEnvironment(
+        options.productionEnvironment,
+        filters?.productionEnvironment,
+      ),
+      creators: parseGithubWorkflowRunFilter(
+        options.creator,
+        filters?.creators,
+      ),
+      apps: parseGithubWorkflowRunFilter(options.app, filters?.apps),
+    },
+  };
+}
+
+function buildGithubIssueCommentCreatedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    {
+      readonly kind: "event";
+      readonly eventType: "github-issue-comment-created";
+    }
+  >,
+) {
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "issue_comment_created" as const,
+    filters: {
+      repositories: parseGithubWorkflowRunFilter(
+        options.repository,
+        filters?.repositories,
+      ),
+      subject: parseGithubSubject(options.subject, filters?.subject ?? "both"),
+      trustedAuthors: parseGithubWorkflowRunFilter(
+        options.trustedAuthor,
+        filters?.trustedAuthors,
+      ),
+      commentPrefixes: parseGithubWorkflowRunFilter(
+        options.commentPrefix,
+        filters?.commentPrefixes,
+      ),
+    },
+  };
+}
+
 function buildGmailNewMessageCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -482,10 +1052,133 @@ function buildGithubLabelAppliedCreateRequest(
   }
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  if (hasGithubWorkflowRunSpecificOptions(options)) {
+    throw new Error(
+      "Workflow run filter flags only apply to github-workflow-run-completed automations",
+    );
+  }
+  assertOnlyGithubAutomationOptions(options, ["subject", "actor"]);
   return {
     kind: "event",
     eventType: "github-label-applied",
     eventConfig: buildGithubLabelAppliedEventConfig(options),
+  };
+}
+
+function buildGithubWorkflowRunCompletedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailAutomationOptions(options) || hasGmailLabelOption(options)) {
+    throw new Error(
+      "Gmail automation flags only apply to Gmail event automations",
+    );
+  }
+  if (options.subject !== undefined) {
+    throw new Error(
+      "--subject only applies to github-label-applied automations",
+    );
+  }
+  assertOnlyGithubAutomationOptions(options, [
+    "repository",
+    "workflow",
+    "conclusion",
+    "branch",
+    "triggeringEvent",
+    "actor",
+  ]);
+  assertNoCalendarAutomationOptions(options);
+  assertNoNotionAutomationOptions(options);
+  return {
+    kind: "event",
+    eventType: "github-workflow-run-completed",
+    eventConfig: buildGithubWorkflowRunCompletedEventConfig(options),
+  };
+}
+
+function assertGithubWebhookCreateOptions(
+  options: AddOptions,
+  allowed: readonly GithubAutomationOptionKey[],
+): void {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailAutomationOptions(options) || hasGmailLabelOption(options)) {
+    throw new Error(
+      "Gmail automation flags only apply to Gmail event automations",
+    );
+  }
+  assertNoCalendarAutomationOptions(options);
+  assertNoNotionAutomationOptions(options);
+  assertOnlyGithubAutomationOptions(options, allowed);
+}
+
+function buildGithubWorkflowJobCompletedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertGithubWebhookCreateOptions(options, [
+    "repository",
+    "workflow",
+    "job",
+    "conclusion",
+    "branch",
+    "runnerLabel",
+    "runnerGroup",
+  ]);
+  return {
+    kind: "event",
+    eventType: "github-workflow-job-completed",
+    eventConfig: buildGithubWorkflowJobCompletedEventConfig(options),
+  };
+}
+
+function buildGithubPullRequestReviewSubmittedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertGithubWebhookCreateOptions(options, [
+    "repository",
+    "reviewState",
+    "baseBranch",
+    "headBranch",
+    "trustedAuthor",
+  ]);
+  return {
+    kind: "event",
+    eventType: "github-pull-request-review-submitted",
+    eventConfig: buildGithubPullRequestReviewSubmittedEventConfig(options),
+  };
+}
+
+function buildGithubDeploymentStatusCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertGithubWebhookCreateOptions(options, [
+    "repository",
+    "environment",
+    "deploymentState",
+    "ref",
+    "productionEnvironment",
+    "creator",
+    "app",
+  ]);
+  return {
+    kind: "event",
+    eventType: "github-deployment-status-created",
+    eventConfig: buildGithubDeploymentStatusCreatedEventConfig(options),
+  };
+}
+
+function buildGithubIssueCommentCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertGithubWebhookCreateOptions(options, [
+    "repository",
+    "subject",
+    "trustedAuthor",
+    "commentPrefix",
+  ]);
+  return {
+    kind: "event",
+    eventType: "github-issue-comment-created",
+    eventConfig: buildGithubIssueCommentCreatedEventConfig(options),
   };
 }
 
@@ -705,6 +1398,16 @@ function buildCreateRequest(
       return buildGmailLabelAppliedCreateRequest(options);
     case "github-label-applied":
       return buildGithubLabelAppliedCreateRequest(options);
+    case "github-workflow-run-completed":
+      return buildGithubWorkflowRunCompletedCreateRequest(options);
+    case "github-workflow-job-completed":
+      return buildGithubWorkflowJobCompletedCreateRequest(options);
+    case "github-pull-request-review-submitted":
+      return buildGithubPullRequestReviewSubmittedCreateRequest(options);
+    case "github-deployment-status-created":
+      return buildGithubDeploymentStatusCreatedCreateRequest(options);
+    case "github-issue-comment-created":
+      return buildGithubIssueCommentCreatedCreateRequest(options);
     case "google-calendar-event-created":
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-updated":
@@ -721,6 +1424,133 @@ function buildCreateRequest(
       return buildWebhookCreateRequest(options);
     default:
       return buildScheduleCreateRequest(kind, options);
+  }
+}
+
+function buildGithubWorkflowEventUpdate(
+  options: UpdateOptions,
+  existing: Extract<ZeroWorkflowAutomationSummary, { readonly kind: "event" }>,
+): ZeroWorkflowAutomationUpdateRequest | undefined {
+  switch (existing.eventType) {
+    case "github-workflow-run-completed": {
+      if (
+        hasGmailAutomationOptions(options) ||
+        hasGmailLabelOption(options) ||
+        options.subject !== undefined
+      ) {
+        throw new Error(
+          "Gmail, label, and subject flags do not apply to GitHub workflow run automations",
+        );
+      }
+      if (!hasGithubAutomationOptions(options)) {
+        throw new Error(
+          "Provide a GitHub workflow run filter flag; use any to clear a filter",
+        );
+      }
+      assertOnlyGithubAutomationOptions(options, [
+        "repository",
+        "workflow",
+        "conclusion",
+        "branch",
+        "triggeringEvent",
+        "actor",
+      ]);
+      return {
+        eventConfig: buildGithubWorkflowRunCompletedEventConfig(
+          options,
+          existing,
+        ),
+      };
+    }
+    case "github-workflow-job-completed": {
+      const allowed = [
+        "repository",
+        "workflow",
+        "job",
+        "conclusion",
+        "branch",
+        "runnerLabel",
+        "runnerGroup",
+      ] as const;
+      assertOnlyGithubAutomationOptions(options, allowed);
+      if (!hasAnyGithubAutomationOption(options, allowed)) {
+        throw new Error(
+          "Provide a GitHub workflow job filter flag; use any to clear a filter",
+        );
+      }
+      return {
+        eventConfig: buildGithubWorkflowJobCompletedEventConfig(
+          options,
+          existing,
+        ),
+      };
+    }
+    case "github-pull-request-review-submitted": {
+      const allowed = [
+        "repository",
+        "reviewState",
+        "baseBranch",
+        "headBranch",
+        "trustedAuthor",
+      ] as const;
+      assertOnlyGithubAutomationOptions(options, allowed);
+      if (!hasAnyGithubAutomationOption(options, allowed)) {
+        throw new Error(
+          "Provide a GitHub pull request review filter flag; use any to clear a filter",
+        );
+      }
+      return {
+        eventConfig: buildGithubPullRequestReviewSubmittedEventConfig(
+          options,
+          existing,
+        ),
+      };
+    }
+    case "github-deployment-status-created": {
+      const allowed = [
+        "repository",
+        "environment",
+        "deploymentState",
+        "ref",
+        "productionEnvironment",
+        "creator",
+        "app",
+      ] as const;
+      assertOnlyGithubAutomationOptions(options, allowed);
+      if (!hasAnyGithubAutomationOption(options, allowed)) {
+        throw new Error(
+          "Provide a GitHub deployment status filter flag; use any to clear a filter",
+        );
+      }
+      return {
+        eventConfig: buildGithubDeploymentStatusCreatedEventConfig(
+          options,
+          existing,
+        ),
+      };
+    }
+    case "github-issue-comment-created": {
+      const allowed = [
+        "repository",
+        "subject",
+        "trustedAuthor",
+        "commentPrefix",
+      ] as const;
+      assertOnlyGithubAutomationOptions(options, allowed);
+      if (!hasAnyGithubAutomationOption(options, allowed)) {
+        throw new Error(
+          "Provide a GitHub issue comment filter flag; use any to clear a filter",
+        );
+      }
+      return {
+        eventConfig: buildGithubIssueCommentCreatedEventConfig(
+          options,
+          existing,
+        ),
+      };
+    }
+    default:
+      return undefined;
   }
 }
 
@@ -746,6 +1576,12 @@ function buildEventUpdate(
         "Gmail match flags only apply to Gmail event automations",
       );
     }
+    if (hasGithubWorkflowRunSpecificOptions(options)) {
+      throw new Error(
+        "Workflow run filter flags only apply to github-workflow-run-completed automations",
+      );
+    }
+    assertOnlyGithubAutomationOptions(options, ["subject", "actor"]);
     if (!hasLabelOption && !hasGithubOptions) {
       throw new Error(
         "Provide --label, --subject, or --actor for github-label-applied automations",
@@ -754,6 +1590,14 @@ function buildEventUpdate(
     return {
       eventConfig: buildGithubLabelAppliedEventConfig(options, existing),
     };
+  }
+
+  const githubWorkflowUpdate = buildGithubWorkflowEventUpdate(
+    options,
+    existing,
+  );
+  if (githubWorkflowUpdate) {
+    return githubWorkflowUpdate;
   }
 
   if (hasGithubOptions) {
@@ -839,7 +1683,7 @@ const addCommand = addGithubAutomationOptions(
       .name("add")
       .description("Add an automation to a workflow")
       .argument("<workflow>", "Workflow ID or name")
-      .argument("<kind>", `Automation type: ${AUTOMATION_KINDS.join(" | ")}`)
+      .argument("<kind>", `Automation type: ${automationKinds().join(" | ")}`)
       .option("--expr <expression>", 'Cron expression for kind "cron"')
       .option("--at <iso-time>", 'Fire time for kind "once"')
       .option(
@@ -880,6 +1724,7 @@ Examples:
   zero workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
   zero workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
   zero workflow automation add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
+  zero workflow automation add ci-triage --agent <agent-id> github-workflow-run-completed --repository vm0-ai/vm0 --workflow Turbo --conclusion failure,timed_out --branch main --triggering-event push --actor dependabot[bot]
   zero workflow automation add triage --agent <agent-id> google-calendar-event-created
   zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
   zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
@@ -892,13 +1737,22 @@ Examples:
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID
   - Gmail automations match all inbound messages when no text match rules are provided
-  - GitHub label automations require the GitHub App installation in the workspace
+  - GitHub automations require the GitHub App installation in the workspace
+  - GitHub workflow run filters accept comma-separated values; omit a filter to match any value
   - Webhook automations print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
   )
   .action(
     withErrorHandler(
       async (workflowRef: string, kind: string, options: AddOptions) => {
+        if (
+          githubWebhookEventKind(kind) &&
+          !githubWebhookAutomationsEnabled()
+        ) {
+          throw new Error(
+            "GitHub webhook automations are not enabled for this workspace",
+          );
+        }
         if (
           options.timezone &&
           kind !== "cron" &&
@@ -926,7 +1780,7 @@ const updateCommand = addGithubAutomationOptions(
     new Command()
       .name("update")
       .description(
-        "Replace a workflow automation's schedule or Gmail match config",
+        "Replace a workflow automation's schedule or event filter config",
       )
       .argument("<automation>", "Workflow automation ID")
       .option("--expr <expression>", 'New cron schedule (e.g. "0 9 * * *")')
@@ -945,7 +1799,9 @@ Examples:
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --config ./gmail-automation.json
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone`,
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --conclusion failure,timed_out --branch main
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor any`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {

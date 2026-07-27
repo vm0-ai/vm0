@@ -35,8 +35,7 @@ import {
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-utils";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-auth-method";
 import type {
   ConnectorServerFirewallExecutionMetadata,
   ConnectorServerFirewallPermissionIndex,
@@ -84,6 +83,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
@@ -91,7 +91,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -116,6 +115,8 @@ import {
   notFound,
   providerUnavailable,
 } from "../../lib/error";
+import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypass";
+import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
@@ -150,7 +151,6 @@ import {
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorageManifest,
-  projectLegacyCheckpointStorageInputs,
   type PreparedAgentRunStorageManifest,
   StorageManifestBuildStats,
   type StorageManifestSource,
@@ -186,11 +186,16 @@ import {
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import type {
+  ChatThreadSessionResolution,
+  ChatThreadSessionResolutionAction,
+} from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
 } from "./zero-chat-queued-message.service";
+import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -371,12 +376,8 @@ interface ResolvedCompose {
   readonly vars?: Record<string, string>;
   readonly volumeVersions?: Record<string, string>;
   readonly additionalVolumes?: readonly AdditionalVolume[];
-  readonly persistedStorageMounts?: {
-    readonly mounts: readonly PersistedStorageMount[];
-    readonly mode: "complete" | "writeback";
-  };
+  readonly persistedStorageMounts?: readonly PersistedStorageMount[];
   readonly agentSessionId?: string;
-  readonly resumedFromCheckpointId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
@@ -419,6 +420,15 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
+type ThreadSessionBindingAction = ChatThreadSessionResolutionAction;
+
+interface ThreadSessionBindingWrite {
+  readonly chatThreadId: string;
+  readonly agentSessionId: string;
+  readonly agentSessionRunId: string;
+  readonly action: ThreadSessionBindingAction;
+}
+
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
@@ -451,6 +461,15 @@ export interface QueueFirstRunClaimLost {
   readonly kind: "queue-first-claim-lost";
 }
 
+interface ThreadSessionSnapshotStale {
+  readonly kind: "thread-session-snapshot-stale";
+  readonly chatThreadId: string;
+  readonly agentSessionId: string;
+  readonly agentSessionRunId: string;
+  readonly resolutionAction: ChatThreadSessionResolutionAction;
+  readonly reason: "binding_changed" | "session_changed";
+}
+
 type AtomicLaunchCommitResult =
   | {
       readonly kind: "pending";
@@ -459,6 +478,7 @@ type AtomicLaunchCommitResult =
       readonly runnerJobCreatedAt: Date;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
     }
   | {
       readonly kind: "queued";
@@ -468,10 +488,12 @@ type AtomicLaunchCommitResult =
       readonly telemetryTimestamp: string;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
     }
   | {
       readonly kind: "queue-payload-required";
     }
+  | ThreadSessionSnapshotStale
   | QueueFirstRunClaimLost;
 type QueuePayloadRequiredResult = Extract<
   AtomicLaunchCommitResult,
@@ -485,7 +507,9 @@ type CommitAtomicLaunch = (
 ) => Promise<AtomicLaunchCommitAttempt>;
 type CommittedAtomicLaunchResult = Exclude<
   AtomicLaunchCommitResult,
-  { readonly kind: "queue-payload-required" } | QueueFirstRunClaimLost
+  | { readonly kind: "queue-payload-required" }
+  | QueueFirstRunClaimLost
+  | ThreadSessionSnapshotStale
 >;
 
 type FailedLaunchCommitResult =
@@ -512,7 +536,8 @@ type CreateRunSuccessResult = {
 type QueueFirstAgentRunResult =
   | CreateRunSuccessResult
   | CreateRunErrorResult
-  | QueueFirstRunClaimLost;
+  | QueueFirstRunClaimLost
+  | ThreadSessionSnapshotStale;
 
 export function isQueueFirstRunClaimLost(
   result: unknown,
@@ -522,6 +547,17 @@ export function isQueueFirstRunClaimLost(
     result !== null &&
     "kind" in result &&
     result.kind === "queue-first-claim-lost"
+  );
+}
+
+export function isThreadSessionSnapshotStale(
+  result: unknown,
+): result is ThreadSessionSnapshotStale {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "kind" in result &&
+    result.kind === "thread-session-snapshot-stale"
   );
 }
 
@@ -649,6 +685,7 @@ export interface CreateAgentRunArgs {
   readonly selectedModelOverride?: string;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
   readonly extraEnvironment?: Record<string, string>;
@@ -843,18 +880,15 @@ function buildLegacySystemSkillVolumes(
   });
 }
 
-function buildExternalConnectorSkillVolumes(
+function buildConnectorSkillVolumes(
   connectorTypes: readonly ConnectorRef[],
   snapshot: ConnectorRuntimeSnapshot,
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] {
-  if (snapshot.identity.source !== "external") {
-    throw new Error("External connector skill snapshot is unavailable");
-  }
   return connectorTypes.flatMap((connectorRef) => {
     const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
-    if (!connector?.skill) {
-      throw new Error("External connector skill metadata is unavailable");
+    if (connector === undefined) {
+      throw new Error("Accepted connector skill metadata is unavailable");
     }
     if (connector.skill.kind === "none") {
       return [];
@@ -902,32 +936,19 @@ function buildInjectedSkillVolumes(
   }
   const connectorTypes = args.allowedConnectorTypes ?? [];
   const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
-  const systemSkillVolumes =
-    args.connectorCatalogSnapshot.identity.source === "external"
-      ? [
-          ...(prepareAdditionalVolumesWithSource(
-            buildLegacySystemSkillVolumes(seedSkillNames, framework),
-            "system_skill",
-          ) ?? []),
-          ...buildExternalConnectorSkillVolumes(
-            connectorTypes,
-            args.connectorCatalogSnapshot,
-            framework,
-          ),
-        ]
-      : (prepareAdditionalVolumesWithSource(
-          buildLegacySystemSkillVolumes(
-            [
-              ...seedSkillNames,
-              ...connectorTypes.flatMap((connectorRef) => {
-                const parsed = connectorTypeSchema.safeParse(connectorRef);
-                return parsed.success ? [parsed.data] : [];
-              }),
-            ],
-            framework,
-          ),
-          "system_skill",
-        ) ?? []);
+  // Connector rollout switches govern discovery only. Once a connector ref is
+  // part of a run, its accepted catalog skill remains executable and mountable.
+  const systemSkillVolumes = [
+    ...(prepareAdditionalVolumesWithSource(
+      buildLegacySystemSkillVolumes(seedSkillNames, framework),
+      "system_skill",
+    ) ?? []),
+    ...buildConnectorSkillVolumes(
+      connectorTypes,
+      args.connectorCatalogSnapshot,
+      framework,
+    ),
+  ];
   return [
     ...systemSkillVolumes,
     ...(prepareAdditionalVolumesWithSource(
@@ -1138,9 +1159,7 @@ function artifactsForRun(args: {
   readonly framework: SupportedFramework;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
-  const isContinuation =
-    Boolean(args.resolved.agentSessionId) ||
-    Boolean(args.resolved.resumedFromCheckpointId);
+  const isContinuation = Boolean(args.resolved.agentSessionId);
   const composeContextArtifacts = isContinuation
     ? []
     : composeArtifacts(args.resolved.content);
@@ -3967,69 +3986,6 @@ async function buildPermissionManifest(args: {
   );
 }
 
-function parseVolumeVersionsSnapshot(
-  value: unknown,
-): Record<string, string> | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  if (
-    "versions" in value &&
-    typeof value.versions === "object" &&
-    value.versions !== null
-  ) {
-    return value.versions as Record<string, string>;
-  }
-  return value as Record<string, string>;
-}
-
-function parseAdditionalVolumeSnapshot(
-  value: unknown,
-): AdditionalVolume | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-  const candidate = value as {
-    readonly name?: unknown;
-    readonly versionId?: unknown;
-    readonly mountPath?: unknown;
-  };
-  if (
-    typeof candidate.name !== "string" ||
-    typeof candidate.versionId !== "string" ||
-    typeof candidate.mountPath !== "string"
-  ) {
-    return null;
-  }
-  return {
-    name: candidate.name,
-    version: candidate.versionId,
-    mountPath: candidate.mountPath,
-  };
-}
-
-function parseAdditionalVolumesSnapshot(
-  value: unknown,
-): readonly AdditionalVolume[] | undefined {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("additionalVolumes" in value)
-  ) {
-    return undefined;
-  }
-  const additionalVolumes = (value as { readonly additionalVolumes?: unknown })
-    .additionalVolumes;
-  if (!Array.isArray(additionalVolumes)) {
-    return undefined;
-  }
-  const parsed = additionalVolumes.flatMap((item) => {
-    const volume = parseAdditionalVolumeSnapshot(item);
-    return volume ? [volume] : [];
-  });
-  return parsed.length > 0 ? parsed : undefined;
-}
-
 async function checkRunConcurrencyLimit(
   tx: DbTransaction,
   orgId: string,
@@ -4257,18 +4213,17 @@ function resumeSessionFromSnapshot(
 }
 
 function resolvedSessionStorage(session: {
-  readonly artifacts: readonly ContextArtifact[] | null;
+  readonly id: string;
   readonly storageMounts: readonly PersistedStorageMount[] | null;
 }): Pick<ResolvedCompose, "artifacts" | "persistedStorageMounts"> {
-  if (!session.storageMounts) {
-    return { artifacts: session.artifacts ?? [] };
+  if (session.storageMounts === null) {
+    throw new Error(
+      `Agent session "${session.id}" is missing canonical Storage mounts`,
+    );
   }
   return {
     artifacts: projectLegacyWritebackArtifacts(session.storageMounts),
-    persistedStorageMounts: {
-      mounts: session.storageMounts,
-      mode: "writeback",
-    },
+    persistedStorageMounts: session.storageMounts,
   };
 }
 
@@ -4289,7 +4244,6 @@ function resolveBySessionId(
           .select({
             session: {
               id: agentSessions.id,
-              artifacts: agentSessions.artifacts,
               storageMounts: agentSessions.storageMounts,
             },
             compose: {
@@ -4395,143 +4349,6 @@ function resolveBySessionId(
   });
 }
 
-function resolveByCheckpointId(
-  db: Db,
-  checkpointId: string,
-  userId: string,
-  orgId: string,
-  timing?: ApiDispatchTimingCollector,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(
-    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [row] = await measureApiDispatchTiming(
-        timing,
-        "api_dispatch_resolve_compose_lookup_checkpoint",
-        "nested",
-        async () => {
-          return await db
-            .select({
-              snapshot: checkpoints.agentComposeSnapshot,
-              artifacts: checkpoints.artifactSnapshots,
-              volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
-              storageMounts: checkpoints.storageMounts,
-              conversationId: checkpoints.conversationId,
-              runUserId: agentRuns.userId,
-              runOrgId: agentRuns.orgId,
-            })
-            .from(checkpoints)
-            .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
-            .where(eq(checkpoints.id, checkpointId))
-            .limit(1);
-        },
-      );
-
-      if (!row || row.runUserId !== userId || row.runOrgId !== orgId) {
-        return notFound("Checkpoint not found");
-      }
-
-      const snapshot = row.snapshot as {
-        readonly agentComposeVersionId?: string;
-        readonly vars?: Record<string, string>;
-      };
-      if (!snapshot.agentComposeVersionId) {
-        return badRequestMessage(
-          "Invalid checkpoint: missing agentComposeVersionId",
-        );
-      }
-
-      const resolved = await lookupComposeByVersion(
-        db,
-        snapshot.agentComposeVersionId,
-        timing,
-      );
-      if (isRouteError(resolved)) {
-        return resolved;
-      }
-      const canonicalStorageInputs = row.storageMounts
-        ? projectLegacyCheckpointStorageInputs({
-            content: resolved.content,
-            vars: snapshot.vars,
-            mounts: row.storageMounts,
-          })
-        : null;
-
-      return {
-        ...resolved,
-        // Keep the legacy projection available for requests that explicitly
-        // override checkpoint Storage declarations. The canonical snapshot is
-        // used when there are no overrides.
-        artifacts: row.storageMounts
-          ? projectLegacyWritebackArtifacts(row.storageMounts)
-          : (row.artifacts ?? []),
-        ...(row.storageMounts
-          ? {
-              persistedStorageMounts: {
-                mounts: row.storageMounts,
-                mode: "complete" as const,
-              },
-            }
-          : {}),
-        vars: snapshot.vars ?? {},
-        volumeVersions: row.storageMounts
-          ? canonicalStorageInputs?.volumeVersions
-          : parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
-        additionalVolumes: row.storageMounts
-          ? canonicalStorageInputs?.additionalVolumes
-          : parseAdditionalVolumesSnapshot(row.volumeVersionsSnapshot),
-        resumedFromCheckpointId: checkpointId,
-        resumeSession: await measureApiDispatchTiming(
-          timing,
-          "api_dispatch_resolve_compose_load_resume_session",
-          "nested",
-          async () => {
-            return await get(loadResumeSession(db, row.conversationId, timing));
-          },
-        ),
-      };
-    },
-  );
-}
-
-function loadResumeSession(
-  db: Db,
-  conversationId: string,
-  timing?: ApiDispatchTimingCollector,
-): Computed<Promise<StoredExecutionContext["resumeSession"] | undefined>> {
-  return computed(
-    async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
-      const [conversation] = await db
-        .select({
-          runId: conversations.runId,
-          cliAgentSessionId: conversations.cliAgentSessionId,
-          cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-          cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-          sessionHistoryBlobEncoding: blobs.encoding,
-        })
-        .from(conversations)
-        .leftJoin(
-          blobs,
-          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
-        )
-        .where(eq(conversations.id, conversationId))
-        .limit(1);
-
-      if (!conversation) {
-        return undefined;
-      }
-
-      return await measureApiDispatchTiming(
-        timing,
-        "api_dispatch_resolve_compose_resolve_session_history",
-        "nested",
-        (): StoredExecutionContext["resumeSession"] | undefined => {
-          return resumeSessionFromSnapshot(conversation);
-        },
-      );
-    },
-  );
-}
-
 function resolveCompose(
   db: Db,
   body: CreateRunBody,
@@ -4541,25 +4358,6 @@ function resolveCompose(
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      if (body.checkpointId && body.sessionId) {
-        return badRequestMessage(
-          "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
-        );
-      }
-
-      if (body.checkpointId) {
-        const checkpointId = body.checkpointId;
-        return await measureApiDispatchTiming(
-          timing,
-          "api_dispatch_resolve_compose_by_checkpoint_id",
-          "nested",
-          async () => {
-            return await get(
-              resolveByCheckpointId(db, checkpointId, userId, orgId, timing),
-            );
-          },
-        );
-      }
       if (body.sessionId) {
         const sessionId = body.sessionId;
         return await measureApiDispatchTiming(
@@ -4590,7 +4388,7 @@ function resolveCompose(
       }
       if (!body.agentComposeId) {
         return badRequestMessage(
-          "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, checkpointId, or sessionId.",
+          "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, or sessionId.",
         );
       }
       const agentComposeId = body.agentComposeId;
@@ -4785,6 +4583,7 @@ async function insertZeroRunRecord(
     readonly zeroRunModelPin: ZeroRunModelPin | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly apiStartedAt: Date | null;
   },
 ): Promise<void> {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
@@ -4798,6 +4597,7 @@ async function insertZeroRunRecord(
     triggerAgentId: metadata.triggerAgentId ?? null,
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
+    apiStartedAt: args.apiStartedAt,
   });
 }
 
@@ -4817,6 +4617,7 @@ async function insertLaunchRunRows(
     readonly callbackRows: readonly AgentRunCallbackInsert[];
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly apiStartTime: number;
     readonly runnerGroup: string | undefined;
     readonly error: string | undefined;
   },
@@ -4827,7 +4628,6 @@ async function insertLaunchRunRows(
       userId: args.userId,
       orgId: args.orgId,
       agentComposeId: args.resolved.composeId,
-      artifacts: [],
       storageMounts: args.sessionStorageMounts
         ? [...args.sessionStorageMounts]
         : null,
@@ -4848,9 +4648,7 @@ async function insertLaunchRunRows(
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
     secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
-    additionalVolumes: null,
     storageMounts: args.runStorageMounts ? [...args.runStorageMounts] : null,
-    resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
     continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
     sessionId: args.identity.sessionId,
     lastHeartbeatAt: createdAt,
@@ -4867,6 +4665,7 @@ async function insertLaunchRunRows(
     zeroRunModelPin: args.zeroRunModelPin,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
+    apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   });
 
   if (args.callbackRows.length > 0) {
@@ -5135,6 +4934,62 @@ function recordQueuedRunEnqueueTelemetry(args: {
   }
 }
 
+function recordThreadSessionBindingTelemetry(args: {
+  readonly binding: ThreadSessionBindingWrite;
+  readonly runStatus: "pending" | "queued";
+}): void {
+  const result = safeSync(() => {
+    recordSandboxOperation({
+      sandboxType: "chat",
+      actionType: "chat_thread_session_binding_persisted",
+      durationMs: 0,
+      success: true,
+      runId: args.binding.agentSessionRunId,
+      dimensions: {
+        chat_thread_id: args.binding.chatThreadId,
+        agent_session_id: args.binding.agentSessionId,
+        agent_session_run_id: args.binding.agentSessionRunId,
+        binding_action: args.binding.action,
+        run_status: args.runStatus,
+      },
+    });
+  });
+  if ("error" in result) {
+    L.warn("Failed to record chat thread session binding telemetry", {
+      runId: args.binding.agentSessionRunId,
+      error: result.error,
+    });
+  }
+}
+
+export function recordThreadSessionBindingRetryTelemetry(
+  retry: ThreadSessionSnapshotStale,
+): void {
+  const result = safeSync(() => {
+    recordSandboxOperation({
+      sandboxType: "chat",
+      actionType: "chat_thread_session_binding_retry",
+      durationMs: 0,
+      success: true,
+      runId: retry.agentSessionRunId,
+      dimensions: {
+        chat_thread_id: retry.chatThreadId,
+        agent_session_id: retry.agentSessionId,
+        agent_session_run_id: retry.agentSessionRunId,
+        binding_action: "retried",
+        resolution_action: retry.resolutionAction,
+        retry_reason: retry.reason,
+      },
+    });
+  });
+  if ("error" in result) {
+    L.warn("Failed to record chat thread session binding retry telemetry", {
+      runId: retry.agentSessionRunId,
+      error: result.error,
+    });
+  }
+}
+
 async function publishQueueChangedSafely(args: {
   readonly orgId: string;
   readonly runId: string;
@@ -5390,14 +5245,9 @@ function buildRunnerJobPayload(
             args.run.id,
             args.orgId,
             featureSwitchOverrides,
-            {
-              ...(args.zeroTokenComputerUseHostId
-                ? { computerUseHostId: args.zeroTokenComputerUseHostId }
-                : {}),
-              ...(args.body.triggerSource
-                ? { triggerSource: args.body.triggerSource }
-                : {}),
-            },
+            args.zeroTokenComputerUseHostId
+              ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+              : undefined,
           ),
         )
       : args.body;
@@ -5610,6 +5460,7 @@ async function commitFailedLaunch(args: {
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
+        apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
         error: message,
       });
@@ -5623,6 +5474,13 @@ async function commitFailedLaunch(args: {
 
   if (committed.kind === "queue-first-claim-lost") {
     return committed;
+  }
+
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.identity.runId,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
   }
 
   await publishRunChangedForUserSafely(
@@ -5680,6 +5538,7 @@ async function insertAtomicLaunchRunRecord(args: {
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
+        apiStartTime: args.commit.createArgs.apiStartTime,
         runnerGroup: args.runnerGroup,
         error: undefined,
       });
@@ -5698,6 +5557,133 @@ async function insertAtomicLaunchRunRecord(args: {
     });
   }
   return run;
+}
+
+async function persistThreadSessionBinding(
+  tx: DbTransaction,
+  args: {
+    readonly chatThreadId: string | undefined;
+    readonly identity: LaunchRunIdentity;
+    readonly resolution: ChatThreadSessionResolution | undefined;
+  },
+): Promise<ThreadSessionBindingWrite | undefined> {
+  if (!args.chatThreadId) {
+    return undefined;
+  }
+
+  const [thread] = await tx
+    .select({ agentSessionId: chatThreads.agentSessionId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .for("update")
+    .limit(1);
+  if (!thread) {
+    throw new Error("Chat thread not found while persisting session binding");
+  }
+
+  const action: ThreadSessionBindingAction =
+    args.resolution?.action ??
+    (thread.agentSessionId === null
+      ? "initialized"
+      : thread.agentSessionId === args.identity.sessionId
+        ? "reused"
+        : "rotated");
+  const [updated] = await tx
+    .update(chatThreads)
+    .set({
+      agentSessionId: args.identity.sessionId,
+      agentSessionRunId: args.identity.runId,
+    })
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .returning({ id: chatThreads.id });
+  if (!updated) {
+    throw new Error("Failed to persist chat thread session binding");
+  }
+
+  return {
+    chatThreadId: updated.id,
+    agentSessionId: args.identity.sessionId,
+    agentSessionRunId: args.identity.runId,
+    action,
+  };
+}
+
+function threadSessionSnapshotStale(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly identity: LaunchRunIdentity;
+  readonly reason: ThreadSessionSnapshotStale["reason"];
+}): ThreadSessionSnapshotStale {
+  const resolution = args.createArgs.threadSessionResolution;
+  const chatThreadId = args.createArgs.chatThreadId;
+  if (!resolution || !chatThreadId) {
+    throw new Error("Missing chat thread session snapshot");
+  }
+  return {
+    kind: "thread-session-snapshot-stale",
+    chatThreadId,
+    agentSessionId: args.identity.sessionId,
+    agentSessionRunId: args.identity.runId,
+    resolutionAction: resolution.action,
+    reason: args.reason,
+  };
+}
+
+async function validateThreadSessionSnapshot(
+  tx: DbTransaction,
+  args: {
+    readonly createArgs: CreateAgentRunArgs;
+    readonly identity: LaunchRunIdentity;
+  },
+): Promise<ThreadSessionSnapshotStale | undefined> {
+  const resolution = args.createArgs.threadSessionResolution;
+  const chatThreadId = args.createArgs.chatThreadId;
+  if (!resolution || !chatThreadId) {
+    return undefined;
+  }
+
+  const [thread] = await tx
+    .select({
+      agentSessionId: chatThreads.agentSessionId,
+      agentSessionRunId: chatThreads.agentSessionRunId,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, chatThreadId))
+    .for("update")
+    .limit(1);
+  if (!thread) {
+    throw new Error("Chat thread not found while validating session snapshot");
+  }
+  if (
+    thread.agentSessionId !== resolution.expected.agentSessionId ||
+    thread.agentSessionRunId !== resolution.expected.agentSessionRunId
+  ) {
+    return threadSessionSnapshotStale({
+      createArgs: args.createArgs,
+      identity: args.identity,
+      reason: "binding_changed",
+    });
+  }
+
+  if (resolution.expected.sessionId === null) {
+    return undefined;
+  }
+  const [session] = await tx
+    .select({ conversationId: agentSessions.conversationId })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, resolution.expected.sessionId))
+    .for("update")
+    .limit(1);
+  if (
+    !session ||
+    session.conversationId !== resolution.expected.conversationId
+  ) {
+    return threadSessionSnapshotStale({
+      createArgs: args.createArgs,
+      identity: args.identity,
+      reason: "session_changed",
+    });
+  }
+  return undefined;
 }
 
 async function commitQueuedPreparedLaunch(
@@ -5732,6 +5718,11 @@ async function commitQueuedPreparedLaunch(
     .select({ depth: count() })
     .from(agentRunQueue)
     .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
+  const threadSessionBinding = await persistThreadSessionBinding(tx, {
+    chatThreadId: args.createArgs.chatThreadId,
+    identity: args.identity,
+    resolution: args.createArgs.threadSessionResolution,
+  });
   return {
     kind: "queued",
     run,
@@ -5740,6 +5731,7 @@ async function commitQueuedPreparedLaunch(
     telemetryTimestamp: nowDate().toISOString(),
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
+    threadSessionBinding,
   };
 }
 
@@ -5781,6 +5773,11 @@ async function commitPendingPreparedLaunch(
       );
     },
   );
+  const threadSessionBinding = await persistThreadSessionBinding(tx, {
+    chatThreadId: args.createArgs.chatThreadId,
+    identity: args.identity,
+    resolution: args.createArgs.threadSessionResolution,
+  });
   return {
     kind: "pending",
     run,
@@ -5788,6 +5785,7 @@ async function commitPendingPreparedLaunch(
     runnerJobCreatedAt,
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
+    threadSessionBinding,
   };
 }
 
@@ -5805,6 +5803,13 @@ async function commitPreparedLaunch(
         );
       },
     );
+    const staleThreadSession = await validateThreadSessionSnapshot(tx, {
+      createArgs: args.createArgs,
+      identity: args.identity,
+    });
+    if (staleThreadSession) {
+      return staleThreadSession;
+    }
     const concurrency = await args.timing.measure(
       "api_dispatch_check_concurrency_limit",
       "nested",
@@ -6669,30 +6674,6 @@ function prepareRunOutputMetadata(args: {
   };
 }
 
-function resolvedForStorageCompatibility(args: {
-  readonly initialBody: CreateRunBody;
-  readonly resolved: ResolvedCompose;
-}): ResolvedCompose {
-  if (args.resolved.persistedStorageMounts?.mode !== "complete") {
-    return args.resolved;
-  }
-
-  const hasLegacyOverride =
-    (args.initialBody.artifacts?.length ?? 0) > 0 ||
-    args.initialBody.additionalVolumes !== undefined ||
-    args.initialBody.volumeVersions !== undefined;
-  if (!hasLegacyOverride) {
-    return args.resolved;
-  }
-
-  // resolveByCheckpointId reconstructs alias-keyed compose versions and
-  // additional-volume declarations from the canonical checkpoint snapshot,
-  // so explicit legacy overrides can stay on the compatibility reader.
-  const { persistedStorageMounts: _persistedStorageMounts, ...resolved } =
-    args.resolved;
-  return resolved;
-}
-
 function prepareRunContext(input: {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
@@ -6750,10 +6731,7 @@ function prepareRunContext(input: {
         return runtimeContext;
       }
       const body = bodyContext.body;
-      const resolved = resolvedForStorageCompatibility({
-        initialBody,
-        resolved: bodyContext.resolved,
-      });
+      const resolved = bodyContext.resolved;
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -6829,6 +6807,12 @@ async function committedAtomicLaunchResponse(args: {
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+  if (args.committed.threadSessionBinding) {
+    recordThreadSessionBindingTelemetry({
+      binding: args.committed.threadSessionBinding,
+      runStatus: args.committed.kind,
+    });
+  }
   if (args.committed.kind === "queued") {
     recordQueuedRunEnqueueTelemetry({
       runId: args.committed.run.id,
@@ -6858,6 +6842,13 @@ async function committedAtomicLaunchResponse(args: {
     return args.committed.queueFirstClaim
       ? { ...response, queueFirstClaim: args.committed.queueFirstClaim }
       : response;
+  }
+
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.committed.run.id,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
@@ -6946,6 +6937,9 @@ async function finalizeAtomicLaunchCommit(args: {
       launch: args.launch,
       timing: args.input.timing,
     });
+    return args.committed;
+  }
+  if (args.committed.kind === "thread-session-snapshot-stale") {
     return args.committed;
   }
   if (args.committed.kind === "queue-payload-required") {
@@ -7155,7 +7149,19 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
-    const { args, timing } = input;
+    // A preview request that passed the protection guard gives its sandbox CLI
+    // the same bypass through the existing user-environment channel.
+    const previewAutomationBypass = get(previewAutomationBypass$);
+    const args = previewAutomationBypass
+      ? {
+          ...input.args,
+          extraEnvironment: {
+            ...input.args.extraEnvironment,
+            [VERCEL_AUTOMATION_BYPASS_ENV]: previewAutomationBypass,
+          },
+        }
+      : input.args;
+    const { timing } = input;
     const db = set(writeDb$);
     if (input.checkOrgPlanStatusBeforeContext) {
       const tierGate = await timing.measure(
@@ -7278,6 +7284,9 @@ export const createAgentRun$ = command(
     );
     if (isQueueFirstRunClaimLost(result)) {
       throw new Error("Direct run unexpectedly lost a queue-first claim");
+    }
+    if (isThreadSessionSnapshotStale(result)) {
+      throw new Error("Direct run unexpectedly used a stale thread session");
     }
     return result;
   },

@@ -8,7 +8,7 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -42,7 +42,7 @@ type StaffFixture =
   | {
       readonly kind: "connector";
       readonly actor: ApiTestUser;
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorRef;
     }
   | {
       readonly kind: "workflow";
@@ -169,7 +169,7 @@ async function createWorkflow(
 
 async function connectManualGrant(
   actor: ApiTestUser,
-  connectorType: ConnectorType,
+  connectorType: ConnectorRef,
   authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
   values: Parameters<typeof connectorApi.connectManualGrant>[3],
 ) {
@@ -325,7 +325,7 @@ describe("zero workflows", () => {
         connectorRef: "gmail",
         label: "Gmail",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+          url: "https://static.vm0.io/test-fixtures/connectors/gmail.svg",
           invertInDarkMode: false,
         },
         reason: "The workflow reads Gmail messages.",
@@ -335,8 +335,8 @@ describe("zero workflows", () => {
         connectorRef: "runtime",
         label: "Runtime",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/runtime-529df4ae1f3f.svg",
-          invertInDarkMode: true,
+          url: "https://static.vm0.io/test-fixtures/connectors/runtime.svg",
+          invertInDarkMode: false,
         },
         reason: "The workflow reads Runtime jobs.",
         status: "not-enabled-for-agent",
@@ -345,7 +345,7 @@ describe("zero workflows", () => {
         connectorRef: "gitlab",
         label: "GitLab",
         icon: {
-          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gitlab-3f258ed8cb9a.svg",
+          url: "https://static.vm0.io/test-fixtures/connectors/gitlab.svg",
           invertInDarkMode: false,
         },
         reason: "The workflow reads GitLab projects.",
@@ -466,6 +466,28 @@ describe("zero workflows", () => {
     expect(names(memberList.body)).not.toContain(created.body.name);
   });
 
+  it("allows workflow names removed from the built-in seed set", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Former Seed Skill Agent",
+      visibility: "private",
+    });
+
+    const created = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: "deep-dive",
+      displayName: "Deep Dive",
+      instruction: "# custom deep dive workflow",
+    });
+
+    expect(created.body).toMatchObject({
+      agentId: agent.agentId,
+      name: "deep-dive",
+      displayName: "Deep Dive",
+      ownerUserId: actor.userId,
+    });
+  });
+
   it("runs a workflow slash command with workflow timing attribution", async () => {
     const actor = user({ orgRole: "org:admin" });
     await api.grantProEntitlement(actor);
@@ -509,7 +531,22 @@ describe("zero workflows", () => {
 
     expect(run.body.chatThreadId).toStrictEqual(expect.any(String));
     expect(run.body.runId).toStrictEqual(expect.any(String));
+    if (!run.body.runId) {
+      throw new Error("Expected an idle workflow invocation to create a run");
+    }
     expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
+
+    const queued = await accept(
+      detailClient().run({
+        headers: authHeaders(actor),
+        params: { workflowId: created.body.id },
+      }),
+      [200],
+    );
+    expect(queued.body).toStrictEqual({
+      chatThreadId: run.body.chatThreadId,
+      runId: null,
+    });
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.body.runId);

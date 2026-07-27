@@ -123,12 +123,10 @@ export {
   type NetworkLogsResponse,
   type SearchResult,
   type LogsSearchResponse,
-  runsQueueContract,
   queueEntrySchema,
   runningTaskSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
-  type RunsQueueContract,
   type QueueEntry,
   type RunningTask,
   type ConcurrencyInfo,
@@ -147,24 +145,10 @@ export {
   type ZeroUserModelPreferenceContract,
 } from "./zero-user-model-preference";
 export {
-  storagesContract,
-  storageTypeSchema,
-  uploadStorageResponseSchema,
-  // Direct upload schemas (shared with webhooks)
   MAX_FILE_SIZE_BYTES,
   fileEntryWithHashSchema,
   storageChangesSchema,
   presignedUploadSchema,
-  // Direct upload contracts (CLI endpoints)
-  storagesPrepareContract,
-  storagesCommitContract,
-  storagesDownloadContract,
-  storagesListContract,
-  type StoragesContract,
-  type StoragesPrepareContract,
-  type StoragesCommitContract,
-  type StoragesDownloadContract,
-  type StoragesListContract,
 } from "./storages";
 export {
   registryResourceDownloadContract,
@@ -199,15 +183,7 @@ export {
   type TestTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeResponse,
 } from "./test-teams-dispatch-probe";
-export {
-  zeroEmailInboundContract,
-  zeroEmailReplyCallbackContract,
-  zeroEmailReplyCallbackPayloadSchema,
-  zeroEmailTriggerCallbackContract,
-  zeroEmailTriggerCallbackPayloadSchema,
-  type ZeroEmailReplyCallbackPayload,
-  type ZeroEmailTriggerCallbackPayload,
-} from "./zero-email";
+export { zeroEmailInboundContract } from "./zero-email";
 export {
   sandboxReuseResultSchema,
   webhookClerkContract,
@@ -225,8 +201,6 @@ export {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
   webhookHeartbeatContract,
-  webhookStoragesContract,
-  webhookStoragesIncrementalContract,
   webhookTelemetryContract,
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
@@ -239,15 +213,12 @@ export {
   type WebhookCheckpointsContract,
   type WebhookCheckpointsPrepareHistoryContract,
   type WebhookHeartbeatContract,
-  type WebhookStoragesContract,
-  type WebhookStoragesIncrementalContract,
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookModelUsageObservationContract,
   webhookUsageEventContract,
   type WebhookClerkContract,
-  type WebhookModelUsageObservationContract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookGmailContract,
@@ -260,11 +231,9 @@ export {
   cliAuthDeviceContract,
   cliAuthTokenContract,
   cliAuthApproveContract,
-  cliAuthOrgContract,
   type CliAuthDeviceContract,
   type CliAuthTokenContract,
   type CliAuthApproveContract,
-  type CliAuthOrgContract,
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
 export {
@@ -382,6 +351,14 @@ export {
   type TestUsageInsightStateFixture,
 } from "./test-usage-insight-state";
 export {
+  testUsageSettlementContract,
+  testUsageSettlementRequestSchema,
+  testUsageSettlementResponseSchema,
+  type TestUsageSettlementContract,
+  type TestUsageSettlementRequest,
+  type TestUsageSettlementResponse,
+} from "./test-usage-settlement";
+export {
   testCronCleanupSandboxesStateActionBodySchema,
   testCronCleanupSandboxesStateActionResponseSchema,
   testCronCleanupSandboxesStateContract,
@@ -390,18 +367,6 @@ export {
   type TestCronCleanupSandboxesStateActionResponse,
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
-export {
-  testSlackDispatchProbeBodySchema,
-  testSlackDispatchProbeContract,
-  testSlackDispatchProbeErrorSchema,
-  testSlackDispatchProbeFailureResponseSchema,
-  testSlackDispatchProbeResponseSchema,
-  testSlackDispatchProbeSuccessResponseSchema,
-  type TestSlackDispatchProbeBody,
-  type TestSlackDispatchProbeContract,
-  type TestSlackDispatchProbeError,
-  type TestSlackDispatchProbeResponse,
-} from "./test-slack-dispatch-probe";
 export {
   testSlackStateContract,
   testSlackStateErrorSchema,
@@ -498,13 +463,11 @@ export {
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgDefaultAgentContract,
   orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
   isOrgTier,
-  type OrgDefaultAgentContract,
   type OrgResponse,
   type UpdateOrgRequest,
   type OrgTier,
@@ -614,19 +577,18 @@ export {
 } from "./model-providers";
 export {
   sessionsByIdContract,
-  checkpointsByIdContract,
   sessionResponseSchema,
-  checkpointResponseSchema,
-  agentComposeSnapshotSchema,
-  volumeVersionsSnapshotSchema,
   type SessionsByIdContract,
-  type CheckpointsByIdContract,
   // Inferred types
   type SessionResponse,
-  type CheckpointResponse,
-  type AgentComposeSnapshot,
-  type VolumeVersionsSnapshot,
 } from "./sessions";
+export {
+  artifactCatalogContract,
+  type ArtifactCatalogContract,
+  type ArtifactCatalogKind,
+  type ArtifactDetail,
+  type ArtifactSummary,
+} from "./artifact-catalog";
 export {
   chatThreadsContract,
   chatThreadByIdContract,
@@ -663,7 +625,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
   type WebsiteGenerationTemplateRequest,
@@ -700,7 +661,6 @@ export {
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
-  type HtmlArtifactEditSnapshot,
 } from "./chat-threads";
 export {
   runnersPollContract,
@@ -722,7 +682,6 @@ export {
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
-  RUNNER_STORAGE_MOUNTS_CAPABILITY,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   artifactEntrySchema,
@@ -787,27 +746,6 @@ export {
   type LogsFilters,
 } from "./logs";
 
-export {
-  connectorTypeSchema,
-  CONNECTOR_TYPES,
-  CONNECTOR_DISPLAY_CATEGORY_GROUPS,
-  CONNECTOR_DISPLAY_CATEGORY_META,
-  CONNECTOR_DISPLAY_CATEGORY_ORDER,
-  type ConnectorType,
-  type AuthGrantConnectorType,
-  type ConnectorConfig,
-  type ConnectorDisplayCategory,
-  type ConnectorDisplayCategoryGroup,
-  type ConnectorAuthMethodConfig,
-  type ConnectorRegistryAuthMethodId,
-  type ConnectorEnvBindings,
-  type ConnectorEnvBindingValue,
-} from "@vm0/connectors/connectors";
-export {
-  getConnectorOwnedSecretNames,
-  getConnectorEnvBindingEntries,
-  type ScopeDiff,
-} from "@vm0/connectors/connector-utils";
 export {
   connectorResponseConnectionStatusSchema,
   connectorResponseSchema,
@@ -967,6 +905,14 @@ export {
   gmailNewMessageEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailWorkflowEventConfigSchema,
+  githubDeploymentStatusCreatedEventConfigSchema,
+  githubDeploymentStateSchema,
+  githubIssueCommentCreatedEventConfigSchema,
+  githubIssueCommentSubjectFilterSchema,
+  githubPullRequestReviewStateSchema,
+  githubPullRequestReviewSubmittedEventConfigSchema,
+  githubWorkflowJobCompletedEventConfigSchema,
+  githubWorkflowRunCompletedEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   zeroWorkflowScheduleSchema,
   zeroWorkflowAutomationSummarySchema,
@@ -995,6 +941,14 @@ export {
   type GmailNewMessageEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailWorkflowEventConfig,
+  type GithubDeploymentStatusCreatedEventConfig,
+  type GithubDeploymentState,
+  type GithubIssueCommentCreatedEventConfig,
+  type GithubIssueCommentSubjectFilter,
+  type GithubPullRequestReviewState,
+  type GithubPullRequestReviewSubmittedEventConfig,
+  type GithubWorkflowJobCompletedEventConfig,
+  type GithubWorkflowRunCompletedEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarWorkflowEventConfig,
   type ZeroWorkflowSchedule,
@@ -1211,6 +1165,20 @@ export {
   type IntegrationsSlackMessageContract,
   type SendSlackMessageBody,
   type SendSlackMessageResponse,
+  integrationsFeishuMessageContract,
+  type IntegrationsFeishuMessageContract,
+  type SendFeishuMessageBody,
+  type SendFeishuMessageResponse,
+  integrationsFeishuDownloadFileContract,
+  type IntegrationsFeishuDownloadFileContract,
+  type FeishuResourceType,
+  integrationsFeishuUploadInitContract,
+  type FeishuUploadInitBody,
+  type FeishuUploadInitResponse,
+  integrationsFeishuUploadCompleteContract,
+  type FeishuUploadCompleteBody,
+  type FeishuUploadCompleteResponse,
+  FEISHU_FILE_UPLOAD_MAX_BYTES,
   integrationsTelegramMessageContract,
   type IntegrationsTelegramMessageContract,
   type SendTelegramMessageBody,
@@ -1331,6 +1299,53 @@ export {
   type ZeroScrapeRequest,
   type ZeroScrapeResponse,
 } from "./zero-scrape";
+export {
+  ZERO_FINANCE_DEFAULT_INTERVAL,
+  ZERO_FINANCE_DEFAULT_RANGE,
+  ZERO_FINANCE_MAX_QUERY_CHARS,
+  ZERO_FINANCE_MAX_SYMBOL_CHARS,
+  zeroFinanceChartRequestSchema,
+  zeroFinanceContract,
+  zeroFinanceIntervalSchema,
+  zeroFinanceOperationSchema,
+  zeroFinanceProfileRequestSchema,
+  zeroFinanceQuoteRequestSchema,
+  zeroFinanceRangeSchema,
+  zeroFinanceResponseSchema,
+  zeroFinanceSearchRequestSchema,
+  type ZeroFinanceChartRequest,
+  type ZeroFinanceContract,
+  type ZeroFinanceInterval,
+  type ZeroFinanceOperation,
+  type ZeroFinanceProfileRequest,
+  type ZeroFinanceQuoteRequest,
+  type ZeroFinanceRange,
+  type ZeroFinanceResponse,
+  type ZeroFinanceSearchRequest,
+} from "./zero-finance";
+export {
+  ZERO_PEOPLE_SEARCH_DEFAULT_LIMIT,
+  ZERO_PEOPLE_SEARCH_MAX_COMPANY_CHARS,
+  ZERO_PEOPLE_SEARCH_MAX_LIMIT,
+  ZERO_PEOPLE_SEARCH_MAX_LOCATION_CHARS,
+  ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS,
+  ZERO_PEOPLE_SEARCH_MAX_QUERY_CHARS,
+  ZERO_PEOPLE_SEARCH_MAX_SOURCES,
+  ZERO_PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
+  ZERO_PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS,
+  ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
+  ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS,
+  zeroPeopleSearchContract,
+  zeroPeopleSearchProfileSchema,
+  zeroPeopleSearchRequestSchema,
+  zeroPeopleSearchResponseSchema,
+  zeroPeopleSearchSourceSchema,
+  type ZeroPeopleSearchContract,
+  type ZeroPeopleSearchProfile,
+  type ZeroPeopleSearchRequest,
+  type ZeroPeopleSearchResponse,
+  type ZeroPeopleSearchSource,
+} from "./zero-people-search";
 export {
   ZERO_WEB_SEARCH_DEFAULT_LIMIT,
   ZERO_WEB_SEARCH_MAX_DATE_CHARS,
@@ -1453,12 +1468,6 @@ export {
   type ZeroSlackInteractiveContract,
 } from "./zero-slack-interactive";
 export {
-  zeroSlackBrowserConnectContract,
-  zeroSlackBrowserConnectQuerySchema,
-  type ZeroSlackBrowserConnectContract,
-  type ZeroSlackBrowserConnectQuery,
-} from "./zero-slack-browser-connect";
-export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,
   zeroSlackOauthConnectQuerySchema,
@@ -1525,7 +1534,6 @@ export {
   type ComputerUseCommandResult,
   type ComputerUseCommandStatus,
   type ComputerUseHost,
-  type ComputerUseHostDeleteResponse,
   type ComputerUseHostListResponse,
   type ComputerUsePluginCommandKind,
   type ComputerUseReadCommandKind,
@@ -1566,11 +1574,8 @@ export {
 } from "./zero-computer-use-plugins";
 export {
   zeroInsightsContract,
-  zeroInsightsRangeContract,
   type ZeroInsightsContract,
-  type ZeroInsightsRangeContract,
   type InsightsResponse,
-  type InsightsRangeResponse,
   type DayInsight,
 } from "./zero-insights";
 export {

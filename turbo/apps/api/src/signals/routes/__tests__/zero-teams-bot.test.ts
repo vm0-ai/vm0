@@ -19,6 +19,7 @@ import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { ROUTES } from "../../route";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
@@ -823,11 +824,12 @@ async function setupConnectedTeamsBotActor(): Promise<{
   authOrgApi.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
-  const agent = await authOrgApi.createAgent(actor, {
+  const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Teams default agent",
+  });
+  await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
     visibility: "public",
   });
-  await authOrgApi.setDefaultAgent(actor, agent.agentId);
   await runsApi.grantProEntitlement(actor);
   await runsApi.ensureOrgModelProvider(actor);
   botFrameworkHandlers();
@@ -1398,11 +1400,15 @@ describe("POST /api/zero/teams/bot", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const agent = await authOrgApi.createAgent(actor, {
-      displayName: "Teams file agent",
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams file agent",
+      },
+    );
+    await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
-    await authOrgApi.setDefaultAgent(actor, agent.agentId);
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     await installTeamsForTest(context.signal, fixture);
@@ -2020,11 +2026,15 @@ describe("POST /api/zero/teams/bot", () => {
     });
     context.mocks.ably.publish.mockResolvedValue(undefined);
     authOrgApi.acceptAgentStorageWrites();
-    const defaultAgent = await authOrgApi.createAgent(actor, {
-      displayName: "Teams default agent",
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams default agent",
+      },
+    );
+    await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
-    await authOrgApi.setDefaultAgent(actor, defaultAgent.agentId);
     const supportAgent = await authOrgApi.createAgent(actor, {
       displayName: "Teams support agent",
       visibility: "public",
@@ -2076,8 +2086,19 @@ describe("POST /api/zero/teams/bot", () => {
     expect(switchResponse.status).toBe(200);
     const switchBody = await readTeamsBotResponseAndFlush(switchResponse);
     expect(switchBody).not.toHaveProperty("dispatch");
+    await upsertOrgPlanEntitlementFixture({
+      orgId: fixture.orgId,
+      status: "suspended",
+    });
 
     outboundRequests.splice(0, outboundRequests.length);
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      chatMessages: [],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
     const failedResponse = await postTeamsActivity({
       activity: teamsPersonalMessageActivity({
         fixture,
@@ -2125,11 +2146,15 @@ describe("POST /api/zero/teams/bot", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const agent = await authOrgApi.createAgent(actor, {
-      displayName: "Teams default agent",
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams default agent",
+      },
+    );
+    await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
-    await authOrgApi.setDefaultAgent(actor, agent.agentId);
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     botFrameworkHandlers();
@@ -2562,7 +2587,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(zeroAuth?.capabilities).toContain("computer-use:write");
 
     await runsApi.requestCancelRun(actor, secondRunId, [200]);
-    await computerUseApi.deleteComputerUseHost(actor, host.hostId);
+    await computerUseApi.stopComputerUseHost(host.hostToken);
   });
 
   it("asks connected Teams users to configure a default agent", async () => {

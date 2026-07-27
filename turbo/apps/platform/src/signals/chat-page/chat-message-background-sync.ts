@@ -1,11 +1,21 @@
 import { command } from "ccstate";
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import { currentChatThreadId$ } from "../agent-chat.ts";
+import { searchParams$ } from "../route.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
-  hasIndexedDbChatMessage$,
   loadIndexedDbChatMessageBounds$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
-import { listMessagesAfter$ } from "./remote-chat-thread-data-source.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+  SIDEBAR_PARAM,
+} from "./chat-thread-panes.ts";
+import {
+  CHAT_MESSAGES_PAGE_LIMIT,
+  listMessagesAfter$,
+} from "./remote-chat-thread-data-source.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatMessageBackgroundSync");
@@ -29,33 +39,58 @@ function createdMessageThreadId(message: unknown): string | null {
   return UUID_PATTERN.test(threadId) ? threadId : null;
 }
 
-function createdMessageSyncThroughMessageId(message: unknown): string | null {
+function createdMessageSyncThroughSeqId(message: unknown): number | null {
   if (
     typeof message !== "object" ||
     message === null ||
     !("data" in message) ||
     typeof message.data !== "object" ||
     message.data === null ||
-    !("syncThroughMessageId" in message.data) ||
-    typeof message.data.syncThroughMessageId !== "string" ||
-    !UUID_PATTERN.test(message.data.syncThroughMessageId)
+    !("syncThroughSeqId" in message.data) ||
+    typeof message.data.syncThroughSeqId !== "number" ||
+    !Number.isSafeInteger(message.data.syncThroughSeqId) ||
+    message.data.syncThroughSeqId <= 0
   ) {
     return null;
   }
-  return message.data.syncThroughMessageId;
+  return message.data.syncThroughSeqId;
 }
 
 const syncChatThreadMessagesToIndexedDb$ = command(
-  async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    {
+      threadId,
+      syncThroughSeqId,
+    }: {
+      readonly threadId: string;
+      readonly syncThroughSeqId: number | null;
+    },
+    signal: AbortSignal,
+  ): Promise<PagedChatMessage[]> => {
     const bounds = await set(loadIndexedDbChatMessageBounds$, threadId, signal);
     signal.throwIfAborted();
 
-    let sinceId = bounds.last?.id;
+    if (
+      syncThroughSeqId !== null &&
+      bounds.last !== null &&
+      bounds.last.seqId >= syncThroughSeqId
+    ) {
+      L.debug("skipped background sync: seq watermark already cached", {
+        threadId,
+        syncThroughSeqId,
+      });
+      return [];
+    }
+
+    const syncedMessages: PagedChatMessage[] = [];
+    let sinceSeqId = bounds.last?.seqId;
 
     async function syncMessagesAfter(): Promise<void> {
+      const requestedSinceSeqId = sinceSeqId;
       const result = await set(
         listMessagesAfter$,
-        { threadId, sinceId },
+        { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
@@ -66,13 +101,61 @@ const syncChatThreadMessagesToIndexedDb$ = command(
 
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
-      sinceId = result.messages.at(-1)!.id;
+      syncedMessages.push(...result.messages);
+      sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
+      if (
+        requestedSinceSeqId !== undefined &&
+        result.messages.length < CHAT_MESSAGES_PAGE_LIMIT
+      ) {
+        return;
+      }
       await syncMessagesAfter();
     }
 
     await syncMessagesAfter();
     signal.throwIfAborted();
     L.debug("synced chat messages to IndexedDB", { threadId });
+    return syncedMessages;
+  },
+);
+
+const receiveSyncedMessagesInVisibleThreads$ = command(
+  async (
+    { get, set },
+    {
+      threadId,
+      messages,
+    }: {
+      threadId: string;
+      messages: PagedChatMessage[];
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const mainThreadId = get(currentChatThreadId$);
+    if (mainThreadId === null) {
+      return;
+    }
+
+    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
+    const leftThread = get(currentLeftThread$);
+    const rightThread = get(currentRightThread$);
+    const visibleThreads = [
+      mainThreadId === threadId && leftThread?.threadId === threadId
+        ? leftThread
+        : null,
+      sidebarThreadId === threadId && rightThread?.threadId === threadId
+        ? rightThread
+        : null,
+    ].filter((thread) => {
+      return thread !== null;
+    });
+
+    await Promise.all(
+      visibleThreads.map(async (thread) => {
+        await set(thread.receiveSyncedMessages$, messages, signal);
+      }),
+    );
+    signal.throwIfAborted();
   },
 );
 
@@ -83,27 +166,53 @@ const handleUserChannelMessage$ = command(
       return false;
     }
 
-    const syncThroughMessageId = createdMessageSyncThroughMessageId(message);
-    if (syncThroughMessageId !== null) {
-      // Watermark row already cached means every row of this publish is —
-      // the forward sync cursor never leaves gaps below a cached row.
-      const cached = await set(
-        hasIndexedDbChatMessage$,
-        threadId,
-        syncThroughMessageId,
-        signal,
-      );
-      signal.throwIfAborted();
-      if (cached) {
-        L.debug("skipped background sync: watermark already cached", {
-          threadId,
-          syncThroughMessageId,
-        });
-        return false;
-      }
+    const syncThroughSeqId = createdMessageSyncThroughSeqId(message);
+    const messages = await set(
+      syncChatThreadMessagesToIndexedDb$,
+      { threadId, syncThroughSeqId },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(
+      receiveSyncedMessagesInVisibleThreads$,
+      { threadId, messages },
+      signal,
+    );
+    signal.throwIfAborted();
+    return false;
+  },
+);
+
+const catchUpVisibleChatThreadMessages$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const mainThreadId = get(currentChatThreadId$);
+    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
+    const leftThreadId = get(currentLeftThread$)?.threadId;
+    const rightThreadId = get(currentRightThread$)?.threadId;
+    const visibleThreadIds = new Set<string>();
+
+    if (mainThreadId !== null && leftThreadId === mainThreadId) {
+      visibleThreadIds.add(mainThreadId);
+    }
+    if (sidebarThreadId !== null && rightThreadId === sidebarThreadId) {
+      visibleThreadIds.add(sidebarThreadId);
     }
 
-    await set(syncChatThreadMessagesToIndexedDb$, threadId, signal);
+    await Promise.all(
+      Array.from(visibleThreadIds, async (threadId) => {
+        const messages = await set(
+          syncChatThreadMessagesToIndexedDb$,
+          { threadId, syncThroughSeqId: null },
+          signal,
+        );
+        signal.throwIfAborted();
+        await set(
+          receiveSyncedMessagesInVisibleThreads$,
+          { threadId, messages },
+          signal,
+        );
+      }),
+    );
     signal.throwIfAborted();
     return false;
   },
@@ -113,7 +222,10 @@ const subscribeChatMessageBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       setAblyMessageLoop$,
-      { loopCommand$: handleUserChannelMessage$ },
+      {
+        loopCommand$: handleUserChannelMessage$,
+        catchUpCommand$: catchUpVisibleChatThreadMessages$,
+      },
       signal,
     );
   },

@@ -1,4 +1,4 @@
-// Mock for @clerk/clerk-react
+// Mock for @clerk/react
 import { createElement, type ReactNode } from "react";
 
 interface ClerkProviderProps {

@@ -1,6 +1,6 @@
 {
   "name": "@vm0/core",
-  "version": "8.457.1",
+  "version": "8.472.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -28,8 +28,8 @@
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
-    "oxlint": "^1.57.0",
-    "oxlint-tsgolint": "0.23.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "7.0.2001",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"
   },

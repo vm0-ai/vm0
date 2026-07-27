@@ -15,8 +15,8 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.x_flow_helpers import (
-    json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
+    json_body_that_exceeds_nesting_limit,
 )
 from usage.providers.connectors import x_billing
 
@@ -89,6 +89,44 @@ def test_tweet_create_plain_text_downgrades_to_content_create(x_usage, tmp_path,
         rule="POST /2/tweets",
     )
     flow.request.method = "POST"
+    flow.request.content = json.dumps({"text": "hello world"}).encode()
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_depth_guard_ignores_delimiters_inside_strings(x_usage, tmp_path, real_flow):
+    """Escaped strings with many delimiters remain valid plain-text bodies."""
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = json.dumps({"text": '[{"escaped \\" delimiter"}]' * 100}).encode()
+
+    p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_lowercase_post_tweet_create_plain_text_downgrades(x_usage, tmp_path, real_flow):
+    """Lowercase POST methods still refine plain-text tweet creation."""
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "post"
     flow.request.content = json.dumps({"text": "hello world"}).encode()
     p = x_usage.call_and_get_single_billing(flow)
     assert p["category"] == "content.create"
@@ -615,14 +653,14 @@ def test_tweet_create_unparseable_body_stays_conservative(x_usage, tmp_path, rea
 @pytest.mark.parametrize(
     "request_body",
     [
-        pytest.param(json_body_that_exceeds_decoder_recursion(), id="decoder-recursion"),
+        pytest.param(json_body_that_exceeds_nesting_limit(), id="excessive-nesting"),
         pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
     ],
 )
-def test_tweet_create_json_parser_failure_stays_conservative(
+def test_tweet_create_uninspectable_json_stays_conservative(
     x_usage, tmp_path, real_flow, request_body
 ):
-    """Stdlib JSON parser failures must not interrupt tweet-create billing."""
+    """Uninspectable JSON must not interrupt tweet-create billing."""
     flow = x_usage.make_flow(
         real_flow,
         tmp_path,

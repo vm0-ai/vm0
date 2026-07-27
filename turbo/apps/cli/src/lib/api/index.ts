@@ -135,6 +135,7 @@ export { linkZeroMailDraft } from "./domains/zero-mail";
 export {
   sendSlackMessage,
   initSlackFileUpload,
+  materializeSlackFileUpload,
   completeSlackFileUpload,
   downloadSlackFile,
 } from "./domains/integrations-slack";
@@ -155,6 +156,14 @@ export {
   completeTeamsFileUpload,
   downloadTeamsFile,
 } from "./domains/integrations-teams";
+
+// Domain modules - Integrations Feishu
+export {
+  sendFeishuMessage,
+  downloadFeishuFile,
+  initFeishuFileUpload,
+  completeFeishuFileUpload,
+} from "./domains/integrations-feishu";
 
 // Domain modules - Integrations GitHub
 export {
@@ -183,11 +192,14 @@ export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
 // Domain modules - Zero Chat
 export {
+  getZeroChatThreadSnapshot,
   getZeroChatThread,
+  listZeroChatThreadEvents,
   renameZeroChatThread,
   searchZeroChat,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
+export type { ZeroChatThreadSnapshot } from "./domains/zero-chat";
 
 // Domain modules - Zero Developer Support
 export {
@@ -207,6 +219,14 @@ export {
   getComputerUseCommand,
 } from "./domains/zero-computer-use";
 
+// Domain modules - Zero Browser
+export {
+  createZeroBrowser,
+  getCurrentZeroBrowser,
+  leaseZeroBrowser,
+  useZeroBrowser,
+} from "./domains/zero-browser";
+
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
 
@@ -219,9 +239,20 @@ export {
 // Domain modules - Zero Scrape
 export { callZeroScrape, type ZeroScrapeResponse } from "./domains/zero-scrape";
 export {
+  callZeroPeopleSearch,
+  type ZeroPeopleSearchResponse,
+} from "./domains/zero-people-search";
+export {
   callZeroWebSearch,
   type ZeroWebSearchResponse,
 } from "./domains/zero-web-search";
+export {
+  callZeroFinanceChart,
+  callZeroFinanceProfile,
+  callZeroFinanceQuote,
+  callZeroFinanceSearch,
+  type ZeroFinanceResponse,
+} from "./domains/zero-finance";
 
 // Domain modules - Zero Banking
 export {
@@ -232,6 +263,7 @@ export {
 // Domain modules - Web
 export {
   downloadWebFile,
+  inferWebUploadContentType,
   uploadWebFile,
   generateWebVoice,
   generateWebImage,

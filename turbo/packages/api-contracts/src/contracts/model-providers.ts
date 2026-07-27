@@ -90,7 +90,7 @@ export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",
-  "claude-opus-4-8",
+  "claude-opus-5",
   "claude-sonnet-5",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
@@ -105,13 +105,40 @@ export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
-const RETIRED_VM0_AUTO_MODEL = "vm0-model";
+// Browser clients loaded before a model retirement can keep submitting these
+// ids during rollout. Remove an entry only after those clients have aged out.
+const RETIRED_RUN_MODELS = ["vm0-model", "gpt-5.4", "gpt-5.4-mini"] as const;
+
+type RetiredRunModel = (typeof RETIRED_RUN_MODELS)[number];
+
+const retiredRunModelSchema = z.enum(RETIRED_RUN_MODELS);
+const RETIRED_RUN_MODEL_SET: ReadonlySet<string> = new Set(RETIRED_RUN_MODELS);
+const RETIRED_RUN_MODEL_REPLACEMENTS: Readonly<
+  Record<RetiredRunModel, SupportedRunModel>
+> = {
+  "vm0-model": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  "gpt-5.4": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  "gpt-5.4-mini": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+};
+
+function isRetiredRunModel(model: string): model is RetiredRunModel {
+  return RETIRED_RUN_MODEL_SET.has(model);
+}
+
+function normalizeRequestedRunModel(model: string): SupportedRunModel | null {
+  if (isSupportedRunModel(model)) {
+    return model;
+  }
+  return isRetiredRunModel(model)
+    ? RETIRED_RUN_MODEL_REPLACEMENTS[model]
+    : null;
+}
 
 export const requestedRunModelSchema = z
   .string()
   .min(1)
   .superRefine((model, ctx) => {
-    if (model !== RETIRED_VM0_AUTO_MODEL && !isSupportedRunModel(model)) {
+    if (normalizeRequestedRunModel(model) === null) {
       ctx.addIssue({
         code: "custom",
         message: "Invalid model selection",
@@ -119,9 +146,9 @@ export const requestedRunModelSchema = z
     }
   })
   .transform((model): SupportedRunModel => {
-    return model === RETIRED_VM0_AUTO_MODEL
-      ? DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
-      : supportedRunModelSchema.parse(model);
+    return (
+      normalizeRequestedRunModel(model) ?? supportedRunModelSchema.parse(model)
+    );
   });
 
 export const modelProviderCredentialScopeSchema = z.enum(["org", "member"]);
@@ -140,6 +167,7 @@ export interface DefaultOrgModelPolicySeed {
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-fable-5": "Claude Fable 5",
+  "claude-opus-5": "Claude Opus 5",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-7": "Claude Opus 4.7",
   "claude-opus-4-6": "Claude Opus 4.6",
@@ -157,8 +185,6 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",
   "gpt-5.5": "GPT 5.5",
-  "gpt-5.4": "GPT-5.4",
-  "gpt-5.4-mini": "GPT-5.4 Mini",
 };
 
 const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
@@ -247,6 +273,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
+  "claude-opus-5": {
+    concreteType: "anthropic-api-key",
+    vendor: "anthropic",
+  },
   "claude-opus-4-8": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -317,18 +347,11 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "openai-api-key",
     vendor: "openai",
   },
-  "gpt-5.4": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-  },
-  "gpt-5.4-mini": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-  },
 };
 
 export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-fable-5": "claude-fable-5",
+  "anthropic/claude-opus-5": "claude-opus-5",
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
   "anthropic/claude-opus-4.7": "claude-opus-4-7",
   "anthropic/claude-opus-4.6": "claude-opus-4-6",
@@ -384,12 +407,14 @@ export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 
 const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "claude-fable-5",
+  "claude-opus-5",
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
   "anthropic/claude-fable-5",
+  "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
   "anthropic/claude-opus-4.7",
   "anthropic/claude-opus-4.6",
@@ -484,6 +509,7 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "claude-fable-5",
+      "claude-opus-5",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
@@ -505,6 +531,7 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "claude-fable-5",
+      "claude-opus-5",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
@@ -531,6 +558,7 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-fable-5",
+      "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
       "anthropic/claude-sonnet-5",
@@ -660,6 +688,7 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-fable-5",
+      "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
       "anthropic/claude-opus-4.6",
@@ -689,11 +718,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: [
-      "openai/gpt-5.5",
-      "openai/gpt-5.4",
-      "openai/gpt-5.4-mini",
-    ] as string[],
+    models: ["openai/gpt-5.5"] as string[],
     defaultModel: "openai/gpt-5.5",
   },
   // Codex-framework twin of vercel-ai-gateway. Vercel exposes both
@@ -712,11 +737,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_BASE_URL: "https://ai-gateway.vercel.sh/v1",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: [
-      "openai/gpt-5.5",
-      "openai/gpt-5.4",
-      "openai/gpt-5.4-mini",
-    ] as string[],
+    models: ["openai/gpt-5.5"] as string[],
     defaultModel: "openai/gpt-5.5",
   },
   "openai-api-key": {
@@ -734,8 +755,6 @@ export const MODEL_PROVIDER_TYPES = {
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
     ] as string[],
     defaultModel: "gpt-5.5",
   },
@@ -810,8 +829,6 @@ export const MODEL_PROVIDER_TYPES = {
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
     ] as string[],
     defaultModel: "gpt-5.5",
   },
@@ -933,6 +950,13 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "claude-opus-5": [
+    "vm0",
+    "claude-code-oauth-token",
+    "anthropic-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
   "claude-opus-4-8": [
     "vm0",
     "claude-code-oauth-token",
@@ -978,20 +1002,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
-  "gpt-5.4": [
-    "vm0",
-    "openai-api-key",
-    "codex-oauth-token",
-    "openrouter-codex",
-    "vercel-ai-gateway-codex",
-  ],
-  "gpt-5.4-mini": [
-    "vm0",
-    "openai-api-key",
-    "codex-oauth-token",
-    "openrouter-codex",
-    "vercel-ai-gateway-codex",
-  ],
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
   "kimi-k3": ["vm0", "moonshot-api-key"],
   "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
@@ -1007,6 +1017,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
 > = {
   "openrouter-api-key": {
     "claude-fable-5": "anthropic/claude-fable-5",
+    "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
@@ -1020,6 +1031,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
   },
   "vercel-ai-gateway": {
     "claude-fable-5": "anthropic/claude-fable-5",
+    "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
@@ -1028,19 +1040,16 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
   },
   "openrouter-codex": {
     "gpt-5.5": "openai/gpt-5.5",
-    "gpt-5.4": "openai/gpt-5.4",
-    "gpt-5.4-mini": "openai/gpt-5.4-mini",
   },
   "vercel-ai-gateway-codex": {
     "gpt-5.5": "openai/gpt-5.5",
-    "gpt-5.4": "openai/gpt-5.4",
-    "gpt-5.4-mini": "openai/gpt-5.4-mini",
   },
 };
 
 const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
   {
     "anthropic/claude-fable-5": "claude-fable-5",
+    "anthropic/claude-opus-5": "claude-opus-5",
     "anthropic/claude-opus-4.8": "claude-opus-4-8",
     "anthropic/claude-opus-4.7": "claude-opus-4-7",
     "anthropic/claude-opus-4.6": "claude-opus-4-6",
@@ -1470,7 +1479,7 @@ export const updateOrgModelPolicySchema = z.object({
 export type UpdateOrgModelPolicy = z.infer<typeof updateOrgModelPolicySchema>;
 
 const requestedOrgModelPolicySchema = updateOrgModelPolicySchema.extend({
-  model: z.union([supportedRunModelSchema, z.literal(RETIRED_VM0_AUTO_MODEL)]),
+  model: z.union([supportedRunModelSchema, retiredRunModelSchema]),
 });
 
 export const orgModelPoliciesResponseSchema = z.object({
@@ -1488,14 +1497,12 @@ export const updateOrgModelPoliciesRequestSchema = z
     policies: z.array(requestedOrgModelPolicySchema),
   })
   .transform(({ policies }) => {
-    const retiredDefault = policies.some((policy) => {
-      return (
-        policy.model === RETIRED_VM0_AUTO_MODEL && policy.isDefault === true
-      );
+    const retiredPolicies = policies.filter((policy) => {
+      return isRetiredRunModel(policy.model);
     });
     const activePolicies = policies.flatMap(
       (policy): UpdateOrgModelPolicy[] => {
-        if (policy.model === RETIRED_VM0_AUTO_MODEL) {
+        if (isRetiredRunModel(policy.model)) {
           return [];
         }
         return [
@@ -1509,28 +1516,51 @@ export const updateOrgModelPoliciesRequestSchema = z
         ];
       },
     );
-    if (!retiredDefault) {
+    if (retiredPolicies.length === 0) {
       return { policies: activePolicies };
     }
 
+    const retiredDefault = retiredPolicies.find((policy) => {
+      return policy.isDefault;
+    });
+    const replacementRouteSource = retiredDefault ?? retiredPolicies[0]!;
+    const replacementRoute = isModelSupportedByProvider(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      replacementRouteSource.defaultProviderType,
+    )
+      ? {
+          defaultProviderType: replacementRouteSource.defaultProviderType,
+          credentialScope: replacementRouteSource.credentialScope,
+          modelProviderId: replacementRouteSource.modelProviderId,
+        }
+      : {
+          defaultProviderType: "vm0" as const,
+          credentialScope: "org" as const,
+          modelProviderId: null,
+        };
     const replacementExists = activePolicies.some((policy) => {
       return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     });
     const normalizedPolicies = activePolicies.map(
       (policy): UpdateOrgModelPolicy => {
+        if (policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL) {
+          return {
+            ...policy,
+            ...(retiredDefault ? replacementRoute : {}),
+            isDefault: retiredDefault ? true : policy.isDefault,
+          };
+        }
         return {
           ...policy,
-          isDefault: policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          isDefault: retiredDefault ? false : policy.isDefault,
         };
       },
     );
     if (!replacementExists) {
       normalizedPolicies.push({
         model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
+        isDefault: retiredDefault !== undefined,
+        ...replacementRoute,
       });
     }
     return { policies: normalizedPolicies };

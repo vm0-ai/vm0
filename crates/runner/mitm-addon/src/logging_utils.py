@@ -7,7 +7,7 @@ log entries, and extracting firewall metadata.
 import json
 import time
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mitmproxy import ctx, http
 
@@ -30,7 +30,7 @@ def elapsed_ms(start_time: float | None) -> int:
 
 
 def _utc_log_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:

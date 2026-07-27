@@ -1,14 +1,16 @@
 import { isDeepStrictEqual } from "node:util";
 
-import { normalizeConnectorFixedHost } from "@vm0/connectors/firewall-metadata/server";
-
 import {
-  type ConnectorCatalogIntegrityArtifact,
-  type ConnectorCatalogPrivateArtifact,
-  type ConnectorCatalogPrivateFirewallsArtifact,
-  type ConnectorCatalogPublicArtifact,
-  type ConnectorCatalogRunnerFirewallsArtifact,
-  validateConnectorCatalogArtifacts,
+  extractFirewallTemplateReferences,
+  normalizeFirewallFixedHost,
+  type FirewallBaseHostPolicy,
+  type FirewallConfig,
+} from "@vm0/connectors/firewall-types";
+
+import type {
+  ConnectorCatalogArtifact,
+  ConnectorCatalogArtifactConnector,
+  ConnectorCatalogAuthMethod,
 } from "./artifacts";
 import {
   firewallAuthInjectsCredentials,
@@ -22,242 +24,10 @@ import {
   connectorSourceSchema,
   validateCatalogSourceSemantics,
   validateConnectorSourceSemantics,
-  type ConnectorAuthMethodSource,
   type ConnectorGrantSource,
 } from "./source";
 
-function assertEqualValues(
-  expected: readonly string[],
-  actual: readonly string[],
-  label: string,
-): void {
-  if (
-    expected.length !== actual.length ||
-    expected.some((value, index) => {
-      return value !== actual[index];
-    })
-  ) {
-    throw new Error(`${label} mismatch`);
-  }
-}
-
-function reconstructedGrant(args: {
-  readonly connectorRef: string;
-  readonly publicMethod: ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
-  readonly privateMethod: ConnectorCatalogPrivateArtifact["connectors"][number]["authMethods"][number];
-}): ConnectorGrantSource {
-  const { connectorRef, publicMethod, privateMethod } = args;
-  const label = `${connectorRef}/${privateMethod.id}`;
-  if (privateMethod.grant.kind !== publicMethod.grantKind) {
-    throw new Error(`${label} grant kind mismatch`);
-  }
-  switch (privateMethod.grant.kind) {
-    case "manual": {
-      if (publicMethod.startOptions.length > 0) {
-        throw new Error(`${label} manual grant has start options`);
-      }
-      assertEqualValues(
-        publicMethod.manualFields.map((field) => {
-          return field.id;
-        }),
-        privateMethod.grant.fields.map((field) => {
-          return field.publicId;
-        }),
-        `${label} manual fields`,
-      );
-      return {
-        kind: "manual",
-        fields: privateMethod.grant.fields.map((privateField, index) => {
-          const publicField = publicMethod.manualFields[index];
-          if (publicField === undefined) {
-            throw new Error(`${label} missing public manual field`);
-          }
-          const expectedInputType =
-            privateField.storage === "secret" ? "password" : "text";
-          if (publicField.inputType !== expectedInputType) {
-            throw new Error(`${label} manual field input type mismatch`);
-          }
-          return {
-            privateName: privateField.privateName,
-            publicId: privateField.publicId,
-            label: publicField.label,
-            required: publicField.required,
-            ...(publicField.placeholder === null
-              ? {}
-              : { placeholder: publicField.placeholder }),
-            storage: privateField.storage,
-            ...(privateField.normalize === undefined
-              ? {}
-              : { normalize: privateField.normalize }),
-          };
-        }),
-      };
-    }
-    case "device-auth": {
-      if (publicMethod.manualFields.length > 0) {
-        throw new Error(`${label} device grant has manual fields`);
-      }
-      assertEqualValues(
-        publicMethod.startOptions.map((option) => {
-          return option.id;
-        }),
-        privateMethod.grant.startOptionMappings.map((mapping) => {
-          return mapping.publicId;
-        }),
-        `${label} start options`,
-      );
-      return {
-        kind: "device-auth",
-        scopes: privateMethod.grant.scopes,
-        outputs: privateMethod.grant.outputs,
-        startOptions: privateMethod.grant.startOptionMappings.map(
-          (mapping, index) => {
-            const publicOption = publicMethod.startOptions[index];
-            if (publicOption === undefined) {
-              throw new Error(`${label} missing public start option`);
-            }
-            return {
-              privateName: mapping.privateName,
-              publicId: mapping.publicId,
-              kind: publicOption.kind,
-              label: publicOption.label,
-              required: publicOption.required,
-              ...(publicOption.defaultValue === null
-                ? {}
-                : { defaultValue: publicOption.defaultValue }),
-              options: publicOption.options,
-            };
-          },
-        ),
-      };
-    }
-    case "auth-code":
-    case "openid-auth":
-    case "external-code": {
-      if (
-        publicMethod.manualFields.length > 0 ||
-        publicMethod.startOptions.length > 0
-      ) {
-        throw new Error(`${label} grant has unexpected public fields`);
-      }
-      return privateMethod.grant;
-    }
-  }
-}
-
-function reconstructedAuthMethod(args: {
-  readonly connectorRef: string;
-  readonly publicMethod: ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
-  readonly privateMethod: ConnectorCatalogPrivateArtifact["connectors"][number]["authMethods"][number];
-}): ConnectorAuthMethodSource {
-  return {
-    id: args.privateMethod.id,
-    label: args.publicMethod.label,
-    description: args.publicMethod.description,
-    visible: args.publicMethod.visible,
-    ...(args.publicMethod.featureSwitch === null
-      ? {}
-      : { featureSwitch: args.publicMethod.featureSwitch }),
-    ...(args.privateMethod.client === undefined
-      ? {}
-      : { client: args.privateMethod.client }),
-    storage: args.privateMethod.storage,
-    grant: reconstructedGrant(args),
-    access: args.privateMethod.access,
-    revoke: args.privateMethod.revoke,
-  };
-}
-
-function validateCatalogAndConnectorSemantics(args: {
-  readonly publicArtifact: ConnectorCatalogPublicArtifact;
-  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
-}): void {
-  const catalogSource = catalogSourceSchema.parse({
-    catalogVersion: args.publicArtifact.catalogVersion,
-    connectorRefs: args.publicArtifact.connectors.map((connector) => {
-      return connector.connectorRef;
-    }),
-    categoryMetadata: args.publicArtifact.categoryMetadata,
-  });
-  validateCatalogSourceSemantics(catalogSource);
-  const categoryIds = new Set(
-    args.publicArtifact.categoryMetadata.categories.map((category) => {
-      return category.id;
-    }),
-  );
-  const privateByRef = new Map(
-    args.privateArtifact.connectors.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const secretOwners = new Map<string, string>();
-  const variableOwners = new Map<string, string>();
-
-  for (const publicConnector of args.publicArtifact.connectors) {
-    if (!categoryIds.has(publicConnector.category)) {
-      throw new Error(
-        `Unknown category for connector ${publicConnector.connectorRef}`,
-      );
-    }
-    const privateConnector = privateByRef.get(publicConnector.connectorRef);
-    if (privateConnector === undefined) {
-      throw new Error(
-        `Missing private connector ${publicConnector.connectorRef}`,
-      );
-    }
-    assertEqualValues(
-      publicConnector.authMethods.map((method) => {
-        return method.id;
-      }),
-      privateConnector.authMethods.map((method) => {
-        return method.id;
-      }),
-      `${publicConnector.connectorRef} auth methods`,
-    );
-    const connectorSource = connectorSourceSchema.parse({
-      ref: publicConnector.connectorRef,
-      label: publicConnector.label,
-      description: publicConnector.description,
-      category: publicConnector.category,
-      generation: publicConnector.generation,
-      tags: publicConnector.tags,
-      authMethods: privateConnector.authMethods.map((privateMethod, index) => {
-        const publicMethod = publicConnector.authMethods[index];
-        if (publicMethod === undefined) {
-          throw new Error(
-            `Missing public auth method ${publicConnector.connectorRef}/${privateMethod.id}`,
-          );
-        }
-        return reconstructedAuthMethod({
-          connectorRef: publicConnector.connectorRef,
-          publicMethod,
-          privateMethod,
-        });
-      }),
-    });
-    validateConnectorSourceSemantics(connectorSource);
-    for (const method of privateConnector.authMethods) {
-      for (const secretName of method.storage.secrets) {
-        const owner = secretOwners.get(secretName);
-        if (owner !== undefined && owner !== publicConnector.connectorRef) {
-          throw new Error(
-            `Connector storage secret ${secretName} is claimed by ${owner} and ${publicConnector.connectorRef}`,
-          );
-        }
-        secretOwners.set(secretName, publicConnector.connectorRef);
-      }
-      for (const variableName of method.storage.variables) {
-        const owner = variableOwners.get(variableName);
-        if (owner !== undefined && owner !== publicConnector.connectorRef) {
-          throw new Error(
-            `Connector storage variable ${variableName} is claimed by ${owner} and ${publicConnector.connectorRef}`,
-          );
-        }
-        variableOwners.set(variableName, publicConnector.connectorRef);
-      }
-    }
-  }
-}
+const MODEL_PROVIDER_FIREWALL_PREFIX = "model-provider:";
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -267,12 +37,200 @@ function sortedUniqueStrings(values: Iterable<string>): string[] {
   return [...new Set(values)].sort(compareStrings);
 }
 
+interface ConnectorCatalogFirewallPermission {
+  readonly name: string;
+  readonly description?: string;
+}
+
+export function deriveConnectorCatalogFirewallPermissions(
+  apis: FirewallConfig["apis"],
+): readonly ConnectorCatalogFirewallPermission[] {
+  const permissions = new Map<string, ConnectorCatalogFirewallPermission>();
+  for (const api of apis) {
+    for (const permission of api.permissions ?? []) {
+      if (!permissions.has(permission.name)) {
+        permissions.set(permission.name, {
+          name: permission.name,
+          ...(permission.description === undefined
+            ? {}
+            : { description: permission.description }),
+        });
+      }
+    }
+  }
+  return [...permissions.values()].sort((left, right) => {
+    return compareStrings(left.name, right.name);
+  });
+}
+
+function sourceGrant(method: ConnectorCatalogAuthMethod): ConnectorGrantSource {
+  switch (method.grant.kind) {
+    case "manual": {
+      return {
+        kind: method.grant.kind,
+        fields: method.grant.fields.map((field) => {
+          return {
+            privateName: field.privateName,
+            publicId: field.publicId,
+            label: field.label,
+            required: field.required,
+            ...(field.placeholder === null
+              ? {}
+              : { placeholder: field.placeholder }),
+            storage: field.storage,
+            ...(field.normalize === undefined
+              ? {}
+              : { normalize: field.normalize }),
+          };
+        }),
+      };
+    }
+    case "device-auth": {
+      return {
+        kind: method.grant.kind,
+        scopes: method.grant.scopes,
+        outputs: method.grant.outputs,
+        startOptions: method.grant.startOptions.map((option) => {
+          return {
+            privateName: option.privateName,
+            publicId: option.publicId,
+            kind: option.kind,
+            label: option.label,
+            required: option.required,
+            ...(option.defaultValue === null
+              ? {}
+              : { defaultValue: option.defaultValue }),
+            options: option.options,
+          };
+        }),
+      };
+    }
+    case "auth-code":
+    case "external-code":
+    case "openid-auth": {
+      return method.grant;
+    }
+  }
+}
+
+function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
+  const catalogSource = catalogSourceSchema.parse({
+    catalogVersion: artifact.catalogVersion,
+    connectorRefs: artifact.connectors.map((connector) => {
+      return connector.connectorRef;
+    }),
+    categoryMetadata: artifact.categoryMetadata,
+  });
+  validateCatalogSourceSemantics(catalogSource);
+
+  const categoryIds = new Set(
+    artifact.categoryMetadata.categories.map((category) => {
+      return category.id;
+    }),
+  );
+  const secretOwners = new Map<string, string>();
+  const variableOwners = new Map<string, string>();
+  const skillStorageOwners = new Map<string, string>();
+  const skillVersionOwners = new Map<string, string>();
+
+  for (const connector of artifact.connectors) {
+    if (connector.connectorRef.startsWith(MODEL_PROVIDER_FIREWALL_PREFIX)) {
+      throw new Error(
+        `Connector catalog uses reserved ownership: ${connector.connectorRef}`,
+      );
+    }
+    if (!categoryIds.has(connector.category)) {
+      throw new Error(
+        `Unknown category for connector ${connector.connectorRef}`,
+      );
+    }
+    const source = connectorSourceSchema.parse({
+      ref: connector.connectorRef,
+      label: connector.label,
+      description: connector.description,
+      category: connector.category,
+      generation: connector.generation,
+      tags: connector.tags,
+      authMethods: connector.authMethods.map((method) => {
+        return {
+          id: method.id,
+          label: method.label,
+          description: method.description,
+          visible: method.visible,
+          ...(method.featureSwitch === null
+            ? {}
+            : { featureSwitch: method.featureSwitch }),
+          ...(method.client === undefined ? {} : { client: method.client }),
+          storage: method.storage,
+          grant: sourceGrant(method),
+          access: method.access,
+          revoke: method.revoke,
+        };
+      }),
+    });
+    validateConnectorSourceSemantics(source);
+
+    if (connector.skill.kind === "bundled") {
+      const storageOwner = skillStorageOwners.get(connector.skill.storageName);
+      if (storageOwner !== undefined) {
+        throw new Error(
+          `Connector skill storage ${connector.skill.storageName} is claimed by ${storageOwner} and ${connector.connectorRef}`,
+        );
+      }
+      skillStorageOwners.set(
+        connector.skill.storageName,
+        connector.connectorRef,
+      );
+
+      const versionOwner = skillVersionOwners.get(connector.skill.versionId);
+      if (versionOwner !== undefined) {
+        throw new Error(
+          `Connector skill version ${connector.skill.versionId} is claimed by ${versionOwner} and ${connector.connectorRef}`,
+        );
+      }
+      skillVersionOwners.set(connector.skill.versionId, connector.connectorRef);
+    }
+
+    for (const method of connector.authMethods) {
+      for (const secretName of method.storage.secrets) {
+        const owner = secretOwners.get(secretName);
+        if (owner !== undefined && owner !== connector.connectorRef) {
+          throw new Error(
+            `Connector storage secret ${secretName} is claimed by ${owner} and ${connector.connectorRef}`,
+          );
+        }
+        secretOwners.set(secretName, connector.connectorRef);
+      }
+      for (const variableName of method.storage.variables) {
+        const owner = variableOwners.get(variableName);
+        if (owner !== undefined && owner !== connector.connectorRef) {
+          throw new Error(
+            `Connector storage variable ${variableName} is claimed by ${owner} and ${connector.connectorRef}`,
+          );
+        }
+        variableOwners.set(variableName, connector.connectorRef);
+      }
+    }
+  }
+}
+
+export function connectorCatalogFirewallConfig(
+  connector: ConnectorCatalogArtifactConnector,
+): FirewallConfig | null {
+  return connector.firewall.kind === "none"
+    ? null
+    : {
+        name: connector.connectorRef,
+        ...connector.firewall.config,
+      };
+}
+
 function validateFirewallBindings(args: {
-  readonly privateConnector: ConnectorCatalogPrivateArtifact["connectors"][number];
-  readonly privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number];
+  readonly connector: ConnectorCatalogArtifactConnector;
+  readonly firewall: FirewallConfig;
 }): void {
   const knownEnvironmentNames = new Set<string>();
-  for (const method of args.privateConnector.authMethods) {
+  for (const method of args.connector.authMethods) {
     for (const name of Object.keys(method.access.envBindings)) {
       knownEnvironmentNames.add(name);
     }
@@ -280,9 +238,7 @@ function validateFirewallBindings(args: {
       knownEnvironmentNames.add(name);
     }
   }
-  const references = firewallTemplateReferences(
-    args.privateFirewall.firewall.apis,
-  );
+  const references = firewallTemplateReferences(args.firewall.apis);
   const unknown = [...references.secrets, ...references.vars].filter((name) => {
     return !knownEnvironmentNames.has(name);
   });
@@ -291,40 +247,72 @@ function validateFirewallBindings(args: {
       `Firewall references unknown connector bindings: ${sortedUniqueStrings(unknown).join(", ")}`,
     );
   }
-  const unusedPlaceholders = Object.keys(
-    args.privateFirewall.firewall.placeholders ?? {},
-  ).filter((name) => {
-    return !references.secrets.has(name);
-  });
-  if (unusedPlaceholders.length > 0) {
-    throw new Error(
-      `Firewall has unused placeholders: ${sortedUniqueStrings(unusedPlaceholders).join(", ")}`,
-    );
+}
+
+function validateBaseUrlTemplates(
+  connectorRef: string,
+  firewall: FirewallConfig,
+): void {
+  const templates = new Map<string, FirewallBaseHostPolicy | undefined>();
+  for (const api of firewall.apis) {
+    if (!api.base.includes("${{")) {
+      continue;
+    }
+    parseFirewallBaseUrl(api.base);
+    if (
+      templates.has(api.base) &&
+      !isDeepStrictEqual(templates.get(api.base), api.hostPolicy)
+    ) {
+      throw new Error(
+        `Firewall base URL host policies conflict: ${connectorRef} (${api.base})`,
+      );
+    }
+    templates.set(api.base, api.hostPolicy);
   }
 }
 
-function expectedFirewallRouting(
-  privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number],
-): ConnectorCatalogPrivateFirewallsArtifact["connectors"][number]["routing"] {
-  const apis = privateFirewall.firewall.apis;
+export interface ConnectorCatalogFirewallBaseUrlTemplate {
+  readonly base: string;
+  readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallBaseHostPolicy;
+}
+
+export interface ConnectorCatalogFirewallRoutingApi {
+  readonly base: string;
+  readonly environmentNames: readonly string[];
+  readonly routes: readonly {
+    readonly permissionName: string;
+    readonly rule: string;
+  }[];
+}
+
+export interface ConnectorCatalogFirewallRouting {
+  readonly fixedHosts: readonly string[];
+  readonly baseUrlVarNames: readonly string[];
+  readonly baseUrlTemplates: readonly ConnectorCatalogFirewallBaseUrlTemplate[];
+  readonly apis: readonly ConnectorCatalogFirewallRoutingApi[];
+}
+
+export function deriveConnectorCatalogFirewallRouting(
+  firewall: FirewallConfig,
+): ConnectorCatalogFirewallRouting {
   return {
     fixedHosts: sortedUniqueStrings(
-      apis.flatMap((api) => {
+      firewall.apis.flatMap((api) => {
         const parsed = parseFirewallBaseUrl(api.base);
         return api.base.includes("${{") ? [] : [parsed.host];
       }),
     ),
     baseUrlVarNames: sortedUniqueStrings(
-      apis.flatMap((api) => {
+      firewall.apis.flatMap((api) => {
         return firewallBaseVariableNames(api.base);
       }),
     ),
-    baseUrlTemplates: apis
+    baseUrlTemplates: firewall.apis
       .filter((api) => {
         return api.base.includes("${{");
       })
       .map((api) => {
-        parseFirewallBaseUrl(api.base);
         return {
           base: api.base,
           credentialed: firewallAuthInjectsCredentials(api.auth),
@@ -336,8 +324,8 @@ function expectedFirewallRouting(
       .sort((left, right) => {
         return compareStrings(left.base, right.base);
       }),
-    apis: apis.map((api) => {
-      const references = firewallTemplateReferences(api);
+    apis: firewall.apis.map((api) => {
+      const references = extractFirewallTemplateReferences([api]);
       return {
         base: api.base,
         environmentNames: sortedUniqueStrings([
@@ -354,129 +342,40 @@ function expectedFirewallRouting(
   };
 }
 
-function expectedFirewallDiagnostics(
-  privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number],
-): ConnectorCatalogPrivateFirewallsArtifact["connectors"][number]["diagnostics"] {
-  const permissions = privateFirewall.firewall.apis.flatMap((api) => {
-    return api.permissions ?? [];
-  });
-  return {
-    apiCount: privateFirewall.firewall.apis.length,
-    permissionCount: new Set(
-      permissions.map((permission) => {
-        return permission.name;
-      }),
-    ).size,
-    ruleCount: permissions.reduce((count, permission) => {
-      return count + permission.rules.length;
-    }, 0),
-  };
-}
-
-function validateFirewallProjection(args: {
-  readonly publicConnector: ConnectorCatalogPublicArtifact["connectors"][number];
-  readonly privateConnector: ConnectorCatalogPrivateArtifact["connectors"][number];
-  readonly privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number];
-}): void {
-  if (args.privateFirewall.label !== args.publicConnector.label) {
-    throw new Error(
-      `Firewall label mismatch: ${args.publicConnector.connectorRef}`,
-    );
-  }
-  const baseUrlTemplates = new Map<
-    string,
-    (typeof args.privateFirewall.routing.baseUrlTemplates)[number]
-  >();
-  for (const template of args.privateFirewall.routing.baseUrlTemplates) {
-    const existing = baseUrlTemplates.get(template.base);
-    if (
-      existing &&
-      !isDeepStrictEqual(existing.hostPolicy, template.hostPolicy)
-    ) {
-      throw new Error(
-        `Firewall base URL host policies conflict: ${args.publicConnector.connectorRef} (${template.base})`,
-      );
+function validateFirewallSemantics(artifact: ConnectorCatalogArtifact): void {
+  for (const connector of artifact.connectors) {
+    if (connector.firewall.kind === "none") {
+      continue;
     }
-    baseUrlTemplates.set(template.base, template);
-  }
-  validateFirewallBindings(args);
-  if (
-    JSON.stringify(args.privateFirewall.routing) !==
-      JSON.stringify(expectedFirewallRouting(args.privateFirewall)) ||
-    JSON.stringify(args.privateFirewall.diagnostics) !==
-      JSON.stringify(expectedFirewallDiagnostics(args.privateFirewall))
-  ) {
-    throw new Error(
-      `Firewall derived metadata mismatch: ${args.publicConnector.connectorRef}`,
-    );
-  }
-}
-
-function validateFirewallSemantics(args: {
-  readonly publicArtifact: ConnectorCatalogPublicArtifact;
-  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
-  readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
-}): void {
-  const publicByRef = new Map(
-    args.publicArtifact.connectors.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const privateByRef = new Map(
-    args.privateArtifact.connectors.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const fixedHostOwners = new Map<string, string>();
-  for (const connector of args.privateFirewallsArtifact.connectors) {
+    const firewall = connectorCatalogFirewallConfig(connector);
+    if (firewall === null) {
+      throw new Error("Generated connector firewall is unavailable");
+    }
     validateFirewallGeneratorResult({
       connectorRef: connector.connectorRef,
-      firewall: connector.firewall,
-      categories: connector.categories,
-      defaultAllowed: connector.defaultAllowed,
-      defaultUnknownPolicy: connector.defaultUnknownPolicy,
+      firewall,
+      categories: connector.firewall.categories,
+      defaultAllowed: connector.firewall.defaultAllowed,
+      defaultUnknownPolicy: connector.firewall.defaultUnknownPolicy,
     });
-    const publicConnector = publicByRef.get(connector.connectorRef);
-    const privateConnector = privateByRef.get(connector.connectorRef);
-    if (publicConnector === undefined || privateConnector === undefined) {
-      throw new Error(
-        `Missing connector for firewall ${connector.connectorRef}`,
-      );
-    }
-    validateFirewallProjection({
-      publicConnector,
-      privateConnector,
-      privateFirewall: connector,
-    });
-    for (const rawHost of connector.routing.fixedHosts) {
-      const host = normalizeConnectorFixedHost(rawHost);
+    validateFirewallBindings({ connector, firewall });
+    validateBaseUrlTemplates(connector.connectorRef, firewall);
+
+    const routing = deriveConnectorCatalogFirewallRouting(firewall);
+    for (const rawHost of routing.fixedHosts) {
+      const host = normalizeFirewallFixedHost(rawHost);
       if (!host) {
         throw new Error(
           `Firewall fixed host is invalid: ${connector.connectorRef}`,
         );
       }
-      const existingOwner = fixedHostOwners.get(host);
-      if (
-        existingOwner !== undefined &&
-        existingOwner !== connector.connectorRef
-      ) {
-        throw new Error(
-          `Firewall fixed host collision: ${host} (${existingOwner}, ${connector.connectorRef})`,
-        );
-      }
-      fixedHostOwners.set(host, connector.connectorRef);
     }
   }
 }
 
-export function validateConnectorCatalogRelationships(args: {
-  readonly publicArtifact: ConnectorCatalogPublicArtifact;
-  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
-  readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
-  readonly runnerFirewallsArtifact: ConnectorCatalogRunnerFirewallsArtifact;
-  readonly integrity: ConnectorCatalogIntegrityArtifact;
-}): void {
-  validateConnectorCatalogArtifacts(args);
-  validateCatalogAndConnectorSemantics(args);
-  validateFirewallSemantics(args);
+export function validateConnectorCatalogArtifact(
+  artifact: ConnectorCatalogArtifact,
+): void {
+  validateConnectorSemantics(artifact);
+  validateFirewallSemantics(artifact);
 }

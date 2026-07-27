@@ -9,7 +9,7 @@ import { agentRuns } from "./agent-run";
  * when parallel runs overwrite HEAD.
  *
  * Only tracks agent runs — CLI uploads are NOT tracked.
- * Both artifact and memory storage types are supported.
+ * All writeback Storage mounts are supported.
  */
 export const storageVersionLineage = pgTable(
   "storage_version_lineage",
@@ -33,7 +33,6 @@ export const storageVersionLineage = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    storageType: varchar("storage_type", { length: 16 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

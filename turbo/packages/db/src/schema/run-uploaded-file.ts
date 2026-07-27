@@ -1,8 +1,10 @@
 import {
   bigint,
   index,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -11,7 +13,15 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
-import type { RunUploadedFileMetadata } from "@vm0/db/jsonb-contracts/run-uploaded-file";
+import { chatMessages } from "./chat-message";
+import { chatThreads } from "./chat-thread";
+import type {
+  CanonicalAssetDeliveryError,
+  CanonicalAssetMaterializationError,
+  CanonicalAssetProvenance,
+  CanonicalAssetSlackDeliveryDestination,
+  RunUploadedFileMetadata,
+} from "@vm0/db/jsonb-contracts/run-uploaded-file";
 
 export const RUN_UPLOADED_FILE_SOURCES = [
   "workflow-schedule",
@@ -19,6 +29,7 @@ export const RUN_UPLOADED_FILE_SOURCES = [
   "web",
   "slack",
   "teams",
+  "feishu",
   "email",
   "telegram",
   "agentphone",
@@ -28,18 +39,51 @@ export const RUN_UPLOADED_FILE_SOURCES = [
 ] as const;
 export type RunUploadedFileSource = (typeof RUN_UPLOADED_FILE_SOURCES)[number];
 
+export const CANONICAL_ASSET_CLASSIFICATIONS = [
+  "input",
+  "published-output",
+] as const;
+export type CanonicalAssetClassification =
+  (typeof CANONICAL_ASSET_CLASSIFICATIONS)[number];
+
+export const CANONICAL_ASSET_ACCESS_LEVELS = ["private", "published"] as const;
+export type CanonicalAssetAccessLevel =
+  (typeof CANONICAL_ASSET_ACCESS_LEVELS)[number];
+
+export const CANONICAL_ASSET_MATERIALIZATION_STATUSES = [
+  "pending",
+  "ready",
+  "failed",
+] as const;
+export type CanonicalAssetMaterializationStatus =
+  (typeof CANONICAL_ASSET_MATERIALIZATION_STATUSES)[number];
+
+export const CANONICAL_ASSET_DELIVERY_STATUSES = [
+  "pending",
+  "delivered",
+  "failed",
+] as const;
+export type CanonicalAssetDeliveryStatus =
+  (typeof CANONICAL_ASSET_DELIVERY_STATUSES)[number];
+
+export const CANONICAL_ASSET_VERSION = 1;
+
 export const runUploadedFiles = pgTable(
   "run_uploaded_files",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    runId: uuid("run_id")
-      .notNull()
-      .references(
-        () => {
-          return agentRuns.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    runId: uuid("run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "cascade" },
+    ),
+    chatThreadId: uuid("chat_thread_id").references(
+      () => {
+        return chatThreads.id;
+      },
+      { onDelete: "set null" },
+    ),
     source: varchar("source", { length: 32 }).notNull(),
     externalId: text("external_id").notNull(),
     userId: text("user_id").notNull(),
@@ -53,6 +97,24 @@ export const runUploadedFiles = pgTable(
       .$type<RunUploadedFileMetadata>()
       .notNull()
       .default({}),
+    assetVersion: integer("asset_version"),
+    classification: varchar("classification", {
+      length: 32,
+    }).$type<CanonicalAssetClassification>(),
+    accessLevel: varchar("access_level", {
+      length: 16,
+    }).$type<CanonicalAssetAccessLevel>(),
+    materializationStatus: varchar("materialization_status", {
+      length: 16,
+    }).$type<CanonicalAssetMaterializationStatus>(),
+    checksumSha256: varchar("checksum_sha256", { length: 64 }),
+    storageKey: text("storage_key"),
+    provenance: jsonb("provenance").$type<CanonicalAssetProvenance>(),
+    materializationError: jsonb(
+      "materialization_error",
+    ).$type<CanonicalAssetMaterializationError>(),
+    idempotencyScope: text("idempotency_scope"),
+    idempotencyKey: text("idempotency_key"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -71,6 +133,85 @@ export const runUploadedFiles = pgTable(
       index("idx_run_uploaded_files_updated")
         .on(table.updatedAt, table.id)
         .where(sql`${table.url} IS NOT NULL`),
+      uniqueIndex("run_uploaded_files_canonical_idempotency_unique")
+        .on(table.userId, table.idempotencyScope, table.idempotencyKey)
+        .where(sql`${table.assetVersion} = 1`),
+      index("run_uploaded_files_chat_thread_idx")
+        .on(table.chatThreadId)
+        .where(sql`${table.chatThreadId} IS NOT NULL`),
+    ];
+  },
+);
+
+export const chatMessageAssetRefs = pgTable(
+  "chat_message_asset_refs",
+  {
+    chatMessageId: uuid("chat_message_id")
+      .notNull()
+      .references(
+        () => {
+          return chatMessages.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    assetId: uuid("asset_id")
+      .notNull()
+      .references(
+        () => {
+          return runUploadedFiles.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    position: integer("position").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      primaryKey({
+        name: "chat_message_asset_refs_pk",
+        columns: [table.chatMessageId, table.assetId],
+      }),
+      uniqueIndex("chat_message_asset_refs_message_position_unique").on(
+        table.chatMessageId,
+        table.position,
+      ),
+      index("chat_message_asset_refs_asset_idx").on(table.assetId),
+    ];
+  },
+);
+
+export const canonicalAssetDeliveries = pgTable(
+  "canonical_asset_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    assetId: uuid("asset_id")
+      .notNull()
+      .references(
+        () => {
+          return runUploadedFiles.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    provider: varchar("provider", { length: 32 }).notNull(),
+    operationId: uuid("operation_id").notNull(),
+    status: varchar("status", { length: 16 })
+      .$type<CanonicalAssetDeliveryStatus>()
+      .notNull(),
+    destination: jsonb("destination")
+      .$type<CanonicalAssetSlackDeliveryDestination>()
+      .notNull(),
+    externalId: text("external_id"),
+    url: text("url"),
+    lastError: jsonb("last_error").$type<CanonicalAssetDeliveryError>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex(
+        "canonical_asset_deliveries_asset_provider_operation_unique",
+      ).on(table.assetId, table.provider, table.operationId),
+      index("canonical_asset_deliveries_asset_idx").on(table.assetId),
     ];
   },
 );

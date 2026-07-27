@@ -20,6 +20,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import make_model_provider_sse_flow
+from tests.usage_helpers import compact_observation_quantities
 
 
 def _model_provider_sse_flow(
@@ -128,6 +129,25 @@ class TestModelProviderSseUsage:
             "tokens.cache_read": 10,
             "tokens.cache_creation": 15,
         }
+
+    def test_full_pipeline_openai_sse_reports_usage_with_oversized_type(self, tmp_path, real_flow):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            b"event: response.completed\n"
+            b'data: {"type":"' + b"x" * 2048 + b'","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":50,"output_tokens":20}}}\n\n'
+        )
+
+        webhook = self._run_response(flow)
+
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {
+            "tokens.input": 50,
+            "tokens.output": 20,
+        }
+        assert _model_sse_parse_warnings(flow) == []
 
     @pytest.mark.parametrize("capture_body", [False, True])
     def test_brotli_sse_does_not_use_model_json_fallback(self, tmp_path, real_flow, capture_body):
@@ -523,8 +543,6 @@ class TestModelProviderSseUsage:
             == 100
         )
         observation_events = webhook.model_usage_observation_events()
-        observations_by_category = {
-            event["category"]: event["quantity"] for event in observation_events
-        }
-        assert len(observation_events) == len(observations_by_category) == 4
+        observations_by_category = compact_observation_quantities(observation_events)
+        assert len(observation_events) == 1
         assert observations_by_category == by_category

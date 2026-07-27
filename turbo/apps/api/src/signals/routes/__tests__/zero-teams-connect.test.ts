@@ -380,7 +380,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
           orgRole: "org:admin",
           email: `${fixture.userId}@example.test`,
         },
-        "artifact",
+        "user",
       ),
     ).resolves.toStrictEqual([]);
   });

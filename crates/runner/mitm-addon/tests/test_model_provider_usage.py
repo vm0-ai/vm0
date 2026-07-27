@@ -14,6 +14,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import signed_usage_pricing_headers
+from tests.usage_helpers import compact_observation_quantities
 
 _MODEL_USAGE_UNIT_PRICES: dict[str, object] = {
     "tokens.input": 7,
@@ -272,11 +273,14 @@ class TestReportModelProviderUsage:
         assert set(body["events"][0]) == {
             "idempotencyKey",
             "model",
-            "category",
-            "quantity",
+            "inputTokens",
+            "outputTokens",
+            "cacheReadInputTokens",
+            "cacheCreationInputTokens",
         }
         assert body["events"][0]["model"] == "claude-sonnet-4-6"
-        assert body["events"][0]["quantity"] == 100
+        assert body["events"][0]["inputTokens"] == 100
+        assert body["events"][0]["outputTokens"] == 0
 
     def test_billable_model_provider_reports_billing_and_observation(
         self, real_flow, usage_webhook_api
@@ -556,8 +560,10 @@ class TestReportModelProviderUsage:
         ] == [
             {
                 "model": "gpt-5.5",
-                "category": "tokens.input",
-                "quantity": 13,
+                "inputTokens": 13,
+                "outputTokens": 0,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0,
             }
         ]
         uuid.UUID(usage_body["events"][0]["idempotencyKey"])
@@ -695,7 +701,45 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
 
         body = webhook.requests[0].json_body()
-        assert body["events"][0]["quantity"] == 20
+        assert body["events"][0]["inputTokens"] == 20
+
+    def test_incremental_observation_and_terminal_replay_share_source_identities(
+        self, real_flow, usage_webhook_api
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.id = "flow-incremental-terminal"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        source_usage = {
+            "model": "gpt-5.5",
+            "tokens.input": 80,
+            "tokens.output": 40,
+            "tokens.cache_read": 20,
+        }
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {"resp-replayed": source_usage}
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage_source(
+                flow,
+                "run-replayed",
+                "resp-replayed",
+                source_usage,
+            )
+            usage.report_model_provider_usage_observation(
+                flow,
+                "run-replayed",
+            )
+            usage.flush_usage_events(trigger="test")
+
+        observations = webhook.model_usage_observation_events()
+        assert len(observations) == 2
+        assert compact_observation_quantities(observations) == {
+            "tokens.input": 80,
+            "tokens.output": 40,
+            "tokens.cache_read": 20,
+        }
 
 
 class TestModelProviderResponseHookUsage:
@@ -747,5 +791,13 @@ class TestModelProviderResponseHookUsage:
         observation_body = requests_by_path[
             "/api/webhooks/agent/model-usage-observation"
         ].json_body()
-        observation_by_category = {event["category"]: event for event in observation_body["events"]}
-        assert observation_by_category["tokens.input"]["model"] == "claude-sonnet-4-6"
+        assert observation_body["events"] == [
+            {
+                "idempotencyKey": observation_body["events"][0]["idempotencyKey"],
+                "model": "claude-sonnet-4-6",
+                "inputTokens": 100,
+                "outputTokens": 500,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0,
+            }
+        ]

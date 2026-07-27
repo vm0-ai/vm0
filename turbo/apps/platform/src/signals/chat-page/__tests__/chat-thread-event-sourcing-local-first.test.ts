@@ -44,8 +44,11 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
   const readSnapshot = vi.fn(() => {
     return Promise.resolve(snapshot);
   });
-  const readEvents = vi.fn(() => {
-    return Promise.resolve(events);
+  const readEventLog = vi.fn(() => {
+    return Promise.resolve({
+      events,
+      latestEventId: events.at(-1)?.id ?? null,
+    });
   });
   const replaceFromSnapshot = vi.fn(
     (nextSnapshot: {
@@ -72,7 +75,7 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
 
   return {
     readSnapshot,
-    readEvents,
+    readEventLog,
     replaceFromSnapshot,
     upsertEvents,
     setData(args: {
@@ -89,7 +92,7 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
       snapshot = null;
       events = [];
       readSnapshot.mockClear();
-      readEvents.mockClear();
+      readEventLog.mockClear();
       replaceFromSnapshot.mockClear();
       upsertEvents.mockClear();
     },
@@ -102,7 +105,7 @@ vi.mock("../../external/idb-chat-thread-event-store.ts", () => {
       return {
         readStore: {
           readSnapshot: idbThreadEventStoreMock.readSnapshot,
-          readEvents: idbThreadEventStoreMock.readEvents,
+          readEventLog: idbThreadEventStoreMock.readEventLog,
         },
         writeStore: {
           replaceFromSnapshot: idbThreadEventStoreMock.replaceFromSnapshot,
@@ -180,6 +183,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
       },
@@ -191,6 +196,8 @@ describe("chat thread event sourcing local-first list", () => {
           agentId: AGENT_ID,
           title: "Cached renamed title",
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
           createdAt: "2026-07-03T03:00:00.000Z",
         },
       ],
@@ -245,6 +252,8 @@ describe("chat thread event sourcing local-first list", () => {
         pinnedAt: null,
         renamedAt: "2026-07-03T03:00:00.000Z",
         selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
       },
     ]);
     expect(eventsRequests).toBe(1);
@@ -269,6 +278,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
       },
@@ -282,6 +293,8 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: "Synced thread",
       selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: "2026-07-03T03:00:00.000Z",
     } satisfies ChatThreadEvent;
     let eventsRequests = 0;
@@ -313,7 +326,8 @@ describe("chat thread event sourcing local-first list", () => {
     const before = await context.store.get(chatThreads$);
     const snapshotReads =
       idbThreadEventStoreMock.readSnapshot.mock.calls.length;
-    const eventReads = idbThreadEventStoreMock.readEvents.mock.calls.length;
+    const eventLogReads =
+      idbThreadEventStoreMock.readEventLog.mock.calls.length;
     idbThreadEventStoreMock.replaceFromSnapshot.mockClear();
     idbThreadEventStoreMock.upsertEvents.mockClear();
 
@@ -324,8 +338,8 @@ describe("chat thread event sourcing local-first list", () => {
     expect(idbThreadEventStoreMock.readSnapshot).toHaveBeenCalledTimes(
       snapshotReads,
     );
-    expect(idbThreadEventStoreMock.readEvents).toHaveBeenCalledTimes(
-      eventReads,
+    expect(idbThreadEventStoreMock.readEventLog).toHaveBeenCalledTimes(
+      eventLogReads,
     );
     expect(idbThreadEventStoreMock.replaceFromSnapshot).not.toHaveBeenCalled();
     expect(idbThreadEventStoreMock.upsertEvents).not.toHaveBeenCalled();
@@ -349,6 +363,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
           {
             id: OTHER_THREAD_ID,
@@ -360,6 +376,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
       },
@@ -424,6 +442,8 @@ describe("chat thread event sourcing local-first list", () => {
         pinnedAt: null,
         renamedAt: null,
         selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
       } satisfies ChatThreadSnapshotProjection;
     });
 
@@ -482,6 +502,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
       },
@@ -512,11 +534,15 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: null,
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: "2026-07-03T05:00:00.000Z",
     });
 
     expect(context.store.get(eventDrivenChatThread(THREAD_ID))).toMatchObject({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
+      computerUseHostId: null,
       sortAt: "2026-07-03T02:00:00.000Z",
       updatedAt: "2026-07-03T05:00:00.000Z",
     });
@@ -539,6 +565,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
           {
             id: OTHER_THREAD_ID,
@@ -550,6 +578,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
       },
@@ -628,6 +658,8 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: null,
       selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: "2026-07-03T05:00:00.000Z",
     } satisfies ChatThreadEvent;
     context.store.set(registerOptimisticChatThreadEvent$, createdEvent);
@@ -638,6 +670,8 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: null,
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: "2026-07-03T05:00:01.000Z",
     });
 
@@ -655,6 +689,8 @@ describe("chat thread event sourcing local-first list", () => {
         pinnedAt: null,
         renamedAt: null,
         selectedModel: "claude-sonnet-4-6",
+        serviceTier: null,
+        computerUseHostId: null,
       },
     ]);
     expect(context.store.get(threadMeta(OPTIMISTIC_THREAD_ID))).toStrictEqual({
@@ -663,20 +699,12 @@ describe("chat thread event sourcing local-first list", () => {
       title: null,
       pinnedAt: null,
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
+      computerUseHostId: null,
     });
 
-    let threadDetailRequests = 0;
     let threadDraftRequests = 0;
     let initialMessagesRequests = 0;
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      threadDetailRequests += 1;
-      expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
-      return respond(200, {
-        lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
-      });
-    });
     context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
       threadDraftRequests += 1;
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
@@ -696,9 +724,6 @@ describe("chat thread event sourcing local-first list", () => {
 
     const dataSource = createRemoteChatThreadDataSource(OPTIMISTIC_THREAD_ID);
     await expect(
-      context.store.get(dataSource.remoteThreadDetail$),
-    ).resolves.toBeNull();
-    await expect(
       context.store.get(dataSource.threadDraft$),
     ).resolves.toBeNull();
     await expect(
@@ -708,7 +733,6 @@ describe("chat thread event sourcing local-first list", () => {
         context.signal,
       ),
     ).resolves.toStrictEqual([]);
-    expect(threadDetailRequests).toBe(0);
     expect(threadDraftRequests).toBe(0);
     expect(initialMessagesRequests).toBe(0);
 
@@ -718,13 +742,6 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     await expect(
-      context.store.get(dataSource.remoteThreadDetail$),
-    ).resolves.toStrictEqual({
-      lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
-    });
-    await expect(
       context.store.get(dataSource.threadDraft$),
     ).resolves.toStrictEqual({
       draftContent: null,
@@ -733,14 +750,13 @@ describe("chat thread event sourcing local-first list", () => {
     await expect(
       context.store.set(
         dataSource.listMessagesAfter$,
-        { threadId: OPTIMISTIC_THREAD_ID, sinceId: undefined },
+        { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
         context.signal,
       ),
     ).resolves.toStrictEqual({
       messages: [],
       hasHistoryBefore: false,
     });
-    expect(threadDetailRequests).toBe(1);
     expect(threadDraftRequests).toBe(1);
     expect(initialMessagesRequests).toBe(1);
   });
@@ -763,6 +779,8 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: null,
       selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: "2026-07-03T05:00:00.000Z",
     } satisfies ChatThreadEvent;
 
@@ -819,6 +837,8 @@ describe("chat thread event sourcing local-first list", () => {
             pinnedAt: null,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           },
         ],
       },
@@ -830,6 +850,8 @@ describe("chat thread event sourcing local-first list", () => {
           agentId: AGENT_ID,
           title: "Cached renamed title",
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
           createdAt: "2026-07-03T03:00:00.000Z",
         },
       ],

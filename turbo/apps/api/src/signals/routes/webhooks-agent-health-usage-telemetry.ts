@@ -257,15 +257,13 @@ const modelUsageObservation$ = command(
     }
 
     const body = bodyResult.data;
-    const auth = getSandboxAuthForRun(body.runId, get(authorization$));
-    if (!auth) {
+    if (!getSandboxAuthForRun(body.runId, get(authorization$))) {
       return unauthorizedRunMismatch;
     }
 
     const db = set(writeDb$);
     const [runModelContext] = await db
       .select({
-        modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,
       })
       .from(zeroRuns)
@@ -273,51 +271,40 @@ const modelUsageObservation$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    const modelProviderType = runModelContext?.modelProvider ?? "";
-    const selectedModel = runModelContext?.selectedModel ?? null;
+    if (!runModelContext) {
+      return notFound("Run not found");
+    }
+
     const observedAt = nowDate();
     const observationValues = body.events.flatMap((event) => {
-      const canonicalModel = normalizeRunModelId(selectedModel ?? event.model);
+      const canonicalModel = normalizeRunModelId(
+        runModelContext.selectedModel ?? event.model,
+      );
       if (!isSupportedRunModel(canonicalModel)) {
         return [];
       }
       return [
         {
-          runId: body.runId,
-          orgId: auth.orgId,
-          userId: auth.userId,
           model: canonicalModel,
-          modelProviderType,
-          category: event.category,
-          quantity: event.quantity,
+          inputTokens: event.inputTokens,
+          outputTokens: event.outputTokens,
+          cacheReadInputTokens: event.cacheReadInputTokens,
+          cacheCreationInputTokens: event.cacheCreationInputTokens,
           observedAt,
           idempotencyKey: event.idempotencyKey,
         },
       ];
     });
-    const insertResult = await settle(
-      (async () => {
-        if (observationValues.length > 0) {
-          await db
-            .insert(modelUsageObservation)
-            .values(observationValues)
-            .onConflictDoNothing({
-              target: [modelUsageObservation.idempotencyKey],
-            });
-        }
-      })(),
-    );
-    signal.throwIfAborted();
-    if (!insertResult.ok) {
-      if (isForeignKeyViolation(insertResult.error)) {
-        L.debug("Run not found for model usage observation, dropping", {
-          runId: body.runId,
-          eventCount: body.events.length,
+
+    if (observationValues.length > 0) {
+      await db
+        .insert(modelUsageObservation)
+        .values(observationValues)
+        .onConflictDoNothing({
+          target: [modelUsageObservation.idempotencyKey],
         });
-        return notFound("Run not found");
-      }
-      throw insertResult.error;
     }
+    signal.throwIfAborted();
 
     return {
       status: 200 as const,

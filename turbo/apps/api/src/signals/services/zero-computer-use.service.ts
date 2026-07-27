@@ -46,15 +46,18 @@ import {
   computerUseHosts,
 } from "@vm0/db/schema/computer-use-host";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import {
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
 import { downloadS3Buffer, putS3Object } from "../external/s3";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS = 120 * 1000;
@@ -283,9 +286,9 @@ async function clearComputerUseHostThreadBindings(params: {
   readonly tx: ComputerUseTx;
   readonly userId: string;
   readonly hostId: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const now = nowDate();
-  await params.tx
+  const threads = await params.tx
     .update(chatThreads)
     .set({ computerUseHostId: null, updatedAt: now })
     .where(
@@ -293,15 +296,26 @@ async function clearComputerUseHostThreadBindings(params: {
         eq(chatThreads.userId, params.userId),
         eq(chatThreads.computerUseHostId, params.hostId),
       ),
-    );
-  await params.tx
-    .update(slackOrgThreadSessions)
-    .set({ computerUseHostId: null, updatedAt: now })
-    .where(eq(slackOrgThreadSessions.computerUseHostId, params.hostId));
+    )
+    .returning({
+      id: chatThreads.id,
+      agentComposeId: chatThreads.agentComposeId,
+    });
+  for (const thread of threads) {
+    await appendChatThreadEvent(params.tx, {
+      kind: "computer_use_host_updated",
+      userId: params.userId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      computerUseHostId: null,
+      createdAt: now,
+    });
+  }
   await params.tx
     .update(teamsOrgThreadSessions)
     .set({ computerUseHostId: null, updatedAt: now })
     .where(eq(teamsOrgThreadSessions.computerUseHostId, params.hostId));
+  return threads.length > 0;
 }
 
 function isComputerUseWriteCommandKind(
@@ -1264,45 +1278,54 @@ export const stopComputerUseHost$ = command(
   ): Promise<StopComputerUseHostResult> => {
     const db = set(writeDb$);
     const now = nowDate();
-    const { result, userId } = await db.transaction(async (tx) => {
-      const host = await hostFromToken(tx, params.hostToken, signal);
-      if (!host) {
-        return {
-          result: { status: "invalid_token" as const },
-          userId: null,
-        };
-      }
+    const { result, userId, threadBindingsCleared } = await db.transaction(
+      async (tx) => {
+        const host = await hostFromToken(tx, params.hostToken, signal);
+        if (!host) {
+          return {
+            result: { status: "invalid_token" as const },
+            userId: null,
+            threadBindingsCleared: false,
+          };
+        }
 
-      if (host.installationId) {
-        await tx
-          .update(computerUseHosts)
-          .set({
-            status: "offline",
-            tokenHash: invalidatedHostTokenHash(),
-            updatedAt: now,
-          })
-          .where(eq(computerUseHosts.id, host.id));
-      } else {
-        await tx
-          .update(computerUseHosts)
-          .set({ status: "offline", revokedAt: now, updatedAt: now })
-          .where(eq(computerUseHosts.id, host.id));
-        await clearComputerUseHostThreadBindings({
-          tx,
+        let threadBindingsCleared = false;
+        if (host.installationId) {
+          await tx
+            .update(computerUseHosts)
+            .set({
+              status: "offline",
+              tokenHash: invalidatedHostTokenHash(),
+              updatedAt: now,
+            })
+            .where(eq(computerUseHosts.id, host.id));
+        } else {
+          await tx
+            .update(computerUseHosts)
+            .set({ status: "offline", revokedAt: now, updatedAt: now })
+            .where(eq(computerUseHosts.id, host.id));
+          threadBindingsCleared = await clearComputerUseHostThreadBindings({
+            tx,
+            userId: host.userId,
+            hostId: host.id,
+          });
+        }
+        signal.throwIfAborted();
+        return {
+          result: { status: "stopped" as const, hostId: host.id },
           userId: host.userId,
-          hostId: host.id,
-        });
-      }
-      signal.throwIfAborted();
-      return {
-        result: { status: "stopped" as const, hostId: host.id },
-        userId: host.userId,
-      };
-    });
+          threadBindingsCleared,
+        };
+      },
+    );
     signal.throwIfAborted();
     if (userId) {
       await publishComputerUseHostsChanged(userId);
       signal.throwIfAborted();
+      if (threadBindingsCleared) {
+        await publishThreadListChanged(userId);
+        signal.throwIfAborted();
+      }
     }
     return result;
   },
@@ -1333,52 +1356,6 @@ export const listComputerUseHosts$ = command(
         return serializeHost(host, now);
       }),
     };
-  },
-);
-
-export const deleteComputerUseHost$ = command(
-  async (
-    { set },
-    params: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly hostId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<
-    { readonly status: "deleted" } | { readonly status: "not_found" }
-  > => {
-    const db = set(writeDb$);
-    const now = nowDate();
-    const result = await db.transaction(async (tx) => {
-      const [host] = await tx
-        .update(computerUseHosts)
-        .set({ status: "offline", revokedAt: now, updatedAt: now })
-        .where(
-          and(
-            eq(computerUseHosts.id, params.hostId),
-            eq(computerUseHosts.orgId, params.orgId),
-            eq(computerUseHosts.userId, params.userId),
-            isNull(computerUseHosts.revokedAt),
-          ),
-        )
-        .returning({ id: computerUseHosts.id });
-      if (!host) {
-        return { status: "not_found" as const };
-      }
-      await clearComputerUseHostThreadBindings({
-        tx,
-        userId: params.userId,
-        hostId: host.id,
-      });
-      return { status: "deleted" as const };
-    });
-    signal.throwIfAborted();
-    if (result.status === "deleted") {
-      await publishComputerUseHostsChanged(params.userId);
-      signal.throwIfAborted();
-    }
-    return result;
   },
 );
 

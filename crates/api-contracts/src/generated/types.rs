@@ -187,10 +187,8 @@ pub mod webhooks {
                 pub struct Request {
                     /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
-                    /// Storage name being committed.
-                    pub storage_name: String,
-                    /// Storage kind encoded by the TypeScript contract.
-                    pub storage_type: String,
+                    /// Canonical Storage identifier authorized by the agent run.
+                    pub storage_id: String,
                     /// Storage version identifier being committed.
                     pub version_id: String,
                     /// Optional parent version used when committing an incremental upload.
@@ -243,10 +241,8 @@ pub mod webhooks {
                 pub struct Request {
                     /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
-                    /// Storage name being prepared for upload.
-                    pub storage_name: String,
-                    /// Storage kind encoded by the TypeScript contract.
-                    pub storage_type: String,
+                    /// Canonical Storage identifier authorized by the agent run.
+                    pub storage_id: String,
                     /// Content-addressed file list included in the upload.
                     pub files: Vec<super::FileEntryWithHash>,
                     /// Optional parent version used when preparing an incremental upload.

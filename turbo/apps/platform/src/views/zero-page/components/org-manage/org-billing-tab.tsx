@@ -65,9 +65,8 @@ import {
 } from "../../../../signals/zero-page/org-plan-capabilities.ts";
 import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
-  billingScrollTarget$,
   billingSubPage$,
-  setBillingScrollTarget$,
+  buyCreditsScrollRef$,
   setBillingSubPage$,
   lockedTarget$,
   selectedTarget$,
@@ -966,7 +965,7 @@ function cancellationNoticeText(tier: BillingTier, changeDate: string): string {
   )} plan has been cancelled and will end on ${formattedDate}.`;
 }
 
-const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 10;
+const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 100;
 
 function slotCountLabel(count: number): string {
   return `${count} slot${count === 1 ? "" : "s"}`;
@@ -1287,9 +1286,8 @@ function ConcurrencyBillingSection({
 }
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
-  const billingScrollTarget = useGet(billingScrollTarget$);
   const setBillingSubPage = useSet(setBillingSubPage$);
-  const setBillingScrollTarget = useSet(setBillingScrollTarget$);
+  const buyCreditsScrollRef = useSet(buyCreditsScrollRef$);
   const setPricingOpen = (v: boolean) => {
     return setBillingSubPage(v);
   };
@@ -1489,16 +1487,7 @@ export function OrgBillingTab() {
       </section>
 
       {showBuyCredits && (
-        <div
-          ref={(el) => {
-            if (el && billingScrollTarget === "buy-credits") {
-              window.setTimeout(() => {
-                el.scrollIntoView({ block: "start", behavior: "smooth" });
-                setBillingScrollTarget(null);
-              }, 0);
-            }
-          }}
-        >
+        <div ref={buyCreditsScrollRef}>
           <BuyCreditsSection />
         </div>
       )}

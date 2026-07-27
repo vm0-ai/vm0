@@ -7,8 +7,16 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
+  GithubDeploymentState,
+  GithubDeploymentStatusCreatedEventConfig,
+  GithubIssueCommentCreatedEventConfig,
   GithubLabelAppliedEventConfig,
   GithubLabelAppliedSubjectFilter,
+  GithubPullRequestReviewState,
+  GithubPullRequestReviewSubmittedEventConfig,
+  GithubWorkflowJobCompletedEventConfig,
+  GithubWorkflowRunCompletedEventConfig,
+  GithubWorkflowRunConclusion,
   NotionPageContentUpdatedEventCreateConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
@@ -91,6 +99,8 @@ import {
   checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
   createWorkflowGithubLabelAppliedAutomation$,
+  createWorkflowGithubWebhookAutomation$,
+  createWorkflowGithubWorkflowRunCompletedAutomation$,
   createWorkflowGoogleCalendarEventAutomation$,
   createWorkflowGoogleMeetTranscriptGeneratedAutomation$,
   createWorkflowGmailLabelAppliedAutomation$,
@@ -140,6 +150,8 @@ import {
   setWorkflowAutomationCreateDialog$,
   setWorkflowAutomationEnabled$,
   updateWorkflowGithubLabelAppliedAutomation$,
+  updateWorkflowGithubWebhookAutomation$,
+  updateWorkflowGithubWorkflowRunCompletedAutomation$,
   updateWorkflowGmailNewMessageAutomation$,
   updateWorkflowGmailLabelAppliedAutomation$,
   updateWorkflowScheduleAutomation$,
@@ -242,7 +254,23 @@ type GithubWorkflowAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   {
     readonly kind: "event";
-    readonly eventType: "github-label-applied";
+    readonly eventType:
+      | "github-label-applied"
+      | "github-deployment-status-created"
+      | "github-issue-comment-created"
+      | "github-pull-request-review-submitted"
+      | "github-workflow-job-completed"
+      | "github-workflow-run-completed";
+  }
+>;
+type GithubWebhookWorkflowAutomationSummary = Extract<
+  GithubWorkflowAutomationSummary,
+  {
+    readonly eventType:
+      | "github-deployment-status-created"
+      | "github-issue-comment-created"
+      | "github-pull-request-review-submitted"
+      | "github-workflow-job-completed";
   }
 >;
 type WebhookWorkflowAutomationSummary = Extract<
@@ -284,6 +312,44 @@ const GITHUB_ACTOR_OPTIONS: readonly {
 }[] = [
   { value: "me", label: "Me" },
   { value: "anyone", label: "Anyone" },
+];
+
+const GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS: readonly {
+  readonly value: GithubWorkflowRunConclusion;
+  readonly label: string;
+}[] = [
+  { value: "success", label: "Success" },
+  { value: "failure", label: "Failure" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "timed_out", label: "Timed out" },
+  { value: "action_required", label: "Action required" },
+  { value: "neutral", label: "Neutral" },
+  { value: "skipped", label: "Skipped" },
+  { value: "stale", label: "Stale" },
+  { value: "startup_failure", label: "Startup failure" },
+];
+
+const GITHUB_REVIEW_STATE_OPTIONS: readonly {
+  readonly value: GithubPullRequestReviewState;
+  readonly label: string;
+}[] = [
+  { value: "approved", label: "Approved" },
+  { value: "changes_requested", label: "Changes requested" },
+  { value: "commented", label: "Commented" },
+];
+
+const GITHUB_DEPLOYMENT_STATE_OPTIONS: readonly {
+  readonly value: GithubDeploymentState;
+  readonly label: string;
+}[] = [
+  { value: "success", label: "Success" },
+  { value: "failure", label: "Failure" },
+  { value: "error", label: "Error" },
+  { value: "pending", label: "Pending" },
+  { value: "in_progress", label: "In progress" },
+  { value: "queued", label: "Queued" },
+  { value: "waiting", label: "Waiting" },
+  { value: "inactive", label: "Inactive" },
 ];
 
 const WORKFLOW_CRON_FREQUENCY_OPTIONS: readonly {
@@ -345,7 +411,24 @@ function isGithubWorkflowAutomation(
 ): automation is GithubWorkflowAutomationSummary {
   return (
     automation.kind === "event" &&
-    automation.eventType === "github-label-applied"
+    (automation.eventType === "github-label-applied" ||
+      automation.eventType === "github-deployment-status-created" ||
+      automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request-review-submitted" ||
+      automation.eventType === "github-workflow-job-completed" ||
+      automation.eventType === "github-workflow-run-completed")
+  );
+}
+
+function isGithubWebhookWorkflowAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is GithubWebhookWorkflowAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    (automation.eventType === "github-deployment-status-created" ||
+      automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request-review-submitted" ||
+      automation.eventType === "github-workflow-job-completed")
   );
 }
 
@@ -604,6 +687,10 @@ function AutomationCreateAction() {
     capabilities?.workflowWebhookAutomationAllowed ?? true;
   const notionWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
+  const githubWorkflowRunAutomationsEnabled =
+    features[FeatureSwitchKey.GithubWorkflowRunAutomations] ?? false;
+  const githubWebhookAutomationsEnabled =
+    features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -615,6 +702,8 @@ function AutomationCreateAction() {
         setCreateDialog(kind);
       }}
       githubLabelAutomationsEnabled
+      githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
+      githubWorkflowRunAutomationsEnabled={githubWorkflowRunAutomationsEnabled}
       googleCalendarAutomationsEnabled
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
@@ -2700,6 +2789,161 @@ function buildGithubLabelAppliedEventConfig(
   };
 }
 
+function githubWorkflowRunFilterValues(
+  form: FormData,
+  name: string,
+): string[] | undefined {
+  const value = formTextValue(form, name);
+  if (!value) {
+    return undefined;
+  }
+  const values = Array.from(
+    new Set(
+      value
+        .split(/[,\n]/u)
+        .map((part) => {
+          return part.trim();
+        })
+        .filter(Boolean),
+    ),
+  );
+  return values.length > 0 ? values : undefined;
+}
+
+function githubWorkflowRunConclusions(
+  form: FormData,
+): GithubWorkflowRunConclusion[] | undefined {
+  const values = form
+    .getAll("conclusions")
+    .filter((value): value is GithubWorkflowRunConclusion => {
+      return (
+        typeof value === "string" &&
+        GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS.some((option) => {
+          return option.value === value;
+        })
+      );
+    });
+  return values.length > 0 ? values : undefined;
+}
+
+function buildGithubWorkflowRunCompletedEventConfig(
+  form: FormData,
+): GithubWorkflowRunCompletedEventConfig {
+  return {
+    provider: "github",
+    event: "workflow_run_completed",
+    filters: {
+      repositories: githubWorkflowRunFilterValues(form, "repositories"),
+      workflows: githubWorkflowRunFilterValues(form, "workflows"),
+      conclusions: githubWorkflowRunConclusions(form),
+      branches: githubWorkflowRunFilterValues(form, "branches"),
+      events: githubWorkflowRunFilterValues(form, "events"),
+      actors: githubWorkflowRunFilterValues(form, "actors"),
+    },
+  };
+}
+
+type GithubWebhookAutomationEventType =
+  | "github-workflow-job-completed"
+  | "github-pull-request-review-submitted"
+  | "github-deployment-status-created"
+  | "github-issue-comment-created";
+
+type GithubWebhookAutomationEventConfig =
+  | GithubWorkflowJobCompletedEventConfig
+  | GithubPullRequestReviewSubmittedEventConfig
+  | GithubDeploymentStatusCreatedEventConfig
+  | GithubIssueCommentCreatedEventConfig;
+
+function checkedGithubValues<T extends string>(
+  form: FormData,
+  name: string,
+  options: readonly { readonly value: T }[],
+): T[] | undefined {
+  const values = form.getAll(name).filter((value): value is T => {
+    return (
+      typeof value === "string" &&
+      options.some((option) => {
+        return option.value === value;
+      })
+    );
+  });
+  return values.length > 0 ? values : undefined;
+}
+
+function buildGithubWebhookEventConfig(
+  eventType: GithubWebhookAutomationEventType,
+  form: FormData,
+): GithubWebhookAutomationEventConfig {
+  if (eventType === "github-workflow-job-completed") {
+    return {
+      provider: "github",
+      event: "workflow_job_completed",
+      filters: {
+        repositories: githubWorkflowRunFilterValues(form, "repositories"),
+        workflows: githubWorkflowRunFilterValues(form, "workflows"),
+        jobs: githubWorkflowRunFilterValues(form, "jobs"),
+        conclusions: githubWorkflowRunConclusions(form),
+        branches: githubWorkflowRunFilterValues(form, "branches"),
+        runnerLabels: githubWorkflowRunFilterValues(form, "runnerLabels"),
+        runnerGroups: githubWorkflowRunFilterValues(form, "runnerGroups"),
+      },
+    };
+  }
+  if (eventType === "github-pull-request-review-submitted") {
+    return {
+      provider: "github",
+      event: "pull_request_review_submitted",
+      filters: {
+        repositories: githubWorkflowRunFilterValues(form, "repositories"),
+        reviewStates: checkedGithubValues(
+          form,
+          "reviewStates",
+          GITHUB_REVIEW_STATE_OPTIONS,
+        ),
+        baseBranches: githubWorkflowRunFilterValues(form, "baseBranches"),
+        headBranches: githubWorkflowRunFilterValues(form, "headBranches"),
+        trustedAuthors: githubWorkflowRunFilterValues(form, "trustedAuthors"),
+      },
+    };
+  }
+  if (eventType === "github-deployment-status-created") {
+    const productionEnvironment = form.get("productionEnvironment");
+    return {
+      provider: "github",
+      event: "deployment_status_created",
+      filters: {
+        repositories: githubWorkflowRunFilterValues(form, "repositories"),
+        environments: githubWorkflowRunFilterValues(form, "environments"),
+        states: checkedGithubValues(
+          form,
+          "deploymentStates",
+          GITHUB_DEPLOYMENT_STATE_OPTIONS,
+        ),
+        refs: githubWorkflowRunFilterValues(form, "refs"),
+        productionEnvironment:
+          productionEnvironment === "true"
+            ? true
+            : productionEnvironment === "false"
+              ? false
+              : undefined,
+        creators: githubWorkflowRunFilterValues(form, "creators"),
+        apps: githubWorkflowRunFilterValues(form, "apps"),
+      },
+    };
+  }
+  return {
+    provider: "github",
+    event: "issue_comment_created",
+    filters: {
+      repositories: githubWorkflowRunFilterValues(form, "repositories"),
+      subject: githubSubjectFilterValue(form.get("subject"), "both"),
+      trustedAuthors: githubWorkflowRunFilterValues(form, "trustedAuthors"),
+      commentPrefixes: githubWorkflowRunFilterValues(form, "commentPrefixes"),
+    },
+  };
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -2761,6 +3005,21 @@ function workflowAutomationTitle(
   if (automation.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
+  if (automation.eventType === "github-workflow-job-completed") {
+    return "GitHub workflow job completed";
+  }
+  if (automation.eventType === "github-pull-request-review-submitted") {
+    return "GitHub pull request review submitted";
+  }
+  if (automation.eventType === "github-deployment-status-created") {
+    return "GitHub deployment status created";
+  }
+  if (automation.eventType === "github-issue-comment-created") {
+    return "GitHub issue comment created";
+  }
+  if (automation.eventType === "github-workflow-run-completed") {
+    return "GitHub workflow completed";
+  }
   if (automation.eventType === "google-calendar-event-created") {
     return "Google Calendar event created";
   }
@@ -2785,6 +3044,112 @@ function workflowAutomationTitle(
   return "Webhook";
 }
 
+function githubWorkflowRunAutomationSummary(
+  config: GithubWorkflowRunCompletedEventConfig,
+): string {
+  const filters = config.filters;
+  return [
+    filters.repositories
+      ? `Repositories ${filters.repositories.join(", ")}`
+      : "Any repository",
+    filters.workflows
+      ? `Workflows ${filters.workflows.join(", ")}`
+      : "Any workflow",
+    filters.conclusions
+      ? `Conclusions ${filters.conclusions.join(", ")}`
+      : "Any conclusion",
+  ].join(" · ");
+}
+
+function githubWorkflowJobAutomationSummary(
+  config: GithubWorkflowJobCompletedEventConfig,
+): string {
+  const filters = config.filters;
+  return [
+    filters.repositories?.join(", ") ?? "Any repository",
+    filters.jobs ? `Jobs ${filters.jobs.join(", ")}` : "Any job",
+    filters.conclusions?.join(", ") ?? "Any conclusion",
+  ].join(" · ");
+}
+
+function githubReviewAutomationSummary(
+  config: GithubPullRequestReviewSubmittedEventConfig,
+): string {
+  const filters = config.filters;
+  return [
+    filters.repositories?.join(", ") ?? "Any repository",
+    filters.reviewStates?.join(", ") ?? "Any review state",
+    filters.trustedAuthors
+      ? `Authors ${filters.trustedAuthors.join(", ")}`
+      : "Any author",
+  ].join(" · ");
+}
+
+function githubDeploymentAutomationSummary(
+  config: GithubDeploymentStatusCreatedEventConfig,
+): string {
+  const filters = config.filters;
+  return [
+    filters.repositories?.join(", ") ?? "Any repository",
+    filters.environments?.join(", ") ?? "Any environment",
+    filters.states?.join(", ") ?? "Any state",
+  ].join(" · ");
+}
+
+function githubCommentAutomationSummary(
+  config: GithubIssueCommentCreatedEventConfig,
+): string {
+  const filters = config.filters;
+  const subject =
+    GITHUB_SUBJECT_OPTIONS.find((option) => {
+      return option.value === filters.subject;
+    })?.label ?? "Issues and pull requests";
+  return [
+    filters.repositories?.join(", ") ?? "Any repository",
+    subject,
+    filters.trustedAuthors
+      ? `Authors ${filters.trustedAuthors.join(", ")}`
+      : "Any author",
+  ].join(" · ");
+}
+
+function githubWorkflowAutomationSummary(
+  automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event" }
+  >,
+): string | null {
+  switch (automation.eventType) {
+    case "github-label-applied": {
+      const subject =
+        GITHUB_SUBJECT_OPTIONS.find((option) => {
+          return option.value === automation.eventConfig.filters.subject;
+        })?.label ?? "Issues and pull requests";
+      const actor =
+        automation.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
+      return `Label ${quote(automation.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
+    }
+    case "github-workflow-run-completed": {
+      return githubWorkflowRunAutomationSummary(automation.eventConfig);
+    }
+    case "github-workflow-job-completed": {
+      return githubWorkflowJobAutomationSummary(automation.eventConfig);
+    }
+    case "github-pull-request-review-submitted": {
+      return githubReviewAutomationSummary(automation.eventConfig);
+    }
+    case "github-deployment-status-created": {
+      return githubDeploymentAutomationSummary(automation.eventConfig);
+    }
+    case "github-issue-comment-created": {
+      return githubCommentAutomationSummary(automation.eventConfig);
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 function workflowAutomationSummary(
   automation: ZeroWorkflowAutomationSummary,
 ): string | null {
@@ -2797,14 +3162,9 @@ function workflowAutomationSummary(
   if (automation.eventType === "gmail-label-applied") {
     return `Label ${quote(automation.eventConfig.labelName)}`;
   }
-  if (automation.eventType === "github-label-applied") {
-    const subject =
-      GITHUB_SUBJECT_OPTIONS.find((option) => {
-        return option.value === automation.eventConfig.filters.subject;
-      })?.label ?? "Issues and pull requests";
-    const actor =
-      automation.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
-    return `Label ${quote(automation.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
+  const githubSummary = githubWorkflowAutomationSummary(automation);
+  if (githubSummary) {
+    return githubSummary;
   }
   if (
     automation.eventType === "google-calendar-event-created" ||
@@ -2842,6 +3202,11 @@ type AutomationCreateDialogKind =
   | "gmail"
   | "gmail-label"
   | "github-label"
+  | "github-workflow-job"
+  | "github-pull-request-review"
+  | "github-deployment-status"
+  | "github-issue-comment"
+  | "github-workflow-run"
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
@@ -2875,9 +3240,13 @@ type AutomationCreateCategory = {
 
 function buildIntegrationAutomationOptions({
   githubLabelAutomationsEnabled,
+  githubWebhookAutomationsEnabled,
+  githubWorkflowRunAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
+  readonly githubWebhookAutomationsEnabled: boolean;
+  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
   const integrationOptions: AutomationCreateOption[] = [];
@@ -2888,6 +3257,42 @@ function buildIntegrationAutomationOptions({
       description: "Run when an issue or pull request gets a label.",
       icon: IconBrandGithub,
     });
+  }
+  if (githubWorkflowRunAutomationsEnabled) {
+    integrationOptions.push({
+      kind: "github-workflow-run",
+      title: "GitHub workflow completed",
+      description: "Run when a matching Actions workflow run completes.",
+      icon: IconBrandGithub,
+    });
+  }
+  if (githubWebhookAutomationsEnabled) {
+    integrationOptions.push(
+      {
+        kind: "github-workflow-job",
+        title: "GitHub workflow job completed",
+        description: "Run when a matching Actions job completes.",
+        icon: IconBrandGithub,
+      },
+      {
+        kind: "github-pull-request-review",
+        title: "GitHub pull request review submitted",
+        description: "Run when a matching review is submitted.",
+        icon: IconBrandGithub,
+      },
+      {
+        kind: "github-deployment-status",
+        title: "GitHub deployment status created",
+        description: "Run when a matching deployment status is created.",
+        icon: IconBrandGithub,
+      },
+      {
+        kind: "github-issue-comment",
+        title: "GitHub issue comment created",
+        description: "Run when a matching issue or PR comment is created.",
+        icon: IconBrandGithub,
+      },
+    );
   }
   integrationOptions.push({
     kind: "webhook",
@@ -2941,12 +3346,16 @@ const AUTOMATION_CATEGORY_CHIP: Readonly<
 
 function buildAutomationCreateCategories({
   githubLabelAutomationsEnabled,
+  githubWebhookAutomationsEnabled,
+  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
+  readonly githubWebhookAutomationsEnabled: boolean;
+  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
@@ -2986,6 +3395,8 @@ function buildAutomationCreateCategories({
 
   const integrationOptions = buildIntegrationAutomationOptions({
     githubLabelAutomationsEnabled,
+    githubWebhookAutomationsEnabled,
+    githubWorkflowRunAutomationsEnabled,
     webhookTierEligible,
   });
   const notionOptions = buildNotionAutomationOptions(
@@ -3134,6 +3545,8 @@ function AutomationCreateOptionCard({
 function AutomationCreateMenu({
   onSelect,
   githubLabelAutomationsEnabled,
+  githubWebhookAutomationsEnabled,
+  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
@@ -3141,6 +3554,8 @@ function AutomationCreateMenu({
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
   readonly githubLabelAutomationsEnabled: boolean;
+  readonly githubWebhookAutomationsEnabled: boolean;
+  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
@@ -3152,6 +3567,8 @@ function AutomationCreateMenu({
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
     githubLabelAutomationsEnabled,
+    githubWebhookAutomationsEnabled,
+    githubWorkflowRunAutomationsEnabled,
     googleCalendarAutomationsEnabled,
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
@@ -3452,6 +3869,18 @@ function WorkflowAutomationCreateDialogs({
           setCreateDialog(open ? "github-label" : null);
         }}
       />
+      <CreateGithubWorkflowRunCompletedAutomationDialog
+        workflowId={workflowId}
+        open={createDialog === "github-workflow-run"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-workflow-run" : null);
+        }}
+      />
+      <GithubWebhookAutomationCreateDialogs
+        workflowId={workflowId}
+        createDialog={createDialog}
+        setCreateDialog={setCreateDialog}
+      />
       <GoogleCalendarAutomationDialogs
         workflowId={workflowId}
         createDialog={createDialog}
@@ -3493,6 +3922,53 @@ function WorkflowAutomationCreateDialogs({
         }}
       />
       <WorkflowWebhookUpgradeDialog />
+    </>
+  );
+}
+
+function GithubWebhookAutomationCreateDialogs({
+  workflowId,
+  createDialog,
+  setCreateDialog,
+}: {
+  readonly workflowId: string;
+  readonly createDialog: WorkflowAutomationCreateDialog;
+  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
+}) {
+  return (
+    <>
+      <CreateGithubWebhookAutomationDialog
+        workflowId={workflowId}
+        eventType="github-workflow-job-completed"
+        open={createDialog === "github-workflow-job"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-workflow-job" : null);
+        }}
+      />
+      <CreateGithubWebhookAutomationDialog
+        workflowId={workflowId}
+        eventType="github-pull-request-review-submitted"
+        open={createDialog === "github-pull-request-review"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-pull-request-review" : null);
+        }}
+      />
+      <CreateGithubWebhookAutomationDialog
+        workflowId={workflowId}
+        eventType="github-deployment-status-created"
+        open={createDialog === "github-deployment-status"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-deployment-status" : null);
+        }}
+      />
+      <CreateGithubWebhookAutomationDialog
+        workflowId={workflowId}
+        eventType="github-issue-comment-created"
+        open={createDialog === "github-issue-comment"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-issue-comment" : null);
+        }}
+      />
     </>
   );
 }
@@ -4922,6 +5398,472 @@ function GithubLabelAutomationFields({
   );
 }
 
+function GithubWorkflowRunAutomationFields({
+  disabled,
+  defaultConfig,
+}: {
+  readonly disabled: boolean;
+  readonly defaultConfig?: GithubWorkflowRunCompletedEventConfig;
+}) {
+  const filters = defaultConfig?.filters;
+  const fields: readonly {
+    readonly name: string;
+    readonly label: string;
+    readonly placeholder: string;
+    readonly defaultValues: readonly string[] | undefined;
+  }[] = [
+    {
+      name: "repositories",
+      label: "Repositories",
+      placeholder: "vm0-ai/vm0, owner/another-repo",
+      defaultValues: filters?.repositories,
+    },
+    {
+      name: "workflows",
+      label: "GitHub workflows",
+      placeholder: "Turbo, .github/workflows/release.yml",
+      defaultValues: filters?.workflows,
+    },
+    {
+      name: "branches",
+      label: "Branches",
+      placeholder: "main, release",
+      defaultValues: filters?.branches,
+    },
+    {
+      name: "events",
+      label: "Triggering events",
+      placeholder: "push, pull_request, workflow_dispatch",
+      defaultValues: filters?.events,
+    },
+    {
+      name: "actors",
+      label: "Actors",
+      placeholder: "octocat, dependabot[bot]",
+      defaultValues: filters?.actors,
+    },
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Leave a filter empty to match any value. Separate multiple values with
+        commas.
+      </p>
+      {fields.map((field) => {
+        return (
+          <label
+            key={field.name}
+            className="flex flex-col gap-1 text-xs text-muted-foreground"
+          >
+            {field.label}
+            <input
+              name={field.name}
+              aria-label={field.label}
+              disabled={disabled}
+              defaultValue={field.defaultValues?.join(", ") ?? ""}
+              placeholder={field.placeholder}
+              className={FIELD_CLASS}
+            />
+          </label>
+        );
+      })}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-xs text-muted-foreground">Conclusions</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS.map((option) => {
+            return (
+              <label
+                key={option.value}
+                className="flex items-center gap-2 text-xs text-foreground"
+              >
+                <input
+                  type="checkbox"
+                  name="conclusions"
+                  value={option.value}
+                  disabled={disabled}
+                  defaultChecked={filters?.conclusions?.includes(option.value)}
+                  className="size-4 accent-primary"
+                />
+                {option.label}
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Select none to match any completed conclusion.
+        </p>
+      </fieldset>
+    </div>
+  );
+}
+
+function GithubFilterInput({
+  name,
+  label,
+  placeholder,
+  defaultValues,
+  disabled,
+}: {
+  readonly name: string;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly defaultValues?: readonly string[];
+  readonly disabled: boolean;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      {label}
+      <input
+        name={name}
+        aria-label={label}
+        disabled={disabled}
+        defaultValue={defaultValues?.join(", ") ?? ""}
+        placeholder={placeholder}
+        className={FIELD_CLASS}
+      />
+    </label>
+  );
+}
+
+function GithubCheckboxFilters<T extends string>({
+  name,
+  label,
+  options,
+  selected,
+  disabled,
+}: {
+  readonly name: string;
+  readonly label: string;
+  readonly options: readonly { readonly value: T; readonly label: string }[];
+  readonly selected?: readonly T[];
+  readonly disabled: boolean;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="text-xs text-muted-foreground">{label}</legend>
+      <div className="grid grid-cols-2 gap-2">
+        {options.map((option) => {
+          return (
+            <label
+              key={option.value}
+              className="flex items-center gap-2 text-xs text-foreground"
+            >
+              <input
+                type="checkbox"
+                name={name}
+                value={option.value}
+                disabled={disabled}
+                defaultChecked={selected?.includes(option.value)}
+                className="size-4 accent-primary"
+              />
+              {option.label}
+            </label>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Select none to match any value.
+      </p>
+    </fieldset>
+  );
+}
+
+function GithubWorkflowJobAutomationFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubWorkflowJobCompletedEventConfig;
+}) {
+  return (
+    <>
+      <GithubFilterInput
+        name="workflows"
+        label="GitHub workflows"
+        placeholder="Turbo, release"
+        defaultValues={config?.filters.workflows}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="jobs"
+        label="Jobs"
+        placeholder="test, build"
+        defaultValues={config?.filters.jobs}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="branches"
+        label="Branches"
+        placeholder="main, release"
+        defaultValues={config?.filters.branches}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="runnerLabels"
+        label="Runner labels"
+        placeholder="self-hosted, linux"
+        defaultValues={config?.filters.runnerLabels}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="runnerGroups"
+        label="Runner groups"
+        placeholder="Default, production"
+        defaultValues={config?.filters.runnerGroups}
+        disabled={disabled}
+      />
+      <GithubCheckboxFilters
+        name="conclusions"
+        label="Conclusions"
+        options={GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS}
+        selected={config?.filters.conclusions}
+        disabled={disabled}
+      />
+    </>
+  );
+}
+
+function GithubReviewAutomationFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestReviewSubmittedEventConfig;
+}) {
+  return (
+    <>
+      <GithubFilterInput
+        name="baseBranches"
+        label="Base branches"
+        placeholder="main, release"
+        defaultValues={config?.filters.baseBranches}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="headBranches"
+        label="Head branches"
+        placeholder="feature/, dependabot/"
+        defaultValues={config?.filters.headBranches}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="trustedAuthors"
+        label="Trusted authors"
+        placeholder="octocat, e7h4n"
+        defaultValues={config?.filters.trustedAuthors}
+        disabled={disabled}
+      />
+      <GithubCheckboxFilters
+        name="reviewStates"
+        label="Review states"
+        options={GITHUB_REVIEW_STATE_OPTIONS}
+        selected={config?.filters.reviewStates}
+        disabled={disabled}
+      />
+    </>
+  );
+}
+
+function GithubDeploymentAutomationFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubDeploymentStatusCreatedEventConfig;
+}) {
+  const productionEnvironment = config?.filters.productionEnvironment;
+  return (
+    <>
+      <GithubFilterInput
+        name="environments"
+        label="Environments"
+        placeholder="Preview, Production"
+        defaultValues={config?.filters.environments}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="refs"
+        label="Refs"
+        placeholder="main, v1.0.0"
+        defaultValues={config?.filters.refs}
+        disabled={disabled}
+      />
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Production environment
+        <Select
+          name="productionEnvironment"
+          defaultValue={
+            productionEnvironment === undefined
+              ? "any"
+              : String(productionEnvironment)
+          }
+          disabled={disabled}
+        >
+          <SelectTrigger
+            className="h-9 w-full"
+            aria-label="Production environment"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">Any</SelectItem>
+            <SelectItem value="true">Production only</SelectItem>
+            <SelectItem value="false">Non-production only</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      <GithubFilterInput
+        name="creators"
+        label="Creators"
+        placeholder="octocat, 12345"
+        defaultValues={config?.filters.creators}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="apps"
+        label="GitHub Apps"
+        placeholder="vercel, 12345"
+        defaultValues={config?.filters.apps}
+        disabled={disabled}
+      />
+      <GithubCheckboxFilters
+        name="deploymentStates"
+        label="Deployment states"
+        options={GITHUB_DEPLOYMENT_STATE_OPTIONS}
+        selected={config?.filters.states}
+        disabled={disabled}
+      />
+    </>
+  );
+}
+
+function GithubCommentAutomationFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubIssueCommentCreatedEventConfig;
+}) {
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Subject
+        <Select
+          name="subject"
+          defaultValue={config?.filters.subject ?? "both"}
+          disabled={disabled}
+        >
+          <SelectTrigger className="h-9 w-full" aria-label="Subject">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GITHUB_SUBJECT_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+      <GithubFilterInput
+        name="trustedAuthors"
+        label="Trusted authors"
+        placeholder="octocat, e7h4n"
+        defaultValues={config?.filters.trustedAuthors}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="commentPrefixes"
+        label="Comment prefixes"
+        placeholder="/zero, /verify, /deploy"
+        defaultValues={config?.filters.commentPrefixes}
+        disabled={disabled}
+      />
+    </>
+  );
+}
+
+function githubWebhookAutomationSpecificFields(
+  eventType: GithubWebhookAutomationEventType,
+  disabled: boolean,
+  defaultConfig: GithubWebhookAutomationEventConfig | undefined,
+): ReactNode {
+  switch (eventType) {
+    case "github-workflow-job-completed": {
+      const config =
+        defaultConfig?.event === "workflow_job_completed"
+          ? defaultConfig
+          : undefined;
+      return (
+        <GithubWorkflowJobAutomationFields
+          disabled={disabled}
+          config={config}
+        />
+      );
+    }
+    case "github-pull-request-review-submitted": {
+      const config =
+        defaultConfig?.event === "pull_request_review_submitted"
+          ? defaultConfig
+          : undefined;
+      return (
+        <GithubReviewAutomationFields disabled={disabled} config={config} />
+      );
+    }
+    case "github-deployment-status-created": {
+      const config =
+        defaultConfig?.event === "deployment_status_created"
+          ? defaultConfig
+          : undefined;
+      return (
+        <GithubDeploymentAutomationFields disabled={disabled} config={config} />
+      );
+    }
+    case "github-issue-comment-created": {
+      const config =
+        defaultConfig?.event === "issue_comment_created"
+          ? defaultConfig
+          : undefined;
+      return (
+        <GithubCommentAutomationFields disabled={disabled} config={config} />
+      );
+    }
+  }
+}
+
+function GithubWebhookAutomationFields({
+  eventType,
+  disabled,
+  defaultConfig,
+}: {
+  readonly eventType: GithubWebhookAutomationEventType;
+  readonly disabled: boolean;
+  readonly defaultConfig?: GithubWebhookAutomationEventConfig;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Leave a filter empty to match any value. Separate multiple values with
+        commas.
+      </p>
+      <GithubFilterInput
+        name="repositories"
+        label="Repositories"
+        placeholder="vm0-ai/vm0, owner/another-repo"
+        defaultValues={defaultConfig?.filters.repositories}
+        disabled={disabled}
+      />
+      {githubWebhookAutomationSpecificFields(
+        eventType,
+        disabled,
+        defaultConfig,
+      )}
+    </div>
+  );
+}
+
 function GithubLabelAutomationAvailabilityMessages({
   githubLoaded,
   isInstalled,
@@ -5102,6 +6044,228 @@ function CreateGithubLabelAppliedAutomationDialog({
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
               Add label automation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CreateGithubWorkflowRunCompletedAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const githubLoadable = useLoadable(githubIntegrationData$);
+  const githubData =
+    githubLoadable.state === "hasData" ? githubLoadable.data : null;
+  const [createLoadable, createGithubWorkflowRunAutomation] = useLoadableSet(
+    createWorkflowGithubWorkflowRunCompletedAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const loadingGithub = githubLoadable.state === "loading";
+  const githubLoadError = githubLoadable.state === "hasError";
+  const isInstalled = githubData?.isInstalled ?? false;
+  const submitDisabled =
+    creating || loadingGithub || githubLoadError || !isInstalled;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add GitHub workflow automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a matching GitHub Actions workflow run
+            completes.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add GitHub workflow automation"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const eventConfig = buildGithubWorkflowRunCompletedEventConfig(
+              new FormData(event.currentTarget),
+            );
+            detach(
+              (async () => {
+                await createGithubWorkflowRunAutomation(
+                  { workflowId, eventConfig },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <GithubWorkflowRunAutomationFields
+            disabled={creating || loadingGithub || githubLoadError}
+          />
+          {githubLoadable.state === "hasData" && !isInstalled ? (
+            <GithubNotInstalledNotice />
+          ) : null}
+          {githubLoadError ? <GithubLoadErrorNotice /> : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitDisabled}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add workflow automation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function githubWebhookAutomationTitle(
+  eventType: GithubWebhookAutomationEventType,
+): string {
+  switch (eventType) {
+    case "github-workflow-job-completed": {
+      return "GitHub workflow job completed";
+    }
+    case "github-pull-request-review-submitted": {
+      return "GitHub pull request review submitted";
+    }
+    case "github-deployment-status-created": {
+      return "GitHub deployment status created";
+    }
+    case "github-issue-comment-created": {
+      return "GitHub issue comment created";
+    }
+  }
+}
+
+function CreateGithubWebhookAutomationDialog({
+  workflowId,
+  eventType,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly eventType: GithubWebhookAutomationEventType;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const githubLoadable = useLoadable(githubIntegrationData$);
+  const githubData =
+    githubLoadable.state === "hasData" ? githubLoadable.data : null;
+  const [createLoadable, createGithubWebhookAutomation] = useLoadableSet(
+    createWorkflowGithubWebhookAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const loadingGithub = githubLoadable.state === "loading";
+  const githubLoadError = githubLoadable.state === "hasError";
+  const isInstalled = githubData?.isInstalled ?? false;
+  const submitDisabled =
+    creating || loadingGithub || githubLoadError || !isInstalled;
+  const title = githubWebhookAutomationTitle(eventType);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add {title}</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a matching GitHub webhook event arrives.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label={`Add ${title} automation`}
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const eventConfig = buildGithubWebhookEventConfig(
+              eventType,
+              new FormData(event.currentTarget),
+            );
+            detach(
+              (async () => {
+                if (
+                  eventType === "github-workflow-job-completed" &&
+                  eventConfig.event === "workflow_job_completed"
+                ) {
+                  await createGithubWebhookAutomation(
+                    { workflowId, eventType, eventConfig },
+                    pageSignal,
+                  );
+                } else if (
+                  eventType === "github-pull-request-review-submitted" &&
+                  eventConfig.event === "pull_request_review_submitted"
+                ) {
+                  await createGithubWebhookAutomation(
+                    { workflowId, eventType, eventConfig },
+                    pageSignal,
+                  );
+                } else if (
+                  eventType === "github-deployment-status-created" &&
+                  eventConfig.event === "deployment_status_created"
+                ) {
+                  await createGithubWebhookAutomation(
+                    { workflowId, eventType, eventConfig },
+                    pageSignal,
+                  );
+                } else if (
+                  eventType === "github-issue-comment-created" &&
+                  eventConfig.event === "issue_comment_created"
+                ) {
+                  await createGithubWebhookAutomation(
+                    { workflowId, eventType, eventConfig },
+                    pageSignal,
+                  );
+                }
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <GithubWebhookAutomationFields
+            eventType={eventType}
+            disabled={creating || loadingGithub || githubLoadError}
+          />
+          {githubLoadable.state === "hasData" && !isInstalled ? (
+            <GithubNotInstalledNotice />
+          ) : null}
+          {githubLoadError ? <GithubLoadErrorNotice /> : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitDisabled}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconBrandGithub size={14} stroke={1.5} />
+              )}
+              Add automation
             </Button>
           </DialogFooter>
         </form>
@@ -5966,6 +7130,12 @@ function editWorkflowAutomationTitle(
   if (automation.eventType === "gmail-new-message") {
     return "Edit match";
   }
+  if (automation.eventType === "github-workflow-run-completed") {
+    return "Edit GitHub workflow filters";
+  }
+  if (isGithubWebhookWorkflowAutomation(automation)) {
+    return `Edit ${githubWebhookAutomationTitle(automation.eventType)} filters`;
+  }
   return "Edit label";
 }
 
@@ -5989,7 +7159,9 @@ function EditWorkflowAutomationDialog({
       <DialogContent
         className={
           automation.kind === "event" &&
-          automation.eventType === "gmail-new-message"
+          (automation.eventType === "gmail-new-message" ||
+            automation.eventType === "github-workflow-run-completed" ||
+            isGithubWebhookWorkflowAutomation(automation))
             ? "max-w-2xl"
             : ""
         }
@@ -6022,6 +7194,19 @@ function EditWorkflowAutomationDialog({
         {automation.kind === "event" &&
         automation.eventType === "github-label-applied" ? (
           <UpdateGithubLabelAppliedAutomationForm
+            automation={automation}
+            onCancel={close}
+          />
+        ) : null}
+        {automation.kind === "event" &&
+        automation.eventType === "github-workflow-run-completed" ? (
+          <UpdateGithubWorkflowRunCompletedAutomationForm
+            automation={automation}
+            onCancel={close}
+          />
+        ) : null}
+        {isGithubWebhookWorkflowAutomation(automation) ? (
+          <UpdateGithubWebhookAutomationForm
             automation={automation}
             onCancel={close}
           />
@@ -6386,6 +7571,132 @@ function UpdateGithubLabelAppliedAutomationForm({
             <IconBrandGithub size={13} stroke={1.5} />
           )}
           <span>Save label</span>
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function UpdateGithubWorkflowRunCompletedAutomationForm({
+  automation,
+  onCancel,
+}: {
+  readonly automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { eventType: "github-workflow-run-completed" }
+  >;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateGithubWorkflowRunAutomation] = useLoadableSet(
+    updateWorkflowGithubWorkflowRunCompletedAutomation$,
+  );
+  const saving = updateLoadable.state === "loading";
+  return (
+    <form
+      aria-label="Update GitHub workflow automation"
+      className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const eventConfig = buildGithubWorkflowRunCompletedEventConfig(
+          new FormData(event.currentTarget),
+        );
+        detach(
+          (async () => {
+            await updateGithubWorkflowRunAutomation(
+              {
+                automationId: automation.id,
+                eventConfig,
+              },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <GithubWorkflowRunAutomationFields
+        disabled={saving}
+        defaultConfig={automation.eventConfig}
+      />
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconBrandGithub size={13} stroke={1.5} />
+          )}
+          <span>Save filters</span>
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function UpdateGithubWebhookAutomationForm({
+  automation,
+  onCancel,
+}: {
+  readonly automation: GithubWebhookWorkflowAutomationSummary;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateGithubWebhookAutomation] = useLoadableSet(
+    updateWorkflowGithubWebhookAutomation$,
+  );
+  const saving = updateLoadable.state === "loading";
+  return (
+    <form
+      aria-label={`Update ${githubWebhookAutomationTitle(automation.eventType)} automation`}
+      className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const eventConfig = buildGithubWebhookEventConfig(
+          automation.eventType,
+          new FormData(event.currentTarget),
+        );
+        detach(
+          (async () => {
+            await updateGithubWebhookAutomation(
+              { automationId: automation.id, eventConfig },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <GithubWebhookAutomationFields
+        eventType={automation.eventType}
+        disabled={saving}
+        defaultConfig={automation.eventConfig}
+      />
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconBrandGithub size={13} stroke={1.5} />
+          )}
+          <span>Save filters</span>
         </Button>
       </DialogFooter>
     </form>

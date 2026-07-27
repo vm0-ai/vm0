@@ -75,6 +75,7 @@ import {
   type SidebarChatThreadWindow,
 } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import {
+  currentChatAgentScope$,
   currentChatAgentId$,
   currentChatThreadId$,
 } from "../../signals/agent-chat.ts";
@@ -201,15 +202,17 @@ function getIndicatorState({
   return hasDraft ? "draft" : null;
 }
 
+// Deliberately no `equalityFn`: an inline one closes over `threadId`, so it gets
+// a fresh identity every render. `useLastResolved` treats it as a subscription
+// dependency, which makes every render resubscribe and re-report a settled
+// rejection, spinning the row into an infinite render loop. The default
+// referential check keeps the subscription stable; the cost is that all rows
+// re-render when the set is refetched, which is cheap for a sidebar list.
 function useThreadMembership(
   threadIds$: Computed<Promise<ReadonlySet<string>>>,
   threadId: string,
 ): boolean {
-  const threadIds = useLastResolved(threadIds$, {
-    equalityFn(previous, next) {
-      return previous.has(threadId) === next.has(threadId);
-    },
-  });
+  const threadIds = useLastResolved(threadIds$);
   return threadIds?.has(threadId) ?? false;
 }
 
@@ -995,7 +998,11 @@ function ChatThreadsContent() {
   return <ExpandedChatThreadsContent />;
 }
 
-function ExpandedChatThreadsContent() {
+function AgentChatThreadsContent({
+  currentMainThreadId,
+}: {
+  currentMainThreadId: string | null;
+}) {
   // The primitive count preserves the previous resolved value while the
   // underlying event projection recomputes. Visible rows subscribe separately
   // in VirtualizedChatThreads.
@@ -1003,13 +1010,35 @@ function ExpandedChatThreadsContent() {
   const threadCount =
     threadCountLoadable.state === "hasData" ? threadCountLoadable.data : 0;
   const chatThreadsLoading = threadCountLoadable.state === "loading";
+  const currentMainThreadListed =
+    useLastResolved(currentChatThreadListed$) ?? false;
+  const scrollCurrentChatThreadOnRef = useSet(scrollCurrentChatThreadOnRef$);
+
+  return (
+    <div className="flex flex-col gap-1">
+      {currentMainThreadId && currentMainThreadListed ? (
+        <span
+          key={currentMainThreadId}
+          ref={scrollCurrentChatThreadOnRef}
+          data-chat-thread-id={currentMainThreadId}
+          hidden
+        />
+      ) : null}
+      {chatThreadsLoading ? (
+        <ChatThreadsSkeleton />
+      ) : (
+        <ChatThreads threadCount={threadCount} />
+      )}
+    </div>
+  );
+}
+
+function ExpandedChatThreadsContent() {
+  const agentScope = useGet(currentChatAgentScope$);
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
   const currentMainThreadId = useGet(currentChatThreadId$);
-  const currentMainThreadListed =
-    useLastResolved(currentChatThreadListed$) ?? false;
   const scrollToThread = useSet(scrollToThread$);
-  const scrollCurrentChatThreadOnRef = useSet(scrollCurrentChatThreadOnRef$);
   const pageSignal = useGet(pageSignal$);
   const focusThreadLink = (
     viewport: HTMLElement,
@@ -1062,24 +1091,6 @@ function ExpandedChatThreadsContent() {
     detach(scrollAndFocusCurrentThread(), Reason.DomCallback);
   };
 
-  const content = (
-    <div className="flex flex-col gap-1">
-      {currentMainThreadId && currentMainThreadListed ? (
-        <span
-          key={currentMainThreadId}
-          ref={scrollCurrentChatThreadOnRef}
-          data-chat-thread-id={currentMainThreadId}
-          hidden
-        />
-      ) : null}
-      {chatThreadsLoading ? (
-        <ChatThreadsSkeleton />
-      ) : (
-        <ChatThreads threadCount={threadCount} />
-      )}
-    </div>
-  );
-
   return (
     <OverlayScrollArea
       className="mt-1 min-h-0 flex-1"
@@ -1105,14 +1116,19 @@ function ExpandedChatThreadsContent() {
         boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
       }}
     >
-      {content}
+      <AgentChatThreadsContent
+        key={agentScope ?? "no-agent"}
+        currentMainThreadId={currentMainThreadId}
+      />
     </OverlayScrollArea>
   );
 }
 export function ChatThreadsSection() {
+  const agentScope = useGet(currentChatAgentScope$);
+
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
-      <ChatThreadsTitle />
+      <ChatThreadsTitle key={agentScope ?? "no-agent"} />
       <ChatThreadsContent />
       <ChatThreadRenameDialog />
       <DeleteChatThreadDialog />

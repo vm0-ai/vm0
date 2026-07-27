@@ -5,7 +5,11 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   illustrationAssetUrl,
 } from "../illustration-template-items";
-import { findImageStyle } from "../resource-registry";
+import {
+  findImageStyle,
+  hasR2Archive,
+  listImageStyles,
+} from "../resource-registry";
 
 describe("illustration template items", () => {
   it("resolve every image style against the resource registry", () => {
@@ -15,6 +19,15 @@ describe("illustration template items", () => {
       expect(style, item.illustrationStyleId).toBeDefined();
       expect(item.tag).toBe("illustration");
     }
+  });
+
+  it("registers the 32 manually published image style archives", () => {
+    const imageStyles = listImageStyles();
+
+    expect(imageStyles.filter(hasR2Archive)).toHaveLength(32);
+    expect(
+      findImageStyle("image-style:chibi-hero")?.source.archive,
+    ).toBeUndefined();
   });
 
   it("defines preview image arrays", () => {

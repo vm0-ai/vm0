@@ -20,6 +20,7 @@ const tenantAccessTokenResponseSchema = z.object({
 });
 
 const feishuBotInfoSchema = z.object({
+  open_id: z.string().optional(),
   app_name: z.string().optional(),
   avatar_url: z.string().optional(),
 });
@@ -54,15 +55,84 @@ const feishuResponseSchema = z.object({
   msg: z.string().optional(),
 });
 
+const feishuMessageResponseSchema = feishuResponseSchema.extend({
+  data: z
+    .object({
+      message_id: z.string().optional(),
+      chat_id: z.string().optional(),
+    })
+    .optional(),
+});
+
+const feishuFileResponseSchema = feishuResponseSchema.extend({
+  data: z.object({ file_key: z.string().optional() }).optional(),
+});
+
+const feishuReactionResponseSchema = feishuResponseSchema.extend({
+  data: z.object({ reaction_id: z.string().optional() }).optional(),
+});
+
+const feishuHistoryMessageSchema = z.object({
+  message_id: z.string(),
+  root_id: z.string().optional(),
+  parent_id: z.string().optional(),
+  thread_id: z.string().optional(),
+  msg_type: z.string(),
+  create_time: z.string().optional(),
+  deleted: z.boolean().optional(),
+  chat_id: z.string().optional(),
+  sender: z
+    .object({
+      id: z.string().optional(),
+      id_type: z.string().optional(),
+      sender_type: z.string().optional(),
+      sender_name: z.string().optional(),
+    })
+    .optional(),
+  body: z.object({ content: z.string().optional() }).optional(),
+  mentions: z
+    .array(
+      z.object({
+        key: z.string().optional(),
+        id: z.string().optional(),
+        name: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+const feishuMessageHistoryResponseSchema = feishuResponseSchema.extend({
+  data: z
+    .object({
+      items: z.array(feishuHistoryMessageSchema).optional(),
+      has_more: z.boolean().optional(),
+      page_token: z.string().optional(),
+    })
+    .optional(),
+});
+
 interface FeishuTenantAccessToken {
   readonly token: string;
   readonly expiresInSeconds: number;
 }
 
 interface FeishuBotInfo {
+  readonly openId: string;
   readonly name: string;
   readonly avatarUrl: string | null;
 }
+
+export interface FeishuOutboundMessage {
+  readonly msgType: "file" | "interactive" | "text";
+  readonly content: Readonly<Record<string, unknown>>;
+}
+
+interface FeishuSentMessage {
+  readonly messageId: string;
+  readonly chatId: string | null;
+}
+
+export type FeishuHistoryMessage = z.infer<typeof feishuHistoryMessageSchema>;
 
 export interface FeishuUserInfo {
   readonly name: string | null;
@@ -70,7 +140,20 @@ export interface FeishuUserInfo {
   readonly tenantKey: string | null;
 }
 
-export class InvalidFeishuCredentialsError extends Error {}
+export class FeishuApiError extends Error {
+  constructor(
+    message: string,
+    readonly routeStatus: 400 | 502,
+  ) {
+    super(message);
+  }
+}
+
+export class InvalidFeishuCredentialsError extends FeishuApiError {
+  constructor(message: string) {
+    super(message, 400);
+  }
+}
 
 function tokenIsFresh(expiresAt: Date | null): boolean {
   return (
@@ -82,7 +165,10 @@ function tokenIsFresh(expiresAt: Date | null): boolean {
 async function readJson(response: Response): Promise<unknown> {
   const body = await response.json();
   if (!response.ok) {
-    throw new Error(`Feishu API returned HTTP ${response.status}`);
+    throw new FeishuApiError(
+      `Feishu API returned HTTP ${response.status}`,
+      response.status >= 500 ? 502 : 400,
+    );
   }
   return body;
 }
@@ -113,7 +199,10 @@ export async function fetchFeishuTenantAccessToken(args: {
     );
   }
   if (!parsed.tenant_access_token || !parsed.expire) {
-    throw new Error("Feishu tenant access token response is incomplete");
+    throw new FeishuApiError(
+      "Feishu tenant access token response is incomplete",
+      502,
+    );
   }
   return {
     token: parsed.tenant_access_token,
@@ -134,13 +223,17 @@ export async function fetchFeishuBotInfo(args: {
   });
   const parsed = feishuBotInfoResponseSchema.parse(await readJson(response));
   if (parsed.code !== 0) {
-    throw new Error(parsed.msg ?? "Feishu bot info request failed");
+    throw new FeishuApiError(
+      parsed.msg ?? "Feishu bot info request failed",
+      400,
+    );
   }
   const bot = parsed.bot ?? parsed.data?.bot;
-  if (!bot?.app_name) {
-    throw new Error("Feishu bot info response is incomplete");
+  if (!bot?.open_id || !bot.app_name) {
+    throw new FeishuApiError("Feishu bot info response is incomplete", 502);
   }
   return {
+    openId: bot.open_id,
     name: bot.app_name,
     avatarUrl: bot.avatar_url ?? null,
   };
@@ -170,10 +263,10 @@ export async function exchangeFeishuOAuthCode(args: {
   );
   const parsed = feishuOAuthTokenResponseSchema.parse(await readJson(response));
   if (parsed.code !== 0) {
-    throw new Error(parsed.msg ?? "Feishu OAuth exchange failed");
+    throw new FeishuApiError(parsed.msg ?? "Feishu OAuth exchange failed", 400);
   }
   if (!parsed.access_token) {
-    throw new Error("Feishu OAuth token response is incomplete");
+    throw new FeishuApiError("Feishu OAuth token response is incomplete", 502);
   }
   return parsed.access_token;
 }
@@ -194,10 +287,13 @@ export async function fetchFeishuUserInfo(args: {
   );
   const parsed = feishuUserInfoResponseSchema.parse(await readJson(response));
   if (parsed.code !== 0) {
-    throw new Error(parsed.msg ?? "Feishu user info request failed");
+    throw new FeishuApiError(
+      parsed.msg ?? "Feishu user info request failed",
+      400,
+    );
   }
   if (!parsed.data?.open_id) {
-    throw new Error("Feishu user info response is incomplete");
+    throw new FeishuApiError("Feishu user info response is incomplete", 502);
   }
   return {
     name: parsed.data.name ?? null,
@@ -258,13 +354,131 @@ export async function getFeishuTenantAccessToken(args: {
   return token.token;
 }
 
-export async function replyToFeishuMessage(args: {
+export async function downloadFeishuMessageResource(args: {
   readonly db: Db;
   readonly installationId: string;
   readonly messageId: string;
-  readonly text: string;
+  readonly fileKey: string;
+  readonly resourceType: "file" | "image";
   readonly signal: AbortSignal;
-}): Promise<void> {
+}): Promise<Response> {
+  const token = await getFeishuTenantAccessToken(args);
+  const url = new URL(
+    `${FEISHU_API_ORIGIN}/open-apis/im/v1/messages/${encodeURIComponent(args.messageId)}/resources/${encodeURIComponent(args.fileKey)}`,
+  );
+  url.searchParams.set("type", args.resourceType);
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: args.signal,
+  });
+  if (!response.ok) {
+    throw new FeishuApiError(
+      `Feishu file download returned HTTP ${response.status}`,
+      response.status >= 500 ? 502 : 400,
+    );
+  }
+  return response;
+}
+
+export async function uploadFeishuFile(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly content: Buffer;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const token = await getFeishuTenantAccessToken(args);
+  const form = new FormData();
+  form.set("file_type", "stream");
+  form.set("file_name", args.filename);
+  form.set(
+    "file",
+    new Blob([Uint8Array.from(args.content)], { type: args.contentType }),
+    args.filename,
+  );
+  const response = await fetch(`${FEISHU_API_ORIGIN}/open-apis/im/v1/files`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+    signal: args.signal,
+  });
+  const parsed = feishuFileResponseSchema.parse(await readJson(response));
+  if (parsed.code !== 0) {
+    throw new FeishuApiError(parsed.msg ?? "Feishu file upload failed", 400);
+  }
+  if (!parsed.data?.file_key) {
+    throw new FeishuApiError("Feishu file upload response is incomplete", 502);
+  }
+  return parsed.data.file_key;
+}
+
+function messagePayload(message: FeishuOutboundMessage): {
+  readonly msg_type: FeishuOutboundMessage["msgType"];
+  readonly content: string;
+} {
+  return {
+    msg_type: message.msgType,
+    content: JSON.stringify(message.content),
+  };
+}
+
+function parseSentMessage(
+  body: unknown,
+  fallbackError: string,
+): FeishuSentMessage {
+  const parsed = feishuMessageResponseSchema.parse(body);
+  if (parsed.code !== 0) {
+    throw new FeishuApiError(parsed.msg ?? fallbackError, 400);
+  }
+  if (!parsed.data?.message_id) {
+    throw new FeishuApiError("Feishu message response is incomplete", 502);
+  }
+  return {
+    messageId: parsed.data.message_id,
+    chatId: parsed.data.chat_id ?? null,
+  };
+}
+
+export async function sendFeishuMessage(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly receiveIdType: "chat_id" | "open_id";
+  readonly receiveId: string;
+  readonly message: FeishuOutboundMessage;
+  readonly idempotencyKey?: string;
+  readonly signal: AbortSignal;
+}): Promise<FeishuSentMessage> {
+  const token = await getFeishuTenantAccessToken(args);
+  const url = new URL(`${FEISHU_API_ORIGIN}/open-apis/im/v1/messages`);
+  url.searchParams.set("receive_id_type", args.receiveIdType);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      receive_id: args.receiveId,
+      ...messagePayload(args.message),
+      ...(args.idempotencyKey ? { uuid: args.idempotencyKey } : {}),
+    }),
+    signal: args.signal,
+  });
+  return parseSentMessage(
+    await readJson(response),
+    "Feishu message send failed",
+  );
+}
+
+export async function replyWithFeishuMessage(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly messageId: string;
+  readonly message: FeishuOutboundMessage;
+  readonly replyInThread?: boolean;
+  readonly signal: AbortSignal;
+}): Promise<FeishuSentMessage> {
   const token = await getFeishuTenantAccessToken(args);
   const response = await fetch(
     `${FEISHU_API_ORIGIN}/open-apis/im/v1/messages/${encodeURIComponent(args.messageId)}/reply`,
@@ -275,14 +489,113 @@ export async function replyToFeishuMessage(args: {
         "content-type": "application/json; charset=utf-8",
       },
       body: JSON.stringify({
-        content: JSON.stringify({ text: args.text }),
-        msg_type: "text",
+        ...messagePayload(args.message),
+        ...(args.replyInThread ? { reply_in_thread: true } : {}),
       }),
+      signal: args.signal,
+    },
+  );
+  return parseSentMessage(
+    await readJson(response),
+    "Feishu message reply failed",
+  );
+}
+
+export async function addFeishuMessageReaction(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly messageId: string;
+  readonly emojiType: string;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const token = await getFeishuTenantAccessToken(args);
+  const response = await fetch(
+    `${FEISHU_API_ORIGIN}/open-apis/im/v1/messages/${encodeURIComponent(args.messageId)}/reactions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({
+        reaction_type: { emoji_type: args.emojiType },
+      }),
+      signal: args.signal,
+    },
+  );
+  const parsed = feishuReactionResponseSchema.parse(await readJson(response));
+  if (parsed.code !== 0) {
+    throw new FeishuApiError(
+      parsed.msg ?? "Feishu message reaction failed",
+      400,
+    );
+  }
+  if (!parsed.data?.reaction_id) {
+    throw new FeishuApiError(
+      "Feishu message reaction response is incomplete",
+      502,
+    );
+  }
+  return parsed.data.reaction_id;
+}
+
+export async function removeFeishuMessageReaction(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly messageId: string;
+  readonly reactionId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const token = await getFeishuTenantAccessToken(args);
+  const response = await fetch(
+    `${FEISHU_API_ORIGIN}/open-apis/im/v1/messages/${encodeURIComponent(args.messageId)}/reactions/${encodeURIComponent(args.reactionId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json; charset=utf-8",
+      },
       signal: args.signal,
     },
   );
   const parsed = feishuResponseSchema.parse(await readJson(response));
   if (parsed.code !== 0) {
-    throw new Error(parsed.msg ?? "Feishu message reply failed");
+    throw new FeishuApiError(
+      parsed.msg ?? "Feishu message reaction removal failed",
+      400,
+    );
   }
+}
+
+export async function listFeishuChatMessages(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly chatId: string;
+  readonly pageSize?: number;
+  readonly signal: AbortSignal;
+}): Promise<readonly FeishuHistoryMessage[]> {
+  const token = await getFeishuTenantAccessToken(args);
+  const url = new URL(`${FEISHU_API_ORIGIN}/open-apis/im/v1/messages`);
+  url.searchParams.set("container_id_type", "chat");
+  url.searchParams.set("container_id", args.chatId);
+  url.searchParams.set("sort_type", "ByCreateTimeDesc");
+  url.searchParams.set("page_size", String(args.pageSize ?? 50));
+  url.searchParams.set("with_sender_name", "true");
+  const response = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json; charset=utf-8",
+    },
+    signal: args.signal,
+  });
+  const parsed = feishuMessageHistoryResponseSchema.parse(
+    await readJson(response),
+  );
+  if (parsed.code !== 0) {
+    throw new FeishuApiError(
+      parsed.msg ?? "Feishu message history request failed",
+      400,
+    );
+  }
+  return parsed.data?.items ?? [];
 }

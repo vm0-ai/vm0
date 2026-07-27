@@ -10,7 +10,9 @@ use crate::ids::RunId;
 #[cfg(test)]
 use crate::local_queue;
 use crate::local_queue::{CancelTargetState, LocalQueue};
-use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+#[cfg(test)]
+use crate::run_cancellation::RunCancellationRegistration;
+use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
 
 /// Poll interval for scanning local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -18,7 +20,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 #[derive(Clone)]
 pub(super) struct LocalCancelScanner {
     queue: LocalQueue,
-    cancel_tokens: SharedRunCancellationMap,
+    cancel_tokens: RunCancellationRegistry,
     owned_claims: Arc<tokio::sync::Mutex<HashSet<RunId>>>,
 }
 
@@ -30,7 +32,7 @@ pub(super) struct LocalCancelWatcher {
 impl LocalCancelScanner {
     pub(super) fn new(
         queue: LocalQueue,
-        cancel_tokens: SharedRunCancellationMap,
+        cancel_tokens: RunCancellationRegistry,
         owned_claims: Arc<tokio::sync::Mutex<HashSet<RunId>>>,
     ) -> Self {
         Self {
@@ -102,11 +104,7 @@ impl LocalCancelScanner {
         &self,
         cancel_ids: &[RunId],
     ) -> HashMap<RunId, RunCancellationHandle> {
-        let tokens = self.cancel_tokens.lock().await;
-        cancel_ids
-            .iter()
-            .filter_map(|run_id| tokens.get(run_id).cloned().map(|token| (*run_id, token)))
-            .collect()
+        self.cancel_tokens.handles_for(cancel_ids).await
     }
 
     async fn snapshot_owned_claims(&self, cancel_ids: &[RunId]) -> HashSet<RunId> {
@@ -134,13 +132,7 @@ impl LocalCancelScanner {
             }
             owned.iter().copied().collect()
         };
-        let stale_ids: Vec<RunId> = {
-            let tokens = self.cancel_tokens.lock().await;
-            owned_ids
-                .into_iter()
-                .filter(|run_id| !tokens.contains_key(run_id))
-                .collect()
-        };
+        let stale_ids = self.cancel_tokens.missing_run_ids(&owned_ids).await;
         if stale_ids.is_empty() {
             return;
         }
@@ -222,11 +214,11 @@ impl Drop for LocalCancelWatcher {
 mod tests {
     use super::*;
 
-    fn empty_cancel_tokens() -> SharedRunCancellationMap {
-        Arc::new(tokio::sync::Mutex::new(HashMap::new()))
+    fn empty_cancel_tokens() -> RunCancellationRegistry {
+        RunCancellationRegistry::new()
     }
 
-    fn scanner(dir: &std::path::Path, tokens: SharedRunCancellationMap) -> LocalCancelScanner {
+    fn scanner(dir: &std::path::Path, tokens: RunCancellationRegistry) -> LocalCancelScanner {
         LocalCancelScanner::new(
             LocalQueue::new(dir.to_path_buf()),
             tokens,
@@ -234,14 +226,11 @@ mod tests {
         )
     }
 
-    async fn insert_cancel_handle(
-        tokens: &SharedRunCancellationMap,
+    async fn insert_cancel_registration(
+        tokens: &RunCancellationRegistry,
         run_id: RunId,
-    ) -> CancellationToken {
-        let handle = RunCancellationHandle::new();
-        let token = handle.token();
-        tokens.lock().await.insert(run_id, handle);
-        token
+    ) -> RunCancellationRegistration {
+        tokens.register(run_id).await.unwrap()
     }
 
     fn write_job(dir: &std::path::Path, run_id: RunId) {
@@ -276,7 +265,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         write_job(dir.path(), run_id);
         write_cancel(dir.path(), run_id);
 
@@ -290,7 +280,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         write_job(dir.path(), run_id);
         let cancel_path = write_cancel(dir.path(), run_id);
         let scanner = scanner(dir.path(), tokens);
@@ -310,7 +301,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         write_job(dir.path(), run_id);
         let cancel_path = write_cancel(dir.path(), run_id);
 
@@ -331,7 +323,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         let cancel_path = write_cancel(dir.path(), run_id);
         write_claim(dir.path(), run_id);
 
@@ -352,7 +345,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         let cancel_path = write_cancel(dir.path(), run_id);
 
         scanner(dir.path(), tokens).scan_cancel_files().await;
@@ -372,7 +366,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         let cancel_path = write_cancel(dir.path(), run_id);
         write_result(dir.path(), run_id, b"terminal");
         write_claim(dir.path(), run_id);
@@ -393,9 +388,10 @@ mod tests {
     async fn cancel_watcher_triggers_owned_token_without_discover() {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
-        let scanner = scanner(dir.path(), Arc::clone(&tokens));
+        let scanner = scanner(dir.path(), tokens.clone());
         let run_id = RunId::new_v4();
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         write_job(dir.path(), run_id);
         write_cancel(dir.path(), run_id);
         scanner.mark_owned_claim(run_id).await;
@@ -426,8 +422,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let _job_token = insert_cancel_handle(&tokens, run_id).await;
-        let scanner = scanner(dir.path(), Arc::clone(&tokens));
+        let registration = tokens.register(run_id).await.unwrap();
+        let scanner = scanner(dir.path(), tokens.clone());
         scanner.mark_owned_claim(run_id).await;
         assert!(
             scanner
@@ -446,7 +442,7 @@ mod tests {
             "owned claim should stay while its cancel token is still active"
         );
 
-        tokens.lock().await.remove(&run_id);
+        registration.unregister().await;
         scanner.prune_owned_claims_without_tokens().await;
 
         assert!(
@@ -566,7 +562,7 @@ mod tests {
     async fn cancel_file_before_token_survives_until_token_inserted() {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
-        let scanner = scanner(dir.path(), Arc::clone(&tokens));
+        let scanner = scanner(dir.path(), tokens.clone());
         let run_id = RunId::new_v4();
         let cancel_path = write_cancel(dir.path(), run_id);
         write_job(dir.path(), run_id);
@@ -577,7 +573,8 @@ mod tests {
             "cancel file should survive while there is no token"
         );
 
-        let job_token = insert_cancel_handle(&tokens, run_id).await;
+        let registration = insert_cancel_registration(&tokens, run_id).await;
+        let job_token = registration.token();
         scanner.mark_owned_claim(run_id).await;
         scanner.scan_cancel_files().await;
 

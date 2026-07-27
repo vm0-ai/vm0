@@ -7,7 +7,7 @@ import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogDetail,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 
 import { db$ } from "../external/db";
 import {
@@ -235,8 +235,9 @@ function createConnectorActionResolver(
         },
       );
       if (catalogMethod?.grantKind === input.expectedGrantKind) {
-        const runtimeMethod = runtimeConnector?.methods.get(input.authMethodId);
-        if (runtimeMethod && !runtimeMethod.availableForNewActions) {
+        if (
+          !runtimeConnector?.authoredVisibleMethodIds.has(input.authMethodId)
+        ) {
           return { ok: false, reason: "hidden_auth_method" };
         }
       }

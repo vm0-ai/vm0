@@ -40,6 +40,7 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: "22222222-2222-4222-8222-222222222222",
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -405,6 +406,7 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -457,13 +459,23 @@ describe("chat lifecycle", () => {
 
   it("shows a saved offline Computer Use host selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-saved-offline-selection";
+    const threadId = "44444444-4444-4444-8444-444444444444";
     const hostId = "22222222-2222-4222-8222-222222222222";
-    mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycle(context, {
       threadId,
       threadTitle: "Computer Use",
       computerUseHostId: hostId,
     });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Computer Use",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
+      },
+    ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
@@ -587,6 +599,7 @@ describe("chat lifecycle", () => {
     const threadId = "voice-input-segment-thread";
     const draftPatches: unknown[] = [];
     const uploadedAudio: string[] = [];
+    const transcriptionRequested = context.mocks.deferred<void>();
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
     mockChatLifecycle(context, { threadId });
@@ -605,6 +618,7 @@ describe("chat lifecycle", () => {
       }
       uploadedAudio.push(await file.text());
       transcriptionCalls += 1;
+      transcriptionRequested.resolve(undefined);
       return new Response(JSON.stringify({ text: "First sentence" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -621,10 +635,15 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
+    // The silence-triggered segment upload reaching the server proves the
+    // capture rotated recorders instead of ending the session; recording may
+    // legitimately auto-stop moments later, so check the label now rather
+    // than after the transcription response renders.
+    await transcriptionRequested.promise;
+    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     await waitFor(() => {
       expect(composer).toHaveTextContent("First sentence");
     });
-    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     expect(transcriptionCalls).toBe(1);
     expect(uploadedAudio).toStrictEqual(["voice-1"]);
     await waitFor(() => {

@@ -1,5 +1,4 @@
-import { CONNECTOR_TYPE_KEYS } from "@vm0/connectors/connectors";
-import { getConnectorPrivateNames } from "@vm0/connectors/connector-utils";
+import { API_TEST_CONNECTOR_CATALOG } from "../../../../test-fixtures/connector-catalog";
 
 interface SensitiveStringValues {
   readonly byConnector: ReadonlyMap<string, ReadonlySet<string>>;
@@ -9,11 +8,59 @@ interface SensitiveStringValues {
 function sensitiveStringValues(): SensitiveStringValues {
   const valuesByConnector = new Map<string, Set<string>>();
 
-  for (const connectorType of CONNECTOR_TYPE_KEYS) {
-    valuesByConnector.set(
-      connectorType,
-      new Set(getConnectorPrivateNames(connectorType)),
-    );
+  for (const connector of API_TEST_CONNECTOR_CATALOG.connectors) {
+    const values = new Set<string>();
+    for (const method of connector.authMethods) {
+      for (const name of [
+        ...method.storage.secrets,
+        ...method.storage.variables,
+      ]) {
+        values.add(name);
+      }
+      if (method.client !== undefined) {
+        if ("clientIdEnv" in method.client) {
+          values.add(method.client.clientIdEnv);
+        }
+        if ("clientSecretEnv" in method.client) {
+          values.add(method.client.clientSecretEnv);
+        }
+      }
+      if (method.grant.kind === "manual") {
+        for (const field of method.grant.fields) {
+          values.add(field.privateName);
+        }
+      } else {
+        for (const valueRef of Object.values(method.grant.outputs)) {
+          values.add(valueRef.slice(valueRef.indexOf(".") + 1));
+        }
+      }
+      for (const [name, binding] of Object.entries(method.access.envBindings)) {
+        values.add(name);
+        const valueRef =
+          typeof binding === "string" ? binding : binding.valueRef;
+        values.add(valueRef.slice(valueRef.indexOf(".") + 1));
+      }
+      for (const name of method.access.platformSecrets ?? []) {
+        values.add(name);
+      }
+      if (method.access.kind === "refresh-token") {
+        for (const valueRef of [
+          ...Object.values(method.access.inputs),
+          ...Object.values(method.access.outputs),
+        ]) {
+          values.add(valueRef.slice(valueRef.indexOf(".") + 1));
+        }
+        for (const name of method.access.refreshableSecrets) {
+          values.add(name);
+        }
+      }
+      if (method.revoke.kind === "token-revoke") {
+        for (const valueRef of Object.values(method.revoke.inputs)) {
+          values.add(valueRef.slice(valueRef.indexOf(".") + 1));
+        }
+      }
+    }
+    valuesByConnector.set(connector.connectorRef, values);
   }
 
   return {

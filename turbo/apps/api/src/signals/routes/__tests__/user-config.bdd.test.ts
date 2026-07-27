@@ -50,7 +50,7 @@ async function onboardAdmin(
     orgState.slug = options.slug;
   }
   api.mockClerkOrg(admin, orgState);
-  const bootstrap = await api.bootstrapOnboarding(admin, {
+  const bootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
     displayName: "BDD User Config Agent",
     sound: "calm",
   });
@@ -389,18 +389,22 @@ describe("AUTH-03 user model preference", () => {
     const readUpdated = await cfg.readModelPreference(admin);
     expect(readUpdated).toStrictEqual(updated);
 
-    const unconfigured = await cfg.requestUpdateModelPreference(
-      admin,
-      { selectedModel: "gpt-5.4" },
-      [400],
-    );
-    expectApiError(unconfigured.body);
-    expect(unconfigured.body.error).toStrictEqual({
-      message: "Invalid request",
-      code: "BAD_REQUEST",
+    for (const retiredModel of ["gpt-5.4", "gpt-5.4-mini"]) {
+      const normalized = await cfg.rawUpdateModelPreference(
+        admin,
+        { selectedModel: retiredModel },
+        [200],
+      );
+      expect(normalized.body).toMatchObject({
+        selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+        updatedAt: expect.any(String),
+      });
+    }
+    const readAfterRetiredWrites = await cfg.readModelPreference(admin);
+    expect(readAfterRetiredWrites).toMatchObject({
+      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      updatedAt: expect.any(String),
     });
-    const readAfterRejected = await cfg.readModelPreference(admin);
-    expect(readAfterRejected).toStrictEqual(updated);
 
     const cleared = await cfg.updateModelPreference(admin, {
       selectedModel: null,

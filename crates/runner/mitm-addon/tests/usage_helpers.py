@@ -16,6 +16,36 @@ import usage
 
 _DeliveryOutcomeCallback = Callable[[usage.webhook.WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
+_COMPACT_OBSERVATION_COUNTER_CATEGORIES = (
+    ("inputTokens", "tokens.input"),
+    ("outputTokens", "tokens.output"),
+    ("cacheReadInputTokens", "tokens.cache_read"),
+    ("cacheCreationInputTokens", "tokens.cache_creation"),
+)
+
+
+def compact_observation_rows(
+    observations: Sequence[dict[str, Any]],
+) -> list[tuple[str, str, int]]:
+    rows: list[tuple[str, str, int]] = []
+    for observation in observations:
+        model = observation.get("model")
+        if not isinstance(model, str):
+            raise TypeError("Compact observation is missing its model")
+        for counter, category in _COMPACT_OBSERVATION_COUNTER_CATEGORIES:
+            quantity = observation.get(counter)
+            if isinstance(quantity, int) and quantity > 0:
+                rows.append((model, category, quantity))
+    return rows
+
+
+def compact_observation_quantities(
+    observations: Sequence[dict[str, Any]],
+) -> dict[str, int]:
+    quantities: dict[str, int] = {}
+    for _, category, quantity in compact_observation_rows(observations):
+        quantities[category] = quantities.get(category, 0) + quantity
+    return quantities
 
 
 class _FlushOwnerLock(Protocol):

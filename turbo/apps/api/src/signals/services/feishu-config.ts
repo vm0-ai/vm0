@@ -10,6 +10,7 @@ export interface FeishuInstallationConfig {
   readonly orgId: string;
   readonly ownerUserId: string | null;
   readonly appId: string;
+  readonly botOpenId: string | null;
   readonly appSecret: string;
   readonly verificationToken: string;
   readonly encryptKey: string;
@@ -26,6 +27,7 @@ export async function loadFeishuInstallationConfig(
       orgId: feishuOrgInstallations.orgId,
       ownerUserId: feishuOrgInstallations.ownerUserId,
       appId: feishuOrgInstallations.appId,
+      botOpenId: feishuOrgInstallations.botOpenId,
       encryptedAppSecret: feishuOrgInstallations.encryptedAppSecret,
       encryptedVerificationToken:
         feishuOrgInstallations.encryptedVerificationToken,
@@ -52,6 +54,7 @@ export async function loadFeishuInstallationConfig(
     orgId: installation.orgId,
     ownerUserId: installation.ownerUserId,
     appId: installation.appId,
+    botOpenId: installation.botOpenId,
     appSecret,
     verificationToken,
     encryptKey,
@@ -73,10 +76,14 @@ export function feishuOAuthCallbackUrl(): string {
   ).toString();
 }
 
+export function feishuOAuthAppCallbackUrl(): string {
+  return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
+}
+
 export function feishuOAuthConnectUrl(state: string): string {
   const url = new URL(
     "/api/zero/feishu/oauth/connect",
-    env("FEISHU_CALLBACK_BASE_URL"),
+    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
   );
   url.searchParams.set("state", state);
   return url.toString();
@@ -85,5 +92,11 @@ export function feishuOAuthConnectUrl(state: string): string {
 export function feishuBotOpenUrl(appId: string): string {
   const url = new URL("https://applink.feishu.cn/client/bot/open");
   url.searchParams.set("appId", appId);
+  return url.toString();
+}
+
+export function feishuChatOpenUrl(chatId: string): string {
+  const url = new URL("https://applink.feishu.cn/client/chat/open");
+  url.searchParams.set("openChatId", chatId);
   return url.toString();
 }

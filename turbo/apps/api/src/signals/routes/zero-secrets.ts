@@ -88,18 +88,7 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
             snapshot,
           });
     }
-    if (snapshot.identity.source !== "static") {
-      return null;
-    }
-    const candidates = connectorAccesses.flatMap((access) => {
-      const display = connectorCredentialStoredSecretDisplayInfo({
-        access,
-        name: secretName,
-        snapshot,
-      });
-      return display === null ? [] : [display];
-    });
-    return candidates.length === 1 ? (candidates[0] ?? null) : null;
+    return null;
   }
 
   const body: SecretListResponse = {

@@ -46,8 +46,7 @@ pub(crate) struct SnapshotResult {
 pub(crate) struct CreateSnapshotRequest<'a> {
     pub(crate) mount_path: &'a str,
     pub(crate) files: Vec<FileEntry>,
-    pub(crate) storage_name: &'a str,
-    pub(crate) storage_type: &'a str,
+    pub(crate) storage_id: &'a str,
     pub(crate) run_id: &'a str,
     pub(crate) message: &'a str,
     pub(crate) parent_version_id: &'a str,
@@ -56,8 +55,7 @@ pub(crate) struct CreateSnapshotRequest<'a> {
 struct SnapshotRequest<'a> {
     mount_path: &'a str,
     files: Arc<[FileEntry]>,
-    storage_name: &'a str,
-    storage_type: &'a str,
+    storage_id: &'a str,
     run_id: &'a str,
     message: &'a str,
     parent_version_id: &'a str,
@@ -68,8 +66,7 @@ impl<'a> From<CreateSnapshotRequest<'a>> for SnapshotRequest<'a> {
         Self {
             mount_path: request.mount_path,
             files: request.files.into(),
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
+            storage_id: request.storage_id,
             run_id: request.run_id,
             message: request.message,
             parent_version_id: request.parent_version_id,
@@ -203,8 +200,8 @@ pub(crate) async fn create_snapshot(
     let request = SnapshotRequest::from(request);
     log_info!(
         LOG_TAG,
-        "Creating direct upload snapshot for '{}'",
-        request.storage_name
+        "Creating direct upload snapshot for Storage {}",
+        request.storage_id
     );
 
     let prep = prepare_snapshot_step(http, &request).await?;
@@ -249,8 +246,7 @@ async fn prepare_snapshot_step(
         http,
         PrepareSnapshotRequest {
             run_id: request.run_id,
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
+            storage_id: request.storage_id,
             files: request.files.as_ref(),
             parent_version_id: request.parent_version_id,
         },
@@ -329,8 +325,7 @@ async fn commit_existing_snapshot(
         http,
         CommitSnapshotRequest {
             run_id: request.run_id,
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
+            storage_id: request.storage_id,
             version_id,
             parent_version_id: request.parent_version_id,
             files: request.files.as_ref(),
@@ -469,8 +464,7 @@ async fn commit_uploaded_snapshot(
         http,
         CommitSnapshotRequest {
             run_id: request.run_id,
-            storage_name: request.storage_name,
-            storage_type: request.storage_type,
+            storage_id: request.storage_id,
             version_id,
             parent_version_id: request.parent_version_id,
             files: request.files.as_ref(),
@@ -505,9 +499,25 @@ mod tests {
 
     static SNAPSHOT_MOCK_SERVER: LazyLock<httpmock::MockServer> =
         LazyLock::new(httpmock::MockServer::start);
+    const SNAPSHOT_STORAGE_ID: &str = "00000000-0000-4000-8000-000000000001";
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
+    }
+
+    struct SandboxOpsOverrideGuard;
+
+    impl SandboxOpsOverrideGuard {
+        fn set(path: &std::path::Path) -> Self {
+            guest_common::telemetry::set_sandbox_ops_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SandboxOpsOverrideGuard {
+        fn drop(&mut self) {
+            guest_common::telemetry::clear_sandbox_ops_log_file();
+        }
     }
 
     fn test_http_client(server: &httpmock::MockServer) -> Result<HttpClient, AgentError> {
@@ -566,6 +576,165 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_rejects_empty_prepare_response_before_upload_or_commit()
+    -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        disable_system_log();
+        let server = MockServer::start();
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200);
+        });
+        let upload = server.mock(|when, then| {
+            when.method(PUT);
+            then.status(200);
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .json_body(serde_json::json!({ "success": true }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_id: SNAPSHOT_STORAGE_ID,
+                run_id: "run-empty-prepare",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(err) = result else {
+            panic!("create_snapshot unexpectedly succeeded");
+        };
+        assert!(
+            matches!(
+                &err,
+                AgentError::Checkpoint(message) if message == "Empty prepare response"
+            ),
+            "got: {err}"
+        );
+        prepare.assert_calls(1);
+        upload.assert_calls(0);
+        commit.assert_calls(0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn snapshot_rejects_shape_invalid_prepare_response_before_upload_or_commit()
+    -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        disable_system_log();
+        let server = MockServer::start();
+
+        let artifact_dir = tempfile::tempdir().unwrap();
+        let root = artifact_dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let archive_url = format!("{}/test/unreachable-archive", server.base_url());
+        let manifest_url = format!("{}/test/unreachable-manifest", server.base_url());
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(serde_json::json!({
+                "existing": false,
+                "uploads": {
+                    "archive": {
+                        "key": "archive-key",
+                        "presignedUrl": archive_url,
+                    },
+                    "manifest": {
+                        "key": "manifest-key",
+                        "presignedUrl": manifest_url,
+                    },
+                },
+            }));
+        });
+        let archive_upload = server.mock(|when, then| {
+            when.method(PUT).path("/test/unreachable-archive");
+            then.status(200);
+        });
+        let manifest_upload = server.mock(|when, then| {
+            when.method(PUT).path("/test/unreachable-manifest");
+            then.status(200);
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .json_body(serde_json::json!({ "success": true }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_id: SNAPSHOT_STORAGE_ID,
+                run_id: "run-shape-invalid-prepare",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(err) = result else {
+            panic!("create_snapshot unexpectedly succeeded");
+        };
+        let AgentError::Checkpoint(checkpoint_message) = &err else {
+            panic!("expected checkpoint error, got: {err}");
+        };
+        assert!(
+            checkpoint_message.contains("versionId"),
+            "got: {checkpoint_message}"
+        );
+        prepare.assert_calls(1);
+        archive_upload.assert_calls(0);
+        manifest_upload.assert_calls(0);
+        commit.assert_calls(0);
+
+        let entries = std::fs::read_to_string(&telemetry_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let prepare_failure = entries
+            .iter()
+            .find(|entry| {
+                entry.get("action_type").and_then(serde_json::Value::as_str)
+                    == Some("artifact_prepare_api")
+                    && entry.get("success").and_then(serde_json::Value::as_bool) == Some(false)
+            })
+            .expect("failed artifact_prepare_api telemetry entry");
+        let telemetry_error = prepare_failure
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .expect("artifact_prepare_api telemetry error");
+        assert_eq!(telemetry_error, checkpoint_message);
+        assert!(telemetry_error.contains("versionId"));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn dedup_snapshot_posts_file_payloads_before_validation_failure_blocks_commit()
     -> Result<(), AgentError> {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
@@ -586,8 +755,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-id",
-                    "storageName": "storage",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -601,8 +769,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-id",
-                    "storageName": "storage",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "versionId": "v-existing",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -622,8 +789,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files: files.clone(),
-                storage_name: "storage",
-                storage_type: "artifact",
+                storage_id: SNAPSHOT_STORAGE_ID,
                 run_id: "run-id",
                 message: "message",
                 parent_version_id: "parent-v1",
@@ -644,8 +810,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-id",
-                    "storageName": "storage",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "files": expected_files,
                 }));
             then.status(200).json_body(serde_json::json!({
@@ -666,8 +831,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
-                storage_name: "storage",
-                storage_type: "artifact",
+                storage_id: SNAPSHOT_STORAGE_ID,
                 run_id: "run-id",
                 message: "message",
                 parent_version_id: "",
@@ -709,8 +873,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-upload",
-                    "storageName": "storage-upload",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -745,8 +908,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-upload",
-                    "storageName": "storage-upload",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "versionId": "v-uploaded",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -767,8 +929,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
-                storage_name: "storage-upload",
-                storage_type: "artifact",
+                storage_id: SNAPSHOT_STORAGE_ID,
                 run_id: "run-upload",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",
@@ -809,8 +970,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-upload-failed-commit",
-                    "storageName": "storage-upload-failed-commit",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -845,8 +1005,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-upload-failed-commit",
-                    "storageName": "storage-upload-failed-commit",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "versionId": "v-uploaded-failed-commit",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -855,7 +1014,6 @@ mod tests {
             then.status(200).json_body(serde_json::json!({
                 "success": false,
                 "versionId": "v-uploaded-failed-commit",
-                "storageName": "storage-upload-failed-commit",
                 "size": total_size,
                 "fileCount": expected_files.len(),
             }));
@@ -867,8 +1025,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
-                storage_name: "storage-upload-failed-commit",
-                storage_type: "artifact",
+                storage_id: SNAPSHOT_STORAGE_ID,
                 run_id: "run-upload-failed-commit",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",
@@ -909,8 +1066,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-dedup-malformed-commit",
-                    "storageName": "storage-dedup-malformed-commit",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -924,8 +1080,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit")
                 .json_body(serde_json::json!({
                     "runId": "run-dedup-malformed-commit",
-                    "storageName": "storage-dedup-malformed-commit",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "versionId": "v-dedup-malformed-commit",
                     "parentVersionId": "parent-v1",
                     "files": expected_files,
@@ -940,8 +1095,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
-                storage_name: "storage-dedup-malformed-commit",
-                storage_type: "artifact",
+                storage_id: SNAPSHOT_STORAGE_ID,
                 run_id: "run-dedup-malformed-commit",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",
@@ -978,8 +1132,7 @@ mod tests {
                 .path("/api/webhooks/agent/storages/prepare")
                 .json_body(serde_json::json!({
                     "runId": "run-missing-uploads",
-                    "storageName": "storage-missing-uploads",
-                    "storageType": "artifact",
+                    "storageId": SNAPSHOT_STORAGE_ID,
                     "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
@@ -1001,8 +1154,7 @@ mod tests {
             CreateSnapshotRequest {
                 mount_path: root.to_str().unwrap(),
                 files,
-                storage_name: "storage-missing-uploads",
-                storage_type: "artifact",
+                storage_id: SNAPSHOT_STORAGE_ID,
                 run_id: "run-missing-uploads",
                 message: "snapshot message",
                 parent_version_id: "parent-v1",

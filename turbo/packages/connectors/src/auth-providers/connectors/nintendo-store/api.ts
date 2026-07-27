@@ -1,4 +1,4 @@
-import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import {
   NINTENDO_ACCOUNT_AUTHORIZATION_URL,

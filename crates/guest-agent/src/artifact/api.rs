@@ -12,8 +12,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 pub(super) struct PrepareSnapshotRequest<'a> {
     pub(super) run_id: &'a str,
-    pub(super) storage_name: &'a str,
-    pub(super) storage_type: &'a str,
+    pub(super) storage_id: &'a str,
     pub(super) files: &'a [FileEntry],
     pub(super) parent_version_id: &'a str,
 }
@@ -42,8 +41,7 @@ impl PrepareSnapshotError {
 
 pub(super) struct CommitSnapshotRequest<'a> {
     pub(super) run_id: &'a str,
-    pub(super) storage_name: &'a str,
-    pub(super) storage_type: &'a str,
+    pub(super) storage_id: &'a str,
     pub(super) version_id: &'a str,
     pub(super) parent_version_id: &'a str,
     pub(super) files: &'a [FileEntry],
@@ -54,8 +52,7 @@ pub(super) struct CommitSnapshotRequest<'a> {
 #[serde(rename_all = "camelCase")]
 struct PrepareSnapshotPayload<'a> {
     run_id: &'a str,
-    storage_name: &'a str,
-    storage_type: &'a str,
+    storage_id: &'a str,
     files: &'a [FileEntry],
     #[serde(skip_serializing_if = "Option::is_none")]
     parent_version_id: Option<&'a str>,
@@ -65,8 +62,7 @@ struct PrepareSnapshotPayload<'a> {
 #[serde(rename_all = "camelCase")]
 struct CommitSnapshotPayload<'a> {
     run_id: &'a str,
-    storage_name: &'a str,
-    storage_type: &'a str,
+    storage_id: &'a str,
     version_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     parent_version_id: Option<&'a str>,
@@ -81,8 +77,7 @@ pub(super) async fn prepare_snapshot(
 ) -> Result<PreparedSnapshot, PrepareSnapshotError> {
     let payload = PrepareSnapshotPayload {
         run_id: request.run_id,
-        storage_name: request.storage_name,
-        storage_type: request.storage_type,
+        storage_id: request.storage_id,
         files: request.files,
         parent_version_id: non_empty_str(request.parent_version_id),
     };
@@ -138,8 +133,7 @@ pub(super) async fn commit_snapshot(
 ) -> Result<bool, AgentError> {
     let payload = CommitSnapshotPayload {
         run_id: request.run_id,
-        storage_name: request.storage_name,
-        storage_type: request.storage_type,
+        storage_id: request.storage_id,
         version_id: request.version_id,
         parent_version_id: non_empty_str(request.parent_version_id),
         files: request.files,

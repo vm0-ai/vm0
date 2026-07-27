@@ -155,7 +155,7 @@ function WorkflowComposerPlaceholder({
   );
 }
 
-export interface TiptapWorkflowComposerProps {
+interface TiptapWorkflowComposerProps {
   readonly composer: WorkflowComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
@@ -177,10 +177,22 @@ interface ComposerKeyDownContext {
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }
 
+function eventTargetsNonEditableNodeView(event: Event): boolean {
+  return (
+    event.target instanceof Element &&
+    event.target.closest('[contenteditable="false"]') !== null
+  );
+}
+
 function handleComposerKeyDownCapture(
   event: KeyboardEvent,
   context: ComposerKeyDownContext,
 ): boolean {
+  // ProseMirror normally gives node views first ownership through stopEvent.
+  // React capture runs earlier, so preserve that boundary for their controls.
+  if (eventTargetsNonEditableNodeView(event)) {
+    return false;
+  }
   if (event.isComposing || event.keyCode === 229) {
     context.onKeyDown(event);
     return event.defaultPrevented;
@@ -247,7 +259,6 @@ interface ComposerSuggestionMenuState {
   readonly range: ComposerSuggestionRange | null;
   readonly selectedIndex: number;
   readonly close: () => void;
-  readonly workflowNames: readonly string[];
   readonly workflows: readonly ComposerSlashWorkflow[];
   readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
@@ -261,11 +272,9 @@ interface ComposerSuggestionMenuState {
 
 function useComposerSuggestionMenu({
   composer,
-  onDraftChange,
   onKeyDown,
 }: {
   readonly composer: WorkflowComposerSignals;
-  readonly onDraftChange: (() => void) | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
   const slashRange = useGet(composer.activeSlashRange$);
@@ -314,12 +323,10 @@ function useComposerSuggestionMenu({
 
   function selectWorkflow(workflow: ComposerSlashWorkflow): void {
     insertWorkflow(workflow);
-    onDraftChange?.();
   }
 
   function selectChatThread(chatThread: ComposerChatThreadSuggestion): void {
     insertChatThread(chatThread);
-    onDraftChange?.();
   }
 
   function selectSuggestion(index: number): void {
@@ -363,9 +370,6 @@ function useComposerSuggestionMenu({
     range,
     selectedIndex,
     close,
-    workflowNames: workflows.map((workflow) => {
-      return workflow.name;
-    }),
     workflows: workflowSuggestions,
     workflowQuery: slashRange?.query ?? "",
     workflowsLoading: workflowsLoadable.state === "loading",
@@ -389,11 +393,8 @@ export function TiptapWorkflowComposer({
 }: TiptapWorkflowComposerProps) {
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
-    onDraftChange,
     onKeyDown,
   });
-  const setWorkflowNames = useSet(composer.setWorkflowNames$);
-  const setEventHandlers = useSet(composer.setEventHandlers$);
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
   const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
   const containerRefSignal = singleLineOnMobile
@@ -407,6 +408,9 @@ export function TiptapWorkflowComposer({
     event: ClipboardEvent,
     currentTarget: HTMLElement,
   ): boolean {
+    if (eventTargetsNonEditableNodeView(event)) {
+      return false;
+    }
     const clipboardData = event.clipboardData;
     const preventedBeforeHandler = event.defaultPrevented;
     onPaste({
@@ -442,21 +446,6 @@ export function TiptapWorkflowComposer({
         editor={composer.editor}
         range={suggestionMenu.range}
       />
-      <span
-        hidden
-        ref={(element) => {
-          if (element) {
-            setWorkflowNames(suggestionMenu.workflowNames);
-            setEventHandlers({
-              onInput: () => {
-                onDraftChange?.();
-              },
-              onKeyDown: suggestionMenu.handleKeyDown,
-              onPaste: handlePaste,
-            });
-          }
-        }}
-      />
       <div className="relative">
         <WorkflowComposerPlaceholder composer={composer} sending={sending} />
         <div
@@ -472,6 +461,29 @@ export function TiptapWorkflowComposer({
                 : "min-h-[96px]"
           }
           ref={setContainerRef}
+          onInput={(event) => {
+            // The mount command targets the container for semantic document
+            // changes; native contenteditable input targets ProseMirror.
+            if (event.target === event.currentTarget) {
+              onDraftChange?.();
+            }
+          }}
+          onKeyDownCapture={(event) => {
+            const nativeEvent = event.nativeEvent;
+            const handled = suggestionMenu.handleKeyDown(nativeEvent);
+            if (handled || nativeEvent.defaultPrevented) {
+              event.stopPropagation();
+            }
+          }}
+          onPasteCapture={(event) => {
+            const handled = handlePaste(
+              event.nativeEvent,
+              composer.editor.view.dom,
+            );
+            if (handled) {
+              event.stopPropagation();
+            }
+          }}
         />
       </div>
       {suggestionMenu.showWorkflows && (

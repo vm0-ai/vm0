@@ -8,7 +8,7 @@ import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identi
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import {
   matchFirewallBaseUrl,
   matchFirewallRequestDecision,
@@ -1227,7 +1227,7 @@ export const resolveConnectorCheck$ = command(
       args.userId,
     );
     signal.throwIfAborted();
-    const visibleConnectorRefs = await listConnectorRuntimeVisibleRefs({
+    const visibleConnectorRefs = listConnectorRuntimeVisibleRefs({
       snapshot,
       featureStates,
     });

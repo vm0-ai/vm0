@@ -2,7 +2,18 @@ import type StripeSDK from "stripe";
 import { command } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { and, eq, exists, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -94,14 +105,14 @@ async function resolvePaymentMethod(
  * Atomically claims the recharge slot via UPDATE … RETURNING with a
  * WHERE clause that filters on:
  *  - autoRechargeEnabled = true
- *  - tier can use auto-recharge (pro/team/custom)
+ *  - plan entitlement allows auto-recharge (or legacy tier fallback)
  *  - stripeCustomerId / threshold / amount NOT NULL
  *  - credits <= threshold
  *  - pendingAt IS NULL OR pendingAt < now() - 10 minutes
  *
- * Verbatim same WHERE shape as web so api and web don't double-claim
- * during rollout. The 10-minute stale-threshold lets a hung Stripe call
- * release the slot eventually.
+ * The conditional UPDATE uses the database clock so concurrent workers
+ * cannot double-claim. The 10-minute stale threshold lets a hung Stripe
+ * call release the slot eventually.
  *
  * On Stripe error: clearPendingFlag so retry can fire on the next
  * legitimate processOrgUsageEvents call.
@@ -132,7 +143,7 @@ export const triggerAutoRecharge$ = command(
               ),
             ),
         )
-      : sql`${orgMetadata.tier} IN ('pro', 'team', 'custom')`;
+      : inArray(orgMetadata.tier, ["pro", "team", "custom"]);
 
     const clearPendingFlag = async (): Promise<void> => {
       await writeDb
@@ -145,15 +156,22 @@ export const triggerAutoRecharge$ = command(
       .update(orgMetadata)
       .set({ autoRechargePendingAt: nowDate(), updatedAt: nowDate() })
       .where(
-        sql`${eq(orgMetadata.orgId, orgId)}
-            AND ${orgMetadata.autoRechargeEnabled} = true
-            AND ${planEligibility}
-            AND ${isNotNull(orgMetadata.stripeCustomerId)}
-            AND ${isNotNull(orgMetadata.autoRechargeThreshold)}
-            AND ${isNotNull(orgMetadata.autoRechargeAmount)}
-            AND ${lte(orgMetadata.credits, orgMetadata.autoRechargeThreshold)}
-            AND (${isNull(orgMetadata.autoRechargePendingAt)}
-                 OR ${orgMetadata.autoRechargePendingAt} < now() - make_interval(mins => ${STALE_THRESHOLD_MINUTES}))`,
+        and(
+          eq(orgMetadata.orgId, orgId),
+          eq(orgMetadata.autoRechargeEnabled, true),
+          planEligibility,
+          isNotNull(orgMetadata.stripeCustomerId),
+          isNotNull(orgMetadata.autoRechargeThreshold),
+          isNotNull(orgMetadata.autoRechargeAmount),
+          lte(orgMetadata.credits, orgMetadata.autoRechargeThreshold),
+          or(
+            isNull(orgMetadata.autoRechargePendingAt),
+            lt(
+              orgMetadata.autoRechargePendingAt,
+              sql`now() - make_interval(mins => ${STALE_THRESHOLD_MINUTES})`,
+            ),
+          ),
+        ),
       )
       .returning({
         credits: orgMetadata.credits,

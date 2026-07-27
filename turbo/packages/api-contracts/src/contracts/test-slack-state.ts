@@ -74,8 +74,7 @@ export const testSlackStateResponseSchema = z.object({
       channelId: z.string(),
       threadTs: z.string(),
       userId: z.string(),
-      backend: z.enum(["legacy", "canonical"]),
-      chatThreadId: z.string().nullable(),
+      chatThreadId: z.string(),
       createdAt: z.string(),
     }),
   ),
@@ -100,6 +99,7 @@ export const testSlackStateResponseSchema = z.object({
       itemType: z.enum([
         "user_message",
         "slack_user_message",
+        "feishu_user_message",
         "workflow_event",
       ]),
       triggerSource: z.string().nullable(),

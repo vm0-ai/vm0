@@ -31,11 +31,12 @@ type Database = ReturnType<typeof db>;
 type AgentRunInsert = typeof agentRuns.$inferInsert;
 type ZeroRunInsert = typeof zeroRuns.$inferInsert;
 type ChatMessageInsert = typeof chatMessages.$inferInsert;
-type SeedChatMessageRow = ChatMessageInsert & {
+type SeedChatMessageRow = Omit<ChatMessageInsert, "seqId"> & {
   id: string;
   createdAt: Date;
   sequenceNumber?: number | null;
   revokesMessageId?: string | null;
+  seqId?: number;
 };
 
 export interface BuiltProfileRows {
@@ -857,6 +858,9 @@ function sortMessageRows(messageRows: SeedChatMessageRow[]): void {
     }
     return (left.sequenceNumber ?? -1) - (right.sequenceNumber ?? -1);
   });
+  for (const [index, message] of messageRows.entries()) {
+    message.seqId = index + 1;
+  }
 }
 
 export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
@@ -906,9 +910,23 @@ async function insertProfileRows(
   await chunkedInsert(rows.zeroRunRows, (chunk) => {
     return database.insert(zeroRuns).values(chunk);
   });
-  await chunkedInsert(rows.messageRows, (chunk) => {
+  const messageRows = rows.messageRows.map((row) => {
+    const seqId = row.seqId;
+    if (seqId === undefined) {
+      throw new Error(`benchmark message ${row.id} has no seq_id`);
+    }
+    return { ...row, seqId };
+  });
+  await chunkedInsert(messageRows, (chunk) => {
     return database.insert(chatMessages).values(chunk);
   });
+  const lastMessage = messageRows.at(-1);
+  if (lastMessage) {
+    await database
+      .update(chatThreads)
+      .set({ lastChatMessageSeqId: lastMessage.seqId })
+      .where(eq(chatThreads.id, lastMessage.chatThreadId));
+  }
 }
 
 async function seedProfile(

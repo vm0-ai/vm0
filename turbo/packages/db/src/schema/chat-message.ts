@@ -6,6 +6,7 @@ import {
   timestamp,
   index,
   integer,
+  bigint,
   uniqueIndex,
   jsonb,
   type AnyPgColumn,
@@ -99,12 +100,22 @@ export const chatMessages = pgTable(
     /** Stable business representation of rich user-message content. */
     structuredPrompt:
       jsonb("structured_prompt").$type<ChatMessageStructuredPrompt>(),
+    /**
+     * Full structured content for rollout-only parts that older API versions
+     * cannot decode. The legacy column remains a safe projection so an older
+     * API can continue reading messages during a rollback.
+     */
+    structuredPromptWithFeedback: jsonb(
+      "structured_prompt_with_feedback",
+    ).$type<ChatMessageStructuredPrompt>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
     runLifecycleEvent: text("run_lifecycle_event"),
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
+    /** Strictly increasing position within the owning chat thread. */
+    seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatMessageGoalEvent>(),
     goalSnapshot: jsonb("goal_snapshot").$type<ChatMessageGoalSnapshot>(),
     attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
@@ -115,12 +126,7 @@ export const chatMessages = pgTable(
       "generation_template",
     ).$type<ChatMessageGenerationTemplate>(),
     slackMessagePermalink: text("slack_message_permalink"),
-    // Database-only rollout marker for API versions that still read legacy
-    // mail cards. Drop this column after the link-only reader has fully
-    // deployed; migrations run before API traffic promotion.
-    mailDraftId: uuid("mail_draft_id").unique(
-      "chat_messages_mail_draft_id_unique",
-    ),
+    feishuChatOpenUrl: text("feishu_chat_open_url"),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatMessageRecommendedFollowups>(),
@@ -151,6 +157,10 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
+      ),
+      uniqueIndex("chat_messages_thread_seq_unique").on(
+        table.chatThreadId,
+        table.seqId,
       ),
       uniqueIndex("chat_messages_run_lifecycle_unique")
         .on(table.runId)

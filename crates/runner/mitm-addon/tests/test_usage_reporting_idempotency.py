@@ -145,7 +145,7 @@ class TestUsageReportingIdempotency:
             "/api/webhooks/agent/model-usage-observation"
         ].json_body()
         assert body["events"][0]["quantity"] == 10
-        assert observation_body["events"][0]["quantity"] == 10
+        assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
         assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
         billing_key = body["events"][0]["idempotencyKey"]
@@ -194,7 +194,7 @@ class TestUsageReportingIdempotency:
             "/api/webhooks/agent/model-usage-observation"
         ].json_body()
         assert body["events"][0]["quantity"] == 10
-        assert observation_body["events"][0]["quantity"] == 10
+        assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
         assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
         billing_key = body["events"][0]["idempotencyKey"]

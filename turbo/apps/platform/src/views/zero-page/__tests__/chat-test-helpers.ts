@@ -115,8 +115,6 @@ export function mockSubagentThread(context: TestContext, _threadId: string) {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -219,6 +217,8 @@ interface ThreadListItem {
   pinnedAt?: string | null;
   renamedAt?: string | null;
   selectedModel?: string | null;
+  serviceTier?: "priority" | null;
+  computerUseHostId?: string | null;
 }
 
 const UUID_PATTERN =
@@ -236,6 +236,8 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
       selectedModel: thread.selectedModel ?? null,
+      serviceTier: thread.serviceTier ?? null,
+      computerUseHostId: thread.computerUseHostId ?? null,
     };
   });
 }
@@ -252,16 +254,14 @@ interface MockLifecycleControl {
 }
 
 type MockPagedMessage =
-  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id"> & {
+  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id" | "seqId"> & {
       id?: string;
     })
-  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id"> & {
+  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id" | "seqId"> & {
       id?: string;
     });
 
-function cloneMockPagedMessage<T extends MockPagedMessage & { id: string }>(
-  message: T,
-): T {
+function cloneMockPagedMessage<T extends PagedChatMessage>(message: T): T {
   return structuredClone(message);
 }
 
@@ -428,7 +428,7 @@ export function mockChatLifecycle(
      */
     sendGate?: Promise<void>;
     /**
-     * Promise the paged history handler awaits before responding to beforeId.
+     * Promise the paged history handler awaits before responding to beforeSeqId.
      * Lets tests prove the latest-message view renders before silent backfill.
      */
     beforeHistoryGate?: Promise<void>;
@@ -475,7 +475,6 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       codexServiceTier?: CodexServiceTier | null;
     }) => void;
-    onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
@@ -497,6 +496,7 @@ export function mockChatLifecycle(
   let codexServiceTier: CodexServiceTier | null =
     options?.codexServiceTier ?? null;
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
+  let latestThreadEventId: string | null = null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
   // Version counter: bumped whenever the run reaches a terminal state so
@@ -593,11 +593,13 @@ export function mockChatLifecycle(
         updatedAt: "2026-03-10T00:00:00Z",
         pinnedAt: null,
         selectedModel,
+        serviceTier: codexServiceTier === "fast" ? ("priority" as const) : null,
+        computerUseHostId,
       },
     ];
   };
 
-  const buildPagedMessages = () => {
+  const buildPagedMessages = (): PagedChatMessage[] => {
     const assistantId = `msg-assistant-run-v${assistantVersion}`;
     const historicalMessages = historyMessages.map((message, i) => {
       return {
@@ -667,7 +669,9 @@ export function mockChatLifecycle(
       }
     }
 
-    return pagedMessages;
+    return pagedMessages.map((message, index) => {
+      return { ...message, seqId: index + 1 };
+    });
   };
 
   const appendQueuedUserMessage = async (body: {
@@ -763,16 +767,16 @@ export function mockChatLifecycle(
 
   // Paged messages endpoint — cursor-aware, version-aware mock.
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    const sinceId = query.sinceId;
-    const beforeId = query.beforeId;
+    const sinceSeqId = query.sinceSeqId;
+    const beforeSeqId = query.beforeSeqId;
     const limit = query.limit ?? 50;
     const beforeHistoryGate = options?.beforeHistoryGate ?? Promise.resolve();
     const pagedMessages = buildPagedMessages();
 
-    if (beforeId) {
+    if (beforeSeqId) {
       return beforeHistoryGate.then(() => {
         const beforeIndex = pagedMessages.findIndex((message) => {
-          return message.id === beforeId;
+          return message.seqId === beforeSeqId;
         });
         if (beforeIndex <= 0) {
           return respond(200, { messages: [], hasHistoryBefore: false });
@@ -788,7 +792,7 @@ export function mockChatLifecycle(
       });
     }
 
-    if (sinceId) {
+    if (sinceSeqId) {
       // If the assistant version bumped since the client's cursor, return
       // the updated assistant message as a "new" row. Otherwise return
       // empty to avoid duplicate keys.
@@ -817,31 +821,12 @@ export function mockChatLifecycle(
     options?.afterInitialMessagesList?.();
     return respond(200, body);
   });
-  context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
-    options?.onMessageGet?.(params.messageId);
-    if (params.threadId !== threadId) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    const message = buildPagedMessages().find((item) => {
-      return item.id === params.messageId;
-    });
-    if (!message) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, cloneMockPagedMessage(message));
-  });
   context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
     if (options?.threadGate) {
       await options.threadGate;
     }
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
-      computerUseHostId,
-      codexServiceTier,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -856,6 +841,8 @@ export function mockChatLifecycle(
       const modelSelection = modelSelectionFromBody(body);
       selectedModel = modelSelection?.selectedModel ?? null;
       codexServiceTier = body.codexServiceTier ?? null;
+      latestThreadEventId =
+        body.serviceTierEventId ?? body.eventId ?? crypto.randomUUID();
       options?.onModelSelectionUpdate?.({
         model: body.model,
         modelSelection,
@@ -868,6 +855,7 @@ export function mockChatLifecycle(
     chatThreadComputerUseHostContract.update,
     ({ body, respond }) => {
       computerUseHostId = body.computerUseHostId;
+      latestThreadEventId = body.eventId ?? crypto.randomUUID();
       options?.onComputerUseHostUpdate?.({
         computerUseHostId: body.computerUseHostId,
       });
@@ -877,7 +865,7 @@ export function mockChatLifecycle(
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: threadListSnapshot(effectiveThreadList()),
-      latestEventId: null,
+      latestEventId: latestThreadEventId,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -1010,6 +998,7 @@ export function mockChatLifecycle(
     },
     setCodexServiceTier: (tier) => {
       codexServiceTier = tier;
+      latestThreadEventId = crypto.randomUUID();
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

@@ -5,7 +5,7 @@ import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import {
@@ -59,7 +59,6 @@ async function loadCanonicalSlackThreadStatusBinding(
         eq(slackChatThreadRoutes.chatThreadId, target.chatThreadId),
         eq(slackChatThreadRoutes.channelId, target.channelId),
         eq(slackChatThreadRoutes.threadTs, target.threadTs),
-        eq(slackChatThreadRoutes.backend, "canonical"),
         eq(slackOrgConnections.vm0UserId, slackChatThreadRoutes.userId),
       ),
     )
@@ -90,15 +89,13 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
         eq(slackOrgConnections.slackWorkspaceId, workspaceId),
         eq(slackChatThreadRoutes.channelId, target.channelId),
         eq(slackChatThreadRoutes.threadTs, target.threadTs),
-        eq(slackChatThreadRoutes.backend, "canonical"),
-        isNotNull(slackChatThreadRoutes.chatThreadId),
       ),
     );
   const routeIds = routes.map((route) => {
     return route.id;
   });
-  const chatThreadIds = routes.flatMap((route) => {
-    return route.chatThreadId ? [route.chatThreadId] : [];
+  const chatThreadIds = routes.map((route) => {
+    return route.chatThreadId;
   });
   if (routeIds.length === 0 || chatThreadIds.length === 0) {
     return false;
@@ -182,15 +179,9 @@ export async function canonicalSlackThreadStatusTargetForIngress(
       slackChatThreadRoutes,
       eq(slackChatThreadRoutes.id, slackChatIngress.routeId),
     )
-    .where(
-      and(
-        eq(slackChatIngress.id, ingressId),
-        eq(slackChatThreadRoutes.backend, "canonical"),
-        isNotNull(slackChatThreadRoutes.chatThreadId),
-      ),
-    )
+    .where(eq(slackChatIngress.id, ingressId))
     .limit(1);
-  if (!target?.chatThreadId) {
+  if (!target) {
     return undefined;
   }
   return {
@@ -198,6 +189,37 @@ export async function canonicalSlackThreadStatusTargetForIngress(
     channelId: target.channelId,
     threadTs: target.threadTs,
   };
+}
+
+export async function refreshCanonicalSlackThreadStatus(
+  db: Db,
+  target: CanonicalSlackThreadStatusTarget,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const binding = await loadCanonicalSlackThreadStatusBinding(db, target);
+  signal.throwIfAborted();
+  if (!binding) {
+    return false;
+  }
+  const featureContext = await loadUserFeatureSwitchContext(
+    db,
+    binding.orgId,
+    binding.userId,
+  );
+  signal.throwIfAborted();
+  const botToken = await decryptPersistentSecretValue(
+    binding.encryptedBotToken,
+    featureContext,
+  );
+  signal.throwIfAborted();
+  await setThreadStatus(
+    createSlackClient(botToken),
+    target.channelId,
+    target.threadTs,
+    "is thinking...",
+  );
+  signal.throwIfAborted();
+  return true;
 }
 
 export async function clearCanonicalSlackThreadStatusIfIdle(

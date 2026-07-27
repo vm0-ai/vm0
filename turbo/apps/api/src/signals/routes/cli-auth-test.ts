@@ -10,13 +10,13 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import {
   connectorAuthMethodAccessMetadata,
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { userConnectors } from "@vm0/db/schema/user-connector";

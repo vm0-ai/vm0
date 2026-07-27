@@ -130,6 +130,44 @@ function stubAvailableConnectors(types: string[]) {
   );
 }
 
+function stubBillingStatus(
+  videoGenerationAllowed: boolean | undefined,
+  tier = videoGenerationAllowed ? "pro" : "limited-free-1",
+) {
+  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+    return HttpResponse.json({
+      tier,
+      ...(videoGenerationAllowed === undefined
+        ? {}
+        : {
+            canBuyCredits: videoGenerationAllowed,
+            videoGenerationAllowed,
+          }),
+      credits: 0,
+      onboardingPaymentPending: false,
+      subscriptionStatus: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription:
+        tier !== "free" && tier !== "limited-free-1" && tier !== "pro-suspend",
+      autoRecharge: {
+        enabled: false,
+        threshold: null,
+        amount: null,
+      },
+      creditExpiry: {
+        expiringNextCycle: 0,
+        nextExpiryDate: null,
+      },
+      creditBreakdown: [],
+      creditGrants: [],
+      concurrencyLimit: 1,
+      concurrencySubscriptions: [],
+    });
+  });
+}
+
 describe("zero generate lister", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -144,6 +182,7 @@ describe("zero generate lister", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    server.use(stubBillingStatus(true));
   });
 
   afterEach(() => {
@@ -321,6 +360,9 @@ describe("zero generate lister", () => {
       "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
     );
     expect(text).toContain("Use: zero generate video --provider built-in -h");
+    expect(text).toContain(
+      "Availability: Available on the current plan without connector setup.",
+    );
     expect(text).not.toContain(
       "Use: zero generate video --provider built-in --model",
     );
@@ -332,6 +374,52 @@ describe("zero generate lister", () => {
     expect(text).not.toContain("Next actions:");
     expect(text).not.toContain(
       "Use --all to see every video generation candidate.",
+    );
+  });
+
+  it("marks built-in video models as plan-restricted before generation", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubUserConnectors([]),
+      stubBillingStatus(false),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "video"]);
+
+    const text = output();
+    expect(text).toContain(
+      "Availability: Requires a Pro, Team, or Custom workspace plan.",
+    );
+    expect(text).toContain(
+      "[Compare plans](http://localhost:3000/?settings=billing&billingView=plans)",
+    );
+  });
+
+  it("uses a restricted legacy tier when billing capability fields are omitted", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubUserConnectors([]),
+      stubBillingStatus(undefined, "limited-free-1"),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "video"]);
+
+    expect(output()).toContain(
+      "Availability: Requires a Pro, Team, or Custom workspace plan.",
+    );
+  });
+
+  it("uses an allowed legacy tier when billing capability fields are omitted", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubUserConnectors([]),
+      stubBillingStatus(undefined, "free"),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "video"]);
+
+    expect(output()).toContain(
+      "Availability: Available on the current plan without connector setup.",
     );
   });
 

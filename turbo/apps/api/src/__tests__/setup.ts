@@ -16,6 +16,10 @@ import {
 import { clearMockNow } from "../lib/time";
 import { server } from "../mocks/server";
 import { clearAllDetached } from "../signals/utils";
+import {
+  installApiTestConnectorCatalog,
+  mockApiTestConnectorProviderConfiguration,
+} from "../test-fixtures/connector-catalog";
 
 type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
 type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
@@ -46,11 +50,14 @@ function createApiTestKmsClient(): SecretKmsClient {
   return { send };
 }
 
-beforeAll(() => {
+beforeAll(async () => {
+  mockApiTestConnectorProviderConfiguration();
+  await installApiTestConnectorCatalog();
   server.listen({ onUnhandledRequest: "error" });
 });
 
 beforeEach(() => {
+  mockApiTestConnectorProviderConfiguration();
   mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
   setSecretKmsClientForTests(createApiTestKmsClient());
 });

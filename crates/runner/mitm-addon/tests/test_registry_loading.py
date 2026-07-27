@@ -3,6 +3,7 @@
 import json
 import os
 import queue
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -22,6 +23,15 @@ class TestLoadRegistry:
 
         assert "10.200.0.1" in result
         assert result["10.200.0.1"]["runId"] == "run-abc-123"
+
+    def test_loads_valid_registry_at_exact_size_limit(self, registry_file):
+        exact_size = registry_file.stat().st_size
+
+        with patch.object(registry, "MAX_REGISTRY_BYTES", exact_size):
+            state = registry.load_registry_state(str(registry_file))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.vms["10.200.0.1"]["runId"] == "run-abc-123"
 
     def test_classifies_invalid_registered_vm_entries(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -262,10 +272,12 @@ class TestLoadRegistry:
 
     def test_oversized_registry_is_unavailable_before_parsing(self, tmp_path):
         path = tmp_path / "registry.json"
-        path.write_bytes(b" " * (registry.MAX_REGISTRY_BYTES + 1))
+        max_registry_bytes = 5
+        path.write_bytes(b" " * (max_registry_bytes + 1))
         log = MagicMock()
         with (
             patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry, "MAX_REGISTRY_BYTES", max_registry_bytes),
             patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
         ):
             state = registry.load_registry_state(str(path))
@@ -275,6 +287,22 @@ class TestLoadRegistry:
         assert spy.call_count == 0
         assert log.warn.call_count == 1
         assert "exceeds" in log.warn.call_args_list[0].args[0]
+
+    def test_underreported_registry_is_unavailable_before_parsing(self):
+        path = Path("/proc/self/status")
+        assert path.stat().st_size == 0
+        log = MagicMock()
+
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry, "MAX_REGISTRY_BYTES", 1),
+            patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
+        ):
+            state = registry.load_registry_state(str(path))
+
+        assert isinstance(state, registry.RegistryUnavailable)
+        assert state.reason == "read_failed"
+        assert spy.call_count == 0
 
     def test_parse_failure_logs_once_and_does_not_reparse(self, tmp_path):
         """Parse failure on a fixed file: key match short-circuits re-parse."""

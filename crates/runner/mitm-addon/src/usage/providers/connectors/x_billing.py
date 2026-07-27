@@ -58,6 +58,7 @@ from typing import NamedTuple
 import matching
 from host_normalization import UnsafeIdnaCompatibilityMappingError, normalize_idna_label
 
+from ...json_selective import json_nesting_within_limit
 from .x_tlds import IANA_TLDS
 
 
@@ -409,7 +410,7 @@ def _tweet_create_body_has_rendered_link_signal(obj: dict[str, object]) -> bool:
 
 
 def _tweet_create_body_is_plain_text_without_url(body: bytes | None) -> bool:
-    if not body:
+    if not body or not json_nesting_within_limit(body):
         return False
     try:
         obj = json.loads(body)

@@ -4,11 +4,11 @@
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
- * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable any
- * switch via `POST /api/zero/feature-switches` — overrides are read by
- * `isFeatureEnabled` before the registry. For money-granting, credential,
- * or privilege-escalation endpoints, gate with a hard identity check
- * (e.g. `isStaffOrg()` from `./staff-org`) instead of this system.
+ * NOT AN AUTHORIZATION BOUNDARY. User-overridable switches can be self-enabled
+ * through `POST /api/zero/feature-switches`, and `userOverridable: false` only
+ * excludes a switch from that API. For money-granting, credential, or
+ * privilege-escalation endpoints, gate with a hard identity check (e.g.
+ * `isStaffOrg()` from `./staff-org`) instead of this system.
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
@@ -228,25 +228,25 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.CanonicalSlackIngress]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Route newly admitted per-user Slack threads through canonical chat ingress.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroWeather]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable the managed Google-backed Zero Weather and Air Quality APIs and weather:read ZERO_TOKEN capability.",
     enabled: true,
+  },
+  [FeatureSwitchKey.ZeroFinance]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the managed APIDojo-backed Zero Finance API and finance:read ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ZeroPeopleSearch]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable managed Perplexity People Search and the people-search:read ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
@@ -284,6 +284,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.GithubWorkflowRunAutomations]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable GitHub Actions workflow run completed event automations.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.GithubWebhookAutomations]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show creation entry points for GitHub workflow job, pull request review, deployment status, and issue comment automations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -319,6 +333,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CodexSessionPruning]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Prune oversized Codex checkpoint histories to the latest native compact generation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ClaudeSessionPruning]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Prune oversized Claude Code checkpoint histories to the latest native compact generation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -345,13 +373,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -363,8 +384,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
@@ -379,6 +399,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Progress bar under the chat thread header showing history backfill progress while older messages load.",
+    // Not rolled out to anyone yet; enable per-user via the Lab page.
+    enabled: false,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
@@ -409,13 +436,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationExport]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -428,6 +448,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Create immutable hosted artifact versions behind stable site aliases.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",
@@ -442,6 +463,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ImageStyleR2]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.PlanUpgradeGuidance]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show plan-upgrade guidance in Zero CLI help and render billing plan links as rich chat cards.",
+    enabled: true,
+    userOverridable: false,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",
@@ -462,6 +496,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ZeroBrowser]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Show the Zero Browser command in the Zero CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

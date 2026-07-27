@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import {
   buildCalComAuthorizationUrl,
   exchangeCalComCode,
@@ -20,8 +19,27 @@ import { fetchPayPalAccessToken } from "../paypal/api-token";
 import { fetchRampAccessToken } from "../ramp/api-token";
 import { refreshWorkdayAccessToken } from "../workday/api-token";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 const signal = new AbortController().signal;
+const CAL_COM_GRANT = authCodeGrantFixture([
+  "BOOKING_READ",
+  "BOOKING_WRITE",
+  "EVENT_TYPE_READ",
+  "EVENT_TYPE_WRITE",
+  "PROFILE_READ",
+  "SCHEDULE_READ",
+]);
+const COPPER_GRANT = authCodeGrantFixture(["developer/v1/all"]);
+const DATADOG_GRANT = authCodeGrantFixture([
+  "dashboards_read",
+  "events_read",
+  "incident_read",
+  "logs_read_index_data",
+  "metrics_read",
+  "monitors_read",
+  "slos_read",
+]);
 
 describe("connector backlog auth providers", () => {
   it("exchanges and refreshes Cal.com OAuth tokens", async () => {
@@ -59,7 +77,7 @@ describe("connector backlog auth providers", () => {
       }),
     );
 
-    const grant = getConnectorAuthMethodAuthCodeGrantConfig("cal-com", "oauth");
+    const grant = CAL_COM_GRANT;
     const url = buildCalComAuthorizationUrl(
       grant,
       "client-id",
@@ -111,7 +129,7 @@ describe("connector backlog auth providers", () => {
       }),
     );
 
-    const grant = getConnectorAuthMethodAuthCodeGrantConfig("copper", "oauth");
+    const grant = COPPER_GRANT;
     const url = buildCopperAuthorizationUrl(
       grant,
       "client-id",
@@ -159,7 +177,7 @@ describe("connector backlog auth providers", () => {
       ),
     );
 
-    const grant = getConnectorAuthMethodAuthCodeGrantConfig("datadog", "oauth");
+    const grant = DATADOG_GRANT;
     const authorization = await buildDatadogAuthorizationUrl(
       grant,
       "client-id",
@@ -199,7 +217,7 @@ describe("connector backlog auth providers", () => {
   it("rejects an untrusted Datadog callback domain", async () => {
     await expect(
       exchangeDatadogCode({
-        grant: getConnectorAuthMethodAuthCodeGrantConfig("datadog", "oauth"),
+        grant: DATADOG_GRANT,
         clientId: "client-id",
         clientSecret: "client-secret",
         code: "code",

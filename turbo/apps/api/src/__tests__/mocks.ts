@@ -73,7 +73,7 @@ export interface ApiTestMocks {
     readonly users: {
       readonly getUserList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
-      readonly updateUser: AsyncMock;
+      readonly updateUserMetadata: AsyncMock;
     };
     readonly signInTokens: {
       readonly createSignInToken: AsyncMock;
@@ -107,9 +107,6 @@ export interface ApiTestMocks {
   };
   readonly resend: {
     readonly send: AsyncMock;
-    readonly get: AsyncMock;
-    readonly receivingGet: AsyncMock;
-    readonly attachmentsList: AsyncMock;
   };
   readonly signalTimers: {
     readonly delay: SignalTimerDelayMock;
@@ -261,7 +258,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationMembershipList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      updateUser: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      updateUserMetadata: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     signInTokens: {
       createSignInToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -402,9 +399,6 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     resend: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      get: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      receivingGet: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      attachmentsList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     signalTimers: {
       delay:
@@ -656,11 +650,6 @@ vi.mock("resend", () => {
       return {
         emails: {
           send: apiTestMocks.resend.send,
-          get: apiTestMocks.resend.get,
-          receiving: {
-            get: apiTestMocks.resend.receivingGet,
-            attachments: { list: apiTestMocks.resend.attachmentsList },
-          },
         },
       };
     }),
@@ -939,7 +928,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
-  apiTestMocks.clerk.users.updateUser.mockReset();
+  apiTestMocks.clerk.users.updateUserMetadata.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
   apiTestMocks.clerk.m2m.createToken.mockReset();
   apiTestMocks.s3.send.mockReset();
@@ -951,9 +940,6 @@ export function resetApiTestMocks(): void {
   apiTestMocks.dns.lookupOverrides.clear();
   apiTestMocks.nodeRequest.pinnedAddresses.length = 0;
   apiTestMocks.resend.send.mockReset();
-  apiTestMocks.resend.get.mockReset();
-  apiTestMocks.resend.receivingGet.mockReset();
-  apiTestMocks.resend.attachmentsList.mockReset();
   apiTestMocks.signalTimers.delay.mockReset();
   apiTestMocks.slack.assistant.threads.setStatus.mockReset();
   apiTestMocks.slack.chat.getPermalink.mockReset();

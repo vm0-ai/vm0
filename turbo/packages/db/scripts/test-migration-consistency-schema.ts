@@ -28,6 +28,7 @@
  */
 
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -173,7 +174,11 @@ async function validateChatEventSourcesAreAppendOnly(
 
     const thread = await client.query<{ id: string }>(
       `
-        INSERT INTO "chat_threads" ("user_id", "agent_compose_id", "title")
+        INSERT INTO "chat_threads" (
+          "user_id",
+          "agent_compose_id",
+          "title"
+        )
         VALUES ('append-only-test-user', $1, 'append-only migration test')
         RETURNING "id"
       `,
@@ -184,11 +189,17 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    const message = await client.query<{ id: string }>(
+    // Simulate the API version serving during migration: it does not know
+    // about seq_id and relies on the temporary database allocator.
+    const message = await client.query<{ id: string; seqId: string }>(
       `
-        INSERT INTO "chat_messages" ("chat_thread_id", "role", "content")
+        INSERT INTO "chat_messages" (
+          "chat_thread_id",
+          "role",
+          "content"
+        )
         VALUES ($1, 'user', 'append-only migration test')
-        RETURNING "id"
+        RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId],
     );
@@ -196,6 +207,29 @@ async function validateChatEventSourcesAreAppendOnly(
     if (!messageId) {
       throw new Error("Failed to create append-only chat message fixture");
     }
+    assert.equal(message.rows[0]?.seqId, "1");
+    const nextMessage = await client.query<{ seqId: string }>(
+      `
+        INSERT INTO "chat_messages" (
+          "chat_thread_id",
+          "role",
+          "content"
+        )
+        VALUES ($1, 'assistant', 'second legacy API migration test')
+        RETURNING "seq_id" AS "seqId"
+      `,
+      [threadId],
+    );
+    assert.equal(nextMessage.rows[0]?.seqId, "2");
+    const sequenceState = await client.query<{ lastSeqId: string }>(
+      `
+        SELECT "last_chat_message_seq_id" AS "lastSeqId"
+        FROM "chat_threads"
+        WHERE "id" = $1
+      `,
+      [threadId],
+    );
+    assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
 
     const event = await client.query<{ id: string }>(
       `
@@ -237,6 +271,9 @@ async function validateChatEventSourcesAreAppendOnly(
 
     console.log("   ✅ chat_messages rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
+    console.log(
+      "   ✅ previous API writes receive a database-allocated seq_id\n",
+    );
   } finally {
     if (eventId) {
       await client.query(`DELETE FROM "chat_thread_events" WHERE "id" = $1`, [
@@ -868,6 +905,245 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
+async function validateConnectorCatalogFinalConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.6: Validate final connector catalog constraints ===\n",
+  );
+  const attemptConstraint =
+    "connector_catalog_sync_state_attempt_cache_reuse_complete";
+  const candidateConstraint =
+    "connector_catalog_sync_state_rejected_candidate_complete";
+  const authorityConstraint =
+    "connector_catalog_sync_state_rejection_authority_complete";
+
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+  try {
+    await client.query(`
+      INSERT INTO "connector_catalog_sync_state" (
+        "source_id",
+        "schema_version",
+        "last_attempt_at",
+        "last_attempt_outcome",
+        "last_attempt_reused_cached_rejection",
+        "last_failure_code",
+        "last_rejected_catalog_version",
+        "last_rejected_catalog_key",
+        "last_rejected_catalog_digest",
+        "last_rejected_pointer_etag",
+        "last_rejected_failure_code",
+        "last_rejected_backend_version",
+        "last_rejected_build_commit_sha"
+      )
+      VALUES
+        (
+          'migration-final-catalog-accepted',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          FALSE,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL
+        ),
+        (
+          'migration-final-catalog-rejected',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          TRUE,
+          'invalid-artifact',
+          '2026-07-25.1',
+          'connectors/v1/releases/2026-07-25.1/catalog.json',
+          'sha256:${"b".repeat(64)}',
+          '"final-authority-etag"',
+          'invalid-artifact',
+          '1.319.0',
+          '${"a".repeat(40)}'
+        )
+    `);
+    const validRows = await client.query<{ source_id: string }>(`
+      SELECT "source_id"
+      FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+      ORDER BY "source_id"
+    `);
+    assert.deepEqual(
+      validRows.rows.map((row) => {
+        return row.source_id;
+      }),
+      ["migration-final-catalog-accepted", "migration-final-catalog-rejected"],
+    );
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_attempt_reused_cached_rejection")
+        VALUES ('invalid-provenance-without-attempt', 1, FALSE)
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_attempt_at",
+          "last_attempt_outcome",
+          "last_failure_code"
+        )
+        VALUES (
+          'invalid-missing-attempt-provenance',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          'source-unavailable'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_attempt_at",
+          "last_attempt_outcome",
+          "last_attempt_reused_cached_rejection"
+        )
+        VALUES (
+          'invalid-reused-accepted-attempt',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          TRUE
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: candidateConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_catalog_version",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-partial-rejected-candidate',
+          1,
+          '2026-07-25.2',
+          'invalid-artifact',
+          '1.319.0'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_catalog_version",
+          "last_rejected_catalog_key",
+          "last_rejected_catalog_digest",
+          "last_rejected_failure_code"
+        )
+        VALUES (
+          'invalid-candidate-without-authority',
+          1,
+          '2026-07-25.3',
+          'connectors/v1/releases/2026-07-25.3/catalog.json',
+          'sha256:${"c".repeat(64)}',
+          'invalid-artifact'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_rejected_backend_version")
+        VALUES ('invalid-authority-without-candidate', 1, '1.319.0')
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_pointer_etag",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-rejection-backend-version',
+          1,
+          '"invalid-version-etag"',
+          'invalid-pointer',
+          '1.319.0-rc.1'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_pointer_etag",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version",
+          "last_rejected_build_commit_sha"
+        )
+        VALUES (
+          'invalid-rejection-build-commit',
+          1,
+          '"invalid-build-etag"',
+          'invalid-pointer',
+          '1.319.0',
+          '${"d".repeat(39)}'
+        )
+      `,
+    });
+
+    await client.query(`
+      DELETE FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+    `);
+  } finally {
+    await client.end();
+  }
+
+  console.log(
+    "   ✅ Final connector catalog constraints accept complete state and reject ambiguous state\n",
+  );
+}
+
 async function validateConnectorCredentialOwnershipContraction(): Promise<void> {
   console.log(
     "=== Phase 1.5: Validate connector credential ownership contraction ===\n",
@@ -1247,6 +1523,729 @@ async function applyMigrationsUpToInTransaction(
     await client.query("ROLLBACK");
     throw error;
   }
+}
+
+const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
+const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
+
+const sessionStorageBackfillFixture = {
+  orgId: "session-storage-backfill-org",
+  userId: "session-storage-backfill-user",
+  composeId: "70000000-0000-4000-8000-000000000001",
+  legacySessionId: "70000000-0000-4000-8000-000000000002",
+  emptySessionId: "70000000-0000-4000-8000-000000000003",
+  canonicalSessionId: "70000000-0000-4000-8000-000000000004",
+  provenanceSessionId: "70000000-0000-4000-8000-000000000005",
+  missingLatestSessionId: "70000000-0000-4000-8000-000000000006",
+  missingImplicitLatestSessionId: "70000000-0000-4000-8000-000000000007",
+  storageIds: {
+    head: "71000000-0000-4000-8000-000000000001",
+    latest: "71000000-0000-4000-8000-000000000002",
+    pinned: "71000000-0000-4000-8000-000000000003",
+    prefix: "71000000-0000-4000-8000-000000000004",
+  },
+  versionIds: {
+    head: "a".repeat(64),
+    latest: "b".repeat(64),
+    pinned: "c".repeat(64),
+    prefix: "d".repeat(64),
+  },
+} as const;
+
+async function seedSessionStorageBackfillFixture(
+  client: Client,
+): Promise<void> {
+  const fixture = sessionStorageBackfillFixture;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES ($1, $2, 'session-storage-backfill', $3)
+    `,
+    [fixture.composeId, fixture.userId, fixture.orgId],
+  );
+
+  for (const name of ["head", "latest", "pinned", "prefix"] as const) {
+    const storageId = fixture.storageIds[name];
+    const versionId = fixture.versionIds[name];
+    await client.query(
+      `
+        INSERT INTO "storages"
+          ("id", "user_id", "name", "type", "org_id", "s3_prefix")
+        VALUES ($1, $2, $3, 'artifact', $4, $5)
+      `,
+      [
+        storageId,
+        fixture.userId,
+        name,
+        fixture.orgId,
+        `session-storage-backfill/${name}`,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "storage_versions"
+          ("id", "storage_id", "s3_key", "archive_size", "created_by")
+        VALUES ($1, $2, $3, 0, 'migration-test')
+      `,
+      [versionId, storageId, `session-storage-backfill/${name}/${versionId}`],
+    );
+    await client.query(
+      `
+        UPDATE "storages"
+        SET "head_version_id" = $1
+        WHERE "id" = $2
+      `,
+      [versionId, storageId],
+    );
+  }
+
+  const legacyArtifacts = [
+    { name: "head", mountPath: "/home/oai/share/head" },
+    {
+      name: "latest",
+      version: "latest",
+      mountPath: "/home/oai/share/latest",
+      missingRootPolicy: "preserveParentVersion",
+    },
+    {
+      name: "pinned",
+      version: fixture.versionIds.pinned,
+      mountPath: "/home/oai/share/pinned",
+    },
+    {
+      name: "prefix",
+      version: fixture.versionIds.prefix.slice(0, 8),
+      mountPath: "/home/oai/share/prefix",
+    },
+  ];
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "updated_at"
+      )
+      VALUES ($1, $2, $3, $4, $5::jsonb, '2020-01-01 00:00:00')
+    `,
+    [
+      fixture.legacySessionId,
+      fixture.userId,
+      fixture.orgId,
+      fixture.composeId,
+      JSON.stringify(legacyArtifacts),
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "updated_at"
+      )
+      VALUES ($1, $2, $3, $4, '[]'::jsonb, '2020-01-02 00:00:00')
+    `,
+    [fixture.emptySessionId, fixture.userId, fixture.orgId, fixture.composeId],
+  );
+
+  const canonicalMounts = [
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "head",
+      storageId: fixture.storageIds.head,
+      mountPath: "/home/oai/share/head",
+      writeback: true,
+    },
+  ];
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id",
+        "artifacts",
+        "storage_mounts",
+        "updated_at"
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        '[]'::jsonb,
+        $5::jsonb,
+        '2020-01-03 00:00:00'
+      )
+    `,
+    [
+      fixture.canonicalSessionId,
+      fixture.userId,
+      fixture.orgId,
+      fixture.composeId,
+      JSON.stringify(canonicalMounts),
+    ],
+  );
+
+  const historicalSessions = [
+    {
+      id: fixture.provenanceSessionId,
+      artifacts: [
+        {
+          name: "head",
+          mountPath: "/home/oai/share/provenance",
+          generatedBy: "apiAutoMemory",
+        },
+      ],
+      updatedAt: "2020-01-04 00:00:00",
+    },
+    {
+      id: fixture.missingLatestSessionId,
+      artifacts: [
+        {
+          name: "recreated",
+          version: "latest",
+          mountPath: "/home/oai/share/recreated-latest",
+          generatedBy: "apiAutoMemory",
+        },
+      ],
+      updatedAt: "2020-01-05 00:00:00",
+    },
+    {
+      id: fixture.missingImplicitLatestSessionId,
+      artifacts: [
+        {
+          name: "recreated",
+          mountPath: "/home/oai/share/recreated-implicit",
+        },
+      ],
+      updatedAt: "2020-01-06 00:00:00",
+    },
+  ] as const;
+
+  for (const session of historicalSessions) {
+    await client.query(
+      `
+        INSERT INTO "agent_sessions" (
+          "id",
+          "user_id",
+          "org_id",
+          "agent_compose_id",
+          "artifacts",
+          "updated_at"
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+      `,
+      [
+        session.id,
+        fixture.userId,
+        fixture.orgId,
+        fixture.composeId,
+        JSON.stringify(session.artifacts),
+        session.updatedAt,
+      ],
+    );
+  }
+}
+
+async function seedSessionStorageBackfillRejections(
+  client: Client,
+): Promise<void> {
+  const fixture = sessionStorageBackfillFixture;
+  const rows = [
+    {
+      id: "72000000-0000-4000-8000-000000000001",
+      artifacts: [
+        {
+          name: "head",
+          mountPath: "/home/oai/share/malformed",
+          unexpected: true,
+        },
+        {
+          name: "latest",
+          mountPath: "/home/oai/share/malformed-generated-by",
+          generatedBy: "unknown",
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000002",
+      artifacts: [
+        { name: "head", mountPath: "/home/oai/share/duplicate-one" },
+        { name: "head", mountPath: "/home/oai/share/duplicate-two" },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000003",
+      artifacts: [
+        {
+          name: "missing",
+          version: "deadbeef",
+          mountPath: "/home/oai/share/missing",
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000004",
+      artifacts: [
+        {
+          name: "pinned",
+          version: "deadbeef",
+          mountPath: "/home/oai/share/unresolved",
+        },
+      ],
+      storageMounts: null,
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000005",
+      artifacts: [
+        { name: "head", mountPath: "/home/oai/share/conflict-source" },
+      ],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/conflict-target",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000006",
+      artifacts: [],
+      storageMounts: { malformed: true },
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000007",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/canonical-duplicate-one",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/canonical-duplicate-two",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000008",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: "71000000-0000-4000-8000-000000000099",
+          mountPath: "/home/oai/share/stale-identity",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000009",
+      artifacts: [],
+      storageMounts: [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "pinned",
+          storageId: fixture.storageIds.pinned,
+          version: "deadbeef",
+          mountPath: "/home/oai/share/canonical-unresolved",
+          writeback: true,
+        },
+      ],
+    },
+    {
+      id: "72000000-0000-4000-8000-000000000010",
+      artifacts: [
+        {
+          name: "rollback-latest",
+          version: "latest",
+          mountPath: "/home/oai/share/rollback-latest",
+        },
+      ],
+      storageMounts: null,
+    },
+  ];
+
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO "agent_sessions" (
+          "id",
+          "user_id",
+          "org_id",
+          "agent_compose_id",
+          "artifacts",
+          "storage_mounts"
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+      `,
+      [
+        row.id,
+        fixture.userId,
+        fixture.orgId,
+        fixture.composeId,
+        JSON.stringify(row.artifacts),
+        row.storageMounts === null ? null : JSON.stringify(row.storageMounts),
+      ],
+    );
+  }
+}
+
+async function validateSessionStorageBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.7: Validate session continuation Storage backfill ===\n",
+  );
+  const successDb = "migration_session_storage_backfill_test";
+  const successDbUrl = createTestDbUrl(successDb);
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(
+      successDbUrl,
+      SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await seedSessionStorageBackfillFixture(client);
+      await applyMigrationsUpToInTransaction(
+        client,
+        SESSION_STORAGE_BACKFILL_MIGRATION,
+      );
+
+      const result = await client.query<{
+        artifacts: unknown;
+        id: string;
+        storage_mounts: unknown;
+        updated_at: string;
+      }>(`
+        SELECT
+          "id",
+          "artifacts",
+          "storage_mounts",
+          "updated_at"::text
+        FROM "agent_sessions"
+        WHERE "id" IN (
+          '${sessionStorageBackfillFixture.legacySessionId}',
+          '${sessionStorageBackfillFixture.emptySessionId}',
+          '${sessionStorageBackfillFixture.canonicalSessionId}',
+          '${sessionStorageBackfillFixture.provenanceSessionId}',
+          '${sessionStorageBackfillFixture.missingLatestSessionId}',
+          '${sessionStorageBackfillFixture.missingImplicitLatestSessionId}'
+        )
+        ORDER BY "id"
+      `);
+      const rowsById = new Map(
+        result.rows.map((row) => {
+          return [row.id, row] as const;
+        }),
+      );
+      const fixture = sessionStorageBackfillFixture;
+      const legacy = rowsById.get(fixture.legacySessionId);
+      assert.ok(legacy);
+      assert.deepEqual(legacy.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/head",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "latest",
+          storageId: fixture.storageIds.latest,
+          version: "latest",
+          mountPath: "/home/oai/share/latest",
+          writeback: true,
+          missingRootPolicy: "preserveParentVersion",
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "pinned",
+          storageId: fixture.storageIds.pinned,
+          version: fixture.versionIds.pinned,
+          mountPath: "/home/oai/share/pinned",
+          writeback: true,
+        },
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "prefix",
+          storageId: fixture.storageIds.prefix,
+          version: fixture.versionIds.prefix.slice(0, 8),
+          mountPath: "/home/oai/share/prefix",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(legacy.artifacts, [
+        { name: "head", mountPath: "/home/oai/share/head" },
+        {
+          name: "latest",
+          version: "latest",
+          mountPath: "/home/oai/share/latest",
+          missingRootPolicy: "preserveParentVersion",
+        },
+        {
+          name: "pinned",
+          version: fixture.versionIds.pinned,
+          mountPath: "/home/oai/share/pinned",
+        },
+        {
+          name: "prefix",
+          version: fixture.versionIds.prefix.slice(0, 8),
+          mountPath: "/home/oai/share/prefix",
+        },
+      ]);
+      assert.equal(legacy.updated_at, "2020-01-01 00:00:00");
+
+      const empty = rowsById.get(fixture.emptySessionId);
+      assert.ok(empty);
+      assert.deepEqual(empty.storage_mounts, []);
+      assert.equal(empty.updated_at, "2020-01-02 00:00:00");
+
+      const canonical = rowsById.get(fixture.canonicalSessionId);
+      assert.ok(canonical);
+      assert.deepEqual(canonical.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/head",
+          writeback: true,
+        },
+      ]);
+      assert.equal(canonical.updated_at, "2020-01-03 00:00:00");
+
+      const provenance = rowsById.get(fixture.provenanceSessionId);
+      assert.ok(provenance);
+      assert.deepEqual(provenance.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "head",
+          storageId: fixture.storageIds.head,
+          mountPath: "/home/oai/share/provenance",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(provenance.artifacts, [
+        {
+          name: "head",
+          mountPath: "/home/oai/share/provenance",
+          generatedBy: "apiAutoMemory",
+        },
+      ]);
+      assert.equal(provenance.updated_at, "2020-01-04 00:00:00");
+
+      const recreatedStorage = await client.query<{
+        archive_size: number;
+        created_by: string;
+        file_count: number;
+        head_version_id: string;
+        id: string;
+        message: string;
+        name: string;
+        s3_key: string;
+        s3_prefix: string;
+        size: number;
+        type: string;
+      }>(`
+        SELECT
+          storage."id",
+          storage."name",
+          storage."type",
+          storage."s3_prefix",
+          storage."head_version_id",
+          version."s3_key",
+          version."size"::integer,
+          version."archive_size"::integer,
+          version."file_count",
+          version."message",
+          version."created_by"
+        FROM "storages" AS storage
+        INNER JOIN "storage_versions" AS version
+          ON version."id" = storage."head_version_id"
+        WHERE storage."org_id" = '${fixture.orgId}'
+          AND storage."user_id" = '${fixture.userId}'
+          AND storage."name" = 'recreated'
+      `);
+      assert.equal(recreatedStorage.rows.length, 1);
+      const recreatedStorageRow = recreatedStorage.rows[0];
+      assert.ok(recreatedStorageRow);
+      const recreatedStorageId = recreatedStorageRow.id;
+      const expectedEmptyVersionId = createHash("sha256")
+        .update(`storage:${recreatedStorageId}\n`)
+        .digest("hex");
+      assert.deepEqual(recreatedStorageRow, {
+        id: recreatedStorageId,
+        name: "recreated",
+        type: "artifact",
+        s3_prefix: `${fixture.orgId}/${recreatedStorageId}`,
+        head_version_id: expectedEmptyVersionId,
+        s3_key: `${fixture.orgId}/${recreatedStorageId}/${expectedEmptyVersionId}`,
+        size: 0,
+        archive_size: 0,
+        file_count: 0,
+        message: "Initial empty artifact",
+        created_by: fixture.userId,
+      });
+
+      const recreatedLatest = rowsById.get(fixture.missingLatestSessionId);
+      assert.ok(recreatedLatest);
+      assert.deepEqual(recreatedLatest.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "recreated",
+          storageId: recreatedStorageId,
+          version: "latest",
+          mountPath: "/home/oai/share/recreated-latest",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(recreatedLatest.artifacts, [
+        {
+          name: "recreated",
+          version: "latest",
+          mountPath: "/home/oai/share/recreated-latest",
+          generatedBy: "apiAutoMemory",
+        },
+      ]);
+      assert.equal(recreatedLatest.updated_at, "2020-01-05 00:00:00");
+
+      const recreatedImplicit = rowsById.get(
+        fixture.missingImplicitLatestSessionId,
+      );
+      assert.ok(recreatedImplicit);
+      assert.deepEqual(recreatedImplicit.storage_mounts, [
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "recreated",
+          storageId: recreatedStorageId,
+          mountPath: "/home/oai/share/recreated-implicit",
+          writeback: true,
+        },
+      ]);
+      assert.deepEqual(recreatedImplicit.artifacts, [
+        {
+          name: "recreated",
+          mountPath: "/home/oai/share/recreated-implicit",
+        },
+      ]);
+      assert.equal(recreatedImplicit.updated_at, "2020-01-06 00:00:00");
+
+      const unmigrated = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+      assert.equal(unmigrated.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  const rejectionDb = "migration_session_storage_backfill_rejection_test";
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(
+      rejectionDbUrl,
+      SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await seedSessionStorageBackfillFixture(client);
+      await seedSessionStorageBackfillRejections(client);
+
+      const beforeRejection = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+
+      let rejection: unknown;
+      try {
+        await applyMigrationsUpToInTransaction(
+          client,
+          SESSION_STORAGE_BACKFILL_MIGRATION,
+        );
+      } catch (error) {
+        rejection = error;
+      }
+      assert.equal(databaseErrorCode(rejection), "23514");
+      assert.ok(
+        rejection instanceof Error &&
+          rejection.message.includes(
+            "malformed_sessions=1, duplicate_sessions=1, missing_storage_sessions=1, unresolved_version_sessions=1, malformed_canonical_sessions=1, duplicate_canonical_sessions=1, stale_canonical_identity_sessions=1, unresolved_canonical_version_sessions=1, canonical_conflict_sessions=1",
+          ),
+      );
+
+      const unchanged = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "agent_sessions"
+        WHERE "storage_mounts" IS NULL
+      `);
+      assert.equal(unchanged.rows[0]?.count, beforeRejection.rows[0]?.count);
+
+      const rolledBackStorage = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "storages"
+        WHERE "org_id" = '${sessionStorageBackfillFixture.orgId}'
+          AND "user_id" = '${sessionStorageBackfillFixture.userId}'
+          AND "name" = 'rollback-latest'
+      `);
+      assert.equal(rolledBackStorage.rows[0]?.count, 0);
+
+      const migrationRecord = await client.query<{ count: number }>(`
+        SELECT count(*)::integer AS "count"
+        FROM "__drizzle_migrations"
+        WHERE "hash" = '0654_backfill_session_continuation_storage_mounts'
+      `);
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Session continuation heads backfill losslessly and readiness failures roll back atomically\n",
+  );
 }
 
 const LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION = 640;
@@ -1748,6 +2747,99 @@ async function validateStorageArchiveSizeFinalization(): Promise<void> {
   }
 }
 
+async function validateStorageLegacyTypeContraction(): Promise<void> {
+  console.log("=== Phase 1.55: Validate Storage legacy type contraction ===\n");
+  const testDb = "migration_storage_legacy_type_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const storageId = "52000000-0000-4000-8000-000000000001";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 695);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "storages" (
+            "id",
+            "user_id",
+            "name",
+            "type",
+            "org_id",
+            "s3_prefix"
+          )
+          VALUES ($1, 'storage-contraction-user', 'storage-contraction', 'volume', 'storage-contraction-org', 'legacy-prefix')
+        `,
+        [storageId],
+      );
+
+      await applyMigrationsUpTo(client, 696);
+
+      const legacyColumns = await client.query<{ column_name: string }>(`
+        SELECT "column_name"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND (
+            ("table_name" = 'storages' AND "column_name" = 'type')
+            OR (
+              "table_name" = 'storage_version_lineage'
+              AND "column_name" = 'storage_type'
+            )
+          )
+      `);
+      assert.deepEqual(legacyColumns.rows, []);
+
+      const identityIndexes = await client.query<{ indexname: string }>(`
+        SELECT "indexname"
+        FROM "pg_indexes"
+        WHERE "schemaname" = 'public'
+          AND "tablename" = 'storages'
+          AND "indexname" IN (
+            'idx_storages_org_user_name',
+            'idx_storages_org_user_name_type'
+          )
+        ORDER BY "indexname"
+      `);
+      assert.deepEqual(identityIndexes.rows, [
+        { indexname: "idx_storages_org_user_name" },
+      ]);
+
+      const upserted = await client.query<{
+        id: string;
+        s3_prefix: string;
+      }>(`
+        INSERT INTO "storages" (
+          "user_id",
+          "name",
+          "org_id",
+          "s3_prefix"
+        )
+        VALUES (
+          'storage-contraction-user',
+          'storage-contraction',
+          'storage-contraction-org',
+          'canonical-prefix'
+        )
+        ON CONFLICT ("org_id", "user_id", "name")
+        DO UPDATE SET "s3_prefix" = EXCLUDED."s3_prefix"
+        RETURNING "id", "s3_prefix"
+      `);
+      assert.deepEqual(upserted.rows, [
+        { id: storageId, s3_prefix: "canonical-prefix" },
+      ]);
+
+      console.log(
+        "   ✅ Legacy type columns and index are removed while canonical writes and existing Storage rows remain valid\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -2009,6 +3101,206 @@ async function validateSlackChatThreadRouteBackfill(): Promise<void> {
   }
 }
 
+async function validateSlackLegacySchemaContraction(): Promise<void> {
+  console.log("=== Phase 1.76: Validate legacy Slack schema contraction ===\n");
+  const testDb = "migration_slack_legacy_schema_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const connectionId = "51000000-0000-4000-8000-000000000001";
+  const sessionId = "51000000-0000-4000-8000-000000000002";
+  const routeId = "51000000-0000-4000-8000-000000000003";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 693);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        INSERT INTO "slack_org_installations" (
+          "slack_workspace_id",
+          "encrypted_bot_token",
+          "bot_user_id"
+        )
+        VALUES (
+          'legacy-contraction-workspace',
+          'encrypted-token',
+          'legacy-contraction-bot'
+        )
+      `);
+      await client.query(
+        `
+          INSERT INTO "slack_org_connections" (
+            "id",
+            "slack_user_id",
+            "slack_workspace_id",
+            "vm0_user_id"
+          )
+          VALUES (
+            $1,
+            'legacy-contraction-slack-user',
+            'legacy-contraction-workspace',
+            'legacy-contraction-user'
+          )
+        `,
+        [connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_org_thread_sessions" (
+            "id",
+            "connection_id",
+            "slack_channel_id",
+            "slack_thread_ts"
+          )
+          VALUES ($1, $2, 'legacy-channel', '1000.000001')
+        `,
+        [sessionId, connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_chat_thread_routes" (
+            "id",
+            "connection_id",
+            "channel_id",
+            "thread_ts",
+            "user_id",
+            "backend",
+            "chat_thread_id",
+            "legacy_cutover_event_id",
+            "legacy_cutover_message_ts"
+          )
+          VALUES (
+            $1,
+            $2,
+            'legacy-channel',
+            '1000.000001',
+            'legacy-contraction-user',
+            'legacy',
+            NULL,
+            'legacy-cutover-event',
+            '1000.000002'
+          )
+        `,
+        [routeId, connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_chat_ingress" (
+            "route_id",
+            "event_id",
+            "payload"
+          )
+          VALUES (
+            $1,
+            'legacy-retry-event',
+            '{"event":{"ts":"1000.000001"}}'
+          )
+        `,
+        [routeId],
+      );
+      await client.query(`
+        INSERT INTO "user_feature_switches" (
+          "org_id",
+          "user_id",
+          "switches"
+        )
+        VALUES (
+          'legacy-contraction-org',
+          'legacy-contraction-user',
+          '{
+            "canonicalSlackIngress": false,
+            "canonicalSlackWebVisibility": true,
+            "canonicalSlackAssets": false,
+            "unrelatedSwitch": true
+          }'::jsonb
+        )
+      `);
+
+      await applyMigrationsUpTo(client, 695);
+
+      const [legacyState, routeColumns, switches] = await Promise.all([
+        client.query<{
+          ingress_exists: boolean;
+          legacy_classifier: string | null;
+          legacy_session_table: string | null;
+          route_canonicalizer: string | null;
+          route_exists: boolean;
+        }>(
+          `
+            SELECT
+              EXISTS (
+                SELECT 1
+                FROM "slack_chat_ingress"
+                WHERE "event_id" = 'legacy-retry-event'
+              ) AS "ingress_exists",
+              to_regprocedure(
+                'classify_legacy_slack_cutover_ingress()'
+              )::text AS "legacy_classifier",
+              to_regclass(
+                'public.slack_org_thread_sessions'
+              )::text AS "legacy_session_table",
+              to_regprocedure(
+                'canonicalize_slack_chat_thread_route()'
+              )::text AS "route_canonicalizer",
+              EXISTS (
+                SELECT 1
+                FROM "slack_chat_thread_routes"
+                WHERE "id" = $1
+              ) AS "route_exists"
+          `,
+          [routeId],
+        ),
+        client.query<{ column_name: string; is_nullable: "NO" | "YES" }>(`
+          SELECT "column_name", "is_nullable"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = 'public'
+            AND "table_name" = 'slack_chat_thread_routes'
+          ORDER BY "ordinal_position"
+        `),
+        client.query<{ switches: Record<string, boolean> }>(`
+          SELECT "switches"
+          FROM "user_feature_switches"
+          WHERE "org_id" = 'legacy-contraction-org'
+            AND "user_id" = 'legacy-contraction-user'
+        `),
+      ]);
+
+      assert.deepEqual(legacyState.rows, [
+        {
+          ingress_exists: false,
+          legacy_classifier: null,
+          legacy_session_table: null,
+          route_canonicalizer: null,
+          route_exists: false,
+        },
+      ]);
+      assert.deepEqual(routeColumns.rows, [
+        { column_name: "id", is_nullable: "NO" },
+        { column_name: "connection_id", is_nullable: "NO" },
+        { column_name: "channel_id", is_nullable: "NO" },
+        { column_name: "thread_ts", is_nullable: "NO" },
+        { column_name: "user_id", is_nullable: "NO" },
+        { column_name: "chat_thread_id", is_nullable: "NO" },
+        { column_name: "created_at", is_nullable: "NO" },
+      ]);
+      assert.deepEqual(switches.rows, [
+        {
+          switches: {
+            unrelatedSwitch: true,
+          },
+        },
+      ]);
+      console.log(
+        "   ✅ Legacy Slack rows, schema, triggers, and feature overrides are removed\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -2154,6 +3446,170 @@ async function validateOrgPlanEntitlementBackfill(): Promise<void> {
       ]);
       console.log(
         "   ✅ Existing metadata-only orgs receive complete plan entitlements\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateModelObservationContractCleanup(): Promise<void> {
+  console.log("=== Phase 1.9: Validate model observation cleanup ===\n");
+  const testDb = "migration_model_observation_cleanup_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 676);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        INSERT INTO "model_usage_observation" (
+          "idempotency_key",
+          "model",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens",
+          "observed_at"
+        )
+        VALUES (
+          '66600000-0000-4000-8000-000000000001',
+          'claude-sonnet-4-6',
+          10,
+          20,
+          30,
+          40,
+          '2026-07-24 00:00:00'
+        )
+      `);
+
+      await client.query(`
+        INSERT INTO "model_stat" (
+          "hour_start",
+          "model",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens",
+          "total_tokens"
+        )
+        VALUES (
+          '2026-07-24 00:00:00',
+          'claude-sonnet-4-6',
+          10,
+          20,
+          30,
+          40,
+          100
+        )
+      `);
+
+      await applyMigrationsUpTo(client, 676);
+
+      const compactRows = await client.query<{
+        cacheCreationInputTokens: string;
+        cacheReadInputTokens: string;
+        inputTokens: string;
+        model: string;
+        outputTokens: string;
+      }>(`
+        SELECT
+          "model",
+          "input_tokens"::text AS "inputTokens",
+          "output_tokens"::text AS "outputTokens",
+          "cache_read_input_tokens"::text AS "cacheReadInputTokens",
+          "cache_creation_input_tokens"::text AS "cacheCreationInputTokens"
+        FROM "model_usage_observation"
+      `);
+      assert.deepEqual(compactRows.rows, [
+        {
+          model: "claude-sonnet-4-6",
+          inputTokens: "10",
+          outputTokens: "20",
+          cacheReadInputTokens: "30",
+          cacheCreationInputTokens: "40",
+        },
+      ]);
+
+      const modelStatRows = await client.query<{
+        cacheCreationInputTokens: string;
+        cacheReadInputTokens: string;
+        inputTokens: string;
+        model: string;
+        outputTokens: string;
+        totalTokens: string;
+      }>(`
+        SELECT
+          "model",
+          "input_tokens"::text AS "inputTokens",
+          "output_tokens"::text AS "outputTokens",
+          "cache_read_input_tokens"::text AS "cacheReadInputTokens",
+          "cache_creation_input_tokens"::text AS "cacheCreationInputTokens",
+          "total_tokens"::text AS "totalTokens"
+        FROM "model_stat"
+      `);
+      assert.deepEqual(modelStatRows.rows, [
+        {
+          model: "claude-sonnet-4-6",
+          inputTokens: "10",
+          outputTokens: "20",
+          cacheReadInputTokens: "30",
+          cacheCreationInputTokens: "40",
+          totalTokens: "100",
+        },
+      ]);
+
+      const contractState = await client.query<{
+        activeKeyPresent: boolean;
+        legacyColumnsAbsent: boolean;
+        legacyKeyAbsent: boolean;
+        compatibilityViewAbsent: boolean;
+      }>(`
+        SELECT
+          to_regclass('public.compact_model_usage_observation') IS NULL
+            AS "compatibilityViewAbsent",
+          NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'model_stat'
+              AND column_name IN (
+                'model_provider',
+                'request_count',
+                'org_count',
+                'user_count',
+                'credits_charged'
+              )
+          ) AS "legacyColumnsAbsent",
+          NOT EXISTS (
+            SELECT 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'model_stat'
+              AND indexname = 'uq_model_stat_hour_model_provider'
+          ) AS "legacyKeyAbsent",
+          EXISTS (
+            SELECT 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'model_stat'
+              AND indexname = 'uq_model_stat_hour_model'
+          ) AS "activeKeyPresent"
+      `);
+      assert.deepEqual(contractState.rows, [
+        {
+          compatibilityViewAbsent: true,
+          legacyColumnsAbsent: true,
+          legacyKeyAbsent: true,
+          activeKeyPresent: true,
+        },
+      ]);
+      console.log(
+        "   ✅ Active compact and ranking data survive legacy schema cleanup\n",
       );
     } finally {
       await client.end();
@@ -2336,9 +3792,13 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipContraction();
 
     await validateStorageArchiveSizeFinalization();
+    await validateStorageLegacyTypeContraction();
     await validateLegacyMemoryCleanup();
+    await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
+    await validateSlackLegacySchemaContraction();
     await validateOrgPlanEntitlementBackfill();
+    await validateModelObservationContractCleanup();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -2351,6 +3811,7 @@ async function main(): Promise<void> {
     console.log("   ✅ Migrations applied successfully\n");
 
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
+    await validateConnectorCatalogFinalConstraints(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -2379,6 +3840,9 @@ async function main(): Promise<void> {
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
       console.log("   ✅ Chat event source tables reject UPDATE");
+      console.log(
+        "   ✅ Final connector catalog constraints reject invalid state",
+      );
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 

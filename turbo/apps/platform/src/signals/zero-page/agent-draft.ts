@@ -19,6 +19,10 @@ import {
   type DraftSignals,
 } from "./chat-draft.ts";
 import {
+  buildDraftPersistencePayload,
+  type DraftPersistencePayload,
+} from "./draft-persistence.ts";
+import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "./user-message-document-codec.ts";
@@ -109,21 +113,15 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
   const draftSyncReset$ = resetSignal();
 
   const patchDraft$ = command(
-    async (
-      { get },
-      content: string | null,
-      structuredPrompt: UserMessageDocument | null,
-      attachments: PersistedAttachment[],
-      signal: AbortSignal,
-    ) => {
+    async ({ get }, payload: DraftPersistencePayload, signal: AbortSignal) => {
       const client = get(zeroClient$)(zeroAgentDraftContract);
       await accept(
         client.patch({
           params: { id: agentId },
           body: {
-            draftContent: content,
-            draftStructuredPrompt: structuredPrompt,
-            draftAttachments: attachments.length > 0 ? attachments : null,
+            draftContent: payload.content,
+            draftStructuredPrompt: payload.structuredPrompt,
+            draftAttachments: payload.attachments,
           },
           fetchOptions: { signal },
         }),
@@ -137,7 +135,6 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
       await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
       signal.throwIfAborted();
 
-      const content = get(draft.input$).trim() || null;
       const draftAttachments = get(draft.attachments$);
       const infos = await Promise.allSettled(
         draftAttachments.map((attachment) => {
@@ -145,7 +142,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
         }),
       );
       signal.throwIfAborted();
-      const persistedAttachments = collectSuccessfulAttachmentInfos(
+      const attachments = collectSuccessfulAttachmentInfos(
         draftAttachments,
         infos,
       ).map((result) => {
@@ -158,34 +155,16 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
         };
       });
       const features = get(featureSwitch$);
-      const editorDocument = set(draft.readEditorDocument$);
-      const generationTemplate = get(draft.generationTemplate$);
-      const hasStructuredDraft =
-        content !== null ||
-        generationTemplate !== undefined ||
-        persistedAttachments.length > 0;
-      let structuredPrompt: UserMessageDocument | null = null;
-      if (
-        (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
-        editorDocument &&
-        hasStructuredDraft
-      ) {
-        structuredPrompt = editorDocument.toMessageDocument({
-          generationTemplate,
-          attachments: persistedAttachments,
-        });
-        if (!structuredPrompt) {
-          throw new Error("Failed to serialize structured agent draft");
-        }
-      }
+      const payload = buildDraftPersistencePayload({
+        input: get(draft.input$),
+        structuredPromptEnabled:
+          features[FeatureSwitchKey.StructuredPrompt] ?? false,
+        editorDocument: set(draft.readEditorDocument$),
+        generationTemplate: get(draft.generationTemplate$),
+        attachments,
+      });
 
-      await set(
-        patchDraft$,
-        content,
-        structuredPrompt,
-        persistedAttachments,
-        signal,
-      );
+      await set(patchDraft$, payload, signal);
     },
   );
 
@@ -200,7 +179,11 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
     set(draftSyncReset$);
-    await set(patchDraft$, null, null, [], signal);
+    await set(
+      patchDraft$,
+      { content: null, structuredPrompt: null, attachments: null },
+      signal,
+    );
   });
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
@@ -253,11 +236,12 @@ export const loadAgentDraft$ = command(
     signal.throwIfAborted();
 
     const features = get(featureSwitch$);
-    const restoredDraft =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-        ? (structuredAgentDraftState(result.body) ??
-          legacyAgentDraftState(result.body))
-        : legacyAgentDraftState(result.body);
+    const structuredPromptEnabled =
+      features[FeatureSwitchKey.StructuredPrompt] ?? false;
+    const restoredDraft = structuredPromptEnabled
+      ? (structuredAgentDraftState(result.body) ??
+        legacyAgentDraftState(result.body))
+      : legacyAgentDraftState(result.body);
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.structuredPrompt !== null ||

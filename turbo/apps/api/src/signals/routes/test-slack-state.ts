@@ -525,7 +525,6 @@ function slackChatRoutes(db: ReadonlyDb, teamId: string) {
       channelId: slackChatThreadRoutes.channelId,
       threadTs: slackChatThreadRoutes.threadTs,
       userId: slackChatThreadRoutes.userId,
-      backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
       createdAt: slackChatThreadRoutes.createdAt,
     })

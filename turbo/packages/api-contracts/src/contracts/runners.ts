@@ -36,7 +36,6 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
-export const RUNNER_STORAGE_MOUNTS_CAPABILITY = "storage-mounts-v1";
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -178,7 +177,6 @@ export const jobSchema = z.object({
   appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  checkpointId: z.uuid().nullable(),
   experimentalProfile: z.string().optional(),
   cliAgentSessionId: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
@@ -291,11 +289,7 @@ export const artifactEntrySchema = z
   });
 
 /**
- * Canonical resolved Storage mount accepted by new runners.
- *
- * The API emits this representation only for runners that advertise the
- * storage-mounts-v1 claim capability. Older runners receive the legacy
- * projection instead.
+ * Canonical resolved Storage mount emitted to runners.
  */
 export const storageMountEntrySchema = z
   .object({
@@ -521,13 +515,13 @@ export const secretConnectorMetadataMapSchema = z.record(
  * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
-  // Claim-time compatibility projection for old runners. Queue rows have a
-  // short TTL; long-lived run/session/checkpoint writers are canonical-only.
+  // Compatibility projection for the previous API version and rollback. The
+  // API emits storageMounts to every runner; remove this projection after
+  // rollback-eligible API versions have drained.
   storageManifest: legacyStorageManifestSchema.nullable(),
   storageMounts: z
     .array(storedStorageMountEntrySchema)
-    .superRefine(uniqueStorageMountPaths)
-    .optional(),
+    .superRefine(uniqueStorageMountPaths),
   environment: z.record(z.string(), z.string()).nullable(),
   // API-only references used to reconstruct runner masking values from the
   // stored environment. Null means no persistent secret map, and array
@@ -603,7 +597,6 @@ export const executionContextSchema = z.object({
   appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  checkpointId: z.uuid().nullable(),
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),

@@ -112,14 +112,18 @@ async function readBillingStatus(
 
 async function createOnboardingPaymentPendingOrg(): Promise<BillingOrgFixture> {
   const fixture = createOrgFixture();
-  await createBddApi(context).bootstrapOnboarding(
-    {
-      ...fixture,
-      orgRole: "org:admin",
-      email: `${fixture.userId}@example.test`,
-    },
-    { displayName: "Billing Checkout Test Agent" },
-  );
+  const actor = {
+    ...fixture,
+    orgRole: "org:admin" as const,
+    email: `${fixture.userId}@example.test`,
+  };
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
+  await seedOrgMetadata({
+    orgId: fixture.orgId,
+    tier: "limited-free-1",
+    credits: 0,
+  });
   await setOnboardingPaymentPendingFixture({
     orgId: fixture.orgId,
     onboardingPaymentPending: true,

@@ -3,10 +3,7 @@ import {
   slackChatIngress,
   type SlackChatIngressStatus,
 } from "@vm0/db/schema/slack-chat-ingress";
-import {
-  slackChatThreadRoutes,
-  type SlackChatThreadRouteBackend,
-} from "@vm0/db/schema/slack-chat-thread-route";
+import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -21,8 +18,7 @@ interface SlackChatThreadRouteKey {
 
 interface SlackChatThreadRouteBinding extends SlackChatThreadRouteKey {
   readonly id: string;
-  readonly backend: SlackChatThreadRouteBackend;
-  readonly chatThreadId: string | null;
+  readonly chatThreadId: string;
 }
 
 function slackChatThreadRouteWhere(key: SlackChatThreadRouteKey) {
@@ -45,7 +41,6 @@ async function loadSlackChatThreadRoute(
       channelId: slackChatThreadRoutes.channelId,
       threadTs: slackChatThreadRoutes.threadTs,
       userId: slackChatThreadRoutes.userId,
-      backend: slackChatThreadRoutes.backend,
       chatThreadId: slackChatThreadRoutes.chatThreadId,
     })
     .from(slackChatThreadRoutes)
@@ -70,41 +65,6 @@ async function requireSlackChatThreadRoute(
     throw new Error("Failed to resolve Slack chat thread route after conflict");
   }
   return route;
-}
-
-export async function ensureLegacySlackChatThreadRoute(
-  db: Db,
-  args: SlackChatThreadRouteKey & { readonly currentTime: Date },
-): Promise<SlackChatThreadRouteBinding> {
-  const [route] = await db
-    .insert(slackChatThreadRoutes)
-    .values({
-      connectionId: args.connectionId,
-      channelId: args.channelId,
-      threadTs: args.threadTs,
-      userId: args.userId,
-      backend: "legacy",
-      chatThreadId: null,
-      createdAt: args.currentTime,
-    })
-    .onConflictDoNothing({
-      target: [
-        slackChatThreadRoutes.connectionId,
-        slackChatThreadRoutes.channelId,
-        slackChatThreadRoutes.threadTs,
-        slackChatThreadRoutes.userId,
-      ],
-    })
-    .returning({
-      id: slackChatThreadRoutes.id,
-      connectionId: slackChatThreadRoutes.connectionId,
-      channelId: slackChatThreadRoutes.channelId,
-      threadTs: slackChatThreadRoutes.threadTs,
-      userId: slackChatThreadRoutes.userId,
-      backend: slackChatThreadRoutes.backend,
-      chatThreadId: slackChatThreadRoutes.chatThreadId,
-    });
-  return route ?? (await requireSlackChatThreadRoute(db, args));
 }
 
 export async function ensureCanonicalSlackChatThreadRoute(
@@ -146,7 +106,6 @@ export async function ensureCanonicalSlackChatThreadRoute(
         channelId: args.channelId,
         threadTs: args.threadTs,
         userId: args.userId,
-        backend: "canonical",
         chatThreadId: thread.id,
         createdAt: args.currentTime,
       })
@@ -164,7 +123,6 @@ export async function ensureCanonicalSlackChatThreadRoute(
         channelId: slackChatThreadRoutes.channelId,
         threadTs: slackChatThreadRoutes.threadTs,
         userId: slackChatThreadRoutes.userId,
-        backend: slackChatThreadRoutes.backend,
         chatThreadId: slackChatThreadRoutes.chatThreadId,
       });
 

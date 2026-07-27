@@ -35,7 +35,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
  *
  * This file is the SOLE OWNER of GET /api/cron/aggregate-model-stats:
  * the cron is a global sweep (window-scoped DELETE+reinsert over model_stat
- * plus an unconditional model_usage_observation retention delete), so calling
+ * plus an unconditional compact observation retention delete), so calling
  * it from any other test file would race this file's far-past observation
  * windows on the shared database — the same single-file-ownership rule as the
  * email drain / billing reconcile / screenshot cleanup crons (see the shared
@@ -325,51 +325,69 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const baseTotal = baseline.body.totalTokens;
 
     mockNow(mainObservedAt);
-    const ingested = await webhooks.requestAgentModelUsageObservation(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.input",
-            quantity: 300,
-          },
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.output",
-            quantity: 200,
-          },
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.cache_read",
-            quantity: 40,
-          },
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.cache_creation",
-            quantity: 10,
-          },
-        ],
-      },
+    const compactIdempotencyKey = randomUUID();
+    const compactBody = {
+      runId: created.runId,
+      events: [
+        {
+          idempotencyKey: compactIdempotencyKey,
+          model,
+          inputTokens: 300,
+          outputTokens: 200,
+          cacheReadInputTokens: 40,
+          cacheCreationInputTokens: 10,
+        },
+      ],
+    };
+    const duplicateWithinRequest =
+      await webhooks.requestAgentModelUsageObservationV2Unchecked(
+        {
+          runId: created.runId,
+          events: [compactBody.events[0], compactBody.events[0]],
+        },
+        sandboxHeaders,
+        [400],
+      );
+    expect(duplicateWithinRequest.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+
+    const ingested = await webhooks.requestAgentModelUsageObservationV2(
+      compactBody,
       sandboxHeaders,
       [200],
     );
     expect(ingested.body).toStrictEqual({ success: true });
+    await webhooks.requestAgentModelUsageObservationV2(
+      compactBody,
+      sandboxHeaders,
+      [200],
+    );
+    await Promise.all([
+      webhooks.requestAgentModelUsageObservationV2(
+        compactBody,
+        sandboxHeaders,
+        [200],
+      ),
+      webhooks.requestAgentModelUsageObservationV2(
+        compactBody,
+        sandboxHeaders,
+        [200],
+      ),
+    ]);
 
     mockNow(previousObservedAt);
-    await webhooks.requestAgentModelUsageObservation(
+    await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model,
-            category: "tokens.input",
-            quantity: 80,
+            inputTokens: 80,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
@@ -401,15 +419,17 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     // Re-ingest into the already-aggregated hour: the window DELETE+reinsert
     // must surface the additional output tokens on the next aggregation.
     mockNow(mainObservedAt);
-    await webhooks.requestAgentModelUsageObservation(
+    await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
             model,
-            category: "tokens.output",
-            quantity: 50,
+            inputTokens: 0,
+            outputTokens: 50,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
           },
         ],
       },
@@ -455,12 +475,14 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       return {
         idempotencyKey: randomUUID(),
         model,
-        category: "tokens.input" as const,
-        quantity: Number.MAX_SAFE_INTEGER,
+        inputTokens: Number.MAX_SAFE_INTEGER,
+        outputTokens: 0,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
       };
     });
     for (let offset = 0; offset < overflowEvents.length; offset += 100) {
-      await webhooks.requestAgentModelUsageObservation(
+      await webhooks.requestAgentModelUsageObservationV2(
         {
           runId: created.runId,
           events: overflowEvents.slice(offset, offset + 100),

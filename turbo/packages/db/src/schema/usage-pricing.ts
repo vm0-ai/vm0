@@ -31,6 +31,8 @@ import {
  *   maps       google-maps               geocoding      6           1          $0.005 request + 20% markup
  *   scrape     firecrawl                 standard.markdown 4        1          fixed per-request scrape pricing
  *   web-search perplexity                request        5           1          $0.005 per search request
+ *   people-search perplexity             request        20          1          fixed per-request people search pricing
+ *   browser    browser-use                provider_cost_usd_micros 1200 1000000 provider cost plus 20% markup
  */
 export const usagePricing = pgTable(
   "usage_pricing",

@@ -1,13 +1,60 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
-const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
+const MERCURY_ENDPOINTS = {
+  production: {
+    oauthBaseUrl: "https://oauth2.mercury.com",
+    apiBaseUrl: "https://api.mercury.com",
+  },
+  sandbox: {
+    oauthBaseUrl: "https://oauth2-sandbox.mercury.com",
+    apiBaseUrl: "https://api-sandbox.mercury.com",
+  },
+} as const;
 
-const MERCURY_AUTHORIZATION_URL = "https://oauth2.mercury.com/oauth2/auth";
+interface MercuryEndpoints {
+  oauthBaseUrl: string;
+  apiBaseUrl: string;
+}
 
-const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
+/**
+ * Mercury runs production and sandbox as separate OAuth2 servers, and a client
+ * only exists on the one it was registered with. Set
+ * MERCURY_OAUTH_ENVIRONMENT=sandbox wherever the sandbox client credentials are
+ * configured, otherwise the authorization request fails with invalid_client.
+ * An unset or empty value selects production; any other value is a deployment
+ * misconfiguration and fails instead of silently using production.
+ * Ref: https://docs.mercury.com/docs/using-mercury-sandbox
+ */
+function mercuryEndpoints(): MercuryEndpoints {
+  const environment = process.env.MERCURY_OAUTH_ENVIRONMENT;
+  if (environment === undefined || environment === "") {
+    return MERCURY_ENDPOINTS.production;
+  }
+  if (environment === "production") {
+    return MERCURY_ENDPOINTS.production;
+  }
+  if (environment === "sandbox") {
+    return MERCURY_ENDPOINTS.sandbox;
+  }
+  throw new Error(
+    'MERCURY_OAUTH_ENVIRONMENT must be "sandbox" or "production"',
+  );
+}
+
+/**
+ * Mercury registers OAuth clients with token_endpoint_auth_method
+ * client_secret_basic, so credentials go in the Authorization header rather
+ * than the request body.
+ */
+function mercuryClientAuthHeader(
+  clientId: string,
+  clientSecret: string,
+): string {
+  return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+}
 
 interface MercuryUserInfo {
   id: string;
@@ -31,7 +78,10 @@ interface MercuryRefreshResult {
 
 /**
  * Build Mercury OAuth authorization URL.
- * Requests offline_access scope to obtain a refresh token.
+ * Requests every scope Mercury registered for our client: openid for the
+ * authenticated user's identity, read for accounts and transactions, and
+ * offline_access for a refresh token. Mercury grants read-only access only,
+ * so there is no write scope to request.
  */
 export function buildMercuryAuthorizationUrl(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
@@ -47,7 +97,7 @@ export function buildMercuryAuthorizationUrl(
     state,
   });
 
-  return `${MERCURY_AUTHORIZATION_URL}?${params.toString()}`;
+  return `${mercuryEndpoints().oauthBaseUrl}/oauth2/auth?${params.toString()}`;
 }
 
 /**
@@ -60,19 +110,21 @@ export async function exchangeMercuryCode(
   code: string,
   redirectUri: string,
 ): Promise<MercuryTokenResult> {
-  const response = await fetch(MERCURY_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+  const response = await fetch(
+    `${mercuryEndpoints().oauthBaseUrl}/oauth2/token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: mercuryClientAuthHeader(clientId, clientSecret),
+      },
+      body: new URLSearchParams({
+        code,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
     },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    }),
-  });
+  );
 
   if (!response.ok) {
     await throwOAuthError("Mercury", "exchange", response);
@@ -119,19 +171,21 @@ export async function refreshMercuryToken(
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MercuryRefreshResult> {
-  const response = await fetch(MERCURY_TOKEN_URL, {
-    signal,
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+  const response = await fetch(
+    `${mercuryEndpoints().oauthBaseUrl}/oauth2/token`,
+    {
+      signal,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: mercuryClientAuthHeader(clientId, clientSecret),
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
     },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    }),
-  });
+  );
 
   if (!response.ok) {
     await throwOAuthError("Mercury", "refresh", response);
@@ -170,13 +224,16 @@ export async function refreshMercuryToken(
 async function fetchMercuryUserInfo(
   accessToken: string,
 ): Promise<MercuryUserInfo> {
-  const response = await fetch(MERCURY_ACCOUNTS_URL, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
+  const response = await fetch(
+    `${mercuryEndpoints().apiBaseUrl}/api/v1/accounts`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
     },
-  });
+  );
 
   if (!response.ok) {
     throw new Error(`Mercury user info fetch failed: ${response.status}`);

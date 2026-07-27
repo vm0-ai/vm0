@@ -5,6 +5,7 @@ import {
   timestamp,
   index,
   jsonb,
+  bigint,
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -16,6 +17,7 @@ import type {
   ChatThreadDraftStructuredPrompt,
   ChatThreadGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-thread";
+import { agentRuns, agentSessions } from "./agent-run-session-conversation";
 
 /**
  * Chat Threads table
@@ -46,6 +48,26 @@ export const chatThreads = pgTable(
      */
     sourceScheduleRunId: uuid("source_schedule_run_id"),
     /**
+     * Canonical vm0 application session for runs admitted on this thread.
+     * Every thread-bound run source resolves continuation through this binding.
+     */
+    agentSessionId: uuid("agent_session_id").references(
+      () => {
+        return agentSessions.id;
+      },
+      { onDelete: "set null" },
+    ),
+    /**
+     * Run whose final admission most recently established agentSessionId.
+     * Provides route provenance for session rotation and binding snapshots.
+     */
+    agentSessionRunId: uuid("agent_session_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
+    /**
      * Draft text content for the thread's composer. Null when no draft is saved.
      * Persisted with local-first sync: local state takes precedence on first visit.
      */
@@ -53,6 +75,13 @@ export const chatThreads = pgTable(
     /** Stable business representation of the composer's rich draft content. */
     draftStructuredPrompt: jsonb(
       "draft_structured_prompt",
+    ).$type<ChatThreadDraftStructuredPrompt>(),
+    /**
+     * Full structured draft content for rollout-only parts that older API
+     * versions cannot decode. The legacy column remains a safe projection.
+     */
+    draftStructuredPromptWithFeedback: jsonb(
+      "draft_structured_prompt_with_feedback",
     ).$type<ChatThreadDraftStructuredPrompt>(),
     /**
      * Draft attachment metadata for the thread's composer. Only completed uploads.
@@ -117,6 +146,12 @@ export const chatThreads = pgTable(
      * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
+    /** Last seq_id allocated to a message in this thread. */
+    lastChatMessageSeqId: bigint("last_chat_message_seq_id", {
+      mode: "number",
+    })
+      .default(0)
+      .notNull(),
     /**
      * Chat-message-queue pause state: while set, workflow events keep
      * enqueueing but are not consumed. Never blocks user messages.

@@ -2,12 +2,10 @@
 
 import uuid
 
-import pytest
-
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_current_pending
-from tests.usage_buffer_helpers import RecordingEnqueue, event
+from tests.usage_buffer_helpers import RecordingEnqueue, event, observation
 
 
 def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
@@ -78,8 +76,12 @@ def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
         "token-a",
         "run-1",
         [
-            event(source_key="source-1", quantity=10),
-            event(source_key="source-2", quantity=5),
+            observation(source_key="source-1", input_tokens=10),
+            observation(
+                source_key="source-2",
+                output_tokens=5,
+                cache_read_input_tokens=3,
+            ),
         ],
         str(tmp_path / "proxy.jsonl"),
     )
@@ -91,8 +93,10 @@ def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
         {
             "idempotencyKey": payload["events"][0]["idempotencyKey"],
             "model": "claude-sonnet-4-6",
-            "category": "tokens.input",
-            "quantity": 15,
+            "inputTokens": 10,
+            "outputTokens": 5,
+            "cacheReadInputTokens": 3,
+            "cacheCreationInputTokens": 0,
         }
     ]
     assert enqueue.last_call.log_type == "model_usage_observation"
@@ -263,29 +267,14 @@ def test_source_preserving_atomic_group_rejects_when_member_key_was_seen(tmp_pat
     }
 
 
-@pytest.mark.parametrize(
-    ("buffer_events", "url"),
-    [
-        pytest.param(
-            usage.buffer_source_usage_events,
-            "https://api.test/api/webhooks/agent/usage-event",
-            id="usage-event",
-        ),
-        pytest.param(
-            usage.buffer_source_model_usage_observations,
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            id="model-usage-observation",
-        ),
-    ],
-)
-def test_source_preserving_atomic_group_rejects_duplicate_member_keys(tmp_path, buffer_events, url):
+def test_source_preserving_atomic_group_rejects_duplicate_member_keys(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
 
     assert (
-        buffer_events(
-            url,
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
             "token-a",
             "run-1",
             [
@@ -305,8 +294,8 @@ def test_source_preserving_atomic_group_rejects_duplicate_member_keys(tmp_path, 
     enqueue.assert_not_called()
 
     assert (
-        buffer_events(
-            url,
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
             "token-a",
             "run-1",
             [
@@ -337,7 +326,13 @@ def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
         "https://api.test/api/webhooks/agent/model-usage-observation",
         "token-a",
         "run-1",
-        [event(source_key="source-1", quantity=10)],
+        [
+            observation(
+                source_key="source-1",
+                input_tokens=10,
+                cache_creation_input_tokens=4,
+            )
+        ],
         str(tmp_path / "proxy.jsonl"),
     )
     assert usage.flush_usage_events(trigger="test") == 1
@@ -349,8 +344,10 @@ def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
             {
                 "idempotencyKey": "source-1",
                 "model": "claude-sonnet-4-6",
-                "category": "tokens.input",
-                "quantity": 10,
+                "inputTokens": 10,
+                "outputTokens": 0,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 4,
             }
         ],
     }

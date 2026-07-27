@@ -4,7 +4,6 @@ import {
   ZERO_CAPABILITIES,
   ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   isFeatureEnabled,
@@ -31,7 +30,9 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
+  ["people-search:read", FeatureSwitchKey.ZeroPeopleSearch],
   ["weather:read", FeatureSwitchKey.ZeroWeather],
+  ["finance:read", FeatureSwitchKey.ZeroFinance],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -73,6 +74,7 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
+  featureSwitchOverrides: z.record(z.string(), z.boolean()).optional(),
   computerUseHostId: z.string().uuid().optional(),
 });
 
@@ -297,21 +299,12 @@ export function generateZeroToken(
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
   options?: {
     readonly computerUseHostId?: string;
-    readonly triggerSource?: TriggerSource;
   },
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
     if (capability === "computer-use:write" && !options?.computerUseHostId) {
-      continue;
-    }
-    // Workflow-event runs are autonomous and must not create, edit, pause,
-    // resume, or clear goals. They can still report terminal agent results.
-    if (
-      capability === "goal:user-control:write" &&
-      options?.triggerSource === "workflow-event"
-    ) {
       continue;
     }
     if (
@@ -332,6 +325,7 @@ export function generateZeroToken(
     runId,
     orgId,
     capabilities,
+    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

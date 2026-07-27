@@ -306,6 +306,8 @@ describe("chat lifecycle", () => {
     const sidebar = screen.getByTestId("automation-sidebar");
     expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
     expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Status")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Active")).toBeInTheDocument();
     expect(within(sidebar).getAllByText("Schedule").length).toBeGreaterThan(0);
     expect(within(sidebar).getByText("Every 1 minute")).toBeInTheDocument();
     expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
@@ -373,6 +375,22 @@ describe("chat lifecycle", () => {
     expect(within(sidebar).getByText("View")).toBeInTheDocument();
     expect(within(sidebar).getByText("Run now")).toBeInTheDocument();
     expect(within(sidebar).queryByText("Edit")).not.toBeInTheDocument();
+  });
+
+  it("shows a disabled workflow automation status in the sidebar", async () => {
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
+        id: "e0000001-0000-4000-a000-000000000007",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        enabled: false,
+        workflow: {
+          displayName: "Nightly sync",
+        },
+      }),
+    );
+
+    expect(within(sidebar).getByText("Disabled")).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("switch")).not.toBeInTheDocument();
   });
 
   it("updates a schedule workflow automation from the sidebar", async () => {
@@ -960,6 +978,96 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("keeps a paused latest workflow run group collapsed by default", async () => {
+    const threadId = "thread-paused-workflow-run-group";
+    const runGroupId = "f0000001-0000-4000-a000-00000000074b";
+    const workflowPrompt = "/daily-workflow";
+    const workflowSnapshot = {
+      name: "daily-workflow",
+      displayName: "Daily workflow",
+      description: "Daily workflow summary",
+    };
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Paused workflow run group",
+      chatMessages: [
+        {
+          id: "msg-paused-workflow-user-1",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000074c",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-paused-workflow-assistant-1",
+          role: "assistant",
+          content: "First workflow result",
+          runId: "f0000001-0000-4000-a000-00000000074c",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-paused-workflow-user-2",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000074d",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-paused-workflow-assistant-2",
+          role: "assistant",
+          content: "Run cancelled",
+          error: "Run cancelled",
+          runId: "f0000001-0000-4000-a000-00000000074d",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("First workflow result"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "1 run for Daily workflow summary",
+      );
+    });
+
+    fireEvent.click(buttonByLabel("Expand grouped run history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First workflow result")).toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Collapse grouped run history")).toHaveTextContent(
+        "1 run for Daily workflow summary",
+      );
+    });
+  });
+
   it("renders workflow automation user messages with the workflow title and brief", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";
@@ -1282,6 +1390,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           contentType: firstAttachment.contentType,
         },
         { type: "text" as const, text: " now" },
+        {
+          type: "feedback" as const,
+          quote: "The roadmap lacks dates",
+          note: [{ type: "text" as const, text: "Add the launch milestones" }],
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1314,7 +1427,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const item = await readSingleRichClipboardWrite(clipboard);
     const html = await readClipboardItemText(item, "text/html");
     expect(parseChatClipboardPayload(html)).toStrictEqual({
-      text: `Review [Roadmap](/chats/${referencedThreadId}) now`,
+      text:
+        `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` +
+        "Feedback on this part of your reply:\n\n" +
+        "> The roadmap lacks dates\n\nAdd the launch milestones",
       attachments: [secondAttachment, firstAttachment],
       structuredPrompt,
     });
@@ -1331,6 +1447,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       },
     };
     const messageText = "Create a matching illustration";
+    const feedbackQuote = "The illustration lacks contrast";
+    const feedbackNote = "Increase the foreground contrast";
     const structuredPrompt = {
       version: 1 as const,
       parts: [
@@ -1340,6 +1458,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           template: generationTemplate,
         },
         { type: "text" as const, text: messageText },
+        {
+          type: "feedback" as const,
+          quote: feedbackQuote,
+          note: [{ type: "text" as const, text: feedbackNote }],
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1388,6 +1511,84 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByLabelText(`Remove template ${style.title}`),
       ).toBeInTheDocument();
+      const feedbackItem = composer.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(feedbackQuote);
+      expect(feedbackItem).toHaveTextContent(feedbackNote);
+    });
+  });
+
+  it("preserves structured feedback when the browser rejects the modern clipboard API", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    clipboard.rejectWith(
+      new DOMException("Clipboard blocked", "NotAllowedError"),
+    );
+    const fallbackClipboard = context.mocks.browser.clipboardExecCommand();
+    const threadId = "structured-feedback-copy-fallback";
+    const structuredPrompt = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs an owner",
+          note: [{ type: "text" as const, text: "Name the owner" }],
+        },
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs dates",
+          note: [{ type: "text" as const, text: "Add the milestones" }],
+        },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-structured-feedback-copy-fallback",
+          role: "user",
+          content: "stale legacy feedback",
+          structuredPrompt,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await screen.findByText("The release plan needs an owner");
+    click(screen.getByLabelText("Copy message"));
+
+    await waitFor(() => {
+      expect(fallbackClipboard.writes).toHaveLength(1);
+    });
+    const copied = fallbackClipboard.writes[0];
+    if (!copied) {
+      throw new Error("Fallback clipboard write not found");
+    }
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: (type: string) => {
+          return copied[type] ?? "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      const feedbackItems = composer.querySelectorAll("[data-feedback-item]");
+      expect(feedbackItems).toHaveLength(2);
+      expect(feedbackItems[0]).toHaveTextContent(
+        "The release plan needs an owner",
+      );
+      expect(feedbackItems[0]).toHaveTextContent("Name the owner");
+      expect(feedbackItems[1]).toHaveTextContent(
+        "The release plan needs dates",
+      );
+      expect(feedbackItems[1]).toHaveTextContent("Add the milestones");
     });
   });
 
@@ -1412,6 +1613,16 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
             },
           },
           { type: "text" as const, text: messageText },
+          {
+            type: "feedback" as const,
+            quote: "Structured quote stays hidden",
+            note: [
+              {
+                type: "text" as const,
+                text: "Structured note stays hidden",
+              },
+            ],
+          },
         ],
       },
     };
@@ -1443,6 +1654,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.queryByLabelText(`Remove template ${style.title}`),
       ).not.toBeInTheDocument();
+      expect(
+        composer.querySelector("[data-feedback-item]"),
+      ).not.toBeInTheDocument();
+      expect(composer).not.toHaveTextContent("Structured quote stays hidden");
+      expect(composer).not.toHaveTextContent("Structured note stays hidden");
     });
   });
 });

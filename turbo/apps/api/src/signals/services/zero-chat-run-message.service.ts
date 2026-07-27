@@ -39,7 +39,7 @@ async function getFirstRunSelectedModel(
         isNotNull(zeroRuns.selectedModel),
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+    .orderBy(asc(chatMessages.seqId))
     .limit(1);
   return run?.selectedModel ?? null;
 }
@@ -100,41 +100,60 @@ export async function postRunUserMessage(params: {
         ),
       }
     : undefined;
-  const syncThroughMessageId = await params.db.transaction(
-    async (tx): Promise<string | undefined> => {
-      const inserted = await insertChatMessage(tx, {
+  await params.db.transaction(async (tx): Promise<void> => {
+    const inserted = await insertChatMessage(tx, {
+      chatThreadId: params.threadId,
+      role: "user",
+      content: params.prompt,
+      runId: params.runId,
+      runGroupId: params.runGroupId,
+      goalSnapshot,
+    });
+    if (!params.appendQueueMarker) {
+      return;
+    }
+    await appendQueuedRunAssistantMarker(tx, {
+      chatThreadId: params.threadId,
+      runId: params.runId,
+      runGroupId: params.runGroupId,
+      createdAfter: inserted?.createdAt ?? nowDate(),
+    });
+  });
+  await publishRunUserMessageSignals(params.userId, params.threadId);
+}
+
+async function publishRunUserMessageSignals(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+  await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
+  await publishThreadListChanged(userId);
+}
+
+/**
+ * Finish the side effects for a user message inserted by a queue-first run
+ * claim. The claim and run rows already committed atomically; only a queued
+ * marker and realtime notifications remain.
+ */
+export async function finalizeClaimedRunUserMessage(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly runStatus: string;
+  readonly runGroupId?: string;
+  readonly createdAt: Date;
+}): Promise<void> {
+  if (params.runStatus === "queued") {
+    await params.db.transaction(async (tx): Promise<void> => {
+      await appendQueuedRunAssistantMarker(tx, {
         chatThreadId: params.threadId,
-        role: "user",
-        content: params.prompt,
         runId: params.runId,
         runGroupId: params.runGroupId,
-        goalSnapshot,
+        createdAfter: params.createdAt,
       });
-      if (!params.appendQueueMarker) {
-        return inserted?.id;
-      }
-      const marker = await appendQueuedRunAssistantMarker(tx, {
-        chatThreadId: params.threadId,
-        runId: params.runId,
-        runGroupId: params.runGroupId,
-        createdAfter: inserted?.createdAt ?? nowDate(),
-      });
-      if (marker.kind === "appended") {
-        return marker.markerId;
-      }
-      // An existing marker's sort position relative to this user message is
-      // unknown, so no safe watermark exists for the batch.
-      return marker.kind === "not-queued" ? inserted?.id : undefined;
-    },
-  );
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.threadId}`,
-    syncThroughMessageId ? { syncThroughMessageId } : null,
-  );
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadRunCreated:${params.threadId}`,
-  );
-  await publishThreadListChanged(params.userId);
+    });
+  }
+  await publishRunUserMessageSignals(params.userId, params.threadId);
 }

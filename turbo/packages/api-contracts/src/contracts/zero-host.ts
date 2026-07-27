@@ -88,61 +88,6 @@ export const hostedSiteUploadSchema = z.object({
   uploadUrl: z.string().url(),
 });
 
-export const hostedSiteRedeployPresentationHtmlRequestSchema = z.object({
-  url: z.string().url(),
-  html: z.string().min(1),
-});
-
-export const hostedSiteRedeployHtmlRequestSchema = z.object({
-  url: z.string().url(),
-  html: z.string().min(1),
-});
-
-export const presentationSpeakerNotesPatchSchema = z.object({
-  kind: z.literal("presentation-speaker-notes-patch"),
-  version: z.literal(1),
-  slides: z
-    .array(
-      z.object({
-        slideId: z.string().min(1),
-        speakerNotes: z.string().min(1),
-      }),
-    )
-    .max(500),
-});
-
-export const htmlDomEditCommentSchema = z.object({
-  id: z.string().min(1),
-  targetNodeIds: z.array(z.string().min(1)).min(1).max(20),
-  comment: z.string().min(1),
-});
-
-const createHtmlEditDraftBaseRequestSchema = z.object({
-  comments: z.array(htmlDomEditCommentSchema).min(1).max(100),
-});
-
-export const createHtmlEditDraftRequestSchema = z.union([
-  createHtmlEditDraftBaseRequestSchema.extend({
-    html: z.string().min(1).max(500_000),
-    htmlSnapshotUrl: z.never().optional(),
-  }),
-  createHtmlEditDraftBaseRequestSchema.extend({
-    html: z.never().optional(),
-    htmlSnapshotUrl: z.string().url(),
-  }),
-]);
-
-export const htmlEditDraftResponseSchema = z.object({
-  kind: z.literal("html-edit-draft"),
-  version: z.literal(1),
-  html: z.string().min(1),
-});
-
-export const generatePresentationSpeakerNotesRequestSchema = z.object({
-  html: z.string().min(1).max(500_000),
-  mode: z.literal("fill-empty"),
-});
-
 export const hostedSitePrepareResponseSchema = z.object({
   siteId: z.string().uuid(),
   deploymentId: z.string().uuid(),
@@ -275,93 +220,12 @@ export const zeroHostContract = c.router({
     },
     summary: "List deployment versions for an owned hosted site",
   },
-  redeployPresentationHtml: {
-    method: "POST",
-    path: "/api/zero/host/presentation-html/redeploy",
-    headers: authHeadersSchema,
-    body: hostedSiteRedeployPresentationHtmlRequestSchema,
-    responses: {
-      200: hostedSiteCompleteResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Redeploy an existing presentation HTML hosted site",
-  },
-  redeployHtml: {
-    method: "POST",
-    path: "/api/zero/host/html/redeploy",
-    headers: authHeadersSchema,
-    body: hostedSiteRedeployHtmlRequestSchema,
-    responses: {
-      200: hostedSiteCompleteResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Redeploy an existing HTML hosted site",
-  },
-  generatePresentationSpeakerNotes: {
-    method: "POST",
-    path: "/api/zero/host/presentation-html/speaker-notes",
-    headers: authHeadersSchema,
-    body: generatePresentationSpeakerNotesRequestSchema,
-    responses: {
-      200: presentationSpeakerNotesPatchSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Generate speaker notes for an existing presentation HTML",
-  },
-  createHtmlEditDraft: {
-    method: "POST",
-    path: "/api/zero/host/html-edit-draft",
-    headers: authHeadersSchema,
-    body: createHtmlEditDraftRequestSchema,
-    responses: {
-      200: htmlEditDraftResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      503: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Create an edited HTML draft from DOM comments",
-  },
 });
 
 export type ZeroHostContract = typeof zeroHostContract;
 export type HostedSitePrepareRequest = z.infer<
   typeof hostedSitePrepareRequestSchema
 >;
-export type HostedSiteRedeployPresentationHtmlRequest = z.infer<
-  typeof hostedSiteRedeployPresentationHtmlRequestSchema
->;
-export type HostedSiteRedeployHtmlRequest = z.infer<
-  typeof hostedSiteRedeployHtmlRequestSchema
->;
-export type GeneratePresentationSpeakerNotesRequest = z.infer<
-  typeof generatePresentationSpeakerNotesRequestSchema
->;
-export type PresentationSpeakerNotesPatch = z.infer<
-  typeof presentationSpeakerNotesPatchSchema
->;
-export type CreateHtmlEditDraftRequest = z.infer<
-  typeof createHtmlEditDraftRequestSchema
->;
-export type HtmlEditDraftResponse = z.infer<typeof htmlEditDraftResponseSchema>;
 export type HostedSitePrepareResponse = z.infer<
   typeof hostedSitePrepareResponseSchema
 >;

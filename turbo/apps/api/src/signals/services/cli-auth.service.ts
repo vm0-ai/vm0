@@ -12,13 +12,11 @@ import { generateCliToken } from "../auth/tokens";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
 
 export const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
-export const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
+const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
 
 const FAR_FUTURE_CACHE_MS = 365 * 24 * 60 * 60 * 1000;
-const ORG_CACHE_TTL_MS = 60_000;
 const USER_CACHE_TTL_MS = 15 * 60 * 1000;
 const TEST_ORG_CREDITS = 100_000;
 
@@ -26,79 +24,6 @@ interface IssuedCliToken {
   readonly token: string;
   readonly expiresIn: number;
 }
-
-function isClerkNotFound(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-  return (
-    Reflect.get(error, "statusCode") === 404 ||
-    Reflect.get(error, "code") === "NOT_FOUND" ||
-    Reflect.get(error, "name") === "NotFoundError"
-  );
-}
-
-export const orgIdBySlug$ = command(
-  async (
-    { get, set },
-    slug: string,
-    signal: AbortSignal,
-  ): Promise<string | null> => {
-    const [cached] = await get(db$)
-      .select({ orgId: orgCache.orgId, cachedAt: orgCache.cachedAt })
-      .from(orgCache)
-      .where(eq(orgCache.slug, slug))
-      .limit(1);
-    signal.throwIfAborted();
-
-    const currentTime = nowDate();
-    if (
-      cached &&
-      currentTime.getTime() - cached.cachedAt.getTime() < ORG_CACHE_TTL_MS
-    ) {
-      return cached.orgId;
-    }
-
-    const client = get(clerk$);
-    const result = await settle(client.organizations.getOrganization({ slug }));
-    signal.throwIfAborted();
-
-    if (!result.ok) {
-      if (isClerkNotFound(result.error)) {
-        return null;
-      }
-      throw result.error;
-    }
-
-    const org = result.value;
-    if (!org.slug) {
-      return null;
-    }
-
-    const writeDb = set(writeDb$);
-    await writeDb
-      .insert(orgCache)
-      .values({
-        orgId: org.id,
-        slug: org.slug,
-        name: org.name,
-        createdBy: org.createdBy ?? null,
-        cachedAt: currentTime,
-      })
-      .onConflictDoUpdate({
-        target: orgCache.orgId,
-        set: {
-          slug: org.slug,
-          name: org.name,
-          createdBy: org.createdBy ?? null,
-          cachedAt: currentTime,
-        },
-      });
-    signal.throwIfAborted();
-
-    return org.id;
-  },
-);
 
 export const issueCliToken$ = command(
   async (

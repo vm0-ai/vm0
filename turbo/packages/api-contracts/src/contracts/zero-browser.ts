@@ -1,0 +1,207 @@
+import { z } from "zod";
+
+import { authHeadersSchema, initContract } from "./base";
+import { apiErrorSchema } from "./errors";
+
+const c = initContract();
+
+// Zero always asks Browser Use for its longest provider lifetime and manages
+// reclamation itself through the idle lease below, so a hard provider timeout
+// can never cut a browser short while somebody is still using it.
+export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
+export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
+export const ZERO_BROWSER_DEFAULT_MAX_CREDITS = 500;
+export const ZERO_BROWSER_MAX_CREDITS = 100_000;
+
+export const zeroBrowserStatusSchema = z.enum([
+  "creating",
+  "active",
+  "resuming",
+  "stopping",
+  "suspended",
+  "error",
+]);
+
+export const zeroBrowserSuspensionReasonSchema = z.enum([
+  // Historical reason kept for rows written before the idle lease existed.
+  "run_end",
+  "idle",
+  "timeout",
+  "budget",
+  "provider",
+  "reconcile",
+]);
+
+export const zeroBrowserSessionSchema = z.object({
+  id: z.uuid(),
+  name: z.string().min(1).max(64),
+  status: zeroBrowserStatusSchema,
+  viewerUrl: z.url(),
+  liveUrl: z.url().nullable(),
+  proxyCountryCode: z.string().length(2).nullable(),
+  timeoutMinutes: z.number().int().positive(),
+  maxCredits: z.number().int().positive(),
+  grossCredits: z.number().int().nonnegative(),
+  creditsCharged: z.number().int().nonnegative(),
+  // When Zero reclaims the live provider instance unless somebody leases it
+  // again. Null once no provider instance is running.
+  idleExpiresAt: z.iso.datetime().nullable(),
+  suspendedAt: z.iso.datetime().nullable(),
+  suspensionReason: zeroBrowserSuspensionReasonSchema.nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export type ZeroBrowserStatus = z.infer<typeof zeroBrowserStatusSchema>;
+export type ZeroBrowserSuspensionReason = z.infer<
+  typeof zeroBrowserSuspensionReasonSchema
+>;
+export type ZeroBrowserSession = z.infer<typeof zeroBrowserSessionSchema>;
+
+export const zeroBrowserCreateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(64).default("browser"),
+  proxyCountryCode: z
+    .string()
+    .trim()
+    .length(2)
+    .transform((value) => {
+      return value.toLowerCase();
+    })
+    .nullable()
+    .default(null),
+  maxCredits: z
+    .number()
+    .int()
+    .min(1)
+    .max(ZERO_BROWSER_MAX_CREDITS)
+    .default(ZERO_BROWSER_DEFAULT_MAX_CREDITS),
+});
+
+export type ZeroBrowserCreateRequest = z.infer<
+  typeof zeroBrowserCreateRequestSchema
+>;
+
+const browserIdParamsSchema = z.object({
+  browserId: z.uuid(),
+});
+
+const browserGetQuerySchema = z.object({
+  chatThreadId: z.uuid().optional(),
+});
+
+const browserResponseSchema = z.object({
+  browser: zeroBrowserSessionSchema,
+});
+
+const browserConnectionResponseSchema = browserResponseSchema.extend({
+  cdpUrl: z.url(),
+});
+
+const commonErrorResponses = {
+  400: apiErrorSchema,
+  401: apiErrorSchema,
+  402: apiErrorSchema,
+  403: apiErrorSchema,
+  404: apiErrorSchema,
+  409: apiErrorSchema,
+  502: apiErrorSchema,
+  503: apiErrorSchema,
+} as const;
+
+export const zeroBrowserContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/browsers",
+    headers: authHeadersSchema,
+    body: zeroBrowserCreateRequestSchema,
+    responses: {
+      201: browserConnectionResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary:
+      "Create a new managed browser for the current chat thread using the user's shared profile",
+  },
+  use: {
+    method: "POST",
+    path: "/api/zero/browsers/use",
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: browserConnectionResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary:
+      "Create, reuse, or resume the current chat thread's managed browser and extend its idle lease",
+  },
+  resume: {
+    method: "POST",
+    path: "/api/zero/browsers/resume",
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: browserConnectionResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary:
+      "Compatibility alias of use for CLI versions that predate zero browser use",
+  },
+  lease: {
+    method: "POST",
+    path: "/api/zero/browsers/lease",
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Extend the idle lease of the current chat thread's live browser",
+  },
+  leaseById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/lease",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Extend the idle lease of a live browser from its viewer",
+  },
+  resumeById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/resume",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Resume a suspended browser from its viewer and start billing it",
+  },
+  current: {
+    method: "GET",
+    path: "/api/zero/browsers/current",
+    headers: authHeadersSchema,
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Get the current chat thread's managed browser",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/browsers/:browserId",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    query: browserGetQuerySchema,
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Get a managed browser by universal-link ID",
+  },
+});
+
+export type ZeroBrowserContract = typeof zeroBrowserContract;

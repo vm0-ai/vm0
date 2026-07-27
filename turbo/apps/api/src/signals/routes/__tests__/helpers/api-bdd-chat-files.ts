@@ -31,16 +31,21 @@ import {
   type PersistedAttachment,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  artifactCatalogContract,
+  type ArtifactCatalogKind,
+  type ArtifactDetail,
+  type ArtifactSummary,
+} from "@vm0/api-contracts/contracts/artifact-catalog";
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
-  storagesCommitContract,
-  storagesDownloadContract,
-  storagesListContract,
-  storagesPrepareContract,
-} from "@vm0/api-contracts/contracts/storages";
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
@@ -56,11 +61,8 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { storagesCommitRoutes } from "../../storages-commit";
-import { storagesDownloadRoutes } from "../../storages-download";
-import { storagesListRoutes } from "../../storages-list";
-import { storagesPrepareRoutes } from "../../storages-prepare";
 import { zeroChatMessagesRoutes } from "../../zero-chat-messages";
+import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
 import { zeroArtifactsRoutes } from "../../zero-artifacts";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
@@ -76,19 +78,20 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-arti
 import { zeroHostRoutes } from "../../zero-host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
-import { zeroUploadsHtmlDomEditSnapshotRoutes } from "../../zero-uploads-html-dom-edit-snapshot";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
-import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 export { hostedTextFile } from "./api-bdd-host-files";
-export { storageTextFile } from "./api-bdd-storage-files";
-
-type StorageType = "volume" | "artifact";
 
 interface AuthHeaders {
   readonly authorization?: string;
+  readonly [CLIENT_VERSION_HEADER]?: string;
 }
+
+const BDD_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.636.1",
+  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
+);
 
 interface BddCompose {
   readonly composeId: string;
@@ -97,51 +100,6 @@ interface BddCompose {
   readonly action: "created" | "existing";
   readonly updatedAt: string;
 }
-
-interface BddStoragePrepareResponse {
-  readonly versionId: string;
-  readonly existing: boolean;
-  readonly uploads?: {
-    readonly archive: {
-      readonly key: string;
-      readonly presignedUrl: string;
-    };
-    readonly manifest: {
-      readonly key: string;
-      readonly presignedUrl: string;
-    };
-  };
-}
-
-interface BddStorageCommitResponse {
-  readonly success: true;
-  readonly versionId: string;
-  readonly storageName: string;
-  readonly size: number;
-  readonly fileCount: number;
-  readonly deduplicated?: boolean;
-}
-
-interface BddStorageListItem {
-  readonly name: string;
-  readonly size: number;
-  readonly fileCount: number;
-  readonly updatedAt: string;
-}
-
-type BddStorageDownloadResponse =
-  | {
-      readonly url: string;
-      readonly versionId: string;
-      readonly fileCount: number;
-      readonly size: number;
-    }
-  | {
-      readonly empty: true;
-      readonly versionId: string;
-      readonly fileCount: 0;
-      readonly size: 0;
-    };
 
 type BddSendMessageBody =
   | {
@@ -158,6 +116,7 @@ type BddSendMessageBody =
       readonly computerUseHostId?: string | null;
       readonly clientMessageId?: string;
       readonly chatThreadSortEventId?: string;
+      readonly realAgentInPreview?: boolean;
       readonly revokesMessageId?: string;
     }
   | {
@@ -174,7 +133,12 @@ type BddSendMessageBody =
     };
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
-  return actor ? { authorization: "Bearer clerk-session" } : {};
+  return actor
+    ? {
+        authorization: "Bearer clerk-session",
+        [CLIENT_VERSION_HEADER]: BDD_CLIENT_VERSION,
+      }
+    : {};
 }
 
 function authenticate(
@@ -215,6 +179,7 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 const chatFilesRoutes = [
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
+  ...zeroArtifactCatalogRoutes,
   ...zeroArtifactsRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatThreadCreateRoutes,
@@ -230,13 +195,8 @@ const chatFilesRoutes = [
   ...zeroChatMessagesRoutes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsHtmlDomEditSnapshotRoutes,
   ...zeroHostRoutes,
   ...zeroModelPoliciesRoutes,
-  ...storagesPrepareRoutes,
-  ...storagesCommitRoutes,
-  ...storagesListRoutes,
-  ...storagesDownloadRoutes,
 ] as const;
 
 function chatFilesApp(context: TestContext) {
@@ -309,6 +269,10 @@ export function createChatFilesBddApi(context: TestContext) {
     return chatFilesApp(context)(artifactsContract);
   }
 
+  function artifactCatalogClient() {
+    return chatFilesApp(context)(artifactCatalogContract);
+  }
+
   function threadMarkReadClient() {
     return chatFilesApp(context)(chatThreadMarkReadContract);
   }
@@ -363,22 +327,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function hostClient() {
     return chatFilesApp(context)(zeroHostContract);
-  }
-
-  function storagePrepareClient() {
-    return chatFilesApp(context)(storagesPrepareContract);
-  }
-
-  function storageCommitClient() {
-    return chatFilesApp(context)(storagesCommitContract);
-  }
-
-  function storageListClient() {
-    return chatFilesApp(context)(storagesListContract);
-  }
-
-  function storageDownloadClient() {
-    return chatFilesApp(context)(storagesDownloadContract);
   }
 
   return {
@@ -935,6 +883,8 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       query: {
+        readonly sinceSeqId?: number;
+        readonly beforeSeqId?: number;
         readonly sinceId?: string;
         readonly beforeId?: string;
         readonly limit?: number;
@@ -958,6 +908,8 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       query: {
+        readonly sinceSeqId?: number;
+        readonly beforeSeqId?: number;
         readonly sinceId?: string;
         readonly beforeId?: string;
         readonly limit?: number;
@@ -987,21 +939,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async requestGetThreadMessage(
-      actor: ApiTestUser | null,
-      threadId: string,
-      messageId: string,
-      statuses: readonly (200 | 401 | 404)[],
-    ) {
-      return await accept(
-        threadMessagesClient().get({
-          headers: authenticate(context, actor),
-          params: { threadId, messageId },
-        }),
-        statuses,
-      );
     },
 
     async listThreadArtifacts(
@@ -1048,6 +985,68 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async listArtifactCatalog(
+      actor: ApiTestUser,
+      query: {
+        readonly limit?: number;
+        readonly cursor?: string;
+        readonly kind?: ArtifactCatalogKind;
+      } = {},
+    ): Promise<{
+      readonly artifacts: readonly ArtifactSummary[];
+      readonly nextCursor: string | null;
+    }> {
+      const response = await accept(
+        artifactCatalogClient().list({
+          headers: authenticate(context, actor),
+          query,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestListArtifactCatalog(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403)[],
+    ) {
+      return await accept(
+        artifactCatalogClient().list({
+          headers: authenticate(context, actor),
+          query: {},
+        }),
+        statuses,
+      );
+    },
+
+    async getArtifactCatalogEntry(
+      actor: ApiTestUser,
+      artifactId: string,
+    ): Promise<ArtifactDetail> {
+      const response = await accept(
+        artifactCatalogClient().get({
+          headers: authenticate(context, actor),
+          params: { artifactId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestArtifactCatalogEntry(
+      actor: ApiTestUser | null,
+      artifactId: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        artifactCatalogClient().get({
+          headers: authenticate(context, actor),
+          params: { artifactId },
+        }),
+        statuses,
+      );
     },
 
     async listArtifactFavorites(
@@ -1204,24 +1203,6 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async requestUploadThreadArtifactGoogleSlidesFromUpload(
-      actor: ApiTestUser | null,
-      threadId: string,
-      uploadId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
-    ) {
-      const formData = new FormData();
-      formData.append("uploadId", uploadId);
-      return await accept(
-        threadArtifactsClient().uploadGoogleSlides({
-          headers: authenticate(context, actor),
-          params: { threadId },
-          body: formData,
-        }),
-        statuses,
-      );
-    },
-
     async requestSendMessage(
       actor: ApiTestUser | null,
       body: BddSendMessageBody,
@@ -1281,6 +1262,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.chatThreadSortEventId === undefined
                   ? {}
                   : { chatThreadSortEventId: body.chatThreadSortEventId }),
+                ...(body.realAgentInPreview === undefined
+                  ? {}
+                  : { realAgentInPreview: body.realAgentInPreview }),
                 ...(body.revokesMessageId === undefined
                   ? {}
                   : { revokesMessageId: body.revokesMessageId }),
@@ -1387,89 +1371,6 @@ export function createChatFilesBddApi(context: TestContext) {
         uploadsClient().complete({
           headers: bearerAuth(authorization),
           body,
-        }),
-        statuses,
-      );
-    },
-
-    async prepareStorage(
-      actor: ApiTestUser,
-      body: {
-        readonly storageName: string;
-        readonly storageType: StorageType;
-        readonly files: readonly BddStorageFileEntry[];
-        readonly force?: boolean;
-      },
-    ): Promise<BddStoragePrepareResponse> {
-      const response = await accept(
-        storagePrepareClient().prepare({
-          headers: authenticate(context, actor),
-          body: { ...body, files: [...body.files] },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async commitStorage(
-      actor: ApiTestUser,
-      body: {
-        readonly storageName: string;
-        readonly storageType: StorageType;
-        readonly versionId: string;
-        readonly files: readonly BddStorageFileEntry[];
-        readonly message?: string;
-      },
-    ): Promise<BddStorageCommitResponse> {
-      const response = await accept(
-        storageCommitClient().commit({
-          headers: authenticate(context, actor),
-          body: { ...body, files: [...body.files] },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async listStorages(
-      actor: ApiTestUser,
-      type: StorageType,
-    ): Promise<readonly BddStorageListItem[]> {
-      const response = await accept(
-        storageListClient().list({
-          headers: authenticate(context, actor),
-          query: { type },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async downloadStorage(
-      actor: ApiTestUser,
-      name: string,
-      type: StorageType,
-    ): Promise<BddStorageDownloadResponse> {
-      const response = await accept(
-        storageDownloadClient().download({
-          headers: authenticate(context, actor),
-          query: { name, type },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestDownloadStorage(
-      actor: ApiTestUser | null,
-      name: string,
-      type: StorageType,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
-    ) {
-      return await accept(
-        storageDownloadClient().download({
-          headers: authenticate(context, actor),
-          query: { name, type },
         }),
         statuses,
       );

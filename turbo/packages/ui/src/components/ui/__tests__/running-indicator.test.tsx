@@ -66,6 +66,20 @@ describe("RunningIndicator", () => {
     expect(rippleKeyframes).not.toMatch(/transform:(?![^;]*translate\()/);
   });
 
+  it("keeps a distinct resting state before animations start", () => {
+    render(<RunningIndicator />);
+
+    const centerRule = getCssBlock(".running-indicator-center");
+    const rippleRule = getCssBlock(".running-indicator-ripple");
+
+    expect(centerRule).toContain(
+      "transform: translate(-50%, -50%) scale(0.64)",
+    );
+    expect(centerRule).toContain("opacity: 0.34");
+    expect(rippleRule).toContain("transform: translate(-50%, -50%) scale(0.8)");
+    expect(rippleRule).toContain("opacity: 0");
+  });
+
   it("keeps indicators mounted at different times on one pulse phase", () => {
     const now = vi.spyOn(Date, "now");
 

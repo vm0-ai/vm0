@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import {
   buildGumroadAuthorizationUrl,
   exchangeGumroadCode,
@@ -8,13 +7,20 @@ import {
   refreshGumroadToken,
 } from "../gumroad/oauth";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
 }
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("gumroad", "oauth");
+  return authCodeGrantFixture([
+    "view_profile",
+    "edit_products",
+    "view_sales",
+    "mark_sales_as_shipped",
+    "edit_sales",
+  ]);
 }
 
 describe("connector/providers/gumroad", () => {

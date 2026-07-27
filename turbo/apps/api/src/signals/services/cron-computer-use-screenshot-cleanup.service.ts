@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, inArray, lt, sql } from "drizzle-orm";
+import { and, inArray, lt, or, sql } from "drizzle-orm";
 
 import { isStoredScreenshotPointer } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { computerUseCommands } from "@vm0/db/schema/computer-use-host";
@@ -36,7 +36,10 @@ export const cleanupComputerUseScreenshots$ = command(
           and(
             lt(computerUseCommands.createdAt, cutoff),
             sql`jsonb_exists(${computerUseCommands.result}, 'screenshot')`,
-            sql`(${computerUseCommands.result}->'screenshot'->>'type' = 's3' OR jsonb_typeof(${computerUseCommands.result}->'screenshot') = 'string')`,
+            or(
+              sql`${computerUseCommands.result}->'screenshot'->>'type' = 's3'`,
+              sql`jsonb_typeof(${computerUseCommands.result}->'screenshot') = 'string'`,
+            ),
           ),
         )
         .limit(SCREENSHOT_CLEANUP_BATCH_SIZE);

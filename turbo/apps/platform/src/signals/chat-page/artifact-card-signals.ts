@@ -23,6 +23,7 @@ export interface ArtifactDescriptor {
 }
 
 export interface ArtifactSignals extends ArtifactDescriptor {
+  readonly previewImageUrl$: Computed<Promise<string | undefined>>;
   readonly text$?: Computed<Promise<string>>;
 }
 
@@ -91,21 +92,32 @@ function needsTextPreview(kind: ArtifactKind): boolean {
   return kind === "text" || kind === "json";
 }
 
-export function createArtifactSignals(
+function createArtifactSignals(
   descriptor: ArtifactDescriptor,
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ): ArtifactSignals {
+  const previewImageUrl$ = computed(async (get) => {
+    if (descriptor.kind !== "html" && descriptor.kind !== "video") {
+      return undefined;
+    }
+    const previewImageUrlsByUrl = await get(previewImageUrlsByUrl$);
+    return previewImageUrlsByUrl.get(descriptor.url);
+  });
   if (!needsTextPreview(descriptor.kind)) {
-    return descriptor;
+    return { ...descriptor, previewImageUrl$ };
   }
   return {
     ...descriptor,
+    previewImageUrl$,
     text$: computed(() => {
       return fetchPreviewText(descriptor.url);
     }),
   };
 }
 
-export function createArtifactCardSignalsRegistry(): ArtifactCardSignalsRegistry {
+export function createArtifactCardSignalsRegistry(
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
+): ArtifactCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, ArtifactSignals>();
   return {
     register(descriptor) {
@@ -113,7 +125,7 @@ export function createArtifactCardSignalsRegistry(): ArtifactCardSignalsRegistry
         signalsByResourceKey,
         descriptor.url,
         () => {
-          return createArtifactSignals(descriptor);
+          return createArtifactSignals(descriptor, previewImageUrlsByUrl$);
         },
       );
     },

@@ -11,19 +11,18 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
-import {
-  getSeedSkillNames,
-  GOAL_SKILL_NAME,
-  SEED_SKILLS,
-} from "@vm0/core/zero-seed-skills";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
 import { storages } from "@vm0/db/schema/storage";
+import { createStore } from "ccstate";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
 import { nowDate } from "../lib/time";
+import { reconcileConnectorCatalogCompatibility$ } from "../signals/services/connector-catalog-compatibility.service";
+import { syncConnectorCatalog$ } from "../signals/services/connector-catalog-sync.service";
 import { onRejection } from "../signals/utils";
 import rawDevSeedSkillVolumes from "./dev-seed-skill-volumes.json";
 
@@ -153,11 +152,11 @@ function buildStorageSeedSql(
   // populating the final archive-size metadata for the same shared object.
   return `
   INSERT INTO storages (
-    id, org_id, user_id, name, type, s3_prefix, size, file_count, updated_at
+    id, org_id, user_id, name, s3_prefix, size, file_count, updated_at
   )
   SELECT
-    "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", 'volume',
-    "s3Prefix", "storageSize", "storageFileCount", seeded_at
+    "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", "s3Prefix",
+    "storageSize", "storageFileCount", seeded_at
   FROM dev_seed_skill_volumes
   ON CONFLICT (org_id, user_id, name) DO UPDATE SET
     s3_prefix = excluded.s3_prefix,
@@ -338,6 +337,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.cache_creation", usd(6.25), 1_000_000],
   ]),
+  ...usageGroup("model", "claude-opus-5", [
+    ["tokens.input", usd(5), 1_000_000],
+    ["tokens.output", usd(25), 1_000_000],
+    ["tokens.cache_read", usd(0.5), 1_000_000],
+    ["tokens.cache_creation", usd(6.25), 1_000_000],
+  ]),
   ...usageGroup("model", "claude-opus-4-8", [
     ["tokens.input", usd(5), 1_000_000],
     ["tokens.output", usd(25), 1_000_000],
@@ -416,16 +421,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.output", usd(30), 1_000_000],
   ]),
-  ...usageGroup("model", "gpt-5.4", [
-    ["tokens.input", usd(2.5), 1_000_000],
-    ["tokens.cache_read", usd(0.25), 1_000_000],
-    ["tokens.output", usd(15), 1_000_000],
-  ]),
-  ...usageGroup("model", "gpt-5.4-mini", [
-    ["tokens.input", usd(0.75), 1_000_000],
-    ["tokens.cache_read", usd(0.075), 1_000_000],
-    ["tokens.output", usd(4.5), 1_000_000],
-  ]),
   // OpenRouter-backed edit helpers. Pricing retrieved 2026-07-10 from:
   // https://developers.openai.com/api/docs/models/gpt-4.1-mini
   // https://ai.google.dev/gemini-api/docs/pricing
@@ -487,6 +482,20 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Perplexity Search API — https://docs.perplexity.ai/docs/getting-started/pricing
   // Raw provider cost is $5 per 1,000 requests with no token charge.
   ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
+  // APIDojo Yahoo Finance — https://rapidapi.com/apidojo/api/yahoo-finance1/pricing
+  // Pro is $10 per 10,000 requests, so one successful request costs 1 credit.
+  ...usageGroup("finance", "apidojo", [["request", usd(0.001), 1]]),
+
+  // Perplexity Agent API People Search fixed vm0 product pricing, reviewed
+  // 2026-07-23. The $0.020 retail price covers the $0.005 tool invocation,
+  // gpt-5-mini model tokens, and operating margin.
+  ...usageGroup("people-search", "perplexity", [["request", usd(0.02), 1]]),
+
+  // Browser Use reports final browser and proxy spend as USD decimals. Bill
+  // the combined provider cost with the standard managed-service 20% markup.
+  ...usageGroup("browser", "browser-use", [
+    ["provider_cost_usd_micros", usd(1.2), 1_000_000],
+  ]),
 
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
@@ -675,7 +684,7 @@ async function devSeed() {
   }
   writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
 
-  // --- skills (seed skills + common connectors, including system volumes) ---
+  // --- skills (published volumes + seed-skill metadata fallback) ---
   const seedSkillVolumes = getDevSeedSkillVolumes();
   writeLine("Seeding official skill volumes");
   const seededVolumeCount = await seedOfficialSkillVolumes(
@@ -690,7 +699,7 @@ async function devSeed() {
     }),
   );
   const fallbackSkillValues = buildSeedSkillValues(
-    getSeedSkillNames().filter((name) => {
+    SEED_SKILLS.filter((name) => {
       const fullPath = resolveSkillRef(name).replace("https://github.com/", "");
       return !seededVolumeStorageNames.has(getSkillStorageName(fullPath));
     }),
@@ -738,6 +747,21 @@ async function devSeed() {
       `Seeded ${insertedCount} metadata-only skills and cleared stale volumes`,
     );
   }
+
+  // --- connector catalog (validated R2 snapshot + compatibility state) ---
+  writeLine("Syncing connector catalog");
+  const store = createStore();
+  const signal = new AbortController().signal;
+  const connectorCatalog = await store.set(syncConnectorCatalog$, signal);
+  await store.set(reconcileConnectorCatalogCompatibility$, signal);
+  if (!connectorCatalog.active) {
+    throw new Error(
+      "Connector catalog seed did not produce an active snapshot",
+    );
+  }
+  writeLine(
+    `Seeded connector catalog ${connectorCatalog.active.catalogVersion} (${connectorCatalog.outcome})`,
+  );
 }
 
 function isMainModule(): boolean {

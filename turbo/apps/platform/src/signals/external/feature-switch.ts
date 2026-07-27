@@ -9,7 +9,7 @@ import { createAuthedContractClient } from "../api-client-base.ts";
 import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v2";
+export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v3";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
@@ -33,22 +33,14 @@ function applySwitches(
   overrides: Partial<Record<string, boolean>> | undefined,
   effectiveSwitches: Partial<Record<string, boolean>> | undefined,
 ) {
-  if (overrides) {
+  const resolvedSwitches = effectiveSwitches ?? overrides;
+  if (resolvedSwitches) {
     for (const key of Object.values(FeatureSwitchKey)) {
-      const value = overrides[key];
+      const value = resolvedSwitches[key];
       if (value !== undefined) {
         result[key] = Boolean(value);
       }
     }
-  }
-
-  const notionWorkflowAutomations =
-    overrides?.[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    effectiveSwitches?.[FeatureSwitchKey.NotionWorkflowAutomations];
-  if (notionWorkflowAutomations !== undefined) {
-    result[FeatureSwitchKey.NotionWorkflowAutomations] = Boolean(
-      notionWorkflowAutomations,
-    );
   }
 }
 
@@ -76,7 +68,7 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   );
 });
 
-export const reloadFeatureSwitch$ = command(
+const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const identity = await get(authenticatedIdentity$);
     signal.throwIfAborted();
@@ -98,6 +90,13 @@ export const reloadFeatureSwitch$ = command(
       result.body.switches,
       result.body.effectiveSwitches,
     );
+    if (result.body.supportsStructuredFeedbackParts !== true) {
+      // The capability field was added after the original structured-prompt
+      // rollout. An older API cannot validate feedback parts, so keep the
+      // whole structured-prompt path on its legacy payload until the API
+      // handshake succeeds.
+      combined[FeatureSwitchKey.StructuredPrompt] = false;
+    }
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },

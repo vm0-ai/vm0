@@ -100,26 +100,21 @@ function assertCategoryMetadataMatchesVisibleConnectors(
     expect(connectorCategories.has(groupId)).toBeFalsy();
   }
 
-  const aiCategoryIndex = metadata.categories.findIndex((category) => {
-    return category.id === "ai-general-models";
-  });
-  const engineeringCategoryIndex = metadata.categories.findIndex((category) => {
-    return category.id === "engineering-team-execution";
-  });
-  expect(aiCategoryIndex).toBeGreaterThanOrEqual(0);
-  expect(engineeringCategoryIndex).toBeGreaterThanOrEqual(0);
-  expect(aiCategoryIndex).toBeLessThan(engineeringCategoryIndex);
-  expect(metadata.categories[aiCategoryIndex]).toMatchObject({
-    id: "ai-general-models",
-    label: "General Models and Reasoning",
-    menuLabel: "General Models",
-    groupId: "ai",
-  });
-  expect(metadata.groups).toContainEqual({
-    id: "ai",
-    label: "AI",
-    menuLabel: "AI",
-  });
+  expect(metadata.categories).toStrictEqual([
+    {
+      id: "test-connectors",
+      label: "Test Connectors",
+      menuLabel: "Test Connectors",
+      groupId: "test",
+    },
+  ]);
+  expect(metadata.groups).toStrictEqual([
+    {
+      id: "test",
+      label: "Test",
+      menuLabel: "Test",
+    },
+  ]);
 }
 
 function stateFromAuthorizationUrl(authorizationUrl: string): string {
@@ -252,7 +247,7 @@ describe("GET /api/zero/connector-catalog", () => {
       return connector.connectorRef === "openai";
     });
     expect(openai?.icon).toStrictEqual({
-      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/openai-df8a3d9c4274.svg",
+      url: "https://static.vm0.io/test-fixtures/connectors/openai.svg",
       invertInDarkMode: true,
     });
     expect(openaiStatus?.icon).toStrictEqual(openai?.icon);
@@ -261,15 +256,11 @@ describe("GET /api/zero/connector-catalog", () => {
     const slack = listResponse.body.connectors.find((connector) => {
       return connector.connectorRef === "slack";
     });
-    const slackWebhook = listResponse.body.connectors.find((connector) => {
-      return connector.connectorRef === "slack-webhook";
-    });
     expect(slack?.icon).toStrictEqual({
-      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+      url: "https://static.vm0.io/test-fixtures/connectors/slack.svg",
       invertInDarkMode: false,
-      scale: 2.2,
+      scale: 2,
     });
-    expect(slackWebhook?.icon).toStrictEqual(slack?.icon);
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
@@ -333,6 +324,112 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(response.body.error.message).toBe(
       "Missing required capability: connector:read",
     );
+  });
+
+  it("returns 401 for diagnostics when not authenticated", async () => {
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(client.diagnostics({ headers: {} }), [401]);
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 401 for diagnostics when the session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.diagnostics({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("rejects diagnostics ZERO_TOKEN calls even with connector:read", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededOrgs.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: ["connector:read"],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.diagnostics({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 403 for diagnostics when ZeroDebug is disabled", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.diagnostics({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Connector catalog diagnostics are not enabled",
+      code: "FORBIDDEN",
+    });
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
+  it("returns sanitized DB diagnostics when ZeroDebug is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.ZeroDebug]: true,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.diagnostics({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      state: expect.stringMatching(/^(?:current|never-synced|stale)$/u),
+      filtering: {
+        capabilityDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        stale: expect.any(Boolean),
+        filteredAuthMethods: expect.any(Array),
+      },
+      credentialStorage: {
+        missingConnectorVersions: expect.any(Number),
+        unownedConnectorSecrets: expect.any(Number),
+        unownedConnectorVariables: expect.any(Number),
+        unresolvedBridgeCredentials: expect.any(Number),
+      },
+    });
+    expect(response.body).not.toHaveProperty("sourceId");
+    expect(response.body).not.toHaveProperty("catalog");
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
   it("returns 401 for catalog status when not authenticated", async () => {
@@ -433,13 +530,6 @@ describe("GET /api/zero/connector-catalog", () => {
         startOptions: [],
       },
     ]);
-    const googleMaps = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "google-maps";
-    });
-    expect(googleMaps).toMatchObject({
-      connectorRef: "google-maps",
-      connectNotice: null,
-    });
     const neon = response.body.connectors.find((connector) => {
       return connector.connectorRef === "neon";
     });
@@ -448,134 +538,6 @@ describe("GET /api/zero/connector-catalog", () => {
         return authMethod.id;
       }),
     ).toStrictEqual(["api-token"]);
-  });
-
-  it("returns PlayStation external-code catalog metadata", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.AwsConnector]: true,
-    });
-
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const response = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
-    const playstation = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "playstation";
-    });
-    expect(playstation).toMatchObject({
-      connectorRef: "playstation",
-      label: "PlayStation",
-      connected: false,
-      connectionStatus: "not-connected",
-    });
-    expect(playstation?.authMethods).toStrictEqual([
-      {
-        id: "api",
-        label: "PlayStation sign-in",
-        description:
-          "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nClick the button below, then copy the `npsso` value.",
-        grantKind: "external-code",
-        manualFields: [],
-        startOptions: [],
-      },
-    ]);
-
-    const aws = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "aws";
-    });
-    const awsCli = aws?.authMethods.find((authMethod) => {
-      return authMethod.id === "cli";
-    });
-    expect(awsCli).toMatchObject({
-      id: "cli",
-      label: "Sign in with AWS",
-      grantKind: "external-code",
-    });
-  });
-
-  it("exposes Nintendo Store without a connector switch", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const visible = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    assertPublicConnectorCatalogHasNoPrivateFields(visible.body);
-    const nintendoStore = visible.body.connectors.find((connector) => {
-      return connector.connectorRef === "nintendo-store";
-    });
-    expect(nintendoStore).toMatchObject({
-      connectorRef: "nintendo-store",
-      label: "Nintendo Store",
-      connected: false,
-      connectionStatus: "not-connected",
-      permissionSummary: {
-        hasPermissions: true,
-        permissionCount: 6,
-        hasCategories: false,
-        hasDefaultPolicyOverrides: true,
-      },
-    });
-    expect(nintendoStore?.authMethods).toStrictEqual([
-      {
-        id: "api",
-        label: "Nintendo sign-in",
-        description:
-          "Sign in with Nintendo. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
-        grantKind: "external-code",
-        manualFields: [],
-        startOptions: [],
-      },
-    ]);
-  });
-
-  it("exposes Nintendo Switch Parental Controls without a connector switch", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const visible = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    assertPublicConnectorCatalogHasNoPrivateFields(visible.body);
-    const connector = visible.body.connectors.find((entry) => {
-      return entry.connectorRef === "nintendo-switch-parental-controls";
-    });
-    expect(connector).toMatchObject({
-      connectorRef: "nintendo-switch-parental-controls",
-      label: "Nintendo Switch Parental Controls",
-      connected: false,
-      connectionStatus: "not-connected",
-      permissionSummary: {
-        hasPermissions: true,
-        permissionCount: 15,
-        hasCategories: true,
-        hasDefaultPolicyOverrides: true,
-      },
-    });
-    expect(connector?.authMethods).toStrictEqual([
-      {
-        id: "api",
-        label: "Nintendo sign-in",
-        description:
-          "Sign in with the adult Nintendo Account used by the Nintendo Switch Parental Controls app. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
-        grantKind: "external-code",
-        manualFields: [],
-        startOptions: [],
-      },
-    ]);
   });
 
   it("returns connected manual grant status from public API-created state", async () => {
@@ -942,7 +904,7 @@ describe("GET /api/zero/connector-catalog", () => {
     ).toStrictEqual(["oauth", "api-token"]);
   });
 
-  it("returns public permission detail without firewall execution metadata", async () => {
+  it("returns public permission detail from accepted firewall metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -950,21 +912,21 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.permissions({
-        params: { connectorRef: "google-docs" },
+        params: { connectorRef: "notion" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
     const detailResponse = await accept(
       client.get({
-        params: { connectorRef: "google-docs" },
+        params: { connectorRef: "notion" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
-    expect(response.body.permissions.connectorRef).toBe("google-docs");
+    expect(response.body.permissions.connectorRef).toBe("notion");
     expect(response.body.permissions.icon).toStrictEqual(
       detailResponse.body.connector.icon,
     );

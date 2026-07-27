@@ -6,6 +6,7 @@ import type { TestContext } from "../../../../__tests__/test-context";
 function knownSessionHistoryBodies(runId: string): readonly string[] {
   return [
     `bdd agentphone history ${runId}`,
+    `calendar webhook history ${runId}`,
     `bdd chat session history ${runId}`,
     `bdd chat thread history ${runId}`,
     `bdd cancelled checkpoint ${runId}`,
@@ -22,8 +23,10 @@ function knownSessionHistoryBodies(runId: string): readonly string[] {
     `bdd timing session history ${runId}`,
     `bdd snapshot history ${runId}`,
     `bdd zero detail ${runId}`,
+    `morning brief history ${runId}`,
     `slack dispatch probe ${runId}`,
     `workflow automation history ${runId}`,
+    `workflow queue api history ${runId}`,
   ];
 }
 

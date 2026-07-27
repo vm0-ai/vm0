@@ -66,6 +66,12 @@ const SEVEN_LOCAL = new Cron("0 7 * * *", { timezone: TIMEZONE })
   .getTime();
 const BEFORE_SEVEN_LOCAL = SEVEN_LOCAL - 10 * 60 * 1000;
 const AFTER_SEVEN_LOCAL = SEVEN_LOCAL + 30 * 1000;
+const BRIEF_DATE = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: TIMEZONE,
+}).format(SEVEN_LOCAL);
 const BRIEF_DATE_LABEL = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
   year: "numeric",
@@ -305,7 +311,6 @@ async function setupMorningBriefActor(
   }
 
   routeMocks.clerk.session(actor.userId, actor.orgId);
-  context.mocks.s3.send.mockResolvedValue({});
 
   // Morning Brief is opt-in: the preference defaults to off for everyone.
   const initial = await accept(
@@ -335,6 +340,7 @@ async function setupMorningBriefActor(
 async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
   readonly threadId: string;
   readonly runId: string;
+  readonly chatMessage: string;
 } | null> {
   routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
   const threadEvents = await accept(
@@ -358,18 +364,27 @@ async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
     }),
     [200],
   );
-  const runId = messages.body.messages.find((message) => {
-    return message.runId !== undefined && message.runId !== null;
-  })?.runId;
-  if (!runId) {
+  const runMessage = messages.body.messages.find((message) => {
+    return message.role === "user" && message.runId !== undefined;
+  });
+  if (
+    !runMessage?.runId ||
+    runMessage.role !== "user" ||
+    runMessage.content === null
+  ) {
     throw new Error("Expected the Morning Brief run message");
   }
-  return { threadId: thread.chatThreadId, runId };
+  return {
+    threadId: thread.chatThreadId,
+    runId: runMessage.runId,
+    chatMessage: runMessage.content,
+  };
 }
 
 async function findMorningBriefThread(scenario: Scenario): Promise<{
   readonly threadId: string;
   readonly runId: string;
+  readonly chatMessage: string;
 }> {
   const found = await findMorningBriefThreadOrNull(scenario);
   if (!found) {
@@ -432,9 +447,24 @@ async function completeMorningBriefRun(
   scenario: Scenario,
   runId: string,
   exitCode: number,
-): Promise<string> {
+  expectedResumeSessionId?: string | null,
+): Promise<{
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+}> {
+  const stored = await api.readRun(scenario.actor, runId);
+  if (stored.status !== "pending") {
+    throw new Error(
+      `Expected queued morning brief run: ${JSON.stringify(stored)}`,
+    );
+  }
   await api.heartbeatRunner(scenario.runnerGroup);
   const claim = await api.claimRunnerJob(runId);
+  if (expectedResumeSessionId !== undefined) {
+    expect(claim.resumeSession?.sessionId ?? null).toBe(
+      expectedResumeSessionId,
+    );
+  }
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
   await webhooks.requestAgentCheckpoint(
     {
@@ -454,7 +484,10 @@ async function completeMorningBriefRun(
     [200],
   );
   await flushWaitUntilForTest();
-  return claim.appendSystemPrompt ?? "";
+  return {
+    prompt: claim.prompt,
+    appendSystemPrompt: claim.appendSystemPrompt ?? "",
+  };
 }
 
 async function drainOutbox(): Promise<void> {
@@ -546,11 +579,15 @@ describe("cron execute morning briefs", () => {
     await executeMorningBriefsCron();
 
     // The run lands in the fixed Morning Brief thread through the chat queue.
-    const { runId } = await findMorningBriefThread(scenario);
+    const { runId, chatMessage } = await findMorningBriefThread(scenario);
+
+    // The thread shows only the member-facing line, with no signed URL.
+    expect(chatMessage).toBe(`Generate my Morning Brief for ${BRIEF_DATE}.`);
+    expect(chatMessage).not.toContain("# Run facts");
 
     // The agent uploads output.json and the run completes.
     mockUploadedBriefOutput(VALID_OUTPUT);
-    const appendSystemPrompt = await completeMorningBriefRun(
+    const { prompt, appendSystemPrompt } = await completeMorningBriefRun(
       scenario,
       runId,
       0,
@@ -558,6 +595,20 @@ describe("cron execute morning briefs", () => {
     await drainOutbox();
 
     expect(appendSystemPrompt).toContain("Begin exactly with `Good morning.`");
+
+    // The run itself carries the facts that separate this delivery from the
+    // earlier ones sharing the thread's persistent session.
+    expect(prompt).toContain(`Generate my Morning Brief for ${BRIEF_DATE}.`);
+    expect(prompt).toContain("# Run facts");
+    expect(prompt).toContain(
+      `- trigger: the Morning Brief schedule fired for ${BRIEF_DATE}; nobody typed this message`,
+    );
+    expect(prompt).toContain("- chat thread: every Morning Brief delivery");
+    expect(prompt).toContain("HTTP GET https://");
+    expect(prompt).toContain("HTTP PUT https://");
+    expect(prompt).toContain(
+      "- when a run ends with no object at the PUT URL: the delivery is recorded failed, no email is queued, and nothing re-runs it",
+    );
     const emails = sentMorningBriefEmails();
     expect(emails).toHaveLength(1);
     const email = emails[0];
@@ -830,7 +881,7 @@ describe("cron execute morning briefs", () => {
     }
 
     mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(scenario, triggered.body.runId, 0);
+    await completeMorningBriefRun(scenario, triggered.body.runId, 0, null);
     await drainOutbox();
     expect(sentMorningBriefEmails()).toHaveLength(1);
 
@@ -845,7 +896,12 @@ describe("cron execute morning briefs", () => {
     );
     await flushWaitUntilForTest();
     mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(scenario, second.body.runId, 0);
+    await completeMorningBriefRun(
+      scenario,
+      second.body.runId,
+      0,
+      `morning-brief-cli-${triggered.body.runId}`,
+    );
     await drainOutbox();
     expect(sentMorningBriefEmails()).toHaveLength(2);
     clearMockNow();

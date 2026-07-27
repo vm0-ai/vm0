@@ -171,6 +171,36 @@ function notionReadableAutomationRuleLabel(
     : "When Notion database item content is updated";
 }
 
+function githubAutomationRuleLabel(
+  automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event" }
+  >,
+): string | null {
+  if (automation.eventType === "github-label-applied") {
+    return `When GitHub label ${quote(automation.eventConfig.labelName)} is applied`;
+  }
+  if (automation.eventType === "github-workflow-run-completed") {
+    const workflows = automation.eventConfig.filters.workflows;
+    const conclusions = automation.eventConfig.filters.conclusions;
+    return `When ${workflows ? workflows.join(", ") : "a GitHub workflow"} completes${conclusions ? ` with ${conclusions.join(", ")}` : ""}`;
+  }
+  if (automation.eventType === "github-workflow-job-completed") {
+    const jobs = automation.eventConfig.filters.jobs;
+    return `When ${jobs ? jobs.join(", ") : "a GitHub workflow job"} completes`;
+  }
+  if (automation.eventType === "github-pull-request-review-submitted") {
+    return "When a matching GitHub pull request review is submitted";
+  }
+  if (automation.eventType === "github-deployment-status-created") {
+    return "When a matching GitHub deployment status is created";
+  }
+  if (automation.eventType === "github-issue-comment-created") {
+    return "When a matching GitHub issue or pull request comment is created";
+  }
+  return null;
+}
+
 export function humanReadableAutomationRuleLabel(
   automation: ZeroWorkflowAutomationSummary,
   displayTimezone: string,
@@ -210,8 +240,9 @@ export function humanReadableAutomationRuleLabel(
   if (automation.eventType === "gmail-label-applied") {
     return `When Gmail label ${quote(automation.eventConfig.labelName)} is applied`;
   }
-  if (automation.eventType === "github-label-applied") {
-    return `When GitHub label ${quote(automation.eventConfig.labelName)} is applied`;
+  const githubLabel = githubAutomationRuleLabel(automation);
+  if (githubLabel) {
+    return githubLabel;
   }
   if (automation.eventType === "google-calendar-event-created") {
     return `When calendar ${quote(automation.eventConfig.calendarId)} gets a new event`;
@@ -247,7 +278,14 @@ export function automationTypeLabel(
   ) {
     return "Gmail";
   }
-  if (automation.eventType === "github-label-applied") {
+  if (
+    automation.eventType === "github-label-applied" ||
+    automation.eventType === "github-deployment-status-created" ||
+    automation.eventType === "github-issue-comment-created" ||
+    automation.eventType === "github-pull-request-review-submitted" ||
+    automation.eventType === "github-workflow-job-completed" ||
+    automation.eventType === "github-workflow-run-completed"
+  ) {
     return "GitHub";
   }
   if (
@@ -327,7 +365,14 @@ export function AutomationListIcon({
     if (automation.eventType === "webhook-received") {
       return IconLink;
     }
-    if (automation.eventType === "github-label-applied") {
+    if (
+      automation.eventType === "github-label-applied" ||
+      automation.eventType === "github-deployment-status-created" ||
+      automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request-review-submitted" ||
+      automation.eventType === "github-workflow-job-completed" ||
+      automation.eventType === "github-workflow-run-completed"
+    ) {
       return IconBrandGithub;
     }
     if (automation.eventType === "google-meet-transcript-generated") {

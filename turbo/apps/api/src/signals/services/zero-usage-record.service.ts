@@ -16,6 +16,7 @@ import {
   pgInt8ToSafeIntegerSchema,
   pgTimestampWithoutTimezoneToDateSchema,
 } from "../../lib/db-raw-rows";
+import { timestampWithoutTimeZone } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
@@ -167,10 +168,11 @@ function recordWith(
   );
   const userPredicate =
     userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
+  // Finalized reports assign usage to the time settlement completed.
   const periodPredicate = period
     ? sql`
-        AND ue.created_at AT TIME ZONE 'UTC' >= ${period.start.toISOString()}::timestamptz
-        AND ue.created_at AT TIME ZONE 'UTC' < ${period.end.toISOString()}::timestamptz`
+        AND ue.processed_at >= ${timestampWithoutTimeZone(period.start)}::timestamp
+        AND ue.processed_at < ${timestampWithoutTimeZone(period.end)}::timestamp`
     : sql.empty();
   return sql`
     WITH usage_rows AS (
@@ -184,6 +186,7 @@ function recordWith(
       WHERE ue.org_id = ${orgId}
         ${userPredicate}
         AND ue.status = 'processed'
+        AND ue.processed_at IS NOT NULL
         ${periodPredicate}
     ),
     runs AS (
@@ -337,10 +340,11 @@ async function queryUsageRecordBreakdown(
 
   const userPredicate =
     userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
+  // Keep breakdown membership on the same settlement clock as record totals.
   const periodPredicate = period
     ? sql`
-          AND ue.created_at AT TIME ZONE 'UTC' >= ${period.start.toISOString()}::timestamptz
-          AND ue.created_at AT TIME ZONE 'UTC' < ${period.end.toISOString()}::timestamptz`
+          AND ue.processed_at >= ${timestampWithoutTimeZone(period.start)}::timestamp
+          AND ue.processed_at < ${timestampWithoutTimeZone(period.end)}::timestamp`
     : sql.empty();
   const rowKeyList = sql.join(
     rowKeys.map((rowKey) => {
@@ -369,6 +373,7 @@ async function queryUsageRecordBreakdown(
         WHERE ue.org_id = ${orgId}
           ${userPredicate}
           AND ue.status = 'processed'
+          AND ue.processed_at IS NOT NULL
           ${periodPredicate}
       ),
       keyed AS (

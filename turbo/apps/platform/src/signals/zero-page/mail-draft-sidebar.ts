@@ -8,6 +8,7 @@ import {
 import {
   MAIL_DRAFT_QUERY_PARAM,
   clearArtifactSidebarParams,
+  clearBrowserSessionSidebarParams,
   clearChatAutomationSidebarParams,
   clearMailDraftSidebarParams,
 } from "./right-sidebar-search-params.ts";
@@ -22,6 +23,7 @@ export const openMailDraftSidebar$ = command(
     params.set(MAIL_DRAFT_QUERY_PARAM, mailDraftId);
     clearArtifactSidebarParams(params);
     clearChatAutomationSidebarParams(params);
+    clearBrowserSessionSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );

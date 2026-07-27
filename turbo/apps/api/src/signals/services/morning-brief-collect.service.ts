@@ -37,6 +37,7 @@ import {
 } from "./connector-credential-runtime.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -611,7 +612,7 @@ async function collectUnreadChatThreads(args: {
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        structuredPrompt: effectiveChatMessageStructuredPrompt(),
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -623,7 +624,10 @@ async function collectUnreadChatThreads(args: {
                 isNotNull(chatMessages.content),
                 and(
                   eq(chatMessages.role, "user"),
-                  isNotNull(chatMessages.structuredPrompt),
+                  or(
+                    isNotNull(chatMessages.structuredPrompt),
+                    isNotNull(chatMessages.structuredPromptWithFeedback),
+                  ),
                 ),
               ) as SQL)
             : isNotNull(chatMessages.content),

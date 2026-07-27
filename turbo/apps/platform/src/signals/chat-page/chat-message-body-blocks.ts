@@ -1,8 +1,8 @@
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatMessage } from "./chat-message-types.ts";
 import { parseBodyBlocks, type ParsedBodyBlock } from "./parse-body-blocks.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "./resolve-draft-attachments.ts";
 
-function chatMessageBodyContent(message: PagedChatMessage): string {
+function chatMessageBodyContent(message: ChatMessage): string {
   if (message.role === "assistant") {
     return message.content ?? "";
   }
@@ -21,7 +21,7 @@ function chatMessageBodyContent(message: PagedChatMessage): string {
 }
 
 export function parseMessageBodyBlocks(
-  message: PagedChatMessage,
+  message: ChatMessage,
 ): ParsedBodyBlock[] {
   const content = chatMessageBodyContent(message);
   return parseBodyBlocks(content, {

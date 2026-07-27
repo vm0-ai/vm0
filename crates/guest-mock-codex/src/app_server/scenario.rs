@@ -37,6 +37,8 @@ pub(super) enum Scenario {
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
     ThreadStartInvalidThreadId,
+    UnexpectedThreadOutputItemStarted,
+    UnexpectedTurnOutputItemStarted,
     UnexpectedThreadTurnCompleted,
 }
 
@@ -89,6 +91,10 @@ impl Scenario {
                 "resume-different-thread-id" => Ok(Self::ResumeDifferentThreadId),
                 "resume-rpc-error-with-thread-id" => Ok(Self::ResumeRpcErrorWithThreadId),
                 "thread-start-invalid-thread-id" => Ok(Self::ThreadStartInvalidThreadId),
+                "unexpected-thread-output-item-started" => {
+                    Ok(Self::UnexpectedThreadOutputItemStarted)
+                }
+                "unexpected-turn-output-item-started" => Ok(Self::UnexpectedTurnOutputItemStarted),
                 "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,

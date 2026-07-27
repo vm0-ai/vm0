@@ -1,20 +1,19 @@
-import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/cron";
+import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
-import {
-  CONNECTOR_SKILL_STORAGE_PATH_PREFIX,
-  type ConnectorCatalogPrivateArtifact,
+import type {
+  ConnectorCatalogArtifact,
+  ConnectorCatalogArtifactConnector,
 } from "./connector-catalog-artifacts/artifacts";
 
 const SYSTEM_STORAGE_CREATOR = "system";
 
-type PrivateConnector = ConnectorCatalogPrivateArtifact["connectors"][number];
 type BundledConnectorSkill = Extract<
-  PrivateConnector["skill"],
+  ConnectorCatalogArtifactConnector["skill"],
   { readonly kind: "bundled" }
 >;
 
@@ -84,12 +83,16 @@ function fail(
 }
 
 function skillIdentity(skill: BundledConnectorSkill): ConnectorSkillIdentity {
-  const s3Prefix = `${CONNECTOR_SKILL_STORAGE_PATH_PREFIX}/${skill.storageName}`;
+  const versionSuffix = `/${skill.versionId}`;
+  if (!skill.storageVersionPrefix.endsWith(versionSuffix)) {
+    throw new Error("Connector skill storage version prefix is invalid");
+  }
+  const s3Prefix = skill.storageVersionPrefix.slice(0, -versionSuffix.length);
   return {
     storageName: skill.storageName,
     versionId: skill.versionId,
     s3Prefix,
-    s3Key: `${s3Prefix}/${skill.versionId}`,
+    s3Key: skill.storageVersionPrefix,
   };
 }
 
@@ -158,10 +161,10 @@ async function readExistingVersions(
 
 export async function prepareConnectorCatalogSkills(args: {
   readonly db: ReadonlyDb;
-  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
+  readonly artifact: ConnectorCatalogArtifact;
   readonly signal: AbortSignal;
 }): Promise<readonly PreparedConnectorSkillRegistration[]> {
-  const bundledSkills = args.privateArtifact.connectors.flatMap((connector) => {
+  const bundledSkills = args.artifact.connectors.flatMap((connector) => {
     return connector.skill.kind === "bundled" ? [connector.skill] : [];
   });
   const existingByVersion = await readExistingVersions(
@@ -226,7 +229,6 @@ async function createAndReadCanonicalStorages(
           orgId: SYSTEM_ORG_ID,
           userId: VOLUME_ORG_USER_ID,
           name: registration.storageName,
-          type: "volume",
           s3Prefix: registration.s3Prefix,
           size: registration.size,
           fileCount: registration.fileCount,
@@ -339,7 +341,6 @@ async function updateNewStorageHeads(
           orgId: SYSTEM_ORG_ID,
           userId: VOLUME_ORG_USER_ID,
           name: registration.storageName,
-          type: "volume",
           s3Prefix: registration.s3Prefix,
           size: registration.size,
           fileCount: registration.fileCount,

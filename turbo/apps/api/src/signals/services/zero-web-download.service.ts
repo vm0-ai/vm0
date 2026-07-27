@@ -12,7 +12,7 @@ interface DownloadFileResult {
 }
 
 /**
- * Locate and download a web-uploaded file by its file ID and owning user.
+ * Locate and download a user-owned file by its file ID and owning user.
  * Returns null when no matching S3 object exists.
  */
 export function zeroWebDownloadFile(
@@ -24,7 +24,6 @@ export function zeroWebDownloadFile(
     if (!bucket) {
       return null;
     }
-
     const prefix = buildArtifactPrefix(userId, fileId);
     const objects = await get(listS3Objects(bucket, prefix));
 

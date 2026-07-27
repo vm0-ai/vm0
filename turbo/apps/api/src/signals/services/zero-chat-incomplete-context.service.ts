@@ -1,13 +1,24 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  not,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
@@ -83,23 +94,23 @@ async function selectIncompleteRoundFrontier(
         FROM ${chatMessages}
         INNER JOIN ${agentRuns}
           ON ${eq(agentRuns.id, chatMessages.runId)}
-        WHERE ${eq(chatMessages.chatThreadId, threadId)}
-          AND ${isNotNull(chatMessages.runId)}
-          AND NOT (
-            ${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)
-          )
-          AND ${visibleChatMessageCondition(db)}
-          AND (
-            (${isSuccessfulRun})
-            OR (
-              ${agentRuns.status} IN ('cancelled', 'failed', 'timeout')
-              AND ${chatMessages.role} IN ('user', 'assistant')
-            )
-          )
+        WHERE ${and(
+          eq(chatMessages.chatThreadId, threadId),
+          isNotNull(chatMessages.runId),
+          not(
+            sql`${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)`,
+          ),
+          visibleChatMessageCondition(db),
+          or(
+            isSuccessfulRun,
+            and(
+              sql`${agentRuns.status} IN ('cancelled', 'failed', 'timeout')`,
+              sql`${chatMessages.role} IN ('user', 'assistant')`,
+            ),
+          ),
+        )}
         ORDER BY
-          ${desc(chatMessages.createdAt)},
-          ${desc(chatMessages.sequenceNumber)} NULLS FIRST,
-          ${desc(chatMessages.id)}
+          ${desc(chatMessages.seqId)}
         LIMIT 1
       ) AS candidate
       WHERE incomplete_frontier.depth < ${INCOMPLETE_ROUND_LIMIT + 1}
@@ -135,9 +146,9 @@ async function selectIncompleteRoundFrontier(
 }
 
 function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
-  return sql`${chatMessages.createdAt} > COALESCE(
+  return sql`${chatMessages.seqId} > COALESCE(
     (
-      SELECT MAX(boundary_message.created_at)
+      SELECT MAX(boundary_message.seq_id)
       FROM chat_messages boundary_message
       WHERE boundary_message.chat_thread_id = ${threadId}
         AND boundary_message.run_id = ${successfulRunId}
@@ -147,7 +158,7 @@ function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
           WHERE boundary_revoker.revokes_message_id = boundary_message.id
         )
     ),
-    '-infinity'::timestamptz
+    0::bigint
   )`;
 }
 
@@ -171,7 +182,7 @@ async function loadSelectedIncompleteRounds(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      structuredPrompt: effectiveChatMessageStructuredPrompt(),
       attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)
@@ -186,7 +197,7 @@ async function loadSelectedIncompleteRounds(
           : [afterSuccessfulRunBoundary(threadId, selection.successfulRunId)]),
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+    .orderBy(asc(chatMessages.seqId));
 
   const statusByRunId = new Map(
     selection.rounds.map((round) => {

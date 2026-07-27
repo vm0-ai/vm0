@@ -31,7 +31,7 @@ use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
-use crate::run_cancellation::SharedRunCancellationMap;
+use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
     PollResponse, SandboxReuseResult,
@@ -42,13 +42,6 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
-    capabilities: [ClaimCapability; 1],
-}
-
-#[derive(Serialize)]
-enum ClaimCapability {
-    #[serde(rename = "storage-mounts-v1")]
-    StorageMountsV1,
 }
 
 #[derive(Serialize)]
@@ -192,7 +185,7 @@ pub struct ApiProvider {
     claim_cooldowns: ClaimCooldowns,
     /// Background Ably control-plane task.
     ably_supervisor: Mutex<Option<AblySupervisor>>,
-    cancel_tokens: SharedRunCancellationMap,
+    cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     /// Shutdown signal.
@@ -218,7 +211,7 @@ impl ApiProvider {
         config: ApiProviderConfig,
         builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
         cancel: CancellationToken,
-        cancel_tokens: SharedRunCancellationMap,
+        cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
             runner_id,
@@ -408,7 +401,7 @@ impl ApiProvider {
             profiles: self.supported_profiles.clone(),
             poll_wakeups: Arc::clone(&self.poll_wakeups),
             direct_candidates: Arc::clone(&self.direct_candidates),
-            cancel_tokens: Arc::clone(&self.cancel_tokens),
+            cancel_tokens: self.cancel_tokens.clone(),
             network_policy_refresh: self.network_policy_refresh.clone(),
             provider_cancel: self.cancel.clone(),
         }));
@@ -1093,7 +1086,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
-        capabilities: [ClaimCapability::StorageMountsV1],
     }
 }
 
@@ -1270,7 +1262,6 @@ fn is_static_json_field(field: &str) -> bool {
             | "catalogDigest"
             | "catalogVersion"
             | "captureNetworkBodies"
-            | "checkpointId"
             | "cliAgentType"
             | "cliAgentSessionId"
             | "clientId"
@@ -1655,7 +1646,7 @@ mod tests {
             ),
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
-            cancel_tokens: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })
     }
@@ -1956,10 +1947,7 @@ mod tests {
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
-        assert_eq!(
-            body["capabilities"],
-            serde_json::json!(["storage-mounts-v1"])
-        );
+        assert!(body.get("capabilities").is_none());
     }
 
     #[test]
@@ -3972,34 +3960,58 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let completion = capture_api_provider_events(provider.complete(
-            run_id,
-            1,
-            Some("boom"),
-            None,
-            None,
-            CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
-        ));
-        let observe_requests = async {
-            let first_request = next_request(&mut requests).await;
-            assert_complete_authorization(&first_request, "sandbox-token");
-            tokio::task::yield_now().await;
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let completion = provider
+            .complete(
+                run_id,
+                1,
+                Some("boom"),
+                None,
+                None,
+                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+            )
+            .with_subscriber(subscriber);
+        tokio::pin!(completion);
+
+        let first_request = tokio::select! {
+            () = &mut completion => panic!("completion should wait before the retry"),
+            request = next_request(&mut requests) => request,
+        };
+        assert_complete_authorization(&first_request, "sandbox-token");
+        // Establish the retry timer before advancing paused time.
+        std::future::poll_fn(|cx| {
             assert!(
-                requests.try_recv().is_err(),
+                completion.as_mut().poll(cx).is_pending(),
                 "completion should wait before the retry"
             );
-            tokio::time::advance(Duration::from_secs(2)).await;
-            let second_request = next_request(&mut requests).await;
-            assert_complete_authorization(&second_request, "sandbox-token");
-        };
+            if captured.entries().iter().any(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message == "completion report failed, retrying")
+            }) {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+        assert!(
+            requests.try_recv().is_err(),
+            "completion should wait before the retry"
+        );
 
-        let (((), events), ()) = tokio::join!(completion, observe_requests);
+        tokio::time::advance(Duration::from_secs(2)).await;
+        let ((), second_request) = tokio::join!(&mut completion, next_request(&mut requests));
+        assert_complete_authorization(&second_request, "sandbox-token");
         server_task.await.unwrap();
         assert!(
             requests.recv().await.is_none(),
             "completion should stop after the retry"
         );
 
+        let events = captured.entries();
         let run_id = run_id.to_string();
         assert_eq!(
             events

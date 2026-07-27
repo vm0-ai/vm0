@@ -11,6 +11,7 @@ import { createDraftSignals } from "../zero-page/chat-draft.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import {
   editorDocToMessageDocument,
+  messageDocumentToDisplayText,
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
@@ -235,6 +236,209 @@ describe("user message document codec", () => {
     expect(messageDocumentToPrompt(structured)).toBe("");
   });
 
+  it("serializes feedback cards with their surrounding prompt sections", () => {
+    const editorDocument = workflowComposerDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Before" }],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 1,
+            quote: "First quote",
+            showDivider: false,
+            fill: false,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "First note" }],
+            },
+          ],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 2,
+            quote: "Second quote",
+            showDivider: true,
+            fill: true,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Second note" },
+                { type: "hardBreak" },
+                {
+                  type: "chatThreadMention",
+                  attrs: { threadId: THREAD_ID, title: "Project Alpha" },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "After" }],
+        },
+      ],
+    });
+
+    const structured = editorDocToMessageDocument(editorDocument);
+    expect(structured).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: "Before" },
+        {
+          type: "feedback",
+          quote: "First quote",
+          note: [{ type: "text", text: "First note" }],
+        },
+        {
+          type: "feedback",
+          quote: "Second quote",
+          note: [
+            { type: "text", text: "Second note\n" },
+            {
+              type: "chat_thread",
+              threadId: THREAD_ID,
+              titleSnapshot: "Project Alpha",
+            },
+          ],
+        },
+        { type: "text", text: "After" },
+      ],
+    });
+    const expectedPrompt =
+      "Before\n\nFeedback on 2 parts of your reply:\n\n" +
+      "> First quote\n\nFirst note\n\n---\n\n" +
+      `> Second quote\n\nSecond note\n[Project Alpha](/chats/${THREAD_ID})\n\nAfter`;
+    expect(messageDocumentToPrompt(structured)).toBe(expectedPrompt);
+    expect(messageDocumentToDisplayText(structured)).toBe(expectedPrompt);
+
+    const restored = messageDocumentToEditorDoc(structured);
+    expect(restored).toStrictEqual({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Before" }],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 1,
+            quote: "First quote",
+            showDivider: false,
+            fill: false,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "First note" }],
+            },
+          ],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 2,
+            quote: "Second quote",
+            showDivider: true,
+            fill: true,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Second note" }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "chatThreadMention",
+                  attrs: { threadId: THREAD_ID, title: "Project Alpha" },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "After" }],
+        },
+      ],
+    });
+    if (!restored) {
+      throw new Error("Expected feedback document to restore");
+    }
+    expect(
+      editorDocToMessageDocument(workflowComposerDocument(restored)),
+    ).toStrictEqual(structured);
+  });
+
+  it("preserves mail source metadata for structured feedback", () => {
+    const structured: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "Mail body",
+          note: [{ type: "text", text: "Rewrite this paragraph" }],
+          source: {
+            type: "mail",
+            id: "mail-draft-id",
+            status: "sent",
+            sentId: "sent-message-id",
+          },
+        },
+      ],
+    };
+    const expectedPrompt =
+      "Feedback on this part of a sent email " +
+      "(mail ID: mail-draft-id, sent ID: sent-message-id):\n\n" +
+      "> Mail body\n\nRewrite this paragraph";
+
+    expect(messageDocumentToPrompt(structured)).toBe(expectedPrompt);
+    expect(messageDocumentToDisplayText(structured)).toBe(expectedPrompt);
+
+    const restored = messageDocumentToEditorDoc(structured);
+    expect(restored).toStrictEqual({
+      type: "doc",
+      content: [
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 1,
+            quote: "Mail body",
+            showDivider: false,
+            fill: true,
+            sourceType: "mail",
+            sourceId: "mail-draft-id",
+            sourceStatus: "sent",
+            sourceSentId: "sent-message-id",
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Rewrite this paragraph" }],
+            },
+          ],
+        },
+      ],
+    });
+    if (!restored) {
+      throw new Error("Expected feedback document to restore");
+    }
+    expect(
+      editorDocToMessageDocument(workflowComposerDocument(restored)),
+    ).toStrictEqual(structured);
+  });
+
   it("returns null for malformed or unsupported documents", () => {
     const unsupportedEditorDocument = workflowComposerDocument({
       type: "doc",
@@ -243,16 +447,11 @@ describe("user message document codec", () => {
           type: "feedbackItem",
           attrs: {
             feedbackId: 1,
-            quote: "Unsupported",
+            quote: 123,
             showDivider: false,
             fill: false,
           },
-          content: [
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: "Unsupported" }],
-            },
-          ],
+          content: [{ type: "paragraph" }],
         },
       ],
     });

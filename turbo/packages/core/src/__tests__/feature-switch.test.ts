@@ -12,6 +12,7 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -30,9 +31,6 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
-    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
@@ -109,27 +107,29 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PresentationExport]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
+      true,
+    );
+    expect(staffOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       true,
     );
 
@@ -137,28 +137,30 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.PresentationExport]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       false,
     );
   });
@@ -203,8 +205,26 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.PlanUpgradeGuidance,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroBrowser,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.GithubWebhookAutomations,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroPeopleSearch,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroFinance,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ComposerConnectorPermissions,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ImageStyleR2,
     );
 
     expect(
@@ -212,10 +232,15 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
+        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
+        [FeatureSwitchKey.ZeroBrowser]: true,
+        [FeatureSwitchKey.ZeroPeopleSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
+      [FeatureSwitchKey.ZeroBrowser]: true,
+      [FeatureSwitchKey.ZeroPeopleSearch]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
     });

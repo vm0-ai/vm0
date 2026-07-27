@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
@@ -68,6 +68,7 @@ import {
 } from "./session-history-decompression";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -753,7 +754,7 @@ async function collectConversationMessages(
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        structuredPrompt: effectiveChatMessageStructuredPrompt(),
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -763,7 +764,7 @@ async function collectConversationMessages(
           inArray(chatMessages.role, ["user", "assistant"]),
         ),
       )
-      .orderBy(asc(chatMessages.createdAt));
+      .orderBy(asc(chatMessages.seqId));
     runtime.signal.throwIfAborted();
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
@@ -893,7 +894,7 @@ async function assembleZip(
   entries: readonly ZipEntry[],
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const archive = archiver("zip", { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const chunks: Buffer[] = [];
   const done = createDeferredPromise<Buffer>(signal);
 

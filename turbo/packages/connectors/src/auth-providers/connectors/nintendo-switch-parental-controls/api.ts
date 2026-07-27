@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connectors";
-import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "../../../connectors/nintendo-switch-parental-controls";
+import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "./app";
 import {
   NINTENDO_ACCOUNT_AUTHORIZATION_URL,
   NINTENDO_ACCOUNT_PROFILE_URL,
@@ -25,6 +25,8 @@ import {
 } from "../nintendo-account";
 
 const PROVIDER_LABEL = "Nintendo Switch Parental Controls";
+
+export { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP };
 
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_AUTHORIZATION_URL =
   NINTENDO_ACCOUNT_AUTHORIZATION_URL;

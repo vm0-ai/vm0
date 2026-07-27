@@ -11,7 +11,7 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import {
   click,
@@ -20,6 +20,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -184,8 +185,8 @@ function mockBillingStory(): void {
   });
 }
 
-async function openBillingTab(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=billing" });
+async function openBillingTab(path = "/?settings=billing"): Promise<void> {
+  detachedSetupPage({ context, path });
   await waitFor(() => {
     expect(
       screen.getByRole("dialog", { name: "Settings" }),
@@ -196,7 +197,114 @@ async function openBillingTab(): Promise<void> {
   });
 }
 
+function installScrollIntoViewMock(): Mock<HTMLElement["scrollIntoView"]> {
+  const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
+  return scrollIntoView;
+}
+
+async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
+  const accountName = await screen.findByText("Test User");
+  const accountButton = accountName.closest("button");
+  if (!accountButton) {
+    throw new Error("Account menu trigger not found");
+  }
+  click(accountButton);
+  const menu = await screen.findByRole("menu");
+  click(within(menu).getByText("Settings"));
+  return screen.findByRole("dialog", { name: "Settings" });
+}
+
+async function waitForAnimationFrame(): Promise<void> {
+  const frame = createDeferredPromise<void>(context.signal);
+  window.requestAnimationFrame(() => {
+    frame.resolve(undefined);
+  });
+  await frame.promise;
+}
+
 describe("organization billing settings", () => {
+  it("scrolls to buy credits from the credits billing deep link", async () => {
+    const scrollIntoView = installScrollIntoViewMock();
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "credit-org",
+      name: "Credit Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+
+    await openBillingTab("/?settings=billing&billingView=credits");
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "start",
+        behavior: "smooth",
+      });
+    });
+  });
+
+  it("clears an unconsumed credits deep link when settings closes", async () => {
+    const scrollIntoView = installScrollIntoViewMock();
+    let billingStatus: BillingStatusResponse = {
+      ...activeProBillingStatus(),
+      canBuyCredits: false,
+    };
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "credit-org",
+      name: "Credit Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus);
+    });
+
+    await openBillingTab("/?settings=billing&billingView=credits");
+
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Subscription, payment method, and invoices in Stripe.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(dialog).queryByRole("heading", { name: "Buy credits" }),
+    ).not.toBeInTheDocument();
+
+    click(within(dialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+    });
+
+    billingStatus = {
+      ...activeProBillingStatus(),
+      canBuyCredits: true,
+    };
+    const reopenedDialog = await openSettingsFromAccountMenu();
+    click(buttonByText("Billing", reopenedDialog));
+
+    const buyCreditsHeading = await within(reopenedDialog).findByRole(
+      "heading",
+      {
+        name: "Buy credits",
+      },
+    );
+    expect(buyCreditsHeading).toBeInTheDocument();
+    await waitForAnimationFrame();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it("uses plan capabilities instead of the tier for gated billing controls", async () => {
     context.mocks.data.org({
       id: "org_1",
@@ -518,11 +626,11 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(
-        within(purchaseDialog).getByText("Buy $20/month"),
+        within(purchaseDialog).getByText("Buy $200/month"),
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Buy $20/month", purchaseDialog));
+    click(buttonByText("Buy $200/month", purchaseDialog));
 
     await waitFor(() => {
       expect(requestedQuantity).toBe(2);

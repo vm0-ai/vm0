@@ -1,14 +1,10 @@
 import {
   zeroHostContract,
-  type CreateHtmlEditDraftRequest,
-  type GeneratePresentationSpeakerNotesRequest,
   type HostedSiteCompleteResponse,
   type HostedSiteDeploymentsResponse,
   type HostedSiteFilesResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
-  type HostedSiteRedeployHtmlRequest,
-  type HostedSiteRedeployPresentationHtmlRequest,
 } from "@vm0/api-contracts/contracts/zero-host";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 
@@ -38,9 +34,6 @@ type HostPrepareStatus = 200 | 400 | 401 | 402 | 403 | 409 | 500;
 type HostCompleteStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostFilesStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type HostDeploymentsStatus = 200 | 400 | 401 | 403 | 404 | 500;
-type HostRedeployStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
-type HostSpeakerNotesStatus = 200 | 400 | 401 | 402 | 403 | 500;
-type HostHtmlDomEditStatus = 200 | 400 | 401 | 402 | 403 | 500 | 503;
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
 
 interface HostedSitesS3Capture {
@@ -284,90 +277,6 @@ export function createHostMapsBddApi(context: TestContext) {
         hostClient().deployments({
           headers: authenticate(context, actor),
           params: { site },
-        }),
-        statuses,
-      );
-    },
-
-    async redeployPresentationHtml(
-      actor: ApiTestUser,
-      body: HostedSiteRedeployPresentationHtmlRequest,
-    ): Promise<HostedSiteCompleteResponse> {
-      const response = await accept(
-        hostClient().redeployPresentationHtml({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestRedeployPresentationHtml(
-      actor: ApiTestUser,
-      body: HostedSiteRedeployPresentationHtmlRequest,
-      statuses: readonly HostRedeployStatus[],
-    ) {
-      return await accept(
-        hostClient().redeployPresentationHtml({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async redeployHtml(
-      actor: ApiTestUser,
-      body: HostedSiteRedeployHtmlRequest,
-    ): Promise<HostedSiteCompleteResponse> {
-      const response = await accept(
-        hostClient().redeployHtml({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestRedeployHtml(
-      actor: ApiTestUser,
-      body: HostedSiteRedeployHtmlRequest,
-      statuses: readonly HostRedeployStatus[],
-    ) {
-      return await accept(
-        hostClient().redeployHtml({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestGenerateSpeakerNotes(
-      actor: ApiTestUser,
-      body: GeneratePresentationSpeakerNotesRequest,
-      statuses: readonly HostSpeakerNotesStatus[],
-    ) {
-      return await accept(
-        hostClient().generatePresentationSpeakerNotes({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestCreateHtmlEditDraft(
-      actor: ApiTestUser,
-      body: CreateHtmlEditDraftRequest,
-      statuses: readonly HostHtmlDomEditStatus[],
-    ) {
-      return await accept(
-        hostClient().createHtmlEditDraft({
-          headers: authenticate(context, actor),
-          body,
         }),
         statuses,
       );

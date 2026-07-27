@@ -329,7 +329,6 @@ async function preseedAutomationVolume(
         eq(storages.orgId, automation.orgId),
         eq(storages.userId, VOLUME_ORG_USER_ID),
         eq(storages.name, storageName),
-        eq(storages.type, "volume"),
       ),
     )
     .limit(1);
@@ -352,13 +351,12 @@ async function preseedAutomationVolume(
       userId: VOLUME_ORG_USER_ID,
       orgId: automation.orgId,
       name: storageName,
-      type: "volume",
       s3Prefix,
       size: 0,
       fileCount: 0,
     })
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name, storages.type],
+      target: [storages.orgId, storages.userId, storages.name],
       set: { updatedAt: timestamp },
     })
     .returning({ id: storages.id, s3Prefix: storages.s3Prefix });

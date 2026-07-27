@@ -28,6 +28,8 @@ from mitmproxy.test import tflow, tutils
 import auth
 import auth_base_forwarder
 import builtin_connector_diagnostics
+import claude_output_timing
+import codex_output_timing
 import logging_utils
 import mitm_addon
 import platform_api
@@ -65,10 +67,14 @@ def _reset_module_state() -> Iterator[None]:
     usage.counters.reset_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.reset_usage_buffer_for_tests()
+    claude_output_timing.reset_for_tests()
+    codex_output_timing.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
     yield
     runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
     usage.reset_usage_buffer_for_tests()
+    claude_output_timing.reset_for_tests()
+    codex_output_timing.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()

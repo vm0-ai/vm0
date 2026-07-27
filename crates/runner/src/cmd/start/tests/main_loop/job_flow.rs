@@ -29,8 +29,8 @@ async fn main_loop_discover_claim_execute_complete() {
 }
 
 /// Regression for #11157: normal Running mode with available budget must
-/// still reap completed job tasks so their cancel tokens do not remain
-/// until a later drain, shutdown, or budget-exhausted wait.
+/// still reap completed job tasks so their cancellation registrations do not
+/// remain until a later drain, shutdown, or budget-exhausted wait.
 #[tokio::test(start_paused = true)]
 async fn running_reaps_completed_jobs_without_budget_exhaustion() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);

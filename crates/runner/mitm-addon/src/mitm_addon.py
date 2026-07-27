@@ -42,6 +42,7 @@ from mitmproxy.addonmanager import Loader
 import auth_base_forwarder
 import body_capture
 import builtin_host_policy
+import codex_output_timing
 import connector_diagnostics
 import connector_intent
 import flow_metadata
@@ -144,7 +145,8 @@ def load(loader: Loader) -> None:
         typespec=str,
         # This default is a placeholder shown in `mitmdump --help`; the runner
         # always passes `--set vm0_proxy_registry_path=<per-runner path>` (see
-        # crates/runner/src/proxy.rs:362), so the default is never used in
+        # `proxy::process::spawn_mitmdump` in
+        # `crates/runner/src/proxy/process.rs`), so the default is never used in
         # production. Computed via tempfile.gettempdir() so that standalone
         # debugging works on platforms where /tmp is not the system temp dir.
         default=str(Path(tempfile.gettempdir()) / "proxy-registry.json"),
@@ -839,11 +841,10 @@ async def request(flow: http.HTTPFlow) -> None:
     """Dispatch a request-phase classification and apply its outcome.
 
     `request_classification.classification_for_request()` reuses an intentionally
-    cached header-phase classification when present; otherwise it delegates to
+    cached header-phase classification when present and revalidates cached
+    firewall allows against the current destination. Otherwise it delegates to
     `request_classification.classify_request()`, which owns the canonical decision
-    order. This hook dispatches the result. For firewall allows, it revalidates any
-    `publicDestination` constraint against the current runtime destination before
-    allowing traffic or injecting credentials.
+    order. This hook dispatches the current-state result.
     """
     connector_intent.capture_and_strip(flow)
 
@@ -909,16 +910,11 @@ async def request(flow: http.HTTPFlow) -> None:
             _set_firewall_block_response(flow, classification.firewall_block)
             return
         if classification.kind == "public_destination_denied":
+            auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+            terminal_usage.release_tracked_flow(flow)
             _block_public_destination_denied(flow, classification.public_destination_denial)
             return
         if classification.kind == "firewall_policy_allow":
-            public_destination_denial = request_classification.current_public_destination_denial(
-                flow,
-                classification.firewall_allow,
-            )
-            if public_destination_denial is not None:
-                _block_public_destination_denied(flow, public_destination_denial)
-                return
             prepare_firewall_metadata(
                 flow,
                 classification.firewall_allow,
@@ -931,15 +927,6 @@ async def request(flow: http.HTTPFlow) -> None:
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
             vm_info = classification.vm_info
-            public_destination_denial = request_classification.current_public_destination_denial(
-                flow,
-                allow,
-            )
-            if public_destination_denial is not None:
-                auth_base_forwarder.release_forward_request_admission_from_flow(flow)
-                terminal_usage.release_tracked_flow(flow)
-                _block_public_destination_denied(flow, public_destination_denial)
-                return
             if connector_diagnostics.maybe_make_firewall_allow_local_response(
                 flow,
                 classification,
@@ -1116,7 +1103,11 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         return
     if getattr(message, "from_client", False):
         return
-    response_streaming.feed_model_websocket_usage(flow, message.content)
+    body = message.content.encode() if isinstance(message.content, str) else message.content
+    event = usage.inspect_openai_responses_event_json(body)
+    if response_streaming.uses_openai_responses_usage_protocol(flow):
+        codex_output_timing.observe_server_event(flow, event.event_type)
+    response_streaming.feed_model_websocket_usage(flow, event)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:

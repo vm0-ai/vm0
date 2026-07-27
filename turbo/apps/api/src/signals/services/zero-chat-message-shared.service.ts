@@ -23,6 +23,7 @@ import {
 import { listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
+import { publishFirstAssistantMessageCreated } from "./zero-chat-first-assistant-message-metric.service";
 import { insertChatMessages } from "./zero-chat-message.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
@@ -189,6 +190,32 @@ export async function runGroupIdForRun(
   return run?.runGroupId ?? undefined;
 }
 
+async function assistantMessageRunContextForRun(
+  db: Db,
+  runId: string,
+): Promise<{
+  readonly runGroupId: string | undefined;
+  readonly shouldAttemptFirstAssistantMessageClaim: boolean;
+}> {
+  const [run] = await db
+    .select({
+      runGroupId: zeroRuns.runGroupId,
+      apiStartedAt: zeroRuns.apiStartedAt,
+      firstAssistantMessageAcknowledgedAt:
+        zeroRuns.firstAssistantMessageAcknowledgedAt,
+    })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return {
+    runGroupId: run?.runGroupId ?? undefined,
+    shouldAttemptFirstAssistantMessageClaim:
+      run !== undefined &&
+      run.apiStartedAt !== null &&
+      run.firstAssistantMessageAcknowledgedAt === null,
+  };
+}
+
 export async function insertAssistantEventMessages(
   writeDb: Db,
   args: InsertAssistantEventMessagesInput,
@@ -212,71 +239,76 @@ export async function insertAssistantEventMessages(
   const legacyItems = args.items.filter((item) => {
     return item.runEventId === undefined;
   });
-  const runGroupId = await runGroupIdForRun(writeDb, args.runId);
+  const runContext = await assistantMessageRunContextForRun(
+    writeDb,
+    args.runId,
+  );
 
-  const deterministicRows =
-    itemsWithRunEventId.length === 0
-      ? []
-      : await insertChatMessages(
-          writeDb,
-          itemsWithRunEventId.map((item) => {
-            return {
-              id: assistantMessageIdForRunEvent(args.runId, item.runEventId),
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId,
-              role: "assistant",
-              content: item.content,
-              sequenceNumber: item.sequenceNumber,
-              runEventId: item.runEventId,
-            };
-          }),
-          "any",
-        );
+  const [deterministicRows, legacyRows] = await writeDb.transaction(
+    async (tx) => {
+      const deterministicRows =
+        itemsWithRunEventId.length === 0
+          ? []
+          : await insertChatMessages(
+              tx,
+              itemsWithRunEventId.map((item) => {
+                return {
+                  id: assistantMessageIdForRunEvent(
+                    args.runId,
+                    item.runEventId,
+                  ),
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  runGroupId: runContext.runGroupId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: item.runEventId,
+                };
+              }),
+              "any",
+            );
+      signal.throwIfAborted();
+
+      const legacyRows =
+        legacyItems.length === 0
+          ? []
+          : await insertChatMessages(
+              tx,
+              legacyItems.map((item) => {
+                return {
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  runGroupId: runContext.runGroupId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: null,
+                };
+              }),
+              "run-sequence",
+            );
+      return [deterministicRows, legacyRows] as const;
+    },
+  );
   signal.throwIfAborted();
 
-  const legacyRows =
-    legacyItems.length === 0
-      ? []
-      : await insertChatMessages(
-          writeDb,
-          legacyItems.map((item) => {
-            return {
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId,
-              role: "assistant",
-              content: item.content,
-              sequenceNumber: item.sequenceNumber,
-              runEventId: null,
-            };
-          }),
-          "run-sequence",
-        );
-  signal.throwIfAborted();
-
-  const insertedRows = [...deterministicRows, ...legacyRows];
-  const insertedRowCount = insertedRows.length;
+  const insertedRowCount = deterministicRows.length + legacyRows.length;
 
   if (insertedRowCount > 0) {
-    // The watermark must be the batch row that sorts last in server list
-    // order (createdAt, sequenceNumber) — clients skip the refetch when they
-    // already hold it, assuming every earlier batch row is present too.
-    const watermark = insertedRows.reduce((last, row) => {
-      const lastCreated = last.createdAt.getTime();
-      const rowCreated = row.createdAt.getTime();
-      if (rowCreated !== lastCreated) {
-        return rowCreated > lastCreated ? row : last;
-      }
-      return (row.sequenceNumber ?? -1) >= (last.sequenceNumber ?? -1)
-        ? row
-        : last;
-    });
-    await publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.threadId}`,
-      { syncThroughMessageId: watermark.id },
-    );
+    if (runContext.shouldAttemptFirstAssistantMessageClaim) {
+      await publishFirstAssistantMessageCreated({
+        db: writeDb,
+        userId: args.userId,
+        threadId: args.threadId,
+        runId: args.runId,
+      });
+    } else {
+      await publishUserSignal(
+        [args.userId],
+        `chatThreadMessageCreated:${args.threadId}`,
+      );
+    }
     signal.throwIfAborted();
 
     await publishThreadListChanged(args.userId);

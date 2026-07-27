@@ -25,6 +25,7 @@ import flow_metadata_keys as metadata_keys
 from logging_utils import log_proxy_entry
 
 from ..buffer import (
+    ModelUsageObservation,
     UsageEvent,
     buffer_model_usage_observations,
     buffer_source_model_usage_observations,
@@ -42,6 +43,7 @@ from ..model_tokens import (
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
     MODEL_USAGE_CATEGORY_CACHE_READ,
     MODEL_USAGE_CATEGORY_INPUT,
+    MODEL_USAGE_CATEGORY_OUTPUT,
 )
 from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
@@ -137,15 +139,10 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
         return False
     if not is_model_provider_usage_observable(flow):
         return False
-    events = _build_model_provider_usage_events(
-        flow,
-        run_id,
-        USAGE_OBSERVATION_NAMESPACE_MODEL,
-        billing_pricing=None,
-    )
-    if not events:
+    observations = _build_model_provider_usage_observations(flow, run_id)
+    if not observations:
         return False
-    return _buffer_model_provider_usage_observations(flow, run_id, events)
+    return _buffer_model_provider_usage_observations(flow, run_id, observations)
 
 
 def report_model_provider_usage_source(
@@ -168,7 +165,7 @@ def report_model_provider_usage_source(
     same-response-id frames.
     """
     usage_events: list[UsageEvent] = []
-    observation_events: list[UsageEvent] = []
+    observations: list[ModelUsageObservation] = []
     source_id = f"{flow.id}:{message_id}"
     provider = _reported_model(flow, source_usage)
     can_report_usage = _is_billable_model_provider(flow, run_id)
@@ -183,16 +180,14 @@ def report_model_provider_usage_source(
             billing_pricing=_model_usage_pricing(flow),
         )
     if can_report_observation:
-        observation_events = _build_usage_events(
+        observations = _build_model_usage_observations(
             run_id,
             source_id,
             provider,
             source_usage,
-            USAGE_OBSERVATION_NAMESPACE_MODEL,
-            billing_pricing=None,
         )
 
-    if not usage_events and not observation_events:
+    if not usage_events and not observations:
         return
 
     context = usage_reporting_context(flow)
@@ -200,7 +195,7 @@ def report_model_provider_usage_source(
         if usage_events:
             firewall_name = flow_metadata.firewall_name(flow.metadata)
             _log_usage_reporting_context_missing(context, run_id, firewall_name)
-        if observation_events:
+        if observations:
             _log_model_usage_observation_context_missing(context)
         return
 
@@ -211,12 +206,11 @@ def report_model_provider_usage_source(
             source_id,
             usage_events,
         )
-    if observation_events:
+    if observations:
         _buffer_source_model_provider_usage_observations(
             context,
             run_id,
-            source_id,
-            observation_events,
+            observations,
         )
 
 
@@ -243,7 +237,7 @@ def _buffer_model_provider_usage_events(
 def _buffer_model_provider_usage_observations(
     flow: http.HTTPFlow,
     run_id: str,
-    events: list[UsageEvent],
+    observations: list[ModelUsageObservation],
 ) -> bool:
     context = usage_reporting_context(flow)
     if not context.is_complete:
@@ -253,7 +247,7 @@ def _buffer_model_provider_usage_observations(
         context.model_usage_observation_url(),
         context.sandbox_token,
         run_id,
-        events,
+        observations,
         context.proxy_log_path,
     )
     return True
@@ -292,31 +286,15 @@ def _buffer_source_model_provider_usage_events(
 def _buffer_source_model_provider_usage_observations(
     context: UsageReportingContext,
     run_id: str,
-    source_id: str,
-    events: list[UsageEvent],
+    observations: list[ModelUsageObservation],
 ) -> None:
-    input_partition_events, independent_events = _split_model_input_partition_events(events)
-    if input_partition_events:
-        buffer_source_model_usage_observations(
-            context.model_usage_observation_url(),
-            context.sandbox_token,
-            run_id,
-            input_partition_events,
-            context.proxy_log_path,
-            atomic_source_key=_model_input_partition_source_key(
-                USAGE_OBSERVATION_NAMESPACE_MODEL,
-                run_id,
-                source_id,
-            ),
-        )
-    if independent_events:
-        buffer_source_model_usage_observations(
-            context.model_usage_observation_url(),
-            context.sandbox_token,
-            run_id,
-            independent_events,
-            context.proxy_log_path,
-        )
+    buffer_source_model_usage_observations(
+        context.model_usage_observation_url(),
+        context.sandbox_token,
+        run_id,
+        observations,
+        context.proxy_log_path,
+    )
 
 
 def _split_model_input_partition_events(
@@ -392,6 +370,68 @@ def _build_model_provider_usage_events(
     return events
 
 
+def _build_model_provider_usage_observations(
+    flow: http.HTTPFlow,
+    run_id: str,
+) -> list[ModelUsageObservation]:
+    observations: list[ModelUsageObservation] = []
+    for source_id, usage in _iter_model_provider_usage_sources(flow):
+        observations.extend(
+            _build_model_usage_observations(
+                run_id,
+                source_id,
+                _reported_model(flow, usage),
+                usage,
+            )
+        )
+    return observations
+
+
+def _build_model_usage_observations(
+    run_id: str,
+    source_id: str,
+    model: str,
+    usage: dict,
+) -> list[ModelUsageObservation]:
+    input_tokens = _positive_int_or_zero(usage.get(MODEL_USAGE_CATEGORY_INPUT))
+    output_tokens = _positive_int_or_zero(usage.get(MODEL_USAGE_CATEGORY_OUTPUT))
+    cache_read_input_tokens = _positive_int_or_zero(usage.get(MODEL_USAGE_CATEGORY_CACHE_READ))
+    cache_creation_input_tokens = _positive_int_or_zero(
+        usage.get(MODEL_USAGE_CATEGORY_CACHE_CREATION)
+    )
+    observations: list[ModelUsageObservation] = []
+    if input_tokens or cache_read_input_tokens or cache_creation_input_tokens:
+        observations.append(
+            {
+                "idempotencyKey": _model_input_partition_source_key(
+                    USAGE_OBSERVATION_NAMESPACE_MODEL,
+                    run_id,
+                    source_id,
+                ),
+                "model": model,
+                "inputTokens": input_tokens,
+                "outputTokens": 0,
+                "cacheReadInputTokens": cache_read_input_tokens,
+                "cacheCreationInputTokens": cache_creation_input_tokens,
+            }
+        )
+    if output_tokens:
+        observations.append(
+            {
+                "idempotencyKey": derive_usage_idempotency_key(
+                    USAGE_OBSERVATION_NAMESPACE_MODEL,
+                    (run_id, source_id, MODEL_USAGE_CATEGORY_OUTPUT),
+                ),
+                "model": model,
+                "inputTokens": 0,
+                "outputTokens": output_tokens,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0,
+            }
+        )
+    return observations
+
+
 def _iter_model_provider_usage_sources(flow: http.HTTPFlow) -> Iterator[tuple[str, dict]]:
     usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
     if isinstance(usage_sources, dict):
@@ -455,6 +495,10 @@ def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:
 
 def _is_positive_int(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _positive_int_or_zero(value: object) -> int:
+    return value if _is_positive_int(value) else 0
 
 
 def _string_or_none(value: object) -> str | None:

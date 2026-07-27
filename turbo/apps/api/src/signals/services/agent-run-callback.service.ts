@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { and, eq, isNull, ne, or } from "drizzle-orm";
+import { and, eq, isNull, notInArray, or } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";
@@ -34,10 +34,6 @@ import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
-import {
-  handleSlackOrgInternalCallback$,
-  handleSlackOrgInternalCallbackWithoutCcstate,
-} from "./internal-slack-org-run-callback.service";
 import {
   handleTeamsOrgInternalCallback$,
   handleTeamsOrgInternalCallbackWithoutCcstate,
@@ -149,8 +145,8 @@ const dispatchInternalCallback$ = command(
           handleChatInternalCallback$,
           {
             callback: input.envelope,
-            drainThreadQueue: (chatThreadId, inputSignal, timing) => {
-              return set(
+            drainThreadQueue: async (chatThreadId, inputSignal, timing) => {
+              await set(
                 drainChatThreadQueueForThread$,
                 {
                   chatThreadId,
@@ -191,12 +187,11 @@ const dispatchInternalCallback$ = command(
           error: "Slack chat delivery callbacks are inline-only",
         };
       }
-      case "slack:org": {
-        return await set(
-          handleSlackOrgInternalCallback$,
-          input.envelope,
-          signal,
-        );
+      case "feishu:chat": {
+        return {
+          success: false,
+          error: "Feishu chat delivery callbacks are inline-only",
+        };
       }
       case "teams:org": {
         return await set(
@@ -332,7 +327,11 @@ async function dispatchRunCallbacks(
         ),
         or(
           isNull(agentRunCallbacks.internalKind),
-          ne(agentRunCallbacks.internalKind, "slack:chat"),
+          notInArray(agentRunCallbacks.internalKind, [
+            "slack:chat",
+            "feishu:chat",
+            "slack:org",
+          ]),
         ),
       ),
     );
@@ -404,7 +403,11 @@ export const dispatchRunCallbacks$ = command(
           ),
           or(
             isNull(agentRunCallbacks.internalKind),
-            ne(agentRunCallbacks.internalKind, "slack:chat"),
+            notInArray(agentRunCallbacks.internalKind, [
+              "slack:chat",
+              "feishu:chat",
+              "slack:org",
+            ]),
           ),
         ),
       );
@@ -564,11 +567,11 @@ async function dispatchInternalCallbackWithoutCcstate(
         error: "Slack chat delivery callbacks are inline-only",
       };
     }
-    case "slack:org": {
-      return await handleSlackOrgInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
+    case "feishu:chat": {
+      return {
+        success: false,
+        error: "Feishu chat delivery callbacks are inline-only",
+      };
     }
     case "teams:org": {
       return await handleTeamsOrgInternalCallbackWithoutCcstate(

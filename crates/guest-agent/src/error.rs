@@ -33,6 +33,10 @@ pub enum AgentError {
     #[error("checkpoint: {0}")]
     Checkpoint(String),
 
+    /// Session history exceeded the checkpoint size limit.
+    #[error("checkpoint: Session history exceeds maximum size of {max_bytes} bytes")]
+    CheckpointHistoryTooLarge { max_bytes: u64 },
+
     /// Telemetry flush channel is unavailable because the uploader task was not
     /// initialized, has exited, or dropped the per-flush response channel.
     #[error("telemetry uploader unavailable")]

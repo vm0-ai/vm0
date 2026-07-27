@@ -24,11 +24,10 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  ConnectorRegistryAuthMethodId,
-  ConnectorType,
-} from "@vm0/connectors/connectors";
+  ConnectorAuthMethodId,
+  ConnectorRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
@@ -176,8 +175,8 @@ function teamAgent(
 
 function mockConnectors(
   connectors: {
-    type: ConnectorType;
-    authMethod?: ConnectorRegistryAuthMethodId;
+    type: ConnectorRef;
+    authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     connectionStatus?: ConnectorResponse["connectionStatus"];
     reconnectReason?: ConnectorResponse["reconnectReason"];
@@ -2187,12 +2186,10 @@ describe("connectors page", () => {
 
     click(buttonByText("Connect Stripe", dialog));
     click(await within(dialog).findByTestId("connector-oauth-device-open"));
-    await expect(
-      screen.findByText("Failed to fetch"),
-    ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
     });
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   });
 
   it("connects a manual token connector", async () => {
@@ -2842,7 +2839,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("toasts external-code transport errors and restores a retryable state", async () => {
+  it("suppresses external-code transport error toasts and restores a retryable state", async () => {
     context.mocks.http.post(
       "*/api/zero/connectors/aws/external-code/sessions/:sessionId/complete",
       () => {
@@ -2852,12 +2849,10 @@ describe("connectors page", () => {
 
     const { complete } = await setupAwsExternalCodeConnection();
     click(complete);
-    await expect(
-      screen.findByText("Failed to fetch"),
-    ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(complete).toBeEnabled();
     });
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   });
 
   it("uses auth method help text for PlayStation external-code connection", async () => {

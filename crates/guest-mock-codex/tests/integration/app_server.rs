@@ -365,12 +365,29 @@ fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::R
     )?;
     assert_eq!(steered["result"]["turnId"], turn_id);
 
-    let turn_started_notification = server.read_required()?;
-    let item_completed_notification = server.read_required()?;
-    let turn_completed_notification = server.read_required()?;
-    assert_eq!(turn_started_notification["method"], "turn/started");
-    assert_eq!(item_completed_notification["method"], "item/completed");
-    assert_eq!(turn_completed_notification["method"], "turn/completed");
+    let mut notification_methods = Vec::new();
+    loop {
+        let notification = server.read_required()?;
+        let method = notification["method"]
+            .as_str()
+            .ok_or_else(|| std::io::Error::other("notification is missing method"))?;
+        notification_methods.push(method.to_string());
+        if method == "turn/completed" {
+            break;
+        }
+    }
+    assert_eq!(
+        notification_methods,
+        [
+            "turn/started",
+            "item/started",
+            "item/started",
+            "item/started",
+            "item/started",
+            "item/completed",
+            "turn/completed",
+        ]
+    );
 
     let session_path = require_session_file(dir.path())?;
     let events = read_session_file(&session_path)?;

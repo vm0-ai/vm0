@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
 import {
-  check,
   pgTable,
   text,
   timestamp,
@@ -12,12 +10,9 @@ import {
 import { chatThreads } from "./chat-thread";
 import { slackOrgConnections } from "./slack-org-connection";
 
-export type SlackChatThreadRouteBackend = "legacy" | "canonical";
-
 /**
- * Sticky backend ownership for one VM0 user's view of a physical Slack thread.
- * Runtime routing lands separately; this table is the adapter-owned routing
- * source of truth shared by the legacy and canonical paths.
+ * Sticky canonical chat ownership for one VM0 user's view of a physical Slack
+ * thread.
  */
 export const slackChatThreadRoutes = pgTable(
   "slack_chat_thread_routes",
@@ -34,15 +29,14 @@ export const slackChatThreadRoutes = pgTable(
     channelId: varchar("channel_id", { length: 255 }).notNull(),
     threadTs: varchar("thread_ts", { length: 255 }).notNull(),
     userId: text("user_id").notNull(),
-    backend: varchar("backend", { length: 16 })
-      .$type<SlackChatThreadRouteBackend>()
-      .notNull(),
-    chatThreadId: uuid("chat_thread_id").references(
-      () => {
-        return chatThreads.id;
-      },
-      { onDelete: "cascade" },
-    ),
+    chatThreadId: uuid("chat_thread_id")
+      .notNull()
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -52,11 +46,6 @@ export const slackChatThreadRoutes = pgTable(
         table.channelId,
         table.threadTs,
         table.userId,
-      ),
-      check(
-        "chk_slack_chat_thread_routes_backend_thread",
-        sql`(${table.backend} = 'legacy' AND ${table.chatThreadId} IS NULL)
-          OR (${table.backend} = 'canonical' AND ${table.chatThreadId} IS NOT NULL)`,
       ),
     ];
   },

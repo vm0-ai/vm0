@@ -57,10 +57,9 @@ class SnapshotComparison(NamedTuple):
 
 
 def fetch_source() -> str:
-    # S310 (suspicious-url-open-usage): SOURCE_URL is a fixed https:// IANA
-    # endpoint, not user input. The opener below uses the default CA-verifying
-    # SSL context and disables redirects so the fixed host cannot drift.
-    request = urllib.request.Request(  # noqa: S310
+    # SOURCE_URL is a fixed https:// IANA endpoint, not user input. The opener
+    # uses the default CA-verifying SSL context and disables redirects.
+    request = urllib.request.Request(
         SOURCE_URL,
         headers={"User-Agent": "vm0-mitm-addon-tld-updater"},
         method="GET",

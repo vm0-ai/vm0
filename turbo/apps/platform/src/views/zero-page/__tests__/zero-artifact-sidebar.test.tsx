@@ -1,10 +1,7 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
-import JSZip from "jszip";
-import { HttpResponse } from "msw";
 
 import {
   chatThreadByIdContract,
@@ -17,7 +14,6 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroConnectorOpenIdStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
@@ -29,39 +25,18 @@ import {
 import type { ZeroClientFactory } from "../../../signals/api-client.ts";
 import { syncArtifactFileToGoogleDrive } from "../../../signals/chat-page/artifact-google-drive-sync.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
-import {
-  applyHtmlDomEditPreview$,
-  artifactPanelWidth$,
-  closeArtifactHtmlEditMode$,
-  saveCapturedHtmlEditSnapshotDraft$,
-} from "../../../signals/zero-page/zero-artifact-sidebar.ts";
-import { ARTIFACT_HTML_EDIT_PARAM } from "../../../signals/zero-page/right-sidebar-search-params.ts";
-import { searchParams$ } from "../../../signals/route.ts";
+import { resetSignal } from "../../../signals/utils.ts";
+import { artifactPanelWidth$ } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000040";
 const THREAD_PATH = `/chats/${THREAD_ID}`;
-const CONTENT_TYPES_NS =
-  "http://schemas.openxmlformats.org/package/2006/content-types";
-const RELATIONSHIPS_NS =
-  "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_RELATIONSHIPS_NS =
-  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const PRESENTATION_NS =
-  "http://schemas.openxmlformats.org/presentationml/2006/main";
-const PRESENTATION_CONTENT_TYPE =
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml";
-const SLIDE_CONTENT_TYPE =
-  "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
-const SLIDE_REL_TYPE = `${OFFICE_RELATIONSHIPS_NS}/slide`;
 
 function setupChatThread({
   artifactFiles,
   attachFiles,
   content,
-  featureSwitches,
   path = THREAD_PATH,
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
@@ -73,7 +48,6 @@ function setupChatThread({
     url: string;
   }[];
   content: string;
-  featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
   path?: string;
 }): void {
   context.mocks.data.team([
@@ -96,6 +70,7 @@ function setupChatThread({
       role: "user",
       content: "Show me the artifact",
       runId: "run-artifact",
+      seqId: 1,
       createdAt: "2026-03-10T00:00:00Z",
       ...(attachFiles ? { attachFiles } : {}),
     },
@@ -104,6 +79,7 @@ function setupChatThread({
       role: "assistant",
       content,
       runId: "run-artifact",
+      seqId: 2,
       createdAt: "2026-03-10T00:00:01Z",
     },
     {
@@ -112,6 +88,7 @@ function setupChatThread({
       content: null,
       runId: "run-artifact",
       runLifecycleEvent: "completed",
+      seqId: 3,
       createdAt: "2026-03-10T00:00:02Z",
     },
   ];
@@ -119,8 +96,6 @@ function setupChatThread({
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -136,13 +111,15 @@ function setupChatThread({
           pinnedAt: null,
           renamedAt: null,
           selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
         },
       ],
       latestEventId: "00000000-0000-4000-8000-000000000001",
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceId || query.beforeId) {
+    if (query.sinceSeqId || query.beforeSeqId) {
       return respond(200, { messages: [] });
     }
     return respond(200, { messages, hasHistoryBefore: false });
@@ -155,7 +132,7 @@ function setupChatThread({
     });
   }
 
-  detachedSetupPage({ context, featureSwitches, path });
+  detachedSetupPage({ context, path });
 }
 
 function artifactFile(
@@ -220,161 +197,6 @@ function presentationHtml(): string {
 </html>`;
 }
 
-function presentationHtmlWithDeckBackground(): string {
-  return `<!doctype html>
-<html>
-  <head>
-    <title>Dog world</title>
-    <script id="vm0-deck-metadata" type="application/json">
-      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
-    </script>
-    <style>
-      :root {
-        --bg: #000000;
-      }
-      html,
-      body {
-        margin: 0;
-        background: var(--bg);
-      }
-      .deck {
-        position: relative;
-        width: 100vw;
-        height: 100vh;
-        overflow: hidden;
-        background: var(--bg);
-      }
-      .slide {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        opacity: 0;
-      }
-      .slide.is-active {
-        opacity: 1;
-      }
-      .cover-bg {
-        position: absolute;
-        inset: 0;
-        background: var(--bg);
-        z-index: -1;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="deck">
-      <section class="slide is-active" data-slide-id="slide-intro">
-        <div class="cover-bg"></div>
-        <h1>狗狗的世界</h1>
-      </section>
-    </div>
-  </body>
-</html>`;
-}
-
-function presentationPptxBlob(): Promise<Blob> {
-  const zip = new JSZip();
-  zip.file(
-    "[Content_Types].xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="${CONTENT_TYPES_NS}">
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/ppt/presentation.xml" ContentType="${PRESENTATION_CONTENT_TYPE}"/>
-  <Override PartName="/ppt/slides/slide1.xml" ContentType="${SLIDE_CONTENT_TYPE}"/>
-  <Override PartName="/ppt/slides/slide2.xml" ContentType="${SLIDE_CONTENT_TYPE}"/>
-</Types>`,
-  );
-  zip.file(
-    "ppt/presentation.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:p="${PRESENTATION_NS}" xmlns:r="${OFFICE_RELATIONSHIPS_NS}">
-  <p:sldIdLst>
-    <p:sldId id="256" r:id="rId1"/>
-    <p:sldId id="257" r:id="rId2"/>
-  </p:sldIdLst>
-</p:presentation>`,
-  );
-  zip.file(
-    "ppt/_rels/presentation.xml.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="${RELATIONSHIPS_NS}">
-  <Relationship Id="rId1" Type="${SLIDE_REL_TYPE}" Target="slides/slide1.xml"/>
-  <Relationship Id="rId2" Type="${SLIDE_REL_TYPE}" Target="slides/slide2.xml"/>
-</Relationships>`,
-  );
-  zip.file(
-    "ppt/slides/_rels/slide1.xml.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${RELATIONSHIPS_NS}"/>`,
-  );
-  zip.file(
-    "ppt/slides/_rels/slide2.xml.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${RELATIONSHIPS_NS}"/>`,
-  );
-  return zip.generateAsync({ type: "blob" });
-}
-
-const PRESENTATION_PPTX_MIME_TYPE =
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-const PRESENTATION_UPLOAD_ID = "123e4567-e89b-42d3-a456-426614174000";
-
-interface PresentationUploadCapture {
-  finalizedUploadId: string | null;
-  prepared: {
-    readonly contentType: string;
-    readonly filename: string;
-    readonly size: number;
-  } | null;
-  uploaded: Blob | null;
-}
-
-function mockPresentationGoogleSlidesUpload(options: {
-  readonly beforeFinalize?: () => void;
-  readonly response: {
-    readonly id: string;
-    readonly name: string;
-    readonly webViewLink: string | null;
-  };
-}): PresentationUploadCapture {
-  const capture: PresentationUploadCapture = {
-    finalizedUploadId: null,
-    prepared: null,
-    uploaded: null,
-  };
-  const uploadUrl = `https://mock-upload.example.com/${PRESENTATION_UPLOAD_ID}`;
-
-  context.mocks.http.post("*/api/zero/uploads/prepare", async ({ request }) => {
-    const body = (await request.json()) as {
-      contentType: string;
-      filename: string;
-      size: number;
-    };
-    capture.prepared = body;
-    return HttpResponse.json({
-      ...body,
-      id: PRESENTATION_UPLOAD_ID,
-      uploadUrl,
-      url: `https://cdn.vm7.io/artifacts/test/${PRESENTATION_UPLOAD_ID}/${body.filename}`,
-    });
-  });
-  context.mocks.http.put(uploadUrl, async ({ request }) => {
-    capture.uploaded = await request.blob();
-    return new HttpResponse(null, { status: 200 });
-  });
-  context.mocks.http.post(
-    "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
-    async ({ request }) => {
-      options.beforeFinalize?.();
-      const formData = await request.formData();
-      const uploadId = formData.get("uploadId");
-      if (typeof uploadId === "string") {
-        capture.finalizedUploadId = uploadId;
-      }
-      return HttpResponse.json(options.response);
-    },
-  );
-  return capture;
-}
-
 function captureDownloads(signal: AbortSignal): string[] {
   const downloads: string[] = [];
   const onClick = (event: MouseEvent) => {
@@ -392,141 +214,6 @@ function captureDownloads(signal: AbortSignal): string[] {
     { once: true },
   );
   return downloads;
-}
-
-function completePresentationPptxExport(
-  frame: HTMLIFrameElement,
-  blob: Blob,
-): void {
-  window.dispatchEvent(
-    new MessageEvent("message", {
-      data: {
-        blob,
-        status: "success",
-        type: "vm0-presentation-pptx-export",
-      },
-      source: frame.contentWindow,
-    }),
-  );
-}
-
-function setupPresentationArtifactThread(
-  presentationUrl: string,
-  html = presentationHtml(),
-  options: {
-    readonly featureSwitches?: Parameters<
-      typeof detachedSetupPage
-    >[0]["featureSwitches"];
-    readonly hostedResources?: Readonly<
-      Record<string, { readonly body: string; readonly contentType: string }>
-    >;
-  } = {},
-): void {
-  const filename =
-    new URL(presentationUrl).pathname.split("/").pop() ?? "presentation.html";
-  context.mocks.http.get(presentationUrl, () => {
-    return new Response(html, {
-      headers: { "Content-Type": "text/html" },
-    });
-  });
-  context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
-    const targetUrl = new URL(request.url).searchParams.get("url");
-    const resource = targetUrl
-      ? options.hostedResources?.[targetUrl]
-      : undefined;
-    if (resource) {
-      return new Response(resource.body, {
-        headers: { "Content-Type": resource.contentType },
-      });
-    }
-    return new Response(html, {
-      headers: { "Content-Type": "text/html" },
-    });
-  });
-  setupChatThread({
-    artifactFiles: [
-      artifactFile(presentationUrl, {
-        id: "artifact-quarterly-roadmap",
-        filename,
-        contentType: "text/html",
-        artifactKind: "presentation-html",
-        size: 1024,
-      }),
-    ],
-    content: `[Quarterly roadmap](${presentationUrl})`,
-    featureSwitches: options.featureSwitches,
-    path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
-  });
-}
-
-function setupHostedSiteArtifactThread(
-  siteUrl: string,
-  html = "<!doctype html><html><body><h1>Original site</h1></body></html>",
-  artifactUrl = siteUrl,
-  path = `${THREAD_PATH}?artifact=${encodeURIComponent(siteUrl)}`,
-): void {
-  const filename =
-    new URL(artifactUrl).pathname.split("/").pop() || "site.html";
-  context.mocks.http.get(siteUrl, () => {
-    return new Response(html, {
-      headers: { "Content-Type": "text/html" },
-    });
-  });
-  setupChatThread({
-    artifactFiles: [
-      artifactFile(artifactUrl, {
-        id: "artifact-hosted-site",
-        filename,
-        contentType: "text/html",
-        artifactKind: "hosted-site",
-        size: html.length,
-      }),
-    ],
-    content: `[Hosted site](${siteUrl})`,
-    featureSwitches: {
-      [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
-    },
-    path,
-  });
-}
-
-function hostedSiteEditPath(siteUrl: string): string {
-  const params = new URLSearchParams();
-  params.set("artifact", siteUrl);
-  params.set(ARTIFACT_HTML_EDIT_PARAM, "1");
-  return `${THREAD_PATH}?${params.toString()}`;
-}
-
-async function enterHostedSiteEditMode(
-  user: ReturnType<typeof userEvent.setup>,
-) {
-  const sidebar = await screen.findByTestId("artifact-sidebar");
-  await user.click(within(sidebar).getByLabelText("Edit page"));
-}
-
-function assetBackedPresentationHtml(
-  assetUrl: string,
-  externalAssetUrl: string,
-): string {
-  return `<!doctype html>
-<html>
-  <head>
-    <title>Asset backed deck</title>
-    <script id="vm0-deck-metadata" type="application/json">
-      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
-    </script>
-    <style>
-      .slide-bg { background-image: url("${assetUrl}"); }
-    </style>
-  </head>
-  <body>
-    <section data-vm0-slide data-slide-id="asset-slide" class="slide-bg" style="border-image: url('${assetUrl}') 30">
-      <h1 data-vm0-editable="text" data-vm0-edit-id="title">Asset backed deck</h1>
-      <img src="${assetUrl}" alt="Roadmap cover" />
-      <img src="${externalAssetUrl}" alt="External cover" />
-    </section>
-  </body>
-</html>`;
 }
 
 function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
@@ -579,118 +266,6 @@ function menuItemByText(text: string): HTMLElement {
   return item;
 }
 
-function mockIntersectionObserver(): {
-  activeRoots: () => (Document | Element | null)[];
-  observedTargetCount: () => number;
-  triggerAll: () => void;
-} {
-  const originalDescriptor = Object.getOwnPropertyDescriptor(
-    globalThis,
-    "IntersectionObserver",
-  );
-  const observers: TestIntersectionObserver[] = [];
-
-  class TestIntersectionObserver implements IntersectionObserver {
-    readonly root: Element | Document | null;
-    readonly rootMargin: string;
-    readonly scrollMargin: string;
-    readonly thresholds: readonly number[];
-    private observedTargets: Element[] = [];
-
-    constructor(
-      private readonly callback: IntersectionObserverCallback,
-      options?: IntersectionObserverInit,
-    ) {
-      this.root = options?.root ?? null;
-      this.rootMargin = options?.rootMargin ?? "0px";
-      this.scrollMargin = "0px";
-      this.thresholds = Array.isArray(options?.threshold)
-        ? options.threshold
-        : [options?.threshold ?? 0];
-      observers.push(this);
-    }
-
-    observe(target: Element): void {
-      if (!this.observedTargets.includes(target)) {
-        this.observedTargets = [...this.observedTargets, target];
-      }
-    }
-
-    unobserve(target: Element): void {
-      this.observedTargets = this.observedTargets.filter((observed) => {
-        return observed !== target;
-      });
-    }
-
-    disconnect(): void {
-      this.observedTargets = [];
-    }
-
-    takeRecords(): IntersectionObserverEntry[] {
-      return [];
-    }
-
-    observedTargetCount(): number {
-      return this.observedTargets.length;
-    }
-
-    trigger(): void {
-      const entries = this.observedTargets.map((target) => {
-        return {
-          boundingClientRect: target.getBoundingClientRect(),
-          intersectionRatio: 1,
-          intersectionRect: target.getBoundingClientRect(),
-          isIntersecting: true,
-          rootBounds: null,
-          target,
-          time: performance.now(),
-        } as IntersectionObserverEntry;
-      });
-      if (entries.length > 0) {
-        this.callback(entries, this);
-      }
-    }
-  }
-
-  Object.defineProperty(globalThis, "IntersectionObserver", {
-    configurable: true,
-    value: TestIntersectionObserver,
-  });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      if (originalDescriptor) {
-        Object.defineProperty(
-          globalThis,
-          "IntersectionObserver",
-          originalDescriptor,
-        );
-        return;
-      }
-      Reflect.deleteProperty(globalThis, "IntersectionObserver");
-    },
-    { once: true },
-  );
-
-  return {
-    activeRoots: () => {
-      return observers.flatMap((observer) => {
-        return observer.observedTargetCount() > 0 ? [observer.root] : [];
-      });
-    },
-    observedTargetCount: () => {
-      return observers.reduce((count, observer) => {
-        return count + observer.observedTargetCount();
-      }, 0);
-    },
-    triggerAll: () => {
-      for (const observer of observers) {
-        observer.trigger();
-      }
-    },
-  };
-}
-
 function mockElementBox(
   element: HTMLElement,
   { height, width }: { height: number; width: number },
@@ -733,56 +308,6 @@ function mockElementBox(
   });
 }
 
-function installPresentationPreviewDocumentFromHtml(
-  frame: HTMLIFrameElement,
-  html: string,
-): Document {
-  const generatedDocument = new DOMParser().parseFromString(html, "text/html");
-  const previewDocument = document.implementation.createHTMLDocument(
-    "presentation preview",
-  );
-  Object.defineProperty(previewDocument, "defaultView", {
-    configurable: true,
-    value: window,
-  });
-  Object.defineProperty(frame, "contentDocument", {
-    configurable: true,
-    value: previewDocument,
-  });
-  previewDocument.head.replaceChildren(
-    ...Array.from(generatedDocument.head.childNodes, (node) => {
-      return previewDocument.importNode(node, true);
-    }),
-  );
-  previewDocument.body.replaceChildren(
-    ...Array.from(generatedDocument.body.childNodes, (node) => {
-      return previewDocument.importNode(node, true);
-    }),
-  );
-  return previewDocument;
-}
-
-function generatedPresentationPreviewHtml(
-  frame: HTMLIFrameElement,
-  blobForUrl: (url: string) => Blob | null,
-): Promise<string> {
-  const previewBlob = blobForUrl(frame.src);
-  if (!previewBlob) {
-    throw new Error("Generated presentation preview blob not found");
-  }
-  return previewBlob.text();
-}
-
-async function installGeneratedPresentationPreviewDocument(
-  frame: HTMLIFrameElement,
-  blobForUrl: (url: string) => Blob | null,
-): Promise<Document> {
-  return installPresentationPreviewDocumentFromHtml(
-    frame,
-    await generatedPresentationPreviewHtml(frame, blobForUrl),
-  );
-}
-
 describe("zero artifact sidebar", () => {
   it("opens document previews from chat, moves them into split view, and closes the pane", async () => {
     const user = userEvent.setup({ delay: null });
@@ -820,550 +345,6 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
-  });
-
-  it("shows hosted-site edit action when the sidebar URL has a root trailing slash", async () => {
-    const artifactUrl = "https://root-launch-site.sites.vm7.io";
-    const siteUrl = `${artifactUrl}/`;
-    setupHostedSiteArtifactThread(siteUrl, undefined, artifactUrl);
-
-    const sidebar = await screen.findByTestId("artifact-sidebar");
-    await waitFor(() => {
-      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
-      expect(within(sidebar).queryByLabelText("Edit presentation")).toBeNull();
-    });
-  });
-
-  it("offers to resume a saved HTML edit snapshot after entering edit mode from preview", async () => {
-    const user = userEvent.setup({ delay: null });
-    const siteUrl = "https://resume-after-preview.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-after-preview.html?v=1";
-    let snapshotLoads = 0;
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ respond }) => {
-        snapshotLoads += 1;
-        return respond(200, {
-          snapshot: {
-            artifactUrl: siteUrl,
-            snapshotUrl,
-            updatedAt: "2026-03-10T00:05:00Z",
-          },
-        });
-      },
-    );
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(
-        "<!doctype html><html><body><h1>Saved draft</h1></body></html>",
-        { headers: { "Content-Type": "text/html" } },
-      );
-    });
-    setupHostedSiteArtifactThread(siteUrl);
-
-    const sidebar = await screen.findByTestId("artifact-sidebar");
-    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-    expect(snapshotLoads).toBe(0);
-
-    await user.click(within(sidebar).getByLabelText("Edit page"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
-      expect(snapshotLoads).toBe(1);
-    });
-  });
-
-  it("does not offer to resume a saved HTML edit snapshot from the initial chat load", async () => {
-    const siteUrl = "https://resume-initial-load.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-initial-load.html?v=1";
-    let snapshotLoads = 0;
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ respond }) => {
-        snapshotLoads += 1;
-        return respond(200, {
-          snapshot: {
-            artifactUrl: siteUrl,
-            snapshotUrl,
-            updatedAt: "2026-03-10T00:05:00Z",
-          },
-        });
-      },
-    );
-    setupHostedSiteArtifactThread(
-      siteUrl,
-      undefined,
-      siteUrl,
-      hostedSiteEditPath(siteUrl),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-    expect(snapshotLoads).toBe(0);
-  });
-
-  it("offers to resume a saved HTML edit snapshot", async () => {
-    const user = userEvent.setup({ delay: null });
-    const siteUrl = "https://resume-draft.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-draft.html?v=1";
-    const restoredHtml =
-      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
-    const deletedUrls: string[] = [];
-    const savedBodies: string[] = [];
-    let contentFetches = 0;
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ query, respond }) => {
-        expect(query.url).toBe(siteUrl);
-        return respond(200, {
-          snapshot: {
-            artifactUrl: siteUrl,
-            snapshotUrl,
-            updatedAt: "2026-03-10T00:05:00Z",
-          },
-        });
-      },
-    );
-    context.mocks.api(
-      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
-      ({ query, respond }) => {
-        deletedUrls.push(query.url);
-        return respond(204);
-      },
-    );
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
-      expect(new URL(request.url).searchParams.get("url")).toBe(snapshotUrl);
-      contentFetches += 1;
-      return new Response(restoredHtml, {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    context.mocks.api(
-      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
-      ({ body, respond }) => {
-        savedBodies.push(body.html);
-        return respond(200, {
-          artifactUrl: body.url,
-          snapshotUrl,
-          updatedAt: "2026-03-10T00:06:00Z",
-        });
-      },
-    );
-    setupHostedSiteArtifactThread(siteUrl);
-    await enterHostedSiteEditMode(user);
-
-    // Content is prefetched once when the draft is detected, before Resume.
-    await waitFor(() => {
-      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
-      expect(contentFetches).toBe(1);
-    });
-    await user.click(screen.getByText("Resume"));
-
-    await waitFor(() => {
-      // Resume applies the draft as a publishable preview, not the comment editor.
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "srcdoc",
-        expect.stringContaining("Saved draft"),
-      );
-      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
-      expect(deletedUrls).toStrictEqual([siteUrl]);
-    });
-    // Resume reused the prefetched content instead of fetching again.
-    expect(contentFetches).toBe(1);
-    expect(
-      screen.queryByTestId("html-dom-comment-editor"),
-    ).not.toBeInTheDocument();
-    expect(
-      context.store.get(searchParams$).get(ARTIFACT_HTML_EDIT_PARAM),
-    ).toBeNull();
-    expect(savedBodies).toStrictEqual([]);
-  });
-
-  it("shows loading while resuming a saved HTML edit snapshot", async () => {
-    const user = userEvent.setup({ delay: null });
-    const siteUrl = "https://resume-loading.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-loading.html?v=1";
-    const restoredHtml =
-      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
-    const fetchReleased = createDeferredPromise<void>(context.signal);
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ respond }) => {
-        return respond(200, {
-          snapshot: {
-            artifactUrl: siteUrl,
-            snapshotUrl,
-            updatedAt: "2026-03-10T00:05:00Z",
-          },
-        });
-      },
-    );
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", async () => {
-      await fetchReleased.promise;
-      return new Response(restoredHtml, {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    context.mocks.api(
-      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
-      ({ respond }) => {
-        return respond(204);
-      },
-    );
-    setupHostedSiteArtifactThread(siteUrl);
-    await enterHostedSiteEditMode(user);
-
-    await waitFor(() => {
-      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
-    });
-    const resumeButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Resume";
-    });
-    if (!resumeButton) {
-      throw new Error("Resume button not found");
-    }
-    await user.click(resumeButton);
-
-    await waitFor(() => {
-      expect(resumeButton).toBeDisabled();
-      expect(resumeButton).toHaveAttribute("aria-busy", "true");
-    });
-    fetchReleased.resolve();
-
-    await waitFor(() => {
-      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "srcdoc",
-        expect.stringContaining("Saved draft"),
-      );
-    });
-  });
-
-  it("applies the resumed draft as a publishable preview state", async () => {
-    const user = userEvent.setup({ delay: null });
-    const siteUrl = "https://resume-apply.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-apply.html?v=1";
-    const restoredHtml =
-      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
-    const immutableArtifactUrl =
-      "https://dpl-dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a.sites.vm7.io";
-    let redeployedHtml: string | null = null;
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ respond }) => {
-        return respond(200, {
-          snapshot: {
-            artifactUrl: siteUrl,
-            snapshotUrl,
-            updatedAt: "2026-03-10T00:05:00Z",
-          },
-        });
-      },
-    );
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(restoredHtml, {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    context.mocks.api(
-      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
-      ({ respond }) => {
-        return respond(204);
-      },
-    );
-    context.mocks.api(zeroHostContract.redeployHtml, ({ body, respond }) => {
-      redeployedHtml = body.html;
-      return respond(200, {
-        siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
-        deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
-        publicSlug: "resume-apply",
-        url: body.url,
-        deploymentVersion: 2,
-        artifactUrl: immutableArtifactUrl,
-        aliasUrl: body.url,
-        isActive: true,
-        activeDeploymentVersion: 2,
-        status: "ready",
-      });
-    });
-    setupHostedSiteArtifactThread(siteUrl);
-    await enterHostedSiteEditMode(user);
-
-    await waitFor(() => {
-      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
-    });
-    await user.click(screen.getByText("Resume"));
-
-    await waitFor(() => {
-      // Resume lands directly on the publishable draft preview.
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "srcdoc",
-        expect.stringContaining("Saved draft"),
-      );
-      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByTestId("html-dom-draft-publish"));
-
-    await waitFor(() => {
-      expect(redeployedHtml).toBe(restoredHtml);
-      expect(context.store.get(searchParams$).get("artifact")).toBe(
-        immutableArtifactUrl,
-      );
-    });
-  });
-
-  it("persists the generated HTML draft even without an active edit target", async () => {
-    const siteUrl = "https://send-draft.sites.vm7.io/index.html";
-    const generatedHtml =
-      "<!doctype html><html><body><h1>Generated draft</h1></body></html>";
-    const savedBodies: string[] = [];
-
-    context.mocks.api(
-      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
-      ({ body, params, respond }) => {
-        expect(params.threadId).toBe(THREAD_ID);
-        expect(body.url).toBe(siteUrl);
-        savedBodies.push(body.html);
-        return respond(200, {
-          artifactUrl: body.url,
-          snapshotUrl:
-            "https://cdn.vm7.io/artifacts/html-edit-drafts/send-draft.html?v=1",
-          updatedAt: "2026-03-10T00:06:00Z",
-        });
-      },
-    );
-
-    // No active target is set (mimics the agent returning after the user has
-    // switched away): the save must still persist using the captured values.
-    context.store.set(saveCapturedHtmlEditSnapshotDraft$, {
-      html: generatedHtml,
-      threadId: THREAD_ID,
-      url: siteUrl,
-    });
-    await waitFor(() => {
-      expect(savedBodies).toStrictEqual([generatedHtml]);
-    });
-  });
-
-  it("discards a generated HTML edit draft without reopening the restore dialog", async () => {
-    const user = userEvent.setup({ delay: null });
-    const siteUrl = "https://discard-generated-draft.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/discard-generated-draft.html?v=1";
-    const draftHtml =
-      "<!doctype html><html><body><h1>Generated draft</h1></body></html>";
-    const deletedUrls: string[] = [];
-    const savedBodies: string[] = [];
-    const deleteFinished = createDeferredPromise<void>(context.signal);
-    const deleteStarted = createDeferredPromise<void>(context.signal);
-    let snapshotLoads = 0;
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ respond }) => {
-        snapshotLoads += 1;
-        return respond(200, {
-          snapshot:
-            savedBodies.length > 0
-              ? {
-                  artifactUrl: siteUrl,
-                  snapshotUrl,
-                  updatedAt: "2026-03-10T00:06:00Z",
-                }
-              : null,
-        });
-      },
-    );
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(draftHtml, {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    context.mocks.api(
-      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
-      ({ body, respond }) => {
-        savedBodies.push(body.html);
-        return respond(200, {
-          artifactUrl: body.url,
-          snapshotUrl,
-          updatedAt: "2026-03-10T00:06:00Z",
-        });
-      },
-    );
-    context.mocks.api(
-      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
-      async ({ query, respond }) => {
-        deletedUrls.push(query.url);
-        deleteStarted.resolve();
-        await deleteFinished.promise;
-        return respond(204);
-      },
-    );
-    setupHostedSiteArtifactThread(siteUrl);
-    await enterHostedSiteEditMode(user);
-
-    await waitFor(() => {
-      expect(snapshotLoads).toBe(1);
-    });
-    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-
-    context.store.set(saveCapturedHtmlEditSnapshotDraft$, {
-      html: draftHtml,
-      threadId: THREAD_ID,
-      url: siteUrl,
-    });
-    await waitFor(() => {
-      expect(savedBodies).toStrictEqual([draftHtml]);
-    });
-    context.store.set(applyHtmlDomEditPreview$, {
-      html: draftHtml,
-      url: siteUrl,
-    });
-    context.store.set(closeArtifactHtmlEditMode$);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
-    });
-    await user.click(screen.getByTestId("html-dom-draft-discard"));
-    await deleteStarted.promise;
-    await Promise.resolve();
-
-    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-    expect(snapshotLoads).toBe(1);
-    expect(deletedUrls).toStrictEqual([siteUrl]);
-    expect(
-      screen.queryByTestId("html-dom-draft-toolbar"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
-    expect(screen.getByTestId("html-dom-toolbar-discard")).toBeDisabled();
-    expect(screen.queryByTestId("html-dom-toolbar-comments-count")).toBeNull();
-    deleteFinished.resolve();
-  });
-
-  it("discards a saved HTML edit snapshot from the restore dialog", async () => {
-    const user = userEvent.setup({ delay: null });
-    const siteUrl = "https://discard-draft.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/discard-draft.html?v=1";
-    const deletedUrls: string[] = [];
-    const deleteFinished = createDeferredPromise<void>(context.signal);
-    const deleteStarted = createDeferredPromise<void>(context.signal);
-    const deleteCompleted = createDeferredPromise<void>(context.signal);
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ respond }) => {
-        return respond(200, {
-          snapshot: {
-            artifactUrl: siteUrl,
-            snapshotUrl,
-            updatedAt: "2026-03-10T00:05:00Z",
-          },
-        });
-      },
-    );
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(
-        "<!doctype html><html><body><h1>Discarded</h1></body></html>",
-        { headers: { "Content-Type": "text/html" } },
-      );
-    });
-    context.mocks.api(
-      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
-      async ({ query, respond }) => {
-        deletedUrls.push(query.url);
-        deleteStarted.resolve();
-        await deleteFinished.promise;
-        deleteCompleted.resolve();
-        return respond(204);
-      },
-    );
-    setupHostedSiteArtifactThread(siteUrl);
-    await enterHostedSiteEditMode(user);
-
-    await waitFor(() => {
-      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
-    });
-    await user.click(
-      within(screen.getByTestId("html-edit-snapshot-restore-dialog")).getByText(
-        "Discard",
-      ),
-    );
-
-    await waitFor(() => {
-      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("html-dom-draft-toolbar"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
-    await deleteStarted.promise;
-    expect(deletedUrls).toStrictEqual([siteUrl]);
-    deleteFinished.resolve();
-    await deleteCompleted.promise;
-  });
-
-  it("dismisses the restore dialog with Escape without deleting the draft", async () => {
-    const user = userEvent.setup({ delay: null });
-    const siteUrl = "https://dismiss-draft.sites.vm7.io/index.html";
-    const snapshotUrl =
-      "https://cdn.vm7.io/artifacts/html-edit-drafts/dismiss-draft.html?v=1";
-    const deletedUrls: string[] = [];
-
-    context.mocks.api(
-      chatThreadArtifactsContract.getHtmlEditSnapshot,
-      ({ respond }) => {
-        return respond(200, {
-          snapshot: {
-            artifactUrl: siteUrl,
-            snapshotUrl,
-            updatedAt: "2026-03-10T00:05:00Z",
-          },
-        });
-      },
-    );
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(
-        "<!doctype html><html><body><h1>Dismissed</h1></body></html>",
-        { headers: { "Content-Type": "text/html" } },
-      );
-    });
-    context.mocks.api(
-      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
-      ({ query, respond }) => {
-        deletedUrls.push(query.url);
-        return respond(204);
-      },
-    );
-    setupHostedSiteArtifactThread(siteUrl);
-    await enterHostedSiteEditMode(user);
-
-    await waitFor(() => {
-      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
-    });
-    await user.keyboard("{Escape}");
-
-    await waitFor(() => {
-      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-    });
-    // Dismiss keeps the draft in the DB (no delete) and shows the original.
-    expect(deletedUrls).toStrictEqual([]);
-    expect(
-      screen.queryByTestId("html-dom-draft-toolbar"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
   });
 
   it("resizes the artifact preview pane and persists the width", async () => {
@@ -1413,6 +394,12 @@ describe("zero artifact sidebar", () => {
     ).toBe("min(760px, 48vw)");
 
     fireEvent.pointerDown(resizeHandle, { clientX: 760 });
+
+    const chatThread = screen.getByLabelText("Chat thread");
+    chatThread.focus();
+    chatThread.blur();
+    expect(document.body).toHaveFocus();
+
     fireEvent.pointerMove(window, { clientX: 700 });
 
     await waitFor(() => {
@@ -1421,6 +408,7 @@ describe("zero artifact sidebar", () => {
       ).toBe("clamp(400px, 700px, calc(100% - 600px))");
       expect(context.store.get(artifactPanelWidth$)).toBe(700);
     });
+    expect(document.body).toHaveFocus();
     expect(document.body.style.cursor).toBe("col-resize");
     expect(document.body.style.userSelect).toBe("none");
 
@@ -2224,323 +1212,6 @@ describe("zero artifact sidebar", () => {
     }
   });
 
-  it("hides presentation PPTX export actions when the feature switch is disabled", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
-    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationExport]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Download")).toBeInTheDocument();
-    });
-    const menuItemLabels = queryAllByRoleFast("menuitem").map((element) => {
-      return element.textContent?.replace(/\s+/g, " ").trim();
-    });
-    expect(menuItemLabels).not.toContain("Download (.pptx)");
-    expect(menuItemLabels).not.toContain("Upload to Google Slides");
-
-    click(screen.getByTestId("artifact-download-menu-dismiss-layer"));
-    click(screen.getByLabelText("Edit presentation"));
-    await waitFor(() => {
-      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
-    });
-    expect(screen.queryByLabelText("Download edited PPTX")).toBeNull();
-  });
-
-  it("downloads a presentation artifact as PPTX from the sidebar", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
-    const downloads = captureDownloads(context.signal);
-    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationExport]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
-    });
-    expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-      "tabindex",
-      "-1",
-    );
-
-    click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
-    });
-    click(menuItemByText("Download (.pptx)"));
-    const downloadButton = screen.getByLabelText("Download artifact");
-
-    await waitFor(() => {
-      expect(downloadButton).toHaveAttribute("aria-busy", "true");
-      expect(downloadButton).toBeDisabled();
-      expect(downloadButton.querySelector(".animate-spin")).not.toBeNull();
-    });
-
-    const exportFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation PPTX export"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
-
-    await waitFor(() => {
-      expect(downloads).toContain("quarterly-roadmap.pptx");
-      expect(
-        document.querySelector('iframe[title="Presentation PPTX export"]'),
-      ).not.toBeInTheDocument();
-      expect(downloadButton).not.toHaveAttribute("aria-busy");
-      expect(downloadButton).not.toBeDisabled();
-      expect(downloadButton.querySelector(".animate-spin")).toBeNull();
-    });
-  });
-
-  it("uploads a presentation artifact to Google Slides without opening a new tab", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
-    const openMock = context.mocks.browser.open(
-      context.mocks.browser.authWindow(),
-    );
-    const successToast = vi.spyOn(toast, "success");
-    context.mocks.data.connectors([googleDriveConnector()]);
-    const upload = mockPresentationGoogleSlidesUpload({
-      response: {
-        id: "slides-file-quarterly-roadmap",
-        name: "quarterly-roadmap",
-        webViewLink:
-          "https://docs.google.com/presentation/d/slides-file-quarterly-roadmap/edit",
-      },
-    });
-    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationExport]: true,
-      },
-    });
-
-    try {
-      await waitFor(() => {
-        expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-        expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
-      });
-
-      click(screen.getByLabelText("Download artifact"));
-      await waitFor(() => {
-        expect(menuItemByText("Upload to Google Slides")).toBeInTheDocument();
-      });
-      click(menuItemByText("Upload to Google Slides"));
-
-      const exportFrame = await waitFor(() => {
-        const frame = document.querySelector(
-          'iframe[title="Presentation PPTX export"]',
-        );
-        expect(frame).toBeInstanceOf(HTMLIFrameElement);
-        return frame as HTMLIFrameElement;
-      });
-      expect(openMock.calls).toStrictEqual([]);
-
-      const pptx = await presentationPptxBlob();
-      completePresentationPptxExport(exportFrame, pptx);
-
-      await waitFor(() => {
-        expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
-        expect(successToast).toHaveBeenCalledWith("Uploaded to Google Slides", {
-          id: expect.anything(),
-        });
-        expect(
-          document.querySelector('iframe[title="Presentation PPTX export"]'),
-        ).not.toBeInTheDocument();
-      });
-      expect(upload.prepared).toStrictEqual({
-        contentType: PRESENTATION_PPTX_MIME_TYPE,
-        filename: "quarterly-roadmap.pptx",
-        size: upload.uploaded?.size,
-      });
-      expect(upload.uploaded?.size).toBeGreaterThanOrEqual(pptx.size);
-      expect(upload.uploaded?.type).toBe(PRESENTATION_PPTX_MIME_TYPE);
-      expect(openMock.calls).toStrictEqual([]);
-    } finally {
-      successToast.mockRestore();
-    }
-  });
-
-  it("requires Google Drive connection before uploading a presentation to Google Slides", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
-    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationExport]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      const connectActions = queryAllByRoleFast("menuitem").filter(
-        (element) => {
-          return element.textContent?.trim() === "Connect Google Drive";
-        },
-      );
-      expect(connectActions).toHaveLength(2);
-      expect(
-        queryAllByRoleFast("menuitem").find((element) => {
-          return element.textContent?.trim() === "Upload to Google Slides";
-        }),
-      ).toBeUndefined();
-    });
-  });
-
-  it("uploads a presentation to Google Slides after authorizing Google Drive for the agent", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
-    const artifactFiles = [
-      artifactFile(presentationUrl, {
-        id: "artifact-quarterly-roadmap",
-        filename: "quarterly-roadmap.html",
-        contentType: "text/html",
-        artifactKind: "presentation-html",
-        googleDriveSync: { status: "disconnected" },
-        size: 1024,
-      }),
-    ];
-    context.mocks.data.connectors([googleDriveConnector()]);
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-      return respond(200, { connectors: [] });
-    });
-    context.mocks.http.get(presentationUrl, () => {
-      return new Response(presentationHtml(), {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(presentationHtml(), {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    let agentAuthorized = false;
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, {
-        enabledTypes: agentAuthorized ? ["google-drive"] : [],
-      });
-    });
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ body, params, respond }) => {
-        expect(params.id).toBe(AGENT_ID);
-        expect(body).toStrictEqual({
-          enabledTypes: ["google-drive"],
-          operation: "add",
-        });
-        agentAuthorized = true;
-        return respond(200, { enabledTypes: ["google-drive"] });
-      },
-    );
-    const upload = mockPresentationGoogleSlidesUpload({
-      beforeFinalize: () => {
-        expect(agentAuthorized).toBeTruthy();
-      },
-      response: {
-        id: "slides-file-quarterly-roadmap",
-        name: "quarterly-roadmap",
-        webViewLink: null,
-      },
-    });
-    setupChatThread({
-      artifactFiles,
-      content: `[Quarterly roadmap](${presentationUrl})`,
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationExport]: true,
-      },
-      path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Connect Google Drive")).toBeEnabled();
-    });
-    click(menuItemByText("Connect Google Drive"));
-
-    await waitFor(() => {
-      expect(agentAuthorized).toBeTruthy();
-    });
-    const exportFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation PPTX export"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
-
-    await waitFor(() => {
-      expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
-    });
-    expect(upload.uploaded?.size).toBeGreaterThan(0);
-  });
-
-  it("preserves deck-level slide backgrounds for editable PPTX export", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/dog-world.html";
-    const downloads = captureDownloads(context.signal);
-    setupPresentationArtifactThread(
-      presentationUrl,
-      presentationHtmlWithDeckBackground(),
-      {
-        featureSwitches: {
-          [FeatureSwitchKey.PresentationExport]: true,
-        },
-      },
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
-    });
-    click(menuItemByText("Download (.pptx)"));
-
-    const exportFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation PPTX export"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-
-    expect(exportFrame.srcdoc).toContain(
-      "copyInheritedSlideBackgrounds(nodes);",
-    );
-    expect(exportFrame.srcdoc).toContain("background: var(--bg)");
-    expect(exportFrame.srcdoc).toContain("狗狗的世界");
-
-    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
-
-    await waitFor(() => {
-      expect(downloads).toContain("dog-world.pptx");
-      expect(
-        document.querySelector('iframe[title="Presentation PPTX export"]'),
-      ).not.toBeInTheDocument();
-    });
-  });
-
   it("renders inline previews from assistant artifact links without breaking markdown tables or code blocks", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/run-2/chart.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/run-2/demo.mp4";
@@ -2637,636 +1308,6 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
-  it("shows a presentation editor error when the source deck cannot be loaded", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/missing-roadmap.html";
-    context.mocks.http.get(presentationUrl, () => {
-      return new Response(null, { status: 503 });
-    });
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(null, { status: 503 });
-    });
-    setupChatThread({
-      artifactFiles: [
-        artifactFile(presentationUrl, {
-          id: "artifact-missing-roadmap",
-          filename: "missing-roadmap.html",
-          contentType: "text/html",
-          artifactKind: "presentation-html",
-          size: 1024,
-        }),
-      ],
-      content: `[Missing roadmap](${presentationUrl})`,
-      path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Edit presentation"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to fetch presentation HTML (503)"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("resolves relative presentation assets from the hosted deck while editing", async () => {
-    const thumbnailObserver = mockIntersectionObserver();
-    const presentationUrl = "https://relative-assets.sites.vm7.io/index.html";
-    const expectedImageUrl =
-      "https://relative-assets.sites.vm7.io/assets/user-upload.png";
-    const browser = context.mocks.browser.blobDownload();
-    const html = `<!doctype html>
-<html>
-  <head>
-    <title>Relative assets</title>
-    <script id="vm0-deck-metadata" type="application/json">
-      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
-    </script>
-  </head>
-  <body>
-    <section data-vm0-slide data-slide-id="slide-intro">
-      <h1 data-vm0-editable="text" data-vm0-edit-id="intro">Intro</h1>
-    </section>
-    <section data-vm0-slide data-slide-id="slide-workflows">
-      <h2 data-vm0-editable="text" data-vm0-edit-id="workflows">Workflows</h2>
-      <img src="./assets/user-upload.png" alt="User upload" />
-    </section>
-  </body>
-</html>`;
-    setupPresentationArtifactThread(presentationUrl, html);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Edit presentation"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Open slide 2")).toBeInTheDocument();
-    });
-    thumbnailObserver.triggerAll();
-
-    const thumbnailFrame = document.querySelector(
-      'iframe[data-slide-thumbnail-frame="slide-workflows"]',
-    );
-    if (!(thumbnailFrame instanceof HTMLIFrameElement)) {
-      throw new Error("Presentation thumbnail frame not found");
-    }
-    const resolvedImageUrl = async (frame: HTMLIFrameElement) => {
-      const previewHtml = await generatedPresentationPreviewHtml(
-        frame,
-        browser.blobForUrl,
-      );
-      const previewDocument = new DOMParser().parseFromString(
-        previewHtml,
-        "text/html",
-      );
-      const baseHref = previewDocument
-        .querySelector("base[href]")
-        ?.getAttribute("href");
-      const imageSrc = previewDocument
-        .querySelector('img[alt="User upload"]')
-        ?.getAttribute("src");
-      if (!baseHref || !imageSrc) {
-        throw new Error("Relative presentation asset base not found");
-      }
-      return new URL(imageSrc, baseHref).href;
-    };
-    await expect(resolvedImageUrl(thumbnailFrame)).resolves.toBe(
-      expectedImageUrl,
-    );
-
-    click(screen.getByLabelText("Open slide 2"));
-    const previewFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation preview"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    await expect(resolvedImageUrl(previewFrame)).resolves.toBe(
-      expectedImageUrl,
-    );
-
-    const previewDocument = await installGeneratedPresentationPreviewDocument(
-      previewFrame,
-      browser.blobForUrl,
-    );
-    fireEvent.load(previewFrame);
-    const title = previewDocument.querySelector(
-      '[data-vm0-editor-edit-id="workflows"]',
-    );
-    if (!(title instanceof HTMLElement)) {
-      throw new Error("Presentation workflow title not found");
-    }
-    const initialThumbnailUrl = thumbnailFrame.src;
-    title.textContent = "Reusable workflows";
-    fireEvent.input(title);
-    fireEvent.blur(title);
-
-    await waitFor(() => {
-      expect(thumbnailFrame.src).not.toBe(initialThumbnailUrl);
-    });
-    await expect(resolvedImageUrl(thumbnailFrame)).resolves.toBe(
-      expectedImageUrl,
-    );
-  });
-
-  it("preserves the authored presentation background while editing", async () => {
-    const presentationUrl =
-      "https://deck.sites.vm7.io/authored-background.html";
-    const browser = context.mocks.browser.blobDownload();
-    const html = `<!doctype html>
-<html>
-  <head>
-    <script id="vm0-deck-metadata" type="application/json">
-      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
-    </script>
-    <style>
-      :root { --paper: #f6f5f1; }
-      html, body { margin: 0; min-height: 100%; background: var(--paper); }
-      .slide { min-height: 100vh; }
-    </style>
-  </head>
-  <body>
-    <section class="slide" data-vm0-slide data-slide-id="slide-cover">
-      <h1>Cover</h1>
-    </section>
-  </body>
-</html>`;
-    setupPresentationArtifactThread(presentationUrl, html);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Edit presentation"));
-
-    const previewFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation preview"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    const previewDocument = await installGeneratedPresentationPreviewDocument(
-      previewFrame,
-      browser.blobForUrl,
-    );
-
-    expect(
-      previewDocument.defaultView?.getComputedStyle(previewDocument.body)
-        .backgroundColor,
-    ).toBe("#f6f5f1");
-  });
-
-  it("resolves relative presentation assets before downloading without speaker notes", async () => {
-    const presentationUrl =
-      "https://fast-deployment-repro-0bf41598-7febdf9b.sites.vm7.io/";
-    const assetPath = "assets/deployment-pipeline.svg";
-    const expectedAssetUrl =
-      "https://fast-deployment-repro-0bf41598-7febdf9b.sites.vm7.io/assets/deployment-pipeline.svg";
-    const externalAssetUrl =
-      "https://images.unsplash.com/photo-1497366754035-f200968a6e72";
-    const downloads = captureDownloads(context.signal);
-    setupPresentationArtifactThread(
-      presentationUrl,
-      assetBackedPresentationHtml(assetPath, externalAssetUrl),
-      {
-        featureSwitches: {
-          [FeatureSwitchKey.PresentationExport]: true,
-        },
-        hostedResources: {
-          [expectedAssetUrl]: {
-            body: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
-            contentType: "image/svg+xml",
-          },
-        },
-      },
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
-    });
-    click(menuItemByText("Download (.pptx)"));
-
-    const exportFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation PPTX export"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    const exportDocument = new DOMParser().parseFromString(
-      exportFrame.srcdoc,
-      "text/html",
-    );
-    expect(exportDocument.querySelector("base")?.getAttribute("href")).toBe(
-      presentationUrl,
-    );
-    const images = Array.from(exportDocument.querySelectorAll("img"));
-    const inlinedAssetUrl = images[0]?.getAttribute("src");
-    expect(inlinedAssetUrl).toMatch(/^data:image\/svg\+xml;base64,/);
-    expect(images[1]?.getAttribute("src")).toBe(externalAssetUrl);
-    expect(exportDocument.querySelector("style")?.textContent).toContain(
-      `url("${inlinedAssetUrl}")`,
-    );
-    expect(
-      exportDocument.querySelector("section")?.getAttribute("style"),
-    ).toContain(`url("${inlinedAssetUrl}")`);
-    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
-
-    await waitFor(() => {
-      expect(downloads).toContain(
-        "fast-deployment-repro-0bf41598-7febdf9b.pptx",
-      );
-      expect(
-        document.querySelector('iframe[title="Presentation PPTX export"]'),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("exits the presentation editor without publishing draft changes", async () => {
-    const thumbnailObserver = mockIntersectionObserver();
-    const presentationUrl =
-      "https://deck.sites.vm7.io/exit-without-saving.html";
-    const browser = context.mocks.browser.blobDownload();
-    let redeployCount = 0;
-
-    context.mocks.api(
-      zeroHostContract.redeployPresentationHtml,
-      ({ respond }) => {
-        redeployCount += 1;
-        return respond(200, {
-          siteId: "44444444-4444-4444-8444-444444444444",
-          deploymentId: "55555555-5555-4555-8555-555555555555",
-          publicSlug: "exit-without-saving",
-          url: presentationUrl,
-          status: "ready",
-        });
-      },
-    );
-    setupPresentationArtifactThread(presentationUrl);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Edit presentation"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
-        "Open with launch metrics.",
-      );
-    });
-    const slideList = screen.getByTestId("presentation-editor-slide-list");
-    await waitFor(() => {
-      expect(thumbnailObserver.activeRoots()).toStrictEqual([slideList]);
-      expect(thumbnailObserver.observedTargetCount()).toBe(1);
-    });
-    const activeThumbnail = document.querySelector(
-      'iframe[data-slide-thumbnail-frame="slide-intro"]',
-    );
-    if (!(activeThumbnail instanceof HTMLIFrameElement)) {
-      throw new Error("Active presentation thumbnail frame not found");
-    }
-    const activeThumbnailUrl = activeThumbnail.dataset.vm0EditorObjectUrl;
-    expect(activeThumbnailUrl).toMatch(/^blob:/u);
-
-    await fill(
-      screen.getByLabelText("Speaker notes"),
-      "Discard this local draft.",
-    );
-
-    click(screen.getByLabelText("Close presentation editor"));
-    await waitFor(() => {
-      expect(
-        screen.getByText("Do you want to save your changes?", {
-          selector: "h2",
-        }),
-      ).toBeInTheDocument();
-    });
-    expect(redeployCount).toBe(0);
-    expect(thumbnailObserver.activeRoots()).toStrictEqual([slideList]);
-    expect(thumbnailObserver.observedTargetCount()).toBe(1);
-
-    click(screen.getByText("Discard"));
-    await waitFor(() => {
-      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
-    });
-    expect(redeployCount).toBe(0);
-    expect(thumbnailObserver.activeRoots()).toStrictEqual([]);
-    expect(thumbnailObserver.observedTargetCount()).toBe(0);
-    expect(browser.revokedUrls).toContain(activeThumbnailUrl);
-
-    click(screen.getByLabelText("Edit presentation"));
-    await waitFor(() => {
-      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
-        "Open with launch metrics.",
-      );
-    });
-    const reopenedSlideList = screen.getByTestId(
-      "presentation-editor-slide-list",
-    );
-    expect(thumbnailObserver.activeRoots()).toStrictEqual([reopenedSlideList]);
-    expect(thumbnailObserver.observedTargetCount()).toBe(1);
-
-    click(screen.getByLabelText("Close presentation editor"));
-    await waitFor(() => {
-      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
-    });
-    expect(
-      screen.queryByText("Do you want to save your changes?", {
-        selector: "h2",
-      }),
-    ).not.toBeInTheDocument();
-    expect(redeployCount).toBe(0);
-    expect(thumbnailObserver.activeRoots()).toStrictEqual([]);
-    expect(thumbnailObserver.observedTargetCount()).toBe(0);
-  });
-
-  it("edits and downloads a presentation artifact from the editor", async () => {
-    const thumbnailObserver = mockIntersectionObserver();
-    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
-    const downloads = captureDownloads(context.signal);
-    const speakerNotesResponse = Promise.withResolvers<void>();
-    let generatedSlides: { slideId: string; speakerNotes: string }[] = [
-      {
-        slideId: "slide-plan",
-        speakerNotes: "Generated hiring notes.",
-      },
-    ];
-    context.mocks.api(
-      zeroHostContract.redeployPresentationHtml,
-      ({ respond }) => {
-        return respond(200, {
-          siteId: "22222222-2222-4222-8222-222222222222",
-          deploymentId: "33333333-3333-4333-8333-333333333333",
-          publicSlug: "quarterly-roadmap",
-          url: presentationUrl,
-          status: "ready",
-        });
-      },
-    );
-    context.mocks.api(
-      zeroHostContract.generatePresentationSpeakerNotes,
-      async ({ respond }) => {
-        await speakerNotesResponse.promise;
-        return respond(200, {
-          kind: "presentation-speaker-notes-patch",
-          version: 1,
-          slides: generatedSlides,
-        });
-      },
-    );
-    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationExport]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Edit presentation"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
-      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
-        "Open with launch metrics.",
-      );
-      expect(screen.getByLabelText("Open slide 2")).toBeInTheDocument();
-    });
-
-    thumbnailObserver.triggerAll();
-    const slidePlanThumbnail = document.querySelector(
-      'iframe[data-slide-thumbnail-frame="slide-plan"]',
-    );
-    expect(slidePlanThumbnail).toBeInstanceOf(HTMLIFrameElement);
-    expect((slidePlanThumbnail as HTMLIFrameElement).src).toMatch(/^blob:/u);
-
-    click(screen.getByLabelText("Open slide 2"));
-    await waitFor(() => {
-      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
-        "Explain the hiring plan.",
-      );
-    });
-
-    const previewFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation preview"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    const previewDocument =
-      previewFrame.contentDocument ??
-      document.implementation.createHTMLDocument("presentation preview");
-    Object.defineProperty(previewFrame, "contentDocument", {
-      configurable: true,
-      value: previewDocument,
-    });
-    previewDocument.body.innerHTML = [
-      '<h1 data-vm0-editor-slide-id="slide-plan" data-vm0-editor-edit-id="plan">Hiring Plan</h1>',
-      '<p data-vm0-editor-slide-id="slide-plan">Missing edit id</p>',
-    ].join("");
-    fireEvent.load(previewFrame);
-    const editableTitle = previewDocument.querySelector(
-      '[data-vm0-editor-edit-id="plan"]',
-    );
-    if (!(editableTitle instanceof HTMLElement)) {
-      throw new Error("Presentation editable title not found");
-    }
-    await waitFor(() => {
-      expect(editableTitle.getAttribute("contenteditable")).toBe("true");
-      expect(editableTitle.getAttribute("role")).toBe("textbox");
-    });
-    editableTitle.textContent = "Revised Hiring Plan";
-    editableTitle.dispatchEvent(new Event("input", { bubbles: true }));
-    editableTitle.dispatchEvent(new FocusEvent("blur"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    });
-
-    await fill(
-      screen.getByLabelText("Speaker notes"),
-      "Explain hiring and onboarding capacity.",
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Speaker notes"), " ");
-    click(screen.getByLabelText("Generate speaker notes"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Generating speaker notes")).toHaveAttribute(
-        "data-generating",
-        "true",
-      );
-      expect(screen.getByText("Generating")).toBeInTheDocument();
-    });
-    speakerNotesResponse.resolve();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Added speaker notes to 1 slide"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
-        "Generated hiring notes.",
-      );
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Added speaker notes to 1 slide"),
-      ).not.toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Generate speaker notes"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("All speaker notes are filled"),
-      ).toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("All speaker notes are filled"),
-      ).not.toBeInTheDocument();
-    });
-
-    generatedSlides = [
-      {
-        slideId: "missing-slide",
-        speakerNotes: "This should not apply.",
-      },
-    ];
-    await fill(screen.getByLabelText("Speaker notes"), " ");
-    click(screen.getByLabelText("Generate speaker notes"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("No speaker notes were added"),
-      ).toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("No speaker notes were added"),
-      ).not.toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Download edited PPTX"));
-    await waitFor(() => {
-      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
-    });
-    const exportFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation PPTX export"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
-    await waitFor(() => {
-      expect(downloads).toContain("quarterly-roadmap.pptx");
-      expect(
-        document.querySelector('iframe[title="Presentation PPTX export"]'),
-      ).not.toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Presentation updated"),
-      ).not.toBeInTheDocument();
-    });
-
-    await fill(
-      screen.getByLabelText("Speaker notes"),
-      "Try a failing PPTX export.",
-    );
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Download edited PPTX"));
-    await waitFor(() => {
-      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
-    });
-    const failedExportFrame = await waitFor(() => {
-      const frame = document.querySelector(
-        'iframe[title="Presentation PPTX export"]',
-      );
-      expect(frame).toBeInstanceOf(HTMLIFrameElement);
-      return frame as HTMLIFrameElement;
-    });
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        data: {
-          message: "Export failed",
-          status: "error",
-          type: "vm0-presentation-pptx-export",
-        },
-        source: failedExportFrame.contentWindow,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("PPTX download failed")).toBeInTheDocument();
-      expect(
-        document.querySelector('iframe[title="Presentation PPTX export"]'),
-      ).not.toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("PPTX download failed"),
-      ).not.toBeInTheDocument();
-    });
-
-    await fill(
-      screen.getByLabelText("Speaker notes"),
-      "Close with the onboarding capacity decision.",
-    );
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Close presentation editor"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Do you want to save your changes?", {
-          selector: "h2",
-        }),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByText("Save"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
-      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Presentation updated"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
   it("refreshes artifact metadata while another artifact preview is open", async () => {
     const user = userEvent.setup({ delay: null });
     const existingUrl =
@@ -3332,8 +1373,10 @@ ${openFencedHostedSiteUrl}`,
     );
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByLabelText("Edit presentation"),
+    ).not.toBeInTheDocument();
   });
 
   it("browses artifact inbox sections, searches, and opens a result", async () => {
@@ -3344,6 +1387,10 @@ ${openFencedHostedSiteUrl}`,
     const videoUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-demo.mp4";
     const audioUrl = "https://cdn.vm7.io/artifacts/test/run-1/voice-note.mp3";
     const htmlUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-site.html";
+    const videoPreviewImageUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/launch-demo-poster.jpg";
+    const htmlPreviewImageUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/launch-site-preview.webp";
     const pdfUrl = "https://cdn.vm7.io/artifacts/test/run-1/rollout-plan.pdf";
     const csvUrl = "https://cdn.vm7.io/artifacts/test/run-1/metrics.csv";
     const logUrl = "https://cdn.vm7.io/artifacts/test/run-1/debug.log";
@@ -3369,6 +1416,7 @@ ${openFencedHostedSiteUrl}`,
           filename: "launch-demo.mp4",
           contentType: "video/mp4",
           size: 2_048_000,
+          previewImageUrl: videoPreviewImageUrl,
         }),
         artifactFile(audioUrl, {
           id: "artifact-audio",
@@ -3381,6 +1429,7 @@ ${openFencedHostedSiteUrl}`,
           filename: "launch-site.html",
           contentType: "text/html",
           size: 4096,
+          previewImageUrl: htmlPreviewImageUrl,
         }),
         artifactFile(pdfUrl, {
           id: "artifact-pdf",
@@ -3434,6 +1483,28 @@ ${openFencedHostedSiteUrl}`,
     expect(
       screen.getByTestId("artifact-html-preview-badge"),
     ).toBeInTheDocument();
+    const videoThumbnail = screen.getByTestId("artifact-video-thumbnail-badge");
+    const htmlThumbnail = screen.getByTestId("artifact-html-thumbnail-badge");
+    expect(videoThumbnail).toHaveAttribute("src", videoPreviewImageUrl);
+    expect(htmlThumbnail).toHaveAttribute("src", htmlPreviewImageUrl);
+    expect(
+      screen.queryByTestId("artifact-video-preview-fallback"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle("launch-site.html artifact thumbnail"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.error(videoThumbnail);
+    fireEvent.error(htmlThumbnail);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-video-preview-fallback"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTitle("launch-site.html artifact thumbnail"),
+      ).toBeInTheDocument();
+    });
 
     click(screen.getByTestId("artifact-inbox-fullscreen-toggle"));
     await waitFor(() => {

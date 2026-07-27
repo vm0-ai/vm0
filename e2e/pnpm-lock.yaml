@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@clerk/testing':
-        specifier: ^2.1.1
-        version: 2.1.1(@playwright/test@1.60.0)
+        specifier: ^2.2.13
+        version: 2.2.13(@playwright/test@1.60.0)
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
@@ -30,12 +30,12 @@ importers:
 
 packages:
 
-  '@clerk/backend@3.7.0':
-    resolution: {integrity: sha512-tdURxlfJ8sYR+zM6bUNsG4/BpxH7MV66E5NmHbjIoggUm48SdVoBtKUSjxT0uVa8MpdYHqPk/I0mMdI/EC1B/g==}
+  '@clerk/backend@3.13.1':
+    resolution: {integrity: sha512-iFsPemW1862vnciPC8qpherSG4M4/vnwCNGzZ9waZtco+h5UIDP8qXBruAbo/JYA3Z3DpSaFjhoakelONWku7Q==}
     engines: {node: '>=20.9.0'}
 
-  '@clerk/shared@4.17.1':
-    resolution: {integrity: sha512-9Ej2bLA7pWY1e07/PHmPNtQwiV1594rwacNYbppoDUPq9yRkBRZ+pDcpySkfpokS5YXvOUv6aFoPPbEMbQUVgw==}
+  '@clerk/shared@4.25.8':
+    resolution: {integrity: sha512-ob0E/YJAoDTO4CzHI0nasXGsJUc1cFo0jxPO8xVz/A0+C1R0k1da0EJD8L6F03DzKMn3efSa4mOy3BXTpBVZqw==}
     engines: {node: '>=20.9.0'}
     peerDependencies:
       react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
@@ -46,12 +46,12 @@ packages:
       react-dom:
         optional: true
 
-  '@clerk/testing@2.1.1':
-    resolution: {integrity: sha512-UDwqP5we5/4PSO8fqpRPlme/x7oftI7xcChgnRHqRbZRs6KSf8w0I5lTS9MDSyKxYGRwezeZSCjM7dDKpPHyRQ==}
+  '@clerk/testing@2.2.13':
+    resolution: {integrity: sha512-zv5/V1egeIWAtykHkU4zfm7KVznzw4z4zBSIEwBXmOy82MvdUif/DsKhMo2uX/aSIjVqMqs5PLVH+r3icUYN/g==}
     engines: {node: '>=20.9.0'}
     peerDependencies:
       '@playwright/test': ^1
-      cypress: ^13 || ^14
+      cypress: ^13 || ^14 || ^15
     peerDependenciesMeta:
       '@playwright/test':
         optional: true
@@ -296,26 +296,26 @@ packages:
 
 snapshots:
 
-  '@clerk/backend@3.7.0':
+  '@clerk/backend@3.13.1':
     dependencies:
-      '@clerk/shared': 4.17.1
+      '@clerk/shared': 4.25.8
       standardwebhooks: 1.0.0
       tslib: 2.8.1
     transitivePeerDependencies:
       - react
       - react-dom
 
-  '@clerk/shared@4.17.1':
+  '@clerk/shared@4.25.8':
     dependencies:
       '@tanstack/query-core': 5.101.0
       dequal: 2.0.3
       glob-to-regexp: 0.4.1
       js-cookie: 3.0.7
 
-  '@clerk/testing@2.1.1(@playwright/test@1.60.0)':
+  '@clerk/testing@2.2.13(@playwright/test@1.60.0)':
     dependencies:
-      '@clerk/backend': 3.7.0
-      '@clerk/shared': 4.17.1
+      '@clerk/backend': 3.13.1
+      '@clerk/shared': 4.25.8
       dotenv: 17.2.2
     optionalDependencies:
       '@playwright/test': 1.60.0

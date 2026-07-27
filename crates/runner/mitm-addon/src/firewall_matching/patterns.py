@@ -219,7 +219,13 @@ def _compile_segments(segments: list[str] | tuple[str, ...]) -> tuple[ParsedSegm
 
 
 def compile_path_pattern(pattern: str) -> CompiledPathPattern | None:
-    """Compile a URL path pattern for repeated matching."""
+    """Compile a URL path pattern for repeated matching.
+
+    Compilation validates segment syntax only. It does not validate the complete firewall-rule
+    grammar: greedy parameters must be terminal and occupy a whole segment, and parameter names
+    must be unique. Callers validating firewall rules must also apply
+    ``_compiled_rule_path_is_valid()`` (as ``matching._compile_rule()`` does).
+    """
     segments = _compile_segments(tuple(_split_path_segments(pattern)))
     if segments is None:
         return None
@@ -344,7 +350,13 @@ def _compiled_path_segments_match(
 
 
 def match_compiled_path(path: str, pattern: CompiledPathPattern) -> dict | None:
-    """Match a URL path against a compiled rule path pattern."""
+    """Match a URL path against a compiled path pattern without revalidating it.
+
+    A pattern accepted by ``compile_path_pattern()`` can still be invalid as a firewall rule. A
+    non-terminal or mixed greedy parameter therefore returns ``None`` during matching, while
+    duplicate parameter names can match with the later capture replacing the earlier value. Use
+    the firewall-rule validator before treating a compiled pattern as a rule.
+    """
     return _match_compiled_path_segments(_split_path_segments(path), pattern.segments)
 
 

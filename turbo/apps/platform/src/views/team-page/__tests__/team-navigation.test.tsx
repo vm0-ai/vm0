@@ -1,9 +1,9 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import { loadFirewallPermissionMetadata } from "@vm0/connectors/firewall-metadata";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
+  type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogPermissionSummary,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -48,6 +48,7 @@ import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
+import { testConnectorPermissionDetails } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
@@ -144,7 +145,7 @@ function createWorkflowSummary({
 }
 
 function createConnector(
-  type: ConnectorType,
+  type: ConnectorRef,
   externalUsername: string,
 ): ConnectorResponse {
   return {
@@ -349,14 +350,14 @@ async function openAxiomPermissionsDialog(): Promise<HTMLElement> {
   return permissionsDialog;
 }
 
-async function connectorCategoryLabel(
-  connectorType: ConnectorType,
+function connectorCategoryLabel(
+  connectorRef: ConnectorRef,
   category: string,
-): Promise<string> {
-  const metadata = await loadFirewallPermissionMetadata(connectorType);
+): string {
+  const metadata = testConnectorPermissionDetails.get(connectorRef);
   const categoryData = metadata?.categories;
   if (!categoryData) {
-    throw new Error(`${connectorType} categories not found`);
+    throw new Error(`${connectorRef} categories not found`);
   }
 
   const count = Object.values(categoryData.categories).filter((value) => {
@@ -776,6 +777,8 @@ describe("team page navigation", () => {
             pinnedAt: thread.pinnedAt,
             renamedAt: null,
             selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
           };
         }),
         latestEventId: null,
@@ -790,14 +793,12 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(
       chatThreadMessagesContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { messages: [] });
         }
         return respond(200, {
@@ -808,6 +809,7 @@ describe("team page navigation", () => {
                     id: firstMessageId,
                     role: "user",
                     content: "First shortcut thread message",
+                    seqId: 1,
                     createdAt: "2026-06-01T00:02:00Z",
                   },
                 ]
@@ -816,23 +818,6 @@ describe("team page navigation", () => {
         });
       },
     );
-    context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
-      if (
-        params.threadId === firstThreadId &&
-        params.messageId === firstMessageId
-      ) {
-        return respond(200, {
-          id: firstMessageId,
-          role: "user",
-          content: "First shortcut thread message",
-          createdAt: "2026-06-01T00:02:00Z",
-        });
-      }
-      return respond(404, {
-        error: { message: "Message not found", code: "NOT_FOUND" },
-      });
-    });
-
     detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });
 
     await waitFor(() => {
@@ -1204,6 +1189,35 @@ describe("team page navigation", () => {
   it("finds and saves permissions beyond the initial drawer page", async () => {
     mockTeamAPIs();
     context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
+    const paginatedPermissions = [
+      ...Array.from({ length: 100 }, (_, index) => {
+        return {
+          name: `aaa-test-resource-${String(index + 1).padStart(3, "0")}.read`,
+        };
+      }),
+      { name: "memberships.read" },
+    ];
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ respond }) => {
+        const permissions = {
+          connectorRef: "cloudflare",
+          label: "Cloudflare",
+          icon: {
+            url: "https://icons.example.test/cloudflare.svg",
+            invertInDarkMode: false,
+          },
+          permissionCount: paginatedPermissions.length,
+          permissions: paginatedPermissions,
+          categories: null,
+          defaultPolicy: {
+            permissionDefault: "allow",
+            unknownPolicy: "deny",
+          },
+        } satisfies PublicConnectorCatalogPermissionDetail;
+        return respond(200, { permissions });
+      },
+    );
     const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
@@ -1336,7 +1350,7 @@ describe("team page navigation", () => {
   it("shows aggregate persisted durations on permission category headers", async () => {
     mockNow();
     mockTeamAPIs();
-    const metadata = await loadFirewallPermissionMetadata("slack");
+    const metadata = testConnectorPermissionDetails.get("slack");
     if (!metadata?.categories) {
       throw new Error("slack permission categories not found");
     }

@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import { delay } from "signal-timers";
 import { onboardingCompleteContract } from "@vm0/api-contracts/contracts/onboarding";
 import {
   zeroBillingCheckoutContract,
@@ -9,6 +8,7 @@ import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { ROUTES } from "../route-paths.ts";
+import { setLoop } from "../utils.ts";
 import { billingStatusAsync$ } from "../zero-page/billing.ts";
 import { getStoredAdAttributionMetadata } from "../bootstrap/ad-attribution.ts";
 import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
@@ -47,7 +47,7 @@ export const completeOnboarding$ = command(
   },
 );
 
-export type OnboardingVideoRunResult = "run" | "checkout";
+type OnboardingVideoRunResult = "run" | "checkout";
 
 interface OnboardingVideoCheckoutInput {
   readonly prompt: string;
@@ -120,28 +120,34 @@ export const prepareOnboardingVideoRun$ = command(
 );
 
 const CHECKOUT_POLL_LIMIT = IN_VITEST ? 2 : 90;
-const CHECKOUT_POLL_INTERVAL_MS = IN_VITEST ? 0 : 1000;
+const CHECKOUT_POLL_INTERVAL_MS = 1000;
 
 export const completeOnboardingCheckoutReturn$ = command(
   async ({ get }, sessionId: string, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroBillingCheckoutContract);
-    for (let attempt = 0; attempt < CHECKOUT_POLL_LIMIT; attempt += 1) {
-      const result = await accept(
-        client.complete({
-          body: { sessionId },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      if (result.body.completed) {
-        return;
-      }
-      if (attempt < CHECKOUT_POLL_LIMIT - 1) {
-        await delay(CHECKOUT_POLL_INTERVAL_MS, { signal });
-        signal.throwIfAborted();
-      }
-    }
-    throw new Error("Checkout completion timed out");
+    let attempts = 0;
+    await setLoop(
+      async (loopSignal) => {
+        attempts += 1;
+        const result = await accept(
+          client.complete({
+            body: { sessionId },
+            fetchOptions: { signal: loopSignal },
+          }),
+          [200],
+        );
+        loopSignal.throwIfAborted();
+        if (result.body.completed) {
+          return true;
+        }
+        if (attempts >= CHECKOUT_POLL_LIMIT) {
+          throw new Error("Checkout completion timed out");
+        }
+        return false;
+      },
+      CHECKOUT_POLL_INTERVAL_MS,
+      signal,
+      { retryTransientErrors: false },
+    );
   },
 );

@@ -23,6 +23,8 @@ RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-exec"
 SVC="${JOB_REF}-exec"
 UNIT="vm0-runner-${SVC}.service"
 GROUP="vm0/exec-${JOB_REF}"
+# Keep this distinct from startup readiness so NAT observes a new conntrack flow.
+BEHAVIOR_DNS_DESTINATION="198.51.100.1"
 STARTUP_TIMEOUT_SECS=120
 STARTUP_LOG_LINES=300
 STARTUP_CURSOR=""
@@ -153,7 +155,7 @@ rule_packet_count() {
   '
 }
 
-link_fields() {
+link_identity_fields() {
   local expected_ifname=$1
   jq -er --arg expected_ifname "$expected_ifname" '
     if type == "array"
@@ -162,15 +164,7 @@ link_fields() {
     then
       [
         .[0].ifindex,
-        .[0].link_index,
-        .[0].stats64.rx.packets,
-        .[0].stats64.rx.bytes,
-        .[0].stats64.rx.errors,
-        .[0].stats64.rx.dropped,
-        .[0].stats64.tx.packets,
-        .[0].stats64.tx.bytes,
-        .[0].stats64.tx.errors,
-        .[0].stats64.tx.dropped
+        .[0].link_index
       ] | @tsv
     else
       error("expected exactly one link named \($expected_ifname)")
@@ -179,8 +173,8 @@ link_fields() {
 }
 
 send_udp_dns_query() {
-  local namespace=$1 source_ip=$2
-  sudo ip netns exec "$namespace" python3 - "$source_ip" <<'PY'
+  local namespace=$1 source_ip=$2 destination_ip=$3
+  sudo ip netns exec "$namespace" python3 - "$source_ip" "$destination_ip" <<'PY'
 import socket
 import sys
 
@@ -191,7 +185,7 @@ query = bytes.fromhex(
 )
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((sys.argv[1], 0))
-sock.sendto(query, ("192.0.2.1", 53))
+sock.sendto(query, (sys.argv[2], 53))
 sock.close()
 PY
 }
@@ -450,12 +444,25 @@ ATTACKER_DNS_DROP_RULE=$(printf '%s\n' "$FILTER_RULES" \
 [ "$(rule_value "$ATTACKER_DNS_DROP_RULE" -s)" = "$ATTACKER_CIDR" ] \
   || fail "DNS drop rule does not use the exact attacker peer"
 
+ATTACKER_DNS_RULE=$(printf '%s\n' "$NAT_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+[ -n "$ATTACKER_DNS_RULE" ] || fail "attacker DNS redirect not found"
+[ "$(rule_value "$ATTACKER_DNS_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "attacker DNS redirect is not bound to $ATTACKER_IF"
+[ "$(rule_value "$ATTACKER_DNS_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "attacker DNS redirect does not use the exact peer"
+
 VICTIM_DNS_RULE=$(printf '%s\n' "$NAT_RULES" \
   | grep -F -- "$VICTIM_NS" \
   | grep -F -- "-p udp" \
   | grep -F -- "--dport 53" \
   | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
   | head -n 1 || true)
+[ -n "$VICTIM_DNS_RULE" ] || fail "victim DNS redirect not found"
 [ "$(rule_value "$VICTIM_DNS_RULE" -i)" = "$VICTIM_IF" ] \
   || fail "victim DNS redirect is not bound to $VICTIM_IF"
 [ "$(rule_value "$VICTIM_DNS_RULE" -s)" = "$VICTIM_CIDR" ] \
@@ -469,66 +476,67 @@ ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
 ATTACKER_GUARD_BEFORE=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
 [ -n "$ATTACKER_GUARD_BEFORE" ] || fail "source guard counter missing"
 
-ATTACKER_NS_LINK_BEFORE=$(sudo ip -n "$ATTACKER_NS" -j -s \
+ATTACKER_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+ATTACKER_DNS_BEFORE=$(rule_packet_count "$ATTACKER_DNS_COUNTED")
+[ -n "$ATTACKER_DNS_BEFORE" ] || fail "attacker DNS redirect counter missing"
+
+ATTACKER_NS_LINK_BEFORE=$(sudo ip -n "$ATTACKER_NS" -j \
   link show dev veth0)
-ATTACKER_ROOT_LINK_BEFORE=$(sudo ip -j -s link show dev "$ATTACKER_IF")
+ATTACKER_ROOT_LINK_BEFORE=$(sudo ip -j link show dev "$ATTACKER_IF")
 IFS=$'\t' read -r \
   ATTACKER_NS_IFINDEX_BEFORE ATTACKER_NS_LINK_INDEX_BEFORE \
-  ATTACKER_NS_RX_PACKETS_BEFORE ATTACKER_NS_RX_BYTES_BEFORE \
-  ATTACKER_NS_RX_ERRORS_BEFORE ATTACKER_NS_RX_DROPPED_BEFORE \
-  ATTACKER_NS_TX_PACKETS_BEFORE ATTACKER_NS_TX_BYTES_BEFORE \
-  ATTACKER_NS_TX_ERRORS_BEFORE ATTACKER_NS_TX_DROPPED_BEFORE \
-  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_BEFORE" | link_fields veth0)"
+  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_BEFORE" \
+    | link_identity_fields veth0)"
 IFS=$'\t' read -r \
   ATTACKER_ROOT_IFINDEX_BEFORE ATTACKER_ROOT_LINK_INDEX_BEFORE \
-  ATTACKER_ROOT_RX_PACKETS_BEFORE ATTACKER_ROOT_RX_BYTES_BEFORE \
-  ATTACKER_ROOT_RX_ERRORS_BEFORE ATTACKER_ROOT_RX_DROPPED_BEFORE \
-  ATTACKER_ROOT_TX_PACKETS_BEFORE ATTACKER_ROOT_TX_BYTES_BEFORE \
-  ATTACKER_ROOT_TX_ERRORS_BEFORE ATTACKER_ROOT_TX_DROPPED_BEFORE \
   <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_BEFORE" \
-    | link_fields "$ATTACKER_IF")"
+    | link_identity_fields "$ATTACKER_IF")"
 [ "$ATTACKER_NS_IFINDEX_BEFORE" -eq "$ATTACKER_ROOT_LINK_INDEX_BEFORE" ] \
   && [ "$ATTACKER_NS_LINK_INDEX_BEFORE" -eq "$ATTACKER_ROOT_IFINDEX_BEFORE" ] \
   || fail "attacker veth peers do not have reciprocal identities"
 
-send_udp_dns_query "$ATTACKER_NS" "$ATTACKER_PEER"
+send_udp_dns_query \
+  "$ATTACKER_NS" "$ATTACKER_PEER" "$BEHAVIOR_DNS_DESTINATION"
 
+ATTACKER_DNS_AFTER=""
 for _ in $(seq 1 20); do
-  ATTACKER_NS_LINK_AFTER=$(sudo ip -n "$ATTACKER_NS" -j -s \
-    link show dev veth0)
-  ATTACKER_ROOT_LINK_AFTER=$(sudo ip -j -s link show dev "$ATTACKER_IF")
-  IFS=$'\t' read -r \
-    ATTACKER_NS_IFINDEX_AFTER ATTACKER_NS_LINK_INDEX_AFTER \
-    ATTACKER_NS_RX_PACKETS_AFTER ATTACKER_NS_RX_BYTES_AFTER \
-    ATTACKER_NS_RX_ERRORS_AFTER ATTACKER_NS_RX_DROPPED_AFTER \
-    ATTACKER_NS_TX_PACKETS_AFTER ATTACKER_NS_TX_BYTES_AFTER \
-    ATTACKER_NS_TX_ERRORS_AFTER ATTACKER_NS_TX_DROPPED_AFTER \
-    <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_AFTER" | link_fields veth0)"
-  IFS=$'\t' read -r \
-    ATTACKER_ROOT_IFINDEX_AFTER ATTACKER_ROOT_LINK_INDEX_AFTER \
-    ATTACKER_ROOT_RX_PACKETS_AFTER ATTACKER_ROOT_RX_BYTES_AFTER \
-    ATTACKER_ROOT_RX_ERRORS_AFTER ATTACKER_ROOT_RX_DROPPED_AFTER \
-    ATTACKER_ROOT_TX_PACKETS_AFTER ATTACKER_ROOT_TX_BYTES_AFTER \
-    ATTACKER_ROOT_TX_ERRORS_AFTER ATTACKER_ROOT_TX_DROPPED_AFTER \
-    <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_AFTER" \
-      | link_fields "$ATTACKER_IF")"
-
-  ATTACKER_NS_TX_PACKET_DELTA=$((ATTACKER_NS_TX_PACKETS_AFTER -
-    ATTACKER_NS_TX_PACKETS_BEFORE))
-  ATTACKER_NS_TX_BYTE_DELTA=$((ATTACKER_NS_TX_BYTES_AFTER -
-    ATTACKER_NS_TX_BYTES_BEFORE))
-  ATTACKER_ROOT_RX_PACKET_DELTA=$((ATTACKER_ROOT_RX_PACKETS_AFTER -
-    ATTACKER_ROOT_RX_PACKETS_BEFORE))
-  ATTACKER_ROOT_RX_BYTE_DELTA=$((ATTACKER_ROOT_RX_BYTES_AFTER -
-    ATTACKER_ROOT_RX_BYTES_BEFORE))
-  if [ "$ATTACKER_NS_TX_PACKET_DELTA" -gt 0 ] \
-    && [ "$ATTACKER_NS_TX_PACKET_DELTA" -eq "$ATTACKER_ROOT_RX_PACKET_DELTA" ] \
-    && [ "$ATTACKER_NS_TX_BYTE_DELTA" -gt 0 ] \
-    && [ "$ATTACKER_NS_TX_BYTE_DELTA" -eq "$ATTACKER_ROOT_RX_BYTE_DELTA" ]; then
+  ATTACKER_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+    | grep -F -- "$ATTACKER_NS" \
+    | grep -F -- "-p udp" \
+    | grep -F -- "--dport 53" \
+    | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+    | head -n 1 || true)
+  ATTACKER_DNS_AFTER=$(rule_packet_count "$ATTACKER_DNS_COUNTED")
+  if [ -n "$ATTACKER_DNS_AFTER" ] \
+    && [ "$ATTACKER_DNS_AFTER" -gt "$ATTACKER_DNS_BEFORE" ]; then
     break
   fi
   sleep 0.05
 done
+
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_AFTER_CONTROL=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+
+ATTACKER_NS_LINK_AFTER=$(sudo ip -n "$ATTACKER_NS" -j \
+  link show dev veth0)
+ATTACKER_ROOT_LINK_AFTER=$(sudo ip -j link show dev "$ATTACKER_IF")
+IFS=$'\t' read -r \
+  ATTACKER_NS_IFINDEX_AFTER ATTACKER_NS_LINK_INDEX_AFTER \
+  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_AFTER" \
+    | link_identity_fields veth0)"
+IFS=$'\t' read -r \
+  ATTACKER_ROOT_IFINDEX_AFTER ATTACKER_ROOT_LINK_INDEX_AFTER \
+  <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_AFTER" \
+    | link_identity_fields "$ATTACKER_IF")"
 [ "$ATTACKER_NS_IFINDEX_AFTER" -eq "$ATTACKER_NS_IFINDEX_BEFORE" ] \
   && [ "$ATTACKER_NS_LINK_INDEX_AFTER" -eq "$ATTACKER_NS_LINK_INDEX_BEFORE" ] \
   && [ "$ATTACKER_ROOT_IFINDEX_AFTER" -eq "$ATTACKER_ROOT_IFINDEX_BEFORE" ] \
@@ -538,26 +546,14 @@ done
   && [ "$ATTACKER_NS_LINK_INDEX_AFTER" -eq "$ATTACKER_ROOT_IFINDEX_AFTER" ] \
   || fail "attacker veth peers lost reciprocal identities"
 
-[ "$ATTACKER_NS_TX_PACKET_DELTA" -gt 0 ] \
-  && [ "$ATTACKER_NS_TX_PACKET_DELTA" -eq "$ATTACKER_ROOT_RX_PACKET_DELTA" ] \
-  || fail "control query did not produce matching namespace TX and root RX packets: namespace_tx=$ATTACKER_NS_TX_PACKET_DELTA root_rx=$ATTACKER_ROOT_RX_PACKET_DELTA"
-[ "$ATTACKER_NS_TX_BYTE_DELTA" -gt 0 ] \
-  && [ "$ATTACKER_NS_TX_BYTE_DELTA" -eq "$ATTACKER_ROOT_RX_BYTE_DELTA" ] \
-  || fail "control query did not produce matching namespace TX and root RX bytes: namespace_tx=$ATTACKER_NS_TX_BYTE_DELTA root_rx=$ATTACKER_ROOT_RX_BYTE_DELTA"
-[ "$ATTACKER_NS_TX_ERRORS_AFTER" -eq "$ATTACKER_NS_TX_ERRORS_BEFORE" ] \
-  && [ "$ATTACKER_NS_TX_DROPPED_AFTER" -eq "$ATTACKER_NS_TX_DROPPED_BEFORE" ] \
-  && [ "$ATTACKER_ROOT_RX_ERRORS_AFTER" -eq "$ATTACKER_ROOT_RX_ERRORS_BEFORE" ] \
-  && [ "$ATTACKER_ROOT_RX_DROPPED_AFTER" -eq "$ATTACKER_ROOT_RX_DROPPED_BEFORE" ] \
-  || fail "control query incremented veth error or drop counters"
-
-ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
-  | grep -F -- "$ATTACKER_NS" \
-  | grep -F -- "-A PREROUTING" \
-  | grep -F -- "-j DROP" \
-  | head -n 1 || true)
-ATTACKER_GUARD_AFTER_CONTROL=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+[ -n "$ATTACKER_GUARD_AFTER_CONTROL" ] \
+  || fail "source guard counter missing after control query"
 [ "$ATTACKER_GUARD_AFTER_CONTROL" -eq "$ATTACKER_GUARD_BEFORE" ] \
   || fail "source guard rejected the namespace's assigned peer"
+[ -n "$ATTACKER_DNS_AFTER" ] \
+  || fail "attacker DNS redirect counter missing after control query"
+[ "$ATTACKER_DNS_AFTER" -gt "$ATTACKER_DNS_BEFORE" ] \
+  || fail "control query did not reach the attacker DNS redirect: before=$ATTACKER_DNS_BEFORE after=$ATTACKER_DNS_AFTER"
 
 VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
   | grep -F -- "$VICTIM_NS" \
@@ -572,7 +568,8 @@ SPOOF_NS=$ATTACKER_NS
 SPOOF_IP=$VICTIM_PEER
 sudo ip -n "$SPOOF_NS" address add "${SPOOF_IP}/32" dev veth0 \
   || fail "failed to add forged victim source to attacker namespace"
-send_udp_dns_query "$SPOOF_NS" "$SPOOF_IP"
+send_udp_dns_query \
+  "$SPOOF_NS" "$SPOOF_IP" "$BEHAVIOR_DNS_DESTINATION"
 
 ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
   | grep -F -- "$ATTACKER_NS" \
@@ -589,6 +586,10 @@ VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
 VICTIM_DNS_AFTER=$(rule_packet_count "$VICTIM_DNS_COUNTED")
 cleanup_spoof_address
 
+[ -n "$ATTACKER_GUARD_AFTER_SPOOF" ] \
+  || fail "source guard counter missing after forged query"
+[ -n "$VICTIM_DNS_AFTER" ] \
+  || fail "victim DNS redirect counter missing after forged query"
 [ "$ATTACKER_GUARD_AFTER_SPOOF" -gt "$ATTACKER_GUARD_AFTER_CONTROL" ] \
   || fail "source guard did not reject the forged victim source"
 [ "$VICTIM_DNS_AFTER" -eq "$VICTIM_DNS_BEFORE" ] \
@@ -884,7 +885,577 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c '
 echo "  PostgreSQL/pgvector smoke test: ok"
 echo "PASS: runtime availability"
 
-# Test 8: verify /etc/environment is loaded for both user and root
+# Test 8: verify the installed Claude accepts and appends to a native compact
+# generation without changing its session ID. The loopback terminator prevents
+# any external model request.
+echo "--- Test: Claude compact-generation compatibility ---"
+CLAUDE_COMPACT_SMOKE=$(cat <<'PY'
+import json
+import os
+import subprocess
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+boundary_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+summary_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+requests = []
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("content-length", "0"))
+        self.rfile.read(length)
+        requests.append(self.path)
+        body = json.dumps(
+            {
+                "type": "error",
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": "loopback compatibility probe",
+                },
+            }
+        ).encode()
+        self.send_response(400)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, _format, *_args):
+        pass
+
+
+with tempfile.TemporaryDirectory(prefix="claude-compact-smoke-") as root:
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        port = server.server_port
+        env = os.environ.copy()
+        env.update(
+            {
+                "HOME": root,
+                "CLAUDE_CONFIG_DIR": f"{root}/.claude",
+                "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{port}",
+                "ANTHROPIC_API_KEY": "test-token",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+                "DISABLE_AUTOUPDATER": "1",
+                "NO_PROXY": "127.0.0.1,localhost",
+                "no_proxy": "127.0.0.1,localhost",
+            }
+        )
+
+        def run_claude(*args):
+            return subprocess.run(
+                [
+                    "/usr/local/bin/claude",
+                    *args,
+                    "--output-format",
+                    "stream-json",
+                    "--verbose",
+                ],
+                cwd="/home/user/workspace",
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+
+        # Let Claude create its isolated config metadata, then replace only the
+        # session JSONL with the compact generation under test.
+        run_claude(
+            "--session-id",
+            session_id,
+            "--print",
+            "seed compatibility metadata",
+        )
+        project_dir = Path(root) / ".claude/projects/-home-user-workspace"
+        history_file = project_dir / f"{session_id}.jsonl"
+        assert history_file.is_file(), (
+            "Claude metadata seed did not create session history"
+        )
+        version = subprocess.check_output(
+            ["/usr/local/bin/claude", "--version"],
+            text=True,
+        ).split()[0]
+        records = [
+            {
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/home/user/workspace",
+                "sessionId": session_id,
+                "version": version,
+                "gitBranch": "",
+                "type": "system",
+                "subtype": "compact_boundary",
+                "content": "Conversation compacted",
+                "isMeta": False,
+                "uuid": boundary_id,
+                "timestamp": "2026-01-01T00:00:00.000Z",
+                "logicalParentUuid": (
+                    "11111111-1111-4111-8111-111111111111"
+                ),
+                "compactMetadata": {"trigger": "auto", "preTokens": 100},
+            },
+            {
+                "parentUuid": boundary_id,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/home/user/workspace",
+                "sessionId": session_id,
+                "version": version,
+                "gitBranch": "",
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": "Synthetic compacted conversation summary.",
+                },
+                "isMeta": False,
+                "uuid": summary_id,
+                "timestamp": "2026-01-01T00:00:00.001Z",
+                "isCompactSummary": True,
+            },
+        ]
+        history_file.write_text(
+            "".join(
+                json.dumps(record, separators=(",", ":")) + "\n"
+                for record in records
+            )
+        )
+
+        requests.clear()
+        resumed = run_claude(
+            "--resume",
+            session_id,
+            "--print",
+            "append compatibility turn",
+        )
+        output = resumed.stdout + resumed.stderr
+        assert "No conversation found with session ID" not in output, output
+        assert any(
+            path.startswith("/v1/messages") for path in requests
+        ), f"Claude did not reach messages endpoint:\n{output}"
+
+        retained = [
+            json.loads(line)
+            for line in history_file.read_text().splitlines()
+        ]
+        appended = retained[2:]
+        assert appended, "Claude did not append to the compact generation"
+        assert any(
+            record.get("sessionId") == session_id
+            for record in appended
+        ), "Claude appended no record for the resumed session"
+        assert all(
+            record.get("sessionId", session_id) == session_id
+            for record in retained
+        ), "Claude changed the session ID while appending"
+
+        server.shutdown()
+        server_thread.join()
+PY
+)
+sudo "$BIN_DIR/runner" exec --timeout 75 \
+  --sandbox "$SANDBOX_ID" -- python3 -c "$CLAUDE_COMPACT_SMOKE" \
+  || fail "Claude compact-generation compatibility"
+echo "PASS: Claude compact-generation compatibility"
+
+# Test 9: verify the bundled Codex resumes and appends a native compact
+# generation under the same thread ID. Model requests terminate on loopback.
+echo "--- Test: Codex compact-generation compatibility ---"
+CODEX_COMPACT_SMOKE=$(cat <<'PY'
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+summary_token = "CODEX-COMPACT-SUMMARY-TOKEN"
+seed_token = "CODEX-COMPACT-SEED-TOKEN"
+compacting_turn_token = "CODEX-COMPACTING-TURN-TOKEN"
+candidate_turn_token = "CODEX-COMPACT-CANDIDATE-TURN-TOKEN"
+append_token = "CODEX-COMPACT-APPEND-TOKEN"
+requests = []
+current_codex = shutil.which("codex")
+assert current_codex is not None, "bundled Codex is not on PATH"
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("content-length", "0"))
+        payload = json.loads(self.rfile.read(length))
+        requests.append((self.path, payload))
+        body = json.dumps(
+            {
+                "error": {
+                    "message": "loopback compatibility probe",
+                    "type": "invalid_request_error",
+                }
+            }
+        ).encode()
+        self.send_response(400)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, _format, *_args):
+        pass
+
+
+def write_config(codex_home, port):
+    codex_home.mkdir(parents=True)
+    (codex_home / "config.toml").write_text(
+        f"""
+model = "gpt-5.1-codex-mini"
+model_provider = "mock"
+approval_policy = "never"
+sandbox_mode = "read-only"
+
+[model_providers.mock]
+name = "mock"
+base_url = "http://127.0.0.1:{port}/v1"
+env_key = "CODEX_COMPACT_PROBE_TOKEN"
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0
+""".lstrip()
+    )
+
+
+def run_codex(codex_home, *args):
+    env = os.environ.copy()
+    env.update(
+        {
+            "HOME": str(codex_home.parent),
+            "CODEX_HOME": str(codex_home),
+            "CODEX_COMPACT_PROBE_TOKEN": "test-token",
+            "NO_PROXY": "127.0.0.1,localhost",
+            "no_proxy": "127.0.0.1,localhost",
+        }
+    )
+    return subprocess.run(
+        [
+            current_codex,
+            "exec",
+            *args,
+            "--skip-git-repo-check",
+            "--json",
+        ],
+        cwd="/home/user/workspace",
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def event_type(record):
+    if record.get("type") != "event_msg":
+        return None
+    return record.get("payload", {}).get("type")
+
+
+def normalize_probe_root(value, root):
+    if isinstance(value, str):
+        return value.replace(str(root), "$PROBE_ROOT")
+    if isinstance(value, list):
+        return [normalize_probe_root(item, root) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: normalize_probe_root(item, root)
+            for key, item in value.items()
+        }
+    return value
+
+
+def resume_history(
+    root,
+    candidate_relative_path,
+    history_bytes,
+    session_id,
+    port,
+):
+    codex_home = root / ".codex"
+    write_config(codex_home, port)
+    history_file = codex_home / "sessions" / candidate_relative_path
+    history_file.parent.mkdir(parents=True)
+    history_file.write_bytes(history_bytes)
+    assert not list(codex_home.glob("*.sqlite")), (
+        "probe must begin without Codex SQLite state"
+    )
+    original_size = history_file.stat().st_size
+
+    requests.clear()
+    resumed = run_codex(
+        codex_home,
+        "resume",
+        session_id,
+        append_token,
+    )
+    output = resumed.stdout + resumed.stderr
+    assert (
+        f"no rollout found for thread id {session_id}" not in output.lower()
+    ), output
+    assert requests and requests[-1][0] == "/v1/responses", (
+        f"Codex did not reach the loopback Responses endpoint\n{output}"
+    )
+    return resumed, history_file, original_size, requests[-1][1]
+
+
+def probe_current_codex(
+    root,
+    candidate_relative_path,
+    full_bytes,
+    candidate_bytes,
+    session_id,
+    port,
+):
+    full_root = root / "full"
+    _, _, _, full_request = resume_history(
+        full_root,
+        candidate_relative_path,
+        full_bytes,
+        session_id,
+        port,
+    )
+    candidate_root = root / "candidate"
+    resumed, history_file, original_size, candidate_request = resume_history(
+        candidate_root,
+        candidate_relative_path,
+        candidate_bytes,
+        session_id,
+        port,
+    )
+    full_input = normalize_probe_root(full_request["input"], full_root)
+    candidate_input = normalize_probe_root(
+        candidate_request["input"],
+        candidate_root,
+    )
+    assert full_input == candidate_input, (
+        "Codex reconstructed different model input from the compact generation"
+    )
+    request_json = json.dumps(candidate_request)
+    assert summary_token in request_json, (
+        "Codex did not reconstruct compact replacement history"
+    )
+
+    started = [
+        json.loads(line)
+        for line in resumed.stdout.splitlines()
+        if line.startswith("{")
+    ]
+    thread_started = [
+        event
+        for event in started
+        if event.get("type") == "thread.started"
+    ]
+    assert thread_started and thread_started[0].get("thread_id") == session_id, (
+        "Codex changed the resumed thread ID"
+    )
+
+    candidate_home = candidate_root / ".codex"
+    histories = list((candidate_home / "sessions").rglob("*.jsonl"))
+    assert histories == [history_file], (
+        f"Codex created a different rollout path: {histories}"
+    )
+    assert history_file.stat().st_size > original_size, (
+        "Codex did not append to the compact generation"
+    )
+
+    records = [
+        json.loads(line)
+        for line in history_file.read_text().splitlines()
+    ]
+    assert records[0]["payload"]["id"] == session_id
+    turn_starts = [
+        record["payload"]["turn_id"]
+        for record in records
+        if event_type(record) in {"task_started", "turn_started"}
+    ]
+    turn_completions = [
+        record["payload"]["turn_id"]
+        for record in records
+        if event_type(record) in {"task_complete", "turn_complete"}
+    ]
+    assert (
+        len(turn_completions) >= 2
+        and turn_starts[-1] == turn_completions[-1]
+    ), "Codex did not append a complete turn"
+
+
+with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        server_thread = threading.Thread(
+            target=server.serve_forever,
+            daemon=True,
+        )
+        server_thread.start()
+        root = Path(temp_root)
+        port = server.server_port
+
+        seed_home = root / "seed" / ".codex"
+        write_config(seed_home, port)
+        run_codex(
+            seed_home,
+            seed_token,
+        )
+        source = next((seed_home / "sessions").rglob("*.jsonl"))
+        records = [
+            json.loads(line)
+            for line in source.read_text().splitlines()
+        ]
+        session_id = records[0]["payload"]["id"]
+        candidate_relative_path = source.relative_to(
+            seed_home / "sessions"
+        )
+        compacting_turn = run_codex(
+            seed_home,
+            "resume",
+            session_id,
+            compacting_turn_token,
+        )
+        compacting_output = compacting_turn.stdout + compacting_turn.stderr
+        assert (
+            f"no rollout found for thread id {session_id}"
+            not in compacting_output.lower()
+        ), compacting_output
+        records = [
+            json.loads(line)
+            for line in source.read_text().splitlines()
+        ]
+        complete_index = max(
+            index
+            for index, record in enumerate(records)
+            if event_type(record) in {"task_complete", "turn_complete"}
+        )
+        records.pop(complete_index)
+        records.insert(
+            complete_index,
+            {
+                "timestamp": "2026-01-01T00:00:00.000Z",
+                "type": "compacted",
+                "payload": {
+                    "message": summary_token,
+                    "replacement_history": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": seed_token,
+                                }
+                            ],
+                        },
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": summary_token,
+                                }
+                            ],
+                        },
+                    ],
+                    "window_number": 2,
+                    "first_window_id": (
+                        "019c0000-0000-7000-8000-000000000001"
+                    ),
+                    "previous_window_id": (
+                        "019c0000-0000-7000-8000-000000000002"
+                    ),
+                    "window_id": (
+                        "019c0000-0000-7000-8000-000000000003"
+                    ),
+                },
+            },
+        )
+        source.write_bytes(
+            "".join(
+                json.dumps(record, separators=(",", ":")) + "\n"
+                for record in records
+            ).encode()
+        )
+
+        candidate_turn = run_codex(
+            seed_home,
+            "resume",
+            session_id,
+            candidate_turn_token,
+        )
+        candidate_output = candidate_turn.stdout + candidate_turn.stderr
+        assert (
+            f"no rollout found for thread id {session_id}"
+            not in candidate_output.lower()
+        ), candidate_output
+        candidate_records = [
+            json.loads(line)
+            for line in source.read_text().splitlines()
+        ]
+        candidate_starts = [
+            record["payload"]["turn_id"]
+            for record in candidate_records
+            if event_type(record) in {"task_started", "turn_started"}
+        ]
+        candidate_completions = [
+            record["payload"]["turn_id"]
+            for record in candidate_records
+            if event_type(record) in {"task_complete", "turn_complete"}
+        ]
+        assert (
+            len(candidate_starts) >= 3
+            and len(candidate_completions) == 2
+            and candidate_starts[-1] == candidate_completions[-1]
+        ), "failed to build a compacting turn delimited by the next turn"
+        full_lines = source.read_bytes().splitlines(keepends=True)
+        full_records = [json.loads(line) for line in full_lines]
+        compact_index = max(
+            index
+            for index, record in enumerate(full_records)
+            if record.get("type") == "compacted"
+        )
+        candidate_start_index = max(
+            index
+            for index, record in enumerate(full_records[:compact_index])
+            if event_type(record) in {"task_started", "turn_started"}
+        )
+        full_bytes = b"".join(full_lines)
+        candidate_bytes = b"".join(
+            [full_lines[0], *full_lines[candidate_start_index:]]
+        )
+        assert len(candidate_bytes) < len(full_bytes), (
+            "probe candidate must discard history superseded by compaction"
+        )
+
+        probe_current_codex(
+            root / "current",
+            candidate_relative_path,
+            full_bytes,
+            candidate_bytes,
+            session_id,
+            port,
+        )
+
+        server.shutdown()
+        server_thread.join()
+PY
+)
+sudo "$BIN_DIR/runner" exec --timeout 75 \
+  --sandbox "$SANDBOX_ID" -- python3 -c "$CODEX_COMPACT_SMOKE" \
+  || fail "Codex compact-generation compatibility"
+echo "PASS: Codex compact-generation compatibility"
+
+# Test 10: verify /etc/environment is loaded for both user and root
 # [sync:etc-environment] Keep in sync with: crates/runner/scripts/customize-rootfs.sh
 echo "--- Test: environment variables ---"
 EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -915,7 +1486,7 @@ check_env "user" ""
 check_env "root" "--sudo"
 echo "PASS: environment variables"
 
-# Test 9: verify HTTPS works through proxy for each runtime
+# Test 11: verify HTTPS works through proxy for each runtime
 # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
 echo "--- Test: HTTPS through proxy ---"
 TLS_URL="https://www.google.com"
@@ -953,7 +1524,7 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "cd /tmp && printf 
 echo "  HTTPS go: ok"
 echo "PASS: HTTPS through proxy"
 
-# Test 10: verify DNS resolution works inside sandbox
+# Test 12: verify DNS resolution works inside sandbox
 # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
 echo "--- Test: DNS resolution ---"
 OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts localhost 2>&1) \

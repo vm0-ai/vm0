@@ -10,16 +10,24 @@ import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
+import {
+  fetchFeishuBotInfo,
+  getFeishuTenantAccessToken,
+} from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
+import { processCanonicalFeishuIngress$ } from "./canonical-feishu-ingress-processor.service";
+import { admitFeishuChatEvent } from "./feishu-chat-ingress.service";
 import {
   loadFeishuInstallationConfig,
   type FeishuInstallationConfig,
 } from "./feishu-config";
 import {
-  dispatchFeishuMessage$,
+  feishuPromptFile,
+  formatFeishuFileContext,
   type FeishuInboundMessage,
+  type FeishuPromptFile,
 } from "./zero-feishu-dispatch.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 
@@ -49,14 +57,34 @@ const v2MessageEventSchema = z.object({
   }),
   message: z.object({
     message_id: z.string(),
+    root_id: z.string().optional(),
+    parent_id: z.string().optional(),
+    thread_id: z.string().optional(),
     chat_id: z.string(),
     chat_type: z.string(),
     message_type: z.string(),
     content: z.string(),
+    mentions: z
+      .array(
+        z.object({
+          key: z.string(),
+          id: z.object({ open_id: z.string().optional() }),
+          name: z.string().optional(),
+        }),
+      )
+      .optional(),
   }),
 });
 const textContentSchema = z.object({ text: z.string() });
 const FEISHU_REPLAY_WINDOW_SECONDS = 60 * 5;
+
+type FeishuEventMessage = z.infer<typeof v2MessageEventSchema>["message"];
+type FeishuEventMention = NonNullable<FeishuEventMessage["mentions"]>[number];
+
+interface FeishuInboundContent {
+  readonly text: string;
+  readonly file: FeishuPromptFile | null;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -135,39 +163,173 @@ function decryptPayload(encrypted: string, encryptKey: string): unknown {
   return JSON.parse(decrypted) as unknown;
 }
 
+function inboundMessageContent(
+  message: FeishuEventMessage,
+  botMention: FeishuEventMention | undefined,
+): FeishuInboundContent {
+  if (message.message_type !== "text") {
+    const file = feishuPromptFile({
+      messageId: message.message_id,
+      messageType: message.message_type,
+      content: message.content,
+    });
+    return {
+      text: file ? formatFeishuFileContext(file) : "",
+      file,
+    };
+  }
+  const content = textContentSchema.safeParse(safeJsonParse(message.content));
+  if (!content.success) {
+    return { text: "", file: null };
+  }
+  return {
+    text: botMention
+      ? content.data.text.replaceAll(botMention.key, "")
+      : content.data.text,
+    file: null,
+  };
+}
+
 function inboundMessage(
-  installationId: string,
+  config: FeishuInstallationConfig,
   envelope: z.infer<typeof v2EnvelopeSchema>,
 ): FeishuInboundMessage | null {
   if (envelope.header.event_type !== "im.message.receive_v1") {
     return null;
   }
   const event = v2MessageEventSchema.safeParse(envelope.event);
+  if (!event.success || event.data.sender.sender_type === "app") {
+    return null;
+  }
+  const chatType = event.data.message.chat_type;
   if (
-    !event.success ||
-    event.data.message.chat_type !== "p2p" ||
-    event.data.message.message_type !== "text" ||
-    event.data.sender.sender_type === "app"
+    chatType !== "p2p" &&
+    chatType !== "group" &&
+    chatType !== "topic_group"
   ) {
     return null;
   }
-  const content = textContentSchema.safeParse(
-    safeJsonParse(event.data.message.content),
-  );
-  const text = content.success ? content.data.text.trim() : "";
+  const botMention =
+    chatType === "p2p"
+      ? undefined
+      : event.data.message.mentions?.find((mention) => {
+          return mention.id.open_id === config.botOpenId;
+        });
+  if (chatType !== "p2p" && !botMention) {
+    return null;
+  }
+  const content = inboundMessageContent(event.data.message, botMention);
+  const text = content.text.trim();
   if (!text) {
     return null;
   }
   return {
-    installationId,
+    installationId: config.id,
     eventId: envelope.header.event_id,
     tenantKey: envelope.header.tenant_key,
     appId: envelope.header.app_id,
     messageId: event.data.message.message_id,
     chatId: event.data.message.chat_id,
+    chatType,
+    rootId: event.data.message.root_id ?? null,
+    parentId: event.data.message.parent_id ?? null,
+    threadId: event.data.message.thread_id ?? null,
     openId: event.data.sender.sender_id.open_id,
     text,
+    file: content.file,
   };
+}
+
+async function ensureInboundBotIdentity(args: {
+  readonly db: Db;
+  readonly config: FeishuInstallationConfig;
+  readonly envelope: z.infer<typeof v2EnvelopeSchema>;
+  readonly signal: AbortSignal;
+}): Promise<FeishuInstallationConfig> {
+  if (args.config.botOpenId) {
+    return args.config;
+  }
+  const event = v2MessageEventSchema.safeParse(args.envelope.event);
+  if (
+    !event.success ||
+    (event.data.message.chat_type !== "group" &&
+      event.data.message.chat_type !== "topic_group")
+  ) {
+    return args.config;
+  }
+  const bot = await tapError(
+    (async () => {
+      const tenantAccessToken = await getFeishuTenantAccessToken({
+        db: args.db,
+        installationId: args.config.id,
+        signal: args.signal,
+      });
+      return await fetchFeishuBotInfo({
+        tenantAccessToken,
+        signal: args.signal,
+      });
+    })(),
+    (error) => {
+      L.warn("Failed to backfill Feishu bot identity", {
+        error,
+        installationId: args.config.id,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+  if (!bot) {
+    return args.config;
+  }
+  await args.db
+    .update(feishuOrgInstallations)
+    .set({
+      botOpenId: bot.openId,
+      botName: bot.name,
+      botAvatarUrl: bot.avatarUrl,
+      updatedAt: nowDate(),
+    })
+    .where(eq(feishuOrgInstallations.id, args.config.id));
+  args.signal.throwIfAborted();
+  return { ...args.config, botOpenId: bot.openId };
+}
+
+async function admitInboundFeishuMessage(args: {
+  readonly db: Db;
+  readonly message: FeishuInboundMessage;
+  readonly processIngress: (
+    ingressId: string,
+    signal: AbortSignal,
+  ) => Promise<boolean>;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const admittedAt = nowDate();
+  const ingress = await admitFeishuChatEvent(args.db, {
+    installationId: args.message.installationId,
+    eventId: args.message.eventId,
+    payload: JSON.stringify(args.message),
+    currentTime: admittedAt,
+  });
+  args.signal.throwIfAborted();
+  L.debug("Canonical Feishu ingress admitted", {
+    type: "canonical_feishu_ingress_admission",
+    eventId: args.message.eventId,
+    outcome: ingress?.inserted ? "accepted" : "deduplicated",
+    status: ingress?.status ?? "legacy_deduplicated",
+    retryCount: ingress?.retryCount ?? 0,
+  });
+  if (!ingress || ingress.status === "processed") {
+    return;
+  }
+  const backgroundSignal = new AbortController().signal;
+  waitUntil(
+    tapError(args.processIngress(ingress.id, backgroundSignal), (error) => {
+      L.error("Canonical Feishu ingress processing failed", {
+        ingressId: ingress.id,
+        eventId: args.message.eventId,
+        error,
+      });
+    }),
+  );
 }
 
 export const handleZeroFeishuEvents$ = command(
@@ -264,16 +426,27 @@ export const handleZeroFeishuEvents$ = command(
       return jsonResponse({ error: "Invalid Feishu token" }, 401);
     }
     await markCallbackVerified({ db, config, signal });
-    const message = inboundMessage(config.id, v2.data);
+    const dispatchConfig = await ensureInboundBotIdentity({
+      db,
+      config,
+      envelope: v2.data,
+      signal,
+    });
+    const message = inboundMessage(dispatchConfig, v2.data);
     if (message) {
-      waitUntil(
-        tapError(set(dispatchFeishuMessage$, message, signal), (error) => {
-          L.error("Failed to dispatch Feishu message", {
-            error,
-            eventId: message.eventId,
-          });
-        }),
-      );
+      await admitInboundFeishuMessage({
+        db,
+        message,
+        processIngress: (ingressId, inputSignal) => {
+          return set(
+            processCanonicalFeishuIngress$,
+            { ingressId },
+            inputSignal,
+          );
+        },
+        signal,
+      });
+      signal.throwIfAborted();
     }
     return textResponse("OK");
   },

@@ -258,7 +258,20 @@ export function zeroRunById(args: {
 }): Computed<Promise<GetRunResponse | null>> {
   return computed(async (get): Promise<GetRunResponse | null> => {
     const [run] = await get(db$)
-      .select()
+      .select({
+        id: agentRuns.id,
+        agentComposeVersionId: agentRuns.agentComposeVersionId,
+        status: agentRuns.status,
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+        vars: agentRuns.vars,
+        sandboxId: agentRuns.sandboxId,
+        result: agentRuns.result,
+        error: agentRuns.error,
+        createdAt: agentRuns.createdAt,
+        startedAt: agentRuns.startedAt,
+        completedAt: agentRuns.completedAt,
+      })
       .from(agentRuns)
       .where(
         and(

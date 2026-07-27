@@ -2,49 +2,23 @@ import { randomUUID } from "node:crypto";
 
 import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 
-function hideSlackConnectorAuthMethods(): () => void {
-  const authMethods = CONNECTOR_TYPES.slack.authMethods;
-  const original = Object.fromEntries(Object.entries(authMethods));
-
-  for (const [key, config] of Object.entries(authMethods)) {
-    Object.defineProperty(authMethods, key, {
-      value: { ...config, visible: false },
-      configurable: true,
-      enumerable: true,
-    });
-  }
-
-  return () => {
-    for (const [key, config] of Object.entries(original)) {
-      Object.defineProperty(authMethods, key, {
-        value: config,
-        configurable: true,
-        enumerable: true,
-      });
-    }
-  };
-}
-
 describe("GET /api/zero/agents/:id/user-connectors", () => {
-  const restoreConnectorRegistry: (() => void)[] = [];
-
-  afterEach(() => {
-    while (restoreConnectorRegistry.length > 0) {
-      restoreConnectorRegistry.pop()?.();
-    }
-  });
-
-  it("keeps connector grants when their auth methods become hidden", async () => {
+  it("keeps connector grants when their discovery feature switch is disabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
+    const actor = { userId, orgId };
     mocks.clerk.session(userId, orgId);
     context.mocks.s3.send.mockResolvedValue({});
 
@@ -59,16 +33,23 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
 
     const client = setupApp({ context })(zeroUserConnectorsContract);
 
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
     await accept(
       client.update({
         params: { id: agentId },
-        body: { enabledTypes: ["slack", "github"] },
+        body: { enabledTypes: ["test-oauth", "github"] },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
 
-    restoreConnectorRegistry.push(hideSlackConnectorAuthMethods());
+    // Connector feature switches only govern discovery. A connector already
+    // granted to an agent remains usable when its discovery switch is disabled.
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.TestOauthConnector]: false,
+    });
     const response = await accept(
       client.get({
         params: { id: agentId },
@@ -78,7 +59,8 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     );
 
     expect(new Set(response.body.enabledTypes)).toStrictEqual(
-      new Set(["github", "slack"]),
+      new Set(["github", "test-oauth"]),
     );
+    await deleteFeatureSwitchesForUser(context, actor);
   });
 });

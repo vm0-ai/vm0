@@ -6,9 +6,8 @@ import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { requiredAuthContext$ } from "../auth/auth-context";
-import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$, type Db } from "../external/db";
 import {
   exchangeFeishuOAuthCode,
@@ -19,14 +18,17 @@ import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import {
   feishuBotOpenUrl,
+  feishuOAuthAppCallbackUrl,
   feishuOAuthCallbackUrl,
   loadFeishuInstallationConfig,
 } from "../services/feishu-config";
 import {
+  createFeishuOAuthAuthorizationState,
   type FeishuOAuthState,
   verifyFeishuOAuthState,
 } from "../services/feishu-oauth-state";
 import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
+import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
 import { tapError } from "../utils";
 
 const L = logger("FeishuOAuth");
@@ -49,56 +51,71 @@ function jsonErrorResponse(error: string): Response {
 }
 
 function settingsRedirect(params: Readonly<Record<string, string>>): Response {
+  return redirectResponse(settingsUrl(params));
+}
+
+function settingsUrl(params: Readonly<Record<string, string>>): string {
   const url = new URL("/settings/feishu", env("APP_URL"));
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  return redirectResponse(url.toString());
+  return url.toString();
 }
 
-function signInRedirect(requestUrl: string): Response {
-  const url = new URL("/sign-in", env("APP_URL"));
-  url.searchParams.set("redirect_url", requestUrl);
-  return redirectResponse(url.toString());
+interface FeishuOAuthCallbackQuery {
+  readonly code?: string;
+  readonly error?: string;
+  readonly error_description?: string;
+  readonly responseMode?: "json";
+  readonly state?: string;
 }
 
-type AuthenticatedStateResult =
-  | { readonly kind: "ok"; readonly state: FeishuOAuthState }
-  | { readonly kind: "unauthenticated" }
-  | { readonly kind: "invalid" };
+function appCallbackUrl(query: FeishuOAuthCallbackQuery): string {
+  const url = new URL(feishuOAuthAppCallbackUrl());
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, value);
+    }
+  }
+  return url.toString();
+}
 
-const resolveAuthenticatedState$ = command(
-  async (
-    { set },
-    encodedState: string | undefined,
-    signal: AbortSignal,
-  ): Promise<AuthenticatedStateResult> => {
-    const state = encodedState ? verifyFeishuOAuthState(encodedState) : null;
-    if (!state) {
-      return { kind: "invalid" };
-    }
-    const auth = await set(
-      requiredAuthContext$,
-      { requireOrganization: true },
-      signal,
-    );
-    signal.throwIfAborted();
-    if ("status" in auth) {
-      return auth.status === 401
-        ? { kind: "unauthenticated" }
-        : { kind: "invalid" };
-    }
-    if (auth.userId !== state.userId || auth.orgId !== state.orgId) {
-      return { kind: "invalid" };
-    }
-    return { kind: "ok", state };
-  },
-);
+function resolveCallbackState(
+  query: FeishuOAuthCallbackQuery,
+): FeishuOAuthState | Response {
+  const state = query.state ? verifyFeishuOAuthState(query.state) : null;
+  if (!state) {
+    return jsonErrorResponse("Invalid or expired connect state");
+  }
+  if (state.callbackTarget === "app" && query.responseMode !== "json") {
+    return redirectResponse(appCallbackUrl(query));
+  }
+  return state;
+}
+
+function callbackRedirectResponse(
+  url: string,
+  responseMode: "json" | undefined,
+):
+  | Response
+  | {
+      readonly status: 200;
+      readonly body: { readonly redirectUrl: string };
+    } {
+  if (responseMode === "json") {
+    return {
+      status: 200,
+      body: { redirectUrl: url },
+    };
+  }
+  return redirectResponse(url);
+}
 
 async function exchangeOAuthUserInfo(args: {
   readonly appId: string;
   readonly appSecret: string;
   readonly code: string;
+  readonly redirectUri: string;
   readonly installationId: string;
   readonly signal: AbortSignal;
 }): Promise<FeishuUserInfo | undefined> {
@@ -108,7 +125,7 @@ async function exchangeOAuthUserInfo(args: {
         appId: args.appId,
         appSecret: args.appSecret,
         code: args.code,
-        redirectUri: feishuOAuthCallbackUrl(),
+        redirectUri: args.redirectUri,
         signal: args.signal,
       });
       return await fetchFeishuUserInfo({
@@ -130,7 +147,10 @@ async function upsertFeishuConnection(args: {
   readonly state: FeishuOAuthState;
   readonly userInfo: FeishuUserInfo;
   readonly signal: AbortSignal;
-}): Promise<boolean> {
+}): Promise<
+  | { readonly connected: false }
+  | { readonly connected: true; readonly newConnectionId?: string }
+> {
   const [existing] = await args.db
     .select({ vm0UserId: feishuOrgConnections.vm0UserId })
     .from(feishuOrgConnections)
@@ -143,7 +163,7 @@ async function upsertFeishuConnection(args: {
     .limit(1);
   args.signal.throwIfAborted();
   if (existing && existing.vm0UserId !== args.state.userId) {
-    return false;
+    return { connected: false };
   }
   if (existing) {
     await args.db
@@ -158,6 +178,7 @@ async function upsertFeishuConnection(args: {
           eq(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
         ),
       );
+    args.signal.throwIfAborted();
   } else {
     const [inserted] = await args.db
       .insert(feishuOrgConnections)
@@ -176,8 +197,19 @@ async function upsertFeishuConnection(args: {
       .returning({ id: feishuOrgConnections.id });
     args.signal.throwIfAborted();
     if (!inserted) {
-      return false;
+      return { connected: false };
     }
+    await args.db
+      .delete(feishuOrgConnections)
+      .where(
+        and(
+          eq(feishuOrgConnections.installationId, args.state.installationId),
+          eq(feishuOrgConnections.vm0UserId, args.state.userId),
+          ne(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
+        ),
+      );
+    args.signal.throwIfAborted();
+    return { connected: true, newConnectionId: inserted.id };
   }
   await args.db
     .delete(feishuOrgConnections)
@@ -188,19 +220,16 @@ async function upsertFeishuConnection(args: {
         ne(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
       ),
     );
-  return true;
+  args.signal.throwIfAborted();
+  return { connected: true };
 }
 
-const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
+const connect$ = command(async ({ get }, signal: AbortSignal) => {
   const query = get(queryOf(zeroFeishuOauthContract.connect));
-  const resolved = await set(resolveAuthenticatedState$, query.state, signal);
-  if (resolved.kind === "unauthenticated") {
-    return signInRedirect(get(request$).url);
-  }
-  if (resolved.kind === "invalid" || !query.state) {
+  const state = query.state ? verifyFeishuOAuthState(query.state) : null;
+  if (!state || !query.state) {
     return jsonErrorResponse("Invalid or expired connect state");
   }
-  const { state } = resolved;
   const [installation] = await get(db$)
     .select({
       appId: feishuOrgInstallations.appId,
@@ -225,27 +254,30 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const authorizationUrl = new URL(FEISHU_AUTHORIZATION_URL);
+  const oauthState = createFeishuOAuthAuthorizationState(
+    state,
+    query.callbackTarget,
+  );
   authorizationUrl.searchParams.set("client_id", installation.appId);
   authorizationUrl.searchParams.set("redirect_uri", feishuOAuthCallbackUrl());
   authorizationUrl.searchParams.set("response_type", "code");
-  authorizationUrl.searchParams.set("state", query.state);
+  authorizationUrl.searchParams.set("state", oauthState);
   return redirectResponse(authorizationUrl.toString());
 });
 
 const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(zeroFeishuOauthContract.callback));
-  const resolved = await set(resolveAuthenticatedState$, query.state, signal);
-  if (resolved.kind === "unauthenticated") {
-    return signInRedirect(get(request$).url);
+  const state = resolveCallbackState(query);
+  if (state instanceof Response) {
+    return state;
   }
-  if (resolved.kind === "invalid") {
-    return jsonErrorResponse("Invalid or expired connect state");
-  }
-  const { state } = resolved;
   if (query.error) {
-    return settingsRedirect({
-      error: query.error_description ?? query.error,
-    });
+    return callbackRedirectResponse(
+      settingsUrl({
+        error: query.error_description ?? query.error,
+      }),
+      query.responseMode,
+    );
   }
   if (!query.code) {
     return jsonErrorResponse("Missing authorization code");
@@ -255,7 +287,10 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
   const config = await loadFeishuInstallationConfig(db, state.installationId);
   signal.throwIfAborted();
   if (!config || config.orgId !== state.orgId) {
-    return settingsRedirect({ error: "Feishu bot not found." });
+    return callbackRedirectResponse(
+      settingsUrl({ error: "Feishu bot not found." }),
+      query.responseMode,
+    );
   }
   const [installation] = await db
     .select({
@@ -267,45 +302,58 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
     .limit(1);
   signal.throwIfAborted();
   if (!installation?.setupCompletedAt) {
-    return settingsRedirect({
-      error: "Finish setting up this Feishu bot before connecting.",
-    });
+    return callbackRedirectResponse(
+      settingsUrl({
+        error: "Finish setting up this Feishu bot before connecting.",
+      }),
+      query.responseMode,
+    );
   }
 
   const userInfo = await exchangeOAuthUserInfo({
     appId: config.appId,
     appSecret: config.appSecret,
     code: query.code,
+    redirectUri: feishuOAuthCallbackUrl(),
     installationId: state.installationId,
     signal,
   });
   signal.throwIfAborted();
   if (!userInfo) {
-    return settingsRedirect({
-      error: "Failed to connect Feishu account. Please try again.",
-    });
+    return callbackRedirectResponse(
+      settingsUrl({
+        error: "Failed to connect Feishu account. Please try again.",
+      }),
+      query.responseMode,
+    );
   }
   if (
     installation.tenantKey &&
     userInfo.tenantKey &&
     installation.tenantKey !== userInfo.tenantKey
   ) {
-    return settingsRedirect({
-      error:
-        "Use an account from the Feishu tenant connected to this workspace.",
-    });
+    return callbackRedirectResponse(
+      settingsUrl({
+        error:
+          "Use an account from the Feishu tenant connected to this workspace.",
+      }),
+      query.responseMode,
+    );
   }
 
-  const connected = await upsertFeishuConnection({
+  const connectionResult = await upsertFeishuConnection({
     db,
     state,
     userInfo,
     signal,
   });
-  if (!connected) {
-    return settingsRedirect({
-      error: "This Feishu account is already connected.",
-    });
+  if (!connectionResult.connected) {
+    return callbackRedirectResponse(
+      settingsUrl({
+        error: "This Feishu account is already connected.",
+      }),
+      query.responseMode,
+    );
   }
 
   if (!installation.tenantKey && userInfo.tenantKey) {
@@ -321,7 +369,31 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
     state.userId,
   ]);
   signal.throwIfAborted();
-  return redirectResponse(feishuBotOpenUrl(config.appId));
+  if (connectionResult.newConnectionId) {
+    const backgroundSignal = new AbortController().signal;
+    waitUntil(
+      tapError(
+        notifyFeishuConnect({
+          db,
+          installationId: state.installationId,
+          connectionId: connectionResult.newConnectionId,
+          openId: userInfo.openId,
+          signal: backgroundSignal,
+        }),
+        (error) => {
+          L.warn("Failed to send Feishu connect welcome", {
+            error,
+            installationId: state.installationId,
+            openId: userInfo.openId,
+          });
+        },
+      ),
+    );
+  }
+  return callbackRedirectResponse(
+    feishuBotOpenUrl(config.appId),
+    query.responseMode,
+  );
 });
 
 export const zeroFeishuOauthRoutes: readonly RouteEntry[] = [

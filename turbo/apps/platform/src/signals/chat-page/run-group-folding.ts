@@ -31,6 +31,7 @@ export interface RunGroupFold {
   readonly hiddenRunCount: number;
   readonly hiddenGroups: GroupedChatMessageGroup[];
   readonly labelGroups: GroupedChatMessageGroup[];
+  readonly expanded: boolean;
 }
 
 export interface RunGroupFolding {
@@ -38,23 +39,25 @@ export interface RunGroupFolding {
   readonly foldsByNextGroupId: ReadonlyMap<string, readonly RunGroupFold[]>;
 }
 
-const internalRunGroupExpandedKeys$ = state<Set<string>>(new Set());
+const internalRunGroupExpansionOverrides$ = state<Map<string, boolean>>(
+  new Map(),
+);
 
-export const runGroupExpandedKeys$ = computed((get): Set<string> => {
-  return get(internalRunGroupExpandedKeys$);
-});
+export const runGroupExpansionOverrides$ = computed(
+  (get): ReadonlyMap<string, boolean> => {
+    return get(internalRunGroupExpansionOverrides$);
+  },
+);
 
-export const toggleRunGroupExpanded$ = command(({ set }, key: string) => {
-  set(internalRunGroupExpandedKeys$, (prev) => {
-    const next = new Set(prev);
-    if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    return next;
-  });
-});
+export const toggleRunGroupExpanded$ = command(
+  ({ set }, key: string, expanded: boolean) => {
+    set(internalRunGroupExpansionOverrides$, (prev) => {
+      const next = new Map(prev);
+      next.set(key, !expanded);
+      return next;
+    });
+  },
+);
 
 function groupMessagesByRole(
   messages: readonly EnrichedChatMessage[],
@@ -478,6 +481,7 @@ export function previousRunGroupVisualWindowStartIndex(
 function buildFoldSection(
   runSegments: readonly GroupedRunSegment[],
   usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+  expansionOverrides: ReadonlyMap<string, boolean> | undefined,
 ): {
   readonly fold: RunGroupFold;
   readonly expandedNextGroupId: string;
@@ -515,13 +519,16 @@ function buildFoldSection(
     return null;
   }
 
+  const key = `${latestSegment.runGroupId}:${firstHiddenRunId}:${latestSegment.runId}`;
+
   return {
     fold: {
-      key: `${latestSegment.runGroupId}:${firstHiddenRunId}:${latestSegment.runId}`,
+      key,
       runGroupId: latestSegment.runGroupId,
       hiddenRunCount: hiddenSegments.length,
       hiddenGroups,
       labelGroups: expandedGroups,
+      expanded: expansionOverrides?.get(key) ?? false,
     },
     expandedNextGroupId,
     collapsedNextGroupId,
@@ -532,7 +539,7 @@ function buildFoldSection(
 
 export function buildRunGroupFolding(
   groups: readonly GroupedChatMessageGroup[],
-  expandedKeys?: ReadonlySet<string>,
+  expansionOverrides?: ReadonlyMap<string, boolean>,
 ): RunGroupFolding | null {
   const segments = messageSegmentsFromGroups(groups);
   const usageByRunId = usageByRunIdFromGroups(groups);
@@ -562,7 +569,11 @@ export function buildRunGroupFolding(
     const runSegments = segments
       .slice(index, endIndex)
       .filter(isGroupedRunSegment);
-    const foldSection = buildFoldSection(runSegments, usageByRunId);
+    const foldSection = buildFoldSection(
+      runSegments,
+      usageByRunId,
+      expansionOverrides,
+    );
     if (foldSection === null) {
       visibleGroups.push(
         ...runSegments.flatMap((item) => {
@@ -573,9 +584,7 @@ export function buildRunGroupFolding(
       continue;
     }
 
-    const expanded = expandedKeys?.has(foldSection.fold.key) ?? false;
-
-    if (expanded) {
+    if (foldSection.fold.expanded) {
       visibleGroups.push(...foldSection.expandedGroups);
       appendFoldBeforeGroup(
         foldsByNextGroupId,

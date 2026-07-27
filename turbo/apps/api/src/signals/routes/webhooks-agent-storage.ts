@@ -31,7 +31,6 @@ const prepareStorage$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!auth) {
     return unauthorizedRunMismatch;
   }
-
   return await set(
     prepareStorageUploadForAuth$,
     {
@@ -59,7 +58,6 @@ const commitStorage$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!auth) {
     return unauthorizedRunMismatch;
   }
-
   return await set(
     commitStorageUploadForAuth$,
     {

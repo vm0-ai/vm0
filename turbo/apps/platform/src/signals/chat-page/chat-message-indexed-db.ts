@@ -40,33 +40,6 @@ export const loadIndexedDbChatMessages$ = command(
   },
 );
 
-export const loadIndexedDbChatMessagesFrom$ = command(
-  async (
-    { get },
-    threadId: string,
-    message: PagedChatMessage,
-    signal: AbortSignal,
-  ) => {
-    const stores = await get(chatMessageStores$);
-    signal.throwIfAborted();
-    const messages = await chatIdbReadOr(
-      "indexedDbMessages:readFrom",
-      () => {
-        return stores.readStore.readFrom(threadId, message, signal);
-      },
-      [],
-      signal,
-    );
-    signal.throwIfAborted();
-    L.debug("loadIndexedDbMessagesFrom", {
-      threadId,
-      messageId: message.id,
-      count: messages.length,
-    });
-    return messages;
-  },
-);
-
 export const loadIndexedDbChatMessageBounds$ = command(
   async ({ get }, threadId: string, signal: AbortSignal) => {
     const stores = await get(chatMessageStores$);
@@ -86,28 +59,6 @@ export const loadIndexedDbChatMessageBounds$ = command(
       lastId: bounds.last?.id ?? null,
     });
     return bounds;
-  },
-);
-
-export const hasIndexedDbChatMessage$ = command(
-  async (
-    { get },
-    threadId: string,
-    messageId: string,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const stores = await get(chatMessageStores$);
-    signal.throwIfAborted();
-    const found = await chatIdbReadOr(
-      "indexedDbMessages:hasMessage",
-      () => {
-        return stores.readStore.hasMessage(threadId, messageId, signal);
-      },
-      false,
-      signal,
-    );
-    signal.throwIfAborted();
-    return found;
   },
 );
 

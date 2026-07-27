@@ -16,6 +16,11 @@ import {
   type ComputerUseAuthorizationDescriptor,
   type ComputerUseAuthorizationSignals,
 } from "./computer-use-authorization-block.ts";
+import {
+  parsePlanUpgradeUrl,
+  type PlanUpgradeDescriptor,
+  type PlanUpgradeSignals,
+} from "./plan-upgrade-block.ts";
 import type {
   ArtifactDescriptor,
   ArtifactKind,
@@ -27,6 +32,11 @@ import {
   type MailDraftDescriptor,
   type MailDraftSignals,
 } from "./mail-draft.ts";
+import {
+  parseBrowserSessionUrl,
+  type BrowserSessionDescriptor,
+  type BrowserSessionSignals,
+} from "./browser-session-block.ts";
 import {
   resolvePublicArtifactsBaseUrl,
   resolveZeroHostDomain,
@@ -70,9 +80,19 @@ export type BodyRenderBlock =
       signals: ComputerUseAuthorizationSignals;
     }
   | {
+      type: "plan-upgrade";
+      resourceKey: string;
+      signals: PlanUpgradeSignals;
+    }
+  | {
       type: "mail-draft";
       resourceKey: string;
       signals: MailDraftSignals;
+    }
+  | {
+      type: "browser-session";
+      resourceKey: string;
+      signals: BrowserSessionSignals;
     };
 
 export type ParsedBodyBlock =
@@ -103,9 +123,19 @@ export type ParsedBodyBlock =
       descriptor: ComputerUseAuthorizationDescriptor;
     }
   | {
+      type: "plan-upgrade";
+      resourceKey: string;
+      descriptor: PlanUpgradeDescriptor;
+    }
+  | {
       type: "mail-draft";
       resourceKey: string;
       descriptor: MailDraftDescriptor;
+    }
+  | {
+      type: "browser-session";
+      resourceKey: string;
+      descriptor: BrowserSessionDescriptor;
     };
 
 type ChatAttachmentKind = BodyPreviewKind;
@@ -136,7 +166,7 @@ const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
-const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/|\/mail\/drafts\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -730,7 +760,9 @@ function createActionBlockFromLine(line: string): Extract<
       | "custom-connector-action"
       | "permission-action"
       | "computer-use-authorization"
-      | "mail-draft";
+      | "plan-upgrade"
+      | "mail-draft"
+      | "browser-session";
   }
 > | null {
   const url = extractActionUrlFromLine(line);
@@ -774,6 +806,15 @@ function createActionBlockFromLine(line: string): Extract<
     };
   }
 
+  const planUpgrade = parsePlanUpgradeUrl(url, line);
+  if (planUpgrade) {
+    return {
+      type: "plan-upgrade",
+      resourceKey: planUpgrade.fallbackMarkdown,
+      descriptor: planUpgrade,
+    };
+  }
+
   const mailDraft = parseMailDraftUrl(url);
   if (mailDraft) {
     return {
@@ -783,7 +824,39 @@ function createActionBlockFromLine(line: string): Extract<
     };
   }
 
+  const browserSession = parseBrowserSessionUrl(url, line);
+  if (browserSession) {
+    return {
+      type: "browser-session",
+      resourceKey: browserSession.fallbackMarkdown,
+      descriptor: browserSession,
+    };
+  }
+
   return null;
+}
+
+function retainedConnectorActionMarkdown(
+  line: string,
+  action: ConnectorActionDescriptor,
+): string | null {
+  const candidate = stripMarkdownLineDecorations(line);
+  const standaloneMarkdownLink = candidate.match(
+    new RegExp(String.raw`^\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)$`),
+  );
+  const standaloneBareUrl = candidate.match(
+    new RegExp(`^(${URL_TOKEN_PATTERN})$`),
+  );
+  if (standaloneMarkdownLink || standaloneBareUrl) {
+    return null;
+  }
+
+  return line.replace(
+    new RegExp(String.raw`\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)`),
+    (match: string, label: string, url: string) => {
+      return trimPreviewUrl(url) === action.originalUrl ? label : match;
+    },
+  );
 }
 
 function splitMarkdownTableRow(line: string): string[] | null {
@@ -943,8 +1016,17 @@ export function parseBodyBlocks(
       continue;
     }
 
-    const actionBlock = createActionBlockFromLine(line);
+    const actionBlock = previews ? createActionBlockFromLine(line) : null;
     if (actionBlock) {
+      if (actionBlock.type === "connector-action") {
+        const retainedMarkdown = retainedConnectorActionMarkdown(
+          line,
+          actionBlock.descriptor,
+        );
+        if (retainedMarkdown) {
+          pushMarkdownLines([retainedMarkdown]);
+        }
+      }
       flushMarkdownBuffer();
       blocks.push(actionBlock);
       continue;

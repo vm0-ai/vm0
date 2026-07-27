@@ -49,7 +49,9 @@ jobs:
           if [[ "$EVENT_NAME" == "merge_group" ]] && [[ -n "$MQ_HEAD_REF" ]]; then
             PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [[ -n "$PR_NUM" ]]; then
-              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName 2>/dev/null || echo "")
+              # Fail closed because a missed release classification would bypass
+              # release-presence validation.
+              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName)
               if [[ "$PR_BRANCH" == release-please--branches--* ]]; then
                 echo "skip=true" >> "$GITHUB_OUTPUT"
                 echo "Release-please merge queue entry detected (PR #$PR_NUM, branch: $PR_BRANCH)"
@@ -61,6 +63,54 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "Not a release-please context"
 
+  validate-release-presence:
+    name: Validate release presence
+    needs: [detect-release]
+    if: ${{ github.event_name == 'merge_group' && needs.detect-release.outputs.skip == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check intervening component releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_number=$(
+            printf '%s\n' "$MERGE_GROUP_HEAD_REF" |
+              grep -oE 'pr-[0-9]+' |
+              head -1 |
+              sed 's/pr-//'
+          )
+          if [ -z "$pr_number" ]; then
+            echo "::error::Could not resolve pull request number from merge queue ref: $MERGE_GROUP_HEAD_REF"
+            exit 1
+          fi
+
+          release_pr_head=$(
+            gh pr view "$pr_number" \
+              --repo "$REPO" \
+              --json headRefOid \
+              --jq .headRefOid
+          )
+          git fetch --no-tags origin "$release_pr_head"
+
+          .github/scripts/check-release-please-component-releases.sh \
+            "$MERGE_GROUP_BASE_SHA" \
+            "$MERGE_GROUP_HEAD_SHA" \
+            "$release_pr_head"
+
   detect-turbo-ts-checks:
     needs: [detect-release]
     if: needs.detect-release.outputs.skip != 'true'
@@ -69,7 +119,7 @@ jobs:
     outputs:
       turbo-ts-checks-needed: ${{ steps.detect.outputs.turbo-ts-checks-needed }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -124,7 +174,7 @@ jobs:
       turbo-runner-consumer-needed: ${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}
       base-ref: ${{ steps.detect.outputs.base-ref }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -298,7 +348,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -331,38 +381,6 @@ jobs:
           # shellcheck disable=SC2086
           ./scripts/check-file-size.sh $FILTERED_FILES
 
-  block-generated-firewalls:
-    needs: [detect-release]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - name: Ensure generated connector firewall files are untracked
-        run: ./scripts/ensure-generated-connector-firewalls-untracked.sh
-
-  block-connector-source-changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Block connector source additions and modifications
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          CHECKOUT_REF: ${{ github.ref }}
-          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-        run: |
-          BASE_SHA=$(.github/scripts/changed-base-ref.sh)
-          .github/scripts/check-connector-source-freeze.sh "$BASE_SHA"
-
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:
     needs: [detect-turbo-ts-checks]
@@ -372,7 +390,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
@@ -399,7 +417,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       # The two heavy app type-checks (api, @vm0/app ≈ 57% of the former
       # serial total) run in the separate lint-types-apps job below. Here we
@@ -418,7 +436,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       # Heaviest tsc projects, split off lint-types so they run on their own
       # runner. Kept serial (one tsc at a time) to stay within runner memory —
@@ -481,7 +499,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Prettier
         working-directory: turbo
@@ -495,7 +513,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Knip
         working-directory: turbo
@@ -527,7 +545,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Run Database Migrations
         working-directory: turbo
@@ -573,7 +591,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
@@ -642,7 +660,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
@@ -674,7 +692,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
@@ -717,7 +735,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Run Database Migrations
         working-directory: turbo
@@ -756,11 +774,11 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
       - name: Test Connectors
         working-directory: turbo
         run: pnpm -F @vm0/connectors exec vitest run --reporter=default
@@ -817,7 +835,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
 
       - name: Fetch development Doppler OAuth config
@@ -1019,6 +1037,62 @@ jobs:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      # Vercel does not run cron schedules for preview deployments. Reconcile
+      # through the unique deployment URL before exposing it through an alias or
+      # allowing downstream runner and E2E consumers to start.
+      - name: Reconcile preview connector catalog
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          response=""
+          for attempt in 1 2 3; do
+            if ! response=$(curl \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --max-time 120 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+              "${API_DEPLOYMENT_URL}/api/cron/sync-connector-catalog"); then
+              echo "::warning::Connector catalog reconcile request failed (attempt ${attempt}/3)"
+            elif summary=$(jq -c '{
+              outcome,
+              state,
+              active,
+              lastAttempt,
+              filtering: {
+                capabilityDigest: .filtering.capabilityDigest,
+                evaluatedAt: .filtering.evaluatedAt,
+                stale: .filtering.stale,
+                filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)
+              }
+            }' <<< "$response"); then
+              echo "Connector catalog reconcile: ${summary}"
+
+              if jq -e '
+                .state == "current"
+                and .active != null
+                and .filtering.stale == false
+              ' <<< "$response" >/dev/null; then
+                exit 0
+              fi
+              echo "::warning::Connector catalog is not ready (attempt ${attempt}/3)"
+            else
+              echo "::warning::Connector catalog reconcile returned invalid JSON (attempt ${attempt}/3)"
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              sleep 2
+            fi
+          done
+
+          echo "::error::Connector catalog reconcile did not produce a current accepted snapshot"
+          exit 1
+
       - name: Create API Vercel Alias
         id: api-alias
         if: vars.PREVIEW_DOMAIN != ''
@@ -1151,7 +1225,7 @@ jobs:
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -1421,7 +1495,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Install Ansible
         run: pip3 install ansible-core
@@ -1505,7 +1579,7 @@ jobs:
       needs.deploy-api.result == 'success' &&
       needs.deploy-app.result == 'success'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -1559,7 +1633,7 @@ jobs:
       needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -1668,7 +1742,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: pnpm/action-setup@v6
         with:
           version: 10.33.4
@@ -1680,7 +1754,7 @@ jobs:
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install CLI dependencies
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli --filter @vm0/firewalls-generator...
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli...
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
       - name: Verify CLI package contents
@@ -1756,7 +1830,7 @@ jobs:
       )
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -1881,7 +1955,7 @@ jobs:
       rootfs-hash-map: ${{ steps.manifest.outputs.rootfs-hash-map }}
       snapshot-hash-map: ${{ steps.manifest.outputs.snapshot-hash-map }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -1970,7 +2044,7 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -2040,7 +2114,7 @@ jobs:
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
-              --concurrency-factor 2.0 \
+              --concurrency-factor 1.5 \
               --api-url ${RUNNER_API_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -2322,7 +2396,7 @@ jobs:
         include: ${{ fromJSON(needs.deploy-runner-prepare.outputs.runner-matrix) }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -2435,7 +2509,7 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.e2b-changed == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
 
       - name: Build E2B templates
@@ -2460,7 +2534,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/toolchain-init
 
       - name: Download online runtime API schema
@@ -2525,11 +2599,10 @@ jobs:
     # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
       - detect-release
+      - validate-release-presence
       - detect-turbo-ts-checks
       - prepare
       - file-size-check
-      - block-generated-firewalls
-      - block-connector-source-changes
       - lint-eslint
       - lint-types
       - lint-types-apps
@@ -2558,12 +2631,14 @@ jobs:
     steps:
       - name: Validate CI results
         env:
+          EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
+          RELEASE_PRESENCE_RESULT: ${{ needs.validate-release-presence.result }}
         run: |
           # Auto-pass for release-please PRs, commits, and merge queue entries
           if [[ "$IS_RELEASE" == "true" ]]; then
-            if [[ "${{ needs.block-connector-source-changes.result }}" != "success" ]]; then
-              echo "::error::block-connector-source-changes: expected success, got ${{ needs.block-connector-source-changes.result }}"
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_PRESENCE_RESULT" != "success" ]]; then
+              echo "::error::validate-release-presence: expected success, got $RELEASE_PRESENCE_RESULT"
               exit 1
             fi
             echo "✅ Release-please — skipping CI gate"
@@ -2616,9 +2691,6 @@ jobs:
           check_result "detect-turbo-ts-checks" "${{ needs.detect-turbo-ts-checks.result }}" ""
           check_result "prepare" "${{ needs.prepare.result }}" ""
           check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
-          check_result "block-generated-firewalls" "${{ needs.block-generated-firewalls.result }}" ""
-          check_result "block-connector-source-changes" "${{ needs.block-connector-source-changes.result }}" ""
-
           # Turbo TypeScript checks: only 'success' is acceptable unless
           # detect-turbo-ts-checks classified this as a crates-only change set.
           check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"

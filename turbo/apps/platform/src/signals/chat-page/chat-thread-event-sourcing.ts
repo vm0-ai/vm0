@@ -5,6 +5,7 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -19,7 +20,6 @@ import { logger } from "../log.ts";
 import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { pathParams$ } from "../route.ts";
-import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
 const L = logger("ChatThreadEventSourcing");
 
@@ -39,6 +39,7 @@ interface ChatThreadSnapshotData {
 interface ChatThreadEventState {
   readonly snapshot: ChatThreadSnapshotData | null;
   readonly events: readonly ChatThreadEvent[];
+  readonly latestEventId: string | null;
 }
 
 interface ChatThreadEventUpdate {
@@ -53,12 +54,15 @@ export interface ThreadMeta {
   readonly title: string | null;
   readonly pinnedAt: string | null;
   readonly selectedModel: string | null;
+  readonly serviceTier: "priority" | null;
+  readonly computerUseHostId: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
 const chatThreadEventState$ = state<ChatThreadEventState>({
   snapshot: null,
   events: [],
+  latestEventId: null,
 });
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
@@ -90,13 +94,14 @@ async function readChatThreadEventState(
   store: Stores,
   signal?: AbortSignal,
 ): Promise<ChatThreadEventState> {
-  const [snapshot, events] = await Promise.all([
+  const [snapshot, eventLog] = await Promise.all([
     store.readStore.readSnapshot(signal),
-    store.readStore.readEvents(signal),
+    store.readStore.readEventLog(signal),
   ]);
   return {
     snapshot,
-    events,
+    events: eventLog.events,
+    latestEventId: eventLog.latestEventId ?? snapshot?.latestEventId ?? null,
   };
 }
 
@@ -117,8 +122,7 @@ const chatThreadEventStores$ = computed((get): Stores => {
 });
 
 const lastEventId$ = computed((get): string | null => {
-  const state = get(chatThreadEventState$);
-  return state.events.at(-1)?.id ?? state.snapshot?.latestEventId ?? null;
+  return get(chatThreadEventState$).latestEventId;
 });
 
 async function fetchRemoteSnapshot(
@@ -186,6 +190,7 @@ async function fetchChatThreadEventUpdate(
         state: {
           snapshot,
           events,
+          latestEventId: cursor,
         },
         replacementSnapshot: snapshotReplaced ? snapshot : null,
         newEvents,
@@ -199,6 +204,7 @@ async function fetchChatThreadEventUpdate(
     state: {
       snapshot,
       events,
+      latestEventId: cursor,
     },
     replacementSnapshot: snapshotReplaced ? snapshot : null,
     newEvents,
@@ -343,6 +349,8 @@ export const chatThreadMetaMap$ = computed((get) => {
           title: thread.title,
           pinnedAt: thread.pinnedAt,
           selectedModel: thread.selectedModel,
+          serviceTier: thread.serviceTier,
+          computerUseHostId: thread.computerUseHostId,
         },
       ];
     }),
@@ -405,6 +413,8 @@ export const touchOptimisticChatThreadSort$ = command(
       agentId: args.agentId,
       title: null,
       selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
       createdAt: args.createdAt,
     } satisfies ChatThreadEvent);
   },

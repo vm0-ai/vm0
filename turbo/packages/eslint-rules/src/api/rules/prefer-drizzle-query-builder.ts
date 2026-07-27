@@ -2,40 +2,22 @@ import {
   AST_NODE_TYPES,
   ESLintUtils,
   type TSESTree,
-  type TSESLint,
 } from "@typescript-eslint/utils";
-import {
-  canHaveModifiers,
-  getModifiers,
-  isFunctionDeclaration,
-  isImportDeclaration,
-  isImportSpecifier,
-  isNamespaceImport,
-  isReturnStatement,
-  isStringLiteral,
-  isVariableDeclaration,
-  isVariableDeclarationList,
-  NodeFlags,
-  SyntaxKind,
-  type Node,
-  type Type,
-  type VariableDeclaration,
-} from "typescript";
 
 import {
   isDrizzleColumnType,
   isDrizzleDeclaration,
-  isDrizzleSqlTag,
-  isDrizzleSymbol,
   isDrizzleTableType,
-  isDrizzleWrapperType,
-  isNamedDrizzleSignature,
-  resolvedSymbol,
 } from "../drizzle.ts";
 import {
   SQL_TEMPLATE_EXPRESSION_BOUNDARY,
   sqlCodeMask,
 } from "../sql-lexing.ts";
+import {
+  createSqlSourceComposer,
+  type LegacySqlSource,
+  renderLegacySqlSource,
+} from "../sql-analysis/sql-source.ts";
 import { createRule } from "../utils.ts";
 
 interface SqlTokenBase {
@@ -65,23 +47,35 @@ interface WordToken extends SqlTokenBase {
 
 type SqlToken = ExpressionToken | NumberToken | PunctuationToken | WordToken;
 
-interface SimpleSelectMatch {
-  readonly joinConditionExpressionIndexes: readonly number[];
-  readonly joinTableExpressionIndexes: readonly number[];
-  readonly selectedColumnExpressionIndex: number;
-  readonly sourceTableExpressionIndex: number;
+interface SimpleLockingSelectMatch {
+  readonly lockTableExpressionIndex: number | undefined;
+  readonly sourceTableEnd: number;
+  readonly sourceTableExpressionIndex: number | undefined;
+  readonly sourceTableStart: number;
 }
 
-interface SimpleLockingSelectMatch {
-  readonly sourceTableExpressionIndex: number | undefined;
+interface SimpleLockingCteUpdateMatch {
+  readonly lockTableExpressionIndex: number;
+  readonly orderColumnExpressionIndex: number;
+  readonly selectedColumnExpressionIndex: number;
+  readonly sourceTableExpressionIndex: number;
+  readonly targetTableExpressionIndex: number;
 }
 
 interface SimpleDeleteMatch {
+  readonly targetTableEnd: number;
   readonly targetTableExpressionIndex: number | undefined;
+  readonly targetTableStart: number;
+}
+
+interface SimpleUnnestUpdateMatch {
+  readonly targetTableExpressionIndex: number;
 }
 
 interface SimpleUpsertMatch {
+  readonly targetTableEnd: number;
   readonly targetTableExpressionIndex: number | undefined;
+  readonly targetTableStart: number;
 }
 
 interface CompleteSqlStatement {
@@ -89,34 +83,6 @@ interface CompleteSqlStatement {
   readonly hasTrailingSemicolon: boolean;
   readonly tokens: readonly SqlToken[];
 }
-
-const RESULT_FIELD_ARGUMENT = new Map<string, number>([
-  ["returning", 0],
-  ["select", 0],
-  ["selectDistinct", 0],
-  ["selectDistinctOn", 1],
-]);
-
-const UNSUPPORTED_TOP_LEVEL_WHERE_KEYWORDS = new Set([
-  "EXCEPT",
-  "FETCH",
-  "FOR",
-  "GROUP",
-  "HAVING",
-  "INTERSECT",
-  "LIMIT",
-  "OFFSET",
-  "ORDER",
-  "QUALIFY",
-  "UNION",
-  "WINDOW",
-]);
-
-const UNSUPPORTED_SCALAR_QUERY_KEYWORDS = new Set([
-  ...UNSUPPORTED_TOP_LEVEL_WHERE_KEYWORDS,
-  "INTO",
-  "OVER",
-]);
 
 const UNSUPPORTED_LOCKING_SELECT_KEYWORDS = new Set([
   "DISTINCT",
@@ -151,11 +117,19 @@ const UNSUPPORTED_DELETE_PREDICATE_KEYWORDS = new Set([
   "USING",
 ]);
 
+const UNSUPPORTED_UPDATE_PREDICATE_KEYWORDS = new Set([
+  "CURRENT",
+  "FETCH",
+  "LIMIT",
+  "ORDER",
+  "RETURNING",
+]);
+
 const UNSUPPORTED_UPSERT_ASSIGNMENT_KEYWORDS = new Set(["RETURNING", "WHERE"]);
 
-function quasiText(node: TSESTree.TemplateElement): string {
-  return node.value.cooked ?? node.value.raw;
-}
+const SIMPLE_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_$]*$/u;
+const SIMPLE_OR_QUOTED_IDENTIFIER_PATTERN =
+  /^(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:""|[^"])+")$/u;
 
 function memberName(node: TSESTree.MemberExpression): string | null {
   if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
@@ -165,23 +139,6 @@ function memberName(node: TSESTree.MemberExpression): string | null {
     return typeof node.property.value === "string" ? node.property.value : null;
   }
   return null;
-}
-
-function importSource(node: Node): string | undefined {
-  let current: Node | undefined = node;
-  while (current !== undefined && !isImportDeclaration(current)) {
-    current = current.parent;
-  }
-  return current !== undefined && isStringLiteral(current.moduleSpecifier)
-    ? current.moduleSpecifier.text.replaceAll("\\", "/")
-    : undefined;
-}
-
-function isRawRowsModule(source: string | undefined): boolean {
-  return (
-    source !== undefined &&
-    /(?:^|\/)lib\/db-raw-rows(?:\.[cm]?[jt]s)?$/.test(source)
-  );
 }
 
 function topLevelTokens(source: string): readonly SqlToken[] | undefined {
@@ -361,6 +318,7 @@ function hasSimpleAssignments(
   syntaxSource: string,
   start: number,
   end: number,
+  targetPattern: RegExp,
 ): boolean {
   const segments: Array<{ readonly start: number; readonly end: number }> = [];
   let depth = 0;
@@ -396,9 +354,9 @@ function hasSimpleAssignments(
     if (assignmentOffset === -1) {
       return false;
     }
-    const target = syntaxSource.slice(segment.start, assignmentOffset).trim();
+    const target = source.slice(segment.start, assignmentOffset).trim();
     const value = source.slice(assignmentOffset + 1, segment.end).trim();
-    return /^[A-Za-z_][A-Za-z0-9_$]*$/u.test(target) && value !== "";
+    return targetPattern.test(target) && value !== "";
   });
 }
 
@@ -449,10 +407,129 @@ function simpleDeleteMatch(
   }
 
   return {
+    targetTableEnd: targetTable.end,
     targetTableExpressionIndex:
       targetTable.kind === "expression"
         ? targetTable.expressionIndex
         : undefined,
+    targetTableStart: targetTable.start,
+  };
+}
+
+function simpleUnnestUpdateMatch(
+  source: string,
+  syntaxSource: string,
+  statement: CompleteSqlStatement,
+): SimpleUnnestUpdateMatch | undefined {
+  const tokens = statement.tokens;
+  const trailingToken = tokens[tokens.length - 1];
+  if (
+    !statement.hasTrailingSemicolon &&
+    (trailingToken === undefined ||
+      syntaxSource.slice(trailingToken.end, statement.end).trim() !== "")
+  ) {
+    return undefined;
+  }
+
+  const setIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "SET") ? [index] : [];
+  });
+  const fromIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "FROM") ? [index] : [];
+  });
+  const whereIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "WHERE") ? [index] : [];
+  });
+  if (
+    setIndexes.length !== 1 ||
+    fromIndexes.length !== 1 ||
+    whereIndexes.length !== 1
+  ) {
+    return undefined;
+  }
+
+  const setIndex = setIndexes[0];
+  const fromIndex = fromIndexes[0];
+  const whereIndex = whereIndexes[0];
+  if (
+    setIndex === undefined ||
+    fromIndex === undefined ||
+    whereIndex === undefined
+  ) {
+    return undefined;
+  }
+
+  const updateKeyword = tokens[0];
+  const targetTable = tokens[1];
+  const setKeyword = tokens[setIndex];
+  const fromKeyword = tokens[fromIndex];
+  const unnestKeyword = tokens[fromIndex + 1];
+  const sourceOpen = tokens[fromIndex + 2];
+  const sourceClose = tokens[fromIndex + 3];
+  const asKeyword = tokens[fromIndex + 4];
+  const sourceAlias = tokens[fromIndex + 5];
+  const sourceColumnsOpen = tokens[fromIndex + 6];
+  const sourceColumnsClose = tokens[fromIndex + 7];
+  const whereKeyword = tokens[whereIndex];
+  if (
+    setIndex !== 2 ||
+    whereIndex !== fromIndex + 8 ||
+    !isWord(updateKeyword, "UPDATE") ||
+    targetTable?.kind !== "expression" ||
+    !isWord(setKeyword, "SET") ||
+    !isWord(fromKeyword, "FROM") ||
+    !isWord(unnestKeyword, "UNNEST") ||
+    !isPunctuation(sourceOpen, "(") ||
+    !isPunctuation(sourceClose, ")") ||
+    !isWord(asKeyword, "AS") ||
+    sourceAlias?.kind !== "word" ||
+    !isPunctuation(sourceColumnsOpen, "(") ||
+    !isPunctuation(sourceColumnsClose, ")") ||
+    !isWord(whereKeyword, "WHERE") ||
+    updateKeyword === undefined ||
+    setKeyword === undefined ||
+    fromKeyword === undefined ||
+    unnestKeyword === undefined ||
+    sourceOpen === undefined ||
+    sourceClose === undefined ||
+    asKeyword === undefined ||
+    sourceColumnsOpen === undefined ||
+    sourceColumnsClose === undefined ||
+    whereKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, updateKeyword, targetTable) ||
+    !onlyWhitespaceBetween(syntaxSource, targetTable, setKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, unnestKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, unnestKeyword, sourceOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, sourceClose, asKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, asKeyword, sourceAlias) ||
+    !onlyWhitespaceBetween(syntaxSource, sourceAlias, sourceColumnsOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, sourceColumnsClose, whereKeyword) ||
+    syntaxSource.slice(sourceOpen.end, sourceClose.start).trim() === "" ||
+    !isSimpleIdentifierList(
+      syntaxSource,
+      sourceColumnsOpen,
+      sourceColumnsClose,
+    ) ||
+    !hasSimpleAssignments(
+      source,
+      syntaxSource,
+      setKeyword.end,
+      fromKeyword.start,
+      SIMPLE_OR_QUOTED_IDENTIFIER_PATTERN,
+    ) ||
+    syntaxSource.slice(whereKeyword.end, statement.end).trim() === "" ||
+    tokens.slice(whereIndex + 1).some((token) => {
+      return (
+        token.kind === "word" &&
+        UNSUPPORTED_UPDATE_PREDICATE_KEYWORDS.has(token.value)
+      );
+    })
+  ) {
+    return undefined;
+  }
+
+  return {
+    targetTableExpressionIndex: targetTable.expressionIndex,
   };
 }
 
@@ -537,16 +614,24 @@ function simpleUpsertMatch(
         UNSUPPORTED_UPSERT_ASSIGNMENT_KEYWORDS.has(token.value)
       );
     }) ||
-    !hasSimpleAssignments(source, syntaxSource, setKeyword.end, statement.end)
+    !hasSimpleAssignments(
+      source,
+      syntaxSource,
+      setKeyword.end,
+      statement.end,
+      SIMPLE_IDENTIFIER_PATTERN,
+    )
   ) {
     return undefined;
   }
 
   return {
+    targetTableEnd: targetTable.end,
     targetTableExpressionIndex:
       targetTable.kind === "expression"
         ? targetTable.expressionIndex
         : undefined,
+    targetTableStart: targetTable.start,
   };
 }
 
@@ -582,6 +667,7 @@ function simpleLockingSelectMatch(
     return undefined;
   }
 
+  let lockTableExpressionIndex: number | undefined;
   let lockStart = end - 2;
   let lockTokens = tokens.slice(lockStart, end);
   if (
@@ -591,15 +677,25 @@ function simpleLockingSelectMatch(
   ) {
     lockStart = end - 4;
     lockTokens = tokens.slice(lockStart, end);
-    if (
-      lockTokens.length !== 4 ||
-      !isWord(lockTokens[0], "FOR") ||
-      !isWord(lockTokens[1], "UPDATE") ||
-      !isWord(lockTokens[2], "SKIP") ||
-      !isWord(lockTokens[3], "LOCKED")
-    ) {
+    const lockTargetExpressionIndex = expressionIndex(lockTokens[3]);
+    const skipsLockedRows =
+      lockTokens.length === 4 &&
+      isWord(lockTokens[0], "FOR") &&
+      isWord(lockTokens[1], "UPDATE") &&
+      isWord(lockTokens[2], "SKIP") &&
+      isWord(lockTokens[3], "LOCKED");
+    const locksSpecificTable =
+      lockTokens.length === 4 &&
+      isWord(lockTokens[0], "FOR") &&
+      isWord(lockTokens[1], "UPDATE") &&
+      isWord(lockTokens[2], "OF") &&
+      lockTargetExpressionIndex !== undefined;
+    if (!skipsLockedRows && !locksSpecificTable) {
       return undefined;
     }
+    lockTableExpressionIndex = locksSpecificTable
+      ? lockTargetExpressionIndex
+      : undefined;
   }
   if (
     lockStart <= 0 ||
@@ -738,212 +834,161 @@ function simpleLockingSelectMatch(
   }
 
   return {
+    lockTableExpressionIndex,
+    sourceTableEnd: sourceTable.end,
     sourceTableExpressionIndex:
       sourceTable.kind === "expression"
         ? sourceTable.expressionIndex
         : undefined,
+    sourceTableStart: sourceTable.start,
   };
 }
 
-function simpleSelectMatch(
+function simpleLockingCteUpdateMatch(
   source: string,
   syntaxSource: string,
-): SimpleSelectMatch | undefined {
-  const tokens = topLevelTokens(syntaxSource);
-  if (tokens === undefined) {
-    return undefined;
-  }
-
-  let cursor = 0;
-  if (!isWord(tokens[cursor], "SELECT")) {
-    return undefined;
-  }
-  cursor += 1;
-  const selectedColumnExpressionIndex = expressionIndex(tokens[cursor]);
-  if (selectedColumnExpressionIndex === undefined) {
-    return undefined;
-  }
-  cursor += 1;
-
-  if (isWord(tokens[cursor], "AS")) {
-    const aliasKeyword = tokens[cursor];
-    cursor += 1;
-    if (tokens[cursor]?.kind === "word" && !isWord(tokens[cursor], "FROM")) {
-      cursor += 1;
-    } else {
-      const from = tokens[cursor];
-      if (
-        aliasKeyword === undefined ||
-        from === undefined ||
-        !isWord(from, "FROM") ||
-        !/^"(?:[^"]|"")+"$/s.test(
-          source.slice(aliasKeyword.end, from.start).trim(),
-        )
-      ) {
-        return undefined;
-      }
-    }
-  }
-
-  if (!isWord(tokens[cursor], "FROM")) {
-    return undefined;
-  }
-  cursor += 1;
-  const sourceTableExpressionIndex = expressionIndex(tokens[cursor]);
-  if (sourceTableExpressionIndex === undefined) {
-    return undefined;
-  }
-  cursor += 1;
-
-  const joinTableExpressionIndexes: number[] = [];
-  const joinConditionExpressionIndexes: number[] = [];
-  while (isWord(tokens[cursor], "INNER")) {
-    cursor += 1;
-    if (!isWord(tokens[cursor], "JOIN")) {
-      return undefined;
-    }
-    cursor += 1;
-    const joinTableIndex = expressionIndex(tokens[cursor]);
-    if (joinTableIndex === undefined) {
-      return undefined;
-    }
-    joinTableExpressionIndexes.push(joinTableIndex);
-    cursor += 1;
-    if (!isWord(tokens[cursor], "ON")) {
-      return undefined;
-    }
-    cursor += 1;
-    const joinConditionIndex = expressionIndex(tokens[cursor]);
-    if (joinConditionIndex === undefined) {
-      return undefined;
-    }
-    joinConditionExpressionIndexes.push(joinConditionIndex);
-    cursor += 1;
-  }
-
-  if (!isWord(tokens[cursor], "WHERE")) {
-    return undefined;
-  }
-  cursor += 1;
-
-  let end = tokens.length;
-  const trailingToken = tokens[end - 1];
-  if (trailingToken?.kind === "punctuation" && trailingToken.value === ";") {
-    end -= 1;
-  }
-  const limitKeywordIndex = end - 2;
-  const limitValue = tokens[limitKeywordIndex + 1];
+  statement: CompleteSqlStatement,
+): SimpleLockingCteUpdateMatch | undefined {
+  const tokens = statement.tokens;
+  const trailingToken = tokens[tokens.length - 1];
   if (
-    cursor >= limitKeywordIndex ||
-    !isWord(tokens[limitKeywordIndex], "LIMIT") ||
-    limitValue?.kind !== "number" ||
-    limitValue.value !== "1"
+    !statement.hasTrailingSemicolon &&
+    (trailingToken === undefined ||
+      syntaxSource.slice(trailingToken.end, statement.end).trim() !== "")
   ) {
     return undefined;
   }
-  for (let index = cursor; index < limitKeywordIndex; index += 1) {
-    const token = tokens[index];
-    if (
-      token === undefined ||
-      (token.kind === "word" &&
-        UNSUPPORTED_TOP_LEVEL_WHERE_KEYWORDS.has(token.value)) ||
-      (token.kind === "punctuation" && token.value === ";")
-    ) {
-      return undefined;
-    }
-  }
 
-  return {
-    joinConditionExpressionIndexes,
-    joinTableExpressionIndexes,
-    selectedColumnExpressionIndex,
-    sourceTableExpressionIndex,
-  };
-}
-
-function parenthesizedScalarSelect(
-  source: string,
-  syntaxSource: string,
-): boolean {
-  let start = 0;
-  while (/\s/.test(syntaxSource[start] ?? "")) {
-    start += 1;
-  }
-  let end = syntaxSource.length - 1;
-  while (end >= start && /\s/.test(syntaxSource[end] ?? "")) {
-    end -= 1;
-  }
-  if (syntaxSource[start] !== "(" || syntaxSource[end] !== ")") {
-    return false;
-  }
-
-  let depth = 0;
-  for (let offset = start; offset <= end; offset += 1) {
-    const character = syntaxSource[offset];
-    if (character === "(") {
-      depth += 1;
-    } else if (character === ")") {
-      depth -= 1;
-      if (depth < 0 || (depth === 0 && offset !== end)) {
-        return false;
-      }
-    }
-  }
-  if (depth !== 0) {
-    return false;
-  }
-
-  const innerSource = source.slice(start + 1, end);
-  const innerSyntaxSource = syntaxSource.slice(start + 1, end);
-  const tokens = topLevelTokens(innerSyntaxSource);
-  if (tokens === undefined || !isWord(tokens[0], "SELECT")) {
-    return false;
-  }
+  const withKeyword = tokens[0];
+  const cteName = tokens[1];
+  const asKeyword = tokens[2];
+  const cteOpen = tokens[3];
+  const cteClose = tokens[4];
+  const updateKeyword = tokens[5];
+  const targetTable = tokens[6];
+  const setKeyword = tokens[7];
   if (
-    tokens.some((token, index) => {
+    tokens.length <= 11 ||
+    !isWord(withKeyword, "WITH") ||
+    cteName?.kind !== "word" ||
+    !isWord(asKeyword, "AS") ||
+    !isPunctuation(cteOpen, "(") ||
+    !isPunctuation(cteClose, ")") ||
+    !isWord(updateKeyword, "UPDATE") ||
+    targetTable?.kind !== "expression" ||
+    !isWord(setKeyword, "SET") ||
+    withKeyword === undefined ||
+    asKeyword === undefined ||
+    cteOpen === undefined ||
+    cteClose === undefined ||
+    updateKeyword === undefined ||
+    setKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, withKeyword, cteName) ||
+    !onlyWhitespaceBetween(syntaxSource, cteName, asKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, asKeyword, cteOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, cteClose, updateKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, updateKeyword, targetTable) ||
+    !onlyWhitespaceBetween(syntaxSource, targetTable, setKeyword)
+  ) {
+    return undefined;
+  }
+
+  const fromIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "FROM") ? [index] : [];
+  });
+  const whereIndexes = tokens.flatMap((token, index) => {
+    return isWord(token, "WHERE") ? [index] : [];
+  });
+  if (fromIndexes.length !== 1 || whereIndexes.length !== 1) {
+    return undefined;
+  }
+  const fromIndex = fromIndexes[0];
+  const whereIndex = whereIndexes[0];
+  if (fromIndex === undefined || whereIndex === undefined) {
+    return undefined;
+  }
+  const fromKeyword = tokens[fromIndex];
+  const cteSource = tokens[fromIndex + 1];
+  const whereKeyword = tokens[whereIndex];
+  if (
+    fromIndex <= 8 ||
+    whereIndex !== fromIndex + 2 ||
+    !isWord(fromKeyword, "FROM") ||
+    cteSource?.kind !== "word" ||
+    cteSource.value !== cteName.value ||
+    !isWord(whereKeyword, "WHERE") ||
+    fromKeyword === undefined ||
+    whereKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, fromKeyword, cteSource) ||
+    !onlyWhitespaceBetween(syntaxSource, cteSource, whereKeyword) ||
+    !hasSimpleAssignments(
+      source,
+      syntaxSource,
+      setKeyword.end,
+      fromKeyword.start,
+      SIMPLE_OR_QUOTED_IDENTIFIER_PATTERN,
+    ) ||
+    syntaxSource.slice(whereKeyword.end, statement.end).trim() === "" ||
+    tokens.slice(whereIndex + 1).some((token) => {
       return (
-        (token.kind === "punctuation" && token.value === ";") ||
-        (token.kind === "word" &&
-          UNSUPPORTED_SCALAR_QUERY_KEYWORDS.has(token.value) &&
-          !(token.value === "LIMIT" && index === tokens.length - 2))
+        token.kind === "word" &&
+        UNSUPPORTED_UPDATE_PREDICATE_KEYWORDS.has(token.value)
       );
     })
   ) {
-    return false;
+    return undefined;
   }
 
-  const fromIndex = tokens.findIndex((token, index) => {
-    return index > 0 && isWord(token, "FROM");
-  });
-  const whereIndex = tokens.findIndex((token, index) => {
-    return index > fromIndex && isWord(token, "WHERE");
-  });
-  const limitIndex = tokens.length - 2;
-  const limitKeyword = tokens[limitIndex];
-  const limitValue = tokens[limitIndex + 1];
-  const selectKeyword = tokens[0];
-  const fromKeyword = tokens[fromIndex];
-  const whereKeyword = tokens[whereIndex];
+  const innerSyntaxSource = syntaxSource.slice(cteOpen.end, cteClose.start);
+  const lockingMatch = simpleLockingSelectMatch(innerSyntaxSource);
   if (
-    fromIndex <= 0 ||
-    whereIndex <= fromIndex ||
-    limitIndex <= whereIndex ||
-    !isWord(limitKeyword, "LIMIT") ||
-    limitValue?.kind !== "number" ||
-    limitValue.value !== "1" ||
-    selectKeyword === undefined ||
-    fromKeyword === undefined ||
-    whereKeyword === undefined ||
-    innerSource.slice(selectKeyword.end, fromKeyword.start).trim() === "" ||
-    innerSource.slice(fromKeyword.end, whereKeyword.start).trim() === "" ||
-    innerSource.slice(whereKeyword.end, limitKeyword.start).trim() === "" ||
-    innerSyntaxSource.slice(limitKeyword.end, limitValue.start).trim() !== "" ||
-    innerSyntaxSource.slice(limitValue.end).trim() !== ""
+    lockingMatch?.sourceTableExpressionIndex === undefined ||
+    lockingMatch.lockTableExpressionIndex === undefined
   ) {
-    return false;
+    return undefined;
+  }
+  const innerTokens = topLevelTokens(innerSyntaxSource);
+  if (innerTokens === undefined) {
+    return undefined;
+  }
+  const innerFromIndex = innerTokens.findIndex((token) => {
+    return isWord(token, "FROM");
+  });
+  const innerOrderIndex = innerTokens.findIndex((token) => {
+    return isWord(token, "ORDER");
+  });
+  const innerForIndex = innerTokens.findIndex((token) => {
+    return isWord(token, "FOR");
+  });
+  const selectedColumn = innerTokens[1];
+  const orderByKeyword = innerTokens[innerOrderIndex + 1];
+  const orderColumn = innerTokens[innerOrderIndex + 2];
+  const possibleOrderDirection = innerTokens[innerOrderIndex + 3];
+  const orderEndIndex =
+    isWord(possibleOrderDirection, "ASC") ||
+    isWord(possibleOrderDirection, "DESC")
+      ? innerOrderIndex + 4
+      : innerOrderIndex + 3;
+  if (
+    innerFromIndex !== 2 ||
+    selectedColumn?.kind !== "expression" ||
+    innerOrderIndex <= innerFromIndex ||
+    !isWord(orderByKeyword, "BY") ||
+    orderColumn?.kind !== "expression" ||
+    orderEndIndex !== innerForIndex
+  ) {
+    return undefined;
   }
 
-  return true;
+  // The outer prefix contains no interpolations, so expression indexes from
+  // the nested SELECT address the full tagged template unchanged.
+  return {
+    lockTableExpressionIndex: lockingMatch.lockTableExpressionIndex,
+    orderColumnExpressionIndex: orderColumn.expressionIndex,
+    selectedColumnExpressionIndex: selectedColumn.expressionIndex,
+    sourceTableExpressionIndex: lockingMatch.sourceTableExpressionIndex,
+    targetTableExpressionIndex: targetTable.expressionIndex,
+  };
 }
 
 export const preferDrizzleQueryBuilder = createRule({
@@ -953,114 +998,65 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete simple deletes, upserts, selects, locking selects, and scalar result queries",
+        "Prefer Drizzle query builders for complete schema-backed deletes, updates, and upserts",
       recommended: true,
       requiresTypeChecking: true,
     },
     schema: [],
     messages: {
-      queryBuilder:
-        "Use a Drizzle select builder for this complete schema-backed query.",
-      lockingQueryBuilder:
-        "Use a Drizzle select builder with .for(...) for this complete locking query.",
       deleteQueryBuilder:
         "Use a Drizzle delete builder for this complete single-target query.",
+      lockingCteUpdateQueryBuilder:
+        "Use Drizzle $with(...), select().for(...), and update().from(...) builders for this complete locking CTE update.",
+      unnestUpdateQueryBuilder:
+        "Use a Drizzle update builder with .from(...) for this complete unnest-backed update.",
       upsertQueryBuilder:
         "Use a Drizzle insert builder with .onConflictDoUpdate(...) for this complete single-row upsert.",
-      structuredScalarQuery:
-        "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
   },
   create(context) {
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
-    const directRawRowsBindings = new Set<string>();
-    const rawRowsNamespaces = new Set<string>();
-    // Keep the type-aware consumer traversal out of files with no matching
-    // syntax. The API baseline has hundreds of result calls but zero targets.
-    const scalarQueryCandidates = new Set<TSESTree.TaggedTemplateExpression>();
-    const structuredSelectionCalls: TSESTree.CallExpression[] = [];
-    const reportedScalarQueries = new Set<TSESTree.TaggedTemplateExpression>();
-    const resultPropertyTypes: Record<
-      "execute" | "from",
-      Map<Type, boolean>
-    > = {
-      execute: new Map<Type, boolean>(),
-      from: new Map<Type, boolean>(),
-    };
-
-    for (const statement of context.sourceCode.ast.body) {
-      if (
-        statement.type !== AST_NODE_TYPES.ImportDeclaration ||
-        typeof statement.source.value !== "string" ||
-        !isRawRowsModule(statement.source.value)
-      ) {
-        continue;
-      }
-      for (const specifier of statement.specifiers) {
-        if (
-          specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-          ((specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            specifier.imported.name === "executeRawRows") ||
-            (specifier.imported.type === AST_NODE_TYPES.Literal &&
-              specifier.imported.value === "executeRawRows"))
-        ) {
-          directRawRowsBindings.add(specifier.local.name);
-        } else if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
-          rawRowsNamespaces.add(specifier.local.name);
-        }
-      }
-    }
-
-    function isExecuteRawRowsCallee(node: TSESTree.Expression): boolean {
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        if (!directRawRowsBindings.has(node.name)) {
-          return false;
-        }
-        const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-        const symbol = checker.getSymbolAtLocation(tsNode);
-        return (
-          symbol?.declarations?.some((declaration) => {
-            return (
-              isImportSpecifier(declaration) &&
-              (declaration.propertyName?.text ?? declaration.name.text) ===
-                "executeRawRows" &&
-              isRawRowsModule(importSource(declaration))
-            );
-          }) === true
-        );
-      }
-      if (
-        node.type !== AST_NODE_TYPES.MemberExpression ||
-        memberName(node) !== "executeRawRows" ||
-        node.object.type !== AST_NODE_TYPES.Identifier ||
-        !rawRowsNamespaces.has(node.object.name)
-      ) {
-        return false;
-      }
-      const tsObject = services.esTreeNodeToTSNodeMap.get(node.object);
-      const symbol = checker.getSymbolAtLocation(tsObject);
-      return (
-        symbol?.declarations?.some((declaration) => {
-          return (
-            isNamespaceImport(declaration) &&
-            isRawRowsModule(importSource(declaration))
-          );
-        }) === true
-      );
-    }
+    const completeSqlInspections: Array<() => void> = [];
+    const drizzleExecuteMemberCache = new WeakMap<
+      TSESTree.MemberExpression,
+      boolean
+    >();
 
     function isDrizzleExecuteMember(node: TSESTree.MemberExpression): boolean {
       if (memberName(node) !== "execute") {
         return false;
       }
+      const cached = drizzleExecuteMemberCache.get(node);
+      if (cached !== undefined) {
+        return cached;
+      }
       const tsProperty = services.esTreeNodeToTSNodeMap.get(node.property);
-      return (
+      const result =
         checker
           .getSymbolAtLocation(tsProperty)
-          ?.declarations?.some(isDrizzleDeclaration) === true
+          ?.declarations?.some(isDrizzleDeclaration) === true;
+      drizzleExecuteMemberCache.set(node, result);
+      return result;
+    }
+
+    function isSafeSqlTerminalUse(node: TSESTree.Expression): boolean {
+      const parent = node.parent;
+      return (
+        parent.type === AST_NODE_TYPES.CallExpression &&
+        parent.arguments.length === 1 &&
+        parent.arguments[0] === node &&
+        parent.callee.type === AST_NODE_TYPES.MemberExpression &&
+        isDrizzleExecuteMember(parent.callee)
       );
     }
+
+    const sqlSourceComposer = createSqlSourceComposer(
+      context.sourceCode,
+      checker,
+      services,
+      isSafeSqlTerminalUse,
+    );
 
     function expressionType(node: TSESTree.Expression) {
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);
@@ -1070,411 +1066,154 @@ export const preferDrizzleQueryBuilder = createRule({
       };
     }
 
-    function symbolAt(node: TSESTree.Node) {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return checker.getSymbolAtLocation(tsNode);
-    }
-
-    function methodReturnsDrizzleProperty(
-      type: Type,
-      property: "execute" | "from",
+    function isDrizzleTableExpression(
+      node: TSESTree.Expression | undefined,
     ): boolean {
-      const cache = resultPropertyTypes[property];
-      const cached = cache.get(type);
-      if (cached !== undefined) {
-        return cached;
-      }
-      let result: boolean;
-      if (type.isUnion()) {
-        result = type.types.every((member) => {
-          return methodReturnsDrizzleProperty(member, property);
-        });
-      } else {
-        const signatures = type.getCallSignatures();
-        result =
-          signatures.length > 0 &&
-          signatures.every((signature) => {
-            const returnType = checker.getReturnTypeOfSignature(signature);
-            return isDrizzleSymbol(
-              checker,
-              checker.getPropertyOfType(returnType, property),
-            );
-          });
-      }
-      cache.set(type, result);
-      return result;
-    }
-
-    function hasOnlyDrizzleDeclarations(node: TSESTree.Node): boolean {
-      const declarations = resolvedSymbol(
-        checker,
-        symbolAt(node),
-      )?.declarations;
-      return (
-        declarations !== undefined &&
-        declarations.length > 0 &&
-        declarations.every(isDrizzleDeclaration)
-      );
-    }
-
-    function hasOnlyNamedDrizzleSignatures(type: Type, name: string): boolean {
-      if (type.isUnion()) {
-        return type.types.every((member) => {
-          return hasOnlyNamedDrizzleSignatures(member, name);
-        });
-      }
-      const signatures = type.getCallSignatures();
-      return (
-        signatures.length > 0 &&
-        signatures.every((signature) => {
-          return isNamedDrizzleSignature(signature, name);
-        })
-      );
-    }
-
-    function structuredResultMethod(
-      node: TSESTree.MemberExpression,
-    ): string | null {
-      const name = memberName(node);
-      if (name === null || !RESULT_FIELD_ARGUMENT.has(name)) {
-        return null;
-      }
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const type = checker.getTypeAtLocation(tsNode);
-      const hasDrizzleIdentity =
-        hasOnlyDrizzleDeclarations(node.property) ||
-        hasOnlyNamedDrizzleSignatures(type, name);
-      return hasDrizzleIdentity &&
-        methodReturnsDrizzleProperty(
-          type,
-          name === "returning" ? "execute" : "from",
-        )
-        ? name
-        : null;
-    }
-
-    function transparentExpression(node: TSESTree.Node): TSESTree.Node | null {
-      if (
-        node.type === AST_NODE_TYPES.TSAsExpression ||
-        node.type === AST_NODE_TYPES.TSTypeAssertion ||
-        node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-        node.type === AST_NODE_TYPES.TSNonNullExpression ||
-        node.type === AST_NODE_TYPES.ChainExpression
-      ) {
-        return node.expression;
-      }
-      return null;
-    }
-
-    function variableInScope(
-      node: TSESTree.Identifier,
-    ): TSESLint.Scope.Variable | null {
-      let scope: TSESLint.Scope.Scope | null =
-        context.sourceCode.getScope(node);
-      while (scope !== null) {
-        const variable = scope.variables.find((candidate) => {
-          return candidate.name === node.name;
-        });
-        if (variable !== undefined) {
-          return variable;
-        }
-        scope = scope.upper;
-      }
-      return null;
-    }
-
-    function outerTransparentExpression(node: TSESTree.Node): TSESTree.Node {
-      let current = node;
-      while (
-        current.parent !== undefined &&
-        transparentExpression(current.parent) === current
-      ) {
-        current = current.parent;
-      }
-      return current;
-    }
-
-    function isStructuredResultArgument(node: TSESTree.Node): boolean {
-      const use = outerTransparentExpression(node);
-      const parent = use.parent;
-      if (
-        parent === undefined ||
-        parent.type !== AST_NODE_TYPES.CallExpression ||
-        parent.callee.type !== AST_NODE_TYPES.MemberExpression
-      ) {
+      if (node === undefined) {
         return false;
       }
-      const method = structuredResultMethod(parent.callee);
-      const argumentIndex =
-        method === null ? undefined : RESULT_FIELD_ARGUMENT.get(method);
-      return (
-        argumentIndex !== undefined && parent.arguments[argumentIndex] === use
-      );
+      const value = expressionType(node);
+      return isDrizzleTableType(checker, value.type, value.location);
     }
 
-    function isSafeConstReference(
-      identifier: TSESTree.Identifier,
-      currentReference: TSESTree.Identifier,
-    ): boolean {
-      return (
-        identifier === currentReference ||
-        isStructuredResultArgument(identifier)
-      );
-    }
+    function writeVariantMessage(
+      rendered: LegacySqlSource,
+    ):
+      | "deleteQueryBuilder"
+      | "lockingCteUpdateQueryBuilder"
+      | "unnestUpdateQueryBuilder"
+      | "upsertQueryBuilder"
+      | null {
+      const syntaxSource = sqlCodeMask(rendered.source);
+      const statement = completeSqlStatement(syntaxSource);
+      if (statement === undefined) {
+        return null;
+      }
+      const deleteMatch = simpleDeleteMatch(syntaxSource, statement);
+      const unnestUpdateMatch =
+        deleteMatch === undefined
+          ? simpleUnnestUpdateMatch(rendered.source, syntaxSource, statement)
+          : undefined;
+      const lockingCteUpdateMatch =
+        deleteMatch === undefined && unnestUpdateMatch === undefined
+          ? simpleLockingCteUpdateMatch(
+              rendered.source,
+              syntaxSource,
+              statement,
+            )
+          : undefined;
+      const upsertMatch =
+        deleteMatch === undefined &&
+        unnestUpdateMatch === undefined &&
+        lockingCteUpdateMatch === undefined
+          ? simpleUpsertMatch(rendered.source, syntaxSource, statement)
+          : undefined;
+      const match =
+        deleteMatch ??
+        unnestUpdateMatch ??
+        lockingCteUpdateMatch ??
+        upsertMatch;
+      if (match === undefined) {
+        return null;
+      }
 
-    function hasExportModifier(node: Node): boolean {
-      return (
-        canHaveModifiers(node) &&
-        getModifiers(node)?.some((modifier) => {
-          return modifier.kind === SyntaxKind.ExportKeyword;
-        }) === true
-      );
-    }
-
-    function variableIsExported(declaration: VariableDeclaration): boolean {
-      return hasExportModifier(declaration.parent.parent);
-    }
-
-    function hasOnlySafeConstReferences(node: TSESTree.Identifier): boolean {
-      // const freezes the binding, not the selected object. Stop when another
-      // use could mutate or expose it outside a proven Drizzle result read.
-      const variable = variableInScope(node);
-      return (
-        variable !== null &&
-        variable.references.every((reference) => {
+      const targetTableExpressionIndex = match.targetTableExpressionIndex;
+      const literalTarget =
+        deleteMatch !== undefined &&
+        deleteMatch.targetTableExpressionIndex === undefined
+          ? deleteMatch
+          : upsertMatch !== undefined &&
+              upsertMatch.targetTableExpressionIndex === undefined
+            ? upsertMatch
+            : undefined;
+      if (
+        literalTarget !== undefined &&
+        rendered.literalRanges.some((range) => {
           return (
-            reference.init === true ||
-            (reference.identifier.type === AST_NODE_TYPES.Identifier &&
-              isSafeConstReference(reference.identifier, node))
+            range.depth > 0 &&
+            range.start < literalTarget.targetTableEnd &&
+            range.end > literalTarget.targetTableStart
           );
         })
-      );
-    }
-
-    function localConstInitializer(node: TSESTree.Node): TSESTree.Node | null {
-      if (node.type !== AST_NODE_TYPES.Identifier) {
-        return null;
-      }
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const declaration = resolvedSymbol(
-        checker,
-        checker.getSymbolAtLocation(tsNode),
-      )?.valueDeclaration;
-      if (
-        declaration === undefined ||
-        !isVariableDeclaration(declaration) ||
-        declaration.getSourceFile() !== tsNode.getSourceFile() ||
-        !isConstVariable(declaration) ||
-        variableIsExported(declaration) ||
-        declaration.initializer === undefined ||
-        !hasOnlySafeConstReferences(node)
       ) {
         return null;
       }
-      return services.tsNodeToESTreeNodeMap.get(declaration.initializer);
-    }
-
-    function isConstVariable(declaration: VariableDeclaration): boolean {
-      return (
-        isVariableDeclarationList(declaration.parent) &&
-        (declaration.parent.flags & NodeFlags.Const) !== 0
-      );
-    }
-
-    function isSafeFunctionReference(
-      identifier: TSESTree.Identifier,
-      currentReference: TSESTree.Identifier,
-    ): boolean {
-      if (identifier === currentReference) {
-        return true;
-      }
-      const callee = outerTransparentExpression(identifier);
-      const call = callee.parent;
-      return (
-        call !== undefined &&
-        call.type === AST_NODE_TYPES.CallExpression &&
-        call.callee === callee &&
-        isStructuredResultArgument(call)
-      );
-    }
-
-    function hasOnlySafeFunctionReferences(node: TSESTree.Identifier): boolean {
-      const variable = variableInScope(node);
-      return (
-        variable !== null &&
-        variable.references.every((reference) => {
-          return (
-            reference.init === true ||
-            (reference.identifier.type === AST_NODE_TYPES.Identifier &&
-              isSafeFunctionReference(reference.identifier, node))
-          );
-        })
-      );
-    }
-
-    function localSingleReturn(node: TSESTree.Node): TSESTree.Node | null {
-      // This intentionally covers only the historical local factory shape.
-      // Parameter substitution and broader call flow remain opaque.
-      if (
-        node.type !== AST_NODE_TYPES.CallExpression ||
-        node.callee.type !== AST_NODE_TYPES.Identifier ||
-        node.arguments.some((argument) => {
-          return argument.type === AST_NODE_TYPES.SpreadElement;
-        })
-      ) {
-        return null;
-      }
-      const tsCallee = services.esTreeNodeToTSNodeMap.get(node.callee);
-      const declaration = resolvedSymbol(
-        checker,
-        checker.getSymbolAtLocation(tsCallee),
-      )?.valueDeclaration;
-      if (
-        declaration === undefined ||
-        !isFunctionDeclaration(declaration) ||
-        declaration.getSourceFile() !== tsCallee.getSourceFile() ||
-        declaration.body === undefined ||
-        declaration.body.statements.length !== 1 ||
-        hasExportModifier(declaration) ||
-        !hasOnlySafeFunctionReferences(node.callee)
-      ) {
-        return null;
-      }
-      const statement = declaration.body.statements[0];
-      if (
-        statement === undefined ||
-        !isReturnStatement(statement) ||
-        statement.expression === undefined
-      ) {
-        return null;
-      }
-      return services.tsNodeToESTreeNodeMap.get(statement.expression);
-    }
-
-    function isDrizzleResultWrapper(node: TSESTree.CallExpression): boolean {
-      if (
-        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.arguments.some((argument) => {
-          return argument.type === AST_NODE_TYPES.SpreadElement;
-        })
-      ) {
-        return false;
-      }
-      const name = memberName(node.callee);
-      if (
-        (name !== "mapWith" && name !== "as") ||
-        node.arguments.length !== 1
-      ) {
-        return false;
-      }
-      return isDrizzleSymbol(checker, symbolAt(node.callee.property));
-    }
-
-    function reportScalarQuery(node: TSESTree.TaggedTemplateExpression): void {
-      if (
-        !scalarQueryCandidates.has(node) ||
-        reportedScalarQueries.has(node) ||
-        !isDrizzleSqlTag(checker, services, node.tag)
-      ) {
-        return;
-      }
-      reportedScalarQueries.add(node);
-      context.report({ node, messageId: "structuredScalarQuery" });
-    }
-
-    function inspectSelectedValue(
-      node: TSESTree.Node,
-      visited: Set<TSESTree.Node>,
-    ): void {
-      if (visited.has(node)) {
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.ObjectExpression) {
-        inspectSelectionContainer(node, visited);
-        return;
-      }
-      visited.add(node);
-
-      const transparent = transparentExpression(node);
-      if (transparent !== null) {
-        inspectSelectedValue(transparent, visited);
-        return;
-      }
-      const initializer = localConstInitializer(node);
-      if (initializer !== null) {
-        inspectSelectedValue(initializer, visited);
-        return;
-      }
-      if (
-        node.type === AST_NODE_TYPES.CallExpression &&
-        node.callee.type === AST_NODE_TYPES.MemberExpression &&
-        isDrizzleResultWrapper(node)
-      ) {
-        inspectSelectedValue(node.callee.object, visited);
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-        reportScalarQuery(node);
-      }
-    }
-
-    function inspectSelectionContainer(
-      node: TSESTree.Node,
-      visited: Set<TSESTree.Node>,
-    ): void {
-      if (visited.has(node)) {
-        return;
-      }
-      visited.add(node);
-
-      const transparent = transparentExpression(node);
-      if (transparent !== null) {
-        inspectSelectionContainer(transparent, visited);
-        return;
-      }
-      const initializer = localConstInitializer(node);
-      if (initializer !== null) {
-        inspectSelectionContainer(initializer, visited);
-        return;
-      }
-      const returned = localSingleReturn(node);
-      if (returned !== null) {
-        inspectSelectionContainer(returned, visited);
-        return;
-      }
-      if (node.type !== AST_NODE_TYPES.ObjectExpression) {
-        return;
-      }
-      for (const property of node.properties) {
-        if (property.type === AST_NODE_TYPES.SpreadElement) {
-          inspectSelectionContainer(property.argument, visited);
-        } else {
-          inspectSelectedValue(property.value, visited);
+      if (targetTableExpressionIndex !== undefined) {
+        const targetTable = rendered.expressions[targetTableExpressionIndex];
+        if (targetTable === undefined) {
+          return null;
+        }
+        const targetTableType = expressionType(targetTable);
+        if (
+          !isDrizzleTableType(
+            checker,
+            targetTableType.type,
+            targetTableType.location,
+          )
+        ) {
+          return null;
         }
       }
+
+      if (lockingCteUpdateMatch !== undefined) {
+        const expressions = rendered.expressions;
+        const sourceTable =
+          expressions[lockingCteUpdateMatch.sourceTableExpressionIndex];
+        const lockTable =
+          expressions[lockingCteUpdateMatch.lockTableExpressionIndex];
+        const selectedColumn =
+          expressions[lockingCteUpdateMatch.selectedColumnExpressionIndex];
+        const orderColumn =
+          expressions[lockingCteUpdateMatch.orderColumnExpressionIndex];
+        const targetTable =
+          expressions[lockingCteUpdateMatch.targetTableExpressionIndex];
+        if (
+          sourceTable === undefined ||
+          lockTable === undefined ||
+          selectedColumn === undefined ||
+          orderColumn === undefined ||
+          targetTable === undefined
+        ) {
+          return null;
+        }
+        const selectedColumnType = expressionType(selectedColumn);
+        const orderColumnType = expressionType(orderColumn);
+        if (
+          !isDrizzleTableExpression(sourceTable) ||
+          !isDrizzleTableExpression(lockTable) ||
+          !isDrizzleColumnType(
+            checker,
+            selectedColumnType.type,
+            selectedColumnType.location,
+          ) ||
+          !isDrizzleColumnType(
+            checker,
+            orderColumnType.type,
+            orderColumnType.location,
+          ) ||
+          context.sourceCode.getText(sourceTable) !==
+            context.sourceCode.getText(lockTable) ||
+          context.sourceCode.getText(sourceTable) !==
+            context.sourceCode.getText(targetTable) ||
+          context.sourceCode.getText(selectedColumn) !==
+            context.sourceCode.getText(orderColumn)
+        ) {
+          return null;
+        }
+      }
+
+      return deleteMatch !== undefined
+        ? "deleteQueryBuilder"
+        : unnestUpdateMatch !== undefined
+          ? "unnestUpdateQueryBuilder"
+          : lockingCteUpdateMatch !== undefined
+            ? "lockingCteUpdateQueryBuilder"
+            : "upsertQueryBuilder";
     }
 
-    function inspectStructuredSelection(node: TSESTree.CallExpression): void {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
-        return;
-      }
-      const method = structuredResultMethod(node.callee);
-      if (method === null) {
-        return;
-      }
-      const argumentIndex = RESULT_FIELD_ARGUMENT.get(method);
-      const fields =
-        argumentIndex === undefined ? undefined : node.arguments[argumentIndex];
-      if (
-        fields === undefined ||
-        fields.type === AST_NODE_TYPES.SpreadElement
-      ) {
-        return;
-      }
-      inspectSelectionContainer(fields, new Set<TSESTree.Node>());
-    }
-
-    function inspectCompleteWrite(node: TSESTree.CallExpression): void {
+    function scheduleCompleteWriteInspection(
+      node: TSESTree.CallExpression,
+    ): void {
       if (
         node.callee.type !== AST_NODE_TYPES.MemberExpression ||
         memberName(node.callee) !== "execute" ||
@@ -1485,180 +1224,44 @@ export const preferDrizzleQueryBuilder = createRule({
       const query = node.arguments[0];
       if (
         query === undefined ||
-        query.type !== AST_NODE_TYPES.TaggedTemplateExpression
+        query.type === AST_NODE_TYPES.SpreadElement ||
+        !sqlSourceComposer.couldCompose(query)
       ) {
         return;
       }
-
-      const source = query.quasi.quasis
-        .map(quasiText)
-        .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
-      const syntaxSource = sqlCodeMask(source);
-      const statement = completeSqlStatement(syntaxSource);
-      if (statement === undefined) {
-        return;
-      }
-      const deleteMatch = simpleDeleteMatch(syntaxSource, statement);
-      const upsertMatch =
-        deleteMatch === undefined
-          ? simpleUpsertMatch(source, syntaxSource, statement)
-          : undefined;
-      const match = deleteMatch ?? upsertMatch;
-      if (
-        match === undefined ||
-        !isDrizzleSqlTag(checker, services, query.tag) ||
-        !isDrizzleExecuteMember(node.callee)
-      ) {
-        return;
-      }
-
-      const targetTableExpressionIndex = match.targetTableExpressionIndex;
-      if (targetTableExpressionIndex !== undefined) {
-        const targetTable = query.quasi.expressions[targetTableExpressionIndex];
-        if (targetTable === undefined) {
+      const executeMember = node.callee;
+      completeSqlInspections.push(() => {
+        if (!isDrizzleExecuteMember(executeMember)) {
           return;
         }
-        const targetTableType = expressionType(targetTable);
+        const source = sqlSourceComposer.compose(query);
+        if (source === null) {
+          return;
+        }
+        const messages = source.variants.map((variant) => {
+          return writeVariantMessage(renderLegacySqlSource(variant));
+        });
+        const messageId = messages[0];
         if (
-          !isDrizzleTableType(
-            checker,
-            targetTableType.type,
-            targetTableType.location,
-          )
+          messageId === undefined ||
+          messageId === null ||
+          messages.some((message) => {
+            return message !== messageId;
+          })
         ) {
           return;
         }
-      }
-
-      context.report({
-        node: query,
-        messageId:
-          deleteMatch === undefined
-            ? "upsertQueryBuilder"
-            : "deleteQueryBuilder",
+        context.report({ node: query, messageId });
       });
     }
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        inspectCompleteWrite(node);
-        if (
-          node.callee.type === AST_NODE_TYPES.MemberExpression &&
-          RESULT_FIELD_ARGUMENT.has(memberName(node.callee) ?? "")
-        ) {
-          structuredSelectionCalls.push(node);
-        }
-        if (
-          !isExecuteRawRowsCallee(node.callee) ||
-          node.arguments.length !== 3 ||
-          node.arguments.some((argument) => {
-            return argument.type === AST_NODE_TYPES.SpreadElement;
-          })
-        ) {
-          return;
-        }
-        const query = node.arguments[1];
-        if (
-          query === undefined ||
-          query.type !== AST_NODE_TYPES.TaggedTemplateExpression ||
-          !isDrizzleSqlTag(checker, services, query.tag)
-        ) {
-          return;
-        }
-
-        const source = query.quasi.quasis
-          .map(quasiText)
-          .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
-        const syntaxSource = sqlCodeMask(source);
-        const lockingMatch = simpleLockingSelectMatch(syntaxSource);
-        if (lockingMatch !== undefined) {
-          const sourceTableExpressionIndex =
-            lockingMatch.sourceTableExpressionIndex;
-          if (sourceTableExpressionIndex !== undefined) {
-            const sourceTable =
-              query.quasi.expressions[sourceTableExpressionIndex];
-            if (sourceTable === undefined) {
-              return;
-            }
-            const sourceTableType = expressionType(sourceTable);
-            if (
-              !isDrizzleTableType(
-                checker,
-                sourceTableType.type,
-                sourceTableType.location,
-              )
-            ) {
-              return;
-            }
-          }
-          context.report({ node: query, messageId: "lockingQueryBuilder" });
-          return;
-        }
-
-        const match = simpleSelectMatch(source, syntaxSource);
-        if (match === undefined) {
-          return;
-        }
-
-        const selectedColumn =
-          query.quasi.expressions[match.selectedColumnExpressionIndex];
-        const sourceTable =
-          query.quasi.expressions[match.sourceTableExpressionIndex];
-        if (selectedColumn === undefined || sourceTable === undefined) {
-          return;
-        }
-        const selectedColumnType = expressionType(selectedColumn);
-        const sourceTableType = expressionType(sourceTable);
-        if (
-          !isDrizzleColumnType(
-            checker,
-            selectedColumnType.type,
-            selectedColumnType.location,
-          ) ||
-          !isDrizzleTableType(
-            checker,
-            sourceTableType.type,
-            sourceTableType.location,
-          ) ||
-          !match.joinTableExpressionIndexes.every((index) => {
-            const expression = query.quasi.expressions[index];
-            if (expression === undefined) {
-              return false;
-            }
-            const expressionValue = expressionType(expression);
-            return isDrizzleTableType(
-              checker,
-              expressionValue.type,
-              expressionValue.location,
-            );
-          }) ||
-          !match.joinConditionExpressionIndexes.every((index) => {
-            const expression = query.quasi.expressions[index];
-            return (
-              expression !== undefined &&
-              isDrizzleWrapperType(checker, expressionType(expression).type)
-            );
-          })
-        ) {
-          return;
-        }
-
-        context.report({ node: query, messageId: "queryBuilder" });
-      },
-      TaggedTemplateExpression(node: TSESTree.TaggedTemplateExpression): void {
-        const source = node.quasi.quasis
-          .map(quasiText)
-          .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
-        if (parenthesizedScalarSelect(source, sqlCodeMask(source))) {
-          scalarQueryCandidates.add(node);
-        }
+        scheduleCompleteWriteInspection(node);
       },
       "Program:exit"(): void {
-        if (scalarQueryCandidates.size === 0) {
-          return;
-        }
-        for (const call of structuredSelectionCalls) {
-          inspectStructuredSelection(call);
+        for (const inspect of completeSqlInspections) {
+          inspect();
         }
       },
     };

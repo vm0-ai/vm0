@@ -178,7 +178,13 @@ For detailed patterns and examples, use `/testing`.
   - `cd turbo && pnpm vitest run --maxWorkers=4 --silent=passed-only`
   - `cd turbo && pnpm knip`
 - **Rust:** Run `cargo fmt`, Clippy, documentation checks, and tests for the affected crate(s) from `crates/`. Use workspace-wide checks when shared crates, workspace configuration, or cross-crate behavior changes.
-- **Python (`crates/runner/mitm-addon`):** Run Ruff formatting and linting, basedpyright, and pytest in that package.
+- **Python (`crates/runner/mitm-addon`):** Use the committed uv environment and run the following commands from that package:
+  - `uv lock --check`
+  - `uv sync --locked`
+  - `uv run --no-sync ruff format --check .`
+  - `uv run --no-sync ruff check .`
+  - `uv run --no-sync basedpyright -p .`
+  - `uv run --no-sync python -m pytest tests/`
 - **Documentation or configuration:** Run the formatter, validator, or specialized tests that consume the changed files. Unrelated Turbo, Rust, or Python suites are not required unless those files affect them.
 
 The root `lefthook.yml` selects formatting and static checks from staged file paths. It does not replace running the relevant tests manually.

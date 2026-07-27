@@ -1,5 +1,426 @@
 # Changelog
 
+## [9.258.4](https://github.com/vm0-ai/vm0/compare/cli-v9.258.3...cli-v9.258.4) (2026-07-27)
+
+
+### Bug Fixes
+
+* **website:** restore open design templates and route by intent ([#23188](https://github.com/vm0-ai/vm0/issues/23188)) ([bb40296](https://github.com/vm0-ai/vm0/commit/bb402968391ad7dc781d0702914a860c7467138b))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.234.0
+    * @vm0/connectors bumped to 1.195.2
+    * @vm0/core bumped to 8.472.0
+
+## [9.258.3](https://github.com/vm0-ai/vm0/compare/cli-v9.258.2...cli-v9.258.3) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.233.3
+    * @vm0/connectors bumped to 1.195.1
+    * @vm0/core bumped to 8.471.1
+
+## [9.258.2](https://github.com/vm0-ai/vm0/compare/cli-v9.258.1...cli-v9.258.2) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.233.2
+    * @vm0/connectors bumped to 1.195.0
+    * @vm0/core bumped to 8.471.0
+
+## [9.258.1](https://github.com/vm0-ai/vm0/compare/cli-v9.258.0...cli-v9.258.1) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.233.1
+    * @vm0/core bumped to 8.470.1
+
+## [9.258.0](https://github.com/vm0-ai/vm0/compare/cli-v9.257.9...cli-v9.258.0) (2026-07-26)
+
+
+### Features
+
+* add fixed r2 packages for image styles behind a rollout switch ([#23120](https://github.com/vm0-ai/vm0/issues/23120)) ([bbeeaee](https://github.com/vm0-ai/vm0/commit/bbeeaee0515508f9a58359bb78984d074ff2c7fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.233.0
+    * @vm0/connectors bumped to 1.194.0
+    * @vm0/core bumped to 8.470.0
+
+## [9.257.9](https://github.com/vm0-ai/vm0/compare/cli-v9.257.8...cli-v9.257.9) (2026-07-26)
+
+
+### Bug Fixes
+
+* refresh website template v2 archives to upstream ccff774 ([#23126](https://github.com/vm0-ai/vm0/issues/23126)) ([b564fa1](https://github.com/vm0-ai/vm0/commit/b564fa11bcd86b0e7f26ed7c464299e673e61fbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.232.2
+    * @vm0/core bumped to 8.469.1
+
+## [9.257.8](https://github.com/vm0-ai/vm0/compare/cli-v9.257.7...cli-v9.257.8) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.232.1
+    * @vm0/connectors bumped to 1.193.0
+    * @vm0/core bumped to 8.469.0
+
+## [9.257.7](https://github.com/vm0-ai/vm0/compare/cli-v9.257.6...cli-v9.257.7) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.232.0
+    * @vm0/connectors bumped to 1.192.2
+    * @vm0/core bumped to 8.468.2
+
+## [9.257.6](https://github.com/vm0-ai/vm0/compare/cli-v9.257.5...cli-v9.257.6) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.231.2
+    * @vm0/connectors bumped to 1.192.1
+    * @vm0/core bumped to 8.468.1
+
+## [9.257.5](https://github.com/vm0-ai/vm0/compare/cli-v9.257.4...cli-v9.257.5) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.468.0
+
+## [9.257.4](https://github.com/vm0-ai/vm0/compare/cli-v9.257.3...cli-v9.257.4) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.231.1
+    * @vm0/core bumped to 8.467.2
+
+## [9.257.3](https://github.com/vm0-ai/vm0/compare/cli-v9.257.2...cli-v9.257.3) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.231.0
+    * @vm0/core bumped to 8.467.1
+
+## [9.257.2](https://github.com/vm0-ai/vm0/compare/cli-v9.257.1...cli-v9.257.2) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.467.0
+
+## [9.257.1](https://github.com/vm0-ai/vm0/compare/cli-v9.257.0...cli-v9.257.1) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.230.1
+    * @vm0/core bumped to 8.466.3
+
+## [9.257.0](https://github.com/vm0-ai/vm0/compare/cli-v9.256.1...cli-v9.257.0) (2026-07-25)
+
+
+### Features
+
+* **browser:** keep managed browsers alive after a run with an idle lease ([#23037](https://github.com/vm0-ai/vm0/issues/23037)) ([405591d](https://github.com/vm0-ai/vm0/commit/405591d1e7416a18ab8e0e66e456d3669da74629))
+
+
+### Bug Fixes
+
+* **preview:** propagate bypass to sandbox CLI ([#23045](https://github.com/vm0-ai/vm0/issues/23045)) ([6e4dc99](https://github.com/vm0-ai/vm0/commit/6e4dc99ba1327bc789708255b7e2ba4f387c7df3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.230.0
+    * @vm0/core bumped to 8.466.2
+
+## [9.256.1](https://github.com/vm0-ai/vm0/compare/cli-v9.256.0...cli-v9.256.1) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.229.2
+    * @vm0/connectors bumped to 1.192.0
+    * @vm0/core bumped to 8.466.1
+
+## [9.256.0](https://github.com/vm0-ai/vm0/compare/cli-v9.255.0...cli-v9.256.0) (2026-07-25)
+
+
+### Features
+
+* **billing:** enable plan upgrade guidance globally ([#23019](https://github.com/vm0-ai/vm0/issues/23019)) ([4f6feb6](https://github.com/vm0-ai/vm0/commit/4f6feb654f4c3a0b908786e481f91cbbb235ebb9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.229.1
+    * @vm0/core bumped to 8.466.0
+
+## [9.255.0](https://github.com/vm0-ai/vm0/compare/cli-v9.254.2...cli-v9.255.0) (2026-07-25)
+
+
+### Features
+
+* resume web chat after a linked gmail draft is sent ([#22963](https://github.com/vm0-ai/vm0/issues/22963)) ([7e00412](https://github.com/vm0-ai/vm0/commit/7e00412db66d95670476451828603f1efe742f97))
+* **zero:** add managed browsers with shared user profiles ([#22940](https://github.com/vm0-ai/vm0/issues/22940)) ([a56eeac](https://github.com/vm0-ai/vm0/commit/a56eeac6a74f30fae2fcfb2d69fa8b0840da6764))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.229.0
+    * @vm0/connectors bumped to 1.191.0
+    * @vm0/core bumped to 8.465.0
+
+## [9.254.2](https://github.com/vm0-ai/vm0/compare/cli-v9.254.1...cli-v9.254.2) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.228.0
+    * @vm0/core bumped to 8.464.1
+
+## [9.254.1](https://github.com/vm0-ai/vm0/compare/cli-v9.254.0...cli-v9.254.1) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.227.0
+    * @vm0/core bumped to 8.464.0
+
+## [9.254.0](https://github.com/vm0-ai/vm0/compare/cli-v9.253.0...cli-v9.254.0) (2026-07-24)
+
+
+### Features
+
+* **cli:** add cached chat thread listing and targeted rename ([#22927](https://github.com/vm0-ai/vm0/issues/22927)) ([1f11e99](https://github.com/vm0-ai/vm0/commit/1f11e99eda61c426b5e5782529a9aa5eb9366b50))
+
+
+### Bug Fixes
+
+* retire gpt-5.4 models ([#22923](https://github.com/vm0-ai/vm0/issues/22923)) ([0e5de85](https://github.com/vm0-ai/vm0/commit/0e5de85debf5ae6eb58e3a56a598ca2d21e506a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.226.0
+    * @vm0/core bumped to 8.463.0
+
+## [9.253.0](https://github.com/vm0-ai/vm0/compare/cli-v9.252.1...cli-v9.253.0) (2026-07-24)
+
+
+### Features
+
+* add github job, review, deployment, and comment automations ([#22904](https://github.com/vm0-ai/vm0/issues/22904)) ([6e20502](https://github.com/vm0-ai/vm0/commit/6e20502a92bb6cc5eea35a98d6583fd8c949cd1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.225.0
+    * @vm0/connectors bumped to 1.190.0
+    * @vm0/core bumped to 8.462.0
+
+## [9.252.1](https://github.com/vm0-ai/vm0/compare/cli-v9.252.0...cli-v9.252.1) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.224.0
+    * @vm0/core bumped to 8.461.2
+
+## [9.252.0](https://github.com/vm0-ai/vm0/compare/cli-v9.251.1...cli-v9.252.0) (2026-07-24)
+
+
+### Features
+
+* add feishu file transfer commands ([#22895](https://github.com/vm0-ai/vm0/issues/22895)) ([6ebf407](https://github.com/vm0-ai/vm0/commit/6ebf407f7b2bfdc7ca1d8d2393b7fcde31494ac8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.223.0
+    * @vm0/connectors bumped to 1.189.1
+    * @vm0/core bumped to 8.461.1
+
+## [9.251.1](https://github.com/vm0-ai/vm0/compare/cli-v9.251.0...cli-v9.251.1) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.222.1
+    * @vm0/core bumped to 8.461.0
+
+## [9.251.0](https://github.com/vm0-ai/vm0/compare/cli-v9.250.0...cli-v9.251.0) (2026-07-24)
+
+
+### Features
+
+* **zero:** add managed people search ([#22787](https://github.com/vm0-ai/vm0/issues/22787)) ([b26febe](https://github.com/vm0-ai/vm0/commit/b26febee464f6023cd3773030bcb45d03172aa56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.222.0
+    * @vm0/connectors bumped to 1.189.0
+    * @vm0/core bumped to 8.460.0
+
+## [9.250.0](https://github.com/vm0-ai/vm0/compare/cli-v9.249.2...cli-v9.250.0) (2026-07-24)
+
+
+### Features
+
+* trigger automations from completed github workflow runs ([#22831](https://github.com/vm0-ai/vm0/issues/22831)) ([407a3e8](https://github.com/vm0-ai/vm0/commit/407a3e874fded0deef147d260cb5e06f0f0746b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.221.0
+    * @vm0/connectors bumped to 1.188.0
+    * @vm0/core bumped to 8.459.0
+
+## [9.249.2](https://github.com/vm0-ai/vm0/compare/cli-v9.249.1...cli-v9.249.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **billing:** guide video-restricted workspaces to plan upgrade ([#22794](https://github.com/vm0-ai/vm0/issues/22794)) ([ec7c924](https://github.com/vm0-ai/vm0/commit/ec7c924358ea0fa63ec71e9c6be85317a6ebaa1c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.220.1
+    * @vm0/connectors bumped to 1.187.1
+    * @vm0/core bumped to 8.458.2
+
+## [9.249.1](https://github.com/vm0-ai/vm0/compare/cli-v9.249.0...cli-v9.249.1) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.220.0
+    * @vm0/core bumped to 8.458.1
+
+## [9.249.0](https://github.com/vm0-ai/vm0/compare/cli-v9.248.1...cli-v9.249.0) (2026-07-23)
+
+
+### Features
+
+* canonicalize slack attachments and agent-published files ([#22801](https://github.com/vm0-ai/vm0/issues/22801)) ([22f947f](https://github.com/vm0-ai/vm0/commit/22f947f5c533b06efc321ffda43d100fe610edec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.219.0
+    * @vm0/connectors bumped to 1.187.0
+    * @vm0/core bumped to 8.458.0
+
+## [9.248.1](https://github.com/vm0-ai/vm0/compare/cli-v9.248.0...cli-v9.248.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.218.1
+    * @vm0/connectors bumped to 1.186.1
+    * @vm0/core bumped to 8.457.3
+
+## [9.248.0](https://github.com/vm0-ai/vm0/compare/cli-v9.247.1...cli-v9.248.0) (2026-07-23)
+
+
+### Features
+
+* render readable weather output in the cli ([#22763](https://github.com/vm0-ai/vm0/issues/22763)) ([6a81ea8](https://github.com/vm0-ai/vm0/commit/6a81ea8e5924b6c8f6094f4b65021301f645a364))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.218.0
+    * @vm0/connectors bumped to 1.186.0
+    * @vm0/core bumped to 8.457.2
+
 ## [9.247.1](https://github.com/vm0-ai/vm0/compare/cli-v9.247.0...cli-v9.247.1) (2026-07-23)
 
 

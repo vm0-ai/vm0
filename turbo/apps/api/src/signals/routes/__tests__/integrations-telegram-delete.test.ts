@@ -151,9 +151,10 @@ describe("DELETE /api/integrations/telegram", () => {
     readonly orgId: string;
     readonly userId: string;
   }): Promise<string> {
-    const agentId = await createAgent(args);
-    await bdd.setDefaultAgent(user(args), agentId);
-    return agentId;
+    bdd.acceptAgentStorageWrites();
+    return await bdd.bootstrapLimitedFreeOnboarding(user(args), {
+      displayName: newId("agent"),
+    });
   }
 
   async function seedBot(
@@ -283,14 +284,6 @@ describe("DELETE /api/integrations/telegram", () => {
     expect(list.body.bots).not.toContainEqual(
       expect.objectContaining({ id: args.botId }),
     );
-    const status = await accept(
-      client().getBot({
-        params: { botId: args.botId },
-        headers: AUTH_HEADERS,
-      }),
-      [404],
-    );
-    expect(status.body.error.code).toBe("NOT_FOUND");
   }
 
   async function expectLinkStatus(args: {

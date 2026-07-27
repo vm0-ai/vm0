@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import {
   buildSpotifyAuthorizationUrl,
   exchangeSpotifyCode,
@@ -8,13 +7,14 @@ import {
   refreshSpotifyToken,
 } from "../spotify/oauth";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
 }
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("spotify", "oauth");
+  return authCodeGrantFixture(["user-read-email", "user-read-private"]);
 }
 
 describe("connector/providers/spotify", () => {

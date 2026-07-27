@@ -14,7 +14,6 @@
 //! Ably connection state all route through `PollWakeups` so a runner can still
 //! discover work through HTTP polling.
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant as StdInstant};
 
@@ -31,7 +30,7 @@ use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
-use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::SessionAffinityResource;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
@@ -427,7 +426,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) profiles: Vec<String>,
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
-    pub(super) cancel_tokens: SharedRunCancellationMap,
+    pub(super) cancel_tokens: RunCancellationRegistry,
     pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
     pub(super) provider_cancel: CancellationToken,
 }
@@ -438,7 +437,7 @@ struct SupervisorTaskConfig {
     profiles: Vec<String>,
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
-    cancel_tokens: SharedRunCancellationMap,
+    cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
@@ -613,7 +612,7 @@ async fn handle_ably_message(
     profiles: &[String],
     poll_wakeups: &PollWakeups,
     direct_candidates: &DirectCandidateInbox,
-    cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
+    cancel_tokens: &RunCancellationRegistry,
 ) {
     handle_ably_message_with_network_policy_refresh(
         msg,
@@ -632,14 +631,14 @@ async fn handle_ably_message_with_network_policy_refresh(
     profiles: &[String],
     poll_wakeups: &PollWakeups,
     direct_candidates: &DirectCandidateInbox,
-    cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
+    cancel_tokens: &RunCancellationRegistry,
     network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
     network_policy_refresh_cancel: Option<&CancellationToken>,
 ) {
     let notification_received_at = StdInstant::now();
 
     if let Some(run_id) = parse_cancel_notification(msg) {
-        let handle = cancel_tokens.lock().await.get(&run_id).cloned();
+        let handle = cancel_tokens.handle(run_id).await;
         if let Some(handle) = handle {
             info!(run_id = %run_id, "ably: cancel notification, killing job");
             handle.cancel().await;
@@ -1734,9 +1733,9 @@ mod tests {
     #[tokio::test]
     async fn cancel_notification_cancels_token_without_discovery() {
         let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
-        let handle = RunCancellationHandle::new();
-        let token = handle.token();
-        let tokens = Mutex::new(HashMap::from([(run_id, handle)]));
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let token = registration.token();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -1750,7 +1749,7 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_supported_job_notification_enqueues_direct_candidate() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -1800,7 +1799,7 @@ mod tests {
 
     #[tokio::test]
     async fn unsupported_profile_job_notification_is_ignored() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -1829,7 +1828,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_profile_support_job_notification_is_ignored() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = Vec::new();
@@ -1858,7 +1857,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_profile_job_notification_wakes_poll() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -1884,7 +1883,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_profile_job_notification_wakes_poll() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -1911,7 +1910,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_direct_candidate_queue_wakes_poll_fallback() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox_with_capacity(1);
         let profiles = default_profiles();
@@ -1954,7 +1953,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_full_direct_candidate_queue_prunes_before_enqueueing() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let stale_after = Duration::from_secs(60);
         let direct_candidates = direct_candidate_inbox_with_stale_after(1, stale_after);
@@ -1998,7 +1997,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_job_notification_does_not_mutate_wakeup_state() {
-        let tokens = Mutex::new(HashMap::new());
+        let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -2025,9 +2024,9 @@ mod tests {
             malformed_network_policy_refresh_messages("network-policy-refresh-v2")
         {
             let sentinel_run_id: RunId = "00000000-0000-0000-0000-000000000099".parse().unwrap();
-            let sentinel_handle = RunCancellationHandle::new();
-            let sentinel_token = sentinel_handle.token();
-            let tokens = Mutex::new(HashMap::from([(sentinel_run_id, sentinel_handle)]));
+            let tokens = RunCancellationRegistry::new();
+            let sentinel_registration = tokens.register(sentinel_run_id).await.unwrap();
+            let sentinel_token = sentinel_registration.token();
             let wakeups = PollWakeups::new(true);
             let direct_candidates = direct_candidate_inbox();
             let profiles = default_profiles();
@@ -2048,9 +2047,7 @@ mod tests {
             assert!(snapshot.deferred_poll_at.is_none(), "{case}");
             assert!(!sentinel_token.is_cancelled(), "{case}");
 
-            let tokens = tokens.lock().await;
-            assert_eq!(tokens.len(), 1, "{case}");
-            assert!(tokens.contains_key(&sentinel_run_id), "{case}");
+            assert!(tokens.contains(sentinel_run_id).await, "{case}");
         }
     }
 

@@ -85,7 +85,7 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 
 function mockQueuedThread(): void {
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceId) {
+    if (query.sinceSeqId) {
       return respond(200, { messages: [] });
     }
 
@@ -96,6 +96,7 @@ function mockQueuedThread(): void {
           role: "user",
           content: "Previous prompt",
           runId: "run-completed",
+          seqId: 1,
           createdAt: "2026-01-01T00:00:00Z",
         },
         {
@@ -104,6 +105,7 @@ function mockQueuedThread(): void {
           content: "Previous answer",
           runId: "run-completed",
           runLifecycleEvent: "completed",
+          seqId: 2,
           createdAt: "2026-01-01T00:00:01Z",
         },
         {
@@ -112,6 +114,7 @@ function mockQueuedThread(): void {
           content: "Waiting in queue...",
           runId: "run-queued",
           runEventId: "queue:queued",
+          seqId: 3,
           createdAt: "2026-01-01T00:00:02Z",
         },
       ],
@@ -120,8 +123,6 @@ function mockQueuedThread(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
 }
@@ -207,8 +208,8 @@ describe("queue drawer", () => {
     });
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
     expect(screen.getByText("Additional concurrency")).toBeInTheDocument();
-    expect(screen.getByText("$10/month")).toBeInTheDocument();
-    expect(screen.getByText("Buy $10/month")).toBeInTheDocument();
+    expect(screen.getByText("$100/month")).toBeInTheDocument();
+    expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
   });
 
   it("shows additional concurrency checkout for Custom admins without plan upgrade", async () => {
@@ -229,7 +230,7 @@ describe("queue drawer", () => {
       expect(screen.getByText("Custom")).toBeInTheDocument();
       expect(screen.getByText(/10 of 10 slots/)).toBeInTheDocument();
       expect(screen.getByText("Additional concurrency")).toBeInTheDocument();
-      expect(screen.getByText("Buy $10/month")).toBeInTheDocument();
+      expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
     });
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
   });
@@ -266,8 +267,8 @@ describe("queue drawer", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Additional concurrency")).toBeInTheDocument();
-      expect(screen.getByText("$10/month")).toBeInTheDocument();
-      expect(screen.getByText("Buy $10/month")).toBeInTheDocument();
+      expect(screen.getByText("$100/month")).toBeInTheDocument();
+      expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
     });
 
     const increaseQuantityButton = queryAllByRoleFast("button").find((el) => {
@@ -278,10 +279,10 @@ describe("queue drawer", () => {
     }
     click(increaseQuantityButton);
     await waitFor(() => {
-      expect(screen.getByText("Buy $20/month")).toBeInTheDocument();
+      expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Buy $20/month"));
+    click(screen.getByText("Buy $200/month"));
 
     await waitFor(() => {
       expect(checkoutQuantity).toBe(2);
@@ -318,7 +319,7 @@ describe("queue drawer", () => {
     expect(
       screen.queryByText("Additional concurrency"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Buy $10/month")).not.toBeInTheDocument();
+    expect(screen.queryByText("Buy $100/month")).not.toBeInTheDocument();
   });
 
   it("hides billing actions from non-admins", async () => {
@@ -373,6 +374,6 @@ describe("queue drawer", () => {
     expect(
       screen.queryByText("Additional concurrency"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Buy $10/month")).not.toBeInTheDocument();
+    expect(screen.queryByText("Buy $100/month")).not.toBeInTheDocument();
   });
 });

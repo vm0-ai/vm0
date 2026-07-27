@@ -19,16 +19,21 @@ use crate::paths;
 use super::codex_app_server::{
     CodexAppServerClient, CodexAppServerConfig, CodexAppServerError, ServerNotification,
 };
-use super::codex_app_server_events::{IGNORED_NOTIFICATION_METHODS, notification_to_codex_event};
+use super::codex_app_server_events::{
+    CodexOutputItemKind, CodexOutputItemStart, IGNORED_NOTIFICATION_METHODS,
+    codex_output_item_start, notification_to_codex_event,
+};
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
-    LOG_TAG, ParsedEventAction, command,
+    CODEX_FIXED_STARTUP_CONFIGS, CliEventIngestor, CliExecutionResult, CliRuntimeConfig,
+    HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
+const API_TO_CODEX_OUTPUT_ITEM_STARTED: &str = "api_to_codex_output_item_started";
+const API_TO_CODEX_AGENT_MESSAGE_ITEM_STARTED: &str = "api_to_codex_agent_message_item_started";
 
 struct NotificationIngestResult {
     emitted_thread_started: bool,
@@ -36,6 +41,7 @@ struct NotificationIngestResult {
 
 struct PreparedNotificationIngest {
     event: Option<Value>,
+    output_item_start: Option<CodexOutputItemStart>,
     emitted_thread_started: bool,
     terminal_exit_code: Option<i32>,
 }
@@ -47,10 +53,36 @@ struct ThreadIdentity {
 
 struct EventIngestSink<'a> {
     ingestor: &'a mut CliEventIngestor,
+    output_timing: &'a mut CodexOutputTiming,
     log_file: &'a mut tokio::fs::File,
     masker: &'a SecretMasker,
     should_send_events: bool,
     event_tx: &'a EventDeliverySender,
+}
+
+#[derive(Default)]
+struct CodexOutputTiming {
+    output_item_started: bool,
+    agent_message_item_started: bool,
+}
+
+impl CodexOutputTiming {
+    fn record(&mut self, start: &CodexOutputItemStart, ingestor: &CliEventIngestor) {
+        if !self.output_item_started {
+            self.output_item_started = true;
+            ingestor.record_e2e_from_api_start_at(
+                API_TO_CODEX_OUTPUT_ITEM_STARTED,
+                start.started_at_ms,
+            );
+        }
+        if start.kind == CodexOutputItemKind::AgentMessage && !self.agent_message_item_started {
+            self.agent_message_item_started = true;
+            ingestor.record_e2e_from_api_start_at(
+                API_TO_CODEX_AGENT_MESSAGE_ITEM_STARTED,
+                start.started_at_ms,
+            );
+        }
+    }
 }
 
 struct CodexTurnScope<'a> {
@@ -77,7 +109,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
         http.clone(),
         runtime.event_error_flag.to_string(),
         &runtime.run_id,
-    );
+    )?;
 
     let run_result = run_codex_app_server(
         masker,
@@ -112,6 +144,7 @@ async fn run_codex_app_server(
     let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
     let mut ingestor = CliEventIngestor::new(runtime);
+    let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
         .map_err(|error| app_server_error(masker, error))?;
@@ -139,6 +172,7 @@ async fn run_codex_app_server(
         while let Some(notification) = client.pop_notification() {
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
+                output_timing: &mut output_timing,
                 log_file: &mut log_file,
                 masker,
                 should_send_events,
@@ -159,6 +193,7 @@ async fn run_codex_app_server(
         if !thread_started_emitted {
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
+                output_timing: &mut output_timing,
                 log_file: &mut log_file,
                 masker,
                 should_send_events,
@@ -201,6 +236,7 @@ async fn run_codex_app_server(
                 CodexRunEvent::Notification(notification) => {
                     let mut sink = EventIngestSink {
                         ingestor: &mut ingestor,
+                        output_timing: &mut output_timing,
                         log_file: &mut log_file,
                         masker,
                         should_send_events,
@@ -244,6 +280,7 @@ async fn run_codex_app_server(
                     .await?;
                     let mut sink = EventIngestSink {
                         ingestor: &mut ingestor,
+                        output_timing: &mut output_timing,
                         log_file: &mut log_file,
                         masker,
                         should_send_events,
@@ -326,13 +363,15 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
     };
     let codex_home = PathBuf::from(runtime.codex_home());
     let child_user_env = runtime.child_user_env();
+    let mut config_overrides = runtime.codex_startup_config_overrides();
+    config_overrides.extend(CODEX_FIXED_STARTUP_CONFIGS.map(str::to_string));
     let mut config = CodexAppServerConfig::new(binary, codex_home)
         .with_child_env(
             runtime.home_dir.as_ref(),
             child_user_env.as_ref(),
             runtime.api_url.as_ref(),
         )
-        .with_config_overrides(runtime.codex_startup_config_overrides())
+        .with_config_overrides(config_overrides)
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
     if runtime.use_mock_codex
@@ -620,6 +659,7 @@ async fn drain_queued_notifications(
         }
     }
     for prepared in prepared_notifications {
+        record_output_item_start(prepared.output_item_start.as_ref(), sink);
         if let Some(event) = prepared.event {
             ingest_event(event, sink).await?;
         }
@@ -644,6 +684,7 @@ async fn ingest_run_notification(
         scope.thread_id,
         scope.turn_id,
     )?;
+    record_output_item_start(prepared.output_item_start.as_ref(), sink);
     // Close before any ingest await so the control path cannot accept input
     // after this run has already observed a terminal turn event.
     if prepared.terminal_exit_code.is_some() {
@@ -699,6 +740,7 @@ async fn ingest_notification(
         expected_thread_id,
         active_turn_id,
     )?;
+    record_output_item_start(prepared.output_item_start.as_ref(), sink);
     if prepared.terminal_exit_code.is_some()
         && let Some(active_input) = terminal_active_input
     {
@@ -718,11 +760,22 @@ fn prepare_notification_ingest(
     expected_thread_id: &str,
     active_turn_id: &str,
 ) -> Result<PreparedNotificationIngest, AgentError> {
+    let output_item_start = codex_output_item_start(&notification)
+        .map_err(|error| AgentError::Execution(error.to_string()))?;
+    if let Some(start) = &output_item_start {
+        validate_scope(
+            Some(&start.thread_id),
+            Some(&start.turn_id),
+            expected_thread_id,
+            active_turn_id,
+        )?;
+    }
     let Some(event) = notification_to_codex_event(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?
     else {
         return Ok(PreparedNotificationIngest {
             event: None,
+            output_item_start,
             emitted_thread_started: false,
             terminal_exit_code: None,
         });
@@ -731,6 +784,7 @@ fn prepare_notification_ingest(
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
         return Ok(PreparedNotificationIngest {
             event: None,
+            output_item_start,
             emitted_thread_started: false,
             terminal_exit_code: None,
         });
@@ -739,6 +793,7 @@ fn prepare_notification_ingest(
     let terminal_exit_code = terminal_exit_code(&event, expected_thread_id, active_turn_id);
     Ok(PreparedNotificationIngest {
         event: Some(event),
+        output_item_start,
         emitted_thread_started,
         terminal_exit_code,
     })
@@ -749,14 +804,28 @@ fn validate_event_scope(
     expected_canonical_thread_id: &str,
     active_turn_id: &str,
 ) -> Result<(), AgentError> {
-    if let Some(thread_id) = event_thread_id(event)
+    validate_scope(
+        event_thread_id(event),
+        event_turn_id(event),
+        expected_canonical_thread_id,
+        active_turn_id,
+    )
+}
+
+fn validate_scope(
+    thread_id: Option<&str>,
+    turn_id: Option<&str>,
+    expected_canonical_thread_id: &str,
+    active_turn_id: &str,
+) -> Result<(), AgentError> {
+    if let Some(thread_id) = thread_id
         && !thread_id_matches_canonical(thread_id, expected_canonical_thread_id)
     {
         return Err(AgentError::Execution(
             "codex app-server reported unexpected thread id in event".to_string(),
         ));
     }
-    if let Some(turn_id) = event_turn_id(event) {
+    if let Some(turn_id) = turn_id {
         if active_turn_id.is_empty() {
             return Err(AgentError::Execution(
                 "codex app-server reported turn-scoped event before turn/start".to_string(),
@@ -769,6 +838,12 @@ fn validate_event_scope(
         }
     }
     Ok(())
+}
+
+fn record_output_item_start(start: Option<&CodexOutputItemStart>, sink: &mut EventIngestSink<'_>) {
+    if let Some(start) = start {
+        sink.output_timing.record(start, sink.ingestor);
+    }
 }
 
 fn event_thread_id(event: &Value) -> Option<&str> {

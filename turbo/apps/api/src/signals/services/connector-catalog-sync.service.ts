@@ -1,17 +1,16 @@
-import { createHash } from "node:crypto";
-
 import type {
   ConnectorCatalogSyncFailureCode,
-  ConnectorCatalogSyncResponse,
-  ConnectorCatalogSyncStatus,
-} from "@vm0/api-contracts/contracts/cron";
+  ConnectorCatalogDiagnostics,
+} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import type { ConnectorCatalogSyncResponse } from "@vm0/api-contracts/contracts/cron";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
+import { getBuildVersion, normalizeBuildCommitSha } from "../../lib/build-info";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
@@ -22,7 +21,7 @@ import {
   S3ObjectSizeLimitError,
   type ConditionalS3BufferDownload,
 } from "../external/s3";
-import { safeSync, safeUrlParse, settle } from "../utils";
+import { safeSync, settle } from "../utils";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
@@ -30,6 +29,7 @@ import {
 import {
   CONNECTOR_CATALOG_ACTIVE_MAX_BYTES,
   connectorCatalogArtifactFailureCode,
+  encodeConnectorCatalogSnapshot,
   loadConnectorCatalogCandidate,
   parseConnectorCatalogActivePointer,
   type ConnectorCatalogActivePointer,
@@ -37,22 +37,32 @@ import {
   type ValidatedConnectorCatalogCandidate,
 } from "./connector-catalog-artifacts/loader";
 import {
+  connectorCatalogExecutableCapabilityState,
+  persistConnectorCatalogCompatibility,
+  type ExecutableCapabilityState,
+} from "./connector-catalog-compatibility.service";
+import {
+  connectorCatalogRejectionIsReusable,
+  createConnectorCatalogValidatorIdentity,
+  type ConnectorCatalogRejectionAuthority,
+  type ConnectorCatalogValidatorIdentity,
+} from "./connector-catalog-rejection-authority";
+import {
   connectorCatalogSkillFailure,
   prepareConnectorCatalogSkills,
   registerPreparedConnectorCatalogSkills,
   type ConnectorCatalogSkillFailure,
   type PreparedConnectorSkillRegistration,
 } from "./connector-catalog-skill-registration.service";
+import {
+  connectorCatalogSource,
+  type ConnectorCatalogSource,
+} from "./connector-catalog-source";
 
 const log = logger("connector-catalog:sync");
 
-interface ConnectorCatalogSource {
-  readonly bucket: string;
-  readonly sourceId: string;
-}
-
 type ConnectorCatalogRawSyncStatus = Omit<
-  ConnectorCatalogSyncStatus,
+  ConnectorCatalogDiagnostics,
   "filtering" | "credentialStorage"
 >;
 type ConnectorCatalogRawSyncResponse = Omit<
@@ -63,18 +73,24 @@ type ConnectorCatalogRawSyncResponse = Omit<
 interface SyncStateSnapshot {
   readonly revision: number;
   readonly lastObservedCatalogVersion: string | null;
-  readonly lastObservedIntegrityDigest: string | null;
+  readonly lastObservedCatalogKey: string | null;
+  readonly lastObservedCatalogDigest: string | null;
   readonly lastObservedPointerEtag: string | null;
   readonly lastAttemptAt: Date | null;
   readonly lastAttemptOutcome: "accepted" | "unchanged" | "rejected" | null;
+  readonly lastAttemptReusedCachedRejection: boolean | null;
   readonly lastSuccessAt: Date | null;
   readonly lastFailureCode: ConnectorCatalogSyncFailureCode | null;
   readonly lastRejectedCatalogVersion: string | null;
-  readonly lastRejectedIntegrityDigest: string | null;
+  readonly lastRejectedCatalogKey: string | null;
+  readonly lastRejectedCatalogDigest: string | null;
   readonly lastRejectedPointerEtag: string | null;
   readonly lastRejectedFailureCode: ConnectorCatalogSyncFailureCode | null;
+  readonly lastRejectedBackendVersion: string | null;
+  readonly lastRejectedBuildCommitSha: string | null;
   readonly activeCatalogVersion: string | null;
-  readonly activeIntegrityDigest: string | null;
+  readonly activeCatalogKey: string | null;
+  readonly activeCatalogDigest: string | null;
   readonly activatedAt: Date | null;
 }
 
@@ -106,27 +122,6 @@ class ConnectorCatalogPersistenceError extends Error {
   }
 }
 
-export function connectorCatalogSource(): ConnectorCatalogSource {
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const endpoint =
-    env("S3_ENDPOINT") ??
-    `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
-  const endpointUrl = safeUrlParse(endpoint);
-  if (
-    endpointUrl === undefined ||
-    (endpointUrl.protocol !== "http:" && endpointUrl.protocol !== "https:")
-  ) {
-    throw new Error("Connector catalog source endpoint is invalid");
-  }
-  const authority = endpointUrl.origin;
-  const sourceId = createHash("sha256")
-    .update(authority)
-    .update("\0")
-    .update(bucket)
-    .digest("hex");
-  return { bucket, sourceId };
-}
-
 async function readSyncState(
   db: ReadonlyDb,
   sourceId: string,
@@ -136,24 +131,33 @@ async function readSyncState(
       revision: connectorCatalogSyncState.revision,
       lastObservedCatalogVersion:
         connectorCatalogSyncState.lastObservedCatalogVersion,
-      lastObservedIntegrityDigest:
-        connectorCatalogSyncState.lastObservedIntegrityDigest,
+      lastObservedCatalogKey: connectorCatalogSyncState.lastObservedCatalogKey,
+      lastObservedCatalogDigest:
+        connectorCatalogSyncState.lastObservedCatalogDigest,
       lastObservedPointerEtag:
         connectorCatalogSyncState.lastObservedPointerEtag,
       lastAttemptAt: connectorCatalogSyncState.lastAttemptAt,
       lastAttemptOutcome: connectorCatalogSyncState.lastAttemptOutcome,
+      lastAttemptReusedCachedRejection:
+        connectorCatalogSyncState.lastAttemptReusedCachedRejection,
       lastSuccessAt: connectorCatalogSyncState.lastSuccessAt,
       lastFailureCode: connectorCatalogSyncState.lastFailureCode,
       lastRejectedCatalogVersion:
         connectorCatalogSyncState.lastRejectedCatalogVersion,
-      lastRejectedIntegrityDigest:
-        connectorCatalogSyncState.lastRejectedIntegrityDigest,
+      lastRejectedCatalogKey: connectorCatalogSyncState.lastRejectedCatalogKey,
+      lastRejectedCatalogDigest:
+        connectorCatalogSyncState.lastRejectedCatalogDigest,
       lastRejectedPointerEtag:
         connectorCatalogSyncState.lastRejectedPointerEtag,
       lastRejectedFailureCode:
         connectorCatalogSyncState.lastRejectedFailureCode,
+      lastRejectedBackendVersion:
+        connectorCatalogSyncState.lastRejectedBackendVersion,
+      lastRejectedBuildCommitSha:
+        connectorCatalogSyncState.lastRejectedBuildCommitSha,
       activeCatalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-      activeIntegrityDigest: connectorCatalogActiveSnapshot.integrityDigest,
+      activeCatalogKey: connectorCatalogActiveSnapshot.catalogKey,
+      activeCatalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
       activatedAt: connectorCatalogActiveSnapshot.activatedAt,
     })
     .from(connectorCatalogSyncState)
@@ -183,33 +187,116 @@ async function readSyncState(
   return state;
 }
 
+function rejectedCandidateFromState(
+  state: SyncStateSnapshot | undefined,
+): RejectedCandidate | undefined {
+  if (!state?.lastRejectedFailureCode) {
+    return undefined;
+  }
+
+  const hasPointerIdentity =
+    state.lastRejectedCatalogVersion !== null &&
+    state.lastRejectedCatalogKey !== null &&
+    state.lastRejectedCatalogDigest !== null;
+  return {
+    pointer: hasPointerIdentity
+      ? {
+          catalogVersion: state.lastRejectedCatalogVersion,
+          catalogKey: state.lastRejectedCatalogKey,
+          catalogDigest: state.lastRejectedCatalogDigest,
+        }
+      : null,
+    pointerEtag: state.lastRejectedPointerEtag,
+    failureCode: state.lastRejectedFailureCode,
+  };
+}
+
+function rejectionAuthorityFromState(
+  state: SyncStateSnapshot,
+): ConnectorCatalogRejectionAuthority {
+  if (state.lastRejectedBackendVersion === null) {
+    throw new Error("Connector catalog rejection authority is incomplete");
+  }
+  return {
+    backendVersion: state.lastRejectedBackendVersion,
+    buildCommitSha: state.lastRejectedBuildCommitSha,
+  };
+}
+
+function currentConnectorCatalogValidatorIdentity(): ConnectorCatalogValidatorIdentity {
+  const production = env("ENV") === "production";
+  return createConnectorCatalogValidatorIdentity({
+    backendVersion: getBuildVersion(),
+    buildCommitSha: production
+      ? null
+      : normalizeBuildCommitSha(env("GIT_COMMIT_SHA")),
+    production,
+  });
+}
+
+function activeStatusFromState(
+  state: SyncStateSnapshot | undefined,
+): ConnectorCatalogRawSyncStatus["active"] {
+  if (!state?.activeCatalogVersion) {
+    return null;
+  }
+  if (
+    !state.activatedAt ||
+    !state.activeCatalogKey ||
+    !state.activeCatalogDigest
+  ) {
+    throw new Error("Connector catalog active snapshot is incomplete");
+  }
+  return {
+    catalogVersion: state.activeCatalogVersion,
+    catalogDigest: state.activeCatalogDigest,
+    activatedAt: state.activatedAt.toISOString(),
+  };
+}
+
+function lastAttemptStatusFromState(
+  state: SyncStateSnapshot | undefined,
+): ConnectorCatalogRawSyncStatus["lastAttempt"] {
+  if (!state?.lastAttemptAt && !state?.lastAttemptOutcome) {
+    return null;
+  }
+  if (!state?.lastAttemptAt || !state.lastAttemptOutcome) {
+    throw new Error("Connector catalog attempt state is incomplete");
+  }
+  if (state.lastAttemptReusedCachedRejection === null) {
+    throw new Error("Connector catalog attempt cache provenance is incomplete");
+  }
+  return {
+    at: state.lastAttemptAt.toISOString(),
+    outcome: state.lastAttemptOutcome,
+    failureCode: state.lastFailureCode,
+    reusedCachedRejection: state.lastAttemptReusedCachedRejection,
+  };
+}
+
+function rejectedCandidateStatusFromState(
+  state: SyncStateSnapshot | undefined,
+): ConnectorCatalogRawSyncStatus["rejectedCandidate"] {
+  if (!state || state.lastAttemptOutcome !== "rejected") {
+    return null;
+  }
+  const candidate = rejectedCandidateFromState(state);
+  if (!candidate) {
+    return null;
+  }
+  const authority = rejectionAuthorityFromState(state);
+  return {
+    catalogVersion: candidate.pointer?.catalogVersion ?? null,
+    catalogDigest: candidate.pointer?.catalogDigest ?? null,
+    failureCode: candidate.failureCode,
+    backendVersion: authority.backendVersion,
+  };
+}
+
 function statusFromState(
   state: SyncStateSnapshot | undefined,
 ): ConnectorCatalogRawSyncStatus {
-  let active: ConnectorCatalogRawSyncStatus["active"] = null;
-  if (state?.activeCatalogVersion) {
-    if (!state.activatedAt || !state.activeIntegrityDigest) {
-      throw new Error("Connector catalog active snapshot is incomplete");
-    }
-    active = {
-      catalogVersion: state.activeCatalogVersion,
-      integrityDigest: state.activeIntegrityDigest,
-      activatedAt: state.activatedAt.toISOString(),
-    };
-  }
-
-  let lastAttempt: ConnectorCatalogRawSyncStatus["lastAttempt"] = null;
-  if (state?.lastAttemptAt || state?.lastAttemptOutcome) {
-    if (!state.lastAttemptAt || !state.lastAttemptOutcome) {
-      throw new Error("Connector catalog attempt state is incomplete");
-    }
-    lastAttempt = {
-      at: state.lastAttemptAt.toISOString(),
-      outcome: state.lastAttemptOutcome,
-      failureCode: state.lastFailureCode,
-    };
-  }
-
+  const active = activeStatusFromState(state);
   return {
     state:
       active === null
@@ -218,8 +305,9 @@ function statusFromState(
           ? "stale"
           : "current",
     active,
-    lastAttempt,
+    lastAttempt: lastAttemptStatusFromState(state),
     lastSuccessAt: state?.lastSuccessAt?.toISOString() ?? null,
+    rejectedCandidate: rejectedCandidateStatusFromState(state),
   };
 }
 
@@ -229,7 +317,8 @@ function pointerMatchesActiveState(
 ): boolean {
   return (
     pointer.catalogVersion === state?.activeCatalogVersion &&
-    pointer.integrityDigest === state.activeIntegrityDigest
+    pointer.catalogKey === state.activeCatalogKey &&
+    pointer.catalogDigest === state.activeCatalogDigest
   );
 }
 
@@ -238,13 +327,15 @@ function observedPointerFromState(
 ): ConnectorCatalogActivePointer | undefined {
   if (
     !state?.lastObservedCatalogVersion ||
-    !state.lastObservedIntegrityDigest
+    !state.lastObservedCatalogKey ||
+    !state.lastObservedCatalogDigest
   ) {
     return undefined;
   }
   return {
     catalogVersion: state.lastObservedCatalogVersion,
-    integrityDigest: state.lastObservedIntegrityDigest,
+    catalogKey: state.lastObservedCatalogKey,
+    catalogDigest: state.lastObservedCatalogDigest,
   };
 }
 
@@ -253,28 +344,46 @@ function cachedRejectionForPointer(
     readonly pointer: ConnectorCatalogActivePointer;
   },
   state: SyncStateSnapshot | undefined,
+  validator: ConnectorCatalogValidatorIdentity,
 ): ConnectorCatalogSyncFailureCode | undefined {
+  const rejectedCandidate = rejectedCandidateFromState(state);
+  if (!state || !rejectedCandidate?.pointer) {
+    return undefined;
+  }
   if (
-    observation.pointer.catalogVersion !== state?.lastRejectedCatalogVersion ||
-    observation.pointer.integrityDigest !== state.lastRejectedIntegrityDigest ||
-    ((observation.etag !== null || state.lastRejectedPointerEtag !== null) &&
-      observation.etag !== state.lastRejectedPointerEtag)
+    observation.pointer.catalogVersion !==
+      rejectedCandidate.pointer.catalogVersion ||
+    observation.pointer.catalogKey !== rejectedCandidate.pointer.catalogKey ||
+    observation.pointer.catalogDigest !==
+      rejectedCandidate.pointer.catalogDigest ||
+    observation.etag !== rejectedCandidate.pointerEtag ||
+    !connectorCatalogRejectionIsReusable({
+      authority: rejectionAuthorityFromState(state),
+      validator,
+    })
   ) {
     return undefined;
   }
-  return state.lastRejectedFailureCode ?? undefined;
+  return rejectedCandidate.failureCode;
 }
 
 function cachedRejectionForObservedEtag(
   state: SyncStateSnapshot | undefined,
+  validator: ConnectorCatalogValidatorIdentity,
 ): ConnectorCatalogSyncFailureCode | undefined {
+  const rejectedCandidate = rejectedCandidateFromState(state);
   if (
     !state?.lastObservedPointerEtag ||
-    state.lastObservedPointerEtag !== state.lastRejectedPointerEtag
+    !rejectedCandidate ||
+    state.lastObservedPointerEtag !== rejectedCandidate.pointerEtag ||
+    !connectorCatalogRejectionIsReusable({
+      authority: rejectionAuthorityFromState(state),
+      validator,
+    })
   ) {
     return undefined;
   }
-  return state.lastRejectedFailureCode ?? undefined;
+  return rejectedCandidate.failureCode;
 }
 
 function classifySyncFailure(error: unknown): ConnectorCatalogSyncFailureCode {
@@ -305,15 +414,33 @@ function cacheableRejectedCandidate(
   };
 }
 
-function rejectedCandidateValues(candidate: RejectedCandidate | undefined) {
+function rejectedCandidateValues(
+  candidate: RejectedCandidate | undefined,
+  validator: ConnectorCatalogValidatorIdentity,
+) {
   if (!candidate) {
     return {};
   }
   return {
     lastRejectedCatalogVersion: candidate.pointer?.catalogVersion ?? null,
-    lastRejectedIntegrityDigest: candidate.pointer?.integrityDigest ?? null,
+    lastRejectedCatalogKey: candidate.pointer?.catalogKey ?? null,
+    lastRejectedCatalogDigest: candidate.pointer?.catalogDigest ?? null,
     lastRejectedPointerEtag: candidate.pointerEtag,
     lastRejectedFailureCode: candidate.failureCode,
+    lastRejectedBackendVersion: validator.backendVersion,
+    lastRejectedBuildCommitSha: validator.buildCommitSha,
+  };
+}
+
+function clearedRejectedCandidateValues() {
+  return {
+    lastRejectedCatalogVersion: null,
+    lastRejectedCatalogKey: null,
+    lastRejectedCatalogDigest: null,
+    lastRejectedPointerEtag: null,
+    lastRejectedFailureCode: null,
+    lastRejectedBackendVersion: null,
+    lastRejectedBuildCommitSha: null,
   };
 }
 
@@ -323,7 +450,8 @@ function pointerObservationValues(observation: PointerObservation | undefined) {
   }
   return {
     lastObservedCatalogVersion: observation.pointer?.catalogVersion ?? null,
-    lastObservedIntegrityDigest: observation.pointer?.integrityDigest ?? null,
+    lastObservedCatalogKey: observation.pointer?.catalogKey ?? null,
+    lastObservedCatalogDigest: observation.pointer?.catalogDigest ?? null,
     lastObservedPointerEtag: observation.etag,
   };
 }
@@ -336,18 +464,25 @@ async function recordRejectedAttempt(args: {
   readonly failureCode: ConnectorCatalogSyncFailureCode;
   readonly rejectedCandidate?: RejectedCandidate;
   readonly pointerObservation?: PointerObservation;
+  readonly reusedCachedRejection: boolean;
+  readonly validator: ConnectorCatalogValidatorIdentity;
 }): Promise<boolean> {
-  const rejectedValues = rejectedCandidateValues(args.rejectedCandidate);
+  const rejectedValues = rejectedCandidateValues(
+    args.rejectedCandidate,
+    args.validator,
+  );
   const observationValues = pointerObservationValues(args.pointerObservation);
+  const nextRevision = (args.baseline?.revision ?? 0) + 1;
   if (!args.baseline) {
     const inserted = await args.db
       .insert(connectorCatalogSyncState)
       .values({
         sourceId: args.sourceId,
         schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        revision: 1,
+        revision: nextRevision,
         lastAttemptAt: args.attemptedAt,
         lastAttemptOutcome: "rejected",
+        lastAttemptReusedCachedRejection: args.reusedCachedRejection,
         lastFailureCode: args.failureCode,
         ...observationValues,
         ...rejectedValues,
@@ -360,9 +495,10 @@ async function recordRejectedAttempt(args: {
   const updated = await args.db
     .update(connectorCatalogSyncState)
     .set({
-      revision: sql`${connectorCatalogSyncState.revision} + 1`,
+      revision: nextRevision,
       lastAttemptAt: args.attemptedAt,
       lastAttemptOutcome: "rejected",
+      lastAttemptReusedCachedRejection: args.reusedCachedRejection,
       lastFailureCode: args.failureCode,
       ...observationValues,
       ...rejectedValues,
@@ -389,14 +525,17 @@ async function recordUnchangedAttempt(args: {
   readonly pointerObservation?: PointerObservation;
 }): Promise<boolean> {
   const observationValues = pointerObservationValues(args.pointerObservation);
+  const nextRevision = args.baseline.revision + 1;
   const updated = await args.db
     .update(connectorCatalogSyncState)
     .set({
-      revision: sql`${connectorCatalogSyncState.revision} + 1`,
+      revision: nextRevision,
       lastAttemptAt: args.attemptedAt,
       lastAttemptOutcome: "unchanged",
+      lastAttemptReusedCachedRejection: false,
       lastSuccessAt: args.attemptedAt,
       lastFailureCode: null,
+      ...clearedRejectedCandidateValues(),
       ...observationValues,
     })
     .where(
@@ -415,19 +554,15 @@ async function recordUnchangedAttempt(args: {
 
 function activeSnapshotValues(
   candidate: ValidatedConnectorCatalogCandidate,
+  catalogGzip: Buffer,
   activatedAt: Date,
 ) {
   return {
     catalogVersion: candidate.identity.catalogVersion,
-    integrityDigest: candidate.identity.integrityDigest,
-    publicCatalogDigest: candidate.identity.publicCatalogDigest,
-    privateCatalogDigest: candidate.identity.privateCatalogDigest,
-    privateFirewallsDigest: candidate.identity.privateFirewallsDigest,
-    runnerFirewallsDigest: candidate.identity.runnerFirewallsDigest,
-    publicCatalog: candidate.publicCatalogText,
-    privateCatalog: candidate.privateCatalogText,
-    privateFirewalls: candidate.privateFirewallsText,
-    runnerFirewalls: candidate.runnerFirewallsText,
+    catalogKey: candidate.identity.catalogKey,
+    catalogDigest: candidate.identity.catalogDigest,
+    catalogRawSize: candidate.rawBytes.byteLength,
+    catalogGzip,
     activatedAt,
   };
 }
@@ -437,15 +572,19 @@ async function activateCandidate(args: {
   readonly sourceId: string;
   readonly baseline: SyncStateSnapshot | undefined;
   readonly candidate: ValidatedConnectorCatalogCandidate;
+  readonly catalogGzip: Buffer;
   readonly pointerObservation: PointerObservation;
   readonly attemptedAt: Date;
 }): Promise<void> {
+  const nextRevision = (args.baseline?.revision ?? 0) + 1;
   const stateValues = {
     ...pointerObservationValues(args.pointerObservation),
     lastAttemptAt: args.attemptedAt,
     lastAttemptOutcome: "accepted" as const,
+    lastAttemptReusedCachedRejection: false,
     lastSuccessAt: args.attemptedAt,
     lastFailureCode: null,
+    ...clearedRejectedCandidateValues(),
   };
   if (!args.baseline) {
     const inserted = await args.db
@@ -453,7 +592,7 @@ async function activateCandidate(args: {
       .values({
         sourceId: args.sourceId,
         schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        revision: 1,
+        revision: nextRevision,
         ...stateValues,
       })
       .onConflictDoNothing()
@@ -465,7 +604,7 @@ async function activateCandidate(args: {
     const updated = await args.db
       .update(connectorCatalogSyncState)
       .set({
-        revision: sql`${connectorCatalogSyncState.revision} + 1`,
+        revision: nextRevision,
         ...stateValues,
       })
       .where(
@@ -484,7 +623,11 @@ async function activateCandidate(args: {
     }
   }
 
-  const snapshotValues = activeSnapshotValues(args.candidate, args.attemptedAt);
+  const snapshotValues = activeSnapshotValues(
+    args.candidate,
+    args.catalogGzip,
+    args.attemptedAt,
+  );
   await args.db
     .insert(connectorCatalogActiveSnapshot)
     .values({
@@ -506,9 +649,11 @@ async function commitCandidate(args: {
   readonly sourceId: string;
   readonly baseline: SyncStateSnapshot | undefined;
   readonly candidate: ValidatedConnectorCatalogCandidate;
+  readonly catalogGzip: Buffer;
   readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
   readonly pointerObservation: PointerObservation;
   readonly attemptedAt: Date;
+  readonly capability: ExecutableCapabilityState;
   readonly signal: AbortSignal;
 }): Promise<CandidateCommitResult> {
   const result = await settle(
@@ -519,6 +664,13 @@ async function commitCandidate(args: {
         signal: args.signal,
       });
       await activateCandidate({ ...args, db: tx });
+      await persistConnectorCatalogCompatibility({
+        db: tx,
+        sourceId: args.sourceId,
+        identity: args.candidate.identity,
+        artifact: args.candidate.artifact,
+        capability: args.capability,
+      });
       return "accepted" as const;
     }),
   );
@@ -554,6 +706,8 @@ async function rejectCandidate(args: {
   readonly failureCode: ConnectorCatalogSyncFailureCode;
   readonly rejectedCandidate?: RejectedCandidate;
   readonly pointerObservation?: PointerObservation;
+  readonly reusedCachedRejection: boolean;
+  readonly validator: ConnectorCatalogValidatorIdentity;
 }): Promise<ConnectorCatalogRawSyncResponse | undefined> {
   const committed = await recordRejectedAttempt({
     db: args.db,
@@ -563,6 +717,8 @@ async function rejectCandidate(args: {
     failureCode: args.failureCode,
     rejectedCandidate: args.rejectedCandidate,
     pointerObservation: args.pointerObservation,
+    reusedCachedRejection: args.reusedCachedRejection,
+    validator: args.validator,
   });
   if (!committed) {
     return undefined;
@@ -582,6 +738,7 @@ async function rejectCandidate(args: {
 }
 
 interface ConnectorCatalogSyncRuntime {
+  readonly capability: ExecutableCapabilityState;
   readonly db: Db;
   readonly reader: ConnectorCatalogArtifactReader;
   readonly readActivePointer: (
@@ -589,6 +746,7 @@ interface ConnectorCatalogSyncRuntime {
   ) => Promise<ConditionalS3BufferDownload>;
   readonly source: ConnectorCatalogSource;
   readonly signal: AbortSignal;
+  readonly validator: ConnectorCatalogValidatorIdentity;
 }
 
 type SyncAttemptResult =
@@ -614,22 +772,31 @@ type PointerLoadResult =
       readonly etag: string | null;
     };
 
+interface RejectSyncAttemptOptions {
+  readonly pointerObservation?: PointerObservation;
+  readonly cacheable?: boolean;
+  readonly reusedCachedRejection?: boolean;
+}
+
 async function rejectSyncAttempt(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
   failureCode: ConnectorCatalogSyncFailureCode,
-  pointerObservation?: PointerObservation,
-  cacheable = true,
+  options: RejectSyncAttemptOptions = {},
 ): Promise<SyncAttemptResult> {
+  const reusedCachedRejection = options.reusedCachedRejection ?? false;
   const response = await rejectCandidate({
     db: runtime.db,
     source: runtime.source,
     baseline,
     failureCode,
-    rejectedCandidate: cacheable
-      ? cacheableRejectedCandidate(pointerObservation, failureCode)
-      : undefined,
-    pointerObservation,
+    rejectedCandidate:
+      !reusedCachedRejection && (options.cacheable ?? true)
+        ? cacheableRejectedCandidate(options.pointerObservation, failureCode)
+        : undefined,
+    pointerObservation: options.pointerObservation,
+    reusedCachedRejection,
+    validator: runtime.validator,
   });
   runtime.signal.throwIfAborted();
   return response ? { kind: "complete", response } : { kind: "retry" };
@@ -639,8 +806,14 @@ async function loadPointerForSync(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
 ): Promise<PointerLoadResult> {
+  const conditionalEtag =
+    baseline?.lastObservedPointerEtag &&
+    (observedPointerFromState(baseline) ||
+      cachedRejectionForObservedEtag(baseline, runtime.validator))
+      ? baseline.lastObservedPointerEtag
+      : null;
   const downloaded = await settle(
-    runtime.readActivePointer(baseline?.lastObservedPointerEtag ?? null),
+    runtime.readActivePointer(conditionalEtag),
     runtime.signal,
   );
   runtime.signal.throwIfAborted();
@@ -654,7 +827,7 @@ async function loadPointerForSync(
       runtime,
       baseline,
       classifySyncFailure(downloaded.error),
-      pointerObservation,
+      { pointerObservation },
     );
   }
   if (downloaded.value.kind === "not-modified") {
@@ -670,7 +843,7 @@ async function loadPointerForSync(
       runtime,
       baseline,
       classifySyncFailure(parsed.error),
-      { pointer: null, etag },
+      { pointerObservation: { pointer: null, etag } },
     );
   }
   return {
@@ -700,7 +873,7 @@ async function loadCandidateForSync(
       runtime,
       baseline,
       classifySyncFailure(result.error),
-      pointerObservation,
+      { pointerObservation },
     );
   }
   return { kind: "loaded", candidate: result.value };
@@ -738,11 +911,14 @@ async function commitValidatedCandidate(
   skillRegistrations: readonly PreparedConnectorSkillRegistration[],
   pointerObservation: PointerObservation,
 ): Promise<SyncAttemptResult> {
+  const catalogGzip = encodeConnectorCatalogSnapshot(candidate.rawBytes);
   const outcome = await commitCandidate({
     db: runtime.db,
     sourceId: runtime.source.sourceId,
     baseline,
     candidate,
+    catalogGzip,
+    capability: runtime.capability,
     skillRegistrations,
     pointerObservation,
     attemptedAt: nowDate(),
@@ -753,19 +929,18 @@ async function commitValidatedCandidate(
     return { kind: "retry" };
   }
   if (typeof outcome !== "string") {
-    return await rejectSyncAttempt(
-      runtime,
-      baseline,
-      outcome.failure.code,
+    return await rejectSyncAttempt(runtime, baseline, outcome.failure.code, {
       pointerObservation,
-      outcome.failure.cacheable,
-    );
+      cacheable: outcome.failure.cacheable,
+    });
   }
   log.debug("Connector catalog sync completed", {
     sourceId: runtime.source.sourceId,
     schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
     catalogVersion: candidate.identity.catalogVersion,
-    integrityDigest: candidate.identity.integrityDigest,
+    catalogDigest: candidate.identity.catalogDigest,
+    rawBytes: candidate.rawBytes.byteLength,
+    compressedBytes: catalogGzip.byteLength,
     outcome,
   });
   const response = await responseFromState({
@@ -793,7 +968,7 @@ async function prepareCandidateSkillsForSync(
   const prepared = await settle(
     prepareConnectorCatalogSkills({
       db: runtime.db,
-      privateArtifact: candidate.privateArtifact,
+      artifact: candidate.artifact,
       signal: runtime.signal,
     }),
     runtime.signal,
@@ -805,13 +980,10 @@ async function prepareCandidateSkillsForSync(
   if (!failure) {
     throw prepared.error;
   }
-  return await rejectSyncAttempt(
-    runtime,
-    baseline,
-    failure.code,
+  return await rejectSyncAttempt(runtime, baseline, failure.code, {
     pointerObservation,
-    failure.cacheable,
-  );
+    cacheable: failure.cacheable,
+  });
 }
 
 async function syncConnectorCatalogAttempt(
@@ -831,9 +1003,14 @@ async function syncConnectorCatalogAttempt(
     if (!baseline) {
       return await rejectSyncAttempt(runtime, baseline, "source-unavailable");
     }
-    const cachedFailure = cachedRejectionForObservedEtag(baseline);
+    const cachedFailure = cachedRejectionForObservedEtag(
+      baseline,
+      runtime.validator,
+    );
     if (cachedFailure) {
-      return await rejectSyncAttempt(runtime, baseline, cachedFailure);
+      return await rejectSyncAttempt(runtime, baseline, cachedFailure, {
+        reusedCachedRejection: true,
+      });
     }
     const observedPointer = observedPointerFromState(baseline);
     if (!observedPointer) {
@@ -858,14 +1035,16 @@ async function syncConnectorCatalogAttempt(
     return await completeUnchangedSync(runtime, baseline, pointerObservation);
   }
 
-  const cachedFailure = cachedRejectionForPointer(pointerObservation, baseline);
+  const cachedFailure = cachedRejectionForPointer(
+    pointerObservation,
+    baseline,
+    runtime.validator,
+  );
   if (cachedFailure) {
-    return await rejectSyncAttempt(
-      runtime,
-      baseline,
-      cachedFailure,
+    return await rejectSyncAttempt(runtime, baseline, cachedFailure, {
       pointerObservation,
-    );
+      reusedCachedRejection: true,
+    });
   }
 
   const candidateResult = await loadCandidateForSync(
@@ -913,9 +1092,11 @@ export const syncConnectorCatalog$ = command(
   ): Promise<ConnectorCatalogRawSyncResponse> => {
     const source = connectorCatalogSource();
     const runtime: ConnectorCatalogSyncRuntime = {
+      capability: connectorCatalogExecutableCapabilityState(),
       db: set(writeDb$),
       source,
       signal,
+      validator: currentConnectorCatalogValidatorIdentity(),
       readActivePointer: async (ifNoneMatch) => {
         const result = await get(
           downloadS3BufferWithMaxBytesIfChanged(

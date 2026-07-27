@@ -137,6 +137,7 @@ weird_relative=$'crates/guest-one/src/odd\tname\nline.txt'
 printf 'odd tracked input\n' > "${repo}/${weird_relative}"
 
 git -C "$repo" init -q
+git -C "$repo" config maintenance.auto false
 git -C "$repo" config user.email test@example.com
 git -C "$repo" config user.name test
 commit_all "$repo" baseline
@@ -329,6 +330,7 @@ cp -a \
   "${REPO_ROOT}/.github/scripts/runner-binary-build" \
   "${actual_repo}/.github/scripts/runner-binary-build"
 git -C "$actual_repo" init -q
+git -C "$actual_repo" config maintenance.auto false
 git -C "$actual_repo" config user.email test@example.com
 git -C "$actual_repo" config user.name test
 commit_all "$actual_repo" actual-workspace

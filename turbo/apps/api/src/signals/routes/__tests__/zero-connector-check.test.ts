@@ -384,7 +384,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       outcome: "resolved",
       connector: {
         connectorRef: "test-oauth",
-        label: "Test OAuth (internal)",
+        label: "Test OAuth",
         visibility: "unavailable",
       },
       relativePath: "/echo",

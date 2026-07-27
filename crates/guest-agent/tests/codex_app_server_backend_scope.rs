@@ -22,10 +22,11 @@ async fn codex_app_server_backend_rejects_unexpected_thread_event_scope()
             common::CodexAppServerEnvConfig {
                 run_id: "codex-app-server-backend-scope-test",
                 prompt: "drive the app-server backend scope failure path",
-                scenario: Some("unexpected-thread-turn-completed"),
+                scenario: Some("unexpected-thread-output-item-started"),
                 resume_session_id: None,
             },
         )?;
+        std::env::set_var("VM0_API_START_TIME", "1700000000000");
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
@@ -52,6 +53,9 @@ async fn codex_app_server_backend_rejects_unexpected_thread_event_scope()
         }),
         "unexpected-thread-id event should not be written to the agent log: {events:?}"
     );
+    let sandbox_ops = std::fs::read_to_string(runtime.paths.sandbox_ops_file()).unwrap_or_default();
+    assert!(!sandbox_ops.contains("api_to_codex_output_item_started"));
+    assert!(!sandbox_ops.contains("api_to_codex_agent_message_item_started"));
 
     Ok(())
 }

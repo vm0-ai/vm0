@@ -2,6 +2,7 @@
 
 import json
 import sys
+from itertools import pairwise
 from types import FrameType
 
 import pytest
@@ -97,6 +98,16 @@ def test_rejects_invalid_scalar_field_max_bytes(max_bytes):
 def test_rejects_bool_scalar_field_max_bytes():
     with pytest.raises(TypeError, match="max_bytes"):
         ScalarField("string", max_bytes=True)
+
+
+def test_rejects_invalid_scalar_field_overflow_policy():
+    with pytest.raises(ValueError, match="overflow_policy"):
+        ScalarField("string", overflow_policy=json.loads('"ignore"'))
+
+
+def test_rejects_discard_overflow_policy_for_integer_field():
+    with pytest.raises(ValueError, match="requires a string field"):
+        ScalarField("int", overflow_policy="discard")
 
 
 def test_rejects_invalid_scalar_field_config_value():
@@ -565,6 +576,64 @@ def test_rejects_oversized_selected_string():
     assert result.values == {}
 
 
+def test_discards_oversized_optional_selected_string_across_chunks():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={
+            ("type",): ScalarField("string", max_bytes=3, overflow_policy="discard"),
+            ("usage", "output_tokens"): ScalarField("int"),
+        }
+    )
+
+    extractor.feed(b'{"type":"abc')
+    extractor.feed(b'def","usage":{"output_tokens":7}}')
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "output_tokens"): 7}
+    assert extractor.observed_scalar_for_diagnostics(("type",)) is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        (rb'{"type":"abcd\x"}', "invalid string escape"),
+        (b'{"type":"abcd\xff"}', "invalid string"),
+    ],
+)
+def test_discarded_oversized_selected_string_still_validates_json(payload, error):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("type",): ScalarField("string", max_bytes=3, overflow_policy="discard")}
+    )
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == error
+    assert result.values == {}
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_type"),
+    [
+        (b'{"type":"ok","type":"long"}', None),
+        (b'{"type":"long","type":"ok"}', "ok"),
+    ],
+)
+def test_discarded_oversized_duplicate_selected_string_uses_last_value(payload, expected_type):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("type",): ScalarField("string", max_bytes=3, overflow_policy="discard")}
+    )
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is True
+    expected_values = {} if expected_type is None else {("type",): expected_type}
+    assert result.values == expected_values
+    assert extractor.observed_scalar_for_diagnostics(("type",)) == expected_type
+
+
 def test_selected_string_limit_counts_escape_bytes():
     extractor = JsonSelectiveExtractor(
         scalar_fields={("model",): ScalarField("string", max_bytes=1)}
@@ -711,6 +780,65 @@ def test_skips_unselected_number_at_limit_without_storing_value():
 
     assert result.complete is True
     assert result.values == {("usage", "input_tokens"): 7}
+
+
+@pytest.mark.parametrize(
+    ("number", "splits"),
+    [
+        ("1e3", (1, 2, 3)),
+        ("1E-3", (1, 2, 3, 4)),
+        ("-2.5e+3", (5, 6, 7)),
+    ],
+)
+def test_preserves_selected_values_after_chunked_unselected_exponents(
+    number: str, splits: tuple[int, ...]
+):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+    prefix = b'{"meta":{"score":'
+    suffix = b'},"usage":{"input_tokens":7}}'
+    extractor.feed(prefix)
+    boundaries = (0, *splits, len(number))
+    for start, end in pairwise(boundaries):
+        extractor.feed(number[start:end].encode())
+    extractor.feed(suffix)
+
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+
+
+@pytest.mark.parametrize("number", ["1e", "1e+"])
+def test_rejects_incomplete_exponents(number: str):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+
+    extractor.feed(f'{{"meta":{{"score":{number}}},"usage":{{"input_tokens":7}}}}'.encode())
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "invalid number"
+    assert result.values == {}
+    assert result.array_counts == {}
+    assert result.wildcard_array_counts == {}
+    assert result.object_present == set()
+
+
+def test_rejects_oversized_unselected_exponent():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")},
+        max_number_bytes=3,
+    )
+
+    extractor.feed(b'{"meta":{"score":1e10},"usage":{"input_tokens":7}}')
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "number limit exceeded"
+    assert result.values == {}
 
 
 def test_rejects_oversized_unselected_root_number_at_eof():

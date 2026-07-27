@@ -62,11 +62,11 @@ export function createAuthedContractClient<T extends AppRouter>(
       let response = await requestWithToken(initialToken);
 
       if (response.status === 401) {
-        const freshToken = await fetchFreshToken(clerk, initialToken);
-        if (freshToken) {
-          response = await requestWithToken(freshToken);
+        const refreshResult = await fetchFreshToken(clerk, initialToken);
+        if (refreshResult.status === "refreshed") {
+          response = await requestWithToken(refreshResult.token);
         }
-        if (response.status === 401) {
+        if (response.status === 401 && refreshResult.status !== "offline") {
           handleUnauthorizedRedirect(
             clerk,
             options.getUnauthorizedRedirectSuppressionUntil?.() ?? 0,
