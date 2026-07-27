@@ -41,9 +41,20 @@ import {
   type TypeChecker,
 } from "typescript";
 
+function drizzleDeclarationSourcePath(node: Declaration): string {
+  return node.getSourceFile().fileName.replaceAll("\\", "/");
+}
+
 export function isDrizzleDeclaration(node: Declaration): boolean {
-  const sourcePath = node.getSourceFile().fileName.replaceAll("\\", "/");
-  return sourcePath.includes("/node_modules/drizzle-orm/");
+  return drizzleDeclarationSourcePath(node).includes(
+    "/node_modules/drizzle-orm/",
+  );
+}
+
+export function isDrizzlePgCoreDeclaration(node: Declaration): boolean {
+  return drizzleDeclarationSourcePath(node).includes(
+    "/node_modules/drizzle-orm/pg-core/",
+  );
 }
 
 export function resolvedSymbol(
@@ -214,7 +225,7 @@ function runtimeColumnOrder(
   });
 }
 
-function containsTypeAssertion(node: Node): boolean {
+export function containsTypeAssertion(node: Node): boolean {
   if (isAsExpression(node) || isTypeAssertionExpression(node)) {
     return true;
   }

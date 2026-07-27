@@ -7,29 +7,35 @@ import {
 import {
   canHaveModifiers,
   getModifiers,
-  isAsExpression,
+  isArrayBindingPattern,
   isArrowFunction,
+  isBindingElement,
   isBlock,
   isCallExpression,
+  isElementAccessExpression,
   isExpression,
   isFunctionDeclaration,
   isFunctionExpression,
   isIdentifier,
   isNonNullExpression,
   isNoSubstitutionTemplateLiteral,
+  isNumericLiteral,
+  isObjectBindingPattern,
+  isParameter,
   isParenthesizedExpression,
   isPropertyAccessExpression,
   isReturnStatement,
   isSatisfiesExpression,
   isSpreadElement,
+  isStringLiteralLike,
   isTaggedTemplateExpression,
   isTemplateExpression,
-  isTypeAssertionExpression,
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
   SyntaxKind,
   TypeFlags,
+  type Declaration,
   type Expression as TypeScriptExpression,
   type Node,
   type Signature,
@@ -39,7 +45,9 @@ import {
 } from "typescript";
 
 import {
+  containsTypeAssertion,
   isDrizzleDeclaration,
+  isDrizzlePgCoreDeclaration,
   isDrizzleSqlTag,
   isDrizzleSymbol,
   isNamedDrizzleSignature,
@@ -406,20 +414,29 @@ export const preferDrizzleApis = createRule({
       return declaration !== undefined && isDrizzleDeclaration(declaration);
     }
 
-    function typeHasDirectDrizzleProperty(
+    function typeHasOnlyDeclaredProperty(
       type: Type,
       property: string,
+      isExpectedDeclaration: (declaration: Declaration) => boolean,
     ): boolean {
       if (type.isUnion()) {
         return type.types.every((member) => {
-          return typeHasDirectDrizzleProperty(member, property);
+          return typeHasOnlyDeclaredProperty(
+            member,
+            property,
+            isExpectedDeclaration,
+          );
         });
       }
       if ((type.flags & TypeFlags.TypeParameter) !== 0) {
         const constraint = checker.getBaseConstraintOfType(type);
         return (
           constraint !== undefined &&
-          typeHasDirectDrizzleProperty(constraint, property)
+          typeHasOnlyDeclaredProperty(
+            constraint,
+            property,
+            isExpectedDeclaration,
+          )
         );
       }
       const symbol = resolvedSymbol(
@@ -429,7 +446,7 @@ export const preferDrizzleApis = createRule({
       return (
         symbol?.declarations !== undefined &&
         symbol.declarations.length > 0 &&
-        symbol.declarations.every(isDrizzleDeclaration)
+        symbol.declarations.every(isExpectedDeclaration)
       );
     }
 
@@ -454,11 +471,32 @@ export const preferDrizzleApis = createRule({
       );
     }
 
+    function hasUnassertedDatabasePropertyOrigin(
+      symbol: TypeScriptSymbol | undefined,
+      visited: Set<TypeScriptSymbol>,
+    ): boolean {
+      const resolved = resolvedSymbol(checker, symbol);
+      if (
+        resolved === undefined ||
+        visited.has(resolved) ||
+        resolved.declarations === undefined ||
+        resolved.declarations.length === 0
+      ) {
+        return false;
+      }
+      visited.add(resolved);
+      const stable = resolved.declarations.every((declaration) => {
+        return !containsTypeAssertion(declaration);
+      });
+      visited.delete(resolved);
+      return stable;
+    }
+
     function hasUnassertedDatabaseReceiverOrigin(
       node: Node,
       visited: Set<TypeScriptSymbol>,
     ): boolean {
-      if (isAsExpression(node) || isTypeAssertionExpression(node)) {
+      if (containsTypeAssertion(node)) {
         return false;
       }
       if (
@@ -469,10 +507,39 @@ export const preferDrizzleApis = createRule({
         return hasUnassertedDatabaseReceiverOrigin(node.expression, visited);
       }
       if (isPropertyAccessExpression(node)) {
-        return hasUnassertedDatabaseReceiverOrigin(node.expression, visited);
+        return (
+          hasUnassertedDatabaseReceiverOrigin(node.expression, visited) &&
+          hasUnassertedDatabasePropertyOrigin(
+            checker.getSymbolAtLocation(node.name),
+            visited,
+          )
+        );
+      }
+      if (isElementAccessExpression(node)) {
+        const argument = node.argumentExpression;
+        const propertyName = isStringLiteralLike(argument)
+          ? argument.text
+          : isNumericLiteral(argument)
+            ? argument.text
+            : undefined;
+        if (propertyName === undefined) {
+          return false;
+        }
+        const property = checker.getPropertyOfType(
+          checker.getTypeAtLocation(node.expression),
+          propertyName,
+        );
+        return (
+          property !== undefined &&
+          hasUnassertedDatabaseReceiverOrigin(node.expression, visited) &&
+          hasUnassertedDatabasePropertyOrigin(property, visited)
+        );
+      }
+      if (node.kind === SyntaxKind.ThisKeyword) {
+        return true;
       }
       if (!isIdentifier(node)) {
-        return true;
+        return false;
       }
       const symbol = resolvedSymbol(checker, checker.getSymbolAtLocation(node));
       if (
@@ -485,16 +552,44 @@ export const preferDrizzleApis = createRule({
       }
       visited.add(symbol);
       const stable = symbol.declarations.every((declaration) => {
-        if (!isVariableDeclaration(declaration)) {
+        if (containsTypeAssertion(declaration)) {
+          return false;
+        }
+        let receiverDeclaration: Node = declaration;
+        if (isBindingElement(receiverDeclaration)) {
+          receiverDeclaration = receiverDeclaration.parent;
+          while (
+            isArrayBindingPattern(receiverDeclaration) ||
+            isObjectBindingPattern(receiverDeclaration)
+          ) {
+            receiverDeclaration = receiverDeclaration.parent;
+          }
+          if (isParameter(receiverDeclaration)) {
+            return true;
+          }
+        }
+        if (!isVariableDeclaration(receiverDeclaration)) {
           return true;
         }
-        if (declaration.initializer === undefined) {
-          return true;
+        if (
+          !isVariableDeclarationList(receiverDeclaration.parent) ||
+          (receiverDeclaration.parent.flags & NodeFlags.Const) === 0
+        ) {
+          return false;
         }
+        if (receiverDeclaration.initializer !== undefined) {
+          return hasUnassertedDatabaseReceiverOrigin(
+            receiverDeclaration.initializer,
+            visited,
+          );
+        }
+        const variableOwner = receiverDeclaration.parent.parent;
         return (
-          isVariableDeclarationList(declaration.parent) &&
-          (declaration.parent.flags & NodeFlags.Const) !== 0 &&
-          hasUnassertedDatabaseReceiverOrigin(declaration.initializer, visited)
+          receiverDeclaration.getSourceFile().isDeclarationFile ||
+          (canHaveModifiers(variableOwner) &&
+            getModifiers(variableOwner)?.some((modifier) => {
+              return modifier.kind === SyntaxKind.DeclareKeyword;
+            }) === true)
         );
       });
       visited.delete(symbol);
@@ -515,8 +610,17 @@ export const preferDrizzleApis = createRule({
       return (
         hasUnassertedDatabaseReceiverOrigin(receiver, new Set()) &&
         isDirectDrizzleDatabaseType(receiverType) &&
+        typeHasOnlyDeclaredProperty(
+          receiverType,
+          "update",
+          isDrizzlePgCoreDeclaration,
+        ) &&
         WRITE_BUILDER_DATABASE_PROPERTIES.every((property) => {
-          return typeHasDirectDrizzleProperty(receiverType, property);
+          return typeHasOnlyDeclaredProperty(
+            receiverType,
+            property,
+            isDrizzleDeclaration,
+          );
         })
       );
     }

@@ -952,6 +952,20 @@ const queryBuilderCases = {
       `,
     },
     {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        type MySqlDatabase = import("drizzle-orm/mysql-core").MySqlDatabase<
+          never,
+          never
+        >;
+        declare const mysqlDb: MySqlDatabase;
+        await mysqlDb.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE true
+        \`);
+      `,
+    },
+    {
       code: `${unnestUpdatePreamble}
         import { sql } from "drizzle-orm";
         const wrappedDb: { execute: typeof db.execute } = {
@@ -988,6 +1002,178 @@ const queryBuilderCases = {
           execute: db.execute,
         } as unknown as DrizzleDatabase;
         await assertedDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        let deferredDb: DrizzleDatabase;
+        deferredDb = {
+          execute: db.execute,
+        } as unknown as DrizzleDatabase;
+        await deferredDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        function identity<T>(value: T): T {
+          return value;
+        }
+        const nestedAssertedDb = identity({
+          execute: db.execute,
+        } as unknown as DrizzleDatabase);
+        await nestedAssertedDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        class DatabaseHolder {
+          readonly database = {
+            execute: db.execute,
+          } as unknown as DrizzleDatabase;
+
+          async update(): Promise<void> {
+            await this.database.execute(sql\`
+              UPDATE \${allowanceWindows}
+              SET consumed_units = consumption.units_applied
+              FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+              WHERE true
+            \`);
+          }
+        }
+        void DatabaseHolder;
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const holder = {
+          database: {
+            execute: db.execute,
+          },
+        } as unknown as { readonly database: DrizzleDatabase };
+        await holder["database"].execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const holder = {
+          database: {
+            execute: db.execute,
+          },
+        } as unknown as { readonly database: DrizzleDatabase };
+        const { database } = holder;
+        await database.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        class DatabaseHolder {
+          readonly database = {
+            execute: db.execute,
+          } as unknown as DrizzleDatabase;
+
+          async update(): Promise<void> {
+            await this["database"].execute(sql\`
+              UPDATE \${allowanceWindows}
+              SET consumed_units = consumption.units_applied
+              FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+              WHERE true
+            \`);
+          }
+        }
+        void DatabaseHolder;
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const databases = [
+          {
+            execute: db.execute,
+          } as unknown as DrizzleDatabase,
+        ];
+        for (const database of databases) {
+          await database.execute(sql\`
+            UPDATE \${allowanceWindows}
+            SET consumed_units = consumption.units_applied
+            FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+            WHERE true
+          \`);
+        }
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        function createDatabase(): DrizzleDatabase {
+          return {
+            execute: db.execute,
+          } as unknown as DrizzleDatabase;
+        }
+        await createDatabase().execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        async function update(
+          database: DrizzleDatabase = {
+            execute: db.execute,
+          } as unknown as DrizzleDatabase,
+        ): Promise<void> {
+          await database.execute(sql\`
+            UPDATE \${allowanceWindows}
+            SET consumed_units = consumption.units_applied
+            FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+            WHERE true
+          \`);
+        }
+        await update();
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const assertedDatabase = {
+          execute: db.execute,
+        } as unknown as DrizzleDatabase;
+        const database = windowIds.length === 0 ? db : assertedDatabase;
+        await database.execute(sql\`
           UPDATE \${allowanceWindows}
           SET consumed_units = consumption.units_applied
           FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
@@ -2745,6 +2931,37 @@ const queryBuilderCases = {
         import { sql } from "drizzle-orm";
         const database = db;
         await database.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        async function deleteExpired(args: {
+          readonly database: DrizzleDatabase;
+        }): Promise<void> {
+          await args.database.execute(sql\`
+            DELETE FROM \${cleanupRows}
+            WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+          \`);
+        }
+        await deleteExpired({ database: db });
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        type DrizzleTransaction =
+          import("drizzle-orm/node-postgres").NodePgTransaction<
+            Record<string, never>,
+            Record<string, never>
+          >;
+        declare const tx: DrizzleTransaction;
+        await tx.execute(sql\`
           DELETE FROM \${cleanupRows}
           WHERE \${cleanupRows.expiresAt} <= \${cutoff}
         \`);
