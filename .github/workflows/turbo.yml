@@ -1524,30 +1524,36 @@ jobs:
           )
           echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
 
-          check_preview_asset() {
-            local probe_file="$1"
-            local relative_path="${probe_file#"$PAGES_DIST"/}"
-            local content_type
-            content_type="$(curl \
-              --fail \
-              --silent \
-              --max-time 10 \
-              --output /dev/null \
-              --write-out "%{content_type}" \
-              "${PAGES_URL%/}/${relative_path}" 2>/dev/null || true)"
-            if [[ "$content_type" != *javascript* ]]; then
-              printf "%s\n" "$relative_path"
-            fi
-          }
-          export -f check_preview_asset
+          probe_curl_args=()
+          for probe_file in "${probe_files[@]}"; do
+            relative_path="${probe_file#"$PAGES_DIST"/}"
+            probe_curl_args+=(
+              --output /dev/null
+              --url "${PAGES_URL%/}/${relative_path}"
+            )
+          done
 
           ready_passes=0
           for attempt in {1..60}; do
+            probe_results="$(curl \
+              --silent \
+              --max-time 10 \
+              --parallel \
+              --parallel-immediate \
+              --parallel-max 16 \
+              --write-out $'%{http_code}|%{content_type}|%{url_effective}\n' \
+              "${probe_curl_args[@]}" 2>/dev/null || true)"
+            probe_result_count="$(grep -c '|' <<< "$probe_results")"
             not_ready_files="$(
-              printf '%s\0' "${probe_files[@]}" |
-                xargs -0 -r -n 1 -P 16 \
-                  bash -c "check_preview_asset \"\$1\"" _
+              while IFS='|' read -r status content_type asset_url; do
+                if [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
+                  printf "%s\n" "${asset_url#"${PAGES_URL%/}/"}"
+                fi
+              done <<< "$probe_results"
             )"
+            if (( probe_result_count != ${#probe_files[@]} )); then
+              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
+            fi
 
             if [[ -z "$not_ready_files" ]]; then
               ((ready_passes += 1))
