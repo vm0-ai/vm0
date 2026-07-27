@@ -41,6 +41,7 @@ import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
+  type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -98,6 +99,7 @@ const connectors = createConnectorBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
@@ -223,8 +225,10 @@ const openRouterBodySchema = z.object({
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
 });
 
-async function entitledChatActor(): Promise<EntitledChatActor> {
-  const actor = bdd.user();
+async function entitledChatActor(
+  options: ApiTestUserOptions = {},
+): Promise<EntitledChatActor> {
+  const actor = bdd.user(options);
   chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -4141,7 +4145,9 @@ describe("CHAT-02: generation templates and attachments", () => {
   }, 90_000);
 
   it("projects multiple inline templates into one ordered prompt and one shared context", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId } = await entitledChatActor({
+      orgId: STAFF_ORG_ID,
+    });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
@@ -4282,7 +4288,9 @@ describe("CHAT-02: generation templates and attachments", () => {
   }, 60_000);
 
   it("keeps legacy single-template context when inline templates are enabled", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId } = await entitledChatActor({
+      orgId: STAFF_ORG_ID,
+    });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
