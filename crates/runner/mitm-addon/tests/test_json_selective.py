@@ -7,6 +7,7 @@ from types import FrameType
 
 import pytest
 
+from usage import json_selective
 from usage.json_selective import JsonSelectiveExtractor, ScalarField
 
 
@@ -1028,6 +1029,44 @@ def test_wildcard_pattern_collects_keys_after_wildcard_segment():
 
     assert result.complete is True
     assert result.wildcard_array_counts == {("*", "items"): {"a": 2, "b": 1}}
+
+
+def test_mixed_paths_match_collection_prefixes_once_per_object_across_chunks():
+    generic_match_calls = 0
+    generic_match_code = json_selective._matches_any_path_pattern.__code__
+
+    # Profile the public parser operation so the real matcher stays in place
+    # while calls provide a deterministic performance contract.
+    def count_generic_match_calls(frame: FrameType, event: str, _arg: object) -> None:
+        nonlocal generic_match_calls
+        if event == "call" and frame.f_code is generic_match_code:
+            generic_match_calls += 1
+
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")},
+        wildcard_array_count_paths={("*", "items")},
+    )
+    chunks = (
+        b'{"alpha":{"empty":{},"noise":{"deep":1},"first":0,',
+        b'"second":0,"items":[1,2]},"usage":{"input_',
+        b'tokens":7}}',
+    )
+
+    previous_profile = sys.getprofile()
+    sys.setprofile(count_generic_match_calls)
+    try:
+        for chunk in chunks:
+            extractor.feed(chunk)
+    finally:
+        sys.setprofile(previous_profile)
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+    assert result.wildcard_array_counts == {("*", "items"): {"alpha": 2}}
+    # The wildcard prefix is checked once for "alpha" and once for its
+    # unselected "noise" object, never for the empty object or every key.
+    assert generic_match_calls == 2
 
 
 def test_leading_wildcard_does_not_match_array_element_marker():
