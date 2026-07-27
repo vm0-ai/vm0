@@ -1,10 +1,15 @@
 """Public destination request-hook tests."""
 
+import asyncio
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from mitmproxy import connection
 from mitmproxy.flow import Error
 
+import auth
 import auth_base_forwarder
 import builtin_host_policy
 import flow_metadata_keys as metadata_keys
@@ -13,6 +18,8 @@ import public_destination
 import request_classification
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
+from tests.aws_sigv4_helpers import resolved_aws_sigv4_credentials
+from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import _assert_no_request_stream
@@ -185,13 +192,125 @@ async def test_public_destination_allows_public_runtime_destination(
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
-    assert classified_hosts == [destination_host]
+    assert classified_hosts == [destination_host, destination_host]
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://service.example.com"
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "call"
     assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+@pytest.mark.parametrize(
+    ("auth_config", "token_meta"),
+    [
+        pytest.param(
+            {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+            {
+                "headers": {"Authorization": "Bearer resolved"},
+                "resolved_secrets": ["EXAMPLE_TOKEN"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+            id="header",
+        ),
+        pytest.param(
+            {"query": {"api_key": "${{ secrets.EXAMPLE_TOKEN }}"}},
+            {
+                "headers": {},
+                "query": {"api_key": "resolved"},
+                "resolved_secrets": ["EXAMPLE_TOKEN"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+            id="query",
+        ),
+        pytest.param(
+            {
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                }
+            },
+            {
+                "headers": {},
+                "aws_sigv4": resolved_aws_sigv4_credentials(session_token=None),
+                "resolved_secrets": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+            id="aws-sigv4",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "disconnect_hook_state",
+    [
+        pytest.param("completed", id="disconnect-hook-completed"),
+        pytest.param("pending", id="disconnect-hook-pending"),
+    ],
+)
+async def test_public_destination_disconnect_during_auth_prevents_credential_application(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    headers,
+    monkeypatch,
+    auth_config,
+    token_meta,
+    disconnect_hook_state,
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        auth_config=auth_config,
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("93.184.216.34", 443),
+        peername=("93.184.216.34", 443),
+    )
+    original_headers = flow.request.headers.fields
+    original_path = flow.request.path
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return token_meta
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            flow.server_conn.state = connection.ConnectionState.CLOSED
+            if disconnect_hook_state == "completed":
+                mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
+            release_auth_resolution.set()
+            await request_task
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(request_task)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert flow.request.headers.fields == original_headers
+    assert flow.request.path == original_path
+    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 async def test_public_destination_policy_allow_classifies_public_runtime_destination_once(
@@ -556,7 +675,7 @@ async def test_public_destination_allows_connected_prebound_public_original_dest
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
-async def test_public_destination_classifies_connected_host_values_once(
+async def test_public_destination_classifies_connected_hosts_once_per_admission_check(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -585,7 +704,12 @@ async def test_public_destination_classifies_connected_host_values_once(
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
-    assert classified_hosts == ["service.example.com", "93.184.216.35"]
+    assert classified_hosts == [
+        "service.example.com",
+        "93.184.216.35",
+        "93.184.216.35",
+        "service.example.com",
+    ]
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.request.headers["Authorization"] == "Bearer x"
