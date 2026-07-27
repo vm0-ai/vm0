@@ -2992,7 +2992,11 @@ function writeTargetMarker(
     return undefined;
   }
   const marker = markers.get(value.relname);
-  return marker?.tableMetadata === undefined ? undefined : marker;
+  // Drizzle aliases carry a mapped table config. Raw table interpolation and
+  // the update builder render those aliases as different write targets.
+  return marker?.tableMetadata?.hasDirectTableConfig === true
+    ? marker
+    : undefined;
 }
 
 function writeRangeMarker(

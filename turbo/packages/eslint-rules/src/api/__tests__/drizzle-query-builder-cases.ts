@@ -460,6 +460,21 @@ const queryBuilderCases = {
     {
       code: `${unnestUpdatePreamble}
         import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const target = alias(allowanceWindows, "target");
+        await db.execute(sql\`
+          UPDATE \${target}
+          SET consumed_units = source.units_applied
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS source(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
         const fakeDb = {
           async execute(query: unknown) {
             return query;

@@ -185,6 +185,7 @@ export interface DrizzleTableColumnMetadata {
 
 export interface DrizzleTableMetadata {
   readonly columns: ReadonlyMap<string, DrizzleTableColumnMetadata>;
+  readonly hasDirectTableConfig: boolean;
   readonly name: string;
   readonly schema: string | undefined;
 }
@@ -351,6 +352,7 @@ function concreteDrizzleTableMetadata(
   }
   const name = exactStringProperty(checker, metadataType, "name", location);
   const schema = exactSchemaName(checker, metadataType, location);
+  const configType = propertyType(checker, metadataType, "config", location);
   const columnsType = propertyType(checker, metadataType, "columns", location);
   const insertType = propertyType(
     checker,
@@ -361,6 +363,7 @@ function concreteDrizzleTableMetadata(
   if (
     name === undefined ||
     schema === undefined ||
+    configType === undefined ||
     columnsType === undefined ||
     insertType === undefined
   ) {
@@ -405,7 +408,12 @@ function concreteDrizzleTableMetadata(
       propertySymbol: resolvedSymbol(checker, directProperty) ?? directProperty,
     });
   }
-  return { columns, name, schema: schema ?? undefined };
+  return {
+    columns,
+    hasDirectTableConfig: configType.aliasSymbol === undefined,
+    name,
+    schema: schema ?? undefined,
+  };
 }
 
 function sameTableMetadata(
@@ -415,6 +423,7 @@ function sameTableMetadata(
   if (
     left.name !== right.name ||
     left.schema !== right.schema ||
+    left.hasDirectTableConfig !== right.hasDirectTableConfig ||
     left.columns.size !== right.columns.size
   ) {
     return false;
