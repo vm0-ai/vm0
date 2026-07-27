@@ -2,7 +2,6 @@ import type {
   CSSProperties,
   FormEvent,
   MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
@@ -210,10 +209,6 @@ import {
   artifactInboxQuery$,
   artifactInboxSearchOpen$,
   artifactInboxSection$,
-  ARTIFACT_PANEL_MIN_THREAD_WIDTH,
-  ARTIFACT_PANEL_MIN_WIDTH,
-  artifactPanelResizing$,
-  artifactPanelWidth$,
   backToArtifactInbox$,
   type ArtifactInboxSection,
   type ArtifactRef,
@@ -223,8 +218,6 @@ import {
   openArtifactFromInbox$,
   setArtifactInboxQuery$,
   setArtifactInboxSection$,
-  setArtifactPanelResizing$,
-  setArtifactPanelWidth$,
   openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
   openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
   toggleArtifactFullscreen$,
@@ -251,6 +244,7 @@ import {
   ThreadSidebarSlot,
   useOpenThreadArtifacts,
 } from "./thread-sidebar.tsx";
+import { ChatThreadSidebarShell } from "./chat-thread-sidebar-shell.tsx";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { currentBrowserSessionId$ } from "../../signals/zero-page/browser-session-sidebar.ts";
@@ -2517,88 +2511,6 @@ function ChatThread({
   );
 }
 
-// Drag the divider to resize the artifact preview against the chat thread.
-// The preview panel is the right-most child, so its right edge coincides with
-// the container's right edge; the width is the gap from the pointer to it.
-function startArtifactPanelResize(
-  event: ReactPointerEvent<HTMLDivElement>,
-  setWidth: (width: number) => void,
-  setResizing: (resizing: boolean) => void,
-): void {
-  const container = event.currentTarget.parentElement;
-  if (!container) {
-    return;
-  }
-  event.preventDefault();
-  const rect = container.getBoundingClientRect();
-  const maxWidth = Math.max(
-    ARTIFACT_PANEL_MIN_WIDTH,
-    rect.width - ARTIFACT_PANEL_MIN_THREAD_WIDTH,
-  );
-  setResizing(true);
-  document.body.style.cursor = "col-resize";
-  document.body.style.userSelect = "none";
-
-  function onMove(moveEvent: PointerEvent): void {
-    const next = Math.min(
-      Math.max(rect.right - moveEvent.clientX, ARTIFACT_PANEL_MIN_WIDTH),
-      maxWidth,
-    );
-    setWidth(next);
-  }
-  function onUp(): void {
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
-    setResizing(false);
-  }
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
-}
-
-// Resolve the artifact panel's CSS width and transition from the persisted
-// width and the live drag state. A null width means "never resized" -> keep
-// the responsive default; once resized, the stored px is clamped against the
-// live container so the chat thread always keeps ARTIFACT_PANEL_MIN_THREAD_WIDTH.
-// The transition is dropped mid-drag so the panel tracks the pointer 1:1.
-function artifactPanelLayout(
-  width: number | null,
-  resizing: boolean,
-): { style: CSSProperties; transition: string } {
-  const widthValue =
-    width === null
-      ? "min(760px, 48vw)"
-      : `clamp(${ARTIFACT_PANEL_MIN_WIDTH}px, ${width}px, calc(100% - ${ARTIFACT_PANEL_MIN_THREAD_WIDTH}px))`;
-  return {
-    style: { "--artifact-panel-width": widthValue } as CSSProperties,
-    transition: resizing
-      ? ""
-      : "transition-[flex-basis,width] duration-[240ms] ease",
-  };
-}
-
-function ArtifactResizeHandle() {
-  const setWidth = useSet(setArtifactPanelWidth$);
-  const setResizing = useSet(setArtifactPanelResizing$);
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize preview panel"
-      className="group relative hidden xl:flex w-1 shrink-0 cursor-col-resize items-stretch justify-center"
-      onPointerDown={(event) => {
-        startArtifactPanelResize(event, setWidth, setResizing);
-      }}
-    >
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60 transition-colors group-hover:bg-border"
-      />
-    </div>
-  );
-}
-
 function ChatThreadArea({
   leftThread,
   rightThread,
@@ -2706,45 +2618,12 @@ export function ZeroChatThreadPage() {
       automationPanelOpen ||
       mailDraftPanelOpen ||
       browserPanelOpen;
-  const { style: artifactPanelStyle, transition: artifactTransition } =
-    artifactPanelLayout(
-      useGet(artifactPanelWidth$),
-      useGet(artifactPanelResizing$),
-    );
   return (
     <>
-      {/* Keep the wrapper structure stable across right panel open/close so the
-          thread area's React subtree (and its scroll/keyboard state) never
-          unmounts when the sidebar appears. Only the wrapper className and
-          the optional sidebar sibling change with state. Below xl: the
-          thread half hides so the sidebar fills the pane (no toggle, the
-          50/50 split needs each half ~640px to clear the composer's sm:
-          breakpoint, below which the model picker collapses to icons). */}
-      <div
-        className="flex flex-1 min-h-0 bg-transparent"
-        style={artifactPanelStyle}
-      >
-        <div
-          className={cn(
-            "min-w-0 min-h-0",
-            artifactTransition,
-            rightPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
-          )}
-        >
-          <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
-        </div>
-        {rightPanelOpen && <ArtifactResizeHandle />}
-        <div
-          className={cn(
-            "flex min-h-0 min-w-0 overflow-hidden",
-            artifactTransition,
-            rightPanelOpen
-              ? "flex-1 basis-0 xl:w-[var(--artifact-panel-width)] xl:flex-none xl:basis-[var(--artifact-panel-width)]"
-              : "pointer-events-none w-0 flex-none basis-0",
-          )}
-          aria-hidden={!rightPanelOpen}
-        >
-          {newSidebarEnabled ? (
+      <ChatThreadSidebarShell
+        open={rightPanelOpen}
+        sidebar={
+          newSidebarEnabled ? (
             activeThreadSidebar ? (
               activeThreadSidebar.target.type === "automations" ? (
                 <ThreadAutomationsSidebarSlot
@@ -2773,9 +2652,11 @@ export function ZeroChatThreadPage() {
               leftThread={leftThread}
               rightThread={rightThread}
             />
-          ) : null}
-        </div>
-      </div>
+          ) : null
+        }
+      >
+        <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
+      </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
       <ChatConnectorActionConnectModal />
     </>
@@ -3848,8 +3729,9 @@ function RecommendedFollowupList({
   thread: ChatThreadSignals;
   source: RecommendedFollowupSource;
 }) {
-  const sendMessage = useSet(thread.sendMessage$);
-  const rootSignal = useGet(rootSignal$);
+  const selectOrAppendComposerText = useSet(
+    thread.workflowComposer.selectOrAppendText$,
+  );
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
   };
@@ -3864,16 +3746,7 @@ function RecommendedFollowupList({
       followupCount: source.followups.length,
       followup,
     });
-    detach(
-      sendMessage(
-        followup.prompt,
-        {
-          includeDraftAttachments: false,
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
-    );
+    selectOrAppendComposerText(followup.prompt);
   };
 
   return (
