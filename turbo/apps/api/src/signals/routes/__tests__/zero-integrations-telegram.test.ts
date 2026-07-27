@@ -1152,7 +1152,7 @@ describe("POST /api/integrations/telegram/link", () => {
           orgRole: "org:admin",
           email: `${userId}@example.test`,
         },
-        "artifact",
+        "user",
       ),
     ).resolves.toStrictEqual([]);
     await expectTelegramBotConnection({

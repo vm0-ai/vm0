@@ -477,7 +477,10 @@ describe("works page", () => {
       return null;
     });
     click(getRole("button", "Connect"));
-    expect(open).toHaveBeenCalledWith(connectUrl, "_blank");
+    expect(open).toHaveBeenCalledWith(
+      `${connectUrl}&callbackTarget=app`,
+      "_blank",
+    );
     expect(queryRole("button", "More options for Member bot")).toBeNull();
   });
 
@@ -524,14 +527,16 @@ describe("works page", () => {
     click(getRole("button", "More options for Feishu bot"));
     click(getRole("button", "Manage"));
     expect(
-      screen.getByText("Configure the OAuth redirect URL"),
+      screen.getByRole("img", {
+        name: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
+      }),
     ).toBeInTheDocument();
+    click(getRole("button", "Show next Feishu guide image"));
     expect(
-      screen.getByDisplayValue(
-        "https://api.vm0.test/api/zero/feishu/oauth/callback",
-      ),
+      screen.getByRole("img", {
+        name: "Feishu Event Configuration screen with the Request URL field highlighted",
+      }),
     ).toBeInTheDocument();
-    click(getRole("button", "Next"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Waiting for callback")).not.toHaveLength(0);
@@ -550,6 +555,16 @@ describe("works page", () => {
         screen.getByText("Feishu connected successfully"),
       ).toBeInTheDocument();
     });
+
+    click(getRole("button", "Next"));
+    expect(
+      screen.getByText("Configure the OAuth redirect URL"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(
+        "https://api.vm0.test/api/zero/feishu/oauth/callback",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows the guided Feishu custom app setup for organization members", async () => {
@@ -565,6 +580,12 @@ describe("works page", () => {
       screen.findByText("Create an enterprise custom app"),
     ).resolves.toBeInTheDocument();
     expect(
+      screen.getByRole("img", {
+        name: "Feishu app creation form with the app name, icon, and Create button highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(queryRole("button", "Show creating a Feishu app guide")).toBeNull();
+    expect(
       screen.getByText("Download the VM0 icon").closest("a"),
     ).toHaveAttribute("download", "vm0-feishu-app-icon.png");
 
@@ -572,6 +593,11 @@ describe("works page", () => {
 
     await expect(screen.findByLabelText("App ID")).resolves.toBeInTheDocument();
     expect(screen.getByLabelText("App Secret")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu app creation result showing where to find the App ID and App Secret",
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Verification Token"),
     ).not.toBeInTheDocument();

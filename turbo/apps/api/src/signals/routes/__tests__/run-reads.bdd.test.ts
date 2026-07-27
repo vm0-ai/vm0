@@ -1280,20 +1280,20 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const volumeFile = storageTextFile("data/cache.txt", "bdd volume payload");
     const prepared = await storages.prepareStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [volumeFile],
     });
     const volumeVersion = prepared.versionId;
     await storages.commitStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: volumeVersion,
       files: [volumeFile],
     });
     const refreshedVolumeArchiveSize = 23_456;
     const forcedPrepare = await storages.prepareStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [volumeFile],
       force: true,
     });
@@ -1305,7 +1305,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     storages.mockStorageObjectsExist(refreshedVolumeArchiveSize);
     await storages.commitStorage(actor, {
       storageName: volumeName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: volumeVersion,
       files: [volumeFile],
     });

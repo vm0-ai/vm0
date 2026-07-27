@@ -59,7 +59,7 @@ export const chatThreads = pgTable(
     ),
     /**
      * Run whose final admission most recently established agentSessionId.
-     * Kept as provenance for rollout validation and future snapshot checks.
+     * Provides route provenance for session rotation and binding snapshots.
      */
     agentSessionRunId: uuid("agent_session_run_id").references(
       () => {

@@ -27,7 +27,16 @@ export type SqlAnalysisContext =
   | "predicate"
   | "relation"
   | "selection"
-  | "statement";
+  | "statement"
+  | "structured-selection";
+
+type ReadQueryCapability =
+  | "composed-cte"
+  | "exists"
+  | "locking"
+  | "scalar-cte"
+  | "select"
+  | "structured-scalar";
 
 export type SqlAnalysisFinding =
   | {
@@ -45,6 +54,7 @@ export type SqlAnalysisFinding =
       readonly node: TSESTree.Node;
     }
   | {
+      readonly capability: ReadQueryCapability;
       readonly kind: "query-builder";
       readonly node: TSESTree.Expression;
     };
@@ -76,7 +86,6 @@ export interface SqlAnalysis {
   readonly findingSignatures: readonly SqlFindingSignature[];
   readonly findings: readonly SqlAnalysisFinding[];
   readonly hasWholeReplacementBoundary: boolean;
-  readonly isSimpleSelect: boolean;
   readonly isTruePredicate: boolean;
 }
 
@@ -87,6 +96,7 @@ interface SqlFindingSignature {
   readonly isPartial: boolean;
   readonly kind: SqlAnalysisFinding["kind"];
   readonly ownsResultMapping: boolean;
+  readonly readQueryCapability: ReadQueryCapability | undefined;
 }
 
 type SqlHelper =
@@ -128,7 +138,9 @@ type SqlHelper =
 interface SqlMarker {
   readonly chunk: SqlSourceChunk;
   readonly isArrayOperand: boolean;
+  readonly isBoundScalar: boolean;
   readonly isColumn: boolean;
+  readonly isNumber: boolean;
   readonly isPatternOperand: boolean;
   readonly isSelect: boolean;
   readonly isStringOrWrapper: boolean;
@@ -270,6 +282,30 @@ interface RelationMatch {
   readonly sourceTable: SqlMarker;
 }
 
+interface SchemaJoinGraph {
+  readonly joinCount: number;
+  readonly conditions: readonly unknown[];
+}
+
+interface ScalarCte {
+  readonly guaranteedOneRow: boolean;
+  readonly name: string;
+}
+
+interface WithClauseMatch {
+  readonly ctes: readonly unknown[];
+}
+
+interface CommonTableExpressionMatch {
+  readonly ctename: string;
+  readonly ctequery: unknown;
+}
+
+interface RangeVarMatch {
+  readonly alias: unknown;
+  readonly relname: string;
+}
+
 const ANALYSIS_CACHE = new WeakMap<
   SqlSourceComposer,
   WeakMap<TSESTree.Expression, Map<SqlAnalysisContext, SqlAnalysis>>
@@ -361,6 +397,52 @@ function markerIsColumn(
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
   const type = checker.getTypeAtLocation(tsNode);
   return isDrizzleColumnType(checker, type, tsNode);
+}
+
+function isBoundScalarType(type: Type, checker: TypeChecker): boolean {
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint !== undefined && isBoundScalarType(constraint, checker);
+  }
+  if (type.isUnion()) {
+    return type.types.every((member) => {
+      return isBoundScalarType(member, checker);
+    });
+  }
+  return (
+    (type.flags &
+      (TypeFlags.BigIntLike |
+        TypeFlags.BooleanLike |
+        TypeFlags.Null |
+        TypeFlags.NumberLike |
+        TypeFlags.StringLike)) !==
+    0
+  );
+}
+
+function markerIsBoundScalar(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return isBoundScalarType(checker.getTypeAtLocation(tsNode), checker);
+}
+
+function isNumberType(type: Type): boolean {
+  if (type.isUnion()) {
+    return type.types.every(isNumberType);
+  }
+  return (type.flags & TypeFlags.NumberLike) !== 0;
+}
+
+function markerIsNumber(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return isNumberType(checker.getTypeAtLocation(tsNode));
 }
 
 function markerIsArrayOperand(
@@ -485,7 +567,7 @@ function parseSqlVariant(
       ? ""
       : context === "predicate"
         ? "SELECT 1 WHERE "
-        : context === "selection"
+        : context === "selection" || context === "structured-selection"
           ? "SELECT "
           : context === "ordering"
             ? "SELECT 1 ORDER BY "
@@ -506,7 +588,9 @@ function parseSqlVariant(
     }
     precedingLiteral = "";
     let cachedArrayOperand: boolean | undefined;
+    let cachedBoundScalar: boolean | undefined;
     let cachedColumn: boolean | undefined;
+    let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
@@ -522,9 +606,21 @@ function parseSqlVariant(
         );
         return cachedArrayOperand;
       },
+      get isBoundScalar(): boolean {
+        cachedBoundScalar ??= markerIsBoundScalar(
+          expression,
+          checker,
+          services,
+        );
+        return cachedBoundScalar;
+      },
       get isColumn(): boolean {
         cachedColumn ??= markerIsColumn(expression, checker, services);
         return cachedColumn;
+      },
+      get isNumber(): boolean {
+        cachedNumber ??= markerIsNumber(expression, checker, services);
+        return cachedNumber;
       },
       get isPatternOperand(): boolean {
         cachedPatternOperand ??= markerIsPatternOperand(
@@ -613,7 +709,11 @@ function parseSqlVariant(
 
 function stringNodeValue(value: unknown): string | undefined {
   const stringNode = recordProperty(value, "String");
-  return typeof stringNode?.sval === "string" ? stringNode.sval : undefined;
+  return stringNode !== undefined &&
+    typeof stringNode.sval === "string" &&
+    hasOnlyKeys(stringNode, new Set(["sval"]))
+    ? stringNode.sval
+    : undefined;
 }
 
 function columnMarker(
@@ -621,7 +721,11 @@ function columnMarker(
   markers: ReadonlyMap<string, SqlMarker>,
 ): SqlMarker | undefined {
   const columnRef = recordProperty(value, "ColumnRef");
-  if (!Array.isArray(columnRef?.fields) || columnRef.fields.length !== 1) {
+  if (
+    !Array.isArray(columnRef?.fields) ||
+    columnRef.fields.length !== 1 ||
+    !hasOnlyKeys(columnRef, new Set(["fields", "location"]))
+  ) {
     return undefined;
   }
   const name = stringNodeValue(columnRef.fields[0]);
@@ -1578,26 +1682,6 @@ function selectStatement(value: unknown): Record<string, unknown> | undefined {
   return recordProperty(statement, "SelectStmt");
 }
 
-function selectedColumn(
-  select: Record<string, unknown>,
-  markers: ReadonlyMap<string, SqlMarker>,
-): SqlMarker | undefined {
-  if (!Array.isArray(select.targetList) || select.targetList.length !== 1) {
-    return undefined;
-  }
-  const target = recordProperty(select.targetList[0], "ResTarget");
-  if (
-    target === undefined ||
-    (target.name !== undefined && typeof target.name !== "string") ||
-    Object.keys(target).some((key) => {
-      return !["location", "name", "val"].includes(key);
-    })
-  ) {
-    return undefined;
-  }
-  return columnMarker(target.val, markers);
-}
-
 function relationMatch(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
@@ -1677,7 +1761,12 @@ function isSelectOneTarget(value: unknown): boolean {
   }
   const constant = recordProperty(target.val, "A_Const");
   const integer = recordProperty(constant, "ival");
-  return integer?.ival === 1;
+  return (
+    constant !== undefined &&
+    integer?.ival === 1 &&
+    hasOnlyKeys(constant, new Set(["ival", "location"])) &&
+    hasOnlyKeys(integer, new Set(["ival"]))
+  );
 }
 
 function predicateMarkers(
@@ -1759,48 +1848,1033 @@ function isHandBuiltExistenceSelect(
 function isLimitOne(value: unknown): boolean {
   const constant = recordProperty(value, "A_Const");
   const integer = recordProperty(constant, "ival");
-  return integer?.ival === 1;
+  return (
+    constant !== undefined &&
+    integer?.ival === 1 &&
+    hasOnlyKeys(constant, new Set(["ival", "location"])) &&
+    hasOnlyKeys(integer, new Set(["ival"]))
+  );
 }
 
-function isSimpleSelect(
+function isCompleteBuilderSelect(
   statement: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
 ): boolean {
   const select = selectStatement(statement);
   if (
     select === undefined ||
-    Object.keys(select).some((key) => {
-      return ![
+    !hasOnlyKeys(
+      select,
+      new Set([
         "fromClause",
+        "groupClause",
         "limitCount",
         "limitOption",
         "op",
+        "sortClause",
         "targetList",
         "whereClause",
-      ].includes(key);
-    }) ||
+      ]),
+    ) ||
     select.limitOption !== "LIMIT_OPTION_COUNT" ||
     select.op !== "SETOP_NONE" ||
     select.whereClause === undefined ||
-    !isLimitOne(select.limitCount) ||
+    containsNodeKey(select.whereClause, "SubLink") ||
     !Array.isArray(select.fromClause) ||
     select.fromClause.length !== 1
   ) {
     return false;
   }
 
-  const selected = selectedColumn(select, markers);
-  const relation = relationMatch(select.fromClause[0], markers);
+  const targets = targetValues(select);
+  const relation = schemaJoinGraph(select.fromClause[0], markers);
+  if (
+    targets === undefined ||
+    relation === undefined ||
+    (relation.joinCount === 0
+      ? targets.length !== 1 ||
+        !isLimitOne(select.limitCount) ||
+        select.groupClause !== undefined ||
+        select.sortClause !== undefined
+      : !isSupportedNumericLimit(select.limitCount, markers)) ||
+    !markersMatch(targets, markers, (marker) => {
+      return marker.isWrapper;
+    }) ||
+    !relation.conditions.every((condition) => {
+      return markersMatch(condition, markers, (marker) => {
+        return marker.isWrapper;
+      });
+    }) ||
+    !markersMatch(select.whereClause, markers, (marker) => {
+      return marker.isWrapper;
+    })
+  ) {
+    return false;
+  }
+  if (
+    select.groupClause !== undefined &&
+    (!Array.isArray(select.groupClause) ||
+      select.groupClause.length === 0 ||
+      !markersMatch(select.groupClause, markers, (marker) => {
+        return marker.isWrapper;
+      }))
+  ) {
+    return false;
+  }
   return (
-    selected?.isColumn === true &&
-    relation?.sourceTable.isTable === true &&
-    relation.joinedTables.every((marker) => {
-      return marker.isTable;
-    }) &&
-    relation.joinedConditions.every((marker) => {
-      return marker.isColumn || marker.isWrapper;
+    select.sortClause === undefined ||
+    (Array.isArray(select.sortClause) &&
+      select.sortClause.length > 0 &&
+      markersMatch(select.sortClause, markers, (marker) => {
+        return marker.isWrapper;
+      }))
+  );
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): boolean {
+  return Object.keys(value).every((key) => {
+    return allowed.has(key);
+  });
+}
+
+function markersWithin(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): readonly SqlMarker[] {
+  const result = new Set<SqlMarker>();
+
+  function visit(current: unknown): void {
+    if (typeof current === "string") {
+      const marker = markers.get(current);
+      if (marker !== undefined) {
+        result.add(marker);
+      }
+      return;
+    }
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        visit(item);
+      }
+      return;
+    }
+    if (!isRecord(current)) {
+      return;
+    }
+    for (const child of Object.values(current)) {
+      visit(child);
+    }
+  }
+
+  visit(value);
+  return [...result];
+}
+
+function markersMatch(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+  predicate: (marker: SqlMarker) => boolean,
+): boolean {
+  const occurrences = markersWithin(value, markers);
+  return (
+    occurrences.length > 0 &&
+    occurrences.every((marker) => {
+      return predicate(marker);
     })
   );
+}
+
+function targetValues(
+  select: Record<string, unknown>,
+): readonly unknown[] | undefined {
+  if (!Array.isArray(select.targetList) || select.targetList.length === 0) {
+    return undefined;
+  }
+  const values: unknown[] = [];
+  for (const item of select.targetList) {
+    const target = recordProperty(item, "ResTarget");
+    if (
+      target?.val === undefined ||
+      (target.name !== undefined && typeof target.name !== "string") ||
+      !hasOnlyKeys(target, new Set(["location", "name", "val"]))
+    ) {
+      return undefined;
+    }
+    values.push(target.val);
+  }
+  return values;
+}
+
+function integerConstant(value: unknown): number | undefined {
+  const constant = recordProperty(value, "A_Const");
+  const integer = recordProperty(constant, "ival");
+  return constant !== undefined &&
+    typeof integer?.ival === "number" &&
+    hasOnlyKeys(constant, new Set(["ival", "location"])) &&
+    hasOnlyKeys(integer, new Set(["ival"]))
+    ? integer.ival
+    : undefined;
+}
+
+function isSupportedNumericLimit(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const integer = integerConstant(value);
+  if (integer !== undefined) {
+    return Number.isInteger(integer) && integer >= 0;
+  }
+  return columnMarker(value, markers)?.isNumber === true;
+}
+
+function schemaJoinGraph(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SchemaJoinGraph | undefined {
+  const table = relationMarker(value, markers);
+  if (table !== undefined) {
+    return table.isTable ? { conditions: [], joinCount: 0 } : undefined;
+  }
+
+  const join = recordProperty(value, "JoinExpr");
+  if (
+    join === undefined ||
+    (join.jointype !== "JOIN_INNER" && join.jointype !== "JOIN_LEFT") ||
+    join.larg === undefined ||
+    join.rarg === undefined ||
+    join.quals === undefined ||
+    !hasOnlyKeys(join, new Set(["jointype", "larg", "quals", "rarg"]))
+  ) {
+    return undefined;
+  }
+  const left = schemaJoinGraph(join.larg, markers);
+  const right = relationMarker(join.rarg, markers);
+  if (left === undefined || right?.isTable !== true) {
+    return undefined;
+  }
+  return {
+    conditions: [...left.conditions, join.quals],
+    joinCount: left.joinCount + 1,
+  };
+}
+
+const PAGINATED_SELECT_KEYS = new Set([
+  "fromClause",
+  "limitCount",
+  "limitOption",
+  "op",
+  "sortClause",
+  "targetList",
+  "whereClause",
+]);
+
+function isPaginatedJoinedSelect(
+  select: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  if (
+    select.limitOption !== "LIMIT_OPTION_COUNT" ||
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(select, PAGINATED_SELECT_KEYS) ||
+    !Array.isArray(select.targetList) ||
+    !Array.isArray(select.fromClause) ||
+    select.fromClause.length !== 1 ||
+    select.whereClause === undefined ||
+    containsNodeKey(select.whereClause, "SubLink") ||
+    !isSupportedNumericLimit(select.limitCount, markers)
+  ) {
+    return false;
+  }
+  const targetList = select.targetList;
+  const targets = targetValues(select);
+  if (
+    targets === undefined ||
+    targets.length !== 1 ||
+    !isSelectOneTarget(targetList[0])
+  ) {
+    return false;
+  }
+  const relation = schemaJoinGraph(select.fromClause[0], markers);
+  if (
+    relation === undefined ||
+    relation.joinCount === 0 ||
+    !relation.conditions.every((condition) => {
+      return markersMatch(condition, markers, (marker) => {
+        return marker.isWrapper;
+      });
+    }) ||
+    !markersMatch(select.whereClause, markers, (marker) => {
+      return marker.isWrapper;
+    })
+  ) {
+    return false;
+  }
+  if (select.sortClause === undefined) {
+    return true;
+  }
+  return (
+    Array.isArray(select.sortClause) &&
+    select.sortClause.length > 0 &&
+    markersMatch(select.sortClause, markers, (marker) => {
+      return marker.isWrapper;
+    })
+  );
+}
+
+function exactSubLink(value: unknown): Record<string, unknown> | undefined {
+  const subLink = recordProperty(value, "SubLink");
+  return subLink !== undefined &&
+    hasOnlyKeys(subLink, new Set(["location", "subLinkType", "subselect"])) &&
+    subLink.subselect !== undefined
+    ? subLink
+    : undefined;
+}
+
+function isPaginatedExistsSelect(
+  select: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  if (
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(select, new Set(["limitOption", "op", "targetList"])) ||
+    !Array.isArray(select.targetList) ||
+    select.targetList.length !== 1
+  ) {
+    return false;
+  }
+  const target = recordProperty(select.targetList[0], "ResTarget");
+  const subLink = exactSubLink(target?.val);
+  const inner = recordProperty(subLink?.subselect, "SelectStmt");
+  return (
+    target !== undefined &&
+    typeof target.name === "string" &&
+    hasOnlyKeys(target, new Set(["location", "name", "val"])) &&
+    subLink?.subLinkType === "EXISTS_SUBLINK" &&
+    inner !== undefined &&
+    isPaginatedJoinedSelect(inner, markers)
+  );
+}
+
+function rangeVarPayload(value: unknown): RangeVarMatch | undefined {
+  const range = recordProperty(value, "RangeVar");
+  if (
+    range === undefined ||
+    typeof range.relname !== "string" ||
+    !hasOnlyKeys(
+      range,
+      new Set(["alias", "inh", "location", "relname", "relpersistence"]),
+    )
+  ) {
+    return undefined;
+  }
+  return { alias: range.alias, relname: range.relname };
+}
+
+function validRelationAlias(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  const alias = isRecord(value) ? value : undefined;
+  return (
+    alias !== undefined &&
+    typeof alias.aliasname === "string" &&
+    hasOnlyKeys(alias, new Set(["aliasname"]))
+  );
+}
+
+function literalRelationName(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+  allowAlias: boolean,
+): string | undefined {
+  const range = rangeVarPayload(value);
+  if (
+    range === undefined ||
+    markers.has(range.relname) ||
+    (!allowAlias && range.alias !== undefined) ||
+    !validRelationAlias(range.alias)
+  ) {
+    return undefined;
+  }
+  return range.relname;
+}
+
+function directRangeMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+  allowAlias: boolean,
+): SqlMarker | undefined {
+  const range = rangeVarPayload(value);
+  if (
+    range === undefined ||
+    (!allowAlias && range.alias !== undefined) ||
+    !validRelationAlias(range.alias)
+  ) {
+    return undefined;
+  }
+  return markers.get(range.relname);
+}
+
+function relationOriginIsDirect(
+  value: unknown,
+  sourceRanges: readonly SqlSourceRange[],
+  hasLocalExpansion: boolean,
+): boolean {
+  if (!hasLocalExpansion) {
+    return true;
+  }
+  const chunks = ownSourceChunks(value, sourceRanges);
+  return (
+    chunks.size > 0 &&
+    [...chunks].every((chunk) => {
+      return chunk.kind === "literal" && chunk.depth === 0;
+    })
+  );
+}
+
+function containsNodeKey(value: unknown, key: string): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => {
+      return containsNodeKey(item, key);
+    });
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value[key] !== undefined) {
+    return true;
+  }
+  return Object.values(value).some((child) => {
+    return containsNodeKey(child, key);
+  });
+}
+
+const LOCKING_SELECT_KEYS = new Set([
+  "fromClause",
+  "limitCount",
+  "limitOption",
+  "lockingClause",
+  "op",
+  "sortClause",
+  "targetList",
+  "whereClause",
+]);
+
+function isSupportedLockingSelect(
+  select: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+  sourceRanges: readonly SqlSourceRange[],
+  hasLocalExpansion: boolean,
+): boolean {
+  if (
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(select, LOCKING_SELECT_KEYS) ||
+    !Array.isArray(select.fromClause) ||
+    select.fromClause.length !== 1 ||
+    select.whereClause === undefined ||
+    targetValues(select) === undefined ||
+    !Array.isArray(select.lockingClause) ||
+    select.lockingClause.length !== 1 ||
+    containsNodeKey(select.targetList, "SubLink") ||
+    containsNodeKey(select.whereClause, "SubLink") ||
+    containsNodeKey(select.sortClause, "SubLink")
+  ) {
+    return false;
+  }
+  const source = select.fromClause[0];
+  const sourceMarker = directRangeMarker(source, markers, false);
+  if (
+    sourceMarker?.isTable !== true &&
+    (literalRelationName(source, markers, false) === undefined ||
+      !relationOriginIsDirect(source, sourceRanges, hasLocalExpansion))
+  ) {
+    return false;
+  }
+  const lock = recordProperty(select.lockingClause[0], "LockingClause");
+  if (
+    lock === undefined ||
+    lock.strength !== "LCS_FORUPDATE" ||
+    (lock.waitPolicy !== "LockWaitBlock" &&
+      lock.waitPolicy !== "LockWaitSkip") ||
+    !hasOnlyKeys(lock, new Set(["lockedRels", "strength", "waitPolicy"]))
+  ) {
+    return false;
+  }
+  if (lock.lockedRels !== undefined) {
+    if (
+      lock.waitPolicy !== "LockWaitBlock" ||
+      !Array.isArray(lock.lockedRels) ||
+      lock.lockedRels.length !== 1 ||
+      directRangeMarker(lock.lockedRels[0], markers, false)?.isTable !== true
+    ) {
+      return false;
+    }
+  }
+  if (
+    select.sortClause !== undefined &&
+    (!Array.isArray(select.sortClause) || select.sortClause.length === 0)
+  ) {
+    return false;
+  }
+  return select.limitCount === undefined
+    ? select.limitOption === "LIMIT_OPTION_DEFAULT"
+    : select.limitOption === "LIMIT_OPTION_COUNT" &&
+        isLimitOne(select.limitCount);
+}
+
+const SCALAR_CONSTANT_PROPERTIES = [
+  "boolval",
+  "bsval",
+  "fval",
+  "ival",
+  "sval",
+] as const;
+
+function scalarConstant(value: unknown): boolean {
+  const constant = recordProperty(value, "A_Const");
+  const scalarValues =
+    constant === undefined
+      ? []
+      : SCALAR_CONSTANT_PROPERTIES.filter((property) => {
+          const payload = recordProperty(constant, property);
+          return (
+            payload !== undefined && hasOnlyKeys(payload, new Set([property]))
+          );
+        });
+  return (
+    constant !== undefined &&
+    hasOnlyKeys(
+      constant,
+      new Set([
+        "boolval",
+        "bsval",
+        "fval",
+        "isnull",
+        "ival",
+        "location",
+        "sval",
+      ]),
+    ) &&
+    scalarValues.length + (constant.isnull === true ? 1 : 0) === 1
+  );
+}
+
+function scalarCastTypeName(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.names) &&
+    value.names.length > 0 &&
+    value.names.every((name) => {
+      return stringNodeValue(name) !== undefined;
+    }) &&
+    hasOnlyKeys(
+      value,
+      new Set([
+        "arrayBounds",
+        "location",
+        "names",
+        "pct_type",
+        "setof",
+        "typemod",
+        "typmods",
+      ]),
+    )
+  );
+}
+
+function unwrapTypeCasts(value: unknown): unknown {
+  let current = value;
+  while (true) {
+    const cast = recordProperty(current, "TypeCast");
+    if (
+      cast?.arg === undefined ||
+      !hasOnlyKeys(cast, new Set(["arg", "location", "typeName"])) ||
+      !scalarCastTypeName(cast.typeName)
+    ) {
+      return current;
+    }
+    current = cast.arg;
+  }
+}
+
+const SCALAR_AGGREGATES = new Set(["avg", "count", "max", "min", "sum"]);
+
+function isScalarAggregate(value: unknown): boolean {
+  const call = recordProperty(value, "FuncCall");
+  const names = functionName(value);
+  return (
+    call !== undefined &&
+    hasOnlyKeys(
+      call,
+      new Set([
+        "agg_distinct",
+        "agg_filter",
+        "agg_order",
+        "agg_star",
+        "agg_within_group",
+        "args",
+        "func_variadic",
+        "funcformat",
+        "funcname",
+        "location",
+        "over",
+      ]),
+    ) &&
+    names?.length === 1 &&
+    SCALAR_AGGREGATES.has(names[0]?.toLowerCase() ?? "") &&
+    call.over === undefined
+  );
+}
+
+function isScalarFallback(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  return (
+    scalarConstant(value) ||
+    columnMarker(value, markers)?.isBoundScalar === true
+  );
+}
+
+function isGuaranteedScalarAggregate(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  const expression = unwrapTypeCasts(value);
+  if (isScalarAggregate(expression)) {
+    return true;
+  }
+  const coalesce = recordProperty(expression, "CoalesceExpr");
+  return (
+    coalesce !== undefined &&
+    hasOnlyKeys(coalesce, new Set(["args", "location"])) &&
+    Array.isArray(coalesce.args) &&
+    coalesce.args.length === 2 &&
+    isScalarAggregate(coalesce.args[0]) &&
+    isScalarFallback(coalesce.args[1], markers)
+  );
+}
+
+const SCALAR_CTE_BODY_KEYS = new Set([
+  "fromClause",
+  "limitCount",
+  "limitOption",
+  "op",
+  "targetList",
+  "whereClause",
+]);
+
+function scalarCteBody(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): Omit<ScalarCte, "name"> | undefined {
+  const select = recordProperty(value, "SelectStmt");
+  if (
+    select === undefined ||
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(select, SCALAR_CTE_BODY_KEYS) ||
+    !Array.isArray(select.fromClause) ||
+    select.fromClause.length !== 1 ||
+    literalRelationName(select.fromClause[0], markers, false) === undefined ||
+    select.whereClause === undefined ||
+    containsNodeKey(select.targetList, "SubLink") ||
+    containsNodeKey(select.whereClause, "SubLink")
+  ) {
+    return undefined;
+  }
+  const targets = targetValues(select);
+  if (targets === undefined) {
+    return undefined;
+  }
+  const guaranteedOneRow =
+    targets.length === 1 && isGuaranteedScalarAggregate(targets[0], markers);
+  const hasLimitOne =
+    select.limitOption === "LIMIT_OPTION_COUNT" &&
+    isLimitOne(select.limitCount);
+  if (
+    (!guaranteedOneRow && !hasLimitOne) ||
+    (guaranteedOneRow &&
+      select.limitCount === undefined &&
+      select.limitOption !== "LIMIT_OPTION_DEFAULT")
+  ) {
+    return undefined;
+  }
+  return { guaranteedOneRow };
+}
+
+function scalarCteReference(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): string | undefined {
+  const select = recordProperty(value, "SelectStmt");
+  if (
+    select === undefined ||
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(
+      select,
+      new Set(["fromClause", "limitOption", "op", "targetList"]),
+    ) ||
+    !Array.isArray(select.targetList) ||
+    select.targetList.length !== 1 ||
+    !Array.isArray(select.fromClause) ||
+    select.fromClause.length !== 1
+  ) {
+    return undefined;
+  }
+  const target = recordProperty(select.targetList[0], "ResTarget");
+  const column = recordProperty(target?.val, "ColumnRef");
+  const name =
+    Array.isArray(column?.fields) &&
+    column.fields.length === 1 &&
+    hasOnlyKeys(column, new Set(["fields", "location"]))
+      ? stringNodeValue(column.fields[0])
+      : undefined;
+  const relation = literalRelationName(select.fromClause[0], markers, false);
+  return target !== undefined &&
+    name !== undefined &&
+    relation !== undefined &&
+    hasOnlyKeys(target, new Set(["location", "val"]))
+    ? relation
+    : undefined;
+}
+
+function withClausePayload(
+  select: Record<string, unknown>,
+): WithClauseMatch | undefined {
+  const withClause = isRecord(select.withClause)
+    ? select.withClause
+    : undefined;
+  if (
+    withClause === undefined ||
+    withClause.recursive === true ||
+    !Array.isArray(withClause.ctes) ||
+    withClause.ctes.length === 0 ||
+    !hasOnlyKeys(withClause, new Set(["ctes", "location", "recursive"]))
+  ) {
+    return undefined;
+  }
+  return { ctes: withClause.ctes };
+}
+
+function commonTableExpression(
+  value: unknown,
+): CommonTableExpressionMatch | undefined {
+  const cte = recordProperty(value, "CommonTableExpr");
+  if (
+    cte === undefined ||
+    typeof cte.ctename !== "string" ||
+    cte.ctematerialized !== "CTEMaterializeDefault" ||
+    cte.ctequery === undefined ||
+    !hasOnlyKeys(
+      cte,
+      new Set(["ctematerialized", "ctename", "ctequery", "location"]),
+    )
+  ) {
+    return undefined;
+  }
+  return { ctename: cte.ctename, ctequery: cte.ctequery };
+}
+
+function isScalarCteProjection(
+  select: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  if (
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(
+      select,
+      new Set(["limitOption", "op", "targetList", "withClause"]),
+    ) ||
+    ![...markers.values()].every((marker) => {
+      return marker.isBoundScalar;
+    })
+  ) {
+    return false;
+  }
+  const withClause = withClausePayload(select);
+  if (withClause === undefined || withClause.ctes.length < 2) {
+    return false;
+  }
+  const ctes = new Map<string, ScalarCte>();
+  for (const item of withClause.ctes) {
+    const cte = commonTableExpression(item);
+    const body = scalarCteBody(cte?.ctequery, markers);
+    if (cte === undefined || body === undefined || ctes.has(cte.ctename)) {
+      return false;
+    }
+    ctes.set(cte.ctename, {
+      guaranteedOneRow: body.guaranteedOneRow,
+      name: cte.ctename,
+    });
+  }
+  if (!Array.isArray(select.targetList) || select.targetList.length === 0) {
+    return false;
+  }
+  const referenced = new Set<string>();
+  const aliases = new Set<string>();
+  let hasGuaranteedOneRow = false;
+  for (const item of select.targetList) {
+    const target = recordProperty(item, "ResTarget");
+    const subLink = exactSubLink(target?.val);
+    const reference = scalarCteReference(subLink?.subselect, markers);
+    const cte = reference === undefined ? undefined : ctes.get(reference);
+    if (
+      target === undefined ||
+      typeof target.name !== "string" ||
+      !hasOnlyKeys(target, new Set(["location", "name", "val"])) ||
+      subLink?.subLinkType !== "EXPR_SUBLINK" ||
+      cte === undefined ||
+      aliases.has(target.name)
+    ) {
+      return false;
+    }
+    referenced.add(cte.name);
+    aliases.add(target.name);
+    hasGuaranteedOneRow ||= cte.guaranteedOneRow;
+  }
+  return hasGuaranteedOneRow && referenced.size === ctes.size;
+}
+
+function builderRelation(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+  requireTableMarkers = false,
+): boolean {
+  const range = rangeVarPayload(value);
+  if (range !== undefined) {
+    const marker = markers.get(range.relname);
+    return (
+      validRelationAlias(range.alias) &&
+      (marker === undefined ||
+        (requireTableMarkers ? marker.isTable : marker.isWrapper))
+    );
+  }
+  const join = recordProperty(value, "JoinExpr");
+  return (
+    join !== undefined &&
+    (join.jointype === "JOIN_INNER" || join.jointype === "JOIN_LEFT") &&
+    join.larg !== undefined &&
+    join.rarg !== undefined &&
+    join.quals !== undefined &&
+    hasOnlyKeys(join, new Set(["jointype", "larg", "quals", "rarg"])) &&
+    builderRelation(join.larg, markers, requireTableMarkers) &&
+    rangeVarPayload(join.rarg) !== undefined &&
+    builderRelation(join.rarg, markers, requireTableMarkers)
+  );
+}
+
+const BUILDER_READ_SELECT_KEYS = new Set([
+  "fromClause",
+  "groupClause",
+  "limitCount",
+  "limitOption",
+  "op",
+  "sortClause",
+  "targetList",
+  "whereClause",
+  "withClause",
+]);
+
+function isBuilderReadSelect(
+  select: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+  allowUnionAll: boolean,
+  allowWithClause: boolean,
+): boolean {
+  if (select.op === "SETOP_UNION") {
+    if (
+      !allowUnionAll ||
+      select.all !== true ||
+      !hasOnlyKeys(
+        select,
+        new Set([
+          "all",
+          "larg",
+          "limitCount",
+          "limitOption",
+          "op",
+          "rarg",
+          "sortClause",
+          ...(allowWithClause ? ["withClause"] : []),
+        ]),
+      ) ||
+      !isRecord(select.larg) ||
+      !isRecord(select.rarg) ||
+      (select.sortClause !== undefined &&
+        (!Array.isArray(select.sortClause) ||
+          select.sortClause.length === 0)) ||
+      (select.limitCount === undefined
+        ? select.limitOption !== "LIMIT_OPTION_DEFAULT"
+        : select.limitOption !== "LIMIT_OPTION_COUNT" ||
+          !isSupportedNumericLimit(select.limitCount, markers))
+    ) {
+      return false;
+    }
+    return (
+      isBuilderReadSelect(select.larg, markers, true, false) &&
+      isBuilderReadSelect(select.rarg, markers, true, false)
+    );
+  }
+  if (
+    select.op !== "SETOP_NONE" ||
+    select.limitOption === undefined ||
+    !hasOnlyKeys(
+      select,
+      allowWithClause
+        ? BUILDER_READ_SELECT_KEYS
+        : new Set(
+            [...BUILDER_READ_SELECT_KEYS].filter((key) => {
+              return key !== "withClause";
+            }),
+          ),
+    ) ||
+    targetValues(select) === undefined ||
+    !Array.isArray(select.fromClause) ||
+    select.fromClause.length !== 1 ||
+    !builderRelation(select.fromClause[0], markers)
+  ) {
+    return false;
+  }
+  if (
+    select.groupClause !== undefined &&
+    (!Array.isArray(select.groupClause) || select.groupClause.length === 0)
+  ) {
+    return false;
+  }
+  if (
+    select.sortClause !== undefined &&
+    (!Array.isArray(select.sortClause) || select.sortClause.length === 0)
+  ) {
+    return false;
+  }
+  return select.limitCount === undefined
+    ? select.limitOption === "LIMIT_OPTION_DEFAULT"
+    : select.limitOption === "LIMIT_OPTION_COUNT" &&
+        isSupportedNumericLimit(select.limitCount, markers);
+}
+
+function isComposedReadCte(
+  select: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+  hasLocalExpansion: boolean,
+): boolean {
+  if (
+    !hasLocalExpansion ||
+    ![...markers.values()].every((marker) => {
+      return marker.isBoundScalar || marker.isWrapper;
+    })
+  ) {
+    return false;
+  }
+  const withClause = withClausePayload(select);
+  if (withClause === undefined) {
+    return false;
+  }
+  const names = new Set<string>();
+  for (const item of withClause.ctes) {
+    const cte = commonTableExpression(item);
+    const body = recordProperty(cte?.ctequery, "SelectStmt");
+    if (
+      cte === undefined ||
+      body === undefined ||
+      names.has(cte.ctename) ||
+      !isBuilderReadSelect(body, markers, false, false)
+    ) {
+      return false;
+    }
+    names.add(cte.ctename);
+  }
+  return isBuilderReadSelect(select, markers, true, true);
+}
+
+function isStructuredScalarSelect(
+  select: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  if (
+    select.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+    select.op !== "SETOP_NONE" ||
+    !hasOnlyKeys(select, new Set(["limitOption", "op", "targetList"])) ||
+    !Array.isArray(select.targetList) ||
+    select.targetList.length !== 1
+  ) {
+    return false;
+  }
+  const outerTarget = recordProperty(select.targetList[0], "ResTarget");
+  const subLink = exactSubLink(outerTarget?.val);
+  const inner = recordProperty(subLink?.subselect, "SelectStmt");
+  return (
+    outerTarget !== undefined &&
+    hasOnlyKeys(outerTarget, new Set(["location", "val"])) &&
+    subLink?.subLinkType === "EXPR_SUBLINK" &&
+    inner !== undefined &&
+    inner.limitOption === "LIMIT_OPTION_COUNT" &&
+    inner.op === "SETOP_NONE" &&
+    hasOnlyKeys(
+      inner,
+      new Set([
+        "fromClause",
+        "limitCount",
+        "limitOption",
+        "op",
+        "targetList",
+        "whereClause",
+      ]),
+    ) &&
+    targetValues(inner) !== undefined &&
+    Array.isArray(inner.fromClause) &&
+    inner.fromClause.length === 1 &&
+    builderRelation(inner.fromClause[0], markers, true) &&
+    inner.whereClause !== undefined &&
+    isLimitOne(inner.limitCount)
+  );
+}
+
+function readQueryCapability(
+  context: SqlAnalysisContext,
+  hasLocalExpansion: boolean,
+  parsed: ParsedSql,
+): ReadQueryCapability | undefined {
+  const select = selectStatement(parsed.statement);
+  if (select === undefined) {
+    return undefined;
+  }
+  if (context === "structured-selection") {
+    return isStructuredScalarSelect(select, parsed.markers)
+      ? "structured-scalar"
+      : undefined;
+  }
+  if (context !== "statement") {
+    return undefined;
+  }
+  if (isComposedReadCte(select, parsed.markers, hasLocalExpansion)) {
+    return "composed-cte";
+  }
+  if (isScalarCteProjection(select, parsed.markers)) {
+    return "scalar-cte";
+  }
+  if (
+    isSupportedLockingSelect(
+      select,
+      parsed.markers,
+      parsed.sourceRanges,
+      hasLocalExpansion,
+    )
+  ) {
+    return "locking";
+  }
+  if (isPaginatedExistsSelect(select, parsed.markers)) {
+    return "exists";
+  }
+  if (isCompleteBuilderSelect(parsed.statement, parsed.markers)) {
+    return "select";
+  }
+  return undefined;
 }
 
 function predicateExpression(statement: unknown): unknown {
@@ -1947,7 +3021,7 @@ function structuralExpressionsForContext(
       ? []
       : [structuralExpression(predicate, parsed.markers, parsed.sourceRanges)];
   }
-  if (context === "selection") {
+  if (context === "selection" || context === "structured-selection") {
     return selectedExpressions(parsed.statement).map((expression) => {
       return structuralExpression(
         expression,
@@ -2391,9 +3465,12 @@ function analyzeParsed(
   services: ParserServicesWithTypeInformation,
   capabilities: SqlCapabilityChecks,
 ): SqlAnalysis {
-  const simpleSelect =
-    context === "statement" && isSimpleSelect(parsed.statement, parsed.markers);
-  if (simpleSelect) {
+  const queryCapability = readQueryCapability(
+    context,
+    hasLocalExpansion,
+    parsed,
+  );
+  if (queryCapability !== undefined) {
     return {
       expandedTemplates: new Set(),
       findingSignatures: [
@@ -2404,11 +3481,11 @@ function analyzeParsed(
           isPartial: false,
           kind: "query-builder",
           ownsResultMapping: false,
+          readQueryCapability: queryCapability,
         },
       ],
-      findings: [{ kind: "query-builder", node }],
+      findings: [{ capability: queryCapability, kind: "query-builder", node }],
       hasWholeReplacementBoundary: true,
-      isSimpleSelect: true,
       isTruePredicate: false,
     };
   }
@@ -2432,7 +3509,8 @@ function analyzeParsed(
           )
         : [];
   const ownsResultMapping =
-    context === "selection" && structuralExpressions.length === 1;
+    (context === "selection" || context === "structured-selection") &&
+    structuralExpressions.length === 1;
   const classificationContext: ClassificationContext = {
     allowsOptionalSql:
       context === "statement" ||
@@ -2460,8 +3538,12 @@ function analyzeParsed(
     hasLocalExpansion &&
     (context === "ordering" ||
       context === "predicate" ||
-      context === "selection") &&
-    contextOwnsWholeExpression(context, parsed.statement) &&
+      context === "selection" ||
+      context === "structured-selection") &&
+    contextOwnsWholeExpression(
+      context === "structured-selection" ? "selection" : context,
+      parsed.statement,
+    ) &&
     rootClassification?.isWholeReplacement === true &&
     rootClassification.findings.length === 1 &&
     rootFinding !== undefined &&
@@ -2487,6 +3569,7 @@ function analyzeParsed(
               isPartial: finding.isPartial,
               kind: finding.kind,
               ownsResultMapping,
+              readQueryCapability: undefined,
             },
           };
         });
@@ -2504,6 +3587,7 @@ function analyzeParsed(
                 isPartial: finding.isPartial,
                 kind: finding.kind,
                 ownsResultMapping,
+                readQueryCapability: undefined,
               },
             },
           ];
@@ -2530,6 +3614,7 @@ function analyzeParsed(
               isPartial: finding.isPartial,
               kind: finding.kind,
               ownsResultMapping,
+              readQueryCapability: undefined,
             },
           },
         ];
@@ -2545,7 +3630,6 @@ function analyzeParsed(
       return entry.finding;
     }),
     hasWholeReplacementBoundary,
-    isSimpleSelect: false,
     isTruePredicate:
       context === "predicate" &&
       contextOwnsWholeExpression(context, parsed.statement) &&
@@ -2556,7 +3640,6 @@ function analyzeParsed(
 
 function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
   if (
-    left.isSimpleSelect !== right.isSimpleSelect ||
     left.isTruePredicate !== right.isTruePredicate ||
     left.hasWholeReplacementBoundary !== right.hasWholeReplacementBoundary ||
     left.findingSignatures.length !== right.findingSignatures.length
@@ -2572,7 +3655,8 @@ function sameAnalysisSignature(left: SqlAnalysis, right: SqlAnalysis): boolean {
       finding.helper === other.helper &&
       finding.isPartial === other.isPartial &&
       finding.kind === other.kind &&
-      finding.ownsResultMapping === other.ownsResultMapping
+      finding.ownsResultMapping === other.ownsResultMapping &&
+      finding.readQueryCapability === other.readQueryCapability
     );
   });
 }
@@ -2585,7 +3669,6 @@ function emptyAnalysis(
     findingSignatures: [],
     findings: [],
     hasWholeReplacementBoundary: false,
-    isSimpleSelect: false,
     isTruePredicate: false,
   };
 }
@@ -2629,7 +3712,8 @@ function variantMightContainCapability(
     .join("");
   return (
     SQL_CAPABILITY_TOKEN.test(literalSource) ||
-    (context === "statement" && /\bSELECT\b/i.test(literalSource))
+    ((context === "statement" || context === "structured-selection") &&
+      /\bSELECT\b/i.test(literalSource))
   );
 }
 
@@ -2667,11 +3751,11 @@ export function analyzeSql(
             isPartial: false,
             kind: finding.kind,
             ownsResultMapping: false,
+            readQueryCapability: undefined,
           };
         }),
         findings: emptyFindings,
         hasWholeReplacementBoundary: source.hasLocalExpansion,
-        isSimpleSelect: false,
         isTruePredicate: false,
       };
     } else if (
@@ -2725,7 +3809,6 @@ export function analyzeSql(
             }),
           ),
           hasWholeReplacementBoundary: first.hasWholeReplacementBoundary,
-          isSimpleSelect: first.isSimpleSelect,
           isTruePredicate: first.isTruePredicate,
         };
       }

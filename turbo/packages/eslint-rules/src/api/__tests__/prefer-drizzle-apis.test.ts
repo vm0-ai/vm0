@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, it } from "vitest";
 
 import { preferDrizzleApis } from "../rules/prefer-drizzle-apis.ts";
+import { queryBuilderReadCases } from "./drizzle-query-builder-cases.ts";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -45,8 +46,81 @@ const drizzlePreamble = `
   declare const db: DrizzleDatabase;
 `;
 
+const readQueryPreamble = `
+  import { executeRawRows } from "./lib/db-raw-rows";
+  import { integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+
+  const runs = pgTable("runs", {
+    id: integer("id").notNull(),
+    threadId: integer("thread_id").notNull(),
+  });
+  const runStates = pgTable("run_states", {
+    id: integer("id").notNull(),
+    status: text("status").notNull(),
+  });
+  const callbacks = pgTable("callbacks", {
+    id: integer("id").notNull(),
+    runId: integer("run_id").notNull(),
+    payload: jsonb("payload").notNull(),
+  });
+  declare const db: never;
+  declare const rowSchema: never;
+  declare const threadId: number;
+  declare const pageLimit: number;
+`;
+
+const structuredReadPreamble = `
+  import { integer, pgTable, text } from "drizzle-orm/pg-core";
+
+  const users = pgTable("users", {
+    id: integer("id").notNull(),
+    name: text("name").notNull(),
+  });
+  const messages = pgTable("messages", {
+    id: integer("id").notNull(),
+    userId: integer("user_id").notNull(),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      users: typeof users;
+      messages: typeof messages;
+    }>;
+  declare const db: DrizzleDatabase;
+`;
+
+const structuredScalarQuery = `
+  sql\`(
+    SELECT "message"."id"
+    FROM "messages" AS "message"
+    WHERE "message"."user_id" = "users"."id"
+    LIMIT 1
+  )\`
+`;
+
 ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
   valid: [
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const chooseLock: boolean;
+        declare const rowSchema: never;
+        const query = chooseLock
+          ? sql\`
+              SELECT \${users.id}
+              FROM \${users}
+              WHERE \${eq(users.id, 1)}
+              FOR UPDATE
+            \`
+          : sql\`
+              SELECT \${users.id}
+              FROM \${users}
+              WHERE \${eq(users.id, 1)}
+              LIMIT 1
+            \`;
+        await executeRawRows(db, query, rowSchema);
+      `,
+    },
     {
       code: `${drizzlePreamble}
         import { gte, sql } from "drizzle-orm";
@@ -655,6 +729,163 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
   ],
   invalid: [
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        declare const chooseFirst: boolean;
+        declare const rowSchema: never;
+        const query = chooseFirst
+          ? sql\`
+              SELECT \${users.id}
+              FROM \${users}
+              WHERE \${eq(users.id, 1)}
+              LIMIT 1
+            \`
+          : sql\`
+              SELECT \${users.id}
+              FROM \${users}
+              WHERE \${eq(users.id, 2)}
+              LIMIT 1
+            \`;
+        await executeRawRows(db, query, rowSchema);
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${structuredReadPreamble}
+        import { eq, sql } from "drizzle-orm";
+        db.select({
+          value: sql\`(
+            SELECT \${messages.id}
+            FROM \${messages}
+            WHERE \${eq(messages.userId, users.id)}
+            LIMIT 1
+          )\`.mapWith(messages.id),
+        });
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      code: `${readQueryPreamble}
+        import { desc, eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT
+              \${runs.id} AS "runId",
+              COALESCE(\${runStates.status}, 'unknown') AS "status"
+            FROM \${runs}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            LEFT JOIN \${callbacks}
+              ON \${eq(callbacks.runId, runs.id)}
+            WHERE \${eq(runs.threadId, threadId)}
+            ORDER BY \${desc(runs.id)}
+            LIMIT \${pageLimit}
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "queryBuilder" }],
+    },
+    {
+      code: `${readQueryPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT 1
+              FROM \${runs}
+              INNER JOIN \${runStates}
+                ON \${eq(runStates.id, runs.id)}
+              WHERE \${eq(runs.threadId, threadId)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "existsQueryBuilder" }],
+    },
+    {
+      code: `${readQueryPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT
+              \${runs.id} AS "runId",
+              \${runs.threadId} > 0 AS "isExpired"
+            FROM \${runs}
+            WHERE \${eq(runs.id, threadId)}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
+    },
+    {
+      code: `${readQueryPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            WITH org AS (
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${threadId}
+              LIMIT 1
+            ),
+            expired AS (
+              SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+              FROM credit_expires_record
+              WHERE org_id = \${threadId}
+                AND remaining > 0
+            )
+            SELECT
+              (SELECT credits FROM org) AS credits,
+              (SELECT total FROM expired) AS expired
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "scalarCteQueryBuilder" }],
+    },
+    {
+      code: `${readQueryPreamble}
+        import { sql } from "drizzle-orm";
+        function rowsWith(userId: number) {
+          return sql\`
+            WITH rows AS (
+              SELECT event_id
+              FROM usage_events ue
+              WHERE ue.user_id = \${userId}
+            )
+          \`;
+        }
+        await executeRawRows(
+          db,
+          sql\`
+            \${rowsWith(threadId)}
+            SELECT r.event_id
+            FROM rows r
+            ORDER BY r.event_id
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "composedCteQueryBuilder" }],
+    },
+    {
+      code: `${structuredReadPreamble}
+        import { sql } from "drizzle-orm";
+        db.select({ value: ${structuredScalarQuery} }).from(users);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
     {
       code: `${drizzlePreamble}
         import { eq, sql, type SQL } from "drizzle-orm";
@@ -2004,3 +2235,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
   ],
 });
+
+ruleTester.run(
+  "prefer-drizzle-apis read queries",
+  preferDrizzleApis,
+  queryBuilderReadCases,
+);

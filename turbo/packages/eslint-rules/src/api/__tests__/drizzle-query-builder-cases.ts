@@ -1,30 +1,4 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { fileURLToPath } from "node:url";
-import { afterAll, describe, it } from "vitest";
-
-import { preferDrizzleQueryBuilder } from "../rules/prefer-drizzle-query-builder.ts";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-
-const dbPackageRoot = fileURLToPath(
-  new URL("../../../../db/", import.meta.url),
-);
-const ruleTester = new RuleTester({
-  defaultFilenames: {
-    ts: `${dbPackageRoot}rule-test.ts`,
-    tsx: `${dbPackageRoot}rule-test.tsx`,
-  },
-  languageOptions: {
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["rule-test.ts", "rule-test.tsx"],
-      },
-      tsconfigRootDir: dbPackageRoot,
-    },
-  },
-});
+import type { RunTests } from "@typescript-eslint/rule-tester";
 
 const rawRowsImport = `
   import { executeRawRows } from "./lib/db-raw-rows";
@@ -314,14 +288,22 @@ const composedReadCtePreamble = `
   }
 `;
 
-ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
-  valid: [
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(db, ${directQuery}, rowSchema);
-      `,
-    },
+type QueryBuilderMessageId =
+  | "composedCteQueryBuilder"
+  | "deleteQueryBuilder"
+  | "existencePredicate"
+  | "existsQueryBuilder"
+  | "lockingCteUpdateQueryBuilder"
+  | "lockingQueryBuilder"
+  | "queryBuilder"
+  | "scalarCteQueryBuilder"
+  | "structuredScalarQuery"
+  | "typedApi"
+  | "unnestUpdateQueryBuilder"
+  | "upsertQueryBuilder";
+
+const queryBuilderCases = {
+  writeValid: [
     {
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql } from "drizzle-orm";
@@ -847,6 +829,8 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         sql\`\${users.id}\`;
       `,
     },
+  ],
+  readValid: [
     {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
@@ -999,52 +983,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         await executeRawRows(
           db,
           sql\`\${opaqueCte} SELECT run_id FROM rows\`,
-          rowSchema,
-        );
-      `,
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(
-          db,
-          sql\`
-            SELECT (
-              \${eq(runs.id, threadId)}
-              OR \${eq(runs.id, excludedRunId)}
-            ) AS allowed
-          \`,
-          rowSchema,
-        );
-        await executeRawRows(
-          db,
-          sql\`SELECT clock_timestamp() AS database_time\`,
-          rowSchema,
-        );
-        await executeRawRows(
-          db,
-          sql\`
-            WITH visible_runs AS MATERIALIZED (
-              SELECT \${runs.id}
-              FROM \${runs}
-              WHERE \${eq(runs.threadId, threadId)}
-            )
-            SELECT id FROM visible_runs
-          \`,
-          rowSchema,
-        );
-        await executeRawRows(
-          db,
-          sql\`
-            SELECT EXISTS (
-              SELECT count(*)
-              FROM \${runs}
-              INNER JOIN \${runStates}
-                ON \${eq(runStates.id, runs.id)}
-              WHERE \${eq(runs.threadId, threadId)}
-              LIMIT 1
-            ) AS visible
-          \`,
           rowSchema,
         );
       `,
@@ -1364,25 +1302,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         import { eq, sql } from "drizzle-orm";
         await executeRawRows(
           db,
-          sql\`
-            SELECT \${runs.id}
-            FROM \${runs}
-            WHERE EXISTS (
-              SELECT 1
-              FROM \${callbacks}
-              WHERE \${eq(callbacks.runId, runs.id)}
-            )
-            FOR UPDATE
-          \`,
-          rowSchema,
-        );
-      `,
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(
-          db,
           sql\`SELECT \${runs.id} FROM \${runs} WHERE \${eq(runs.id, threadId)} FOR SHARE\`,
           rowSchema,
         );
@@ -1502,16 +1421,6 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         await executeRawRows(
           db,
           sql\`SELECT \${runs.id} FROM \${runs} WHERE \${eq(runs.id, 1)} ORDER BY \${runs.id} LIMIT 1\`,
-          rowSchema,
-        );
-      `,
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        await executeRawRows(
-          db,
-          sql\`SELECT \${runs.id} FROM \${runs} WHERE \${eq(runs.id, 1)} FOR UPDATE LIMIT 1\`,
           rowSchema,
         );
       `,
@@ -1780,6 +1689,101 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         parts.push(sql\` RETURNING \${cleanupRows.id}\`);
         await db.execute(sql.join(parts));
       `,
+    },
+  ],
+  readInvalid: [
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${directQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT (
+              \${eq(runs.id, threadId)}
+              OR \${eq(runs.id, excludedRunId)}
+            ) AS allowed
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT clock_timestamp() AS database_time\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            WITH visible_runs AS MATERIALIZED (
+              SELECT \${runs.id}
+              FROM \${runs}
+              WHERE \${eq(runs.threadId, threadId)}
+            )
+            SELECT id FROM visible_runs
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT count(*)
+              FROM \${runs}
+              INNER JOIN \${runStates}
+                ON \${eq(runStates.id, runs.id)}
+              WHERE \${eq(runs.threadId, threadId)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "or" } },
+        { messageId: "typedApi", data: { helper: "count" } },
+      ],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            WHERE EXISTS (
+              SELECT 1
+              FROM \${callbacks}
+              WHERE \${eq(callbacks.runId, runs.id)}
+            )
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+      ],
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`SELECT \${runs.id} FROM \${runs} WHERE \${eq(runs.id, 1)} FOR UPDATE LIMIT 1\`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
     },
   ],
   invalid: [
@@ -2498,4 +2502,60 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       ],
     },
   ],
-});
+} satisfies {
+  invalid: RunTests<QueryBuilderMessageId, []>["invalid"];
+  readInvalid: RunTests<QueryBuilderMessageId, []>["invalid"];
+  readValid: RunTests<QueryBuilderMessageId, []>["valid"];
+  writeValid: RunTests<QueryBuilderMessageId, []>["valid"];
+};
+
+type ReadQueryMessageId =
+  | "composedCteQueryBuilder"
+  | "existsQueryBuilder"
+  | "lockingQueryBuilder"
+  | "queryBuilder"
+  | "scalarCteQueryBuilder"
+  | "structuredScalarQuery";
+
+type QueryBuilderInvalidCase = (typeof queryBuilderCases.invalid)[number];
+type ReadQueryCase = Extract<
+  QueryBuilderInvalidCase,
+  { errors: Array<{ messageId: ReadQueryMessageId }> }
+>;
+type WriteQueryCase = Exclude<QueryBuilderInvalidCase, ReadQueryCase>;
+
+const READ_QUERY_MESSAGES = new Set<QueryBuilderMessageId>([
+  "composedCteQueryBuilder",
+  "existsQueryBuilder",
+  "lockingQueryBuilder",
+  "queryBuilder",
+  "scalarCteQueryBuilder",
+  "structuredScalarQuery",
+]);
+
+function isReadQueryCase(
+  testCase: QueryBuilderInvalidCase,
+): testCase is ReadQueryCase {
+  return testCase.errors.some((error) => {
+    return READ_QUERY_MESSAGES.has(error.messageId);
+  });
+}
+
+function isWriteQueryCase(
+  testCase: QueryBuilderInvalidCase,
+): testCase is WriteQueryCase {
+  return !isReadQueryCase(testCase);
+}
+
+export const queryBuilderWriteCases = {
+  valid: queryBuilderCases.writeValid,
+  invalid: queryBuilderCases.invalid.filter(isWriteQueryCase),
+};
+
+export const queryBuilderReadCases = {
+  valid: queryBuilderCases.readValid,
+  invalid: [
+    ...queryBuilderCases.readInvalid,
+    ...queryBuilderCases.invalid.filter(isReadQueryCase),
+  ],
+};
