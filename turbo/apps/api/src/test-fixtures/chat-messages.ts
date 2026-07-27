@@ -1,5 +1,7 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { and, count, eq, like, or, sql } from "drizzle-orm";
@@ -273,6 +275,87 @@ export async function holdOrgAdmissionLockFixture(args: {
               SELECT held.classid, held.objid, held.objsubid
               FROM pg_locks AS held
               WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
+ * Stages the canonical conversation clear inside an open transaction so a
+ * concurrent run still resolves the pre-clear snapshot, then blocks on this
+ * transaction when its launch commit re-reads the session row `FOR UPDATE`.
+ *
+ * Waiting on this transaction is a precise barrier for "the run captured its
+ * snapshot and reached commit". Counting waiters on the org admission key is
+ * not: the background queue drain takes that same key, so it can satisfy the
+ * barrier before the run has resolved its session at all.
+ */
+export async function holdThreadSessionConversationClearFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const [thread] = await tx
+      .select({ agentSessionId: chatThreads.agentSessionId })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .limit(1);
+    if (!thread?.agentSessionId) {
+      throw new Error("Expected a bound chat thread session");
+    }
+    const [session] = await tx
+      .update(agentSessions)
+      .set({ conversationId: null })
+      .where(eq(agentSessions.id, thread.agentSessionId))
+      .returning({ id: agentSessions.id });
+    if (!session) {
+      throw new Error("Expected a bound agent session");
+    }
+    const rows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the conversation clear holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'transactionid'
+            AND NOT waiting.granted
+            AND waiting.transactionid IN (
+              SELECT held.transactionid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'transactionid'
                 AND held.pid = ${holderPid}
                 AND held.granted
             )

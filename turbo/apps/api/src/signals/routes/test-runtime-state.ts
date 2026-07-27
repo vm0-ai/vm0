@@ -314,31 +314,6 @@ async function clearThreadSessionBinding(
   }
 }
 
-async function clearThreadSessionConversation(
-  db: Db,
-  threadId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [thread] = await db
-    .select({ agentSessionId: chatThreads.agentSessionId })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!thread?.agentSessionId) {
-    throw new Error("Expected a bound chat thread session");
-  }
-  const [session] = await db
-    .update(agentSessions)
-    .set({ conversationId: null })
-    .where(eq(agentSessions.id, thread.agentSessionId))
-    .returning({ id: agentSessions.id });
-  signal.throwIfAborted();
-  if (!session) {
-    throw new Error("Expected a bound agent session");
-  }
-}
-
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -522,10 +497,7 @@ async function timingStateActionResponse(
 type ThreadSessionStateAction = Extract<
   TestRuntimeStateActionBody,
   {
-    action:
-      | "read-thread-session-binding"
-      | "clear-thread-session-binding"
-      | "clear-thread-session-conversation";
+    action: "read-thread-session-binding" | "clear-thread-session-binding";
   }
 >;
 
@@ -534,8 +506,7 @@ function isThreadSessionStateAction(
 ): body is ThreadSessionStateAction {
   return (
     body.action === "read-thread-session-binding" ||
-    body.action === "clear-thread-session-binding" ||
-    body.action === "clear-thread-session-conversation"
+    body.action === "clear-thread-session-binding"
   );
 }
 
@@ -560,10 +531,6 @@ async function threadSessionStateActionResponse(
     }
     case "clear-thread-session-binding": {
       await clearThreadSessionBinding(db, body.thread_id, signal);
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "clear-thread-session-conversation": {
-      await clearThreadSessionConversation(db, body.thread_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
   }
