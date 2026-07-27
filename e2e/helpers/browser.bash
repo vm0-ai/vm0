@@ -70,9 +70,16 @@ generate_test_email() {
 # Poll the target so no individual agent-browser command reaches its
 # 30-second IPC read timeout. Supports the wait forms used by browser E2E:
 # selectors, --fn expressions, and --text values.
-# Usage: wait_for_browser_target <selector>|--fn <expression>|--text <text>
+# Usage: wait_for_browser_target [--timeout-seconds <seconds>]
+#          <selector>|--fn <expression>|--text <text>
 # ---------------------------------------------------------------------------
 wait_for_browser_target() {
+  local wait_timeout_seconds=60
+  if [[ "${1:-}" == "--timeout-seconds" ]]; then
+    wait_timeout_seconds="${2:?wait timeout is required}"
+    shift 2
+  fi
+
   local condition description value_json
   case "${1:-}" in
     --fn)
@@ -97,7 +104,7 @@ wait_for_browser_target() {
 
   local wait_started="$SECONDS"
   local wait_output
-  while (( SECONDS - wait_started < 60 )); do
+  while (( SECONDS - wait_started < wait_timeout_seconds )); do
     if wait_output=$(agent-browser eval "$condition" 2>&1); then
       if [[ "$wait_output" == "true" ]]; then
         return 0
@@ -109,7 +116,7 @@ wait_for_browser_target() {
     sleep 0.25
   done
 
-  echo "Wait timed out after 60000ms: ${description}" >&2
+  echo "Wait timed out after $((wait_timeout_seconds * 1000))ms: ${description}" >&2
   return 1
 }
 
