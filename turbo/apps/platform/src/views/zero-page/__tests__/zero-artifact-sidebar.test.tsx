@@ -406,6 +406,12 @@ describe("zero artifact sidebar", () => {
     ).toBe("min(760px, 48vw)");
 
     fireEvent.pointerDown(resizeHandle, { clientX: 760 });
+
+    const chatThread = screen.getByLabelText("Chat thread");
+    chatThread.focus();
+    chatThread.blur();
+    expect(document.body).toHaveFocus();
+
     fireEvent.pointerMove(window, { clientX: 700 });
 
     await waitFor(() => {
@@ -414,6 +420,7 @@ describe("zero artifact sidebar", () => {
       ).toBe("clamp(400px, 700px, calc(100% - 600px))");
       expect(context.store.get(artifactPanelWidth$)).toBe(700);
     });
+    expect(document.body).toHaveFocus();
     expect(document.body.style.cursor).toBe("col-resize");
     expect(document.body.style.userSelect).toBe("none");
 

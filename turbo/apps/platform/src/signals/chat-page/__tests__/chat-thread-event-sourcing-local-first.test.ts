@@ -278,7 +278,7 @@ describe("chat thread event sourcing local-first list", () => {
     const before = await context.store.get(chatThreads$);
     const persistedBefore = {
       snapshot: await threadEventStores.readStore.readSnapshot(),
-      events: await threadEventStores.readStore.readEvents(),
+      eventLog: await threadEventStores.readStore.readEventLog(),
     };
 
     await context.store.set(syncEventDrivenChatThreads$, context.signal);
@@ -289,8 +289,8 @@ describe("chat thread event sourcing local-first list", () => {
       threadEventStores.readStore.readSnapshot(),
     ).resolves.toStrictEqual(persistedBefore.snapshot);
     await expect(
-      threadEventStores.readStore.readEvents(),
-    ).resolves.toStrictEqual(persistedBefore.events);
+      threadEventStores.readStore.readEventLog(),
+    ).resolves.toStrictEqual(persistedBefore.eventLog);
   });
 
   it("filters event-sourced visible threads through unread thread ids", async () => {
@@ -759,9 +759,8 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     await vi.waitFor(async () => {
-      await expect(
-        threadEventStores.readStore.readEvents(),
-      ).resolves.toContainEqual(createdEvent);
+      const eventLog = await threadEventStores.readStore.readEventLog();
+      expect(eventLog.events).toContainEqual(createdEvent);
     });
     await expect(
       context.store.get(sidebarChatThreadIds$),
