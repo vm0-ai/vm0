@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.332.0](https://github.com/vm0-ai/vm0/compare/api-v1.331.0...api-v1.332.0) (2026-07-27)
+
+
+### Features
+
+* **chat:** add automation queue event consumers ([#23356](https://github.com/vm0-ai/vm0/issues/23356)) ([ae28bdd](https://github.com/vm0-ai/vm0/commit/ae28bdda4f94c2ea12f0fec5f26017cc62fd4abb))
+* **chat:** support multiple inline templates ([#23326](https://github.com/vm0-ai/vm0/issues/23326)) ([1e0f8f4](https://github.com/vm0-ai/vm0/commit/1e0f8f4b2b742fbc0a417b8ec410d7b0b824f856))
+* enable website template v2 globally ([#23289](https://github.com/vm0-ai/vm0/issues/23289)) ([2bbb2cc](https://github.com/vm0-ai/vm0/commit/2bbb2cc8ff6911b83bde9dc0abd326d7be137b7f))
+* **teams:** start runs through chat threads ([#23296](https://github.com/vm0-ai/vm0/issues/23296)) ([841d0f0](https://github.com/vm0-ai/vm0/commit/841d0f0028157abd195ad1cc1408cd5f9068dec2))
+
+
+### Bug Fixes
+
+* **browser:** accept browser use v3 session responses ([#23334](https://github.com/vm0-ai/vm0/issues/23334)) ([a19ea6e](https://github.com/vm0-ai/vm0/commit/a19ea6e0cc7004883a445c8c00d2d89b0d1a2c60))
+* **chat:** classify read and usage state by event type ([#23303](https://github.com/vm0-ai/vm0/issues/23303)) ([7c6858c](https://github.com/vm0-ai/vm0/commit/7c6858c4ea18f2f12708a3b063798c497dae291a))
+* **chat:** suppress run push notifications while goals remain active ([#23320](https://github.com/vm0-ai/vm0/issues/23320)) ([c692dec](https://github.com/vm0-ai/vm0/commit/c692dec6130ca23dec36221509c9a6922d98fdde))
+
+
+### Refactoring
+
+* **api:** require public connector form field ids ([#23313](https://github.com/vm0-ai/vm0/issues/23313)) ([2b8310d](https://github.com/vm0-ai/vm0/commit/2b8310d6e49e896d48641dadba212a295e886e9f))
+* **chat:** require non-null chat event types ([#23331](https://github.com/vm0-ai/vm0/issues/23331)) ([3da9b1a](https://github.com/vm0-ai/vm0/commit/3da9b1af7130dbcd4a41d9d9c15ed81625bcc5b0))
+* move feature switch keys into core ([#23299](https://github.com/vm0-ai/vm0/issues/23299)) ([11071e0](https://github.com/vm0-ai/vm0/commit/11071e056383e7ead21cc578961ed8496865f718))
+* reduce fallback slop in organization member ids ([#23357](https://github.com/vm0-ai/vm0/issues/23357)) ([9431713](https://github.com/vm0-ai/vm0/commit/943171356d4af4bf641e5530d6ac3864dc2b0b39))
+* remove graduated user-facing feature switches ([#23308](https://github.com/vm0-ai/vm0/issues/23308)) ([88670a3](https://github.com/vm0-ai/vm0/commit/88670a3f7df97bdf4a6caec3b17ed1550126f51a))
+* retire mail and thread mention feature switches ([#23324](https://github.com/vm0-ai/vm0/issues/23324)) ([535b9bc](https://github.com/vm0-ai/vm0/commit/535b9bc54238cc1ee75367dd33c9e4f314981eb7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.0
+    * @vm0/connectors bumped to 1.197.1
+    * @vm0/core bumped to 8.476.0
+    * @vm0/db bumped to 1.145.0
+
 ## [1.331.0](https://github.com/vm0-ai/vm0/compare/api-v1.330.0...api-v1.331.0) (2026-07-27)
 
 
