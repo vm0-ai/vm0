@@ -9,7 +9,6 @@ import type {
   ConnectorCatalogArtifact,
   ConnectorCatalogArtifactConnector,
 } from "./connector-catalog-artifacts/artifacts";
-import { storageDml } from "./storage-dml.service";
 
 const SYSTEM_STORAGE_CREATOR = "system";
 
@@ -223,7 +222,7 @@ async function createAndReadCanonicalStorages(
   signal: AbortSignal,
 ): Promise<ReadonlyMap<string, CanonicalStorage>> {
   await db
-    .insert(storageDml)
+    .insert(storages)
     .values(
       registrations.map((registration) => {
         return {
@@ -335,7 +334,7 @@ async function updateNewStorageHeads(
 ): Promise<void> {
   const updatedAt = nowDate();
   const updated = await db
-    .insert(storageDml)
+    .insert(storages)
     .values(
       registrations.map((registration) => {
         return {
@@ -351,16 +350,16 @@ async function updateNewStorageHeads(
       }),
     )
     .onConflictDoUpdate({
-      target: [storageDml.orgId, storageDml.userId, storageDml.name],
+      target: [storages.orgId, storages.userId, storages.name],
       set: {
         headVersionId: sql`excluded.head_version_id`,
         size: sql`excluded.size`,
         fileCount: sql`excluded.file_count`,
         updatedAt: sql`excluded.updated_at`,
       },
-      setWhere: eq(storageDml.s3Prefix, sql`excluded.s3_prefix`),
+      setWhere: eq(storages.s3Prefix, sql`excluded.s3_prefix`),
     })
-    .returning({ name: storageDml.name });
+    .returning({ name: storages.name });
   signal.throwIfAborted();
   if (updated.length !== registrations.length) {
     fail("invalid-reference", false);
