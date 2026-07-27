@@ -222,6 +222,17 @@ function currentApiTestConnectorCatalogCompatibilityWhere(
   );
 }
 
+function requireSingleCatalogMutation(
+  rows: readonly unknown[],
+  operation: string,
+): void {
+  if (rows.length !== 1) {
+    throw new Error(
+      `Expected ${operation} to affect one connector catalog row`,
+    );
+  }
+}
+
 export async function readApiTestConnectorCatalogValidationVersion(): Promise<
   number | null
 > {
@@ -248,10 +259,12 @@ export async function setApiTestConnectorCatalogValidationVersion(
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
-  await db
+  const updated = await db
     .update(connectorCatalogCompatibilityEvaluation)
     .set({ catalogValidationVersion })
-    .where(currentApiTestConnectorCatalogCompatibilityWhere(identity));
+    .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
+    .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
+  requireSingleCatalogMutation(updated, "validation-version update");
 }
 
 export async function replaceApiTestConnectorCatalogStoredBytes(args: {
@@ -268,7 +281,22 @@ export async function replaceApiTestConnectorCatalogStoredBytes(args: {
       : sha256Digest(rawBytes);
   const db = store.set(writeDb$);
   await db.transaction(async (tx) => {
-    await tx
+    const updatedCompatibility = await tx
+      .update(connectorCatalogCompatibilityEvaluation)
+      .set({
+        catalogVersion: args.catalogVersion,
+        catalogDigest,
+        catalogValidationVersion: args.catalogValidationVersion,
+      })
+      .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
+      .returning({
+        sourceId: connectorCatalogCompatibilityEvaluation.sourceId,
+      });
+    requireSingleCatalogMutation(
+      updatedCompatibility,
+      "stored compatibility replacement",
+    );
+    const updatedSnapshot = await tx
       .update(connectorCatalogActiveSnapshot)
       .set({
         catalogVersion: args.catalogVersion,
@@ -284,22 +312,19 @@ export async function replaceApiTestConnectorCatalogStoredBytes(args: {
             SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
           ),
         ),
-      );
-    await tx
-      .update(connectorCatalogCompatibilityEvaluation)
-      .set({
-        catalogVersion: args.catalogVersion,
-        catalogDigest,
-        catalogValidationVersion: args.catalogValidationVersion,
-      })
-      .where(currentApiTestConnectorCatalogCompatibilityWhere(identity));
+      )
+      .returning({ sourceId: connectorCatalogActiveSnapshot.sourceId });
+    requireSingleCatalogMutation(
+      updatedSnapshot,
+      "stored catalog snapshot replacement",
+    );
   });
 }
 
 export async function invalidateApiTestConnectorCatalogCompatibility(): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
-  await db
+  const updated = await db
     .update(connectorCatalogCompatibilityEvaluation)
     .set({
       filteredAuthMethods: [
@@ -310,13 +335,17 @@ export async function invalidateApiTestConnectorCatalogCompatibility(): Promise<
         },
       ],
     })
-    .where(currentApiTestConnectorCatalogCompatibilityWhere(identity));
+    .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
+    .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
+  requireSingleCatalogMutation(updated, "compatibility corruption");
 }
 
 export async function deleteApiTestConnectorCatalogCompatibility(): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
-  await db
+  const deleted = await db
     .delete(connectorCatalogCompatibilityEvaluation)
-    .where(currentApiTestConnectorCatalogCompatibilityWhere(identity));
+    .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
+    .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
+  requireSingleCatalogMutation(deleted, "compatibility deletion");
 }
