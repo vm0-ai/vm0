@@ -12,7 +12,7 @@ import {
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
@@ -34,15 +34,20 @@ export type ConnectorCatalogRuntimeProjectionFallbackReason =
   | "incomplete"
   | "malformed"
   | "digest_mismatch"
-  | "invalid_compatibility";
+  | "invalid_compatibility"
+  | "unstable";
 
-export interface ConnectorCatalogRuntimeProjectionIdentity {
+interface ConnectorCatalogRuntimeProjectionRowSetIdentity {
   readonly sourceId: string;
   readonly schemaVersion: number;
   readonly catalogVersion: string;
   readonly catalogDigest: string;
-  readonly capabilityDigest: string;
   readonly projectionVersion: number;
+}
+
+export interface ConnectorCatalogRuntimeProjectionIdentity extends ConnectorCatalogRuntimeProjectionRowSetIdentity {
+  readonly capabilityDigest: string;
+  readonly connectorCount: number;
 }
 
 export interface ConnectorCatalogRuntimeProjectionReadyIdentity {
@@ -64,12 +69,13 @@ type ConnectorCatalogRuntimeProjectionRowsRead =
   | {
       readonly kind: "ready";
       readonly connectors: readonly ConnectorCatalogArtifactConnector[];
+      readonly missingConnectorRefs: readonly ConnectorRef[];
     }
   | {
       readonly kind: "fallback";
       readonly reason: Extract<
         ConnectorCatalogRuntimeProjectionFallbackReason,
-        "incomplete" | "malformed" | "digest_mismatch"
+        "malformed" | "digest_mismatch"
       >;
     };
 
@@ -141,6 +147,7 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
     .set({
       runtimeProjectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
       runtimeProjectionCatalogDigest: args.identity.catalogDigest,
+      runtimeProjectionConnectorCount: args.artifact.connectors.length,
     })
     .where(
       and(
@@ -174,6 +181,7 @@ async function readProjectionIdentity(db: ReadonlyDb): Promise<
       readonly capabilityDigest: string;
       readonly projectionVersion: number | null;
       readonly projectionCatalogDigest: string | null;
+      readonly projectionConnectorCount: number | null;
       readonly filteredAuthMethods: unknown;
     }
   | undefined
@@ -189,6 +197,8 @@ async function readProjectionIdentity(db: ReadonlyDb): Promise<
         connectorCatalogActiveSnapshot.runtimeProjectionVersion,
       projectionCatalogDigest:
         connectorCatalogActiveSnapshot.runtimeProjectionCatalogDigest,
+      projectionConnectorCount:
+        connectorCatalogActiveSnapshot.runtimeProjectionConnectorCount,
       filteredAuthMethods:
         connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
     })
@@ -244,7 +254,8 @@ export async function readConnectorCatalogRuntimeProjectionIdentity(
   if (
     current === undefined ||
     current.projectionVersion === null ||
-    current.projectionCatalogDigest === null
+    current.projectionCatalogDigest === null ||
+    current.projectionConnectorCount === null
   ) {
     return { kind: "fallback", reason: "absent" };
   }
@@ -275,6 +286,7 @@ export async function readConnectorCatalogRuntimeProjectionIdentity(
         catalogDigest: current.catalogDigest,
         capabilityDigest: current.capabilityDigest,
         projectionVersion: current.projectionVersion,
+        connectorCount: current.projectionConnectorCount,
       },
       filteredAuthMethods: filteredAuthMethods.data,
     },
@@ -318,20 +330,18 @@ export async function readConnectorCatalogRuntimeProjectionRows(args: {
         ]),
       ),
     );
-  if (rows.length !== args.connectorRefs.length) {
-    return { kind: "fallback", reason: "incomplete" };
-  }
-
   const rowsByRef = new Map(
     rows.map((row) => {
       return [row.connectorRef, row];
     }),
   );
   const connectors: ConnectorCatalogArtifactConnector[] = [];
+  const missingConnectorRefs: ConnectorRef[] = [];
   for (const connectorRef of args.connectorRefs) {
     const row = rowsByRef.get(connectorRef);
     if (row === undefined) {
-      return { kind: "fallback", reason: "incomplete" };
+      missingConnectorRefs.push(connectorRef);
+      continue;
     }
     const connector = connectorCatalogArtifactConnectorSchema.safeParse(
       row.connector,
@@ -354,7 +364,43 @@ export async function readConnectorCatalogRuntimeProjectionRows(args: {
   return {
     kind: "ready",
     connectors,
+    missingConnectorRefs,
   };
+}
+
+export async function countConnectorCatalogRuntimeProjectionRows(args: {
+  readonly db: ReadonlyDb;
+  readonly identity: ConnectorCatalogRuntimeProjectionRowSetIdentity;
+}): Promise<number> {
+  const { identity } = args;
+  const [row] = await args.db
+    .select({ value: count() })
+    .from(connectorCatalogRuntimeProjection)
+    .where(
+      and(
+        eq(connectorCatalogRuntimeProjection.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogRuntimeProjection.schemaVersion,
+          identity.schemaVersion,
+        ),
+        eq(
+          connectorCatalogRuntimeProjection.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogRuntimeProjection.catalogDigest,
+          identity.catalogDigest,
+        ),
+        eq(
+          connectorCatalogRuntimeProjection.projectionVersion,
+          identity.projectionVersion,
+        ),
+      ),
+    );
+  if (row === undefined) {
+    throw new Error("Connector runtime projection count query returned no row");
+  }
+  return row.value;
 }
 
 export const reconcileConnectorCatalogRuntimeProjection$ = command(
@@ -389,6 +435,8 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
             connectorCatalogActiveSnapshot.runtimeProjectionVersion,
           projectionCatalogDigest:
             connectorCatalogActiveSnapshot.runtimeProjectionCatalogDigest,
+          projectionConnectorCount:
+            connectorCatalogActiveSnapshot.runtimeProjectionConnectorCount,
         })
         .from(connectorCatalogActiveSnapshot)
         .where(
@@ -401,13 +449,28 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
           ),
         )
         .limit(1);
-      if (
-        snapshot === undefined ||
-        (snapshot.projectionVersion ===
-          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION &&
-          snapshot.projectionCatalogDigest === snapshot.catalogDigest)
-      ) {
+      if (snapshot === undefined) {
         return;
+      }
+      if (
+        snapshot.projectionVersion ===
+          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION &&
+        snapshot.projectionCatalogDigest === snapshot.catalogDigest &&
+        snapshot.projectionConnectorCount !== null
+      ) {
+        const actualCount = await countConnectorCatalogRuntimeProjectionRows({
+          db: tx,
+          identity: {
+            sourceId,
+            schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+            catalogVersion: snapshot.catalogVersion,
+            catalogDigest: snapshot.catalogDigest,
+            projectionVersion: snapshot.projectionVersion,
+          },
+        });
+        if (actualCount === snapshot.projectionConnectorCount) {
+          return;
+        }
       }
       const decoded = decodeConnectorCatalogSnapshot(snapshot);
       await persistConnectorCatalogRuntimeProjection({

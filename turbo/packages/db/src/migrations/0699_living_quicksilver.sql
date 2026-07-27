@@ -16,13 +16,17 @@ CREATE TABLE "connector_catalog_runtime_projection" (
 --> statement-breakpoint
 ALTER TABLE "connector_catalog_active_snapshot" ADD COLUMN "runtime_projection_version" integer;--> statement-breakpoint
 ALTER TABLE "connector_catalog_active_snapshot" ADD COLUMN "runtime_projection_catalog_digest" varchar(71);--> statement-breakpoint
+ALTER TABLE "connector_catalog_active_snapshot" ADD COLUMN "runtime_projection_connector_count" integer;--> statement-breakpoint
 ALTER TABLE "connector_catalog_runtime_projection" ADD CONSTRAINT "connector_catalog_runtime_projection_sync_state_fk" FOREIGN KEY ("source_id","schema_version") REFERENCES "public"."connector_catalog_sync_state"("source_id","schema_version") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_catalog_active_snapshot" ADD CONSTRAINT "connector_catalog_active_snapshot_runtime_projection_complete" CHECK ((
           "connector_catalog_active_snapshot"."runtime_projection_version" IS NULL
           AND "connector_catalog_active_snapshot"."runtime_projection_catalog_digest" IS NULL
+          AND "connector_catalog_active_snapshot"."runtime_projection_connector_count" IS NULL
         ) OR (
           "connector_catalog_active_snapshot"."runtime_projection_version" IS NOT NULL
           AND "connector_catalog_active_snapshot"."runtime_projection_catalog_digest" IS NOT NULL
+          AND "connector_catalog_active_snapshot"."runtime_projection_connector_count" IS NOT NULL
           AND "connector_catalog_active_snapshot"."runtime_projection_version" > 0
+          AND "connector_catalog_active_snapshot"."runtime_projection_connector_count" > 0
           AND "connector_catalog_active_snapshot"."runtime_projection_catalog_digest" ~ '^sha256:[a-f0-9]{64}$'
         ));

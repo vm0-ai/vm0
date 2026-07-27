@@ -2541,6 +2541,12 @@ describe("connector catalog valid lifecycle", () => {
     await mutateApiTestConnectorCatalogRuntimeProjection({ kind: "clear" });
     mockNow(new Date("2026-07-15T08:02:00.000Z"));
     expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await mutateApiTestConnectorCatalogRuntimeProjection({
+      kind: "delete-row",
+      connectorRef,
+    });
+    mockNow(new Date("2026-07-15T08:03:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
 
     const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
     const run = await runs.createRun(actor, {

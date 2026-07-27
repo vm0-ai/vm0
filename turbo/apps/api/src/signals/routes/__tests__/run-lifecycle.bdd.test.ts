@@ -42,6 +42,7 @@ import {
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
 import {
+  API_TEST_CONNECTOR_CATALOG,
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   installApiTestConnectorCatalog,
   mutateApiTestConnectorCatalogRuntimeProjection,
@@ -7978,12 +7979,84 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ).toStrictEqual(
       expect.objectContaining({
         connector_runtime_source: "full_fallback",
-        connector_runtime_cache_status: "not_applicable",
+        connector_runtime_cache_status: "miss",
         connector_runtime_fallback_reason: "malformed",
         connector_runtime_requested_count_bucket: "1",
       }),
     );
     await api.requestCancelRun(actor, fallback.runId, [200]);
+
+    const repeatedFallback = await api.createRun(actor, {
+      agentId: malformedAgent.agentId,
+      prompt: "reuse the authoritative complete fallback",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(repeatedFallback.runId),
+        "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "full_fallback",
+        connector_runtime_cache_status: "hit",
+        connector_runtime_fallback_reason: "malformed",
+        connector_runtime_requested_count_bucket: "1",
+      }),
+    );
+    await api.requestCancelRun(actor, repeatedFallback.runId, [200]);
+  });
+
+  it("filters a retired requested connector from a complete projection without full fallback", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+
+    await bdd.completeOnboarding(actor);
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    onTestFinished(async () => {
+      await installApiTestConnectorCatalog();
+    });
+
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Retired connector projection agent",
+      visibility: "private",
+    });
+    await api.enableAgentConnectors(actor, agent.agentId, ["linear"]);
+    const catalogWithoutLinear = {
+      ...API_TEST_CONNECTOR_CATALOG,
+      catalogVersion: `${API_TEST_CONNECTOR_CATALOG.catalogVersion}-without-linear`,
+      connectors: API_TEST_CONNECTOR_CATALOG.connectors.filter((connector) => {
+        return connector.connectorRef !== "linear";
+      }),
+    };
+    await installApiTestConnectorCatalog(catalogWithoutLinear);
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "ignore the retired connector reference",
+      modelProvider: "anthropic-api-key",
+    });
+    const selectionEvent = singleApiDispatchEvent(
+      apiDispatchTimingEventsForRun(run.runId),
+      "api_dispatch_pre_create_zero_load_connector_runtime_selection",
+    );
+    expect(selectionEvent).toStrictEqual(
+      expect.objectContaining({
+        connector_runtime_source: "projection",
+        connector_runtime_cache_status: "miss",
+        connector_runtime_requested_count_bucket: "1",
+      }),
+    );
+    expect(selectionEvent).not.toHaveProperty(
+      "connector_runtime_fallback_reason",
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("falls back for every projection readiness and selected-row integrity failure", async () => {
@@ -8006,26 +8079,31 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       {
         connectorRef: "airtable",
         reason: "absent",
+        cacheStatus: "not_applicable",
         mutation: { kind: "absent" },
       },
       {
         connectorRef: "figma",
         reason: "stale",
+        cacheStatus: "not_applicable",
         mutation: { kind: "stale" },
       },
       {
         connectorRef: "gitlab",
         reason: "unsupported",
+        cacheStatus: "not_applicable",
         mutation: { kind: "unsupported" },
       },
       {
         connectorRef: "linear",
         reason: "incomplete",
+        cacheStatus: "miss",
         mutation: { kind: "delete-row", connectorRef: "linear" },
       },
       {
         connectorRef: "neon",
         reason: "digest_mismatch",
+        cacheStatus: "miss",
         mutation: { kind: "digest-mismatch", connectorRef: "neon" },
       },
     ] as const;
@@ -8053,7 +8131,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       ).toStrictEqual(
         expect.objectContaining({
           connector_runtime_source: "full_fallback",
-          connector_runtime_cache_status: "not_applicable",
+          connector_runtime_cache_status: testCase.cacheStatus,
           connector_runtime_fallback_reason: testCase.reason,
           connector_runtime_requested_count_bucket: "1",
         }),

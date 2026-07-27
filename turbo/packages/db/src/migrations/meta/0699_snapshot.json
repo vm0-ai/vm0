@@ -1,5 +1,5 @@
 {
-  "id": "268821e2-c5fb-4712-9dfa-d88bdab43fb5",
+  "id": "8f41f0c9-1260-4505-ae1b-34adaee16f4d",
   "prevId": "b6e4704e-a223-41fd-a5b3-00a5305930bc",
   "version": "7",
   "dialect": "postgresql",
@@ -5955,6 +5955,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "runtime_projection_connector_count": {
+          "name": "runtime_projection_connector_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "activated_at": {
           "name": "activated_at",
           "type": "timestamp",
@@ -6006,7 +6012,7 @@
         },
         "connector_catalog_active_snapshot_runtime_projection_complete": {
           "name": "connector_catalog_active_snapshot_runtime_projection_complete",
-          "value": "(\n          \"connector_catalog_active_snapshot\".\"runtime_projection_version\" IS NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_catalog_digest\" IS NULL\n        ) OR (\n          \"connector_catalog_active_snapshot\".\"runtime_projection_version\" IS NOT NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_catalog_digest\" IS NOT NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_version\" > 0\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_catalog_digest\" ~ '^sha256:[a-f0-9]{64}$'\n        )"
+          "value": "(\n          \"connector_catalog_active_snapshot\".\"runtime_projection_version\" IS NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_catalog_digest\" IS NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_connector_count\" IS NULL\n        ) OR (\n          \"connector_catalog_active_snapshot\".\"runtime_projection_version\" IS NOT NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_catalog_digest\" IS NOT NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_connector_count\" IS NOT NULL\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_version\" > 0\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_connector_count\" > 0\n          AND \"connector_catalog_active_snapshot\".\"runtime_projection_catalog_digest\" ~ '^sha256:[a-f0-9]{64}$'\n        )"
         }
       },
       "isRLSEnabled": false

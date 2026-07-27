@@ -15,6 +15,7 @@ import { nowDate } from "../signals/external/time";
 import {
   connectorCatalogArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  type ConnectorCatalogArtifact,
 } from "../signals/services/connector-catalog-artifacts/artifacts";
 import { encodeConnectorCatalogSnapshot } from "../signals/services/connector-catalog-artifacts/loader";
 import {
@@ -41,13 +42,6 @@ export const API_TEST_CONNECTOR_FIREWALL_CONFIGS =
     return firewall === null ? [] : [firewall];
   });
 
-const API_TEST_CONNECTOR_CATALOG_VERSION =
-  API_TEST_CONNECTOR_CATALOG.catalogVersion;
-
-const API_TEST_CONNECTOR_CATALOG_KEY =
-  `connectors/v${String(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION)}/` +
-  `releases/${API_TEST_CONNECTOR_CATALOG_VERSION}/catalog.json`;
-
 const store = createStore();
 
 function sha256Digest(bytes: Uint8Array): string {
@@ -67,10 +61,15 @@ export function mockApiTestConnectorProviderConfiguration(): void {
   }
 }
 
-export async function installApiTestConnectorCatalog(): Promise<void> {
-  const rawBytes = Buffer.from(
-    `${JSON.stringify(API_TEST_CONNECTOR_CATALOG)}\n`,
-  );
+export async function installApiTestConnectorCatalog(
+  artifact: ConnectorCatalogArtifact = API_TEST_CONNECTOR_CATALOG,
+): Promise<void> {
+  validateConnectorCatalogArtifact(artifact);
+  const catalogVersion = artifact.catalogVersion;
+  const catalogKey =
+    `connectors/v${String(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION)}/` +
+    `releases/${catalogVersion}/catalog.json`;
+  const rawBytes = Buffer.from(`${JSON.stringify(artifact)}\n`);
   const catalogDigest = sha256Digest(rawBytes);
   const catalogGzip = encodeConnectorCatalogSnapshot(rawBytes);
   const source = connectorCatalogSource();
@@ -79,8 +78,8 @@ export async function installApiTestConnectorCatalog(): Promise<void> {
   const db = store.set(writeDb$);
   const syncStateValues = {
     revision: 1,
-    lastObservedCatalogVersion: API_TEST_CONNECTOR_CATALOG_VERSION,
-    lastObservedCatalogKey: API_TEST_CONNECTOR_CATALOG_KEY,
+    lastObservedCatalogVersion: catalogVersion,
+    lastObservedCatalogKey: catalogKey,
     lastObservedCatalogDigest: catalogDigest,
     lastObservedPointerEtag: null,
     lastAttemptAt: activatedAt,
@@ -97,8 +96,8 @@ export async function installApiTestConnectorCatalog(): Promise<void> {
     lastRejectedBuildCommitSha: null,
   };
   const snapshotValues = {
-    catalogVersion: API_TEST_CONNECTOR_CATALOG_VERSION,
-    catalogKey: API_TEST_CONNECTOR_CATALOG_KEY,
+    catalogVersion,
+    catalogKey,
     catalogDigest,
     catalogRawSize: rawBytes.byteLength,
     catalogGzip,
@@ -138,19 +137,19 @@ export async function installApiTestConnectorCatalog(): Promise<void> {
       db: tx,
       sourceId: source.sourceId,
       identity: {
-        catalogVersion: API_TEST_CONNECTOR_CATALOG_VERSION,
+        catalogVersion,
         catalogDigest,
       },
-      artifact: API_TEST_CONNECTOR_CATALOG,
+      artifact,
     });
     await persistConnectorCatalogCompatibility({
       db: tx,
       sourceId: source.sourceId,
       identity: {
-        catalogVersion: API_TEST_CONNECTOR_CATALOG_VERSION,
+        catalogVersion,
         catalogDigest,
       },
-      artifact: API_TEST_CONNECTOR_CATALOG,
+      artifact,
       capability,
     });
   });
@@ -193,6 +192,7 @@ export async function mutateApiTestConnectorCatalogRuntimeProjection(
           .set({
             runtimeProjectionVersion: null,
             runtimeProjectionCatalogDigest: null,
+            runtimeProjectionConnectorCount: null,
           })
           .where(activeWhere);
       });
@@ -204,6 +204,7 @@ export async function mutateApiTestConnectorCatalogRuntimeProjection(
         .set({
           runtimeProjectionVersion: null,
           runtimeProjectionCatalogDigest: null,
+          runtimeProjectionConnectorCount: null,
         })
         .where(activeWhere);
       return;
@@ -214,6 +215,8 @@ export async function mutateApiTestConnectorCatalogRuntimeProjection(
         .set({
           runtimeProjectionVersion: 1,
           runtimeProjectionCatalogDigest: `sha256:${"0".repeat(64)}`,
+          runtimeProjectionConnectorCount:
+            API_TEST_CONNECTOR_CATALOG.connectors.length,
         })
         .where(activeWhere);
       return;
@@ -232,6 +235,8 @@ export async function mutateApiTestConnectorCatalogRuntimeProjection(
         .set({
           runtimeProjectionVersion: 2,
           runtimeProjectionCatalogDigest: active.catalogDigest,
+          runtimeProjectionConnectorCount:
+            API_TEST_CONNECTOR_CATALOG.connectors.length,
         })
         .where(activeWhere);
       return;

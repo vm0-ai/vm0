@@ -212,6 +212,9 @@ export const connectorCatalogActiveSnapshot = pgTable(
       "runtime_projection_catalog_digest",
       { length: 71 },
     ),
+    runtimeProjectionConnectorCount: integer(
+      "runtime_projection_connector_count",
+    ),
     activatedAt: timestamp("activated_at").notNull(),
   },
   (table) => {
@@ -245,10 +248,13 @@ export const connectorCatalogActiveSnapshot = pgTable(
         sql`(
           ${table.runtimeProjectionVersion} IS NULL
           AND ${table.runtimeProjectionCatalogDigest} IS NULL
+          AND ${table.runtimeProjectionConnectorCount} IS NULL
         ) OR (
           ${table.runtimeProjectionVersion} IS NOT NULL
           AND ${table.runtimeProjectionCatalogDigest} IS NOT NULL
+          AND ${table.runtimeProjectionConnectorCount} IS NOT NULL
           AND ${table.runtimeProjectionVersion} > 0
+          AND ${table.runtimeProjectionConnectorCount} > 0
           AND ${table.runtimeProjectionCatalogDigest} ~ '^sha256:[a-f0-9]{64}$'
         )`,
       ),
