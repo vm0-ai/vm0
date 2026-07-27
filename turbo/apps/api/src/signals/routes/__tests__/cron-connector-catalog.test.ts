@@ -4927,7 +4927,7 @@ describe("connector catalog valid lifecycle", () => {
 });
 
 describe("connector catalog executable compatibility", () => {
-  it("repairs missing and unsupported catalog validation versions", async () => {
+  it("repairs missing and preserves newer catalog validation versions", async () => {
     configureSource();
     const release = buildRelease({
       version: "2026-07-27.validation-version-repair",
@@ -4945,13 +4945,13 @@ describe("connector catalog executable compatibility", () => {
       API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
     );
 
-    await setApiTestConnectorCatalogValidationVersion(
-      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION + 1,
-    );
+    const newerValidationVersion =
+      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION + 1;
+    await setApiTestConnectorCatalogValidationVersion(newerValidationVersion);
     mockNow(new Date("2026-07-27T08:02:00.000Z"));
     expect((await syncCatalog()).body.outcome).toBe("unchanged");
     await expect(readApiTestConnectorCatalogValidationVersion()).resolves.toBe(
-      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+      newerValidationVersion,
     );
   });
 

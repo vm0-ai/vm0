@@ -18,7 +18,7 @@ import {
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, lte, ne, or } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -345,6 +345,17 @@ export async function persistConnectorCatalogCompatibility(args: {
         evaluatedAt,
         filteredAuthMethods: persistedFilteredAuthMethods,
       },
+      // A draining older API build must not downgrade an attestation written by
+      // a newer validation contract during a rolling deployment.
+      setWhere: or(
+        isNull(
+          connectorCatalogCompatibilityEvaluation.catalogValidationVersion,
+        ),
+        lte(
+          connectorCatalogCompatibilityEvaluation.catalogValidationVersion,
+          CONNECTOR_CATALOG_VALIDATION_VERSION,
+        ),
+      ),
     });
 }
 
@@ -446,7 +457,9 @@ async function reconcileCompatibility(args: {
     )
     .limit(1);
   if (
-    existing?.catalogValidationVersion === CONNECTOR_CATALOG_VALIDATION_VERSION
+    existing !== undefined &&
+    existing.catalogValidationVersion !== null &&
+    existing.catalogValidationVersion >= CONNECTOR_CATALOG_VALIDATION_VERSION
   ) {
     return;
   }
