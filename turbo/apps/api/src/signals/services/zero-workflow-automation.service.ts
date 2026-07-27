@@ -66,7 +66,6 @@ import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-eve
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
 import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
-import { githubWorkflowRunAutomationCreationEnabledForOwner } from "./github-workflow-run-automation-feature-switch.service";
 import { prepareGithubWorkflowRunEventConfigForPersist } from "./github-workflow-run-event.service";
 import {
   prepareNotionChildPageEventConfigForPersist,
@@ -165,16 +164,6 @@ function notionWorkflowAutomationsDisabledResult(): {
   return {
     kind: "bad-request",
     message: "Notion workflow automations are not enabled",
-  };
-}
-
-function githubWorkflowRunAutomationsDisabledResult(): {
-  readonly kind: "bad-request";
-  readonly message: string;
-} {
-  return {
-    kind: "bad-request",
-    message: "GitHub workflow run automations are not enabled",
   };
 }
 
@@ -1854,16 +1843,6 @@ const createEventAutomationForWorkflow$ = command(
     }
 
     if (input.eventType === "github-workflow-run-completed") {
-      const featureEnabled = await get(
-        githubWorkflowRunAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return githubWorkflowRunAutomationsDisabledResult();
-      }
       return await createGithubWorkflowRunEventAutomationForWorkflow({
         context: args,
         input,

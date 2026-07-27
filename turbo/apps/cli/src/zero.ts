@@ -68,7 +68,6 @@ const COMMAND_CAPABILITY_MAP: Record<
 const COMMAND_FEATURE_SWITCH_MAP: Readonly<
   Partial<Record<string, FeatureSwitchKey>>
 > = {
-  upgrade: FeatureSwitchKey.PlanUpgradeGuidance,
   browser: FeatureSwitchKey.ZeroBrowser,
 };
 
