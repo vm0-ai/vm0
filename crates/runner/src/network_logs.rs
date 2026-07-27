@@ -1,8 +1,10 @@
 use std::path::Path;
+use std::time::Duration;
 
 use api_contracts::generated::routes;
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::time::{Instant, timeout_at};
 use tracing::{info, warn};
 
 use crate::http::HttpClient;
@@ -32,6 +34,10 @@ const NETWORK_LOG_UPLOAD_PAYLOAD_OVERHEAD_BYTES: usize = 64;
 const NETWORK_LOG_UPLOAD_ENTRY_OVERHEAD_BYTES: usize = 1;
 const NETWORK_LOG_UPLOAD_ERROR_BODY_MAX_BYTES: usize = 2048;
 const NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS: usize = 512;
+// Complement the per-request limits with finite per-run local, remote, and elapsed work.
+const NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES: u64 = 32 * 1024 * 1024;
+const NETWORK_LOG_UPLOAD_MAX_BATCHES: usize = 32;
+const NETWORK_LOG_UPLOAD_MAX_DURATION: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 struct UploadRejectionDetails {
@@ -52,6 +58,59 @@ struct ApiErrorDetails {
     message: Option<String>,
 }
 
+#[derive(Clone, Copy)]
+enum UploadOutcome {
+    Missing,
+    Complete,
+    Truncated(UploadTruncationReason),
+    Failed,
+}
+
+#[derive(Clone, Copy)]
+enum UploadTruncationReason {
+    SourceBytes,
+    BatchCount,
+    Deadline,
+    OversizedEntry,
+}
+
+impl UploadTruncationReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SourceBytes => "source_bytes",
+            Self::BatchCount => "batch_count",
+            Self::Deadline => "deadline",
+            Self::OversizedEntry => "oversized_entry",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BatchUploadOutcome {
+    Continue,
+    BatchLimit,
+    Failed,
+}
+
+#[derive(Default)]
+struct NetworkLogUploadProgress {
+    source_file_bytes: Option<u64>,
+    source_bytes_examined: u64,
+    attempted_batches: usize,
+    successful_batches: usize,
+    attempted_entries: usize,
+    uploaded_entries: usize,
+    attempted_estimated_bytes: usize,
+    uploaded_estimated_bytes: usize,
+    unconfirmed_entries: usize,
+    unconfirmed_estimated_bytes: usize,
+    oversized_entries: usize,
+    oversized_estimated_bytes: usize,
+    observed_dropped_entries: usize,
+    observed_dropped_estimated_bytes: usize,
+    partial_source_line: bool,
+}
+
 /// Upload network logs from the per-run JSONL file.
 /// Reads the file at `path`, POSTs bounded batches to telemetry endpoint,
 /// and keeps the local file for debugging/log GC. Best-effort — failures only warn.
@@ -61,51 +120,36 @@ pub async fn upload_network_logs(
     sandbox_token: &str,
     path: &Path,
 ) {
-    let file = match tokio::fs::File::open(path).await {
-        Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
-        Err(e) => {
-            warn!(run_id = %run_id, error = %e, "failed to read network logs");
-            return;
-        }
+    let deadline = Instant::now() + NETWORK_LOG_UPLOAD_MAX_DURATION;
+    let mut uploader = NetworkLogBatchUploader::new(http, run_id, sandbox_token);
+    let outcome = match timeout_at(
+        deadline,
+        upload_network_logs_inner(path, deadline, &mut uploader),
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(_) => UploadOutcome::Truncated(UploadTruncationReason::Deadline),
     };
 
-    let mut lines = BufReader::new(file).lines();
-    let mut uploader = NetworkLogBatchUploader::new(http, run_id, sandbox_token);
-
-    loop {
-        let line = match lines.next_line().await {
-            Ok(Some(line)) => line,
-            Ok(None) => break,
-            Err(e) => {
-                warn!(run_id = %run_id, error = %e, "failed to read network logs");
-                return;
-            }
-        };
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+    let truncation_reason = match outcome {
+        UploadOutcome::Truncated(reason) => Some(reason),
+        UploadOutcome::Complete | UploadOutcome::Failed
+            if uploader.progress.oversized_entries > 0 =>
+        {
+            Some(UploadTruncationReason::OversizedEntry)
         }
-
-        let log = match serde_json::from_str(line) {
-            Ok(log) => log,
-            Err(e) => {
-                warn!(run_id = %run_id, error = %e, "malformed network log line");
-                continue;
-            }
-        };
-        let entry_bytes = estimated_entry_bytes(line);
-
-        if !uploader.push(log, entry_bytes).await {
-            return;
-        }
+        UploadOutcome::Missing | UploadOutcome::Complete | UploadOutcome::Failed => None,
+    };
+    if let Some(reason) = truncation_reason {
+        uploader.warn_truncated(reason);
     }
 
-    if !uploader.finish().await {
-        return;
-    }
-
-    if uploader.total_uploaded() > 0 {
+    if matches!(
+        outcome,
+        UploadOutcome::Complete | UploadOutcome::Truncated(_)
+    ) && uploader.total_uploaded() > 0
+    {
         info!(
             run_id = %run_id,
             batches = uploader.batch_count(),
@@ -115,14 +159,142 @@ pub async fn upload_network_logs(
     }
 }
 
+async fn upload_network_logs_inner(
+    path: &Path,
+    deadline: Instant,
+    uploader: &mut NetworkLogBatchUploader<'_>,
+) -> UploadOutcome {
+    let file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return UploadOutcome::Missing,
+        Err(e) => {
+            warn!(run_id = %uploader.run_id, error = %e, "failed to read network logs");
+            return UploadOutcome::Failed;
+        }
+    };
+
+    let source_file_bytes = match file.metadata().await {
+        Ok(metadata) => metadata.len(),
+        Err(e) => {
+            warn!(run_id = %uploader.run_id, error = %e, "failed to read network logs");
+            return UploadOutcome::Failed;
+        }
+    };
+    uploader.progress.source_file_bytes = Some(source_file_bytes);
+
+    let source_is_larger_than_limit = source_file_bytes > NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES;
+    let mut reader = BufReader::new(file.take(NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES));
+    let mut line = Vec::new();
+    let mut source_limit_reached = false;
+
+    loop {
+        if Instant::now() >= deadline {
+            return UploadOutcome::Truncated(UploadTruncationReason::Deadline);
+        }
+
+        line.clear();
+        let bytes_read = match reader.read_until(b'\n', &mut line).await {
+            Ok(0) => break,
+            Ok(bytes_read) => bytes_read,
+            Err(e) => {
+                warn!(run_id = %uploader.run_id, error = %e, "failed to read network logs");
+                return UploadOutcome::Failed;
+            }
+        };
+        uploader.progress.source_bytes_examined = uploader
+            .progress
+            .source_bytes_examined
+            .saturating_add(bytes_read as u64);
+
+        let reached_capped_source_end = source_is_larger_than_limit
+            && uploader.progress.source_bytes_examined >= NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES;
+        if reached_capped_source_end && !line.ends_with(b"\n") {
+            uploader.progress.partial_source_line = true;
+            source_limit_reached = true;
+            break;
+        }
+
+        if Instant::now() >= deadline {
+            return UploadOutcome::Truncated(UploadTruncationReason::Deadline);
+        }
+
+        let line = match std::str::from_utf8(&line) {
+            Ok(line) => line.trim(),
+            Err(e) => {
+                warn!(run_id = %uploader.run_id, error = %e, "failed to read network logs");
+                return UploadOutcome::Failed;
+            }
+        };
+        if line.is_empty() {
+            if reached_capped_source_end {
+                source_limit_reached = true;
+                break;
+            }
+            continue;
+        }
+
+        let log = match serde_json::from_str(line) {
+            Ok(log) => log,
+            Err(e) => {
+                warn!(run_id = %uploader.run_id, error = %e, "malformed network log line");
+                if reached_capped_source_end {
+                    source_limit_reached = true;
+                    break;
+                }
+                continue;
+            }
+        };
+        let entry_bytes = estimated_entry_bytes(line);
+
+        if Instant::now() >= deadline {
+            return UploadOutcome::Truncated(UploadTruncationReason::Deadline);
+        }
+
+        match uploader.push(log, entry_bytes).await {
+            BatchUploadOutcome::Continue => {}
+            BatchUploadOutcome::BatchLimit => {
+                return UploadOutcome::Truncated(UploadTruncationReason::BatchCount);
+            }
+            BatchUploadOutcome::Failed => return UploadOutcome::Failed,
+        }
+
+        if reached_capped_source_end {
+            source_limit_reached = true;
+            break;
+        }
+
+        if !uploader.can_attempt_more_batches() {
+            if uploader.progress.source_bytes_examined < source_file_bytes {
+                return UploadOutcome::Truncated(UploadTruncationReason::BatchCount);
+            }
+            break;
+        }
+    }
+
+    if Instant::now() >= deadline {
+        return UploadOutcome::Truncated(UploadTruncationReason::Deadline);
+    }
+
+    match uploader.finish().await {
+        BatchUploadOutcome::Continue if source_limit_reached => {
+            UploadOutcome::Truncated(UploadTruncationReason::SourceBytes)
+        }
+        BatchUploadOutcome::Continue => UploadOutcome::Complete,
+        BatchUploadOutcome::BatchLimit => {
+            uploader.discard_pending_batch();
+            UploadOutcome::Truncated(UploadTruncationReason::BatchCount)
+        }
+        BatchUploadOutcome::Failed => UploadOutcome::Failed,
+    }
+}
+
 struct NetworkLogBatchUploader<'a> {
     http: &'a HttpClient,
     run_id: RunId,
     sandbox_token: &'a str,
     batch: Vec<NetworkLog>,
     batch_bytes: usize,
-    batch_index: usize,
-    total_uploaded: usize,
+    progress: NetworkLogUploadProgress,
 }
 
 impl<'a> NetworkLogBatchUploader<'a> {
@@ -133,14 +305,41 @@ impl<'a> NetworkLogBatchUploader<'a> {
             sandbox_token,
             batch: Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
             batch_bytes: empty_batch_estimated_bytes(&run_id),
-            batch_index: 0,
-            total_uploaded: 0,
+            progress: NetworkLogUploadProgress::default(),
         }
     }
 
-    async fn push(&mut self, log: NetworkLog, entry_bytes: usize) -> bool {
-        if self.should_flush_before_push(entry_bytes) && !self.flush().await {
-            return false;
+    async fn push(&mut self, log: NetworkLog, entry_bytes: usize) -> BatchUploadOutcome {
+        if self.is_oversized_entry(entry_bytes) {
+            self.progress.oversized_entries = self.progress.oversized_entries.saturating_add(1);
+            self.progress.oversized_estimated_bytes = self
+                .progress
+                .oversized_estimated_bytes
+                .saturating_add(entry_bytes);
+
+            if !self.batch.is_empty() {
+                let outcome = self.flush().await;
+                if outcome != BatchUploadOutcome::Continue {
+                    return outcome;
+                }
+            }
+            return BatchUploadOutcome::Continue;
+        }
+
+        if !self.can_attempt_more_batches() {
+            self.record_observed_dropped_entry(entry_bytes);
+            return BatchUploadOutcome::BatchLimit;
+        }
+
+        if self.should_flush_before_push(entry_bytes) {
+            let outcome = self.flush().await;
+            if outcome != BatchUploadOutcome::Continue {
+                return outcome;
+            }
+            if !self.can_attempt_more_batches() {
+                self.record_observed_dropped_entry(entry_bytes);
+                return BatchUploadOutcome::BatchLimit;
+            }
         }
 
         self.batch.push(log);
@@ -150,19 +349,23 @@ impl<'a> NetworkLogBatchUploader<'a> {
             return self.flush().await;
         }
 
-        true
+        BatchUploadOutcome::Continue
     }
 
-    async fn finish(&mut self) -> bool {
+    async fn finish(&mut self) -> BatchUploadOutcome {
         self.flush().await
     }
 
     fn total_uploaded(&self) -> usize {
-        self.total_uploaded
+        self.progress.uploaded_entries
     }
 
     fn batch_count(&self) -> usize {
-        self.batch_index
+        self.progress.attempted_batches
+    }
+
+    fn can_attempt_more_batches(&self) -> bool {
+        self.progress.attempted_batches < NETWORK_LOG_UPLOAD_MAX_BATCHES
     }
 
     fn should_flush_before_push(&self, entry_bytes: usize) -> bool {
@@ -177,19 +380,93 @@ impl<'a> NetworkLogBatchUploader<'a> {
             || self.batch_bytes >= NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES
     }
 
-    async fn flush(&mut self) -> bool {
+    fn is_oversized_entry(&self, entry_bytes: usize) -> bool {
+        empty_batch_estimated_bytes(&self.run_id).saturating_add(entry_bytes)
+            > NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES
+    }
+
+    fn record_observed_dropped_entry(&mut self, entry_bytes: usize) {
+        self.progress.observed_dropped_entries =
+            self.progress.observed_dropped_entries.saturating_add(1);
+        self.progress.observed_dropped_estimated_bytes = self
+            .progress
+            .observed_dropped_estimated_bytes
+            .saturating_add(entry_bytes);
+    }
+
+    fn discard_pending_batch(&mut self) {
+        self.progress.observed_dropped_entries = self
+            .progress
+            .observed_dropped_entries
+            .saturating_add(self.batch.len());
+        self.progress.observed_dropped_estimated_bytes = self
+            .progress
+            .observed_dropped_estimated_bytes
+            .saturating_add(
+                self.batch_bytes
+                    .saturating_sub(empty_batch_estimated_bytes(&self.run_id)),
+            );
+        self.batch.clear();
+        self.batch_bytes = empty_batch_estimated_bytes(&self.run_id);
+    }
+
+    fn warn_truncated(&self, reason: UploadTruncationReason) {
+        let source_file_bytes_known = self.progress.source_file_bytes.is_some();
+        let source_file_bytes = self.progress.source_file_bytes.unwrap_or_default();
+        let remaining_source_bytes =
+            source_file_bytes.saturating_sub(self.progress.source_bytes_examined);
+
+        warn!(
+            run_id = %self.run_id,
+            reason = reason.as_str(),
+            source_file_bytes,
+            source_file_bytes_known,
+            source_bytes_examined = self.progress.source_bytes_examined,
+            remaining_source_bytes,
+            remaining_source_bytes_known = source_file_bytes_known,
+            attempted_batches = self.progress.attempted_batches,
+            successful_batches = self.progress.successful_batches,
+            attempted_entries = self.progress.attempted_entries,
+            uploaded_entries = self.progress.uploaded_entries,
+            unconfirmed_entries = self.progress.unconfirmed_entries,
+            attempted_estimated_bytes = self.progress.attempted_estimated_bytes,
+            uploaded_estimated_bytes = self.progress.uploaded_estimated_bytes,
+            unconfirmed_estimated_bytes = self.progress.unconfirmed_estimated_bytes,
+            oversized_entries = self.progress.oversized_entries,
+            oversized_estimated_bytes = self.progress.oversized_estimated_bytes,
+            observed_dropped_entries = self.progress.observed_dropped_entries,
+            observed_dropped_estimated_bytes =
+                self.progress.observed_dropped_estimated_bytes,
+            partial_source_line = self.progress.partial_source_line,
+            "network log upload truncated"
+        );
+    }
+
+    async fn flush(&mut self) -> BatchUploadOutcome {
         if self.batch.is_empty() {
-            return true;
+            return BatchUploadOutcome::Continue;
         }
 
-        self.batch_index += 1;
-        let batch_index = self.batch_index;
+        if !self.can_attempt_more_batches() {
+            return BatchUploadOutcome::BatchLimit;
+        }
+
+        self.progress.attempted_batches = self.progress.attempted_batches.saturating_add(1);
+        let batch_index = self.progress.attempted_batches;
         let logs = std::mem::replace(
             &mut self.batch,
             Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
         );
+        let batch_bytes = self.batch_bytes;
         self.batch_bytes = empty_batch_estimated_bytes(&self.run_id);
         let count = logs.len();
+        self.progress.attempted_entries = self.progress.attempted_entries.saturating_add(count);
+        self.progress.attempted_estimated_bytes = self
+            .progress
+            .attempted_estimated_bytes
+            .saturating_add(batch_bytes);
+        self.progress.unconfirmed_entries = count;
+        self.progress.unconfirmed_estimated_bytes = batch_bytes;
 
         info!(run_id = %self.run_id, batch_index, count, "uploading network log batch");
 
@@ -208,11 +485,22 @@ impl<'a> NetworkLogBatchUploader<'a> {
         match result {
             Ok(resp) if resp.status().is_success() => {
                 // File is kept locally for debugging; gc_job_logs deletes after 7 days.
-                self.total_uploaded += count;
-                true
+                self.progress.successful_batches =
+                    self.progress.successful_batches.saturating_add(1);
+                self.progress.uploaded_entries =
+                    self.progress.uploaded_entries.saturating_add(count);
+                self.progress.uploaded_estimated_bytes = self
+                    .progress
+                    .uploaded_estimated_bytes
+                    .saturating_add(batch_bytes);
+                self.progress.unconfirmed_entries = 0;
+                self.progress.unconfirmed_estimated_bytes = 0;
+                BatchUploadOutcome::Continue
             }
             Ok(resp) => {
                 let status = resp.status();
+                self.progress.unconfirmed_entries = 0;
+                self.progress.unconfirmed_estimated_bytes = 0;
                 let rejection = upload_rejection_details(resp).await;
                 warn!(
                     run_id = %self.run_id,
@@ -224,7 +512,7 @@ impl<'a> NetworkLogBatchUploader<'a> {
                     response_body_read_error = rejection.body_read_error.as_deref().unwrap_or(""),
                     "network logs upload rejected"
                 );
-                false
+                BatchUploadOutcome::Failed
             }
             Err(e) => {
                 warn!(
@@ -233,7 +521,7 @@ impl<'a> NetworkLogBatchUploader<'a> {
                     error = %e,
                     "network logs upload failed"
                 );
-                false
+                BatchUploadOutcome::Failed
             }
         }
     }
@@ -313,6 +601,7 @@ mod tests {
 
     use httpmock::prelude::*;
     use serde_json::json;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
@@ -374,6 +663,46 @@ mod tests {
             .get(field)
             .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
         assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
+
+    fn has_captured_event(events: &[CapturedEvent], message: &str) -> bool {
+        events.iter().any(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+    }
+
+    async fn read_http_request(stream: &mut tokio::net::TcpStream) {
+        let mut request = Vec::new();
+        let mut chunk = [0_u8; 8192];
+
+        loop {
+            let bytes_read = stream.read(&mut chunk).await.unwrap();
+            assert!(bytes_read > 0, "connection closed before request completed");
+            request.extend_from_slice(&chunk[..bytes_read]);
+
+            let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let headers = std::str::from_utf8(&request[..header_end]).unwrap();
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    if name.eq_ignore_ascii_case("content-length") {
+                        Some(value.trim().parse::<usize>().unwrap())
+                    } else {
+                        None
+                    }
+                })
+                .expect("request must include content-length");
+            if request.len() >= header_end + 4 + content_length {
+                return;
+            }
+        }
     }
 
     #[test]
@@ -545,6 +874,97 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn upload_network_logs_allows_exact_batch_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let log_count = NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * NETWORK_LOG_UPLOAD_MAX_BATCHES;
+        let logs: Vec<_> = (0..log_count)
+            .map(|sequence| json!({ "sequence": sequence }))
+            .collect();
+        tokio::fs::write(&path, network_log_content(&logs))
+            .await
+            .unwrap();
+
+        let server = MockServer::start_async().await;
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/webhooks/agent/telemetry");
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
+
+        upload
+            .assert_calls_async(NETWORK_LOG_UPLOAD_MAX_BATCHES)
+            .await;
+        assert!(!has_captured_event(&events, "network log upload truncated"));
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_stops_at_batch_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let uploaded_count = NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * NETWORK_LOG_UPLOAD_MAX_BATCHES;
+        let logs: Vec<_> = (0..=uploaded_count)
+            .map(|sequence| json!({ "sequence": sequence }))
+            .collect();
+        let content = network_log_content(&logs);
+        let remaining_source_bytes =
+            serde_json::to_string(&logs[uploaded_count]).unwrap().len() + 1;
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/webhooks/agent/telemetry");
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
+
+        upload
+            .assert_calls_async(NETWORK_LOG_UPLOAD_MAX_BATCHES)
+            .await;
+        let event = captured_event(&events, "network log upload truncated");
+        assert_event_field(event, "reason", "batch_count");
+        assert_event_field(event, "source_file_bytes", &content.len().to_string());
+        assert_event_field(
+            event,
+            "source_bytes_examined",
+            &(content.len() - remaining_source_bytes).to_string(),
+        );
+        assert_event_field(
+            event,
+            "remaining_source_bytes",
+            &remaining_source_bytes.to_string(),
+        );
+        assert_event_field(
+            event,
+            "attempted_batches",
+            &NETWORK_LOG_UPLOAD_MAX_BATCHES.to_string(),
+        );
+        assert_event_field(
+            event,
+            "successful_batches",
+            &NETWORK_LOG_UPLOAD_MAX_BATCHES.to_string(),
+        );
+        assert_event_field(event, "attempted_entries", &uploaded_count.to_string());
+        assert_event_field(event, "uploaded_entries", &uploaded_count.to_string());
+        assert_event_field(event, "unconfirmed_entries", "0");
+        assert_event_field(event, "observed_dropped_entries", "0");
+    }
+
+    #[tokio::test]
     async fn upload_network_logs_splits_batches_by_estimated_bytes() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
@@ -598,20 +1018,112 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upload_network_logs_uploads_single_oversized_entry() {
+    async fn upload_network_logs_skips_oversized_entry_and_continues() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
         let run_id = RunId::nil();
         let oversized_value = "x".repeat(NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES);
-        let log = json!({
+        let oversized = json!({
             "timestamp": "2026-02-15T10:00:00Z",
             "host": "oversized.example",
             "body": oversized_value,
         });
-        let logs = vec![log.clone()];
-        tokio::fs::write(&path, network_log_content(&logs))
-            .await
-            .unwrap();
+        let valid = json!({
+            "timestamp": "2026-02-15T10:00:01Z",
+            "host": "valid-after-oversized.example",
+        });
+        let logs = vec![oversized, valid.clone()];
+        let content = network_log_content(&logs);
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [valid],
+        });
+        let upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
+
+        upload.assert_calls_async(1).await;
+        let event = captured_event(&events, "network log upload truncated");
+        assert_event_field(event, "reason", "oversized_entry");
+        assert_event_field(event, "attempted_batches", "1");
+        assert_event_field(event, "successful_batches", "1");
+        assert_event_field(event, "attempted_entries", "1");
+        assert_event_field(event, "uploaded_entries", "1");
+        assert_event_field(event, "unconfirmed_entries", "0");
+        assert_event_field(event, "oversized_entries", "1");
+        assert_event_field(event, "observed_dropped_entries", "0");
+        assert_event_field(event, "remaining_source_bytes", "0");
+        assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), content);
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_stops_at_source_byte_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let mut content = vec![b'x'; NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES as usize - 1];
+        content.extend_from_slice("€".as_bytes());
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/webhooks/agent/telemetry");
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        let (_, events) = capture_async_log_events(upload_network_logs(
+            &http,
+            RunId::nil(),
+            SANDBOX_TOKEN,
+            &path,
+        ))
+        .await;
+
+        upload.assert_calls_async(0).await;
+        let event = captured_event(&events, "network log upload truncated");
+        assert_event_field(event, "reason", "source_bytes");
+        assert_event_field(event, "source_file_bytes", &content.len().to_string());
+        assert_event_field(
+            event,
+            "source_bytes_examined",
+            &NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES.to_string(),
+        );
+        assert_event_field(event, "remaining_source_bytes", "2");
+        assert_event_field(event, "attempted_batches", "0");
+        assert_event_field(event, "attempted_entries", "0");
+        assert_event_field(event, "partial_source_line", "true");
+        assert!(!has_captured_event(&events, "failed to read network logs"));
+        assert!(!has_captured_event(&events, "malformed network log line"));
+        assert_eq!(
+            tokio::fs::metadata(&path).await.unwrap().len(),
+            content.len() as u64
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_allows_exact_source_byte_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let log = json!({ "sequence": 1 });
+        let mut content = network_log_content(std::slice::from_ref(&log)).into_bytes();
+        content.resize(NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES as usize, b' ');
+        tokio::fs::write(&path, &content).await.unwrap();
 
         let server = MockServer::start_async().await;
         let expected = json!({
@@ -628,9 +1140,16 @@ mod tests {
             .await;
 
         let http = http_for_server(&server);
-        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
 
         upload.assert_calls_async(1).await;
+        assert!(!has_captured_event(&events, "network log upload truncated"));
+        assert_eq!(
+            tokio::fs::metadata(&path).await.unwrap().len(),
+            NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES
+        );
     }
 
     #[tokio::test]
@@ -809,6 +1328,104 @@ mod tests {
         );
         assert_event_field(event, "response_body_truncated", "false");
         assert!(path.exists());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_network_logs_uses_one_absolute_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let logs: Vec<_> = (0..=NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES)
+            .map(|sequence| json!({ "sequence": sequence }))
+            .collect();
+        tokio::fs::write(&path, network_log_content(&logs))
+            .await
+            .unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let first_received = Arc::new(tokio::sync::Notify::new());
+        let release_first = Arc::new(tokio::sync::Notify::new());
+        let second_received = Arc::new(tokio::sync::Notify::new());
+        let server_task = {
+            let first_received = first_received.clone();
+            let release_first = release_first.clone();
+            let second_received = second_received.clone();
+            tokio::spawn(async move {
+                let (mut first, _) = listener.accept().await.unwrap();
+                read_http_request(&mut first).await;
+                first_received.notify_one();
+                release_first.notified().await;
+                first
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                    )
+                    .await
+                    .unwrap();
+                drop(first);
+
+                let (mut second, _) = listener.accept().await.unwrap();
+                read_http_request(&mut second).await;
+                second_received.notify_one();
+                let hold_second = tokio::sync::Notify::new();
+                hold_second.notified().await;
+                drop(second);
+            })
+        };
+
+        let http = HttpClient::new(HttpClientConfig {
+            api_url,
+            vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
+        })
+        .unwrap();
+        let upload = capture_async_log_events(upload_network_logs(
+            &http,
+            RunId::nil(),
+            SANDBOX_TOKEN,
+            &path,
+        ));
+        tokio::pin!(upload);
+        let clock_guard = tokio::spawn(async {
+            loop {
+                tokio::task::yield_now().await;
+            }
+        });
+
+        tokio::select! {
+            () = first_received.notified() => {}
+            result = &mut upload => panic!("upload ended before first request: {result:#?}"),
+        }
+        tokio::time::advance(Duration::from_secs(6)).await;
+        release_first.notify_one();
+        tokio::select! {
+            () = second_received.notified() => {}
+            result = &mut upload => panic!("upload ended before second request: {result:#?}"),
+        }
+        clock_guard.abort();
+        let _ = clock_guard.await;
+        tokio::time::advance(Duration::from_secs(4)).await;
+
+        let (_, events) = upload.await;
+        server_task.abort();
+        let _ = server_task.await;
+
+        let event = captured_event(&events, "network log upload truncated");
+        assert_event_field(event, "reason", "deadline");
+        assert_event_field(event, "attempted_batches", "2");
+        assert_event_field(event, "successful_batches", "1");
+        assert_event_field(
+            event,
+            "attempted_entries",
+            &(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES + 1).to_string(),
+        );
+        assert_event_field(
+            event,
+            "uploaded_entries",
+            &NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES.to_string(),
+        );
+        assert_event_field(event, "unconfirmed_entries", "1");
+        assert_event_field(event, "remaining_source_bytes", "0");
+        assert!(!has_captured_event(&events, "network logs upload failed"));
     }
 
     #[tokio::test]
