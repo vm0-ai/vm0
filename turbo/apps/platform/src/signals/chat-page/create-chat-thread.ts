@@ -726,15 +726,29 @@ function createComputerUseHostSelection(
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
   const internalUserOverride$ = state<
-    { kind: "unset" } | { kind: "set"; value: string | null; dirty: boolean }
+    | { kind: "unset" }
+    | {
+        kind: "set";
+        computerUseHostId: string | null;
+        cloudBrowserEnabled: boolean;
+        dirty: boolean;
+      }
   >({ kind: "unset" });
 
   const computerUseHostId$ = computed((get): string | null => {
     const user = get(internalUserOverride$);
     if (user.kind === "set") {
-      return user.value;
+      return user.computerUseHostId;
     }
     return get(threadMeta$)?.computerUseHostId ?? null;
+  });
+
+  const cloudBrowserEnabled$ = computed((get): boolean => {
+    const user = get(internalUserOverride$);
+    if (user.kind === "set") {
+      return user.cloudBrowserEnabled;
+    }
+    return get(threadMeta$)?.cloudBrowserEnabled ?? false;
   });
 
   const computerUseHostIdExplicit$ = computed((get): boolean => {
@@ -742,15 +756,18 @@ function createComputerUseHostSelection(
     return user.kind === "set" && user.dirty;
   });
 
-  const setComputerUseHostId$ = command(
+  const setComputerAccess$ = command(
     async (
       { get, set },
-      computerUseHostId: string | null,
+      selection: {
+        readonly computerUseHostId: string | null;
+        readonly cloudBrowserEnabled: boolean;
+      },
       signal: AbortSignal,
     ) => {
       set(internalUserOverride$, {
         kind: "set",
-        value: computerUseHostId,
+        ...selection,
         dirty: true,
       });
       if (get(optimisticCreateUnsettled$)) {
@@ -764,14 +781,14 @@ function createComputerUseHostSelection(
       await onRejection(
         set(
           dataSource.patchComputerUseHost$,
-          { threadId, computerUseHostId },
+          { threadId, ...selection },
           signal,
         ),
         () => {
           if (!signal.aborted) {
             set(internalUserOverride$, {
               kind: "set",
-              value: computerUseHostId,
+              ...selection,
               dirty: false,
             });
           }
@@ -784,6 +801,40 @@ function createComputerUseHostSelection(
     },
   );
 
+  const setComputerUseHostId$ = command(
+    async (
+      { get, set },
+      computerUseHostId: string | null,
+      signal: AbortSignal,
+    ) => {
+      await set(
+        setComputerAccess$,
+        {
+          computerUseHostId,
+          cloudBrowserEnabled: computerUseHostId
+            ? false
+            : get(cloudBrowserEnabled$),
+        },
+        signal,
+      );
+    },
+  );
+
+  const setCloudBrowserEnabled$ = command(
+    async ({ get, set }, cloudBrowserEnabled: boolean, signal: AbortSignal) => {
+      await set(
+        setComputerAccess$,
+        {
+          computerUseHostId: cloudBrowserEnabled
+            ? null
+            : get(computerUseHostId$),
+          cloudBrowserEnabled,
+        },
+        signal,
+      );
+    },
+  );
+
   const clearComputerUseHostIdOverride$ = command(({ get, set }) => {
     const user = get(internalUserOverride$);
     if (user.kind === "set" && user.dirty) {
@@ -793,8 +844,10 @@ function createComputerUseHostSelection(
 
   return {
     computerUseHostId$,
+    cloudBrowserEnabled$,
     computerUseHostIdExplicit$,
     setComputerUseHostId$,
+    setCloudBrowserEnabled$,
     clearComputerUseHostIdOverride$,
   };
 }
@@ -3226,6 +3279,9 @@ function sendMessageRequestBody(params: {
     ...(params.options && "computerUseHostId" in params.options
       ? { computerUseHostId: params.options.computerUseHostId ?? null }
       : {}),
+    ...(params.options && "cloudBrowserEnabled" in params.options
+      ? { cloudBrowserEnabled: params.options.cloudBrowserEnabled ?? false }
+      : {}),
     attachFiles: params.result.attachFiles,
     ...sendMessageRevocationPatch(params.options),
   };
@@ -3638,6 +3694,9 @@ function createQueueMessage(deps: QueueMessageDeps) {
             ...(options.computerUseHostId === undefined
               ? {}
               : { computerUseHostId: options.computerUseHostId }),
+            ...(options.cloudBrowserEnabled === undefined
+              ? {}
+              : { cloudBrowserEnabled: options.cloudBrowserEnabled }),
           },
           signal,
         ),

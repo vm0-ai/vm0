@@ -93,6 +93,26 @@ const browserResponseSchema = z.object({
   browser: zeroBrowserSessionSchema,
 });
 
+const browserAuthorizationRequestTokenPathParamsSchema = z.object({
+  requestToken: z.string().min(1),
+});
+
+const browserAuthorizationRequestCreateResponseSchema = z.object({
+  authorizationUrl: z.url(),
+  expiresAt: z.iso.datetime(),
+});
+
+const browserAuthorizationRequestResponseSchema = z.object({
+  expiresAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable(),
+  cloudBrowserEnabled: z.boolean(),
+});
+
+const browserAuthorizationRequestApplyResponseSchema = z.object({
+  ok: z.literal(true),
+  cloudBrowserEnabled: z.literal(true),
+});
+
 const browserConnectionResponseSchema = browserResponseSchema.extend({
   cdpUrl: z.url(),
 });
@@ -119,7 +139,7 @@ export const zeroBrowserContract = c.router({
       ...commonErrorResponses,
     },
     summary:
-      "Create a new managed browser for the current chat thread using the user's shared profile",
+      "Create a new managed browser for the current chat thread using its isolated profile",
   },
   use: {
     method: "POST",
@@ -204,4 +224,64 @@ export const zeroBrowserContract = c.router({
   },
 });
 
+export const zeroBrowserAuthorizationRequestsContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/browser/authorization-requests",
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: browserAuthorizationRequestCreateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary:
+      "Create a short-lived cloud browser authorization request for the current run",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/browser/authorization-requests/:requestToken",
+    headers: authHeadersSchema,
+    pathParams: browserAuthorizationRequestTokenPathParamsSchema,
+    responses: {
+      200: browserAuthorizationRequestResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      410: apiErrorSchema,
+    },
+    summary: "Read a cloud browser authorization request",
+  },
+  apply: {
+    method: "POST",
+    path: "/api/zero/browser/authorization-requests/:requestToken/apply",
+    headers: authHeadersSchema,
+    pathParams: browserAuthorizationRequestTokenPathParamsSchema,
+    body: z.object({}),
+    responses: {
+      200: browserAuthorizationRequestApplyResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      410: apiErrorSchema,
+    },
+    summary: "Enable the cloud browser for a delegated authorization request",
+  },
+});
+
 export type ZeroBrowserContract = typeof zeroBrowserContract;
+export type ZeroBrowserAuthorizationRequestsContract =
+  typeof zeroBrowserAuthorizationRequestsContract;
+export type BrowserAuthorizationRequestCreateResponse = z.infer<
+  typeof browserAuthorizationRequestCreateResponseSchema
+>;
+export type BrowserAuthorizationRequestResponse = z.infer<
+  typeof browserAuthorizationRequestResponseSchema
+>;
+export type BrowserAuthorizationRequestApplyResponse = z.infer<
+  typeof browserAuthorizationRequestApplyResponseSchema
+>;

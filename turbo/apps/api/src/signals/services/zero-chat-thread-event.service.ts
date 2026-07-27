@@ -36,6 +36,7 @@ export async function appendChatThreadEvent(
     readonly selectedModel?: string | null;
     readonly serviceTier?: ChatThreadServiceTier | null;
     readonly computerUseHostId?: string | null;
+    readonly cloudBrowserEnabled?: boolean;
     readonly createdAt?: Date;
   },
 ): Promise<void> {
@@ -66,6 +67,7 @@ export async function appendChatThreadEvent(
       selectedModel: args.selectedModel ?? null,
       serviceTier: args.serviceTier ?? null,
       computerUseHostId: args.computerUseHostId ?? null,
+      cloudBrowserEnabled: args.cloudBrowserEnabled ?? false,
       ...(args.createdAt !== undefined ? { createdAt: args.createdAt } : {}),
     })
     .onConflictDoNothing({ target: chatThreadEvents.id });
@@ -103,6 +105,7 @@ export async function getChatThreadSnapshot(
           selectedModel: thread.selectedModel ?? null,
           serviceTier: thread.serviceTier ?? null,
           computerUseHostId: thread.computerUseHostId ?? null,
+          cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
         };
       }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
@@ -118,6 +121,7 @@ type ChatThreadEventRow = {
   readonly selectedModel: string | null;
   readonly serviceTier: ChatThreadServiceTier | null;
   readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
   readonly createdAt: Date;
 };
 
@@ -137,6 +141,7 @@ function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
     selectedModel: row.selectedModel,
     serviceTier: row.serviceTier,
     computerUseHostId: row.computerUseHostId,
+    cloudBrowserEnabled: row.cloudBrowserEnabled,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -171,6 +176,7 @@ export async function getChatThreadEventsSince(
           selectedModel: pageChatThreadEvent.selectedModel,
           serviceTier: pageChatThreadEvent.serviceTier,
           computerUseHostId: pageChatThreadEvent.computerUseHostId,
+          cloudBrowserEnabled: pageChatThreadEvent.cloudBrowserEnabled,
           createdAt: pageChatThreadEvent.createdAt,
         },
       })
@@ -219,6 +225,7 @@ export async function getChatThreadEventsSince(
         selectedModel: chatThreadEvents.selectedModel,
         serviceTier: chatThreadEvents.serviceTier,
         computerUseHostId: chatThreadEvents.computerUseHostId,
+        cloudBrowserEnabled: chatThreadEvents.cloudBrowserEnabled,
         createdAt: chatThreadEvents.createdAt,
       })
       .from(chatThreadEvents)

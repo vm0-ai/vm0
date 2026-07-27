@@ -270,6 +270,7 @@ type ChatThreadRow = {
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
   readonly orgId: string | null;
   readonly lastReadAt: Date | null;
   readonly lastMessageAt: Date;
@@ -507,6 +508,7 @@ function ownedChatThread(
         draftStructuredPrompt: effectiveChatThreadDraftStructuredPrompt(),
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
+        cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
         modelProviderId: chatThreads.modelProviderId,
         modelProviderType: chatThreads.modelProviderType,
         modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
@@ -539,6 +541,7 @@ function ownedChatThread(
         .nullable()
         .parse(thread.draftAttachments ?? null),
       computerUseHostId: thread.computerUseHostId,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
       modelProviderId: thread.modelProviderId,
       modelProviderType: modelProviderTypeSchema
         .nullable()
@@ -2248,6 +2251,7 @@ export const createChatThread$ = command(
         selectedModel: args.selectedModel,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt: createdThread.createdAt,
       });
       return createdThread;

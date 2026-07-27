@@ -32,6 +32,8 @@ const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["people-search:read", FeatureSwitchKey.ZeroPeopleSearch],
   ["finance:read", FeatureSwitchKey.ZeroFinance],
+  ["browser:read", FeatureSwitchKey.ZeroBrowser],
+  ["browser:write", FeatureSwitchKey.ZeroBrowser],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -75,6 +77,7 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   capabilities: zeroCapabilitiesSchema,
   featureSwitchOverrides: z.record(z.string(), z.boolean()).optional(),
   computerUseHostId: z.string().uuid().optional(),
+  cloudBrowserEnabled: z.literal(true).optional(),
 });
 
 const cliTokenPayloadSchema = jwtBaseSchema.extend({
@@ -239,6 +242,9 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),
+    ...(parsed.data.cloudBrowserEnabled
+      ? { cloudBrowserEnabled: parsed.data.cloudBrowserEnabled }
+      : {}),
   };
 }
 
@@ -298,12 +304,19 @@ export function generateZeroToken(
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
   options?: {
     readonly computerUseHostId?: string;
+    readonly cloudBrowserEnabled?: boolean;
   },
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
     if (capability === "computer-use:write" && !options?.computerUseHostId) {
+      continue;
+    }
+    if (
+      (capability === "browser:read" || capability === "browser:write") &&
+      options?.cloudBrowserEnabled !== true
+    ) {
       continue;
     }
     if (
@@ -328,6 +341,10 @@ export function generateZeroToken(
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }
+      : {}),
+    ...(capabilities.includes("browser:write") &&
+    options?.cloudBrowserEnabled === true
+      ? { cloudBrowserEnabled: true as const }
       : {}),
     iat: nowSeconds,
     exp: nowSeconds + 2 * 60 * 60,

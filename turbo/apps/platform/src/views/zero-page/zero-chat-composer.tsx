@@ -321,6 +321,9 @@ export interface ZeroChatComposerProps {
     loading: boolean;
     selectedHostId: string | null;
     onChange: (hostId: string | null) => void;
+    cloudBrowserAvailable: boolean;
+    cloudBrowserEnabled: boolean;
+    onCloudBrowserChange: (enabled: boolean) => void;
     downloadUrl: string;
   };
   /** When true, hide the model picker until the selected model resolves. */
@@ -5214,16 +5217,18 @@ function ComposerWorkflowPromptSlot({
 function ConnectorTriggerIcons({
   connectors,
   hasComputerUse,
+  hasCloudBrowser,
 }: {
   connectors: ComposerConnectorItem[];
   hasComputerUse: boolean;
+  hasCloudBrowser: boolean;
 }) {
   const enabled = connectors
     .filter((c) => {
       return c.authorized;
     })
     .slice(0, 3);
-  if (enabled.length === 0 && !hasComputerUse) {
+  if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
@@ -5241,6 +5246,13 @@ function ConnectorTriggerIcons({
         <span className="relative shrink-0">
           <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
             <IconDeviceDesktop size={16} stroke={1.5} />
+          </span>
+        </span>
+      )}
+      {hasCloudBrowser && (
+        <span className="relative shrink-0">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+            <IconWorld size={16} stroke={1.5} />
           </span>
         </span>
       )}
@@ -5328,6 +5340,44 @@ function ComputerUseConnectorMenuSection({
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
         Your computer
       </div>
+      {computerUse.cloudBrowserAvailable && (
+        <div
+          onClick={() => {
+            computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
+          }}
+          className={cn(
+            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
+            computerUse.cloudBrowserEnabled
+              ? "bg-primary/5"
+              : "hover:bg-gray-100 dark:hover:bg-gray-200",
+          )}
+        >
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+            <IconWorld size={16} stroke={1.5} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm text-foreground">
+              Cloud browser
+            </span>
+          </span>
+          <span
+            className="flex shrink-0 items-center"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <LoadingSwitch
+              checked={computerUse.cloudBrowserEnabled}
+              onCheckedChange={onDomEventFn((enabled) => {
+                computerUse.onCloudBrowserChange(enabled);
+              })}
+              loading={false}
+              ariaLabel={`${computerUse.cloudBrowserEnabled ? "Disable" : "Enable"} Cloud browser`}
+              size="sm"
+            />
+          </span>
+        </div>
+      )}
       {computerUse.loading ? (
         <div className="flex flex-col animate-pulse">
           {Array.from({ length: 2 }, (_, i) => {
@@ -5576,6 +5626,7 @@ function ConnectorsPopoverButton({
                 <ConnectorTriggerIcons
                   connectors={agentConnectors}
                   hasComputerUse={Boolean(computerUse?.selectedHostId)}
+                  hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
                 />
               </button>
             </TooltipTrigger>

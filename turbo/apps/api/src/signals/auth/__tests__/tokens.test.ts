@@ -213,23 +213,42 @@ describe("auth tokens", () => {
     );
   });
 
-  it("grants browser capabilities independently of its CLI feature switch", () => {
+  it("gates browser capabilities on both the rollout and thread access", () => {
     const defaultToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    );
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      undefined,
+      { cloudBrowserEnabled: true },
     );
     const disabledToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       { [FeatureSwitchKey.ZeroBrowser]: false },
+      { cloudBrowserEnabled: true },
     );
 
     for (const token of [defaultToken, disabledToken]) {
-      expect(verifyZeroToken(token)?.capabilities).toContain("browser:read");
-      expect(verifyZeroToken(token)?.capabilities).toContain("browser:write");
+      expect(verifyZeroToken(token)?.capabilities).not.toContain(
+        "browser:read",
+      );
+      expect(verifyZeroToken(token)?.capabilities).not.toContain(
+        "browser:write",
+      );
     }
+    expect(verifyZeroToken(enabledToken)).toMatchObject({
+      cloudBrowserEnabled: true,
+      capabilities: expect.arrayContaining(["browser:read", "browser:write"]),
+    });
+    expect(decodeZeroTokenPayloadForTest(disabledToken)).not.toHaveProperty(
+      "cloudBrowserEnabled",
+    );
     expect(decodeZeroTokenPayloadForTest(disabledToken)).toMatchObject({
       featureSwitchOverrides: {
         [FeatureSwitchKey.ZeroBrowser]: false,
