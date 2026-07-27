@@ -10,7 +10,7 @@ import { z } from "zod";
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { nowDate } from "../lib/time";
-import { insertChatMessage } from "../signals/services/zero-chat-message.service";
+import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -725,9 +725,9 @@ export async function holdChatMessageInsertTransactionFixture(args: {
     if (!holderPid) {
       throw new Error("Expected the chat-message insert holder pid");
     }
-    const message = await insertChatMessage(tx, {
+    const message = await insertChatEvent(tx, {
       chatThreadId: args.threadId,
-      role: "assistant",
+      eventType: "output.message",
       content: args.content,
       runId: null,
     });
@@ -759,9 +759,9 @@ export async function insertChatMessageTransactionFixture(args: {
   readonly content: string;
 }): Promise<{ readonly id: string; readonly seqId: number }> {
   const message = await db().transaction(async (tx) => {
-    return await insertChatMessage(tx, {
+    return await insertChatEvent(tx, {
       chatThreadId: args.threadId,
-      role: "assistant",
+      eventType: "output.message",
       content: args.content,
       runId: null,
     });

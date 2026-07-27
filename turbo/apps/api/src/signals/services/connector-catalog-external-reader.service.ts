@@ -16,7 +16,6 @@ import type {
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorFeatureStates } from "@vm0/connectors/connector-auth-method";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   connectorCatalogActiveSnapshot,
@@ -41,6 +40,7 @@ import {
 import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
 import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
+import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import { connectorCatalogSource } from "./connector-catalog-source";
 
 const log = logger("connector-catalog:reader");

@@ -4,10 +4,10 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMarkReadContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadRenameContract,
   chatThreadsContract,
-  type PagedChatMessage,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -26,6 +26,10 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
+import {
+  normalizeMockChatEvents,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 export const context = testContext();
 
 export function detachedSetupPage(
@@ -60,9 +64,10 @@ export const COMPUTER_USE_SAVED_SELECTION_THREAD_ID =
   "b0000000-0000-4000-a000-000000000718";
 export const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
-type ChatMessageSeed =
-  | Omit<Extract<PagedChatMessage, { role: "user" }>, "seqId">
-  | Omit<Extract<PagedChatMessage, { role: "assistant" }>, "seqId">;
+type ChatMessageSeed = Omit<
+  Extract<ChatEvent, { eventType: "input.prompt" }>,
+  "seqId"
+>;
 
 function replaceNavigatorProperty(property: string, value: unknown): void {
   const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
@@ -237,7 +242,7 @@ export function makeRunGroupMessages(params: {
   readonly count: number;
   readonly runGroupId: string;
   readonly startMinute: number;
-}): ChatMessageSeed[] {
+}): MockChatEventInput[] {
   return Array.from({ length: params.count }, (_, index) => {
     const itemNumber = index + 1;
     const runId = `${params.runGroupId}-run-${itemNumber}`;
@@ -280,10 +285,15 @@ export function expectTextBefore(
   ).toBeTruthy();
 }
 
-export function makeMessage(id: string, text: string): ChatMessageSeed {
+export function makeMessage(
+  id: string,
+  text: string,
+  threadId = "00000000-0000-4000-8000-000000000001",
+): ChatMessageSeed {
   return {
     id,
-    role: "user",
+    threadId,
+    eventType: "input.prompt",
     content: text,
     createdAt: "2026-05-01T00:00:00Z",
   };
@@ -371,24 +381,25 @@ export function mockKeyboardNavigationThreads({
     });
   });
   context.mocks.api(
-    chatThreadMessagesContract.list,
+    chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId) {
-        return respond(200, { messages: [] });
+      if (query.sinceSeqId || query.sinceId) {
+        return respond(200, { events: [] });
       }
       const thread = byId.get(params.threadId);
       return respond(200, {
-        messages: thread
-          ? [
-              {
-                id: `${thread.id}-message`,
-                role: "user",
-                content: thread.message,
-                seqId: 1,
-                createdAt: "2026-06-01T00:00:00Z",
-              },
-            ]
-          : [],
+        events: normalizeMockChatEvents(
+          thread
+            ? [
+                {
+                  id: `${thread.id}-message`,
+                  role: "user",
+                  content: thread.message,
+                  createdAt: "2026-06-01T00:00:00Z",
+                },
+              ]
+            : [],
+        ),
         hasHistoryBefore: false,
       });
     },
@@ -478,7 +489,7 @@ export function mockServerQueuedThreadStories(): void {
           seqId: 2,
           createdAt: "2026-06-09T10:00:01Z",
         },
-      ] satisfies PagedChatMessage[],
+      ] satisfies MockChatEventInput[],
       activeRunIds: ["run-server-queued-visible"],
     },
     {
@@ -519,7 +530,7 @@ export function mockServerQueuedThreadStories(): void {
           seqId: 4,
           createdAt: "2026-06-09T10:05:03Z",
         },
-      ] satisfies PagedChatMessage[],
+      ] satisfies MockChatEventInput[],
       activeRunIds: [],
     },
   ];
@@ -568,13 +579,20 @@ export function mockServerQueuedThreadStories(): void {
     });
   });
   context.mocks.api(
-    chatThreadMessagesContract.list,
+    chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId || query.beforeSeqId) {
-        return respond(200, { messages: [] });
+      if (
+        query.sinceSeqId ||
+        query.beforeSeqId ||
+        query.sinceId ||
+        query.beforeId
+      ) {
+        return respond(200, { events: [] });
       }
       return respond(200, {
-        messages: byId.get(params.threadId)?.messages ?? [],
+        events: normalizeMockChatEvents(
+          byId.get(params.threadId)?.messages ?? [],
+        ),
         hasHistoryBefore: false,
       });
     },

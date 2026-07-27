@@ -1,12 +1,13 @@
 import { command } from "ccstate";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { searchParams$ } from "../route.ts";
+import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
+import { searchParams$ } from "../route.ts";
 import {
-  loadIndexedDbChatMessageBounds$,
-  writeIndexedDbChatMessages$,
-} from "./chat-message-indexed-db.ts";
+  loadIndexedDbChatEventBounds$,
+  writeIndexedDbChatEvents$,
+} from "./chat-event-indexed-db.ts";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -14,11 +15,10 @@ import {
 } from "./chat-thread-panes.ts";
 import {
   CHAT_MESSAGES_PAGE_LIMIT,
-  listMessagesAfter$,
+  listEventsAfter$,
 } from "./remote-chat-thread-data-source.ts";
-import { logger } from "../log.ts";
 
-const L = logger("ChatMessageBackgroundSync");
+const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -56,7 +56,7 @@ function createdMessageSyncThroughSeqId(message: unknown): number | null {
   return message.data.syncThroughSeqId;
 }
 
-const syncChatThreadMessagesToIndexedDb$ = command(
+const syncChatThreadEventsToIndexedDb$ = command(
   async (
     { set },
     {
@@ -67,8 +67,8 @@ const syncChatThreadMessagesToIndexedDb$ = command(
       readonly syncThroughSeqId: number | null;
     },
     signal: AbortSignal,
-  ): Promise<PagedChatMessage[]> => {
-    const bounds = await set(loadIndexedDbChatMessageBounds$, threadId, signal);
+  ): Promise<ChatEvent[]> => {
+    const bounds = await set(loadIndexedDbChatEventBounds$, threadId, signal);
     signal.throwIfAborted();
 
     if (
@@ -83,51 +83,51 @@ const syncChatThreadMessagesToIndexedDb$ = command(
       return [];
     }
 
-    const syncedMessages: PagedChatMessage[] = [];
+    const syncedEvents: ChatEvent[] = [];
     let sinceSeqId = bounds.last?.seqId;
 
-    async function syncMessagesAfter(): Promise<void> {
+    async function syncEventsAfter(): Promise<void> {
       const requestedSinceSeqId = sinceSeqId;
       const result = await set(
-        listMessagesAfter$,
+        listEventsAfter$,
         { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
 
-      if (result.messages.length === 0) {
+      if (result.events.length === 0) {
         return;
       }
 
-      await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
+      await set(writeIndexedDbChatEvents$, threadId, result.events, signal);
       signal.throwIfAborted();
-      syncedMessages.push(...result.messages);
-      sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
+      syncedEvents.push(...result.events);
+      sinceSeqId = result.events[result.events.length - 1]!.seqId;
       if (
         requestedSinceSeqId !== undefined &&
-        result.messages.length < CHAT_MESSAGES_PAGE_LIMIT
+        result.events.length < CHAT_MESSAGES_PAGE_LIMIT
       ) {
         return;
       }
-      await syncMessagesAfter();
+      await syncEventsAfter();
     }
 
-    await syncMessagesAfter();
+    await syncEventsAfter();
     signal.throwIfAborted();
-    L.debug("synced chat messages to IndexedDB", { threadId });
-    return syncedMessages;
+    L.debug("synced chat events to IndexedDB", { threadId });
+    return syncedEvents;
   },
 );
 
-const receiveSyncedMessagesInVisibleThreads$ = command(
+const receiveSyncedEventsInVisibleThreads$ = command(
   async (
     { get, set },
     {
       threadId,
-      messages,
+      events,
     }: {
       threadId: string;
-      messages: PagedChatMessage[];
+      events: ChatEvent[];
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -152,7 +152,7 @@ const receiveSyncedMessagesInVisibleThreads$ = command(
 
     await Promise.all(
       visibleThreads.map(async (thread) => {
-        await set(thread.receiveSyncedMessages$, messages, signal);
+        await set(thread.receiveSyncedEvents$, events, signal);
       }),
     );
     signal.throwIfAborted();
@@ -167,15 +167,15 @@ const handleUserChannelMessage$ = command(
     }
 
     const syncThroughSeqId = createdMessageSyncThroughSeqId(message);
-    const messages = await set(
-      syncChatThreadMessagesToIndexedDb$,
+    const events = await set(
+      syncChatThreadEventsToIndexedDb$,
       { threadId, syncThroughSeqId },
       signal,
     );
     signal.throwIfAborted();
     await set(
-      receiveSyncedMessagesInVisibleThreads$,
-      { threadId, messages },
+      receiveSyncedEventsInVisibleThreads$,
+      { threadId, events },
       signal,
     );
     signal.throwIfAborted();
@@ -183,7 +183,7 @@ const handleUserChannelMessage$ = command(
   },
 );
 
-const catchUpVisibleChatThreadMessages$ = command(
+const catchUpVisibleChatThreadEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
     const mainThreadId = get(currentChatThreadId$);
     const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
@@ -200,15 +200,15 @@ const catchUpVisibleChatThreadMessages$ = command(
 
     await Promise.all(
       Array.from(visibleThreadIds, async (threadId) => {
-        const messages = await set(
-          syncChatThreadMessagesToIndexedDb$,
+        const events = await set(
+          syncChatThreadEventsToIndexedDb$,
           { threadId, syncThroughSeqId: null },
           signal,
         );
         signal.throwIfAborted();
         await set(
-          receiveSyncedMessagesInVisibleThreads$,
-          { threadId, messages },
+          receiveSyncedEventsInVisibleThreads$,
+          { threadId, events },
           signal,
         );
       }),
@@ -218,21 +218,21 @@ const catchUpVisibleChatThreadMessages$ = command(
   },
 );
 
-const subscribeChatMessageBackgroundSync$ = command(
+const subscribeChatEventBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       setAblyMessageLoop$,
       {
         loopCommand$: handleUserChannelMessage$,
-        catchUpCommand$: catchUpVisibleChatThreadMessages$,
+        catchUpCommand$: catchUpVisibleChatThreadEvents$,
       },
       signal,
     );
   },
 );
 
-export const setupChatMessageBackgroundSync$ = command(
+export const setupChatEventBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    await set(subscribeChatMessageBackgroundSync$, signal);
+    await set(subscribeChatEventBackgroundSync$, signal);
   },
 );

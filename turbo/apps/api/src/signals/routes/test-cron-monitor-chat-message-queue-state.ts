@@ -18,9 +18,9 @@ import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
-  insertChatMessage,
-  updateChatMessage,
-} from "../services/zero-chat-message.service";
+  insertChatEvent,
+  replaceChatEvent,
+} from "../services/zero-chat-event.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -118,13 +118,21 @@ async function seedFixture(
   }
 
   const message = await db.transaction(async (tx) => {
-    return await insertChatMessage(tx, {
+    const baseEvent = {
       chatThreadId: thread.id,
-      role: "user",
       content: "orphan monitor fixture",
       runId: null,
-      error: fixtureKind === "failed-message" ? "INSUFFICIENT_CREDITS" : null,
-    });
+    };
+    return fixtureKind === "failed-message"
+      ? await insertChatEvent(tx, {
+          ...baseEvent,
+          eventType: "input.rejected",
+          error: "INSUFFICIENT_CREDITS",
+        })
+      : await insertChatEvent(tx, {
+          ...baseEvent,
+          eventType: "input.prompt",
+        });
   });
   signal.throwIfAborted();
   if (!message) {
@@ -141,9 +149,9 @@ async function seedFixture(
     });
   } else if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
-      await updateChatMessage(tx, message.id, {
+      await replaceChatEvent(tx, message.id, {
         chatThreadId: thread.id,
-        role: "user",
+        eventType: "input.prompt",
         content: "claimed orphan monitor fixture",
         runId: randomUUID(),
       });

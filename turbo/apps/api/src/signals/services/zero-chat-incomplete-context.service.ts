@@ -1,5 +1,9 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+} from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   and,
@@ -16,7 +20,11 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
-import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
+import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
@@ -100,12 +108,12 @@ async function selectIncompleteRoundFrontier(
           not(
             sql`${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)`,
           ),
-          visibleChatMessageCondition(db),
+          visibleChatEventCondition(db),
           or(
             isSuccessfulRun,
             and(
               sql`${agentRuns.status} IN ('cancelled', 'failed', 'timeout')`,
-              sql`${chatMessages.role} IN ('user', 'assistant')`,
+              chatEventTypeIn(CHAT_EVENT_TYPES),
             ),
           ),
         )}
@@ -180,7 +188,7 @@ async function loadSelectedIncompleteRounds(
   const rows = await db
     .select({
       runId: chatMessages.runId,
-      role: chatMessages.role,
+      eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
       structuredPrompt: effectiveChatMessageStructuredPrompt(),
       attachFiles: chatMessages.attachFiles,
@@ -190,8 +198,8 @@ async function loadSelectedIncompleteRounds(
       and(
         eq(chatMessages.chatThreadId, threadId),
         inArray(chatMessages.runId, runIds),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(db),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
+        visibleChatEventCondition(db),
         ...(selection.successfulRunId === null
           ? []
           : [afterSuccessfulRunBoundary(threadId, selection.successfulRunId)]),
@@ -209,9 +217,6 @@ async function loadSelectedIncompleteRounds(
     if (row.runId === null) {
       continue;
     }
-    if (row.role !== "user" && row.role !== "assistant") {
-      continue;
-    }
     const status = statusByRunId.get(row.runId);
     if (status === undefined) {
       continue;
@@ -222,7 +227,7 @@ async function loadSelectedIncompleteRounds(
       roundsByRunId.set(row.runId, round);
     }
     round.messages.push({
-      role: row.role,
+      role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       structuredPrompt: row.structuredPrompt,
       attachFiles: row.attachFiles,

@@ -4,6 +4,7 @@ import type {
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
 import type { ChatMessageUsagePayload } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 
 interface RunSegment {
   readonly runId: string;
@@ -64,14 +65,15 @@ function groupMessagesByRole(
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const message of messages) {
+    const role = chatEventCompatibilityRole(message.eventType);
     const last = groups[groups.length - 1];
-    if (last && last.role === message.role) {
+    if (last && last.role === role) {
       last.messages.push(message);
       continue;
     }
     groups.push({
       beginMessageId: message.id,
-      role: message.role,
+      role,
       messages: [message],
     });
   }

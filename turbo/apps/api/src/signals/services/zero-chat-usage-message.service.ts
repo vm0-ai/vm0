@@ -20,7 +20,7 @@ import {
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { insertChatEvent } from "./zero-chat-event.service";
 
 const L = logger("ChatUsageMessage");
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -180,9 +180,9 @@ export const maybeEmitRunUsageMessage$ = command(
         breakdown: buildUsageBreakdown(breakdownRows),
       };
 
-      const inserted = await insertChatMessage(tx, {
+      const inserted = await insertChatEvent(tx, {
         chatThreadId: context.chatThreadId,
-        role: "assistant",
+        eventType: "usage.recorded",
         content: null,
         runId,
         runGroupId: context.runGroupId,

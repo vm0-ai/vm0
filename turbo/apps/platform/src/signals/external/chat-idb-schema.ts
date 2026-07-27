@@ -5,7 +5,8 @@ const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
 // the mirrored artifact history is gone. Bumping the version drops the stores
 // from browser databases that still carry a full history from the old page.
 const ARTIFACT_CACHE_REMOVED_VERSION = 20;
-const CHAT_IDB_SCHEMA_VERSION = ARTIFACT_CACHE_REMOVED_VERSION;
+const CHAT_IDB_CHAT_EVENT_RESET_VERSION = 21;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CHAT_EVENT_RESET_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -65,6 +66,10 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
     deleteLocalCacheStores(db);
   } else if (oldVersion < ARTIFACT_CACHE_REMOVED_VERSION) {
     deleteArtifactCacheStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_CHAT_EVENT_RESET_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
   }
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {

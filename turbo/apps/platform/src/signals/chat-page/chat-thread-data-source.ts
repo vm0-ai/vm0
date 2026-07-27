@@ -35,12 +35,12 @@ export interface PatchComputerUseHostArgs {
   computerUseHostId: string | null;
 }
 
-export interface AppendQueuedMessageArgs {
+export interface AppendQueuedEventArgs {
   threadId: string;
   agentId: string;
   content: string | null;
   attachments: PersistedAttachment[] | null;
-  clientMessageId: string;
+  clientEventId: string;
   chatThreadSortEventId: string;
   hasTextContent: boolean;
   runOptions?: ChatRunOptionsRequest;
@@ -50,24 +50,24 @@ export interface AppendQueuedMessageArgs {
   computerUseHostId?: string | null;
 }
 
-export interface RecallMessageArgs {
+export interface RecallEventArgs {
   threadId: string;
   agentId: string;
-  revokesMessageId: string;
-  clientMessageId: string;
+  revokesEventId: string;
+  clientEventId: string;
 }
 
 export interface InterruptRunArgs {
   runId: string;
-  clientMessageId: string;
+  clientEventId: string;
 }
 
-export interface ListMessagesAfterArgs {
+export interface ListEventsAfterArgs {
   threadId: string;
   sinceSeqId: number | undefined;
 }
 
-export interface ListMessagesBeforeArgs {
+export interface ListEventsBeforeArgs {
   threadId: string;
   beforeSeqId: number;
 }

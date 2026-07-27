@@ -24,7 +24,7 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { insertChatMessage } from "../services/zero-chat-message.service";
+import { insertChatEvent } from "../services/zero-chat-event.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -381,9 +381,9 @@ async function seedQueueMarkerForAction(
     return actionBadRequest("failed to seed chat thread");
   }
   const marker = await db.transaction(async (tx) => {
-    return await insertChatMessage(tx, {
+    return await insertChatEvent(tx, {
       chatThreadId: thread.id,
-      role: "assistant",
+      eventType: "run.queued",
       content: "Waiting in queue...",
       runId,
       runEventId: "queue:queued",
@@ -527,11 +527,11 @@ async function getQueueMarkerRevokerForAction(
   const [revoker] = await db
     .select({
       id: chatMessages.id,
-      revokesMessageId: chatMessages.revokesMessageId,
+      revokesMessageId: chatMessages.revokesEventId,
       runEventId: chatMessages.runEventId,
     })
     .from(chatMessages)
-    .where(eq(chatMessages.revokesMessageId, markerId))
+    .where(eq(chatMessages.revokesEventId, markerId))
     .limit(1);
   signal.throwIfAborted();
   return actionOk({ queue_marker_revoker: revoker ?? null });

@@ -1,32 +1,32 @@
 import { command, computed } from "ccstate";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatIdbReadOr,
   chatIdbWriteBestEffort,
 } from "../external/chat-idb-safe.ts";
 import {
-  createIdbMessageStores,
-  type ChatMessageBounds,
-} from "../external/idb-message-store.ts";
+  createIdbEventStores,
+  type ChatEventBounds,
+} from "../external/idb-event-store.ts";
 import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { logger } from "../log.ts";
 
-const L = logger("ChatMessageIndexedDb");
+const L = logger("ChatEventIndexedDb");
 
-type Stores = ReturnType<typeof createIdbMessageStores>;
+type Stores = ReturnType<typeof createIdbEventStores>;
 
-const chatMessageStores$ = computed((get): Stores => {
+const chatEventStores$ = computed((get): Stores => {
   const dbPromise = get(chatIdb$);
-  return createIdbMessageStores(() => {
+  return createIdbEventStores(() => {
     return dbPromise;
   });
 });
 
-export const loadIndexedDbChatMessages$ = command(
+export const loadIndexedDbChatEvents$ = command(
   async ({ get }, threadId: string, signal: AbortSignal) => {
-    const stores = await get(chatMessageStores$);
+    const stores = await get(chatEventStores$);
     signal.throwIfAborted();
-    const messages = await chatIdbReadOr(
+    const events = await chatIdbReadOr(
       "indexedDbMessages:readLatest",
       () => {
         return stores.readStore.readLatest(threadId, signal);
@@ -35,16 +35,16 @@ export const loadIndexedDbChatMessages$ = command(
       signal,
     );
     signal.throwIfAborted();
-    L.debug("loadIndexedDbMessages", { threadId, count: messages.length });
-    return messages;
+    L.debug("loadIndexedDbEvents", { threadId, count: events.length });
+    return events;
   },
 );
 
-export const loadIndexedDbChatMessageBounds$ = command(
+export const loadIndexedDbChatEventBounds$ = command(
   async ({ get }, threadId: string, signal: AbortSignal) => {
-    const stores = await get(chatMessageStores$);
+    const stores = await get(chatEventStores$);
     signal.throwIfAborted();
-    const bounds = await chatIdbReadOr<ChatMessageBounds>(
+    const bounds = await chatIdbReadOr<ChatEventBounds>(
       "indexedDbMessages:readBounds",
       () => {
         return stores.readStore.readBounds(threadId, signal);
@@ -53,7 +53,7 @@ export const loadIndexedDbChatMessageBounds$ = command(
       signal,
     );
     signal.throwIfAborted();
-    L.debug("loadIndexedDbMessageBounds", {
+    L.debug("loadIndexedDbEventBounds", {
       threadId,
       firstId: bounds.first?.id ?? null,
       lastId: bounds.last?.id ?? null,
@@ -62,22 +62,22 @@ export const loadIndexedDbChatMessageBounds$ = command(
   },
 );
 
-export const writeIndexedDbChatMessages$ = command(
+export const writeIndexedDbChatEvents$ = command(
   async (
     { get },
     threadId: string,
-    messages: PagedChatMessage[],
+    events: ChatEvent[],
     signal: AbortSignal,
   ): Promise<void> => {
-    if (messages.length === 0) {
+    if (events.length === 0) {
       return;
     }
-    const stores = await get(chatMessageStores$);
+    const stores = await get(chatEventStores$);
     signal.throwIfAborted();
     await chatIdbWriteBestEffort(
       "indexedDbMessages:upsert",
       () => {
-        return stores.writeStore.upsertMessages(threadId, messages, signal);
+        return stores.writeStore.upsertEvents(threadId, events, signal);
       },
       signal,
     );
