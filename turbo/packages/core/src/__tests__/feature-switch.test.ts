@@ -148,7 +148,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
