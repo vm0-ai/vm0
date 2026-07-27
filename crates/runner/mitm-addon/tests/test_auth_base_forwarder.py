@@ -8,6 +8,7 @@ import multiprocessing
 import ssl
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future
 from unittest.mock import MagicMock, call, patch
 
@@ -1174,7 +1175,7 @@ class TestForwardRequestAsyncWrapper:
     async def test_absolute_deadline_stops_trickling_socket_response(self):
         client_socket, server_socket = forwarder.socket.socketpair()
         sent_body_bytes: list[bytes] = []
-        response_body = b"0123456789abcdef"
+        response_body = bytes(range(256))
 
         class SocketBackedForwardSocket(FakeSocket):
             def settimeout(self, timeout: float | None) -> None:
@@ -1211,7 +1212,7 @@ class TestForwardRequestAsyncWrapper:
                 for byte in response_body:
                     server_socket.sendall(bytes((byte,)))
                     sent_body_bytes.append(bytes((byte,)))
-                    time.sleep(0.02)
+                    time.sleep(0.01)
             except OSError:
                 pass
             finally:
@@ -1228,7 +1229,7 @@ class TestForwardRequestAsyncWrapper:
                 patch.object(
                     forwarder,
                     "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
-                    0.2,
+                    0.5,
                 ),
                 fake_forwarder_upstream(socket_factory=lambda: socket),
                 pytest.raises(forwarder.AuthBaseForwardingDeadlineExceededError),
@@ -1346,12 +1347,27 @@ class TestForwardRequestAsyncWrapper:
         assert first_socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
 
     async def test_completed_forward_cancels_deadline_timer(self):
+        loop = asyncio.get_running_loop()
+        original_call_later = loop.call_later
+        deadline_handles: list[asyncio.TimerHandle] = []
+
+        def record_deadline_handle(
+            delay: float,
+            callback: Callable[..., object],
+            *args: object,
+            context: contextvars.Context | None = None,
+        ) -> asyncio.TimerHandle:
+            handle = original_call_later(
+                delay,
+                callback,
+                *args,
+                context=context,
+            )
+            deadline_handles.append(handle)
+            return handle
+
         with (
-            patch.object(
-                forwarder,
-                "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
-                0.1,
-            ),
+            patch.object(loop, "call_later", side_effect=record_deadline_handle),
             fake_forwarder_upstream() as upstream,
         ):
             status, body, _headers = await forwarder.forward_request(
@@ -1360,10 +1376,11 @@ class TestForwardRequestAsyncWrapper:
                 [],
                 None,
             )
-            await asyncio.sleep(0.15)
 
         assert status == 200
         assert body == b"ok"
+        assert len(deadline_handles) == 1
+        assert deadline_handles[0].cancelled()
         assert upstream.socket.shutdown_calls == []
         with forwarder._forward_request_active_handles_lock:
             assert not forwarder._forward_request_active_handles
