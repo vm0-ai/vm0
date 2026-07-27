@@ -1227,8 +1227,8 @@ async def test_reflection_method_firewall_with_managed_credentials_blocks_before
         await mitm_addon.request(flow)
 
     auth_fetch.assert_not_called()
-    assert upstream.getaddrinfo_calls == []
-    assert upstream.create_connection_calls == []
+    assert upstream.resolve_calls == []
+    assert upstream.connect_calls == []
     assert upstream.sockets == []
     assert flow.response is not None
     assert flow.response.status_code == 403

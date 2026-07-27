@@ -132,8 +132,8 @@ class TestAuthBaseUrlRewriteSafety:
             result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-        assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
-        assert upstream.create_connection_calls == []
+        assert upstream.resolve_calls == ["real.example.com"]
+        assert upstream.connect_calls == []
 
         assert flow.response is not None
         assert flow.response.status_code == 502
