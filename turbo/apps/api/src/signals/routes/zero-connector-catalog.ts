@@ -107,20 +107,26 @@ const listConnectorCatalogStatusInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
 
-    const connectorState = await get(
-      zeroConnectorList({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        featureStates: context.featureStates,
-      }),
+    const connectorState = await settleConnectorCatalogRead(
+      get(
+        zeroConnectorList({
+          orgId: auth.orgId,
+          userId: auth.userId,
+          featureStates: context.featureStates,
+        }),
+      ),
+      signal,
     );
+    if (!connectorState.ok) {
+      return connectorCatalogUnavailable();
+    }
     signal.throwIfAborted();
 
     const catalog = await settleConnectorCatalogRead(
       listPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        connectors: connectorState.connectors,
+        connectors: connectorState.value.connectors,
       }),
       signal,
     );

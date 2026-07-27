@@ -3809,16 +3809,20 @@ describe("connector catalog valid lifecycle", () => {
     configureSource();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
+    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const headers = { authorization: "Bearer clerk-session" };
 
     const catalogResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+      catalogClient.list({ headers }),
+      [503],
+    );
+    const catalogStatusResponse = await accept(
+      catalogClient.status({ headers }),
       [503],
     );
     const searchResponse = await accept(
       setupApp({ context })(zeroConnectorsSearchContract).search({
-        headers: { authorization: "Bearer clerk-session" },
+        headers,
         query: {},
       }),
       [503],
@@ -3830,6 +3834,7 @@ describe("connector catalog valid lifecycle", () => {
       },
     };
     expect(catalogResponse.body).toStrictEqual(expectedError);
+    expect(catalogStatusResponse.body).toStrictEqual(expectedError);
     expect(searchResponse.body).toStrictEqual(expectedError);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRead);
   });
