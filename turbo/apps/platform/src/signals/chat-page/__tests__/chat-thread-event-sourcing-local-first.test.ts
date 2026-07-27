@@ -44,8 +44,11 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
   const readSnapshot = vi.fn(() => {
     return Promise.resolve(snapshot);
   });
-  const readEvents = vi.fn(() => {
-    return Promise.resolve(events);
+  const readEventLog = vi.fn(() => {
+    return Promise.resolve({
+      events,
+      latestEventId: events.at(-1)?.id ?? null,
+    });
   });
   const replaceFromSnapshot = vi.fn(
     (nextSnapshot: {
@@ -72,7 +75,7 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
 
   return {
     readSnapshot,
-    readEvents,
+    readEventLog,
     replaceFromSnapshot,
     upsertEvents,
     setData(args: {
@@ -89,7 +92,7 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
       snapshot = null;
       events = [];
       readSnapshot.mockClear();
-      readEvents.mockClear();
+      readEventLog.mockClear();
       replaceFromSnapshot.mockClear();
       upsertEvents.mockClear();
     },
@@ -102,7 +105,7 @@ vi.mock("../../external/idb-chat-thread-event-store.ts", () => {
       return {
         readStore: {
           readSnapshot: idbThreadEventStoreMock.readSnapshot,
-          readEvents: idbThreadEventStoreMock.readEvents,
+          readEventLog: idbThreadEventStoreMock.readEventLog,
         },
         writeStore: {
           replaceFromSnapshot: idbThreadEventStoreMock.replaceFromSnapshot,
@@ -323,7 +326,8 @@ describe("chat thread event sourcing local-first list", () => {
     const before = await context.store.get(chatThreads$);
     const snapshotReads =
       idbThreadEventStoreMock.readSnapshot.mock.calls.length;
-    const eventReads = idbThreadEventStoreMock.readEvents.mock.calls.length;
+    const eventLogReads =
+      idbThreadEventStoreMock.readEventLog.mock.calls.length;
     idbThreadEventStoreMock.replaceFromSnapshot.mockClear();
     idbThreadEventStoreMock.upsertEvents.mockClear();
 
@@ -334,8 +338,8 @@ describe("chat thread event sourcing local-first list", () => {
     expect(idbThreadEventStoreMock.readSnapshot).toHaveBeenCalledTimes(
       snapshotReads,
     );
-    expect(idbThreadEventStoreMock.readEvents).toHaveBeenCalledTimes(
-      eventReads,
+    expect(idbThreadEventStoreMock.readEventLog).toHaveBeenCalledTimes(
+      eventLogReads,
     );
     expect(idbThreadEventStoreMock.replaceFromSnapshot).not.toHaveBeenCalled();
     expect(idbThreadEventStoreMock.upsertEvents).not.toHaveBeenCalled();
