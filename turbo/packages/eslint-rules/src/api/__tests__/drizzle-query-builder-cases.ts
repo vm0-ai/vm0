@@ -514,6 +514,38 @@ const queryBuilderCases = {
     {
       code: `
         import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const runtimeRows = pgTable("runtime_rows", {
+          id: integer("id").primaryKey(),
+          first: integer("actual_value").notNull(),
+          second: integer("claimed_value").notNull(),
+        });
+        const claimedRows = pgTable("claimed_rows", {
+          id: integer("id").primaryKey(),
+          first: integer("claimed_value").notNull(),
+          second: integer("actual_value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            runtimeRows: typeof runtimeRows;
+            claimedRows: typeof claimedRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        const target = runtimeRows as unknown as typeof claimedRows;
+        await db.execute(sql\`
+          UPDATE \${target}
+          SET claimed_value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
         import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
         const rowsA = pgTable("union_rows", {
           id: text("id").primaryKey(),

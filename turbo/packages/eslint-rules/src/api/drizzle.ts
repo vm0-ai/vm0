@@ -97,6 +97,18 @@ function unwrapTransparentExpression(node: Node): Node {
   return current;
 }
 
+function unwrapStableOriginExpression(node: Node): Node {
+  let current = node;
+  while (
+    isNonNullExpression(current) ||
+    isParenthesizedExpression(current) ||
+    isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 function samePropertyOrder(
   left: readonly string[] | undefined,
   right: readonly string[] | undefined,
@@ -253,7 +265,9 @@ function stableDrizzleTableOrigin(
   node: Node,
   visited: Set<TypeScriptSymbol>,
 ): StableDrizzleTableOrigin | undefined {
-  const expression = unwrapTransparentExpression(node);
+  // A type assertion can expose another table's column metadata while leaving
+  // the runtime table unchanged. That makes builder column mapping unprovable.
+  const expression = unwrapStableOriginExpression(node);
   if (isCallExpression(expression)) {
     const signature = checker.getResolvedSignature(expression);
     const columns = expression.arguments[1];

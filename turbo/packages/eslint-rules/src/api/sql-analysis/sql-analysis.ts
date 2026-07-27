@@ -2988,9 +2988,9 @@ function writeTargetMarker(
     return undefined;
   }
   const marker = markers.get(value.relname);
-  // Write builders can reorder columns when a runtime-selected table has
-  // type-erased column order. Stable metadata also rejects aliases and table
-  // definitions whose runtime Object.keys(...) order cannot be proven.
+  // Stable metadata rejects aliases and runtime-selected targets. Update and
+  // insert profiles separately require proven runtime Object.keys(...) order
+  // because their builders can reorder columns.
   return marker?.tableMetadata?.hasDirectTableConfig === true
     ? marker
     : undefined;
