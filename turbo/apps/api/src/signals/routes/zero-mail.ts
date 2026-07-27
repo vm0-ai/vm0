@@ -1,20 +1,17 @@
 import { command } from "ccstate";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { db$ } from "../external/db";
 import {
   publishChatThreadAutomationsChangedSafely,
   publishChatThreadMessageCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   deleteZeroMailDraft$,
   getZeroMailDraftAttachment$,
@@ -43,16 +40,6 @@ function forbidden(message: string) {
     body: { error: { message, code: "FORBIDDEN" as const } },
   };
 }
-
-const zeroMailReplyFollowUpEnabled$ = command(async ({ get }) => {
-  const auth = get(organizationAuthContext$);
-  const context = await loadUserFeatureSwitchContext(
-    get(db$),
-    auth.orgId,
-    auth.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, context);
-});
 
 function mutationResponse(result: ZeroMailDraftMutationResult) {
   switch (result.kind) {
@@ -250,7 +237,7 @@ const createFollowUpParams$ = pathParamsOf(zeroMailContract.createFollowUp);
 const createFollowUpInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(zeroMailReplyFollowUpEnabled$))) {
+    if (!isZeroMailReplyFollowUpRolloutEnabled()) {
       return zeroMailReplyFollowUpDisabled;
     }
     signal.throwIfAborted();

@@ -967,6 +967,12 @@ function MailDraftDetails({
   );
 }
 
+function isReplyFollowUpEnabled(
+  featureSwitches: Readonly<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
+}
+
 function MailDraftDetail({
   draft,
   signals,
@@ -989,8 +995,7 @@ function MailDraftDetail({
   const followUpSubmitting = followUpState === "submitting";
   const followUpActive = followUpState === "active";
   const followUpPaused = followUpState === "paused";
-  const followUpEnabled =
-    featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
+  const followUpEnabled = isReplyFollowUpEnabled(featureSwitches);
   const active = draft.status === "draft";
   const pending =
     deleteLoadable.state === "loading" ||

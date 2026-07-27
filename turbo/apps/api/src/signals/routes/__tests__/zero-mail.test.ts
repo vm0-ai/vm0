@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroWorkflowAutomationsContract,
@@ -278,9 +279,7 @@ async function seedGmailMailCardFixture(options?: {
   });
   await runs.enableAgentConnectors(actor, agent.agentId, ["gmail"]);
   if (options?.replyFollowUpEnabled) {
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-    });
+    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
   }
   mocks.clerk.session(actor.userId, actorWithOrg.orgId);
   return { actor, agent, thread };
@@ -288,6 +287,10 @@ async function seedGmailMailCardFixture(options?: {
 
 function client() {
   return setupApp({ context })(zeroMailContract);
+}
+
+function featureSwitchesClient() {
+  return setupApp({ context })(zeroFeatureSwitchesContract);
 }
 
 function stateClient() {
@@ -722,6 +725,15 @@ describe("POST /api/zero/mail/drafts/link", () => {
       replyFollowUpEnabled: true,
     });
     mockGmailDraftApi();
+    const featureSwitches = await accept(
+      featureSwitchesClient().get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      featureSwitches.body.effectiveSwitches[
+        FeatureSwitchKey.ZeroMailReplyFollowUp
+      ],
+    ).toBeTruthy();
 
     const linked = await linkDraft(fixture);
     await accept(
@@ -832,6 +844,26 @@ describe("POST /api/zero/mail/drafts/link", () => {
 
   it("rejects reply tracking while its rollout switch is disabled", async () => {
     const fixture = await seedGmailMailCardFixture();
+    if (!fixture.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...fixture.actor, orgId: fixture.actor.orgId },
+      { [FeatureSwitchKey.ZeroMailReplyFollowUp]: true },
+    );
+    const featureSwitches = await accept(
+      featureSwitchesClient().get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(featureSwitches.body.switches).not.toHaveProperty(
+      FeatureSwitchKey.ZeroMailReplyFollowUp,
+    );
+    expect(
+      featureSwitches.body.effectiveSwitches[
+        FeatureSwitchKey.ZeroMailReplyFollowUp
+      ],
+    ).toBeFalsy();
     mockGmailDraftApi();
     const linked = await linkDraft(fixture);
 
