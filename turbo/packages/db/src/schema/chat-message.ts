@@ -98,7 +98,7 @@ export const chatMessages = pgTable(
     // Stable grouping key for repeated automation/workflow/goal-triggered
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
-    eventType: text("event_type").$type<ChatEventType>(),
+    eventType: text("event_type").$type<ChatEventType>().notNull(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     /** Stable business representation of rich user-message content. */
@@ -174,7 +174,7 @@ export const chatMessages = pgTable(
         .where(sql`${table.thinking} IS NOT NULL`),
       check(
         "chat_messages_event_type_check",
-        sql`${table.eventType} IS NULL OR ${table.eventType} IN (
+        sql`${table.eventType} IN (
           'input.prompt',
           'input.rejected',
           'output.message',
