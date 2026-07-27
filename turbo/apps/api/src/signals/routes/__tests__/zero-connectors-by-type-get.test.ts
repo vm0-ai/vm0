@@ -56,7 +56,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
       params: { type: "openai" },
       body: {
         authMethod: "api-token",
-        values: { OPENAI_TOKEN: "sk-test-token" },
+        values: { apiKey: "sk-test-token" },
       },
       headers: authHeaders(),
     }),

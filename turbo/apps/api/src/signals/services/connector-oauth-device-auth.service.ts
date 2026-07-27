@@ -932,7 +932,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       authMethodId: resolvedMethod.authMethodId,
       method: resolvedMethod.method,
       authClient: resolvedClient.authClient,
-      options: normalizedStartOptions.options ?? {},
+      options: normalizedStartOptions.options,
     });
     signal.throwIfAborted();
 

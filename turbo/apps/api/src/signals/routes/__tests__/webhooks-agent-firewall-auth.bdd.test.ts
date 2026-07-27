@@ -1322,8 +1322,8 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const connectorsApi = createConnectorBddApi(context);
     const { actor, headers } = await firewallRun();
     await connectorsApi.connectManualGrant(actor, "lark", "api-token", {
-      LARK_APP_ID: "lark-app-id",
-      LARK_APP_SECRET: "lark-app-secret",
+      appId: "lark-app-id",
+      appSecret: "lark-app-secret",
     });
     server.use(
       http.post(
@@ -1424,9 +1424,9 @@ describe("FW-6: manual-grant api-token refresh without a provider client", () =>
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
     await connectorsApi.connectManualGrant(actor, "test-oauth", "api-token", {
-      TEST_OAUTH_TOKEN: "manual-secret",
-      TEST_OAUTH_API_TOKEN_INPUT_VAR: "manual-var",
-      TEST_OAUTH_API_TENANT_ID: "tenant-x",
+      apiToken: "manual-secret",
+      inputVariable: "manual-var",
+      tenantId: "tenant-x",
     });
 
     const before = Math.floor(now() / 1000);

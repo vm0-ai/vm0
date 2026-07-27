@@ -431,10 +431,10 @@ function manualField(args: {
   };
 }
 
-function selectStartOption(): DeviceStartOption {
+function selectStartOption(publicId = "mode"): DeviceStartOption {
   return {
     privateName: "mode",
-    publicId: "mode",
+    publicId,
     kind: "select",
     label: "Mode",
     required: true,
@@ -1648,7 +1648,7 @@ const connectors = [
             "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
           ),
         },
-        startOptions: [selectStartOption()],
+        startOptions: [selectStartOption("environment")],
       }),
     ],
   }),

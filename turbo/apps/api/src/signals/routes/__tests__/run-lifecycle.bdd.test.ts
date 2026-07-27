@@ -5870,8 +5870,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
 
     await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      GITLAB_TOKEN: "glpat-stored-token",
-      GITLAB_HOST: "gitlab.example.com",
+      accessToken: "glpat-stored-token",
+      host: "gitlab.example.com",
     });
     const composeName = `bdd-compose-overrides-connector-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -6121,7 +6121,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      GITLAB_TOKEN: "glpat-bdd",
+      accessToken: "glpat-bdd",
     });
     await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
 
@@ -6142,8 +6142,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     // Reconnecting with the optional variable threads it into the next run.
     await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      GITLAB_TOKEN: "glpat-bdd",
-      GITLAB_HOST: "gitlab.example.com",
+      accessToken: "glpat-bdd",
+      host: "gitlab.example.com",
     });
     const withHost = await api.createRun(actor, {
       agentId,
@@ -6183,10 +6183,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "x-bdd-lazy-refresh",
     });
     await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      GITLAB_TOKEN: "glpat-bdd-parallel",
+      accessToken: "glpat-bdd-parallel",
     });
     await connectors.connectManualGrant(actor, "figma", "api-token", {
-      FIGMA_TOKEN: "figd_bdd-parallel",
+      accessToken: "figd_bdd-parallel",
     });
     await api.enableAgentConnectors(actor, agentId, ["x", "gitlab", "figma"]);
 
@@ -6214,7 +6214,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await connectors.connectManualGrant(actor, "figma", "api-token", {
-      FIGMA_TOKEN: "figd_bdd",
+      accessToken: "figd_bdd",
     });
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
@@ -6274,8 +6274,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await connectors.connectManualGrant(actor, "lark", "api-token", {
-      LARK_APP_ID: "lark-app-id",
-      LARK_APP_SECRET: "lark-app-secret",
+      appId: "lark-app-id",
+      appSecret: "lark-app-secret",
     });
     await api.enableAgentConnectors(actor, agentId, ["lark"]);
 
@@ -7273,9 +7273,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await connectors.connectManualGrant(actor, "zendesk", "api-token", {
-      ZENDESK_API_TOKEN: "zendesk-token-bdd",
-      ZENDESK_EMAIL: "connector@example.com",
-      ZENDESK_SUBDOMAIN: "münich",
+      apiToken: "zendesk-token-bdd",
+      email: "connector@example.com",
+      subdomain: "münich",
     });
     await api.enableAgentConnectors(actor, agentId, ["zendesk"]);
     await authOrg.setVariable(actor, {
@@ -7328,9 +7328,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId } = await entitledRunActor();
 
     await connectors.connectManualGrant(actor, "jira", "api-token", {
-      JIRA_API_TOKEN: "jira-token-bdd",
-      JIRA_DOMAIN: "attacker.example",
-      JIRA_EMAIL: "connector@example.com",
+      apiToken: "jira-token-bdd",
+      domain: "attacker.example",
+      email: "connector@example.com",
     });
     await api.enableAgentConnectors(actor, agentId, ["jira"]);
 

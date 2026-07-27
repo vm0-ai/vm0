@@ -343,9 +343,7 @@ function prepareManualGrantConnect(
         : sanitized;
     if (!value) {
       if (config.required) {
-        missingRequiredNames.push(
-          normalizedValuesResult.errorNamesByPrivateName[name] ?? name,
-        );
+        missingRequiredNames.push(config.publicId);
       }
       continue;
     }

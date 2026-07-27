@@ -28,7 +28,7 @@ setup_file() {
     # connector-aware path as the frontend's "Add Connection" dialog.
     connect_e2e_connector \
         "discord-webhook" \
-        '{"DISCORD_WEBHOOK_URL":"https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"}'
+        '{"url":"https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"}'
 }
 
 teardown_file() {
