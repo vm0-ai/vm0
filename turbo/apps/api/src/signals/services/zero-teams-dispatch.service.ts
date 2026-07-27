@@ -100,6 +100,7 @@ const TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE =
   "application/vnd.microsoft.teams.file.download.info";
 const TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE = "reference";
 const TEAMS_CHAT_MESSAGE_ID_NAMESPACE = "b60a5846-d85f-4db8-b9aa-d7d803efbb57";
+const TEAMS_DIRECT_MESSAGE_THREAD_ID = "direct-message";
 
 type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
 type TeamsCardAction = "switch_agent" | "switch_model";
@@ -1229,6 +1230,16 @@ function isTeamsThreadReply(activity: TeamsMessageActivity): boolean {
   );
 }
 
+function teamsSessionThreadId(activity: TeamsMessageActivity): string {
+  if (
+    activity.conversationType === "personal" &&
+    !isTeamsThreadReply(activity)
+  ) {
+    return TEAMS_DIRECT_MESSAGE_THREAD_ID;
+  }
+  return activity.threadId;
+}
+
 function currentTeamsActivityIds(
   activity: TeamsMessageActivity,
 ): ReadonlySet<string> {
@@ -1548,7 +1559,7 @@ function teamsDeliveryTarget(args: {
     channelId: args.activity.channelId,
     conversationId: args.activity.conversationId,
     conversationType: args.activity.conversationType,
-    threadId: args.activity.threadId,
+    threadId: teamsSessionThreadId(args.activity),
     activityId: args.activity.activityId,
     serviceUrl: args.activity.serviceUrl,
     connectionId: args.connection.id,
@@ -1603,7 +1614,7 @@ async function persistTeamsChatMessage(args: {
   const route = await ensureTeamsChatThreadRoute(args.db, {
     connectionId: args.connection.id,
     conversationId: args.activity.conversationId,
-    threadId: args.activity.threadId,
+    threadId: teamsSessionThreadId(args.activity),
     userId: args.connection.vm0UserId,
     orgId: args.installation.orgId,
     agentComposeId: args.composeId,

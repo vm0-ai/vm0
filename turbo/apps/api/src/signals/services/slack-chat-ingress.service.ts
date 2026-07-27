@@ -21,6 +21,19 @@ interface SlackChatThreadRouteBinding extends SlackChatThreadRouteKey {
   readonly chatThreadId: string;
 }
 
+const SLACK_DIRECT_MESSAGE_THREAD_TS = "direct-message";
+
+export function slackSessionThreadTs(args: {
+  readonly channelType: "channel" | "dm" | "group_dm";
+  readonly messageTs: string;
+  readonly threadTs?: string;
+}): string {
+  if (args.channelType === "dm" && !args.threadTs) {
+    return SLACK_DIRECT_MESSAGE_THREAD_TS;
+  }
+  return args.threadTs ?? args.messageTs;
+}
+
 function slackChatThreadRouteWhere(key: SlackChatThreadRouteKey) {
   return and(
     eq(slackChatThreadRoutes.connectionId, key.connectionId),

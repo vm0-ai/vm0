@@ -62,6 +62,7 @@ import {
   admitCanonicalSlackChatEvent,
   ensureCanonicalSlackChatThreadRoute,
   findSlackChatThreadRoute,
+  slackSessionThreadTs,
 } from "./slack-chat-ingress.service";
 import { processCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
 import { onRejection, safeJsonParse, tapError } from "../utils";
@@ -740,11 +741,15 @@ const resolveSlackAgentRouteAdmission$ = command(
       return { kind: "ignored" };
     }
 
-    const physicalThreadTs = args.threadTs ?? args.messageTs;
+    const sessionThreadTs = slackSessionThreadTs({
+      channelType: args.channelType,
+      messageTs: args.messageTs,
+      ...(args.threadTs ? { threadTs: args.threadTs } : {}),
+    });
     const routeKey = {
       connectionId: connection.id,
       channelId: args.channelId,
-      threadTs: physicalThreadTs,
+      threadTs: sessionThreadTs,
       userId: connection.vm0UserId,
     };
     const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
