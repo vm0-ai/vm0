@@ -176,6 +176,18 @@ impl<'a> HeartbeatController<'a> {
     }
 }
 
+/// Shared, bounded view of held sessions backed by the workspace cache.
+///
+/// A runner shares one snapshot between heartbeat, discovery, and sandbox
+/// finalization. Heartbeats refresh it from an asynchronous cache scan, while
+/// finalization immediately upserts successful workspace-cache promotions.
+/// The refresh token prevents a scan that started earlier from replacing a
+/// promotion committed while that scan was in flight.
+///
+/// The mutex protects only the in-memory states and refresh metadata. Cache
+/// scans run without holding it. Stored states retain active sessions; active
+/// and just-claimed sessions are filtered only when a current held-session
+/// view is assembled for heartbeat emission or local discovery.
 #[derive(Clone, Default)]
 pub(super) struct HeldSessionStateSnapshot {
     inner: Arc<Mutex<HeldSessionStateSnapshotInner>>,
@@ -188,26 +200,50 @@ struct HeldSessionStateSnapshotInner {
     workspace_cache_revision: u64,
 }
 
+/// Revision captured before a workspace-cache scan.
+///
+/// This is an opaque marker, not a lock guard. Pass it back to
+/// [`HeldSessionStateSnapshot::finish_workspace_cache_refresh`] after the
+/// asynchronous scan so the commit can detect intervening snapshot updates.
 #[derive(Clone, Copy)]
 pub(super) struct WorkspaceCacheSnapshotRefresh {
     revision: u64,
 }
 
 impl HeldSessionStateSnapshot {
+    /// Creates a snapshot whose workspace-cache contents are not yet known.
     pub(super) fn new() -> Self {
         Self::default()
     }
 
+    /// Returns whether a refresh or promotion upsert has established cache state.
+    ///
+    /// Runner startup normally completes an initial refresh before discovery.
+    /// A completed empty refresh is still loaded because absence is then known.
     pub(super) fn workspace_cache_loaded(&self) -> bool {
         self.lock_inner().workspace_cache_loaded
     }
 
+    /// Captures the revision to pair with a later refresh commit.
+    ///
+    /// The mutex is released before this method returns and is therefore not
+    /// held while the caller scans the workspace cache.
     pub(super) fn begin_workspace_cache_refresh(&self) -> WorkspaceCacheSnapshotRefresh {
         WorkspaceCacheSnapshotRefresh {
             revision: self.lock_inner().workspace_cache_revision,
         }
     }
 
+    /// Commits scanned cache state and returns the bounded committed snapshot.
+    ///
+    /// When the revision still matches [`Self::begin_workspace_cache_refresh`],
+    /// the scan replaces the previous cache view. Otherwise, an update occurred
+    /// while the scan was in flight, so the scanned and current states are
+    /// merged before applying the existing ordering and limits. In particular,
+    /// this prevents an older scan from discarding a newly promoted cache.
+    ///
+    /// Finishing a refresh marks the snapshot loaded and advances its revision.
+    /// Active-session filtering is deferred until a current view is assembled.
     pub(super) fn finish_workspace_cache_refresh(
         &self,
         refresh: WorkspaceCacheSnapshotRefresh,
@@ -225,6 +261,12 @@ impl HeldSessionStateSnapshot {
         inner.workspace_cache_states.clone()
     }
 
+    /// Incorporates a successful workspace-cache promotion into the snapshot.
+    ///
+    /// The promoted state is merged with any existing state for the session,
+    /// then the snapshot's deterministic ordering and bounds are reapplied.
+    /// Advancing the revision ensures that an in-flight refresh merges this
+    /// update instead of replacing it with an older scan result.
     pub(super) fn upsert_workspace_cache_state(&self, state: HeldSessionState) {
         let mut inner = self.lock_inner();
         inner.workspace_cache_loaded = true;
@@ -240,6 +282,12 @@ impl HeldSessionStateSnapshot {
         inner.workspace_cache_revision = inner.workspace_cache_revision.wrapping_add(1);
     }
 
+    /// Reports whether the workspace-cache snapshot may contain this session.
+    ///
+    /// Before the first load, absence has not been established, so every
+    /// session might be present. Once loaded, this becomes a membership check
+    /// against the stored states. Discovery uses a possible match to request an
+    /// immediate affinity heartbeat after claiming the session.
     pub(super) fn might_contain_workspace_cache_session(&self, session_id: &str) -> bool {
         let inner = self.lock_inner();
         !inner.workspace_cache_loaded
@@ -249,6 +297,11 @@ impl HeldSessionStateSnapshot {
                 .any(|state| state.session_id == session_id)
     }
 
+    /// Builds the current held-session view from idle and cached state.
+    ///
+    /// Active CLI-agent sessions and `extra_active_session` are filtered while
+    /// assembling this view, without removing them from the stored snapshot.
+    /// The shared merge path also applies heartbeat ordering and limits.
     pub(super) fn current_held_session_states(
         &self,
         idle_states: Vec<HeldSessionState>,
@@ -318,6 +371,11 @@ pub(super) async fn send_heartbeat(
     hb.provider.heartbeat(&state).await;
 }
 
+/// Scans the workspace cache and commits the result to the shared snapshot.
+///
+/// The revision is captured before the asynchronous scan, and no snapshot
+/// mutex is held across the await. The returned value is the committed
+/// snapshot, which may also contain updates merged from concurrent promotions.
 pub(super) async fn refresh_workspace_cache_held_session_snapshot(
     snapshot: &HeldSessionStateSnapshot,
     workspace_cache: Option<&SessionWorkspaceCache>,

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import {
   buildQuickBooksAuthorizationUrl,
   exchangeQuickBooksCode,
@@ -8,13 +7,19 @@ import {
   refreshQuickBooksToken,
 } from "../quickbooks/oauth";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
 }
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("quickbooks", "oauth");
+  return authCodeGrantFixture([
+    "com.intuit.quickbooks.accounting",
+    "openid",
+    "profile",
+    "email",
+  ]);
 }
 
 describe("connector/providers/quickbooks", () => {

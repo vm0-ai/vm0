@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import { eq, or, sql } from "drizzle-orm";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
@@ -123,7 +123,7 @@ async function assembleZip(
   entries: readonly ZipEntry[],
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const archive = archiver("zip", { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const chunks: Buffer[] = [];
   const done = createDeferredPromise<Buffer>(signal);
 

@@ -333,7 +333,6 @@ import {
 import {
   focusChatThreadContainer$,
   setChatKeyboardScrollRoot$,
-  setMainChatThreadKeyboardFocusRef$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
@@ -2414,27 +2413,22 @@ function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
 // ---------------------------------------------------------------------------
 
 function ChatThread({
+  isMain,
   thread,
-  onFocusFallbackRef,
 }: {
+  isMain?: boolean;
   thread: ChatThreadSignals;
-  onFocusFallbackRef?: (el: HTMLElement | null) => (() => void) | undefined;
 }) {
-  const setContainerRef = useSet(thread.setContainerRef$);
+  const setContainerRef = useSet(
+    isMain ? thread.setMainContainerRef$ : thread.setContainerRef$,
+  );
 
   return (
     <section
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
-      ref={(el) => {
-        const cleanupContainerRef = setContainerRef(el);
-        const cleanupFocusFallbackRef = onFocusFallbackRef?.(el);
-        return () => {
-          cleanupFocusFallbackRef?.();
-          cleanupContainerRef?.();
-        };
-      }}
+      ref={setContainerRef}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
@@ -2532,21 +2526,13 @@ function ChatThreadArea({
   rightThread: ChatThreadSignals | null;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
-  const setMainThreadKeyboardFocusRef = useSet(
-    setMainChatThreadKeyboardFocusRef$,
-  );
 
   return (
     <div
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && (
-        <ChatThread
-          thread={leftThread}
-          onFocusFallbackRef={setMainThreadKeyboardFocusRef}
-        />
-      )}
+      {leftThread && <ChatThread isMain thread={leftThread} />}
       {rightThread && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />

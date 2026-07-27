@@ -2,7 +2,6 @@
   "name": "vm0",
   "private": true,
   "scripts": {
-    "postinstall": "pnpm -F @vm0/firewalls-generator generate",
     "build": "turbo run build",
     "dev": "turbo run dev --filter=!@vm0/desktop",
     "desktop:dev": "VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged",
@@ -31,13 +30,12 @@
     "@commitlint/cli": "^20.5.0",
     "@vitest/coverage-v8": "^4.1.10",
     "@vitest/ui": "^4.1.10",
-    "@vm0/firewalls-generator": "workspace:*",
     "dotenv-cli": "^11.0.0",
     "e2b": "^2.10.3",
     "knip": "^5.63.1",
     "prettier": "^3.6.2",
     "tsx": "^4.21.0",
-    "turbo": "^2.10.5",
+    "turbo": "^2.10.7",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"
   },

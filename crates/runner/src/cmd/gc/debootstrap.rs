@@ -155,7 +155,7 @@ mod tests {
     use nix::fcntl::{Flock, FlockArg};
 
     use super::*;
-    use crate::cmd::gc::test_support::test_home;
+    use crate::cmd::gc::test_support::{old_gc_time, set_mtime, test_home};
     use crate::lock;
 
     #[tokio::test]
@@ -285,6 +285,36 @@ mod tests {
         assert_eq!(report.freed_bytes, 0);
         assert_eq!(report.activity_count, 1);
         assert!(!report.is_empty());
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_dry_run_preserves_and_reports_eligible_tarballs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let stable_tar = debootstrap_dir.join("noble-amd64.tar");
+        let temp_tar = debootstrap_dir.join("noble-amd64.tmp.123.tar");
+        std::fs::write(&stable_tar, b"stable cache").unwrap();
+        std::fs::write(&temp_tar, b"partial cache").unwrap();
+        let expected_bytes = std::fs::metadata(&stable_tar).unwrap().len()
+            + std::fs::metadata(&temp_tar).unwrap().len();
+        let old_time = old_gc_time();
+        set_mtime(&stable_tar, old_time);
+        set_mtime(&temp_tar, old_time);
+
+        let report = gc_debootstrap(&home, Some(0), true).await.unwrap();
+
+        assert_eq!(report.freed_bytes, expected_bytes);
+        assert_eq!(report.activity_count, 2);
+        assert!(
+            stable_tar.exists(),
+            "dry-run must preserve an eligible stable tarball"
+        );
+        assert!(
+            temp_tar.exists(),
+            "dry-run must preserve an eligible temporary tarball"
+        );
     }
 
     #[tokio::test]

@@ -86,8 +86,7 @@
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts"],
-      "ignore": ["src/connector-registry.validation.ts"]
+      "project": ["src/**/*.ts"]
     },
     "packages/api-contracts": {
       "entry": [
@@ -163,7 +162,6 @@
   ],
   "ignoreDependencies": [
     "@commitlint/cli",
-    "@vm0/firewalls-generator",
     "oxlint",
     "oxlint-tsgolint",
     "playwright"

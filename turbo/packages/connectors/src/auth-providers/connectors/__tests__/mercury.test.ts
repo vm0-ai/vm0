@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../connector-utils";
 import {
   buildMercuryAuthorizationUrl,
   exchangeMercuryCode,
   refreshMercuryToken,
 } from "../mercury/oauth";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 const EXPECTED_CLIENT_AUTH = `Basic ${Buffer.from("client-id:client-secret").toString("base64")}`;
 
@@ -15,7 +15,7 @@ function testRefreshSignal(): AbortSignal {
 }
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("mercury", "oauth");
+  return authCodeGrantFixture(["offline_access"]);
 }
 
 function useSandboxEnvironment(): void {

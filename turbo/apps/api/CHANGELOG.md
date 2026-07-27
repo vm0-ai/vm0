@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.328.1](https://github.com/vm0-ai/vm0/compare/api-v1.328.0...api-v1.328.1) (2026-07-27)
+
+
+### Refactoring
+
+* **connectors:** make catalog consumption external-only ([#23138](https://github.com/vm0-ai/vm0/issues/23138)) ([5a79f3b](https://github.com/vm0-ai/vm0/commit/5a79f3b532a5a97cb3623bd865130c4259017707))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.3
+    * @vm0/connectors bumped to 1.195.1
+    * @vm0/core bumped to 8.471.1
+    * @vm0/db bumped to 1.143.3
+
 ## [1.328.0](https://github.com/vm0-ai/vm0/compare/api-v1.327.1...api-v1.328.0) (2026-07-26)
 
 

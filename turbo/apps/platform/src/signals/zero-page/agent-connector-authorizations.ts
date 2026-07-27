@@ -4,14 +4,14 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
-export interface AgentConnectorAuthorizations {
+interface AgentConnectorAuthorizations {
   readonly agentId: string;
   readonly enabledTypes: readonly ConnectorRef[];
 }
 
 const internalAgentConnectorAuthorizationsReload$ = state(0);
 
-export const agentConnectorAuthorizationsReload$ = computed((get) => {
+const agentConnectorAuthorizationsReload$ = computed((get) => {
   return get(internalAgentConnectorAuthorizationsReload$);
 });
 

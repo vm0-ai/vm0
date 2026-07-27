@@ -59,7 +59,7 @@ export interface FeedbackItem {
   readonly source?: FeedbackSource;
 }
 
-export interface FeedbackEditorAdapter {
+interface FeedbackEditorAdapter {
   insertItem(item: FeedbackItem): void;
   removeItem(id: number): void;
 }

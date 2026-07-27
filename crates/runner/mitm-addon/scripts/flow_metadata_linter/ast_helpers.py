@@ -375,9 +375,262 @@ def _pattern_is_exhaustive(pattern: ast.pattern) -> bool:
     return False
 
 
+def _comparison_operator_may_raise(operator: ast.cmpop) -> bool:
+    """Return whether one comparison step can invoke user code."""
+    return not isinstance(operator, (ast.Is, ast.IsNot))
+
+
+def _is_modeled_implicit_exception_operation(node: ast.AST) -> bool:
+    """Return whether evaluating ``node`` performs a modeled fallible operation."""
+    if isinstance(node, ast.Compare):
+        return any(_comparison_operator_may_raise(operator) for operator in node.ops)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return _truth_test_may_raise(node.operand)
+    return isinstance(
+        node,
+        (
+            ast.Attribute,
+            ast.Await,
+            ast.BinOp,
+            ast.Call,
+            ast.Subscript,
+            ast.UnaryOp,
+            ast.YieldFrom,
+        ),
+    )
+
+
+def _truth_test_may_raise(node: ast.AST) -> bool:
+    """Return whether truth-testing an evaluated expression may invoke user code."""
+    if isinstance(
+        node,
+        (
+            ast.Constant,
+            ast.Dict,
+            ast.GeneratorExp,
+            ast.JoinedStr,
+            ast.Lambda,
+            ast.List,
+            ast.Set,
+            ast.Tuple,
+        ),
+    ):
+        return False
+    if isinstance(node, ast.NamedExpr):
+        return _truth_test_may_raise(node.value)
+    if isinstance(node, ast.IfExp):
+        return _truth_test_may_raise(node.body) or _truth_test_may_raise(node.orelse)
+    if isinstance(node, ast.BoolOp):
+        return any(_truth_test_may_raise(value) for value in node.values)
+    if isinstance(node, ast.Compare):
+        return _comparison_operator_may_raise(node.ops[-1])
+    return not (isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not))
+
+
+def _static_truth_value(node: ast.AST) -> bool | None:
+    """Return an expression's statically known truth value, if any."""
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+        if not node.elts:
+            return False
+        return True if any(not isinstance(element, ast.Starred) for element in node.elts) else None
+    if isinstance(node, ast.Dict):
+        if not node.keys:
+            return False
+        return True if any(key is not None for key in node.keys) else None
+    if isinstance(node, (ast.GeneratorExp, ast.Lambda)):
+        return True
+    if isinstance(node, ast.NamedExpr):
+        return _static_truth_value(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        operand_truth = _static_truth_value(node.operand)
+        return None if operand_truth is None else not operand_truth
+    return None
+
+
+def _iteration_may_raise(node: ast.AST) -> bool:
+    """Return whether obtaining or advancing this iterable may invoke user code."""
+    if isinstance(
+        node,
+        (
+            ast.Dict,
+            ast.DictComp,
+            ast.GeneratorExp,
+            ast.JoinedStr,
+            ast.List,
+            ast.ListComp,
+            ast.Set,
+            ast.SetComp,
+            ast.Tuple,
+        ),
+    ):
+        return False
+    return not (isinstance(node, ast.Constant) and isinstance(node.value, (bytes, str)))
+
+
+def _iterable_is_statically_empty(node: ast.AST) -> bool:
+    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+        return not node.elts
+    if isinstance(node, ast.Dict):
+        return not node.keys
+    return (
+        isinstance(node, ast.Constant) and isinstance(node.value, (bytes, str)) and not node.value
+    )
+
+
+class _ModeledImplicitExceptionVisitor(ast.NodeVisitor):
+    """Find modeled operations executed while evaluating one expression."""
+
+    def __init__(self) -> None:
+        self.may_raise = False
+
+    def visit(self, node: ast.AST) -> None:
+        if self.may_raise:
+            return
+        if _is_modeled_implicit_exception_operation(node):
+            self.may_raise = True
+            return
+        super().visit(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        if not node.generators:
+            return
+        self.visit(node.generators[0].iter)
+        if not self.may_raise and (
+            node.generators[0].is_async or _iteration_may_raise(node.generators[0].iter)
+        ):
+            self.may_raise = True
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        for index, value in enumerate(node.values):
+            self.visit(value)
+            if self.may_raise or index == len(node.values) - 1:
+                return
+            if _truth_test_may_raise(value):
+                self.may_raise = True
+                return
+            truth_value = _static_truth_value(value)
+            if (isinstance(node.op, ast.And) and truth_value is False) or (
+                isinstance(node.op, ast.Or) and truth_value is True
+            ):
+                return
+
+    def visit_IfExp(self, node: ast.IfExp) -> None:
+        self.visit(node.test)
+        if self.may_raise:
+            return
+        if _truth_test_may_raise(node.test):
+            self.may_raise = True
+            return
+        test_truth = _static_truth_value(node.test)
+        if test_truth is not False:
+            self.visit(node.body)
+        if not self.may_raise and test_truth is not True:
+            self.visit(node.orelse)
+
+    def _visit_eager_comprehension(
+        self, generators: list[ast.comprehension], body: list[ast.AST]
+    ) -> None:
+        for generator in generators:
+            self.visit(generator.iter)
+            if self.may_raise:
+                return
+            if generator.is_async or _iteration_may_raise(generator.iter):
+                self.may_raise = True
+                return
+            if _iterable_is_statically_empty(generator.iter):
+                return
+            for condition in generator.ifs:
+                self.visit(condition)
+                if self.may_raise:
+                    return
+                if _truth_test_may_raise(condition):
+                    self.may_raise = True
+                    return
+                if _static_truth_value(condition) is False:
+                    return
+        for expression in body:
+            self.visit(expression)
+            if self.may_raise:
+                return
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_eager_comprehension(node.generators, [node.elt])
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_eager_comprehension(node.generators, [node.elt])
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_eager_comprehension(node.generators, [node.key, node.value])
+
+
+def _expression_may_raise(node: ast.AST | None) -> bool:
+    if node is None:
+        return False
+    visitor = _ModeledImplicitExceptionVisitor()
+    visitor.visit(node)
+    return visitor.may_raise
+
+
+def _expressions_may_raise(nodes: list[ast.AST | None]) -> bool:
+    return any(_expression_may_raise(node) for node in nodes)
+
+
+def _assertion_may_raise(node: ast.Assert) -> bool:
+    return (
+        _expression_may_raise(node.test)
+        or _truth_test_may_raise(node.test)
+        or _static_truth_value(node.test) is not True
+    )
+
+
+def _function_definition_may_raise(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return _expressions_may_raise(
+        [
+            *node.decorator_list,
+            *node.args.defaults,
+            *node.args.kw_defaults,
+        ]
+    )
+
+
+def _class_definition_may_raise(node: ast.ClassDef) -> bool:
+    return _expressions_may_raise(
+        [
+            *node.decorator_list,
+            *node.bases,
+            *node.keywords,
+        ]
+    )
+
+
+def _annotation_target_may_raise(node: ast.AST) -> bool:
+    if isinstance(node, ast.Attribute):
+        return _expression_may_raise(node.value)
+    if isinstance(node, ast.Subscript):
+        return _expressions_may_raise([node.value, node.slice])
+    return False
+
+
+def _with_protected_region_may_raise(items: list[ast.withitem], body_flow: _FlowSummary) -> bool:
+    target_may_raise = any(
+        _expression_may_raise(item.optional_vars)
+        for item in items
+        if item.optional_vars is not None
+    )
+    nested_context_may_raise = any(_expression_may_raise(item.context_expr) for item in items[1:])
+    return target_may_raise or nested_context_may_raise or body_flow.raises
+
+
 @dataclass(frozen=True)
 class _FlowSummary:
-    """Syntactic exits used by reachability; ``raises`` covers explicit ``raise`` only."""
+    """Syntactic normal and modeled exceptional exits used by reachability."""
 
     falls_through: bool
     raises: bool
@@ -409,7 +662,13 @@ def _try_statement_flow(statement: ast.Try) -> _FlowSummary:
         raises = raises or orelse_flow.raises
     handler_flows = [_body_flow(handler.body) for handler in statement.handlers]
     falls_through = normal_path_falls_through or any(flow.falls_through for flow in handler_flows)
-    raises = raises or any(flow.raises for flow in handler_flows)
+    raises = raises or (
+        body_flow.raises
+        and (
+            any(flow.raises for flow in handler_flows)
+            or any(_expression_may_raise(handler.type) for handler in statement.handlers)
+        )
+    )
     if not statement.finalbody:
         return _FlowSummary(falls_through=falls_through, raises=raises)
     finalbody_flow = _body_flow(statement.finalbody)
@@ -422,52 +681,138 @@ def _try_statement_flow(statement: ast.Try) -> _FlowSummary:
 def _statement_flow(statement: ast.stmt) -> _FlowSummary:
     if isinstance(statement, ast.Raise):
         return _FlowSummary(falls_through=False, raises=True)
-    if isinstance(statement, (ast.Return, ast.Break, ast.Continue)):
+    if isinstance(statement, ast.Assert):
+        return _FlowSummary(
+            falls_through=_static_truth_value(statement.test) is not False,
+            raises=_assertion_may_raise(statement),
+        )
+    if isinstance(statement, ast.Return):
+        return _FlowSummary(
+            falls_through=False,
+            raises=_expression_may_raise(statement.value),
+        )
+    if isinstance(statement, (ast.Break, ast.Continue)):
         return _FlowSummary(falls_through=False, raises=False)
     if isinstance(statement, ast.If):
+        test_truth = _static_truth_value(statement.test)
         body_flow = _body_flow(statement.body)
         orelse_flow = (
             _body_flow(statement.orelse)
             if statement.orelse
             else _FlowSummary(falls_through=True, raises=False)
         )
+        reachable_flows = []
+        if test_truth is not False:
+            reachable_flows.append(body_flow)
+        if test_truth is not True:
+            reachable_flows.append(orelse_flow)
         return _FlowSummary(
-            falls_through=body_flow.falls_through or orelse_flow.falls_through,
-            raises=body_flow.raises or orelse_flow.raises,
+            falls_through=any(flow.falls_through for flow in reachable_flows),
+            raises=(
+                _expression_may_raise(statement.test)
+                or _truth_test_may_raise(statement.test)
+                or any(flow.raises for flow in reachable_flows)
+            ),
         )
     if isinstance(statement, (ast.With, ast.AsyncWith)):
         body_flow = _body_flow(statement.body)
+        protected_region_may_raise = _with_protected_region_may_raise(statement.items, body_flow)
         return _FlowSummary(
-            falls_through=body_flow.falls_through or body_flow.raises,
-            raises=body_flow.raises,
+            falls_through=body_flow.falls_through or protected_region_may_raise,
+            raises=(
+                _expression_may_raise(statement.items[0].context_expr) or protected_region_may_raise
+            ),
         )
     if _is_try_statement(statement):
         return _try_statement_flow(statement)
-    if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
-        body_flow = _body_flow(statement.body)
+    if isinstance(statement, (ast.For, ast.AsyncFor)):
         orelse_flow = _body_flow(statement.orelse)
+        iterable_is_empty = isinstance(statement, ast.For) and _iterable_is_statically_empty(
+            statement.iter
+        )
+        body_raises = False if iterable_is_empty else _body_flow(statement.body).raises
         return _FlowSummary(
-            falls_through=True,
-            raises=body_flow.raises or orelse_flow.raises,
+            falls_through=orelse_flow.falls_through if iterable_is_empty else True,
+            raises=(
+                _expression_may_raise(statement.iter)
+                or (
+                    not iterable_is_empty
+                    and (
+                        isinstance(statement, ast.AsyncFor) or _iteration_may_raise(statement.iter)
+                    )
+                )
+                or (not iterable_is_empty and _expression_may_raise(statement.target))
+                or body_raises
+                or orelse_flow.raises
+            ),
+        )
+    if isinstance(statement, ast.While):
+        test_truth = _static_truth_value(statement.test)
+        orelse_flow = _body_flow(statement.orelse)
+        body_raises = False if test_truth is False else _body_flow(statement.body).raises
+        return _FlowSummary(
+            falls_through=orelse_flow.falls_through if test_truth is False else True,
+            raises=(
+                _expression_may_raise(statement.test)
+                or _truth_test_may_raise(statement.test)
+                or body_raises
+                or orelse_flow.raises
+            ),
         )
     if isinstance(statement, ast.Match):
         case_falls_through = False
         has_unmatched_path = True
         raises = False
         for case in statement.cases:
-            case_flow = _body_flow(case.body)
-            case_falls_through = case_falls_through or case_flow.falls_through
-            raises = raises or case_flow.raises
-            if case.guard is None and _pattern_is_exhaustive(case.pattern):
+            guard_truth = _static_truth_value(case.guard) if case.guard is not None else True
+            case_flow = (
+                _body_flow(case.body)
+                if guard_truth is not False
+                else _FlowSummary(falls_through=False, raises=False)
+            )
+            if guard_truth is not False:
+                case_falls_through = case_falls_through or case_flow.falls_through
+            raises = (
+                raises
+                or _expression_may_raise(case.guard)
+                or (case.guard is not None and _truth_test_may_raise(case.guard))
+                or case_flow.raises
+            )
+            if guard_truth is True and _pattern_is_exhaustive(case.pattern):
                 has_unmatched_path = False
                 break
         return _FlowSummary(
             falls_through=has_unmatched_path or case_falls_through,
-            raises=raises,
+            raises=_expression_may_raise(statement.subject) or raises,
         )
     if isinstance(statement, ast.ClassDef):
-        return _body_flow(statement.body)
-    return _FlowSummary(falls_through=True, raises=False)
+        body_flow = _body_flow(statement.body)
+        return _FlowSummary(
+            falls_through=body_flow.falls_through,
+            raises=_class_definition_may_raise(statement) or body_flow.raises,
+        )
+    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return _FlowSummary(
+            falls_through=True,
+            raises=_function_definition_may_raise(statement),
+        )
+    if isinstance(statement, ast.Expr):
+        raises = _expression_may_raise(statement.value)
+    elif isinstance(statement, ast.Assign):
+        raises = _expressions_may_raise([statement.value, *statement.targets])
+    elif isinstance(statement, ast.AnnAssign):
+        raises = (
+            _expressions_may_raise([statement.value, statement.target])
+            if statement.value is not None
+            else _annotation_target_may_raise(statement.target)
+        )
+    elif isinstance(statement, ast.AugAssign):
+        raises = True
+    elif isinstance(statement, ast.Delete):
+        raises = _expressions_may_raise(list(statement.targets))
+    else:
+        raises = False
+    return _FlowSummary(falls_through=True, raises=raises)
 
 
 def _statement_can_fall_through(statement: ast.stmt) -> bool:

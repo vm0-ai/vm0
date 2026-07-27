@@ -387,12 +387,12 @@ describe("system storage presigned URL cache", () => {
     );
     const primary = await storages.prepareStorage(actor, {
       storageName: skill.storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       files: [primaryFile],
     });
     await storages.commitStorage(actor, {
       storageName: skill.storageName,
-      storageType: "volume",
+      storageOwner: "organization",
       versionId: primary.versionId,
       files: [primaryFile],
     });

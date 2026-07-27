@@ -42,14 +42,14 @@ export async function commitMemoryVersion(
 
   const prepared = await storagesApi.prepareStorage(actor, {
     storageName: MEMORY_ARTIFACT_NAME,
-    storageType: "artifact",
+    storageOwner: "user",
     files: entries,
   });
   storagesApi.mockStorageObjectExistsOnce();
   storagesApi.mockStorageObjectExistsOnce();
   await storagesApi.commitStorage(actor, {
     storageName: MEMORY_ARTIFACT_NAME,
-    storageType: "artifact",
+    storageOwner: "user",
     versionId: prepared.versionId,
     files: entries,
   });

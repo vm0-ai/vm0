@@ -156,6 +156,7 @@ export function clearMockedAuth() {
   mockedClerk.signOut.mockReset();
   mockedClerk.openSignIn.mockReset();
   mockedClerk.openUserProfile.mockReset();
+  mockedClerk.closeUserProfile.mockReset();
   mockedClerk.setActive.mockReset();
   mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
   mockedClerk.createOrganization.mockReset();
@@ -239,6 +240,11 @@ const initialize =
     (publishableKey: string, options?: { readonly domain?: string }) => void
   >();
 
+interface MockedUserProfileOptions {
+  apiKeysProps?: { hide?: boolean };
+  getContainer?: () => HTMLElement | null;
+}
+
 export const mockedClerk = {
   initialize,
   get user() {
@@ -269,9 +275,8 @@ export const mockedClerk = {
   openSignIn: vi.fn(() => {
     return Promise.resolve();
   }),
-  openUserProfile: vi.fn(() => {
-    return Promise.resolve();
-  }),
+  openUserProfile: vi.fn<(options?: MockedUserProfileOptions) => void>(),
+  closeUserProfile: vi.fn<() => void>(),
   load: vi.fn(defaultLoadImpl),
   addListener: (cb: () => void) => {
     clerkListeners.push(cb);
