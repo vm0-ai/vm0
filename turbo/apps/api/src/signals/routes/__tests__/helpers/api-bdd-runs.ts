@@ -1128,6 +1128,7 @@ export function createRunsApi(context: TestContext) {
       const processUsageEvents = await accept(
         runApp(context)(cronProcessUsageEventsContract).process({
           headers,
+          query: {},
         }),
         [401],
       );

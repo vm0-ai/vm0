@@ -543,9 +543,17 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async processUsageEvents() {
+    /**
+     * Settles pending usage. API test files share one database and run in
+     * parallel, so callers that hold a mocked clock must pass `orgId`;
+     * an unscoped sweep would stamp other files' rows with that clock.
+     */
+    async processUsageEvents(orgId?: string) {
       const client = setupApp({ context })(cronProcessUsageEventsContract);
-      return await accept(client.process({ headers: cronHeaders() }), [200]);
+      return await accept(
+        client.process({ query: { orgId }, headers: cronHeaders() }),
+        [200],
+      );
     },
 
     async recordSignupAttribution(actor: ApiTestUser) {

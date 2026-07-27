@@ -209,6 +209,11 @@ export const cronProcessUsageEventsContract = c.router({
     method: "GET",
     path: "/api/cron/process-usage-events",
     headers: authHeadersSchema,
+    query: z.object({
+      // Restricts settlement to a single org. The scheduled cron omits this and
+      // keeps sweeping every org with pending usage.
+      orgId: z.string().optional(),
+    }),
     responses: {
       200: cronProcessUsageEventsResponseSchema,
       401: apiErrorSchema,
