@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.328.0](https://github.com/vm0-ai/vm0/compare/api-v1.327.1...api-v1.328.0) (2026-07-26)
+
+
+### Features
+
+* prune oversized codex session history ([#23136](https://github.com/vm0-ai/vm0/issues/23136)) ([010d286](https://github.com/vm0-ai/vm0/commit/010d286e46b4b7035ef41e6417bdfca707688aa0))
+
+
+### Refactoring
+
+* require slack file id and permalink for delivered assets ([#23147](https://github.com/vm0-ai/vm0/issues/23147)) ([1929e12](https://github.com/vm0-ai/vm0/commit/1929e12a6c015c2ba0eef9a3d4d985b1f51c6506))
+* **storage:** detach runtime from legacy storage type ([#23143](https://github.com/vm0-ai/vm0/issues/23143)) ([cc415c5](https://github.com/vm0-ai/vm0/commit/cc415c5c844343ab573c0d9de5a31d1fd378ad69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.2
+    * @vm0/connectors bumped to 1.195.0
+    * @vm0/core bumped to 8.471.0
+    * @vm0/db bumped to 1.143.2
+
 ## [1.327.1](https://github.com/vm0-ai/vm0/compare/api-v1.327.0...api-v1.327.1) (2026-07-26)
 
 
