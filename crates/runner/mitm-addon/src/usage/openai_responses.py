@@ -695,31 +695,6 @@ def _extract_openai_responses_usage_from_decoded_json_body(
     return extractor.finish()
 
 
-def extract_openai_responses_usage_from_json(
-    body: bytes, headers: http.Headers | None
-) -> dict | None:
-    """Extract usage from a complete non-streaming Responses JSON body.
-
-    ``headers`` may be mitmproxy response headers or ``None``. When headers are
-    provided, their content encoding controls one-shot decompression before
-    parsing; ``None`` skips decompression.
-
-    This is the silent best-effort API: it returns ``None`` when decoding or
-    parsing fails, the decoded body is empty, or no platform usage categories
-    can be extracted. Otherwise returns a dict keyed by platform model usage
-    categories such as ``MODEL_USAGE_CATEGORY_INPUT``,
-    ``MODEL_USAGE_CATEGORY_OUTPUT``, ``MODEL_USAGE_CATEGORY_CACHE_READ``, and
-    ``MODEL_USAGE_CATEGORY_CACHE_CREATION``.
-    """
-
-    if headers:
-        body = body_decoding.decompress_body(
-            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
-        )
-    usage, _error = _extract_openai_responses_usage_from_decoded_json_body(body)
-    return usage
-
-
 def extract_openai_responses_usage_with_error_from_json(
     body: bytes, headers: http.Headers | None
 ) -> tuple[dict | None, str | None]:
