@@ -291,9 +291,8 @@ const chatCallbackPayloadSchema = z
       })
       .optional(),
     feishuDelivery: feishuDeliveryTargetSchema.optional(),
-    // Set for goal-triggered runs so terminal push notifications can be gated:
-    // an active goal loops on every idle, so interim per-iteration pushes are
-    // suppressed and only terminal states (complete/blocked/auto-stopped) notify.
+    // Retain while callbacks created by this version can be dispatched by
+    // rollback-eligible API versions that still gate pushes by run origin.
     isGoalRun: z.boolean().optional(),
   })
   .passthrough();
@@ -1471,7 +1470,6 @@ async function runCompletedChatCallbackSideEffects(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
-  readonly isGoalRun: boolean;
   readonly lastResultText: string | null;
   readonly followupContext: readonly ChatCompletionContextMessage[];
   readonly structuredPromptEnabled: boolean;
@@ -1512,18 +1510,12 @@ async function runCompletedChatCallbackSideEffects(args: {
   })();
 
   const pushStep = (async () => {
-    // A goal-triggered run that completes while the goal is still active is just
-    // one iteration of a self-continuing loop, so suppress its push. If the run
-    // completed or blocked the goal, it no longer loads as active and falls
-    // through to notify.
-    if (args.isGoalRun) {
-      const goal = await loadActiveGoalForThread(args.db, {
-        orgId: args.chatThread.orgId,
-        threadId: args.chatThread.chatThreadId,
-      });
-      if (goal !== null) {
-        return;
-      }
+    const goal = await loadActiveGoalForThread(args.db, {
+      orgId: args.chatThread.orgId,
+      threadId: args.chatThread.chatThreadId,
+    });
+    if (goal !== null) {
+      return;
     }
 
     let summary: string | null = null;
@@ -1605,6 +1597,14 @@ async function runFailedChatCallbackSideEffects(args: {
   readonly chatThread: ChatThreadForRunRow;
   readonly displayErrorMessage: string;
 }): Promise<void> {
+  const goal = await loadActiveGoalForThread(args.db, {
+    orgId: args.chatThread.orgId,
+    threadId: args.chatThread.chatThreadId,
+  });
+  if (goal !== null) {
+    return;
+  }
+
   await sendUserPushNotifications({
     db: args.db,
     userId: args.chatThread.userId,
@@ -2736,7 +2736,6 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
-  readonly isGoalRun: boolean;
   readonly dependencies: ChatCallbackDependencies;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
@@ -2800,7 +2799,6 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         runId: args.runId,
         run: args.run,
         chatThread: args.chatThread,
-        isGoalRun: args.isGoalRun,
         lastResultText: completed.lastResultText,
         followupContext: completed.followupContext,
         structuredPromptEnabled,
@@ -3098,7 +3096,6 @@ async function processTerminalChatCallback(
     return;
   }
   const { run, chatThread } = loaded;
-  const isGoalRun = args.payload.isGoalRun ?? false;
 
   const prepared = await settle(
     callbackStatus === "completed"
@@ -3107,7 +3104,6 @@ async function processTerminalChatCallback(
           runId,
           run,
           chatThread,
-          isGoalRun,
           dependencies: args.dependencies,
           timing,
           signal: args.signal,
