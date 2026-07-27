@@ -99,6 +99,15 @@ DestinationDenialReason = Literal[
     "invalid_destination",
     "non_public_destination",
 ]
+_RuntimeDestinationHostKind = Literal[
+    "missing",
+    "invalid",
+    "non_public",
+    "public",
+    "hostname",
+    "deferable_hostname",
+]
+_HostnameClassificationMode = Literal["skip", "generic", "deferable"]
 
 
 @dataclass(frozen=True)
@@ -140,104 +149,97 @@ def classify_runtime_destination_host(
 ) -> RuntimeDestinationHostClassification:
     """Classify runtime host text once for collection, deferral, and validation."""
 
+    kind = _runtime_destination_host_kind(
+        destination_host,
+        hostname_classification="deferable",
+    )
+    return RuntimeDestinationHostClassification(
+        validation=_runtime_destination_check(destination_host, kind),
+        is_hostname=kind in ("hostname", "deferable_hostname"),
+        deferable_hostname=kind == "deferable_hostname",
+    )
+
+
+def _runtime_destination_host_kind(
+    destination_host: object,
+    *,
+    hostname_classification: _HostnameClassificationMode,
+) -> _RuntimeDestinationHostKind:
+    """Parse only the hostname detail required by the calling contract.
+
+    ``skip`` treats non-IP text as invalid concrete evidence. ``generic``
+    distinguishes ordinary IDNA hostnames for the tri-state literal adapter.
+    ``deferable`` additionally records trusted-authority eligibility.
+    """
+
     if not isinstance(destination_host, str):
-        return RuntimeDestinationHostClassification(
-            validation=RuntimeDestinationCheck(
-                allowed=False,
-                destination_host="",
-                reason="missing_destination",
-            )
-        )
+        return "missing"
 
-    normalized_destination = destination_host.strip()
-    if not normalized_destination:
-        return RuntimeDestinationHostClassification(
-            validation=RuntimeDestinationCheck(
-                allowed=False,
-                destination_host=normalized_destination,
-                reason="missing_destination",
-            )
-        )
-    if normalized_destination != destination_host:
-        return RuntimeDestinationHostClassification(
-            validation=RuntimeDestinationCheck(
-                allowed=False,
-                destination_host=destination_host,
-                reason="invalid_destination",
-            )
-        )
+    ip_text = destination_host.strip()
+    if not ip_text:
+        return "missing"
+    if ip_text != destination_host:
+        return "invalid"
 
-    ip_text = normalized_destination
     bracketed = ip_text.startswith("[") or ip_text.endswith("]")
     if bracketed:
         if not (ip_text.startswith("[") and ip_text.endswith("]")):
-            return RuntimeDestinationHostClassification(
-                validation=RuntimeDestinationCheck(
-                    allowed=False,
-                    destination_host=normalized_destination,
-                    reason="invalid_destination",
-                )
-            )
+            return "invalid"
         ip_text = ip_text[1:-1]
         if not ip_text:
-            return RuntimeDestinationHostClassification(
-                validation=RuntimeDestinationCheck(
-                    allowed=False,
-                    destination_host=normalized_destination,
-                    reason="invalid_destination",
-                )
-            )
+            return "invalid"
 
     try:
         ip = ipaddress.ip_address(ip_text)
     except ValueError:
-        invalid_validation = RuntimeDestinationCheck(
-            allowed=False,
-            destination_host=normalized_destination,
-            reason="invalid_destination",
-        )
         if bracketed or _looks_like_legacy_ipv4_literal(ip_text):
-            return RuntimeDestinationHostClassification(validation=invalid_validation)
-        try:
-            normalize_trusted_hostname(ip_text)
-        except (UnicodeError, ValueError):
+            return "invalid"
+        if hostname_classification == "skip":
+            return "invalid"
+        if hostname_classification == "deferable":
             try:
-                normalize_idna_hostname(ip_text)
+                normalize_trusted_hostname(ip_text)
             except (UnicodeError, ValueError):
-                return RuntimeDestinationHostClassification(validation=invalid_validation)
-            return RuntimeDestinationHostClassification(
-                validation=invalid_validation,
-                is_hostname=True,
-            )
-        return RuntimeDestinationHostClassification(
-            validation=invalid_validation,
-            is_hostname=True,
-            deferable_hostname=True,
-        )
+                pass
+            else:
+                return "deferable_hostname"
+        try:
+            normalize_idna_hostname(ip_text)
+        except (UnicodeError, ValueError):
+            return "invalid"
+        return "hostname"
 
     if bracketed and not isinstance(ip, ipaddress.IPv6Address):
-        return RuntimeDestinationHostClassification(
-            validation=RuntimeDestinationCheck(
-                allowed=False,
-                destination_host=normalized_destination,
-                reason="invalid_destination",
-            )
-        )
+        return "invalid"
 
     if not _ip_address_is_public(ip):
-        return RuntimeDestinationHostClassification(
-            validation=RuntimeDestinationCheck(
-                allowed=False,
-                destination_host=normalized_destination,
-                reason="non_public_destination",
-            )
-        )
+        return "non_public"
 
-    return RuntimeDestinationHostClassification(
-        validation=RuntimeDestinationCheck(
+    return "public"
+
+
+def _runtime_destination_check(
+    destination_host: object,
+    kind: _RuntimeDestinationHostKind,
+) -> RuntimeDestinationCheck:
+    diagnostic_host = (
+        destination_host if isinstance(destination_host, str) and kind != "missing" else ""
+    )
+    if kind == "public":
+        return RuntimeDestinationCheck(
             allowed=True,
-            destination_host=normalized_destination,
+            destination_host=diagnostic_host,
         )
+    if kind == "missing":
+        reason: DestinationDenialReason = "missing_destination"
+    elif kind == "non_public":
+        reason = "non_public_destination"
+    else:
+        reason = "invalid_destination"
+    return RuntimeDestinationCheck(
+        allowed=False,
+        destination_host=diagnostic_host,
+        reason=reason,
     )
 
 
@@ -258,10 +260,13 @@ def public_ip_literal_is_public(hostname: str) -> bool | None:
     endpoint rather than treating ``None`` as approval.
     """
 
-    classification = classify_runtime_destination_host(hostname)
-    if classification.is_hostname:
+    kind = _runtime_destination_host_kind(
+        hostname,
+        hostname_classification="generic",
+    )
+    if kind in ("hostname", "deferable_hostname"):
         return None
-    return classification.validation.allowed
+    return kind == "public"
 
 
 def validate_runtime_destination_host(destination_host: object) -> RuntimeDestinationCheck:
@@ -279,7 +284,11 @@ def validate_runtime_destination_host(destination_host: object) -> RuntimeDestin
     ``RuntimeDestinationCheck`` for the diagnostic host-field contract.
     """
 
-    return classify_runtime_destination_host(destination_host).validation
+    kind = _runtime_destination_host_kind(
+        destination_host,
+        hostname_classification="skip",
+    )
+    return _runtime_destination_check(destination_host, kind)
 
 
 def ip_address_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
