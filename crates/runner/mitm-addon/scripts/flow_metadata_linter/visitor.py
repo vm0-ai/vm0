@@ -937,7 +937,6 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if test_truth is not False:
             body_aliases, body_falls_through = self._visit_branch_body(node.body, base_aliases)
         else:
-            body_aliases = set()
             body_falls_through = False
         if test_truth is not True and node.orelse:
             orelse_aliases, orelse_falls_through = self._visit_branch_body(
