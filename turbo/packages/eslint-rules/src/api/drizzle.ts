@@ -5,21 +5,33 @@ import {
 } from "@typescript-eslint/utils";
 import {
   isAsExpression,
-  isBinaryExpression,
-  isBindingElement,
+  isArrowFunction,
+  isBlock,
   isCallExpression,
-  isConditionalExpression,
+  isCallSignatureDeclaration,
+  isComputedPropertyName,
+  isFunctionExpression,
+  isIdentifier,
+  isInterfaceDeclaration,
   isNonNullExpression,
+  isNumericLiteral,
+  isObjectLiteralExpression,
   isParenthesizedExpression,
   isPropertyAssignment,
+  isReturnStatement,
   isShorthandPropertyAssignment,
   isSatisfiesExpression,
+  isSpreadAssignment,
+  isStringLiteralLike,
   isTypeAssertionExpression,
   isVariableDeclaration,
+  isVariableDeclarationList,
+  NodeFlags,
   SymbolFlags,
   TypeFlags,
   type Declaration,
   type Node,
+  type PropertyName,
   type Signature,
   type Symbol as TypeScriptSymbol,
   type Type,
@@ -67,11 +79,44 @@ export function isNamedDrizzleSignature(
   );
 }
 
+interface StableDrizzleTableOrigin {
+  readonly columnPropertyOrder: readonly string[] | undefined;
+}
+
+function unwrapTransparentExpression(node: Node): Node {
+  let current = node;
+  while (
+    isAsExpression(current) ||
+    isNonNullExpression(current) ||
+    isParenthesizedExpression(current) ||
+    isSatisfiesExpression(current) ||
+    isTypeAssertionExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function samePropertyOrder(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return (
+    left.length === right.length &&
+    left.every((name, index) => {
+      return name === right[index];
+    })
+  );
+}
+
 function stableDrizzleTableSymbol(
   checker: TypeChecker,
   symbol: TypeScriptSymbol,
   visited: Set<TypeScriptSymbol>,
-): boolean {
+): StableDrizzleTableOrigin | undefined {
   const resolved = resolvedSymbol(checker, symbol);
   if (
     resolved === undefined ||
@@ -79,71 +124,162 @@ function stableDrizzleTableSymbol(
     resolved.declarations === undefined ||
     resolved.declarations.length === 0
   ) {
-    return false;
+    return undefined;
   }
   visited.add(resolved);
-  return resolved.declarations.every((declaration) => {
-    if (isShorthandPropertyAssignment(declaration)) {
-      const valueSymbol =
-        checker.getShorthandAssignmentValueSymbol(declaration);
-      return (
-        valueSymbol !== undefined &&
-        stableDrizzleTableSymbol(checker, valueSymbol, visited)
-      );
+  const orders = resolved.declarations.map((declaration) => {
+    // A `let`, destructuring default, or object property can resolve to a
+    // different same-typed table by the time the query executes.
+    if (
+      !isVariableDeclaration(declaration) ||
+      !isVariableDeclarationList(declaration.parent) ||
+      (declaration.parent.flags & NodeFlags.Const) === 0 ||
+      declaration.initializer === undefined
+    ) {
+      return undefined;
     }
-    const initializer =
-      isBindingElement(declaration) ||
-      isPropertyAssignment(declaration) ||
-      isVariableDeclaration(declaration)
-        ? declaration.initializer
-        : undefined;
-    return (
-      initializer !== undefined &&
-      stableDrizzleTableOrigin(checker, initializer, visited)
-    );
+    return stableDrizzleTableOrigin(checker, declaration.initializer, visited);
   });
+  visited.delete(resolved);
+  const first = orders[0];
+  return first !== undefined &&
+    orders.every((order) => {
+      return (
+        order !== undefined &&
+        samePropertyOrder(order.columnPropertyOrder, first.columnPropertyOrder)
+      );
+    })
+    ? first
+    : undefined;
+}
+
+function staticPropertyName(name: PropertyName): string | undefined {
+  if (isIdentifier(name) || isStringLiteralLike(name)) {
+    return name.text;
+  }
+  if (isNumericLiteral(name)) {
+    const value = Number(name.text.replaceAll("_", ""));
+    return Number.isFinite(value) ? String(value) : undefined;
+  }
+  if (!isComputedPropertyName(name)) {
+    return undefined;
+  }
+  const expression = unwrapTransparentExpression(name.expression);
+  if (isStringLiteralLike(expression)) {
+    return expression.text;
+  }
+  if (isNumericLiteral(expression)) {
+    const value = Number(expression.text.replaceAll("_", ""));
+    return Number.isFinite(value) ? String(value) : undefined;
+  }
+  return undefined;
+}
+
+function runtimeObjectKeyOrder(names: readonly string[]): readonly string[] {
+  // Drizzle builds table columns with Object.entries(...). Let the runtime
+  // apply the same integer-index ordering and overwrite semantics.
+  const properties: Record<string, true> = {};
+  for (const name of names) {
+    properties[name] = true;
+  }
+  return Object.keys(properties);
+}
+
+function staticObjectKeyOrder(node: Node): readonly string[] | undefined {
+  const expression = unwrapTransparentExpression(node);
+  if (!isObjectLiteralExpression(expression)) {
+    return undefined;
+  }
+
+  const names: string[] = [];
+  for (const property of expression.properties) {
+    if (isSpreadAssignment(property)) {
+      const spreadNames = staticObjectKeyOrder(property.expression);
+      if (spreadNames === undefined) {
+        return undefined;
+      }
+      for (const name of spreadNames) {
+        names.push(name);
+      }
+      continue;
+    }
+    if (
+      !isPropertyAssignment(property) &&
+      !isShorthandPropertyAssignment(property)
+    ) {
+      return undefined;
+    }
+    const name = staticPropertyName(property.name);
+    // `__proto__` has special object-literal semantics and is not a normal own
+    // property in every supported spelling.
+    if (name === undefined || name === "__proto__") {
+      return undefined;
+    }
+    names.push(name);
+  }
+  return runtimeObjectKeyOrder(names);
+}
+
+function tableColumnDefinition(node: Node): Node | undefined {
+  const expression = unwrapTransparentExpression(node);
+  if (!isArrowFunction(expression) && !isFunctionExpression(expression)) {
+    return expression;
+  }
+  if (!isBlock(expression.body)) {
+    return expression.body;
+  }
+  if (
+    expression.body.statements.length !== 1 ||
+    !isReturnStatement(expression.body.statements[0])
+  ) {
+    return undefined;
+  }
+  return expression.body.statements[0].expression;
+}
+
+function isPgTableFactorySignature(signature: Signature): boolean {
+  const declaration = signature.declaration;
+  return (
+    declaration !== undefined &&
+    isCallSignatureDeclaration(declaration) &&
+    isInterfaceDeclaration(declaration.parent) &&
+    declaration.parent.name.text === "PgTableFn" &&
+    isDrizzleDeclaration(declaration)
+  );
 }
 
 function stableDrizzleTableOrigin(
   checker: TypeChecker,
   node: Node,
   visited: Set<TypeScriptSymbol>,
-): boolean {
-  if (isCallExpression(node)) {
-    const signature = checker.getResolvedSignature(node);
-    return (
-      signature !== undefined &&
-      !isNamedDrizzleSignature(signature, "alias") &&
-      !isNamedDrizzleSignature(signature, "aliasedTable") &&
-      signature.declaration !== undefined &&
-      isDrizzleDeclaration(signature.declaration) &&
-      isDrizzleTableType(checker, checker.getTypeAtLocation(node), node)
-    );
-  }
-  if (
-    isAsExpression(node) ||
-    isNonNullExpression(node) ||
-    isParenthesizedExpression(node) ||
-    isSatisfiesExpression(node) ||
-    isTypeAssertionExpression(node)
-  ) {
-    return stableDrizzleTableOrigin(checker, node.expression, visited);
-  }
-  if (isConditionalExpression(node) || isBinaryExpression(node)) {
-    return false;
+): StableDrizzleTableOrigin | undefined {
+  const expression = unwrapTransparentExpression(node);
+  if (isCallExpression(expression)) {
+    const signature = checker.getResolvedSignature(expression);
+    const columns = expression.arguments[1];
+    if (
+      signature === undefined ||
+      !isPgTableFactorySignature(signature) ||
+      columns === undefined ||
+      !isDrizzleTableType(
+        checker,
+        checker.getTypeAtLocation(expression),
+        expression,
+      )
+    ) {
+      return undefined;
+    }
+    const definition = tableColumnDefinition(columns);
+    return {
+      columnPropertyOrder:
+        definition === undefined ? undefined : staticObjectKeyOrder(definition),
+    };
   }
 
-  const symbol = checker.getSymbolAtLocation(node);
-  return (
-    symbol !== undefined && stableDrizzleTableSymbol(checker, symbol, visited)
-  );
-}
-
-export function hasStableDrizzleTableOrigin(
-  checker: TypeChecker,
-  node: Node,
-): boolean {
-  return stableDrizzleTableOrigin(checker, node, new Set());
+  const symbol = checker.getSymbolAtLocation(expression);
+  return symbol === undefined
+    ? undefined
+    : stableDrizzleTableSymbol(checker, symbol, visited);
 }
 
 export function isDrizzleSqlTag(
@@ -277,6 +413,7 @@ export interface DrizzleTableColumnMetadata {
 export interface DrizzleTableMetadata {
   readonly columns: ReadonlyMap<string, DrizzleTableColumnMetadata>;
   readonly hasDirectTableConfig: boolean;
+  readonly hasRuntimeColumnOrder: boolean;
   readonly name: string;
   readonly schema: string | undefined;
 }
@@ -502,6 +639,7 @@ function concreteDrizzleTableMetadata(
   return {
     columns,
     hasDirectTableConfig: configType.aliasSymbol === undefined,
+    hasRuntimeColumnOrder: false,
     name,
     schema: schema ?? undefined,
   };
@@ -515,6 +653,7 @@ function sameTableMetadata(
     left.name !== right.name ||
     left.schema !== right.schema ||
     left.hasDirectTableConfig !== right.hasDirectTableConfig ||
+    left.hasRuntimeColumnOrder !== right.hasRuntimeColumnOrder ||
     left.columns.size !== right.columns.size
   ) {
     return false;
@@ -542,7 +681,7 @@ function sameTableMetadata(
   return true;
 }
 
-export function getDrizzleTableMetadata(
+function getDrizzleTableMetadata(
   checker: TypeChecker,
   type: Type,
   location: Node,
@@ -566,6 +705,45 @@ export function getDrizzleTableMetadata(
       : getDrizzleTableMetadata(checker, constraint, location);
   }
   return concreteDrizzleTableMetadata(checker, type, location);
+}
+
+export function getStableDrizzleTableMetadata(
+  checker: TypeChecker,
+  node: Node,
+): DrizzleTableMetadata | undefined {
+  const metadata = getDrizzleTableMetadata(
+    checker,
+    checker.getTypeAtLocation(node),
+    node,
+  );
+  const origin = stableDrizzleTableOrigin(checker, node, new Set());
+  if (metadata === undefined || origin === undefined) {
+    return undefined;
+  }
+  const propertyOrder = origin.columnPropertyOrder;
+  if (propertyOrder === undefined) {
+    return metadata;
+  }
+  if (propertyOrder.length !== metadata.columns.size) {
+    return undefined;
+  }
+
+  const columnsByProperty = new Map(
+    [...metadata.columns.values()].map((column) => {
+      return [column.propertyName, column] as const;
+    }),
+  );
+  const columns = new Map<string, DrizzleTableColumnMetadata>();
+  for (const propertyName of propertyOrder) {
+    const column = columnsByProperty.get(propertyName);
+    if (column === undefined || columns.has(column.databaseName)) {
+      return undefined;
+    }
+    columns.set(column.databaseName, column);
+  }
+  return columns.size === metadata.columns.size
+    ? { ...metadata, columns, hasRuntimeColumnOrder: true }
+    : undefined;
 }
 
 export function getDrizzleColumnMetadata(

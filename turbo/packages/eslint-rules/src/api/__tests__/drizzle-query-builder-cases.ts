@@ -487,6 +487,31 @@ const queryBuilderCases = {
       `,
     },
     {
+      code: `${deletePreamble}
+        import { aliasedTable, sql } from "drizzle-orm";
+        let reassignedTarget = cleanupRows;
+        reassignedTarget = aliasedTable(cleanupRows, "reassigned_target");
+        const holder = { target: cleanupRows };
+        holder.target = aliasedTable(cleanupRows, "property_target");
+        declare const dynamicHolder: {
+          target: typeof cleanupRows | undefined;
+        };
+        const { target = cleanupRows } = dynamicHolder;
+        await db.execute(sql\`
+          DELETE FROM \${reassignedTarget}
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${holder.target}
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${target}
+          WHERE true
+        \`);
+      `,
+    },
+    {
       code: `
         import { sql } from "drizzle-orm";
         import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
@@ -518,6 +543,64 @@ const queryBuilderCases = {
           FROM unnest(
             \${sql.param(values)}::integer[]
           ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const numericRows = pgTable("numeric_rows", {
+          "2": integer("second").notNull(),
+          "1": integer("first").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            numericRows: typeof numericRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const first: number;
+        declare const second: number;
+        await db.execute(sql\`
+          INSERT INTO \${numericRows} (second, first)
+          VALUES (\${second}, \${first})
+          ON CONFLICT (second)
+          DO UPDATE SET
+            second = \${second},
+            first = \${first}
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const trailingColumns = {
+          second: integer("second").notNull(),
+          third: integer("third").notNull(),
+        };
+        const spreadRows = pgTable("spread_rows", {
+          first: integer("first").notNull(),
+          ...trailingColumns,
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            spreadRows: typeof spreadRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${spreadRows}
+          SET
+            second = source.second,
+            third = source.third,
+            first = source.first
+          FROM unnest(
+            \${sql.param(values)}::integer[],
+            \${sql.param(values)}::integer[],
+            \${sql.param(values)}::integer[]
+          ) AS source(second, third, first)
           WHERE true
         \`);
       `,
@@ -2286,6 +2369,48 @@ const queryBuilderCases = {
     {
       code: `
         import { sql } from "drizzle-orm";
+        import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+        const cleanupColumns = {
+          id: integer("id").notNull(),
+          expiresAt: timestamp("expires_at").notNull(),
+        };
+        const cleanupRows = pgTable("cleanup_rows", cleanupColumns);
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            cleanupRows: typeof cleanupRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const cutoff: Date;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgSchema } from "drizzle-orm/pg-core";
+        const audit = pgSchema("audit");
+        const cleanupRows = audit.table("cleanup_rows", {
+          id: integer("id").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            cleanupRows: typeof cleanupRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
         import {
           integer,
           pgTableCreator,
@@ -2531,6 +2656,93 @@ const queryBuilderCases = {
         \`);
       `,
       errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const callbackRows = pgTable("callback_rows", () => ({
+          first: integer("first").notNull(),
+          second: integer("second").notNull(),
+        }));
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            callbackRows: typeof callbackRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${callbackRows}
+          SET
+            first = source.first,
+            second = source.second
+          FROM unnest(
+            \${sql.param(values)}::integer[],
+            \${sql.param(values)}::integer[]
+          ) AS source(first, second)
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const directSpreadRows = pgTable("direct_spread_rows", {
+          first: integer("first").notNull(),
+          ...{
+            second: integer("second").notNull(),
+            third: integer("third").notNull(),
+          },
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            directSpreadRows: typeof directSpreadRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${directSpreadRows}
+          SET
+            first = source.first,
+            second = source.second,
+            third = source.third
+          FROM unnest(
+            \${sql.param(values)}::integer[],
+            \${sql.param(values)}::integer[],
+            \${sql.param(values)}::integer[]
+          ) AS source(first, second, third)
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const numericRows = pgTable("numeric_rows", {
+          "2": integer("second").notNull(),
+          "1": integer("first").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            numericRows: typeof numericRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const first: number;
+        declare const second: number;
+        await db.execute(sql\`
+          INSERT INTO \${numericRows} (first, second)
+          VALUES (\${first}, \${second})
+          ON CONFLICT (second)
+          DO UPDATE SET
+            first = \${first},
+            second = \${second}
+        \`);
+      `,
+      errors: [{ messageId: "upsertQueryBuilder" }],
     },
     {
       code: `${deletePreamble}

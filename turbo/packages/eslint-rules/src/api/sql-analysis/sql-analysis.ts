@@ -14,8 +14,7 @@ import {
 
 import {
   getDrizzleColumnMetadata,
-  getDrizzleTableMetadata,
-  hasStableDrizzleTableOrigin,
+  getStableDrizzleTableMetadata,
   isDrizzleArrayParameter,
   isDrizzleColumnType,
   isDrizzleArrayOperandType,
@@ -166,7 +165,6 @@ interface SqlMarker {
       >
     | undefined;
   readonly expressionSymbol: TypeScriptSymbol | undefined;
-  readonly hasStableTableOrigin: boolean;
   readonly isArrayParameter: boolean;
   readonly isArrayOperand: boolean;
   readonly isBoundScalar: boolean;
@@ -451,11 +449,7 @@ function markerTableMetadata(
   services: ParserServicesWithTypeInformation,
 ): DrizzleTableMetadata | undefined {
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  return getDrizzleTableMetadata(
-    checker,
-    checker.getTypeAtLocation(tsNode),
-    tsNode,
-  );
+  return getStableDrizzleTableMetadata(checker, tsNode);
 }
 
 function markerIsColumn(
@@ -662,7 +656,6 @@ function parseSqlVariant(
     let cachedColumn: boolean | undefined;
     let cachedColumnMetadata: SqlMarker["columnMetadata"] | null | undefined;
     let cachedExpressionSymbol: TypeScriptSymbol | null | undefined;
-    let cachedStableTableOrigin: boolean | undefined;
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
@@ -681,13 +674,6 @@ function parseSqlVariant(
         cachedExpressionSymbol ??=
           markerExpressionSymbol(expression, checker, services) ?? null;
         return cachedExpressionSymbol ?? undefined;
-      },
-      get hasStableTableOrigin(): boolean {
-        cachedStableTableOrigin ??= hasStableDrizzleTableOrigin(
-          checker,
-          services.esTreeNodeToTSNodeMap.get(expression),
-        );
-        return cachedStableTableOrigin;
       },
       get isArrayParameter(): boolean {
         cachedArrayParameter ??= isDrizzleArrayParameter(
@@ -3003,10 +2989,9 @@ function writeTargetMarker(
   }
   const marker = markers.get(value.relname);
   // Write builders can reorder columns when a runtime-selected table has
-  // type-erased column order. Drizzle aliases can also preserve the original
-  // table type while raw interpolation and builders render different targets.
-  return marker?.tableMetadata?.hasDirectTableConfig === true &&
-    marker.hasStableTableOrigin
+  // type-erased column order. Stable metadata also rejects aliases and table
+  // definitions whose runtime Object.keys(...) order cannot be proven.
+  return marker?.tableMetadata?.hasDirectTableConfig === true
     ? marker
     : undefined;
 }
@@ -3093,6 +3078,9 @@ function hasTableColumnOrder(
   names: readonly string[],
   table: DrizzleTableMetadata,
 ): boolean {
+  if (!table.hasRuntimeColumnOrder) {
+    return false;
+  }
   const positions = new Map<string, number>();
   let index = 0;
   for (const name of table.columns.keys()) {
@@ -3114,6 +3102,9 @@ function hasExactInsertColumnOrder(
   names: readonly string[],
   table: DrizzleTableMetadata,
 ): boolean {
+  if (!table.hasRuntimeColumnOrder) {
+    return false;
+  }
   const emittedNames = [...table.columns.values()].flatMap((column) => {
     return column.isEmittedOnInsert ? [column.databaseName] : [];
   });
