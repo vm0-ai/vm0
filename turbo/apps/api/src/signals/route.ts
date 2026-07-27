@@ -137,6 +137,7 @@ import { zeroScrapeRoutes } from "./routes/zero-scrape";
 import { zeroPeopleSearchRoutes } from "./routes/zero-people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
+import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
 import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
@@ -312,6 +313,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroPeopleSearchRoutes,
   ...zeroWebSearchRoutes,
   ...zeroBrowserRoutes,
+  ...zeroBrowserAuthorizationRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,

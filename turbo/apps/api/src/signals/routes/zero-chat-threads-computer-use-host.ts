@@ -10,7 +10,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../external/time";
-import { notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -80,6 +80,11 @@ const updateComputerUseHostInner$ = command(
     signal.throwIfAborted();
 
     const hostId = body.data.computerUseHostId;
+    if (hostId !== null && body.data.cloudBrowserEnabled === true) {
+      return badRequestMessage(
+        "Cloud browser and Computer Use cannot be enabled together",
+      );
+    }
     if (hostId !== null) {
       if (
         !(await computerUseHostExists({
@@ -96,10 +101,13 @@ const updateComputerUseHostInner$ = command(
 
     const updated = await db.transaction(async (tx) => {
       const updatedAt = nowDate();
+      const cloudBrowserEnabled =
+        hostId !== null ? false : body.data.cloudBrowserEnabled;
       const [thread] = await tx
         .update(chatThreads)
         .set({
           computerUseHostId: hostId,
+          ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
           updatedAt,
         })
         .where(
@@ -111,6 +119,7 @@ const updateComputerUseHostInner$ = command(
         .returning({
           id: chatThreads.id,
           agentComposeId: chatThreads.agentComposeId,
+          cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
         });
       if (!thread) {
         return false;
@@ -123,6 +132,7 @@ const updateComputerUseHostInner$ = command(
         agentComposeId: thread.agentComposeId,
         eventId: body.data.eventId,
         computerUseHostId: hostId,
+        cloudBrowserEnabled: thread.cloudBrowserEnabled,
         createdAt: updatedAt,
       });
       return true;

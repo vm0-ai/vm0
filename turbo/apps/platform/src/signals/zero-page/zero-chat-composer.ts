@@ -18,15 +18,33 @@ import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attach
 // Composer UI state — search, dialogs, loading indicators
 // ---------------------------------------------------------------------------
 
-// -- New-thread Computer Use host selection ---------------------------------
+// -- New-thread computer access selection -----------------------------------
 
 const internalNewThreadComputerUseHostId$ = state<string | null>(null);
+const internalNewThreadCloudBrowserEnabled$ = state(false);
+
 export const newThreadComputerUseHostId$ = computed((get) => {
   return get(internalNewThreadComputerUseHostId$);
 });
+export const newThreadCloudBrowserEnabled$ = computed((get) => {
+  return get(internalNewThreadCloudBrowserEnabled$);
+});
+
 export const setNewThreadComputerUseHostId$ = command(
   ({ set }, hostId: string | null) => {
     set(internalNewThreadComputerUseHostId$, hostId);
+    if (hostId) {
+      set(internalNewThreadCloudBrowserEnabled$, false);
+    }
+  },
+);
+
+export const setNewThreadCloudBrowserEnabled$ = command(
+  ({ set }, enabled: boolean) => {
+    set(internalNewThreadCloudBrowserEnabled$, enabled);
+    if (enabled) {
+      set(internalNewThreadComputerUseHostId$, null);
+    }
   },
 );
 

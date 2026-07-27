@@ -28,7 +28,6 @@ from . import webhook
 from .anthropic_messages import (
     create_anthropic_messages_json_usage_extractor,
     create_anthropic_messages_sse_usage_extractor,
-    extract_anthropic_messages_usage_from_json,
     extract_anthropic_messages_usage_with_error_from_json,
 )
 from .buffer import (
@@ -56,7 +55,6 @@ from .openai_responses import (
     create_openai_responses_sse_usage_extractor,
     extract_openai_responses_usage_from_event,
     extract_openai_responses_usage_from_event_json,
-    extract_openai_responses_usage_from_json,
     extract_openai_responses_usage_with_error_from_json,
     inspect_openai_responses_event_json,
     merge_openai_responses_usage_result,
@@ -91,11 +89,9 @@ __all__ = [
     "current_usage_state_id",
     "decrement_in_flight_flows",
     "drain_usage_events_after_executor_shutdown",
-    "extract_anthropic_messages_usage_from_json",
     "extract_anthropic_messages_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event",
     "extract_openai_responses_usage_from_event_json",
-    "extract_openai_responses_usage_from_json",
     "extract_openai_responses_usage_with_error_from_json",
     "flush_usage_events",
     "has_connector_response_parser",

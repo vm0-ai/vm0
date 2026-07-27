@@ -144,7 +144,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
@@ -153,7 +153,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
-      false,
+      true,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       false,

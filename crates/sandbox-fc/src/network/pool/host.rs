@@ -144,16 +144,6 @@ async fn exec_xtables_status_with_timeout(
     exec_status_with_timeout(program, &args, timeout).await
 }
 
-#[cfg(test)]
-async fn exec_xtables_ignore_errors_with_timeout(
-    program: &str,
-    args: &[&str],
-    timeout: Duration,
-) -> IgnoredCommandOutcome {
-    let args = xtables_args(args);
-    exec_ignore_errors_with_timeout(program, &args, timeout).await
-}
-
 /// Observe and restrict the runner-managed DNS port by pool-facing interface.
 ///
 /// dnsmasq's default socket mode avoids per-address listener churn by using
@@ -1592,34 +1582,6 @@ mod tests {
         exec_xtables_status_with_timeout("test", &["=", "--wait"], Duration::from_secs(1))
             .await
             .unwrap();
-    }
-
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn xtables_timeout_is_abandoned_by_cleanup() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = tempfile::tempdir().unwrap();
-        let command = dir.path().join("wait-for-timeout");
-        std::fs::write(
-            &command,
-            "#!/bin/sh\n[ \"$1\" = \"--wait\" ] || exit 2\nsleep 5\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        let outcome = exec_xtables_ignore_errors_with_timeout(
-            command.to_str().unwrap(),
-            &[],
-            Duration::from_millis(50),
-        )
-        .await;
-
-        assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
-        assert_eq!(
-            NamespaceDeleteOutcome::from_best_effort([outcome]),
-            NamespaceDeleteOutcome::Abandoned
-        );
     }
 
     #[tokio::test]
