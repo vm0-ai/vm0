@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { setupPage } from "../../__tests__/page-helper.ts";
 import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -12,6 +13,7 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -26,6 +28,22 @@ describe("bootstrap locale", () => {
     expect(context.store.get(locale$)).toBe("zh-CN");
     expect(i18n.language).toBe("zh-CN");
     expect(document.documentElement.lang).toBe("zh-CN");
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
+  it("initializes i18next from the locale selected by the inline script", async () => {
+    document.documentElement.lang = "zh-CN";
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("zh-CN");
+    expect(i18n.language).toBe("zh-CN");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });

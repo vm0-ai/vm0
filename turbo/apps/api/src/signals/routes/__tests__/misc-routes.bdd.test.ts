@@ -81,6 +81,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     const initialPreferences = await api.readPreferences(admin);
     expect(initialPreferences.body).toMatchObject({
       timezone: null,
+      locale: null,
       pinnedAgentIds: [],
       sendMode: "enter",
     });
@@ -91,6 +92,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       admin,
       {
         timezone: "UTC",
+        locale: "zh-CN",
         sendMode: "cmd-enter",
         pinnedAgentIds: [
           secondPinnedAgentId,
@@ -103,6 +105,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     );
     expect(updatedPreferences.body).toMatchObject({
       timezone: "UTC",
+      locale: "zh-CN",
       pinnedAgentIds: [firstPinnedAgentId, secondPinnedAgentId],
       sendMode: "cmd-enter",
       captureNetworkBodiesRemaining: 3,

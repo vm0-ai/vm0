@@ -876,6 +876,8 @@ export {
   type UpdateUserPreferencesRequest,
   sendModeSchema,
   type SendMode,
+  userLocaleSchema,
+  type UserLocale,
 } from "./zero-user-preferences";
 export {
   featureSwitchesResponseSchema,
