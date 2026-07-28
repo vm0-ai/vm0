@@ -933,12 +933,12 @@ describe("chat message action cards", () => {
       mailDraftId: "c0000000-0000-4000-a000-000000000043",
     });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${scenario.threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        },
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -994,12 +994,12 @@ describe("chat message action cards", () => {
       mailDraftId: "c0000000-0000-4000-a000-000000000052",
     });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${scenario.threadId}?mail-draft=${scenario.mailDraftId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        },
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}?mail-draft=${scenario.mailDraftId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
     });
 
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
@@ -1029,12 +1029,12 @@ describe("chat message action cards", () => {
       });
     });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${scenario.threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        },
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -1072,12 +1072,12 @@ describe("chat message action cards", () => {
       });
     });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${scenario.threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        },
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -1101,12 +1101,12 @@ describe("chat message action cards", () => {
       mailDraftId: "c0000000-0000-4000-a000-000000000072",
     });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${scenario.threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        },
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
     });
 
     await user.click(await waitForMailDraftCard());

@@ -266,11 +266,10 @@ function createAttachmentPreviews(
   };
 }
 
-interface MailDraftResourceSignals
-  extends Pick<
-    MailDraftSignals,
-    "draft$" | "sidebarDraft$" | "reloadDraft$" | "followUpState$"
-  > {
+interface MailDraftResourceSignals extends Pick<
+  MailDraftSignals,
+  "draft$" | "sidebarDraft$" | "reloadDraft$" | "followUpState$"
+> {
   readonly followUpStateValue$: State<MailDraftFollowUpState>;
   readonly draftOverride$: State<ZeroMailDraft | null | undefined>;
 }

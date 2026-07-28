@@ -263,7 +263,9 @@ function EnabledMailDraftCard({
   const needsReconnect = draft.accessStatus === "reconnect";
   const selected = selectedMailDraftId === signals.mailDraftId;
   const openDraft = () => {
-    reloadDraft();
+    if (followUpEnabled) {
+      reloadDraft();
+    }
     openSidebar(signals.mailDraftId);
   };
   const content = (
