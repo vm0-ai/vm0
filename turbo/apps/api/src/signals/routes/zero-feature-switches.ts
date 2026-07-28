@@ -6,7 +6,9 @@ import {
 } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
+import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -35,6 +37,8 @@ function featureSwitchResponseBody(params: {
     userId: params.userId,
     overrides: params.switches,
   });
+  effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
+    isZeroMailReplyFollowUpRolloutEnabled();
 
   return {
     switches: params.switches,

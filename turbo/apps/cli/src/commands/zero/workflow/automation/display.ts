@@ -125,16 +125,16 @@ function textMatcherParts(
 }
 
 function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
+  const parts: string[] = config.threadId
+    ? [`Thread ID is ${quote(config.threadId)}`]
+    : [];
   const match = config.match;
-  if (!match) {
-    return "all inbound messages";
-  }
-
-  const parts: string[] = [];
-  for (const field of GMAIL_TEXT_FIELDS) {
-    const matcher = match[field];
-    if (matcher) {
-      parts.push(...textMatcherParts(field, matcher));
+  if (match) {
+    for (const field of GMAIL_TEXT_FIELDS) {
+      const matcher = match[field];
+      if (matcher) {
+        parts.push(...textMatcherParts(field, matcher));
+      }
     }
   }
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";

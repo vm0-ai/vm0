@@ -5,6 +5,7 @@ import {
   IconPaperclip,
   IconPencil,
   IconPlayerPlay,
+  IconRoute,
   IconSend,
   IconTrash,
   IconX,
@@ -14,6 +15,7 @@ import type {
   ZeroMailDraft,
   ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Button } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
@@ -22,6 +24,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   openImageLightbox$,
@@ -964,6 +967,12 @@ function MailDraftDetails({
   );
 }
 
+function isReplyFollowUpEnabled(
+  featureSwitches: Readonly<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
+}
+
 function MailDraftDetail({
   draft,
   signals,
@@ -974,12 +983,24 @@ function MailDraftDetail({
   readonly close: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const featureSwitches = useGet(featureSwitch$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
-  const runSendCallback = useSet(signals.runSendCallback$);
+  const localFollowUpState = useGet(signals.followUpState$);
+  const followUp = useSet(signals.followUp$);
+  const followUpState =
+    localFollowUpState === "submitting"
+      ? localFollowUpState
+      : (draft.followUp?.status ?? localFollowUpState);
+  const followUpSubmitting = followUpState === "submitting";
+  const followUpActive = followUpState === "active";
+  const followUpPaused = followUpState === "paused";
+  const followUpEnabled = isReplyFollowUpEnabled(featureSwitches);
   const active = draft.status === "draft";
   const pending =
-    deleteLoadable.state === "loading" || sendLoadable.state === "loading";
+    deleteLoadable.state === "loading" ||
+    sendLoadable.state === "loading" ||
+    followUpSubmitting;
   const openInGmail = draft.gmailThreadId
     ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(draft.gmailThreadId)}`
     : null;
@@ -995,9 +1016,11 @@ function MailDraftDetail({
     const sendAndNotify = async () => {
       await send(pageSignal);
       toast.success("Email sent");
-      await runSendCallback(pageSignal);
     };
     detach(sendAndNotify(), Reason.DomCallback);
+  };
+  const onFollowUp = () => {
+    detach(followUp(pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -1045,6 +1068,29 @@ function MailDraftDetail({
                 <IconSend size={15} />
               )}
               Send
+            </Button>
+          ) : null}
+          {!active && followUpEnabled ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending || followUpState !== "idle"}
+              onClick={onFollowUp}
+            >
+              {followUpSubmitting ? (
+                <IconLoader2 size={15} className="animate-spin" />
+              ) : followUpActive ? (
+                <IconCircleCheck size={15} />
+              ) : (
+                <IconRoute size={15} />
+              )}
+              {followUpActive
+                ? "Tracking replies"
+                : followUpPaused
+                  ? "Tracking paused"
+                  : followUpSubmitting
+                    ? "Setting up…"
+                    : "Follow up"}
             </Button>
           ) : null}
         </div>

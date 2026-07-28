@@ -124,6 +124,15 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/notion/NOTION_OAUTH_CLIENT_SECRET
 GOOGLE_OAUTH_CLIENT_ID=op://Development/google/GOOGLE_OAUTH_CLIENT_ID
 GOOGLE_OAUTH_CLIENT_SECRET=op://Development/google/GOOGLE_OAUTH_CLIENT_SECRET
 
+# Optional: Gmail Pub/Sub mailbox event automation
+GMAIL_PUBSUB_TOPIC_NAME=op://Development/gmail/GMAIL_PUBSUB_TOPIC_NAME
+GMAIL_PUBSUB_PUSH_AUDIENCE=op://Development/gmail/GMAIL_PUBSUB_PUSH_AUDIENCE
+GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=op://Development/gmail/GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
+
+# Keep disabled until every rollback-eligible API version accepts Gmail
+# new-message event configurations with threadId.
+ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=false
+
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_ID

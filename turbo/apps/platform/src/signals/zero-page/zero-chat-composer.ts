@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@vm0/core";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { jsonParseOr, tapError } from "../utils.ts";
 import type {
   PresentationTemplateDetailSelection,
@@ -20,33 +21,59 @@ import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attach
 
 // -- New-thread computer access selection -----------------------------------
 
-const internalNewThreadComputerUseHostId$ = state<string | null>(null);
-const internalNewThreadCloudBrowserEnabled$ = state(false);
+// A thread reaches at most one computer, so the composer holds a single
+// selection rather than two flags that have to clear each other.
+type NewThreadComputerAccess =
+  | { readonly kind: "none" }
+  | { readonly kind: "cloudBrowser" }
+  | { readonly kind: "computerUse"; readonly hostId: string };
 
-export const newThreadComputerUseHostId$ = computed((get) => {
-  return get(internalNewThreadComputerUseHostId$);
-});
-export const newThreadCloudBrowserEnabled$ = computed((get) => {
-  return get(internalNewThreadCloudBrowserEnabled$);
-});
+// Like the composer's model selection: `null` means the user has not picked
+// anything for the current draft and the default applies, while a value is the
+// user's own choice — including an explicit "no computer at all".
+const internalNewThreadComputerAccess$ = state<NewThreadComputerAccess | null>(
+  null,
+);
+
+export const newThreadComputerAccess$ = computed(
+  (get): NewThreadComputerAccess => {
+    const selection = get(internalNewThreadComputerAccess$);
+    const cloudBrowserAvailable = get(zeroBrowserEnabled$);
+    if (selection === null) {
+      // Cloud browser is the default surface wherever Zero Browser is on.
+      return cloudBrowserAvailable
+        ? { kind: "cloudBrowser" }
+        : { kind: "none" };
+    }
+    return selection.kind === "cloudBrowser" && !cloudBrowserAvailable
+      ? { kind: "none" }
+      : selection;
+  },
+);
 
 export const setNewThreadComputerUseHostId$ = command(
   ({ set }, hostId: string | null) => {
-    set(internalNewThreadComputerUseHostId$, hostId);
-    if (hostId) {
-      set(internalNewThreadCloudBrowserEnabled$, false);
-    }
+    set(
+      internalNewThreadComputerAccess$,
+      hostId === null ? { kind: "none" } : { kind: "computerUse", hostId },
+    );
   },
 );
 
 export const setNewThreadCloudBrowserEnabled$ = command(
   ({ set }, enabled: boolean) => {
-    set(internalNewThreadCloudBrowserEnabled$, enabled);
-    if (enabled) {
-      set(internalNewThreadComputerUseHostId$, null);
-    }
+    set(
+      internalNewThreadComputerAccess$,
+      enabled ? { kind: "cloudBrowser" } : { kind: "none" },
+    );
   },
 );
+
+// Sending starts the next draft from scratch, so the selection goes back to the
+// default instead of pinning the sent thread's choice.
+export const resetNewThreadComputerAccess$ = command(({ set }) => {
+  set(internalNewThreadComputerAccess$, null);
+});
 
 // -- Model picker open state ------------------------------------------------
 

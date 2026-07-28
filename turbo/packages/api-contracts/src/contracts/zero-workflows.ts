@@ -144,6 +144,7 @@ export const gmailNewMessageEventConfigSchema = z
   .object({
     provider: z.literal("gmail"),
     event: z.literal("new_message"),
+    threadId: z.string().min(1).optional(),
     match: z
       .object({
         from: gmailTextMatchSchema.optional(),

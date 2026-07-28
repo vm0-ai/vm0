@@ -1231,6 +1231,7 @@ describe("zero workflow automation commands", () => {
         eventConfig: {
           provider: "gmail",
           event: "new_message",
+          threadId: "gmail-thread-1",
           match: {
             from: { contains: "@example.com" },
             subject: { doesNotContain: "marketing" },
@@ -1255,6 +1256,7 @@ describe("zero workflow automation commands", () => {
         eventConfig: {
           provider: "gmail",
           event: "new_message",
+          threadId: "gmail-thread-1",
           match: {
             from: { contains: "@example.com" },
             subject: { doesNotContain: "marketing" },

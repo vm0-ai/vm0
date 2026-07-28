@@ -66,6 +66,10 @@ export const composerUploadPopoverEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 });
 
+export const zeroBrowserEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
+});
+
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ComposerConnectorPermissions] ?? false

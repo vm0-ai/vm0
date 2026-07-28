@@ -1613,12 +1613,17 @@ function buildEventUpdate(
     return { eventConfig: buildGmailLabelAppliedEventConfig(options) };
   }
 
+  if (existing.eventType !== "gmail-new-message") {
+    throw new Error("This event automation cannot be updated");
+  }
   if (!hasGmailOptions || hasLabelOption) {
     throw new Error(
       "Use Gmail match options for gmail-new-message automations",
     );
   }
-  return { eventConfig: buildGmailNewMessageEventConfig(options) };
+  return {
+    eventConfig: buildGmailNewMessageEventConfig(options, existing.eventConfig),
+  };
 }
 
 function buildScheduleUpdate(

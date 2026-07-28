@@ -215,6 +215,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ZeroMailReplyFollowUp,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
@@ -243,6 +246,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ZeroPeopleSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,

@@ -1,4 +1,11 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -15,27 +22,22 @@ import {
   getOrCreateCardSignals,
   registeredCardSignals,
 } from "./card-signal-map.ts";
-import { onRef } from "../utils.ts";
-import {
-  chatActionCallbackFromUrl,
-  runChatActionCallback$,
-} from "./action-callback.ts";
+import { onRef, withCleanup } from "../utils.ts";
 import {
   createTextPreviewComputedFromBlob,
   type TextPreviewComputed,
 } from "../text-preview.ts";
 
-interface MailDraftSendCallback {
-  readonly threadId: string;
-  readonly agentId: string;
-  readonly callbackPrompt: string;
-}
+export type MailDraftFollowUpState =
+  | "idle"
+  | "submitting"
+  | "active"
+  | "paused";
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
   readonly originalUrl: string;
   readonly href: string;
-  readonly sendCallback: MailDraftSendCallback | null;
 }
 
 export interface MailAttachmentPreviews {
@@ -43,10 +45,7 @@ export interface MailAttachmentPreviews {
   readonly urls: ReadonlyMap<string, string | null>;
 }
 
-export interface MailDraftSignals extends Omit<
-  MailDraftDescriptor,
-  "sendCallback"
-> {
+export interface MailDraftSignals extends MailDraftDescriptor {
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
@@ -58,13 +57,15 @@ export interface MailDraftSignals extends Omit<
   readonly reloadDraft$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
-  readonly runSendCallback$: Command<Promise<void>, [AbortSignal]>;
+  readonly followUpState$: Computed<MailDraftFollowUpState>;
+  readonly followUp$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
   register(descriptor: MailDraftDescriptor): MailDraftSignals;
   resolve(resourceKey: string): MailDraftSignals;
   entries(): ReadonlyMap<string, MailDraftSignals>;
+  readonly reload$: Command<void, []>;
 }
 
 export const emptyMailDraftSignalsById$ = computed<
@@ -122,15 +123,6 @@ function parseUrl(value: string): URL | null {
   return URL.canParse(value) ? new URL(value) : null;
 }
 
-function parseSendCallback(url: URL): MailDraftSendCallback | null {
-  const { callbackPrompt, threadId } = chatActionCallbackFromUrl(url);
-  const agentId = url.searchParams.get("agentId");
-  if (!callbackPrompt || !threadId || !agentId) {
-    return null;
-  }
-  return { callbackPrompt, threadId, agentId };
-}
-
 export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   const url = parseUrl(value);
   if (!url) {
@@ -155,7 +147,6 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
     mailDraftId,
     originalUrl: value,
     href: `/mail/drafts/${mailDraftId}`,
-    sendCallback: parseSendCallback(url),
   };
 }
 
@@ -275,11 +266,21 @@ function createAttachmentPreviews(
   };
 }
 
-function createMailDraftSignals(
-  threadId: string,
+interface MailDraftResourceSignals extends Pick<
+  MailDraftSignals,
+  "draft$" | "sidebarDraft$" | "reloadDraft$" | "followUpState$"
+> {
+  readonly followUpStateValue$: State<MailDraftFollowUpState>;
+  readonly draftOverride$: State<ZeroMailDraft | null | undefined>;
+}
+
+function createMailDraftResourceSignals(
   descriptor: MailDraftDescriptor,
-  sendCallbacks: ReadonlyMap<string, MailDraftSendCallback>,
-): MailDraftSignals {
+): MailDraftResourceSignals {
+  const followUpStateValue$ = state<MailDraftFollowUpState>("idle");
+  const followUpState$ = computed((get) => {
+    return get(followUpStateValue$);
+  });
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
   const draftReloadVersion$ = state(0);
   const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
@@ -298,16 +299,29 @@ function createMailDraftSignals(
     return response.status === 200 ? response.body.mailDraft : null;
   });
   const sidebarDraft$ = draft$;
-  const attachmentPreviews = createAttachmentPreviews(
-    descriptor,
-    sidebarDraft$,
-  );
   const reloadDraft$ = command(({ set }) => {
     set(draftOverride$, undefined);
+    set(followUpStateValue$, (current) => {
+      return current === "submitting" ? current : "idle";
+    });
     set(draftReloadVersion$, (version) => {
       return version + 1;
     });
   });
+  return {
+    followUpStateValue$,
+    draftOverride$,
+    draft$,
+    sidebarDraft$,
+    reloadDraft$,
+    followUpState$,
+  };
+}
+
+function createMailDraftMutationSignals(
+  descriptor: MailDraftDescriptor,
+  resources: MailDraftResourceSignals,
+): Pick<MailDraftSignals, "delete$" | "send$" | "followUp$"> {
   const delete$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await accept(
@@ -318,7 +332,7 @@ function createMailDraftSignals(
         [204],
       );
       signal.throwIfAborted();
-      set(draftOverride$, null);
+      set(resources.draftOverride$, null);
     },
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -330,31 +344,70 @@ function createMailDraftSignals(
       [200],
     );
     signal.throwIfAborted();
-    set(draftOverride$, response.body.mailDraft);
+    set(resources.draftOverride$, response.body.mailDraft);
   });
-  // Resuming the chat is a separate transition from sending the email: a failed
-  // resume must not report the sent email as a failed send.
-  const runSendCallback$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      const sendCallback = sendCallbacks.get(descriptor.mailDraftId);
-      if (!sendCallback) {
+  const followUp$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (get(resources.followUpStateValue$) !== "idle") {
         return;
       }
-      await set(runChatActionCallback$, sendCallback, signal);
+      set(resources.followUpStateValue$, "submitting");
+      await withCleanup(
+        (async () => {
+          const draft = await get(resources.draft$);
+          signal.throwIfAborted();
+          if (!draft) {
+            throw new Error("Email is no longer available");
+          }
+          if (draft.followUp) {
+            set(resources.followUpStateValue$, draft.followUp.status);
+            return;
+          }
+          await accept(
+            get(zeroClient$)(zeroMailContract).createFollowUp({
+              params: { mailDraftId: descriptor.mailDraftId },
+              body: {},
+              fetchOptions: { signal },
+            }),
+            [200],
+          );
+          set(resources.reloadDraft$);
+          set(resources.followUpStateValue$, "active");
+        })(),
+        () => {
+          set(resources.followUpStateValue$, (current) => {
+            return current === "submitting" ? "idle" : current;
+          });
+        },
+      );
     },
+  );
+  return { delete$, send$, followUp$ };
+}
+
+function createMailDraftSignals(
+  threadId: string,
+  descriptor: MailDraftDescriptor,
+): MailDraftSignals {
+  const resources = createMailDraftResourceSignals(descriptor);
+  const mutations = createMailDraftMutationSignals(descriptor, resources);
+  const attachmentPreviews = createAttachmentPreviews(
+    descriptor,
+    resources.sidebarDraft$,
   );
   return {
     mailDraftId: descriptor.mailDraftId,
     originalUrl: descriptor.originalUrl,
     href: descriptor.href,
     threadId,
-    draft$,
-    sidebarDraft$,
+    draft$: resources.draft$,
+    sidebarDraft$: resources.sidebarDraft$,
     ...attachmentPreviews,
-    reloadDraft$,
-    delete$,
-    send$,
-    runSendCallback$,
+    reloadDraft$: resources.reloadDraft$,
+    delete$: mutations.delete$,
+    send$: mutations.send$,
+    followUpState$: resources.followUpState$,
+    followUp$: mutations.followUp$,
   };
 }
 
@@ -362,23 +415,19 @@ export function createMailDraftCardSignalsRegistry(
   threadId: string,
 ): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
-  // One draft has one card, but the same draft can be linked by several
-  // messages and restored from the sidebar URL without its callback. The card
-  // signals are created from whichever descriptor registers first, so the send
-  // callback lives beside them and any later descriptor that carries one can
-  // still attach it. Only the chat thread that owns the card may be resumed.
-  const sendCallbacks = new Map<string, MailDraftSendCallback>();
+  const reload$ = command(({ set }) => {
+    for (const signals of signalsByResourceKey.values()) {
+      set(signals.reloadDraft$);
+    }
+  });
   return {
+    reload$,
     register(descriptor) {
-      const sendCallback = descriptor.sendCallback;
-      if (sendCallback?.threadId === threadId) {
-        sendCallbacks.set(descriptor.mailDraftId, sendCallback);
-      }
       return getOrCreateCardSignals(
         signalsByResourceKey,
         descriptor.mailDraftId,
         () => {
-          return createMailDraftSignals(threadId, descriptor, sendCallbacks);
+          return createMailDraftSignals(threadId, descriptor);
         },
       );
     },

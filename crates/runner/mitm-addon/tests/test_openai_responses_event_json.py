@@ -6,7 +6,8 @@ import pytest
 
 import usage.openai_responses as openai_responses
 from usage import (
-    extract_openai_responses_usage_from_event_json,
+    extract_openai_responses_usage_from_event,
+    inspect_openai_responses_event_json,
     merge_openai_responses_usage_result,
 )
 
@@ -29,8 +30,9 @@ def test_extracts_usage_from_wrapped_response_completed_event():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_1",
         "model": "gpt-5.6-sol",
         "tokens.input": 45,
@@ -54,8 +56,9 @@ def test_extracts_usage_from_wrapped_response_done_event():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_2",
         "model": "gpt-5.4",
         "tokens.input": 12,
@@ -78,8 +81,9 @@ def test_extracts_usage_from_wrapped_response_incomplete_event():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_incomplete",
         "model": "gpt-5.5",
         "tokens.input": 6000,
@@ -102,8 +106,9 @@ def test_extracts_usage_from_wrapped_response_failed_event():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_failed",
         "model": "gpt-5.4",
         "tokens.input": 12000,
@@ -123,8 +128,9 @@ def test_extracts_usage_from_flat_response_completed_event():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_flat",
         "model": "gpt-5.3-codex",
         "tokens.input": 50,
@@ -150,8 +156,9 @@ def test_extracts_zero_usage_quantities():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_zero",
         "model": "gpt-5.5",
         "tokens.input": 0,
@@ -168,8 +175,9 @@ def test_returns_none_for_non_usage_event_type():
             "response": {"id": "resp_ignored", "model": "gpt-5.5"},
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_unknown_event_type_with_usage_extracts_usage():
@@ -187,13 +195,38 @@ def test_unknown_event_type_with_usage_extracts_usage():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_future",
         "model": "gpt-5.6",
         "tokens.input": 11,
         "tokens.output": 9,
         "tokens.cache_read": 4,
+    }
+
+
+def test_missing_type_with_usage_extracts_usage():
+    body = json.dumps(
+        {
+            "response": {
+                "id": "resp_missing_type",
+                "model": "gpt-5.6",
+                "usage": {
+                    "input_tokens": 8,
+                    "output_tokens": 3,
+                },
+            },
+        }
+    ).encode()
+    event = inspect_openai_responses_event_json(body)
+
+    assert event.event_type is None
+    assert extract_openai_responses_usage_from_event(event) == {
+        "message_id": "resp_missing_type",
+        "model": "gpt-5.6",
+        "tokens.input": 8,
+        "tokens.output": 3,
     }
 
 
@@ -207,8 +240,9 @@ def test_known_non_usage_event_with_usage_fields_is_ignored():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_large_non_terminal_event_is_ignored():
@@ -218,12 +252,13 @@ def test_large_non_terminal_event_is_ignored():
             "delta": "x" * 4096,
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
     assert (
         openai_responses._classify_responses_event_type(body)
         == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
     )
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_large_documented_non_usage_event_skips_full_extractor(
@@ -242,8 +277,9 @@ def test_large_documented_non_usage_event_skips_full_extractor(
         + b"x" * (5 * 1024 * 1024)
         + b'"}}'
     )
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_non_terminal_prefilter_ignores_nested_types_and_payload_text():
@@ -259,12 +295,13 @@ def test_non_terminal_prefilter_ignores_nested_types_and_payload_text():
             "delta": "ignored",
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
     assert (
         openai_responses._classify_responses_event_type(body)
         == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
     )
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_non_terminal_prefilter_handles_fractional_exponent_number_before_type():
@@ -282,20 +319,24 @@ def test_duplicate_top_level_type_uses_first_type_boundary():
         b'"type":"response.completed",'
         b'"response":{"usage":{"input_tokens":1,"output_tokens":1}}}'
     )
+    event = inspect_openai_responses_event_json(body)
 
     assert (
         openai_responses._classify_responses_event_type(body)
         == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
     )
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_duplicate_top_level_unknown_type_keeps_first_type_boundary():
-    assert extract_openai_responses_usage_from_event_json(
+    body = (
         b'{"type":"response.future_terminal",'
         b'"type":"response.output_text.delta",'
         b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
-    ) == {
+    )
+    event = inspect_openai_responses_event_json(body)
+
+    assert extract_openai_responses_usage_from_event(event) == {
         "model": "gpt-5.6",
         "tokens.input": 9,
         "tokens.output": 4,
@@ -303,15 +344,15 @@ def test_duplicate_top_level_unknown_type_keeps_first_type_boundary():
 
 
 def test_late_known_non_usage_event_type_is_ignored():
-    assert (
-        extract_openai_responses_usage_from_event_json(
-            b'{"padding":"'
-            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
-            + b'","type":"response.output_text.delta",'
-            + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
-        )
-        is None
+    body = (
+        b'{"padding":"'
+        + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+        + b'","type":"response.output_text.delta",'
+        + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
     )
+    event = inspect_openai_responses_event_json(body)
+
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_terminal_event_type_after_skipped_fields_still_extracts_usage():
@@ -335,8 +376,9 @@ def test_terminal_event_type_after_skipped_fields_still_extracts_usage():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_after_fields",
         "model": "gpt-5.5",
         "tokens.input": 10,
@@ -349,12 +391,13 @@ def test_non_string_type_falls_back_to_real_extractor():
     body = (
         b'{"type":123,"response":{"model":"gpt-5.6","usage":{"input_tokens":3,"output_tokens":2}}}'
     )
+    event = inspect_openai_responses_event_json(body)
 
     assert (
         openai_responses._classify_responses_event_type(body)
         == openai_responses._RESPONSES_EVENT_UNKNOWN
     )
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "model": "gpt-5.6",
         "tokens.input": 3,
         "tokens.output": 2,
@@ -367,12 +410,13 @@ def test_oversized_type_falls_back_to_real_extractor():
         + b"x" * 2048
         + b'","response":{"model":"gpt-5.6","usage":{"input_tokens":5,"output_tokens":1}}}'
     )
+    event = inspect_openai_responses_event_json(body)
 
     assert (
         openai_responses._classify_responses_event_type(body)
         == openai_responses._RESPONSES_EVENT_UNKNOWN
     )
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "model": "gpt-5.6",
         "tokens.input": 5,
         "tokens.output": 1,
@@ -380,11 +424,14 @@ def test_oversized_type_falls_back_to_real_extractor():
 
 
 def test_oversized_unknown_type_with_usage_extracts_usage():
-    assert extract_openai_responses_usage_from_event_json(
+    body = (
         b'{"type":"'
         + b"x" * 2048
         + b'","response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
-    ) == {
+    )
+    event = inspect_openai_responses_event_json(body)
+
+    assert extract_openai_responses_usage_from_event(event) == {
         "model": "gpt-5.6",
         "tokens.input": 9,
         "tokens.output": 4,
@@ -392,7 +439,9 @@ def test_oversized_unknown_type_with_usage_extracts_usage():
 
 
 def test_returns_none_for_malformed_json():
-    assert extract_openai_responses_usage_from_event_json(b'{"type":"response.completed"') is None
+    event = inspect_openai_responses_event_json(b'{"type":"response.completed"')
+
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_returns_none_for_usage_event_without_usage_quantities():
@@ -405,8 +454,9 @@ def test_returns_none_for_usage_event_without_usage_quantities():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_returns_none_for_invalid_usage_quantities():
@@ -423,8 +473,9 @@ def test_returns_none_for_invalid_usage_quantities():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) is None
+    assert extract_openai_responses_usage_from_event(event) is None
 
 
 def test_clamps_cached_tokens_to_total_input_tokens():
@@ -440,8 +491,9 @@ def test_clamps_cached_tokens_to_total_input_tokens():
             },
         }
     ).encode()
+    event = inspect_openai_responses_event_json(body)
 
-    assert extract_openai_responses_usage_from_event_json(body) == {
+    assert extract_openai_responses_usage_from_event(event) == {
         "tokens.input": 0,
         "tokens.output": 5,
         "tokens.cache_read": 10,
