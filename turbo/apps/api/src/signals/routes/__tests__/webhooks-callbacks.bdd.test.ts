@@ -1,6 +1,7 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
+import { zeroMcpServersContract } from "@vm0/api-contracts/contracts/zero-mcp";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
@@ -10,7 +11,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { testContext } from "../../../__tests__/test-context";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { expireAtomGrantFixture } from "../../../test-fixtures/org-metadata";
@@ -41,6 +42,7 @@ import {
   generatedStripeSubscriptionId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   insertUsageEvent$,
   materializeHourlyUsage$,
@@ -4431,6 +4433,8 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const runs = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const gh = createGithubBddApi(context);
+    const mcpServers = setupApp({ context })(zeroMcpServersContract);
+    const routeMocks = createZeroRouteMocks(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -4456,6 +4460,19 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await connectors.connectManualGrant(actor, "openai", "api-token", {
       apiKey: "org-teardown-connector-token",
     });
+    routeMocks.clerk.session(actor.userId, orgOf(actor));
+    await accept(
+      mcpServers.create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          ref: "org-teardown",
+          displayName: "Org teardown",
+          endpoint: "https://mcp.example.com/mcp",
+          enabled: true,
+        },
+      }),
+      [201],
+    );
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD Org Teardown Agent",
       visibility: "public",
@@ -4658,7 +4675,16 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         }),
       );
     });
-    await waitForExpectation(async () => {});
+    await waitForExpectation(async () => {
+      routeMocks.clerk.session(actor.userId, orgOf(actor));
+      const listed = await accept(
+        mcpServers.list({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+      expect(listed.body.servers).toStrictEqual([]);
+    });
 
     // An org without a live subscription skips the Stripe update.
     const updateCalls =

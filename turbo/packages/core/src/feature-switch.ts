@@ -501,6 +501,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroMcp]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable vm0-managed remote MCP servers for Zero agent runs and the Zero CLI.",
+    enabled: false,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
     description:
