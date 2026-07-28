@@ -302,9 +302,137 @@ type QueryBuilderMessageId =
   | "unnestUpdateQueryBuilder"
   | "upsertQueryBuilder";
 
+interface WriteDescendantError {
+  readonly data: {
+    readonly helper: string;
+  };
+  readonly messageId: "typedApi";
+}
+
 const queryBuilderCases = {
   writeValid: [
     {
+      descendantErrors: [{ messageId: "typedApi", data: { helper: "lte" } }],
+      code: `${deletePreamble}
+        import { and, lte, sql, type SQL } from "drizzle-orm";
+        declare function dynamicPredicate(): SQL;
+        const predicate = dynamicPredicate();
+        declare const optionalPredicate: boolean | SQL;
+        declare const optionalCutoff: Date | undefined;
+        const rawPredicate = sql.raw("true RETURNING *");
+        const customSqlWrapper = {
+          getSQL(): SQL {
+            return sql.raw("true RETURNING *");
+          },
+        };
+        const nestedPredicate = and(
+          lte(cleanupRows.expiresAt, cutoff),
+          dynamicPredicate(),
+        );
+        const fragments = [
+          sql.raw("true"),
+          sql.raw(" RETURNING *"),
+        ];
+        declare const readonlyFragments: readonly SQL[];
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${predicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${optionalPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${optionalCutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${rawPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${customSqlWrapper}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${nestedPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${fragments}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${readonlyFragments}
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare function dynamicAssignment(): SQL;
+        const sqlProducingEncoder = {
+          mapToDriverValue(): SQL {
+            return sql.raw("ARRAY[]::bigint[]) RETURNING *");
+          },
+        };
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET
+            consumed_units = source.units_applied,
+            updated_at = \${dynamicAssignment()}
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS source(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = source.units_applied
+          FROM unnest(
+            \${sql.param(
+              unitDeltas,
+              sqlProducingEncoder,
+            )}::bigint[]
+          ) AS source(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare function dynamicValue(): SQL;
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (
+            org_id,
+            credits,
+            tier,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            \${dynamicValue()},
+            \${amount},
+            'free',
+            now(),
+            now()
+          )
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = \${amount},
+            tier = 'free',
+            created_at = now(),
+            updated_at = now()
+        \`);
+      `,
+    },
+    {
+      descendantErrors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql } from "drizzle-orm";
         await db.execute(sql\`
@@ -324,6 +452,10 @@ const queryBuilderCases = {
       `,
     },
     {
+      descendantErrors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
       code: `${lockingCteUpdatePreamble}
         import { eq, inArray, lte, sql } from "drizzle-orm";
         await db.execute(sql\`
@@ -345,6 +477,10 @@ const queryBuilderCases = {
       `,
     },
     {
+      descendantErrors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql } from "drizzle-orm";
         const dynamicTable = sql.identifier("cache_rows");
@@ -365,6 +501,14 @@ const queryBuilderCases = {
       `,
     },
     {
+      descendantErrors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql } from "drizzle-orm";
         await db.execute(sql\`
@@ -412,37 +556,154 @@ const queryBuilderCases = {
       `,
     },
     {
-      code: `${unnestUpdatePreamble}
+      code: `
         import { sql } from "drizzle-orm";
-        const query = sql\`
-          UPDATE \${allowanceWindows}
-          SET
-            "consumed_units" = \${allowanceWindows.consumedUnits} + consumption.units_applied,
-            "updated_at" = \${updatedAt}
-          FROM unnest(
-            \${sql.param(windowIds)}::uuid[],
-            \${sql.param(unitDeltas)}::bigint[]
-          ) AS consumption(window_id, units_applied)
-          WHERE \${allowanceWindows.id} = consumption.window_id
-        \`;
-        declare function expose(value: unknown): void;
-        expose(query);
-        await db.execute(query);
+        import { pgSchema, text, timestamp } from "drizzle-orm/pg-core";
+        const audit = pgSchema("audit");
+        const schemaCacheRows = audit.table("cache_rows", {
+          cacheKey: text("cache_key").primaryKey(),
+          lastRequestedAt: timestamp("last_requested_at").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            schemaCacheRows: typeof schemaCacheRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const issuedAt: Date;
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${schemaCacheRows.cacheKey}
+            FROM \${schemaCacheRows}
+            WHERE true
+            ORDER BY \${schemaCacheRows.cacheKey}
+            FOR UPDATE OF \${schemaCacheRows}
+          )
+          UPDATE \${schemaCacheRows}
+          SET last_requested_at = \${issuedAt}
+          FROM locked
+          WHERE true
+        \`);
       `,
     },
     {
       code: `${unnestUpdatePreamble}
         import { sql } from "drizzle-orm";
-        const fakeDb = {
+        import { alias } from "drizzle-orm/pg-core";
+        const target = alias(allowanceWindows, "target");
+        await db.execute(sql\`
+          UPDATE \${target}
+          SET consumed_units = source.units_applied
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS source(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { aliasedTable, sql } from "drizzle-orm";
+        const target = aliasedTable(allowanceWindows, "target");
+        await db.execute(sql\`
+          UPDATE \${target}
+          SET consumed_units = source.units_applied
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS source(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const trailingColumns = {
+          second: integer("second").notNull(),
+          third: integer("third").notNull(),
+        };
+        const spreadRows = pgTable("spread_rows", {
+          first: integer("first").notNull(),
+          ...trailingColumns,
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            spreadRows: typeof spreadRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${spreadRows}
+          SET
+            second = source.second,
+            third = source.third,
+            first = source.first
+          FROM unnest(
+            \${sql.param(values)}::integer[],
+            \${sql.param(values)}::integer[],
+            \${sql.param(values)}::integer[]
+          ) AS source(second, third, first)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const customExecutor = {
           async execute(query: unknown) {
             return query;
           },
         };
-        await fakeDb.execute(sql\`
+        await customExecutor.execute(sql\`
           UPDATE \${allowanceWindows}
           SET consumed_units = consumption.units_applied
           FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
           WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        type MySqlDatabase = import("drizzle-orm/mysql-core").MySqlDatabase<
+          never,
+          never
+        >;
+        declare const mysqlDb: MySqlDatabase;
+        await mysqlDb.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const wrappedDb: { execute: typeof db.execute } = {
+          execute: db.execute,
+        };
+        await wrappedDb.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        type WriteFacade = Pick<
+          DrizzleDatabase,
+          "$with" | "delete" | "execute" | "insert" | "select" | "update" | "with"
+        >;
+        declare const writeFacade: WriteFacade;
+        await writeFacade.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+          WHERE true
         \`);
       `,
     },
@@ -538,24 +799,21 @@ const queryBuilderCases = {
     {
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
-        const query = sql\`
-          DELETE FROM cleanup_rows
-          WHERE expires_at <= \${cutoff}
-        \`;
-        declare function expose(value: unknown): void;
-        expose(query);
-        await db.execute(query);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE CURRENT OF cleanup_cursor
+        \`);
       `,
     },
     {
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
-        const fakeDb = {
+        const customExecutor = {
           async execute(query: unknown) {
             return query;
           },
         };
-        await fakeDb.execute(sql\`
+        await customExecutor.execute(sql\`
           DELETE FROM cleanup_rows
           WHERE expires_at <= \${cutoff}
         \`);
@@ -645,10 +903,107 @@ const queryBuilderCases = {
       `,
     },
     {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET (consumed_units, updated_at) = (
+            consumption.units_applied,
+            \${updatedAt}
+          )
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET
+            updated_at = \${updatedAt},
+            consumed_units = consumption.units_applied
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import {
+          integer,
+          pgTable,
+          text,
+          timestamp,
+        } from "drizzle-orm/pg-core";
+        const runtimeRows = pgTable("runtime_rows", {
+          id: text("id").primaryKey(),
+          touchedAt: timestamp("touched_at")
+            .notNull()
+            .$onUpdate(() => new Date()),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            runtimeRows: typeof runtimeRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${runtimeRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import {
+          integer,
+          pgTable,
+          text,
+          timestamp,
+        } from "drizzle-orm/pg-core";
+        const runtimeRows = pgTable("runtime_rows", {
+          id: text("id").primaryKey(),
+          touchedAt: timestamp("touched_at")
+            .notNull()
+            .$onUpdate(() => new Date()),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            runtimeRows: typeof runtimeRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${runtimeRows}
+          SET
+            touched_at = now(),
+            value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+    },
+    {
       code: `${upsertPreamble}
         import { sql } from "drizzle-orm";
-        const query = sql\`
-          INSERT INTO org_metadata (
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (
             org_id,
             credits,
             created_at,
@@ -659,25 +1014,151 @@ const queryBuilderCases = {
           DO UPDATE SET
             credits = org_metadata.credits + \${amount},
             updated_at = now()
-        \`;
-        declare function expose(value: unknown): void;
-        expose(query);
-        await db.execute(query);
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, text } from "drizzle-orm/pg-core";
+        const optionalRows = pgTable("optional_rows", {
+          id: text("id").primaryKey(),
+          value: integer("value").notNull(),
+          note: text("note"),
+        });
+        const identityRows = pgTable("identity_rows", {
+          id: integer("id").generatedAlwaysAsIdentity(),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            identityRows: typeof identityRows;
+            optionalRows: typeof optionalRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const id: string;
+        declare const value: number;
+        await db.execute(sql\`
+          INSERT INTO \${optionalRows} (id, value)
+          VALUES (\${id}, \${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO \${identityRows} (value)
+          VALUES (\${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
+        \`);
       `,
     },
     {
       code: `${upsertPreamble}
         import { sql } from "drizzle-orm";
-        const fakeDb = {
+        const customExecutor = {
           async execute(query: unknown) {
             return query;
           },
         };
-        await fakeDb.execute(sql\`
+        await customExecutor.execute(sql\`
           INSERT INTO org_metadata (org_id, credits)
           VALUES (\${orgId}, \${amount})
           ON CONFLICT (org_id)
           DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (
+            credits,
+            org_id,
+            created_at,
+            updated_at
+          )
+          VALUES (\${amount}, \${orgId}, now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = \${amount},
+            updated_at = now()
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, text } from "drizzle-orm/pg-core";
+        const runtimeRows = pgTable("runtime_rows", {
+          id: text("id").primaryKey(),
+          token: text("token").$onUpdate(() => "rotated"),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            runtimeRows: typeof runtimeRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const id: string;
+        declare const value: number;
+        await db.execute(sql\`
+          INSERT INTO \${runtimeRows} (id, value)
+          VALUES (\${id}, \${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, text } from "drizzle-orm/pg-core";
+        const generatedRows = pgTable("generated_rows", {
+          id: text("id").primaryKey(),
+          normalizedId: text("normalized_id").generatedAlwaysAs(
+            sql\`lower(id)\`,
+          ),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            generatedRows: typeof generatedRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const id: string;
+        declare const value: number;
+        await db.execute(sql\`
+          INSERT INTO \${generatedRows} (id, value)
+          VALUES (\${id}, \${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
+        \`);
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, text } from "drizzle-orm/pg-core";
+        const generatedRuntimeRows = pgTable("generated_runtime_rows", {
+          id: text("id").primaryKey(),
+          derived: integer("derived")
+            .generatedAlwaysAs(sql\`1\`)
+            .$onUpdate(() => 7),
+          value: integer("value").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            generatedRuntimeRows: typeof generatedRuntimeRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const id: string;
+        declare const value: number;
+        await db.execute(sql\`
+          INSERT INTO \${generatedRuntimeRows} (id, value)
+          VALUES (\${id}, \${value})
+          ON CONFLICT (id)
+          DO UPDATE SET value = \${value}
         \`);
       `,
     },
@@ -818,6 +1299,146 @@ const queryBuilderCases = {
           VALUES (\${orgId}, \${amount})
           ON CONFLICT (org_id)
           DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET missing_units = consumption.units_applied
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS consumption(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (org_id, missing_credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (missing_org_id)
+          DO UPDATE SET credits = \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET missing_credits = \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        function parameter(value: unknown) {
+          return sql\`\${value}\`;
+        }
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${parameter(unitDeltas)}::bigint[]
+          ) AS consumption(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${sql.param(1)}::bigint[]
+          ) AS consumption(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { eq, inArray, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+            ORDER BY \${cacheRowMetadata.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${eq(cacheRows.cacheKey, cacheRows.cacheKey)}
+        \`);
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM \${cacheRows}
+            WHERE \${inArray(cacheRows.cacheKey, cacheKeys)}
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRowMetadata}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE \${eq(cacheRows.cacheKey, cacheRows.cacheKey)}
+        \`);
+      `,
+    },
+    {
+      code: `${lockingCteUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH locked AS (
+            SELECT \${cacheRows.cacheKey}
+            FROM ONLY \${cacheRows}
+            WHERE true
+            ORDER BY \${cacheRows.cacheKey}
+            FOR UPDATE OF \${cacheRows}
+          )
+          UPDATE \${cacheRows}
+          SET last_requested_at = \${issuedAt}::timestamp
+          FROM locked
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${rawRowsImport}${deletePreamble}
+        import { eq, sql } from "drizzle-orm";
+        declare const rowSchema: never;
+        await executeRawRows(
+          db,
+          sql\`
+            DELETE FROM \${cleanupRows}
+            WHERE \${eq(cleanupRows.expiresAt, cutoff)}
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+        const archivedCleanupRows = pgTable("archived_cleanup_rows", {
+          id: integer("id").notNull(),
+          expiresAt: timestamp("expires_at").notNull(),
+        });
+        declare const target:
+          | typeof cleanupRows
+          | typeof archivedCleanupRows;
+        await db.execute(sql\`
+          DELETE FROM \${target}
+          WHERE true
         \`);
       `,
     },
@@ -1347,15 +1968,6 @@ const queryBuilderCases = {
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
-        const lockingQuery = ${runnerLockingQuery};
-        declare function expose(value: unknown): void;
-        expose(lockingQuery);
-        await executeRawRows(db, lockingQuery, rowSchema);
-      `,
-    },
-    {
-      code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
         const source = sql.identifier("runs");
         await executeRawRows(
           db,
@@ -1577,40 +2189,6 @@ const queryBuilderCases = {
     {
       code: `${structuredSelectionPreamble}
         import { sql } from "drizzle-orm";
-        let fields = { value: ${mappedScalarQuery} };
-        db.select(fields);
-        fields = { value: sql\`1\`.mapWith(messages.id) };
-      `,
-    },
-    {
-      code: `${structuredSelectionPreamble}
-        import { sql } from "drizzle-orm";
-        const fields = { value: ${mappedScalarQuery} };
-        fields.value = sql\`1\`.mapWith(messages.id);
-        db.select(fields);
-      `,
-    },
-    {
-      code: `${structuredSelectionPreamble}
-        import { sql } from "drizzle-orm";
-        const fields = { value: ${mappedScalarQuery} };
-        const alias = fields;
-        alias.value = sql\`1\`.mapWith(messages.id);
-        db.select(fields);
-      `,
-    },
-    {
-      code: `${structuredSelectionPreamble}
-        import { sql } from "drizzle-orm";
-        declare function inspect(fields: object): void;
-        const fields = { value: ${mappedScalarQuery} };
-        inspect(fields);
-        db.select(fields);
-      `,
-    },
-    {
-      code: `${structuredSelectionPreamble}
-        import { sql } from "drizzle-orm";
         declare const chooseFirst: boolean;
         function fields() {
           if (chooseFirst) {
@@ -1619,36 +2197,6 @@ const queryBuilderCases = {
           return { value: sql\`1\`.mapWith(messages.id) };
         }
         db.select(fields());
-      `,
-    },
-    {
-      code: `${structuredSelectionPreamble}
-        import { sql } from "drizzle-orm";
-        function fields() {
-          return { value: ${mappedScalarQuery} };
-        }
-        fields = () => ({ value: sql\`1\`.mapWith(messages.id) });
-        db.select(fields());
-      `,
-    },
-    {
-      code: `${structuredSelectionPreamble}
-        import { sql } from "drizzle-orm";
-        const selection = { value: ${mappedScalarQuery} };
-        function fields() {
-          return selection;
-        }
-        fields().value = sql\`1\`.mapWith(messages.id);
-        db.select(fields());
-      `,
-    },
-    {
-      code: `${structuredSelectionPreamble}
-        import { sql } from "drizzle-orm";
-        export const fields = { value: ${mappedScalarQuery} };
-        export function selectedFields() {
-          return db.select(fields);
-        }
       `,
     },
     {
@@ -1677,17 +2225,6 @@ const queryBuilderCases = {
             \`
           : sql\`SELECT 1\`;
         await db.execute(query);
-      `,
-    },
-    {
-      code: `${deletePreamble}
-        import { sql } from "drizzle-orm";
-        const parts = [
-          sql\`DELETE FROM \${cleanupRows}\`,
-          sql\` WHERE \${cleanupRows.expiresAt} <= \${cutoff}\`,
-        ];
-        parts.push(sql\` RETURNING \${cleanupRows.id}\`);
-        await db.execute(sql.join(parts));
       `,
     },
   ],
@@ -1789,6 +2326,30 @@ const queryBuilderCases = {
   invalid: [
     {
       code: `${deletePreamble}
+        import { and, gte, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${and(
+            gte(cleanupRows.expiresAt, new Date(0)),
+            lte(cleanupRows.expiresAt, cutoff),
+          )}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { lte, sql } from "drizzle-orm";
+        const lessThanOrEqual = lte;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${lessThanOrEqual(cleanupRows.expiresAt, cutoff)}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
         import { sql, type SQL } from "drizzle-orm";
         const query: SQL = sql\`
           DELETE FROM \${cleanupRows}
@@ -1799,6 +2360,191 @@ const queryBuilderCases = {
       errors: [{ messageId: "deleteQueryBuilder" }],
     },
     {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const database = db;
+        await database.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        async function deleteExpired(
+          database: DrizzleDatabase,
+        ): Promise<void> {
+          await database.execute(sql\`
+            DELETE FROM \${cleanupRows}
+            WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+          \`);
+        }
+        await deleteExpired(db);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        async function deleteExpired(
+          database: DrizzleDatabase = db,
+        ): Promise<void> {
+          await database.execute(sql\`
+            DELETE FROM \${cleanupRows}
+            WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+          \`);
+        }
+        await deleteExpired();
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        class DatabaseHolder {
+          readonly database: DrizzleDatabase = db;
+
+          async deleteExpired(): Promise<void> {
+            await this.database.execute(sql\`
+              DELETE FROM \${cleanupRows}
+              WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+            \`);
+          }
+        }
+        void DatabaseHolder;
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        class DatabaseHolder {
+          constructor(readonly database: DrizzleDatabase) {}
+
+          async deleteExpired(): Promise<void> {
+            await this.database.execute(sql\`
+              DELETE FROM \${cleanupRows}
+              WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+            \`);
+          }
+        }
+        void new DatabaseHolder(db);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        async function deleteExpired(args: {
+          readonly database: DrizzleDatabase;
+        }): Promise<void> {
+          await args.database.execute(sql\`
+            DELETE FROM \${cleanupRows}
+            WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+          \`);
+        }
+        await deleteExpired({ database: db });
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        type DrizzleTransaction =
+          import("drizzle-orm/node-postgres").NodePgTransaction<
+            Record<string, never>,
+            Record<string, never>
+          >;
+        declare const tx: DrizzleTransaction;
+        await tx.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+        const cleanupColumns = {
+          id: integer("id").notNull(),
+          expiresAt: timestamp("expires_at").notNull(),
+        };
+        const cleanupRows = pgTable("cleanup_rows", cleanupColumns);
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            cleanupRows: typeof cleanupRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const cutoff: Date;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgSchema } from "drizzle-orm/pg-core";
+        const audit = pgSchema("audit");
+        const cleanupRows = audit.table("cleanup_rows", {
+          id: integer("id").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            cleanupRows: typeof cleanupRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { conversations } from "./src/schema/agent-run-session-conversation";
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            conversations: typeof conversations;
+          }>;
+        declare const db: DrizzleDatabase;
+        await db.execute(sql\`
+          DELETE FROM \${conversations}
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { pgTable, timestamp } from "drizzle-orm/pg-core";
+        const cleanupRows = pgTable("cleanup_rows", {
+          expiresAt: timestamp().notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            cleanupRows: typeof cleanupRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const cutoff: Date;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      legacyOverclaim: true,
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
         await db.execute(
@@ -1860,6 +2606,19 @@ const queryBuilderCases = {
     {
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
+        const query = sql;
+        await db.execute(
+          query.join([
+            query\`DELETE FROM \${cleanupRows}\`,
+            query\` WHERE true\`,
+          ]),
+        );
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
         const table = sql\`\${cleanupRows}\`;
         await db.execute(sql\`
           \${sql.empty()}DELETE FROM \${table}
@@ -1899,7 +2658,7 @@ const queryBuilderCases = {
     {
       code: `${lockingCteUpdatePreamble}
         import { inArray, lte, sql as query } from "drizzle-orm";
-        await db["execute"](query\`
+        await db.execute(query\`
           WITH locked AS (
             SELECT \${cacheRows.cacheKey}
             FROM \${cacheRows}
@@ -1990,8 +2749,24 @@ const queryBuilderCases = {
     },
     {
       code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql;
+        const parameter = sql.param;
+        await db.execute(query\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = consumption.units_applied
+          FROM unnest(
+            \${parameter(windowIds)}::uuid[]
+          ) AS consumption(window_id)
+          WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `${unnestUpdatePreamble}
         import * as drizzle from "drizzle-orm";
-        await db["execute"](drizzle.sql\`
+        await db.execute(drizzle.sql\`
           UPDATE \${allowanceWindows}
           SET consumed_units = consumption.units_applied
           FROM unnest(
@@ -1999,6 +2774,69 @@ const queryBuilderCases = {
             \${drizzle.sql.param(unitDeltas)}::bigint[]
           ) AS consumption(window_id, units_applied)
           WHERE \${allowanceWindows.id} = consumption.window_id
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { integer, pgTable } from "drizzle-orm/pg-core";
+        const valueColumnName = "value";
+        const namedRows = pgTable("named_rows", {
+          value: integer(valueColumnName).notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            namedRows: typeof namedRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${namedRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
+        \`);
+      `,
+      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import {
+          customType,
+          integer,
+          pgEnum,
+          pgTable,
+        } from "drizzle-orm/pg-core";
+        const integerColumn = integer;
+        const status = pgEnum("factory_status", ["ready", "done"]);
+        const customText = customType<{ data: string }>({
+          dataType() {
+            return "text";
+          },
+        });
+        const factoryRows = pgTable("factory_rows", {
+          value: integerColumn("value").notNull(),
+          status: status("status").notNull(),
+          payload: customText("payload").notNull(),
+        });
+        type DrizzleDatabase =
+          import("drizzle-orm/node-postgres").NodePgDatabase<{
+            factoryRows: typeof factoryRows;
+          }>;
+        declare const db: DrizzleDatabase;
+        declare const values: readonly number[];
+        await db.execute(sql\`
+          UPDATE \${factoryRows}
+          SET value = source.value
+          FROM unnest(
+            \${sql.param(values)}::integer[]
+          ) AS source(value)
+          WHERE true
         \`);
       `,
       errors: [{ messageId: "unnestUpdateQueryBuilder" }],
@@ -2029,6 +2867,7 @@ const queryBuilderCases = {
       errors: [{ messageId: "deleteQueryBuilder" }],
     },
     {
+      legacyOverclaim: true,
       code: `${deletePreamble}
         import { sql as query } from "drizzle-orm";
         await db.execute(query\`
@@ -2047,9 +2886,10 @@ const queryBuilderCases = {
       errors: [{ messageId: "deleteQueryBuilder" }],
     },
     {
+      legacyOverclaim: true,
       code: `${deletePreamble}
         import * as drizzle from "drizzle-orm";
-        const { rowCount } = await db["execute"](drizzle.sql\`
+        const { rowCount } = await db.execute(drizzle.sql\`
           DELETE FROM cleanup_rows
           WHERE ctid IN (
             SELECT ctid
@@ -2063,6 +2903,7 @@ const queryBuilderCases = {
       errors: [{ messageId: "deleteQueryBuilder" }],
     },
     {
+      legacyOverclaim: true,
       code: `${upsertPreamble}
         import { sql as query } from "drizzle-orm";
         await db.execute(query\`
@@ -2086,9 +2927,15 @@ const queryBuilderCases = {
     {
       code: `${upsertPreamble}
         import * as drizzle from "drizzle-orm";
-        await db["execute"](drizzle.sql\`
-          INSERT INTO \${orgMetadata} (org_id, credits, created_at, updated_at)
-          VALUES (\${orgId}, \${amount}, now(), now())
+        await db.execute(drizzle.sql\`
+          INSERT INTO \${orgMetadata} (
+            org_id,
+            credits,
+            tier,
+            created_at,
+            updated_at
+          )
+          VALUES (\${orgId}, \${amount}, 'free', now(), now())
           ON CONFLICT (org_id)
           DO UPDATE SET
             credits = COALESCE((
@@ -2503,10 +3350,14 @@ const queryBuilderCases = {
     },
   ],
 } satisfies {
-  invalid: RunTests<QueryBuilderMessageId, []>["invalid"];
+  invalid: readonly (RunTests<QueryBuilderMessageId, []>["invalid"][number] & {
+    readonly legacyOverclaim?: true;
+  })[];
   readInvalid: RunTests<QueryBuilderMessageId, []>["invalid"];
   readValid: RunTests<QueryBuilderMessageId, []>["valid"];
-  writeValid: RunTests<QueryBuilderMessageId, []>["valid"];
+  writeValid: readonly (RunTests<QueryBuilderMessageId, []>["valid"][number] & {
+    readonly descendantErrors?: readonly WriteDescendantError[];
+  })[];
 };
 
 type ReadQueryMessageId =
@@ -2523,6 +3374,11 @@ type ReadQueryCase = Extract<
   { errors: Array<{ messageId: ReadQueryMessageId }> }
 >;
 type WriteQueryCase = Exclude<QueryBuilderInvalidCase, ReadQueryCase>;
+type WriteValidCase = (typeof queryBuilderCases.writeValid)[number];
+type WriteDescendantCase = Extract<
+  WriteValidCase,
+  { descendantErrors: unknown }
+>;
 
 const READ_QUERY_MESSAGES = new Set<QueryBuilderMessageId>([
   "composedCteQueryBuilder",
@@ -2547,9 +3403,45 @@ function isWriteQueryCase(
   return !isReadQueryCase(testCase);
 }
 
+function hasDescendantErrors(
+  testCase: WriteValidCase,
+): testCase is WriteDescendantCase {
+  return "descendantErrors" in testCase;
+}
+
+function isRetiredWriteOverclaim(testCase: WriteQueryCase): boolean {
+  return "legacyOverclaim" in testCase && testCase.legacyOverclaim === true;
+}
+
 export const queryBuilderWriteCases = {
-  valid: queryBuilderCases.writeValid,
-  invalid: queryBuilderCases.invalid.filter(isWriteQueryCase),
+  valid: [
+    ...queryBuilderCases.writeValid
+      .filter((testCase) => {
+        return !hasDescendantErrors(testCase);
+      })
+      .map((testCase) => {
+        return { code: testCase.code };
+      }),
+    ...queryBuilderCases.invalid
+      .filter(isWriteQueryCase)
+      .filter(isRetiredWriteOverclaim)
+      .map((testCase) => {
+        return { code: testCase.code };
+      }),
+  ],
+  invalid: [
+    ...queryBuilderCases.writeValid
+      .filter(hasDescendantErrors)
+      .map((testCase) => {
+        return {
+          code: testCase.code,
+          errors: testCase.descendantErrors,
+        };
+      }),
+    ...queryBuilderCases.invalid.filter(isWriteQueryCase).filter((testCase) => {
+      return !isRetiredWriteOverclaim(testCase);
+    }),
+  ],
 };
 
 export const queryBuilderReadCases = {

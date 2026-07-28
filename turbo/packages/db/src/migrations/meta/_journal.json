@@ -4975,8 +4975,15 @@
     {
       "idx": 710,
       "version": "7",
+      "when": 1785222471228,
+      "tag": "0710_chief_lizard",
+      "breakpoints": true
+    },
+    {
+      "idx": 711,
+      "version": "7",
       "when": 1785222944582,
-      "tag": "0710_legal_ben_grimm",
+      "tag": "0711_legal_ben_grimm",
       "breakpoints": true
     }
   ]

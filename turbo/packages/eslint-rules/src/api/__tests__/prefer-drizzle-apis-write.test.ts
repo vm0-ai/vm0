@@ -2,7 +2,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, it } from "vitest";
 
-import { preferDrizzleQueryBuilder } from "../rules/prefer-drizzle-query-builder.ts";
+import { preferDrizzleApis } from "../rules/prefer-drizzle-apis.ts";
 import { queryBuilderWriteCases } from "./drizzle-query-builder-cases.ts";
 
 RuleTester.afterAll = afterAll;
@@ -28,7 +28,7 @@ const ruleTester = new RuleTester({
 });
 
 ruleTester.run(
-  "prefer-drizzle-query-builder writes",
-  preferDrizzleQueryBuilder,
+  "prefer-drizzle-apis write queries",
+  preferDrizzleApis,
   queryBuilderWriteCases,
 );

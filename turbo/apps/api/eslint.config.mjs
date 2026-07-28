@@ -182,7 +182,6 @@ export default [
       "api/no-store-in-params": "error",
       "api/no-unsafe-sql-interpolation": "error",
       "api/prefer-drizzle-apis": "error",
-      "api/prefer-drizzle-query-builder": "error",
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",

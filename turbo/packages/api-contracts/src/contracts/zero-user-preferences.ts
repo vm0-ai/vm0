@@ -10,8 +10,16 @@ const c = initContract();
 export const sendModeSchema = z.enum(["enter", "cmd-enter"]);
 export type SendMode = z.infer<typeof sendModeSchema>;
 
+export const userLocaleSchema = z.enum(["en-US", "zh-CN"]);
+export type UserLocale = z.infer<typeof userLocaleSchema>;
+
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
+  /**
+   * Optional during rollout so the new frontend can distinguish an older API
+   * (field absent) from a user who has not selected a language yet (null).
+   */
+  locale: userLocaleSchema.nullable().optional(),
   // Pinned agents are exposed as membership only. The API returns a stable
   // canonical order and ignores client-provided order on writes.
   pinnedAgentIds: z.array(z.string()),
@@ -32,6 +40,7 @@ export type UserPreferencesResponse = z.infer<
 export const updateUserPreferencesRequestSchema = z
   .object({
     timezone: z.string().min(1).optional(),
+    locale: userLocaleSchema.optional(),
     // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
@@ -42,6 +51,7 @@ export const updateUserPreferencesRequestSchema = z
     (data) => {
       return (
         data.timezone !== undefined ||
+        data.locale !== undefined ||
         data.pinnedAgentIds !== undefined ||
         data.sendMode !== undefined ||
         data.morningBriefEnabled !== undefined ||

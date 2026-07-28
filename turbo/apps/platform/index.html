@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" translate="no">
+<html lang="en-US" translate="no">
   <head>
     <title>Zero</title>
     <meta charset="UTF-8" />
@@ -421,6 +421,24 @@
               : "light";
         document.documentElement.dataset.theme = t;
         if (t === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
+    <script>
+      // Resolve locale before the app bundle runs so refreshes use the cached
+      // workspace language while the server preference is loading.
+      (function () {
+        var orgId = sessionStorage.getItem("clerk-active-org-id");
+        var cacheKey = orgId ? "vm0:locale:" + orgId : null;
+        var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+        var locale =
+          cached === "en-US" || cached === "zh-CN"
+            ? cached
+            : /^zh(?:-|$)/i.test(navigator.language)
+              ? "zh-CN"
+              : "en-US";
+
+        document.documentElement.lang = locale;
+        if (cacheKey) localStorage.setItem(cacheKey, locale);
       })();
     </script>
     <script type="module">

@@ -5,11 +5,14 @@ import {
   DEFAULT_NAMESPACE,
   resources,
   SUPPORTED_LOCALES,
+  type SupportedLocale,
 } from "./resources.ts";
 
 export const i18n = createInstance().use(initReactI18next);
 
-export async function initializeI18n(): Promise<void> {
+export async function initializeI18n(
+  locale: SupportedLocale = DEFAULT_LOCALE,
+): Promise<void> {
   await i18n.init({
     defaultNS: DEFAULT_NAMESPACE,
     enableSelector: true,
@@ -17,7 +20,7 @@ export async function initializeI18n(): Promise<void> {
     interpolation: {
       escapeValue: false,
     },
-    lng: DEFAULT_LOCALE,
+    lng: locale,
     resources,
     returnNull: false,
     supportedLngs: SUPPORTED_LOCALES,
