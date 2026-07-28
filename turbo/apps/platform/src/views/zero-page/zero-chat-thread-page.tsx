@@ -5134,7 +5134,7 @@ function PermissionActionButton({
       type="button"
       disabled={saving}
       onClick={onClick}
-      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:flex-none"
     >
       {saving && <IconLoader2 size={15} className="animate-spin" />}
       {saving ? "Saving..." : "Confirm"}
@@ -5168,7 +5168,7 @@ function PermissionActionInlineStatus({
   switch (status.kind) {
     case "loading": {
       return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <IconLoader2 size={13} className="animate-spin" />
           <span>Checking permission status...</span>
         </div>
@@ -5534,7 +5534,9 @@ function PermissionActionCardContent({
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
           </div>
-          <PermissionActionInlineStatus status={status} />
+          {status.kind !== "loading" && (
+            <PermissionActionInlineStatus status={status} />
+          )}
           {expiryText && (
             <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
               {expiryText}
@@ -5542,7 +5544,10 @@ function PermissionActionCardContent({
           )}
         </div>
       </div>
-      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+      <div className="flex min-h-9 w-full shrink-0 flex-row items-center gap-2 sm:w-auto">
+        {status.kind === "loading" && (
+          <PermissionActionInlineStatus status={status} />
+        )}
         {showDurationSelect && (
           <PermissionGrantDurationSelect
             value={expiresIn}
