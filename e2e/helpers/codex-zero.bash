@@ -220,7 +220,7 @@ send_chat_run_message() {
         --arg prompt "$prompt" \
         --arg selectedModel "$selected_model" \
         --arg clientEventId "$client_event_id" \
-        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: true}')
+        '{agentId: $agentId, prompt: $prompt, userMessage: {version: 1, parts: [{type: "text", text: $prompt}]}, model: $selectedModel, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: true}')
     body=$(_codex_zero_curl "/api/zero/chat/events" \
         -X POST \
         -d "$payload")

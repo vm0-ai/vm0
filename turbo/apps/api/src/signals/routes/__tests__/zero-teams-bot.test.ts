@@ -1452,7 +1452,7 @@ describe("POST /api/zero/teams/bot", () => {
     const run = list.runs.find((item) => {
       return (
         item.prompt.includes("please inspect this") &&
-        item.prompt.includes("[Teams file] spec.png (image/png)")
+        item.prompt.includes("[Web file] spec.png (image/png)")
       );
     });
     expect(run).toBeDefined();
@@ -1463,7 +1463,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
     expect(claim.prompt).toContain("please inspect this");
-    expect(claim.prompt).toContain("[Teams file] spec.png (image/png)");
+    expect(claim.prompt).toContain("[Web file] spec.png (image/png)");
     expect(claim.appendSystemPrompt).toContain("zero teams download-file -h");
 
     const fileIdMatch = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u);

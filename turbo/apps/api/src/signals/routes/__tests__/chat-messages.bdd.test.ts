@@ -839,7 +839,13 @@ async function requestSendEventWithBearer(
   return await accept(
     chatEventsClient().send({
       headers: { authorization: `Bearer ${token}` },
-      body,
+      body: {
+        ...body,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: body.prompt }],
+        },
+      },
     }),
     statuses,
   );
@@ -860,6 +866,10 @@ describe("CHAT-02: web chat send and client ids", () => {
         body: {
           agentId,
           prompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: prompt }],
+          },
           clientThreadId,
           clientEventId,
           model,

@@ -532,7 +532,7 @@ describe("chat run queue", () => {
     await waitFor(() => {
       expect(screen.getByText("1 message waiting")).toBeInTheDocument();
       expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "(see attached files)",
+        "[File: notes.txt]",
       );
       expect(queuedBody).toMatchObject({
         content: "(see attached files)",
