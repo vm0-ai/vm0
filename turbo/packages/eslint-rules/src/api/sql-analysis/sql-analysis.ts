@@ -6,10 +6,7 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
-  canHaveModifiers,
-  getModifiers,
   isArrayLiteralExpression,
-  isAsExpression,
   isCallExpression,
   isConditionalExpression,
   isIdentifier,
@@ -17,12 +14,10 @@ import {
   isParenthesizedExpression,
   isSatisfiesExpression,
   isSpreadElement,
-  isTypeAssertionExpression,
   isVariableDeclaration,
   isVariableDeclarationList,
   IndexKind,
   NodeFlags,
-  SyntaxKind,
   TypeFlags,
   type Node,
   type SourceFile,
@@ -32,9 +27,9 @@ import {
 } from "typescript";
 
 import {
+  drizzleCallName,
   getDrizzleColumnMetadata,
-  getStableDrizzleColumnOrigin,
-  getStableDrizzleTableMetadata,
+  getDrizzleTableMetadataForWrite,
   isDrizzleArrayParameter,
   isDrizzleColumnType,
   isDrizzleArrayOperandType,
@@ -43,10 +38,8 @@ import {
   isDrizzleTableType,
   isDrizzleWrapperType,
   resolvedSymbol,
-  stableDrizzleCallName,
   type DrizzleTableColumnMetadata,
   type DrizzleTableMetadata,
-  type StableDrizzleColumnOrigin,
 } from "../drizzle.ts";
 import { parsePostgres } from "./postgres-parser.ts";
 import {
@@ -198,11 +191,10 @@ interface SqlMarker {
   readonly isPatternOperand: boolean;
   readonly isSelect: boolean;
   readonly isStringOrWrapper: boolean;
-  readonly isStableWriteInterpolation: boolean;
+  readonly isAnalyzableWriteInterpolation: boolean;
   readonly isTable: boolean;
   readonly isWrapper: boolean;
   readonly node: TSESTree.Expression;
-  readonly stableColumnOrigin: StableDrizzleColumnOrigin | undefined;
   readonly tableMetadata: DrizzleTableMetadata | undefined;
 }
 
@@ -408,9 +400,9 @@ const PATTERN_HELPERS = new Map<string, PatternHelper>([
 ]);
 
 // These helpers always emit an expression fragment. Whole-write analysis can
-// retain them as leaves after recursively proving that none of their arguments
-// is an opaque SQL-producing value.
-const STABLE_WRITE_EXPRESSION_HELPERS = new Set<string>([
+// retain them as leaves after checking that none of their arguments is an
+// opaque SQL-producing value.
+const ANALYZABLE_WRITE_EXPRESSION_HELPERS = new Set<string>([
   ...COMPARISON_HELPERS.values(),
   ...ARRAY_HELPERS.values(),
   ...PATTERN_HELPERS.values(),
@@ -496,22 +488,13 @@ function markerColumnMetadata(
   );
 }
 
-function markerStableColumnOrigin(
-  node: TSESTree.Expression,
-  checker: TypeChecker,
-  services: ParserServicesWithTypeInformation,
-): StableDrizzleColumnOrigin | undefined {
-  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  return getStableDrizzleColumnOrigin(checker, tsNode);
-}
-
 function markerTableMetadata(
   node: TSESTree.Expression,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
 ): DrizzleTableMetadata | undefined {
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  return getStableDrizzleTableMetadata(checker, tsNode);
+  return getDrizzleTableMetadataForWrite(checker, tsNode);
 }
 
 function markerIsColumn(
@@ -671,16 +654,7 @@ function typeMayBeSqlWrapper(type: Type, checker: TypeChecker): boolean {
       return typeMayBeSqlWrapper(member, checker);
     });
   }
-  if (
-    (type.flags & TypeFlags.NonPrimitive) !== 0 ||
-    ((type.flags & TypeFlags.Object) !== 0 &&
-      checker.getPropertiesOfType(type).length === 0)
-  ) {
-    return true;
-  }
-  // Drizzle's runtime isSQLWrapper(...) check is intentionally structural:
-  // every value with a callable getSQL property can emit source text. Treat
-  // even project-defined lookalikes as syntax-producing here.
+  // Drizzle treats values with getSQL() as source-producing wrappers.
   return checker.getPropertyOfType(type, "getSQL") !== undefined;
 }
 
@@ -739,7 +713,7 @@ function arrayMayContainDrizzleWrapper(
   return element === undefined || typeMayBeSqlWrapper(element, checker);
 }
 
-function unwrapStableWriteExpression(node: Node): Node {
+function unwrapWriteInterpolationExpression(node: Node): Node {
   let current = node;
   while (
     isNonNullExpression(current) ||
@@ -751,26 +725,17 @@ function unwrapStableWriteExpression(node: Node): Node {
   return current;
 }
 
-function hasExportModifier(node: Node): boolean {
-  return (
-    canHaveModifiers(node) &&
-    getModifiers(node)?.some((modifier) => {
-      return modifier.kind === SyntaxKind.ExportKeyword;
-    }) === true
-  );
-}
-
-interface StableLocalInitializers {
-  readonly initializers: readonly Node[];
+interface LocalConstInitializer {
+  readonly initializer: Node;
   readonly symbol: TypeScriptSymbol;
 }
 
-function stableLocalInitializers(
+function localConstInitializer(
   checker: TypeChecker,
   node: Node,
   sourceFile: SourceFile,
   visited: Set<TypeScriptSymbol>,
-): StableLocalInitializers | undefined {
+): LocalConstInitializer | undefined {
   if (!isIdentifier(node)) {
     return undefined;
   }
@@ -778,89 +743,62 @@ function stableLocalInitializers(
   if (
     symbol === undefined ||
     visited.has(symbol) ||
-    symbol.declarations === undefined ||
-    symbol.declarations.length === 0
+    symbol.valueDeclaration === undefined
   ) {
     return undefined;
   }
-  const initializers = symbol.declarations.map((declaration) => {
-    return isVariableDeclaration(declaration) &&
-      declaration.getSourceFile() === sourceFile &&
-      isVariableDeclarationList(declaration.parent) &&
-      (declaration.parent.flags & NodeFlags.Const) !== 0 &&
-      !hasExportModifier(declaration.parent.parent) &&
-      declaration.initializer !== undefined
-      ? declaration.initializer
-      : undefined;
-  });
+  const declaration = symbol.valueDeclaration;
   if (
-    initializers.some((initializer) => {
-      return initializer === undefined;
-    })
+    !isVariableDeclaration(declaration) ||
+    declaration.getSourceFile() !== sourceFile ||
+    !isVariableDeclarationList(declaration.parent) ||
+    (declaration.parent.flags & NodeFlags.Const) === 0 ||
+    declaration.initializer === undefined
   ) {
     return undefined;
   }
   return {
-    initializers: initializers.flatMap((initializer) => {
-      return initializer === undefined ? [] : [initializer];
-    }),
+    initializer: declaration.initializer,
     symbol,
   };
 }
 
-function stableWriteInterpolationValue(
+function isAnalyzableWriteInterpolation(
   checker: TypeChecker,
   node: Node,
   sourceFile: SourceFile,
   visited: Set<TypeScriptSymbol>,
   allowsValueSemantics: boolean,
 ): boolean {
-  const expression = unwrapStableWriteExpression(node);
-  if (isAsExpression(expression) || isTypeAssertionExpression(expression)) {
-    return false;
-  }
-
+  const expression = unwrapWriteInterpolationExpression(node);
   const type = checker.getTypeAtLocation(expression);
   const isColumnOrTable =
     isDrizzleColumnType(checker, type, expression) ||
     isDrizzleTableType(checker, type, expression);
-  const local = stableLocalInitializers(
-    checker,
-    expression,
-    sourceFile,
-    visited,
-  );
+  const local = localConstInitializer(checker, expression, sourceFile, visited);
   if (local !== undefined) {
-    // SQL objects are mutable through APIs such as append(...). Only direct
-    // calls, or templates already expanded by the source composer after its
-    // reference analysis, are stable enough for a whole-write claim.
-    if (typeMayBeSqlWrapper(type, checker) && !isColumnOrTable) {
-      return false;
-    }
     visited.add(local.symbol);
-    const stable = local.initializers.every((initializer) => {
-      return stableWriteInterpolationValue(
-        checker,
-        initializer,
-        sourceFile,
-        visited,
-        allowsValueSemantics,
-      );
-    });
+    const analyzable = isAnalyzableWriteInterpolation(
+      checker,
+      local.initializer,
+      sourceFile,
+      visited,
+      allowsValueSemantics,
+    );
     visited.delete(local.symbol);
-    return stable;
+    return analyzable;
   }
 
   if (isConditionalExpression(expression)) {
     return (
-      stableWriteInterpolationValue(
+      isAnalyzableWriteInterpolation(
         checker,
         expression.whenTrue,
         sourceFile,
         visited,
         allowsValueSemantics,
       ) &&
-      stableWriteInterpolationValue(
+      isAnalyzableWriteInterpolation(
         checker,
         expression.whenFalse,
         sourceFile,
@@ -875,7 +813,8 @@ function stableWriteInterpolationValue(
   }
   if (typeMayBeArray(type, checker)) {
     // A directly interpolated array is a list of SQL chunks in Drizzle, not a
-    // bound value. Arrays are only stable inside a known helper or sql.param.
+    // bound value. Arrays are only analyzable inside a known helper or
+    // sql.param.
     if (!allowsValueSemantics) {
       return false;
     }
@@ -887,14 +826,14 @@ function stableWriteInterpolationValue(
     }
     return expression.elements.every((element) => {
       return isSpreadElement(element)
-        ? stableWriteInterpolationValue(
+        ? isAnalyzableWriteInterpolation(
             checker,
             element.expression,
             sourceFile,
             visited,
             true,
           )
-        : stableWriteInterpolationValue(
+        : isAnalyzableWriteInterpolation(
             checker,
             element,
             sourceFile,
@@ -905,14 +844,14 @@ function stableWriteInterpolationValue(
   }
 
   if (isCallExpression(expression)) {
-    const callName = stableDrizzleCallName(checker, expression);
+    const callName = drizzleCallName(checker, expression);
     if (callName === "param") {
       const argument = expression.arguments[0];
       return (
         expression.arguments.length === 1 &&
         argument !== undefined &&
         !isSpreadElement(argument) &&
-        stableWriteInterpolationValue(
+        isAnalyzableWriteInterpolation(
           checker,
           argument,
           sourceFile,
@@ -923,11 +862,11 @@ function stableWriteInterpolationValue(
     }
     if (
       callName !== undefined &&
-      STABLE_WRITE_EXPRESSION_HELPERS.has(callName) &&
+      ANALYZABLE_WRITE_EXPRESSION_HELPERS.has(callName) &&
       expression.arguments.every((argument) => {
         return (
           !isSpreadElement(argument) &&
-          stableWriteInterpolationValue(
+          isAnalyzableWriteInterpolation(
             checker,
             argument,
             sourceFile,
@@ -960,13 +899,13 @@ function stableWriteInterpolationValue(
   return false;
 }
 
-function markerIsStableWriteInterpolation(
+function markerIsAnalyzableWriteInterpolation(
   node: TSESTree.Expression,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
 ): boolean {
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  return stableWriteInterpolationValue(
+  return isAnalyzableWriteInterpolation(
     checker,
     tsNode,
     tsNode.getSourceFile(),
@@ -1038,8 +977,7 @@ function parseSqlVariant(
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
-    let cachedStableColumnOrigin: StableDrizzleColumnOrigin | null | undefined;
-    let cachedStableWriteInterpolation: boolean | undefined;
+    let cachedAnalyzableWriteInterpolation: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
     let cachedTableMetadata: DrizzleTableMetadata | null | undefined;
@@ -1100,13 +1038,10 @@ function parseSqlVariant(
         cachedSelect ??= markerIsSelect(expression, checker, services);
         return cachedSelect;
       },
-      get isStableWriteInterpolation(): boolean {
-        cachedStableWriteInterpolation ??= markerIsStableWriteInterpolation(
-          expression,
-          checker,
-          services,
-        );
-        return cachedStableWriteInterpolation;
+      get isAnalyzableWriteInterpolation(): boolean {
+        cachedAnalyzableWriteInterpolation ??=
+          markerIsAnalyzableWriteInterpolation(expression, checker, services);
+        return cachedAnalyzableWriteInterpolation;
       },
       get isStringOrWrapper(): boolean {
         cachedStringOrWrapper ??= markerIsStringOrWrapper(
@@ -1125,11 +1060,6 @@ function parseSqlVariant(
         return cachedWrapper;
       },
       node: expression,
-      get stableColumnOrigin(): StableDrizzleColumnOrigin | undefined {
-        cachedStableColumnOrigin ??=
-          markerStableColumnOrigin(expression, checker, services) ?? null;
-        return cachedStableColumnOrigin ?? undefined;
-      },
       get tableMetadata(): DrizzleTableMetadata | undefined {
         cachedTableMetadata ??=
           markerTableMetadata(expression, checker, services) ?? null;
@@ -3382,10 +3312,9 @@ function writeTargetMarker(
     return undefined;
   }
   const marker = markers.get(value.relname);
-  // Stable metadata rejects aliases and runtime-selected targets. Update and
-  // insert profiles separately require proven runtime Object.keys(...) order
-  // because their builders can reorder columns.
-  return marker?.tableMetadata?.hasDirectTableConfig === true
+  // Drizzle aliases and runtime-selected relations are not direct builder
+  // targets, so whole-write findings are limited to declared tables.
+  return marker?.tableMetadata?.hasDirectDeclaration === true
     ? marker
     : undefined;
 }
@@ -3402,19 +3331,15 @@ function markerBelongsToTable(
   marker: SqlMarker | undefined,
   table: DrizzleTableMetadata,
 ): boolean {
-  const origin = marker?.stableColumnOrigin;
-  const column = origin?.column;
+  const column = marker?.columnMetadata;
   const tableColumn =
     column === undefined ? undefined : table.columns.get(column.databaseName);
   return (
     marker !== undefined &&
-    origin !== undefined &&
     column !== undefined &&
-    origin.table.name === table.name &&
-    origin.table.schema === table.schema &&
+    column.tableName === table.name &&
     tableColumn !== undefined &&
-    tableColumn.propertySymbol === column.propertySymbol &&
-    column.propertySymbol === marker.expressionSymbol
+    tableColumn.propertySymbol === marker.expressionSymbol
   );
 }
 
@@ -3459,7 +3384,6 @@ function mappedWritableColumnNames(
           : new Set(["location", "name"]),
       ) ||
       column?.isWritable !== true ||
-      !table.explicitRuntimeColumnNames.has(target.name) ||
       names.has(target.name)
     ) {
       return undefined;
@@ -3477,7 +3401,7 @@ function hasTableColumnOrder(
   names: readonly string[],
   table: DrizzleTableMetadata,
 ): boolean {
-  if (!table.hasRuntimeColumnOrder) {
+  if (!table.hasSimpleColumnOrder) {
     return false;
   }
   const positions = new Map<string, number>();
@@ -3501,7 +3425,7 @@ function hasExactInsertColumnOrder(
   names: readonly string[],
   table: DrizzleTableMetadata,
 ): boolean {
-  if (!table.hasRuntimeColumnOrder) {
+  if (!table.hasSimpleColumnOrder) {
     return false;
   }
   const emittedNames = [...table.columns.values()].flatMap((column) => {
@@ -3520,7 +3444,7 @@ function hasNoPotentialOnUpdateColumns(table: DrizzleTableMetadata): boolean {
   // built column type. Its update builder eagerly invokes that callback even
   // when an explicit assignment overrides the result, and it can implicitly
   // assign generated or identity columns. No typed builder equivalence can be
-  // proven while any column may carry the callback.
+  // determined while any column may carry the callback.
   return [...table.columns.values()].every((column) => {
     return !column.hasDefault;
   });
@@ -3855,7 +3779,6 @@ function conflictColumnNames(
       element.nulls_ordering !== "SORTBY_NULLS_DEFAULT" ||
       !hasOnlyKeys(element, new Set(["name", "nulls_ordering", "ordering"])) ||
       !table.columns.has(element.name) ||
-      !table.explicitRuntimeColumnNames.has(element.name) ||
       names.has(element.name)
     ) {
       return undefined;
@@ -3946,7 +3869,7 @@ function writeQueryCapability(parsed: ParsedSql): QueryCapability | undefined {
   // only sound when the runtime value cannot expand into unparsed SQL syntax.
   if (
     ![...parsed.markers.values()].every((marker) => {
-      return marker.isStableWriteInterpolation;
+      return marker.isAnalyzableWriteInterpolation;
     })
   ) {
     return undefined;

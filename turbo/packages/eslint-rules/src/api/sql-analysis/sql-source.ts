@@ -5,9 +5,7 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
-  canHaveModifiers,
   forEachChild,
-  getModifiers,
   isArrayLiteralExpression,
   isAsExpression,
   isCallExpression,
@@ -23,7 +21,6 @@ import {
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
-  SyntaxKind,
   type Node,
   type Symbol as TypeScriptSymbol,
   type TypeChecker,
@@ -34,10 +31,11 @@ import {
   isDrizzleSqlType,
   isDrizzleSqlTag,
   isDrizzleSymbol,
-  isStableDrizzleSqlTag,
   resolvedSymbol,
 } from "../drizzle.ts";
 
+// These limits protect ESLint termination; they do not expand the supported
+// syntax beyond the conventional composition forms modeled below.
 const MAX_SOURCE_VARIANTS = 16;
 const MAX_COMPOSITION_STEPS = 256;
 
@@ -95,8 +93,6 @@ interface LocalFunction {
   readonly returned: TSESTree.Expression;
 }
 
-type SafeTerminalUse = (node: TSESTree.Expression) => boolean;
-
 function quasiText(node: TSESTree.TemplateElement): string {
   return node.value.cooked ?? node.value.raw;
 }
@@ -112,23 +108,6 @@ function transparentExpression(
     node.type === AST_NODE_TYPES.ChainExpression
   ) {
     return node.expression;
-  }
-  return null;
-}
-
-function transparentParent(
-  node: TSESTree.Expression,
-): TSESTree.Expression | null {
-  const parent = node.parent;
-  if (
-    (parent.type === AST_NODE_TYPES.TSAsExpression ||
-      parent.type === AST_NODE_TYPES.TSTypeAssertion ||
-      parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      parent.type === AST_NODE_TYPES.TSNonNullExpression ||
-      parent.type === AST_NODE_TYPES.ChainExpression) &&
-    parent.expression === node
-  ) {
-    return parent;
   }
   return null;
 }
@@ -150,36 +129,11 @@ function isComposableExpression(
   );
 }
 
-function outerTransparentExpression(
-  node: TSESTree.Expression,
-): TSESTree.Expression {
-  let current = node;
-  let parent = transparentParent(current);
-  while (parent !== null) {
-    current = parent;
-    parent = transparentParent(current);
-  }
-  return current;
-}
-
-function hasExportModifier(node: Node): boolean {
-  return (
-    canHaveModifiers(node) &&
-    getModifiers(node)?.some((modifier) => {
-      return modifier.kind === SyntaxKind.ExportKeyword;
-    }) === true
-  );
-}
-
 function isConstVariable(declaration: VariableDeclaration): boolean {
   return (
     isVariableDeclarationList(declaration.parent) &&
     (declaration.parent.flags & NodeFlags.Const) !== 0
   );
-}
-
-function variableIsExported(declaration: VariableDeclaration): boolean {
-  return hasExportModifier(declaration.parent.parent);
 }
 
 function mergeTemplates(
@@ -294,7 +248,6 @@ export function createSqlSourceComposer(
   sourceCode: TSESLint.SourceCode,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
-  isSafeTerminalUse: SafeTerminalUse,
 ): SqlSourceComposer {
   const cache = new WeakMap<TSESTree.Expression, SqlSource | null>();
   const compositionCandidateCache = new WeakMap<TSESTree.Expression, boolean>();
@@ -426,7 +379,7 @@ export function createSqlSourceComposer(
       node.callee.computed ||
       node.callee.property.type !== AST_NODE_TYPES.Identifier ||
       node.callee.property.name !== name ||
-      !isStableDrizzleSqlTag(checker, services, node.callee.object)
+      !isDrizzleSqlTag(checker, services, node.callee.object)
     ) {
       return false;
     }
@@ -434,34 +387,11 @@ export function createSqlSourceComposer(
     return isDrizzleSymbol(checker, checker.getSymbolAtLocation(tsProperty));
   }
 
-  function directCallUse(node: TSESTree.Identifier): boolean {
-    const use = outerTransparentExpression(node);
-    return (
-      use.parent?.type === AST_NODE_TYPES.CallExpression &&
-      use.parent.callee === use
-    );
-  }
-
-  function hasOnlyDirectCallReferences(node: TSESTree.Identifier): boolean {
-    const variable = variableInScope(node);
-    return (
-      variable !== null &&
-      variable.references.every((reference) => {
-        return (
-          reference.init === true ||
-          (reference.identifier.type === AST_NODE_TYPES.Identifier &&
-            !reference.isWrite() &&
-            directCallUse(reference.identifier))
-        );
-      })
-    );
-  }
-
-  function hasOnlySubstitutableParameterReferences(
+  function parametersAppearInComposablePositions(
     root: Node,
     parameters: ReadonlySet<TypeScriptSymbol>,
   ): boolean {
-    let safe = true;
+    let composable = true;
 
     function referenceIsSubstitutable(node: Node): boolean {
       let current = node;
@@ -493,7 +423,7 @@ export function createSqlSourceComposer(
     }
 
     function visit(node: Node): void {
-      if (!safe) {
+      if (!composable) {
         return;
       }
       if (isIdentifier(node)) {
@@ -506,7 +436,7 @@ export function createSqlSourceComposer(
           parameters.has(symbol) &&
           !referenceIsSubstitutable(node)
         ) {
-          safe = false;
+          composable = false;
           return;
         }
       }
@@ -514,7 +444,7 @@ export function createSqlSourceComposer(
     }
 
     visit(root);
-    return safe;
+    return composable;
   }
 
   function localFunction(node: TSESTree.CallExpression): LocalFunction | null {
@@ -534,12 +464,8 @@ export function createSqlSourceComposer(
       declaration.getSourceFile() !== tsCallee.getSourceFile() ||
       declaration.body === undefined ||
       declaration.body.statements.length !== 1 ||
-      hasExportModifier(declaration) ||
       declaration.parameters.length !== node.arguments.length
     ) {
-      return null;
-    }
-    if (!hasOnlyDirectCallReferences(node.callee)) {
       return null;
     }
     const parameters: TypeScriptSymbol[] = [];
@@ -569,7 +495,7 @@ export function createSqlSourceComposer(
       return null;
     }
     if (
-      !hasOnlySubstitutableParameterReferences(
+      !parametersAppearInComposablePositions(
         statement.expression,
         new Set(parameters),
       )
@@ -587,178 +513,6 @@ export function createSqlSourceComposer(
     };
   }
 
-  function joinCallUsing(
-    node: TSESTree.Expression,
-  ): TSESTree.CallExpression | null {
-    const use = outerTransparentExpression(node);
-    const parent = use.parent;
-    return parent.type === AST_NODE_TYPES.CallExpression &&
-      parent.arguments[0] === use &&
-      drizzleSqlMember(parent, "join")
-      ? parent
-      : null;
-  }
-
-  function arrayHasOnlySafeJoinUses(
-    node: TSESTree.ArrayExpression,
-    activeVariables: Set<TypeScriptSymbol>,
-    activeExpressions: Set<TSESTree.Expression>,
-  ): boolean {
-    const directJoin = joinCallUsing(node);
-    if (directJoin !== null) {
-      return isSafeComposedValueUse(
-        directJoin,
-        activeVariables,
-        activeExpressions,
-      );
-    }
-    const use = outerTransparentExpression(node);
-    if (
-      use.parent.type !== AST_NODE_TYPES.VariableDeclarator ||
-      use.parent.init !== use ||
-      use.parent.id.type !== AST_NODE_TYPES.Identifier
-    ) {
-      return false;
-    }
-    const declaration = symbolAt(use.parent.id)?.valueDeclaration;
-    if (
-      declaration === undefined ||
-      !isVariableDeclaration(declaration) ||
-      !isConstVariable(declaration) ||
-      variableIsExported(declaration)
-    ) {
-      return false;
-    }
-    const variable = variableInScope(use.parent.id);
-    return (
-      variable !== null &&
-      variable.references.every((reference) => {
-        if (reference.init === true) {
-          return true;
-        }
-        const identifier = reference.identifier;
-        if (
-          identifier.type !== AST_NODE_TYPES.Identifier ||
-          reference.isWrite()
-        ) {
-          return false;
-        }
-        const join = joinCallUsing(identifier);
-        return (
-          join !== null &&
-          isSafeComposedValueUse(join, activeVariables, activeExpressions)
-        );
-      })
-    );
-  }
-
-  function isSafeComposedValueUse(
-    node: TSESTree.Expression,
-    activeVariables: Set<TypeScriptSymbol>,
-    activeExpressions: Set<TSESTree.Expression>,
-  ): boolean {
-    const use = outerTransparentExpression(node);
-    if (activeExpressions.has(use)) {
-      return false;
-    }
-    activeExpressions.add(use);
-    let safe = false;
-    if (isSafeTerminalUse(use)) {
-      safe = true;
-    } else {
-      const parent = use.parent;
-      if (
-        parent.type === AST_NODE_TYPES.TemplateLiteral &&
-        parent.expressions.includes(use) &&
-        parent.parent.type === AST_NODE_TYPES.TaggedTemplateExpression &&
-        isDrizzleSqlTag(checker, services, parent.parent.tag)
-      ) {
-        safe = isSafeComposedValueUse(
-          parent.parent,
-          activeVariables,
-          activeExpressions,
-        );
-      } else if (
-        parent.type === AST_NODE_TYPES.ConditionalExpression &&
-        (parent.consequent === use || parent.alternate === use)
-      ) {
-        safe = isSafeComposedValueUse(
-          parent,
-          activeVariables,
-          activeExpressions,
-        );
-      } else if (
-        parent.type === AST_NODE_TYPES.ArrayExpression &&
-        parent.elements.includes(use)
-      ) {
-        safe = arrayHasOnlySafeJoinUses(
-          parent,
-          activeVariables,
-          activeExpressions,
-        );
-      } else if (
-        parent.type === AST_NODE_TYPES.CallExpression &&
-        parent.arguments.includes(use) &&
-        (drizzleSqlMember(parent, "join") || localFunction(parent) !== null)
-      ) {
-        safe = isSafeComposedValueUse(
-          parent,
-          activeVariables,
-          activeExpressions,
-        );
-      } else if (
-        parent.type === AST_NODE_TYPES.VariableDeclarator &&
-        parent.init === use &&
-        parent.id.type === AST_NODE_TYPES.Identifier
-      ) {
-        const declaration = symbolAt(parent.id)?.valueDeclaration;
-        safe =
-          declaration !== undefined &&
-          isVariableDeclaration(declaration) &&
-          isConstVariable(declaration) &&
-          !variableIsExported(declaration) &&
-          hasOnlySafeConstReferences(parent.id, activeVariables);
-      }
-    }
-    activeExpressions.delete(use);
-    return safe;
-  }
-
-  function isSafeCompositionReference(
-    node: TSESTree.Identifier,
-    activeVariables: Set<TypeScriptSymbol>,
-  ): boolean {
-    return isSafeComposedValueUse(node, activeVariables, new Set());
-  }
-
-  function hasOnlySafeConstReferences(
-    node: TSESTree.Identifier,
-    activeVariables: Set<TypeScriptSymbol> = new Set(),
-  ): boolean {
-    const symbol = symbolAt(node);
-    if (symbol === undefined || activeVariables.has(symbol)) {
-      return false;
-    }
-    const variable = variableInScope(node);
-    activeVariables.add(symbol);
-    const safe =
-      variable !== null &&
-      variable.references.every((reference) => {
-        return (
-          reference.init === true ||
-          (reference.identifier.type === AST_NODE_TYPES.Identifier &&
-            !reference.isWrite() &&
-            (reference.identifier === node ||
-              isSafeCompositionReference(
-                reference.identifier,
-                activeVariables,
-              )))
-        );
-      });
-    activeVariables.delete(symbol);
-    return safe;
-  }
-
   function localConstInitializer(node: TSESTree.Identifier): {
     readonly declaration: Node;
     readonly initializer: TSESTree.Expression;
@@ -770,9 +524,7 @@ export function createSqlSourceComposer(
       !isVariableDeclaration(declaration) ||
       declaration.getSourceFile() !== tsNode.getSourceFile() ||
       !isConstVariable(declaration) ||
-      variableIsExported(declaration) ||
-      declaration.initializer === undefined ||
-      !hasOnlySafeConstReferences(node)
+      declaration.initializer === undefined
     ) {
       return null;
     }
