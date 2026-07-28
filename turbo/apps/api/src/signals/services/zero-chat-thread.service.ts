@@ -872,6 +872,8 @@ const chatEventBuilders = {
       eventType: "input.rejected",
       structuredPrompt: row.structuredPrompt ?? undefined,
       error: requiredChatEventField(row.error, row.eventType, "error"),
+      automationId: row.automationId ?? undefined,
+      triggerBrief: row.automationId === null ? undefined : row.triggerBrief,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };

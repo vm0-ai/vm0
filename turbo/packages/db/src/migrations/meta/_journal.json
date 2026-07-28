@@ -4964,6 +4964,13 @@
       "when": 1785211488965,
       "tag": "0708_backfill_structured_prompt_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 709,
+      "version": "7",
+      "when": 1785213588221,
+      "tag": "0709_chat_event_queue_cutover",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ import {
   chatEventRunLifecycle,
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { eq, isNotNull, sql } from "drizzle-orm";
@@ -47,7 +48,18 @@ type InputPromptEvent = ChatEventIdentity &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
     readonly content: string | null;
+    readonly triggerSource?: TriggerSource;
+    readonly encryptedParams?: string | null;
   };
+
+type InputAutomationEvent = ChatEventIdentity & {
+  readonly eventType: "input.automation";
+  readonly content?: null;
+  readonly automationId: string;
+  readonly triggerSource: TriggerSource;
+  readonly triggerBrief: string | null;
+  readonly encryptedParams: string;
+};
 
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventInputPayload &
@@ -55,6 +67,9 @@ type InputRejectedEvent = ChatEventIdentity &
     readonly eventType: "input.rejected";
     readonly content: string | null;
     readonly error: string;
+    readonly automationId?: string;
+    readonly triggerSource?: TriggerSource;
+    readonly triggerBrief?: string | null;
   };
 
 type OutputMessageEvent = ChatEventIdentity &
@@ -119,6 +134,17 @@ type RunCancelledEvent = ChatEventIdentity & {
   readonly error?: string;
 };
 
+type QueueAutomationPausedEvent = ChatEventIdentity & {
+  readonly eventType: "queue.automation_paused";
+  readonly content?: null;
+  readonly pauseReason: string | null;
+};
+
+type QueueAutomationResumedEvent = ChatEventIdentity & {
+  readonly eventType: "queue.automation_resumed";
+  readonly content?: null;
+};
+
 type ControlInterruptEvent = ChatEventIdentity & {
   readonly eventType: "control.interrupt";
   readonly content?: null;
@@ -147,6 +173,7 @@ type UsageRecordedEvent = ChatEventIdentity & {
 
 export type NewChatEvent =
   | InputPromptEvent
+  | InputAutomationEvent
   | InputRejectedEvent
   | OutputMessageEvent
   | OutputErrorEvent
@@ -157,6 +184,8 @@ export type NewChatEvent =
   | RunCompletedEvent
   | RunFailedEvent
   | RunCancelledEvent
+  | QueueAutomationPausedEvent
+  | QueueAutomationResumedEvent
   | ControlInterruptEvent
   | ControlRevokeEvent
   | GoalChangedEvent
@@ -187,8 +216,22 @@ type PersistedChatEvent = Omit<ChatEventInsert, "seqId">;
 
 function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
+  if (values.eventType === "queue.automation_paused") {
+    const { pauseReason, ...event } = values;
+    return {
+      ...event,
+      content: null,
+      error: pauseReason,
+      eventType: event.eventType,
+      role: chatEventCompatibilityRole(event.eventType),
+    };
+  }
   return {
     ...values,
+    ...(values.eventType === "input.automation" ||
+    values.eventType === "queue.automation_resumed"
+      ? { content: null }
+      : {}),
     eventType: values.eventType,
     role: chatEventCompatibilityRole(values.eventType),
     ...(runLifecycleEvent === null ? {} : { runLifecycleEvent }),

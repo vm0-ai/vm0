@@ -6,7 +6,10 @@ import {
   GenerateDataKeyCommand,
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatMessagesContract,
+  chatThreadEventsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -33,6 +36,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
   holdOrgAdmissionLockFixture,
+  insertLegacyWorkflowQueueRowFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-messages";
@@ -115,6 +119,10 @@ function automationsClient() {
 
 function chatMessagesClient() {
   return setupApp({ context })(chatMessagesContract);
+}
+
+function chatThreadEventsClient() {
+  return setupApp({ context })(chatThreadEventsContract);
 }
 
 function queueClient() {
@@ -364,6 +372,35 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
+  it("tolerates legacy rows before the cutover migration runs", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    await insertLegacyWorkflowQueueRowFixture({
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      threadId: automation.threadId,
+      automationId: automation.automationId,
+    });
+
+    const beforeAdmission = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(beforeAdmission.body.running).toBeNull();
+    expect(beforeAdmission.body.pending).toStrictEqual([]);
+
+    const runId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "new event during cutover window"),
+      automation.threadId,
+    );
+    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
+      runId,
+    ]);
+  });
+
   it("does not let the stale sweep race a newly admitted workflow event", async () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
@@ -800,7 +837,7 @@ describe("workflow queue", () => {
     ]);
   });
 
-  it("keeps a failed webhook event accepted without duplicating its retained queue item", async () => {
+  it("fast-fails a webhook launch and requires a new event after resume", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     mockNow(Date.UTC(2026, 6, 25, 12));
@@ -812,14 +849,11 @@ describe("workflow queue", () => {
       [204],
     );
 
-    expectAcceptedWithoutRun(
-      await postWorkflowWebhook(automation, "retained launch failure"),
-    );
     await expect(
-      postWorkflowWebhook(automation, "retained launch failure"),
+      postWorkflowWebhook(automation, "fast-failed launch"),
     ).resolves.toStrictEqual({
-      status: 200,
-      body: { success: true, duplicate: true },
+      status: 500,
+      body: { error: "Failed to start webhook workflow run" },
     });
 
     const paused = await accept(
@@ -832,11 +866,29 @@ describe("workflow queue", () => {
     expect(paused.body.running).toBeNull();
     expect(paused.body.pausedAt).not.toBeNull();
     expect(paused.body.pauseReason).not.toBeNull();
-    expect(
-      paused.body.pending.map((event) => {
-        return event.automationId;
+    expect(paused.body.pending).toHaveLength(0);
+    const failedEvents = await accept(
+      chatThreadEventsClient().list({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+        query: {},
       }),
-    ).toStrictEqual([automation.automationId]);
+      [200],
+    );
+    expect(failedEvents.body.events).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "input.rejected",
+          error: expect.any(String),
+          automationId: automation.automationId,
+          triggerBrief: null,
+        }),
+        expect.objectContaining({
+          eventType: "queue.automation_paused",
+          pauseReason: expect.any(String),
+        }),
+      ]),
+    );
 
     await runsApi.ensureOrgModelProvider(scenario.actor);
     const resumed = await accept(
@@ -848,16 +900,18 @@ describe("workflow queue", () => {
     );
     expect(resumed.body.pausedAt).toBeNull();
     expect(resumed.body.pending).toHaveLength(0);
-    const running = resumed.body.running;
-    if (!running) {
-      throw new Error("Expected the retained event to resume");
-    }
+    expect(resumed.body.running).toBeNull();
+
+    const runId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "manual retry after resume"),
+      automation.threadId,
+    );
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      running.runId,
+      runId,
     ]);
   });
 
-  it("does not re-arm a schedule whose failed launch remains queued", async () => {
+  it("re-arms a recurring schedule after its launch fast-fails", async () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const created = await accept(
@@ -884,7 +938,7 @@ describe("workflow queue", () => {
     await executeDueWorkflowAutomations();
 
     const automation = await wf.readAutomation(created.body.id);
-    expect(automation.nextRunAt).toBeNull();
+    expect(automation.nextRunAt).not.toBeNull();
     const paused = await accept(
       queueClient().get({
         headers: authHeaders(),
@@ -894,11 +948,7 @@ describe("workflow queue", () => {
     );
     expect(paused.body.running).toBeNull();
     expect(paused.body.pausedAt).not.toBeNull();
-    expect(
-      paused.body.pending.map((event) => {
-        return event.automationId;
-      }),
-    ).toStrictEqual([created.body.id]);
+    expect(paused.body.pending).toHaveLength(0);
 
     await runsApi.ensureOrgModelProvider(scenario.actor);
     const resumed = await accept(
@@ -909,7 +959,21 @@ describe("workflow queue", () => {
       [200],
     );
     expect(resumed.body.pending).toHaveLength(0);
-    expect(resumed.body.running?.runId).toStrictEqual(expect.any(String));
+    expect(resumed.body.running).toBeNull();
+
+    if (!automation.nextRunAt) {
+      throw new Error("Expected the failed recurring schedule to re-arm");
+    }
+    mockNow(Date.parse(automation.nextRunAt) + 60_000);
+    await executeDueWorkflowAutomations();
+    const recovered = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: created.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(recovered.body.running?.runId).toStrictEqual(expect.any(String));
   });
 
   it("drains a queued one-time event through the canonical session", async () => {

@@ -3994,10 +3994,7 @@ const buildChatCallbackDependencies$ = command(
   },
 );
 
-/**
- * User-message drain used by the shared per-thread scheduler. Compatibility
- * reads remain here until the follow-up cleanup removes the old queue paths.
- */
+/** User-message drain used by the shared event-backed thread scheduler. */
 export const drainQueuedUserMessagesForThread$ = command(
   async (
     { set },

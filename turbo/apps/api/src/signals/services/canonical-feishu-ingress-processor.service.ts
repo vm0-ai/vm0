@@ -31,10 +31,7 @@ import {
 } from "./integration-model-route.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
-import {
-  encryptQueuedUserMessageRunParams,
-  enqueueUserMessageQueueItem,
-} from "./zero-chat-queued-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
 import {
   addFeishuThinkingReaction,
   buildFeishuSystemPrompt,
@@ -310,6 +307,8 @@ async function persistCanonicalFeishuIngress(args: {
         eventType: "input.prompt",
         content: args.message.text,
         runId: null,
+        triggerSource: "feishu",
+        encryptedParams,
         feishuChatOpenUrl: feishuChatOpenUrl(args.message.chatId),
         createdAt: args.ingress.createdAt,
       },
@@ -319,15 +318,6 @@ async function persistCanonicalFeishuIngress(args: {
     if (!inserted) {
       throw new Error("Canonical Feishu ingress message already exists");
     }
-    await enqueueUserMessageQueueItem(tx, {
-      orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
-      chatThreadId: route.chatThreadId,
-      chatMessageId: args.ingress.ingressId,
-      triggerSource: "feishu",
-      encryptedParams,
-    });
-    args.signal.throwIfAborted();
     await touchChatThreadLastMessageAt(
       tx,
       route.chatThreadId,

@@ -52,10 +52,9 @@ export type {
  * Each row is one typed event belonging to a chat_thread. The table and
  * selected physical column names stay message-named during the rollout.
  *
- * User messages are persisted immediately on send. Until the queue writer
- * cutover, queued state remains represented by chat_message_queue rows. The
- * nullable automation payload columns prepare readers for pending events
- * without changing the active writer path in this release.
+ * User and automation inputs are persisted immediately. A run-less,
+ * unrevoked input event is pending queue state; its run-attributed replacement
+ * is the immutable claim.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run
@@ -86,7 +85,7 @@ export const chatMessages = pgTable(
       )
       .notNull(),
     // Attribution only: identifies the run that consumed or produced this row.
-    // Queued state is represented exclusively by chat_message_queue.
+    // A null value on an unrevoked input.prompt/input.automation is pending.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesEventId: uuid("revokes_message_id").references(
@@ -104,7 +103,7 @@ export const chatMessages = pgTable(
     triggerSource: text("trigger_source").$type<TriggerSource>(),
     triggerBrief: text("trigger_brief"),
     // Persistent-secret encrypted queue parameters. This field never leaves
-    // the API and is populated only by a later writer cutover.
+    // the API and remains only on the original pending input event.
     encryptedParams: text("encrypted_params"),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),

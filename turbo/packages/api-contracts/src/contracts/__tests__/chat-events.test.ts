@@ -59,6 +59,9 @@ const chatEvents = [
     eventType: "input.rejected",
     content: "Run the task",
     error: "Insufficient credits",
+    automationId: "00000000-0000-4000-8000-000000000010",
+    triggerSource: "workflow-event",
+    triggerBrief: "Gmail label applied",
     createdAt: CREATED_AT,
   },
   {
@@ -245,8 +248,13 @@ function compatibilityRoundTripExpectation(event: ChatEvent): ChatEvent {
       return { ...event, runEventId: "queue:queued" };
     case "run.dequeued":
       return { ...event, runEventId: "queue:dequeued" };
+    case "input.rejected": {
+      const { automationId, triggerBrief, ...legacy } = event;
+      void automationId;
+      void triggerBrief;
+      return legacy;
+    }
     case "input.prompt":
-    case "input.rejected":
     case "output.message":
     case "output.error":
     case "output.thinking":
@@ -319,6 +327,12 @@ describe("ChatEvent catalog", () => {
     expect(chatEventSchema.safeParse({ ...prompt, role: "user" }).success).toBe(
       false,
     );
+    expect(
+      chatEventSchema.safeParse({
+        ...prompt,
+        encryptedParams: "must-stay-server-side",
+      }).success,
+    ).toBe(false);
     expect(
       chatEventSchema.safeParse({
         ...prompt,

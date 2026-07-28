@@ -475,6 +475,8 @@ const inputRejectedEventSchema = chatEventBaseSchema
     eventType: z.literal("input.rejected"),
     structuredPrompt: userMessageDocumentSchema.optional(),
     error: z.string(),
+    automationId: z.string().uuid().optional(),
+    triggerBrief: z.string().nullable().optional(),
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -2100,8 +2102,23 @@ export function legacyChatMessageResponse(
           eventType === "run.queued" ? "queue:queued" : "queue:dequeued",
       });
     }
+    case "input.rejected": {
+      const {
+        eventType,
+        threadId,
+        revokesEventId,
+        automationId,
+        triggerBrief,
+        ...legacyResponse
+      } = response;
+      void eventType;
+      void threadId;
+      void revokesEventId;
+      void automationId;
+      void triggerBrief;
+      return legacyPagedChatMessageSchema.parse(legacyResponse);
+    }
     case "input.prompt":
-    case "input.rejected":
     case "output.message":
     case "output.error":
     case "output.thinking":
