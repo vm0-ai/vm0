@@ -1,4 +1,84 @@
 //! Bounded root netfilter trace capture for guest DNS readiness diagnostics.
+//!
+//! This module correlates one guest's fixed DNS readiness queries with the root namespace's
+//! netfilter trace. It is diagnostic only: monitor startup and per-namespace rule installation are
+//! best effort and never decide whether an otherwise healthy namespace may be used.
+//!
+//! # Lifecycle
+//!
+//! The runner currently requests tracing for local execution, including runner-behavior CI.
+//! `FirecrackerRuntime` then owns at most one `xtables-monitor --trace --ipv4` child for all of its
+//! network namespaces. A cloneable [`GuestDnsNetfilterTraceReader`] follows the namespace-pool
+//! configuration, while each namespace records its own [`GuestDnsNetfilterTraceAttachment`].
+//! Attachments distinguish tracing that was not requested from tracing that was requested but
+//! unavailable because the monitor, DNS proxy, or namespace rule could not be installed.
+//!
+//! Before DNS readiness starts, network evidence snapshots an attachment cursor together with its
+//! counter baseline. Terminal failure capture reuses that cursor to select only later trace
+//! packets, then serializes a [`GuestDnsNetfilterTraceReport`] beside the counter evidence. Runtime
+//! shutdown removes namespace rules with the namespace pool before stopping the shared monitor.
+//! [`GuestDnsNetfilterTraceMonitor::shutdown`] limits child cleanup with
+//! [`MONITOR_SHUTDOWN_TIMEOUT`]; dropping the monitor cancels and aborts any remaining task as a
+//! fallback.
+//!
+//! # Capture window and packet identity
+//!
+//! A [`GuestDnsNetfilterTraceCursor`] is a reusable value identifying one monitor generation and
+//! the last packet sequence present at baseline time. It is not a consumer offset: capture does not
+//! advance shared state, and every capture with that cursor applies the same baseline boundary to
+//! the packets retained at capture time. A packet first observed before the baseline stays outside
+//! that window even if later steps arrive afterward. A cursor from another monitor generation
+//! returns `cursor_mismatch` instead of comparing unrelated sequence numbers.
+//!
+//! Because the monitor is runtime-wide, a packet is attributed to one readiness attempt only when
+//! the packet header and the exact raw PREROUTING TRACE rule jointly match all isolation fields:
+//! namespace rule comment, host veth, namespace peer IP, fixed readiness destination and packet
+//! length, UDP, and destination port 53. The netfilter family and packet ID then associate that
+//! packet's headers and trace steps across raw PREROUTING, NAT/REDIRECT, and FORWARD/INPUT
+//! processing. Reaching NAT also proves passage through the intervening root conntrack hook. These
+//! checks prevent interleaved traffic from another local namespace from being reported as evidence
+//! for this guest.
+//!
+//! Capture waits until it has seen a terminal trace step for each reported readiness attempt, or
+//! until [`TRACE_CAPTURE_WAIT`] expires. DROP and REJECT verdicts, filter ACCEPT verdicts, and
+//! INPUT, FORWARD, or OUTPUT filter policy steps complete a packet. The wait only lets the
+//! asynchronous monitor finish emitting trace lines; it does not extend the readiness policy
+//! itself.
+//!
+//! # Report states
+//!
+//! [`TraceReportStatus`] describes the capture result independently of
+//! [`TraceMonitorSnapshot`], which describes monitor health:
+//!
+//! - `captured` includes at least one matching packet; the monitor may still have become
+//!   unavailable after emitting it.
+//! - `no_matching_packet` means no retained match and no proven post-baseline eviction while the
+//!   monitor is running.
+//! - `buffer_truncated` means a sequence gap proves that some post-baseline history was evicted; it
+//!   does not prove that the evicted packet would have matched.
+//! - `baseline_unavailable`, `attachment_unavailable`, and `monitor_unavailable` distinguish a
+//!   missing cursor, namespace-local diagnostic unavailability, and loss of the shared monitor.
+//! - `cursor_mismatch` prevents evidence from different monitor generations from being combined.
+//!
+//! A disabled attachment omits the trace report entirely. Report counters such as evicted,
+//! malformed, and oversized lines are cumulative for the shared monitor generation, not scoped to
+//! the cursor window.
+//!
+//! # Resource and output bounds
+//!
+//! The named constants below are the source of truth for every bound:
+//!
+//! - [`MAX_PACKETS`] bounds the shared FIFO and records each eviction. [`MAX_HEADERS_PER_PACKET`]
+//!   and [`MAX_STEPS_PER_PACKET`] discard excess per-packet detail and mark the packet truncated;
+//!   terminal and farthest-boundary summaries are still updated before step detail is discarded.
+//! - [`MAX_IDENTIFIER_BYTES`] rejects overlong identifiers, while [`MAX_TRACE_LINE_BYTES`]
+//!   discards an entire oversized input line. Both outcomes remain visible through malformed or
+//!   truncated-line counters.
+//! - [`MAX_RULE_DETAIL_BYTES`] retains a bounded rule prefix for correlation, and
+//!   [`MAX_STDERR_BYTES`] bounds captured monitor-failure detail. [`READ_CHUNK_BYTES`] only bounds
+//!   temporary read buffers; it is not a content truncation limit.
+//! - [`MAX_REPORTED_PACKETS`] retains only the newest matching attempts in serialized output while
+//!   `matched_packets` still reports the full retained match count.
 
 use std::collections::VecDeque;
 use std::io;
@@ -35,22 +115,39 @@ const READINESS_DNS_IPV4: &str = "8.8.8.8";
 
 static NEXT_MONITOR_ID: AtomicU64 = AtomicU64::new(1);
 
+/// A reusable baseline position within one monitor generation.
+///
+/// `sequence` is the last packet assigned before readiness capture starts. Reports include only
+/// packets with a greater sequence, and reading through this cursor never advances shared state.
+/// `monitor_id` prevents the sequence from being interpreted after the monitor is replaced.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct GuestDnsNetfilterTraceCursor {
     monitor_id: u64,
     sequence: u64,
 }
 
+/// A cloneable observation handle for the runtime-wide trace state.
+///
+/// Every clone sees the same bounded packet buffer and notification stream. Readers do not own or
+/// keep the `xtables-monitor` child alive; the runtime-owned
+/// [`GuestDnsNetfilterTraceMonitor`] controls that lifecycle.
 #[derive(Clone, Debug)]
 pub(crate) struct GuestDnsNetfilterTraceReader {
     state: Arc<Mutex<TraceState>>,
     changed: Arc<Notify>,
 }
 
+/// Per-namespace availability of root netfilter trace diagnostics.
+///
+/// This state is independent from namespace health: unavailable diagnostics remain serializable
+/// evidence, while namespace creation and DNS routing continue normally.
 #[derive(Clone, Debug)]
 pub(crate) enum GuestDnsNetfilterTraceAttachment {
+    /// Tracing was not requested, so evidence capture omits a trace report.
     Disabled,
+    /// Tracing was requested but this namespace could not receive it.
     Unavailable(&'static str),
+    /// The namespace TRACE rule and shared reader are available.
     Enabled(GuestDnsNetfilterTraceReader),
 }
 
@@ -63,6 +160,10 @@ impl GuestDnsNetfilterTraceAttachment {
         Self::Enabled(reader)
     }
 
+    /// Snapshot the shared monitor position for this namespace's evidence baseline.
+    ///
+    /// Disabled and unavailable attachments have no meaningful monitor window and return `None`.
+    /// Taking a cursor is non-consuming and does not reserve or clear packets.
     pub(crate) fn cursor(&self) -> Option<GuestDnsNetfilterTraceCursor> {
         match self {
             Self::Enabled(reader) => Some(reader.cursor()),
@@ -70,6 +171,12 @@ impl GuestDnsNetfilterTraceAttachment {
         }
     }
 
+    /// Capture the bounded trace report for one terminal readiness failure.
+    ///
+    /// A disabled attachment returns `None` and is omitted from the enclosing evidence report. An
+    /// unavailable attachment returns an `attachment_unavailable` report. An enabled attachment
+    /// without a cursor returns `baseline_unavailable`; otherwise capture uses the cursor's
+    /// post-baseline window and may wait for `readiness_attempts` terminal packets.
     pub(crate) async fn capture(
         &self,
         cursor: Option<GuestDnsNetfilterTraceCursor>,
@@ -103,6 +210,11 @@ impl GuestDnsNetfilterTraceAttachment {
     }
 }
 
+/// Owns one root `xtables-monitor` child and the task that supervises it.
+///
+/// The monitor has runtime scope, whereas its readers and namespace attachments are cloneable
+/// observation handles. Explicit shutdown performs bounded cancellation and child reaping. `Drop`
+/// cancels and aborts a remaining task so abandoning the runtime cannot leave the task detached.
 pub(crate) struct GuestDnsNetfilterTraceMonitor {
     reader: GuestDnsNetfilterTraceReader,
     cancel: CancellationToken,
@@ -110,6 +222,10 @@ pub(crate) struct GuestDnsNetfilterTraceMonitor {
 }
 
 impl GuestDnsNetfilterTraceMonitor {
+    /// Start the IPv4 TRACE monitor and its bounded stdout/stderr readers.
+    ///
+    /// This reports process-spawn or pipe-setup errors to the caller. A later child or stream
+    /// failure is recorded in shared monitor state so existing readers can serialize it.
     pub(crate) async fn start() -> io::Result<Self> {
         let mut command = Command::new("xtables-monitor");
         command.args(["--trace", "--ipv4"]);
@@ -148,10 +264,19 @@ impl GuestDnsNetfilterTraceMonitor {
         })
     }
 
+    /// Return a cloneable reader for propagation through the namespace pool.
+    ///
+    /// The reader may outlive the process task and continues to expose the last shared state.
+    /// Normal process exit and shutdown record unavailable or stopped state respectively; the
+    /// reader itself does not keep the child running.
     pub(crate) fn reader(&self) -> GuestDnsNetfilterTraceReader {
         self.reader.clone()
     }
 
+    /// Cancel and reap the monitor process, aborting supervision after the shutdown bound.
+    ///
+    /// Repeated calls are no-ops after the task has been taken. A normally completed cancellation
+    /// records the monitor as stopped for outstanding readers.
     pub(crate) async fn shutdown(&mut self) {
         self.cancel.cancel();
         let Some(mut task) = self.task.take() else {
@@ -412,8 +537,11 @@ impl TraceState {
 
 #[derive(Debug)]
 enum TraceMonitorStatus {
+    /// The child and trace reader are expected to produce more events.
     Running,
+    /// The child, wait operation, or output reader failed with bounded diagnostic detail.
     Unavailable(String),
+    /// Runtime-owned shutdown completed normally.
     Stopped,
 }
 
@@ -817,18 +945,32 @@ fn bounded_string(value: &str, limit: usize) -> String {
     format!("{} [truncated]", &value[..end])
 }
 
+/// Outcome of selecting and correlating the post-baseline trace window.
+///
+/// This status does not replace [`TraceMonitorSnapshot`]: capture outcome and monitor health are
+/// separate dimensions of the serialized report.
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum TraceReportStatus {
+    /// One or more matching packets are included in the bounded packet list.
     Captured,
+    /// No matching packet is retained, with no proven eviction, while the monitor is running.
     NoMatchingPacket,
+    /// A sequence gap proves that some post-baseline packet history is no longer retained.
     BufferTruncated,
+    /// An enabled attachment was captured without a cursor from its evidence baseline.
     BaselineUnavailable,
+    /// The namespace could not attach to the requested diagnostic monitor or TRACE rule.
     AttachmentUnavailable,
+    /// No packet matched and the shared monitor is unavailable or stopped.
     MonitorUnavailable,
+    /// The baseline cursor belongs to another monitor generation.
     CursorMismatch,
 }
 
+/// Serialized health of the runtime-owned monitor at report time.
+///
+/// Monitor health is independent from whether a matching packet was already captured.
 #[derive(Clone, Debug, Serialize)]
 struct TraceMonitorSnapshot {
     state: &'static str,
@@ -855,6 +997,11 @@ impl TraceMonitorSnapshot {
     }
 }
 
+/// Bounded root-netfilter evidence embedded in a terminal DNS network report.
+///
+/// `matched_packets` counts all matching packets still present in the cursor window before the
+/// serialized packet cap is applied. Eviction and line counters are cumulative for the monitor
+/// generation, and each packet separately reports whether its retained detail was truncated.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct GuestDnsNetfilterTraceReport {
     status: TraceReportStatus,
@@ -904,6 +1051,10 @@ impl GuestDnsNetfilterTraceReport {
 }
 
 impl GuestDnsNetfilterTraceReader {
+    /// Snapshot the last packet sequence assigned by the current monitor generation.
+    ///
+    /// The returned cursor represents an inclusive baseline: capture considers only greater
+    /// sequences.
     fn cursor(&self) -> GuestDnsNetfilterTraceCursor {
         let state = lock_state(&self.state);
         GuestDnsNetfilterTraceCursor {
@@ -912,6 +1063,11 @@ impl GuestDnsNetfilterTraceReader {
         }
     }
 
+    /// Wait for terminal matching packets, then return the latest bounded snapshot.
+    ///
+    /// Notifications allow the report to complete as soon as all expected attempts have a
+    /// terminal trace step. The fixed deadline prevents diagnostics from delaying failure handling
+    /// indefinitely, and a cursor mismatch completes immediately.
     async fn capture(
         &self,
         cursor: GuestDnsNetfilterTraceCursor,
@@ -937,6 +1093,11 @@ impl GuestDnsNetfilterTraceReader {
         }
     }
 
+    /// Build an instantaneous report from the retained post-baseline window.
+    ///
+    /// This rejects another monitor generation before inspecting packets, applies the complete
+    /// readiness identity filter, and keeps only the newest [`MAX_REPORTED_PACKETS`] packet
+    /// details after recording the total match count.
     fn capture_now(
         &self,
         cursor: GuestDnsNetfilterTraceCursor,
